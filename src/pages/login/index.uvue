@@ -1,0 +1,87 @@
+<script setup lang="ts">
+import { ref } from 'vue'
+import { onShow } from '@dcloudio/uni-app'
+import { login } from '../../services/api.ts'
+import { validateCredentials } from '../../services/contract.ts'
+import { restoreSession, session } from '../../services/session.ts'
+
+const username = ref('')
+const password = ref('')
+const busy = ref(false)
+const errorText = ref('')
+
+onShow(() => {
+  restoreSession()
+  if (session.token.length > 0) uni.reLaunch({ url: '/pages/home/index' })
+})
+
+async function submit() {
+  if (busy.value) return
+  errorText.value = validateCredentials(username.value, password.value)
+  if (errorText.value.length > 0) return
+  busy.value = true
+  try {
+    await login(username.value, password.value)
+    password.value = ''
+    uni.reLaunch({ url: '/pages/home/index' })
+  } catch (error) {
+    errorText.value = error.message || '登录失败，请重试'
+  } finally {
+    busy.value = false
+  }
+}
+</script>
+
+<template>
+  <view class="page">
+    <view class="screen login-screen">
+      <view class="brand">
+        <view class="brand-mark"><text class="brand-symbol">a</text></view>
+        <text class="brand-name">AIO Life</text>
+      </view>
+
+      <view class="login-content">
+        <view class="welcome-art">
+          <view class="art-orbit"></view>
+          <view class="art-leaf"></view>
+          <view class="art-sun"></view>
+        </view>
+        <text class="eyebrow muted">让生活，有迹可循</text>
+        <text class="login-title ink">欢迎回来</text>
+        <text class="login-subtitle muted">登录，继续记录你的每一天。</text>
+
+        <view class="login-form">
+          <text class="field-label ink">账号</text>
+          <input v-model="username" class="field-input" placeholder="请输入账号" :disabled="busy" :maxlength="100" confirm-type="next" aria-label="账号" />
+          <text class="field-label password-label ink">密码</text>
+          <input v-model="password" class="field-input" placeholder="请输入密码" :password="true" :disabled="busy" :maxlength="200" confirm-type="go" aria-label="密码" @confirm="submit" />
+          <view class="form-message">
+            <text v-if="errorText" class="error-text" role="alert">{{ errorText }}</text>
+          </view>
+          <button role="button" :class="['primary-button', busy ? 'primary-disabled' : '']" :loading="busy" :disabled="busy" :aria-disabled="busy" @click="submit">{{ busy ? '正在登录' : '登录' }}</button>
+        </view>
+      </view>
+      <text class="footer-note login-footer">把日子，过成自己的样子。</text>
+    </view>
+  </view>
+</template>
+
+<style>
+.login-screen { max-width: 480px; }
+.login-content { padding-top: 40px; }
+.welcome-art { width: 100px; height: 100px; margin-bottom: 28px; border-radius: 32px; background-color: #e6eee2; overflow: hidden; position: relative; }
+@media (prefers-color-scheme: dark) { .welcome-art { background-color: #283b2d; } }
+.art-orbit { position: absolute; width: 85px; height: 85px; border-radius: 50px; border: 1px solid #b3c7ab; left: -24px; top: 41px; }
+.art-leaf { position: absolute; width: 38px; height: 56px; border-radius: 28px 4px 28px 4px; background-color: #719773; left: 36px; top: 31px; transform: rotate(20deg); }
+.art-sun { position: absolute; width: 18px; height: 18px; border-radius: 10px; background-color: #dabf7b; top: 18px; right: 19px; }
+.eyebrow { font-size: 12px; letter-spacing: 3px; }
+.login-title { font-size: 32px; line-height: 44px; font-weight: 600; margin-top: 12px; }
+.login-subtitle { font-size: 14px; line-height: 23px; margin-top: 8px; }
+.login-form { margin-top: 32px; }
+.field-label { font-size: 13px; margin-bottom: 9px; }
+.password-label { margin-top: 20px; }
+.field-input { height: 52px; padding: 0 16px; border: 1px solid #e2e7df; border-radius: 14px; background-color: #ffffff; color: #203b2f; font-size: 16px; }
+@media (prefers-color-scheme: dark) { .field-input { background-color: #202d24; border-color: #344539; color: #e4ece6; } }
+.form-message { min-height: 39px; padding-top: 8px; padding-bottom: 8px; }
+.login-footer { margin-top: 40px; }
+</style>

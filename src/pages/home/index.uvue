@@ -1,0 +1,164 @@
+<script setup lang="ts">
+import { computed, ref } from 'vue'
+import { onShow } from '@dcloudio/uni-app'
+import { fetchUser, logout } from '../../services/api.ts'
+import { restoreSession, session } from '../../services/session.ts'
+
+const user = computed(() => session.user)
+const loading = ref(false)
+const leaving = ref(false)
+const confirmLogout = ref(false)
+const errorText = ref('')
+const dateLabel = ref('')
+const greeting = ref('你好')
+
+function goLogin() { uni.reLaunch({ url: '/pages/login/index' }) }
+
+onShow(() => {
+  const now = new Date()
+  dateLabel.value = (now.getMonth() + 1) + '月' + now.getDate() + '日 · 星期' + ['日', '一', '二', '三', '四', '五', '六'][now.getDay()]
+  greeting.value = now.getHours() < 12 ? '上午好' : now.getHours() < 18 ? '下午好' : '晚上好'
+  restoreSession()
+  if (session.token.length === 0) { goLogin(); return }
+  refresh()
+})
+
+async function refresh() {
+  if (loading.value || leaving.value) return
+  loading.value = true
+  errorText.value = ''
+  try {
+    await fetchUser()
+  } catch (error) {
+    if (error.name === 'SessionExpiredError') {
+      uni.showToast({ title: '登录已过期，请重新登录', icon: 'none' })
+      goLogin()
+    } else {
+      errorText.value = error.message || '加载失败，请重试'
+    }
+  } finally {
+    loading.value = false
+  }
+}
+
+async function signOut() {
+  if (leaving.value) return
+  leaving.value = true
+  try {
+    await logout()
+  } catch (_) {
+    uni.showToast({ title: '已退出本机，服务端注销未完成', icon: 'none' })
+  } finally {
+    goLogin()
+    leaving.value = false
+  }
+}
+</script>
+
+<template>
+  <view class="page">
+    <view class="screen home-screen">
+      <view class="home-topbar">
+        <view class="brand">
+          <view class="brand-mark"><text class="brand-symbol">a</text></view>
+          <text class="brand-name">AIO Life</text>
+        </view>
+        <view class="logout-anchor">
+          <button role="button" class="icon-button" aria-label="退出登录" :disabled="leaving" @click="confirmLogout = !confirmLogout">⏻</button>
+          <view v-if="confirmLogout" class="logout-popover">
+            <text class="confirm-text ink">退出当前账号？</text>
+            <view class="confirm-actions">
+              <button role="button" class="cancel-button" :disabled="leaving" @click="confirmLogout = false">取消</button>
+              <button role="button" class="confirm-button" :loading="leaving" :disabled="leaving" @click="signOut">退出</button>
+            </view>
+          </view>
+        </view>
+      </view>
+
+      <view class="home-heading">
+        <text class="date-label muted">{{ dateLabel }}</text>
+        <text class="home-title ink">今日</text>
+      </view>
+
+      <view class="welcome-card">
+        <view class="welcome-copy">
+          <text class="greeting ink">{{ greeting }}{{ user ? '，' + user.name : '' }}</text>
+          <view class="welcome-title-group">
+            <text class="welcome-title ink">慢一点，</text>
+            <text class="welcome-title ink">也在向前。</text>
+          </view>
+          <text class="welcome-caption muted">今天，也为自己留一点时间。</text>
+        </view>
+        <view class="home-art">
+          <view class="home-art-circle"></view>
+          <view class="home-art-leaf"></view>
+          <view class="home-art-dot"></view>
+        </view>
+      </view>
+
+      <view class="account-card">
+        <view class="account-header">
+          <text class="section-title ink">我的账号</text>
+          <button role="button" class="icon-button refresh-button" aria-label="刷新用户信息" :loading="loading" :disabled="loading || leaving" @click="refresh"><text v-if="!loading" class="refresh-glyph">↻</text></button>
+        </view>
+        <text v-if="loading && !user" class="status-text muted">正在加载…</text>
+        <view v-if="user" class="profile-content">
+          <view class="avatar"><text class="avatar-letter">{{ user.name.slice(0, 1) }}</text></view>
+          <view class="profile-details">
+            <text class="profile-name ink">{{ user.name }}</text>
+            <text class="profile-secondary muted">{{ user.email || '暂未绑定邮箱' }}</text>
+            <text v-if="user.introduction" class="profile-secondary muted">{{ user.introduction }}</text>
+          </view>
+        </view>
+        <view v-if="errorText" class="load-error">
+          <text class="error-text" role="alert">{{ errorText }}</text>
+          <button role="button" class="retry-button" :disabled="loading || leaving" @click="refresh">重新加载</button>
+        </view>
+      </view>
+      <text class="footer-note home-footer">每一个平常日，都值得认真对待。</text>
+    </view>
+  </view>
+</template>
+
+<style>
+.home-screen { max-width: 720px; }
+.home-topbar { overflow: visible; position: relative; z-index: 5; flex-direction: row; align-items: center; justify-content: space-between; }
+.logout-anchor { position: relative; z-index: 5; overflow: visible; }
+.logout-popover { position: absolute; top: 51px; right: 0; width: 204px; padding: 18px; border-radius: 18px; background-color: #ffffff; border: 1px solid #e1e8de; }
+.confirm-text { font-size: 14px; }
+.confirm-actions { flex-direction: row; justify-content: flex-end; margin-top: 18px; }
+.cancel-button { margin: 0; padding: 0 13px; height: 34px; line-height: 34px; border: 0; font-size: 13px; background-color: #edf1ea; color: #526c58; border-radius: 10px; }
+.confirm-button { margin: 0; margin-left: 8px; padding: 0 13px; height: 34px; line-height: 34px; border: 0; font-size: 13px; background-color: #39765e; color: #ffffff; border-radius: 10px; }
+.home-heading { margin-top: 44px; margin-bottom: 22px; }
+.date-label { font-size: 13px; }
+.home-title { font-size: 34px; font-weight: 600; margin-top: 9px; line-height: 45px; }
+.welcome-card { min-height: 236px; padding: 28px; border-radius: 26px; background-color: #e5eddf; position: relative; overflow: hidden; }
+@media (prefers-color-scheme: dark) { .welcome-card { background-color: #2b3c2e; } }
+.welcome-copy { z-index: 1; }
+.greeting { font-size: 14px; line-height: 23px; }
+.welcome-title-group { margin-top: 18px; }
+.welcome-title { font-size: 30px; font-weight: 500; line-height: 43px; }
+.welcome-caption { font-size: 12px; line-height: 20px; margin-top: 18px; }
+.home-art { position: absolute; width: 138px; height: 166px; right: -22px; bottom: 18px; opacity: 0.7; }
+.home-art-circle { position: absolute; width: 144px; height: 144px; border-radius: 80px; border: 1px solid #a6bc9d; top: 25px; left: 23px; }
+.home-art-leaf { position: absolute; width: 55px; height: 90px; border-radius: 45px 5px 45px 5px; background-color: #7d9f78; left: 18px; top: 68px; transform: rotate(24deg); }
+.home-art-dot { position: absolute; width: 25px; height: 25px; border-radius: 15px; background-color: #cfb36f; top: 20px; left: 59px; }
+.account-card { padding: 24px; margin-top: 20px; border-radius: 24px; background-color: #ffffff; }
+@media (prefers-color-scheme: dark) { .account-card, .logout-popover { background-color: #202d24; border-color: #344539; } }
+.account-header { flex-direction: row; align-items: center; justify-content: space-between; }
+.section-title { font-size: 15px; font-weight: 600; }
+.refresh-button { width: 34px; height: 34px; font-size: 23px; line-height: 34px; background-color: transparent; }
+.refresh-glyph { font-size: 23px; line-height: 34px; color: #39765e; }
+@media (prefers-color-scheme: dark) { .refresh-glyph { color: #abd4b9; } }
+.profile-content { flex-direction: row; align-items: center; margin-top: 22px; }
+.avatar { width: 48px; height: 48px; flex-shrink: 0; align-items: center; justify-content: center; border-radius: 17px; background-color: #eef2e9; }
+@media (prefers-color-scheme: dark) { .avatar { background-color: #d4dfcb; } }
+.avatar-letter { font-size: 20px; color: #527349; font-weight: 600; }
+.profile-details { flex: 1; margin-left: 14px; }
+.profile-name { font-size: 17px; font-weight: 500; line-height: 25px; }
+.profile-secondary { font-size: 12px; line-height: 20px; margin-top: 4px; word-break: break-all; }
+.status-text { font-size: 14px; padding-top: 24px; padding-bottom: 8px; }
+.load-error { margin-top: 18px; }
+.retry-button { align-self: flex-start; margin: 12px 0 0; padding: 0 14px; height: 34px; line-height: 34px; border: 0; border-radius: 10px; font-size: 13px; color: #39765e; background-color: #edf2e8; }
+.home-footer { margin-top: 34px; }
+</style>
