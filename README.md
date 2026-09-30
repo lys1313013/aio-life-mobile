@@ -6,11 +6,13 @@ AIO Life 的独立跨端客户端，采用 **uni-app x + Vapor 蒸汽模式**。
 
 - 账号密码登录、输入校验、提交 loading 与错误提示。
 - 保存 Token，重新打开后恢复登录；HTTP 401 清理会话并返回登录页。
-- 首页展示本地日期、问候语和服务端返回的用户信息，支持刷新与失败重试。
+- 首页按现有 `/analytics` 仪表盘布局：统计卡片、时迹环图与时间轴、快捷导航、关注待办、固定闪念、运动趋势、GitHub 最近提交。
+- 首页使用真实接口；卡片独立 loading / 重试，未绑定或无数据的可选模块隐藏，运动与提交支持分页加载。隐藏闪念不会显示原文。
+- 手机 / 平板 / 桌面分别采用单列 / 双列 / 三列内容卡片，顶部统计卡片采用双列 / 五列；保留系统深浅色。
 - 退出前在按钮旁确认；请求失败时仍清理本机登录状态，并提示服务端注销未完成。
 - 浅色 / 深色跟随系统，页面宽度适配手机、平板与桌面。
 
-未接入微信授权登录、注册、业务记录、通知或离线同步。
+当前范围为登录和首页只读概览，未迁移记录新增、编辑、快捷导航配置等业务页面。快捷导航在 Web 打开原网页版；App / 小程序提示复制网页版链接，不传递本机 Token，网页版需单独登录。未接入微信授权登录、注册、通知或离线同步。
 
 ## 快速启动
 
@@ -45,7 +47,7 @@ npm run test:e2e       # 使用模拟 API 验证 Web 登录流程、断网恢复
 
 本机 E2E 使用已安装的 Google Chrome。CI 使用 `npx playwright install --with-deps chromium` 安装浏览器。测试截图、报告和 trace 均在 Git 忽略目录中。
 
-本次验证（2026-09-30）：真实本地后端账号登录、首页读取用户资料和刷新恢复登录已通过；4 项契约测试、10 项 Web E2E（包含 390 / 768 / 1440px 深浅色）已通过。微信小程序仅验证构建，未验证开发者工具或真机。iOS / Android 未构建安装包、未做 Vapor 真机测试。
+本次验证（2026-09-30）：真实本地后端账号登录、首页统计与各模块读取、刷新恢复登录已通过；6 项纯逻辑测试、14 项 Web E2E（包含 390 / 768 / 1440px 深浅色、卡片独立重试、并发 401、空账号与分页恢复）已通过。微信小程序仅验证构建，未验证开发者工具或真机。iOS / Android 未构建安装包、未做 Vapor 真机测试。
 
 ### 微信小程序
 
@@ -65,7 +67,7 @@ npm run test:e2e       # 使用模拟 API 验证 Web 登录流程、断网恢复
 }
 ```
 
-项目 npm 编译器统一固定为 **5.31 Alpha 对应版本 `3.0.0-alpha-5030120260930001`**，建议使用同版本 HBuilderX 5.31 Alpha 导入根目录的 CLI 项目进行 App 调试。页面使用组合式 API，`.ts` 中使用 JS/TS 业务逻辑，未依赖浏览器对象。该版本属于 Alpha 通道，升级编译器时须重新执行跨端验证。本次机器预装的 HBuilderX 4.87 未升级，不能用于当前 Vapor App 验证。
+项目 npm 编译器统一固定为 **5.31 Alpha 对应版本 `3.0.0-alpha-5030120260930001`**，建议使用同版本 HBuilderX 5.31 Alpha 导入根目录的 CLI 项目进行 App 调试。页面使用组合式 API，`.ts` 中使用 JS/TS 业务逻辑；只有打开网页版链接的 `window.open` 放在 `WEB` 条件编译内，App / 小程序采用 `uni.*`。图表使用基础 `view`，未引入 Web ECharts。该版本属于 Alpha 通道，升级编译器时须重新执行跨端验证。本次机器预装的 HBuilderX 4.87 未升级，不能用于当前 Vapor App 验证。
 
 App 运行 / 打包需配置项目自己的 DCloud AppID、设备或模拟器，以及相应签名配置。不要使用示例项目 AppID，也不要提交证书和私钥。仓库保留空 AppID，未生成安装包。
 
@@ -78,6 +80,12 @@ Web 与小程序按官方机制仍使用 VDOM 运行；它们构建成功只能�
 | POST | `/auth/login` | `{ username, password }`，读取 `data.accessToken` |
 | GET | `/user/info` | 获取当前用户，ID 保留为字符串 |
 | POST | `/auth/logout` | 服务端注销 |
+| GET | `/dashboard/tasks`、`/dashboard/card/{type}` | 按账号获取统计卡片 |
+| GET | `/timeTrackerCategory/all`、`/timeRecord/query?date=YYYY-MM-DD` | 今日时迹，含末分钟的闭区间 |
+| GET | `/quick-nav/my` | 已配置的快捷导航 |
+| GET | `/taskDetails/watched`、`/thought/dashboard` | 关注待办和固定闪念 |
+| GET | `/exerciseRecord/dashboardSummary?limit=7&lastDate=...` | 运动摘要及趋势，日期游标分页 |
+| GET | `/github/recent-commits?perPage=10&page=1` | 绑定账号的最近提交 |
 
 成功为 `{ rscode: "0", data: ... }`，业务错误读取 `result`。鉴权使用 `Authorization: Bearer <token>`；不依赖跨端 Cookie，也不尝试不存在的 refresh 接口。用户资料仅保留在内存，密码不会持久化。
 

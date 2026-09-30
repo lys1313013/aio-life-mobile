@@ -1,0 +1,142 @@
+<script setup lang="ts">
+defineProps<{ title: string; loading?: boolean; error?: string }>()
+defineEmits<{ refresh: [] }>()
+</script>
+<template>
+  <view class="dashboard-section">
+    <view class="section-heading">
+      <text class="section-title">{{ title }}</text>
+      <button
+        role="button"
+        class="refresh-button"
+        :aria-label="'刷新' + title"
+        :disabled="loading"
+        :loading="loading"
+        @click="$emit('refresh')"
+      >
+        <text v-if="!loading" class="refresh-icon">↻</text>
+      </button>
+    </view>
+    <view v-if="error" class="section-error" role="alert">
+      <text class="section-error-text">{{ error }}</text>
+      <button
+        role="button"
+        class="section-retry"
+        :aria-label="'重试' + title"
+        :disabled="loading"
+        @click="$emit('refresh')"
+      >
+        重试
+      </button>
+    </view>
+    <view v-else-if="loading" class="section-loading"
+      ><view class="skeleton"></view
+      ><view class="skeleton skeleton-short"></view
+      ><view class="skeleton"></view
+      ><text class="loading-caption">加载中…</text></view
+    >
+    <view v-else class="section-content"><slot /></view>
+  </view>
+</template>
+<style scoped>
+.dashboard-section {
+  height: 260px;
+  background-color: #ffffff;
+  border: 1px solid #e4e4e7;
+  border-radius: 12px;
+  overflow: hidden;
+}
+.section-heading {
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 12px 4px;
+  flex-shrink: 0;
+}
+.section-title {
+  color: #18181b;
+  font-size: 16px;
+  font-weight: 600;
+}
+.refresh-button {
+  display: flex;
+  line-height: 32px;
+  width: 32px;
+  height: 32px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background-color: transparent;
+  align-items: center;
+  justify-content: center;
+}
+.refresh-icon {
+  color: #909097;
+  font-size: 22px;
+  line-height: 32px;
+}
+.section-content {
+  flex: 1;
+  min-height: 0;
+}
+.section-error,
+.section-loading {
+  flex: 1;
+  padding: 20px;
+  justify-content: center;
+}
+.section-error {
+  align-items: center;
+}
+.section-error-text {
+  color: #bc4949;
+  font-size: 12px;
+  text-align: center;
+}
+.section-retry {
+  margin: 12px 0 0;
+  padding: 4px 14px;
+  font-size: 12px;
+  color: #3662da;
+  background-color: #eef2ff;
+  border-radius: 8px;
+}
+.skeleton {
+  height: 12px;
+  background-color: #f1f1f4;
+  border-radius: 6px;
+  margin-bottom: 16px;
+}
+.skeleton-short {
+  width: 60%;
+}
+.loading-caption {
+  color: #8b8b94;
+  font-size: 12px;
+}
+@media (prefers-color-scheme: dark) {
+  .dashboard-section {
+    background-color: #1c1e22;
+    border-color: #303238;
+  }
+  .section-title {
+    color: #ececf0;
+  }
+  .skeleton {
+    background-color: #2b2e34;
+  }
+  .section-error-text {
+    color: #f7a3a3;
+  }
+  .section-retry {
+    color: #a9bfff;
+    background-color: #29334b;
+  }
+}
+/* #ifdef WEB || MP-WEIXIN */
+.refresh-button::after,
+.section-retry::after {
+  border: 0;
+}
+/* #endif */
+</style>

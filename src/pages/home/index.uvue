@@ -1,46 +1,313 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
-import { onShow } from '@dcloudio/uni-app'
+import { computed, reactive, ref } from 'vue'
+import { onShow, onUnload } from '@dcloudio/uni-app'
+import DashboardSection from '../../components/DashboardSection.uvue'
 import { fetchUser, logout } from '../../services/api.ts'
 import { restoreSession, session } from '../../services/session.ts'
+import {
+  getOverview,
+  getCard,
+  getQuickLinks,
+  getThoughts,
+  getWatched,
+  getExercises,
+  getCommits,
+  getTime,
+} from '../../services/dashboard.ts'
+import type {
+  OverviewCard,
+  QuickLink,
+  Thought,
+  WatchedTask,
+  ExercisePage,
+  Commit,
+} from '../../services/dashboard.ts'
+import { timeSummary, webLink } from '../../services/dashboard-format.ts'
 
 const user = computed(() => session.user)
 const loading = ref(false)
 const leaving = ref(false)
 const confirmLogout = ref(false)
 const errorText = ref('')
-const dateLabel = ref('')
-const greeting = ref('你好')
+const cards = ref<OverviewCard[]>([])
+const overview = reactive({ loading: false, error: '' })
+const links = ref<QuickLink[]>([])
+const thoughts = ref<Thought[]>([])
+const watched = ref<WatchedTask[]>([])
+const exercise = ref<ExercisePage>({ days: [] })
+const commits = ref<Commit[]>([])
+const time = ref(timeSummary([], []))
+const states = reactive({
+  time: { loading: false, error: '' },
+  links: { loading: false, error: '' },
+  thoughts: { loading: false, error: '' },
+  watched: { loading: false, error: '' },
+  exercise: { loading: false, error: '' },
+  commits: { loading: false, error: '' },
+})
+const githubBound = computed(() =>
+  cards.value.some((item) => item.type === 'GITHUB'),
+)
+const visibleCards = computed(() =>
+  cards.value.filter(
+    (item) =>
+      item.loading || item.error || (item.value !== '' && item.value != null),
+  ),
+)
+const moreExercise = ref(false)
+const moreCommits = ref(false)
+const moreErrors = reactive({ exercise: '', commits: '' })
+const commitPage = ref(1)
+const hasMoreCommits = ref(false)
+let active = true
+let redirecting = false
 
-function goLogin() { uni.reLaunch({ url: '/pages/login/index' }) }
-
+function goLogin() {
+  if (redirecting) return
+  redirecting = true
+  active = false
+  uni.reLaunch({ url: '/pages/login/index' })
+}
+function handleError(error): string {
+  if (error.name === 'SessionExpiredError') {
+    if (active) {
+      uni.showToast({ title: '登录已过期，请重新登录', icon: 'none' })
+      goLogin()
+    }
+    return ''
+  }
+  return error.message || '加载失败，请重试'
+}
+function isCurrent(token: string) {
+  return active && !leaving.value && session.token === token
+}
 onShow(() => {
-  const now = new Date()
-  dateLabel.value = (now.getMonth() + 1) + '月' + now.getDate() + '日 · 星期' + ['日', '一', '二', '三', '四', '五', '六'][now.getDay()]
-  greeting.value = now.getHours() < 12 ? '上午好' : now.getHours() < 18 ? '下午好' : '晚上好'
   restoreSession()
-  if (session.token.length === 0) { goLogin(); return }
+  if (!session.token) {
+    goLogin()
+    return
+  }
   refresh()
+})
+onUnload(() => {
+  active = false
 })
 
 async function refresh() {
   if (loading.value || leaving.value) return
   loading.value = true
   errorText.value = ''
+  const token = session.token
   try {
     await fetchUser()
+    if (!isCurrent(token)) return
+    await Promise.all([
+      loadOverview(),
+      loadSection('time'),
+      loadSection('links'),
+      loadSection('thoughts'),
+      loadSection('watched'),
+      loadSection('exercise'),
+    ])
   } catch (error) {
-    if (error.name === 'SessionExpiredError') {
-      uni.showToast({ title: '登录已过期，请重新登录', icon: 'none' })
-      goLogin()
-    } else {
-      errorText.value = error.message || '加载失败，请重试'
-    }
+    if (active) errorText.value = handleError(error)
   } finally {
     loading.value = false
   }
 }
-
+async function loadOverview() {
+  if (overview.loading) return
+  overview.loading = true
+  overview.error = ''
+  const token = session.token
+  try {
+    const items = await getOverview()
+    if (!isCurrent(token)) return
+    cards.value = items.map((item) => ({ ...item, loading: false, error: '' }))
+    await Promise.all([
+      ...cards.value.map((item) => loadCard(item)),
+      ...(githubBound.value ? [loadSection('commits')] : []),
+    ])
+  } catch (error) {
+    if (active) overview.error = handleError(error)
+  } finally {
+    overview.loading = false
+  }
+}
+async function loadCard(item: OverviewCard) {
+  if (item.loading) return
+  item.loading = true
+  item.error = ''
+  const token = session.token
+  try {
+    const data = await getCard(item.type)
+    if (data == null) throw new Error('卡片数据为空，请重试')
+    if (isCurrent(token)) Object.assign(item, data)
+  } catch (error) {
+    if (active) item.error = handleError(error)
+  } finally {
+    item.loading = false
+  }
+}
+async function loadSection(key: string) {
+  const state = states[key]
+  if (state.loading) return
+  state.loading = true
+  state.error = ''
+  const token = session.token
+  try {
+    if (key === 'time') {
+      const data = await getTime()
+      if (isCurrent(token))
+        time.value = timeSummary(data.categories, data.records)
+    }
+    if (key === 'links') {
+      const data = await getQuickLinks()
+      if (isCurrent(token))
+        links.value = data
+          .filter((item) => item.enabled === 1)
+          .sort((a, b) => a.sortOrder - b.sortOrder)
+    }
+    if (key === 'thoughts') {
+      const data = await getThoughts()
+      if (isCurrent(token)) thoughts.value = data
+    }
+    if (key === 'watched') {
+      const data = await getWatched()
+      if (isCurrent(token)) watched.value = data
+    }
+    if (key === 'exercise') {
+      const data = await getExercises()
+      if (isCurrent(token)) {
+        exercise.value = data
+        moreErrors.exercise = ''
+      }
+    }
+    if (key === 'commits') {
+      const data = await getCommits()
+      if (isCurrent(token)) {
+        commits.value = data
+        commitPage.value = 1
+        hasMoreCommits.value = data.length === 10
+        moreErrors.commits = ''
+      }
+    }
+  } catch (error) {
+    if (active) state.error = handleError(error)
+  } finally {
+    state.loading = false
+  }
+}
+async function loadMore(key: string) {
+  const isExercise = key === 'exercise'
+  if (states[key].loading || moreExercise.value || moreCommits.value) return
+  if (isExercise ? !exercise.value.hasMore : !hasMoreCommits.value) return
+  const busy = isExercise ? moreExercise : moreCommits
+  busy.value = true
+  moreErrors[key] = ''
+  const token = session.token
+  try {
+    if (isExercise) {
+      const data = await getExercises(exercise.value.lastDate || '')
+      if (isCurrent(token))
+        exercise.value = {
+          ...data,
+          days: [...exercise.value.days, ...data.days],
+          hasMore: data.hasMore && data.days.length > 0,
+        }
+    } else {
+      const data = await getCommits(commitPage.value + 1)
+      if (isCurrent(token)) {
+        commits.value = [...commits.value, ...data]
+        commitPage.value++
+        hasMoreCommits.value = data.length === 10
+      }
+    }
+  } catch (error) {
+    if (active) moreErrors[key] = handleError(error)
+  } finally {
+    busy.value = false
+  }
+}
+function openLink(path: string) {
+  const url = webLink(path)
+  if (!url) {
+    uni.showToast({ title: '暂不支持此链接', icon: 'none' })
+    return
+  }
+  // 业务详情尚未迁移：Web 打开既有页面，App / 小程序通过明确的复制提示衔接。
+  // #ifdef WEB
+  window.open(url, '_blank', 'noopener,noreferrer')
+  // #endif
+  // #ifndef WEB
+  uni.showModal({
+    title: '在网页版继续',
+    content: '该功能目前在网页版提供，复制链接后可在浏览器打开。',
+    confirmText: '复制链接',
+    success: (result) => {
+      if (result.confirm) uni.setClipboardData({ data: url })
+    },
+  })
+  // #endif
+}
+function cardIcon(type: string) {
+  const icons = {
+    LEETCODE: 'code',
+    GITHUB: 'github',
+    EXERCISE: 'exercise',
+    SHANBAY: 'book',
+    TIME_TRACKER: 'clock',
+    WEREAD: 'book',
+  }
+  return '/static/' + (icons[type] || 'grid') + '.png'
+}
+function linkIcon(title: string) {
+  const names = title.includes('待办')
+    ? 'todo'
+    : title.includes('目标')
+      ? 'target'
+      : title.includes('时')
+        ? 'clock'
+        : title.includes('运动')
+          ? 'exercise'
+          : title.includes('闪念')
+            ? 'bulb'
+            : 'grid'
+  return '/static/' + names + '.png'
+}
+function weekday(date: string) {
+  return (
+    ['周日', '周一', '周二', '周三', '周四', '周五', '周六'][
+      new Date(date + 'T12:00:00').getDay()
+    ] || ''
+  )
+}
+function shortDate(date: string) {
+  return date ? date.slice(5, 16).replace('T', ' ') : ''
+}
+function trendPoints(points) {
+  const values = points.map((point) => point.count)
+  const min = Math.min(...values)
+  const max = Math.max(...values)
+  return points.map((point, index) => ({
+    x: points.length === 1 ? 30 : (index * 60) / (points.length - 1),
+    y: max === min ? 12 : 22 - ((point.count - min) / (max - min)) * 20,
+  }))
+}
+function trendLines(points) {
+  const dots = trendPoints(points)
+  return dots.slice(1).map((point, index) => {
+    const previous = dots[index]
+    const dx = point.x - previous.x
+    const dy = point.y - previous.y
+    return {
+      left: previous.x + 'px',
+      top: previous.y + 'px',
+      width: Math.sqrt(dx * dx + dy * dy) + 'px',
+      transform: 'rotate(' + (Math.atan2(dy, dx) * 180) / Math.PI + 'deg)',
+    }
+  })
+}
 async function signOut() {
   if (leaving.value) return
   leaving.value = true
@@ -56,109 +323,1024 @@ async function signOut() {
 </script>
 
 <template>
-  <view class="page">
-    <view class="screen home-screen">
-      <view class="home-topbar">
-        <view class="brand">
-          <view class="brand-mark"><text class="brand-symbol">a</text></view>
-          <text class="brand-name">AIO Life</text>
-        </view>
+  <view class="dashboard-page">
+    <view class="topbar">
+      <view class="topbar-brand"
+        ><image class="logo" src="/static/logo.png" mode="aspectFit" /><text
+          class="brand-label"
+          >AIO-LIFE</text
+        ><text class="home-label">主页</text></view
+      >
+      <view class="toolbar">
+        <button
+          role="button"
+          class="tool-button"
+          aria-label="刷新首页"
+          :disabled="loading"
+          :loading="loading"
+          @click="refresh"
+        >
+          <text v-if="!loading" class="tool-symbol">↻</text>
+        </button>
+        <text v-if="user" class="user-label">{{ user.name }}</text>
         <view class="logout-anchor">
-          <button role="button" class="icon-button" aria-label="退出登录" :disabled="leaving" @click="confirmLogout = !confirmLogout">⏻</button>
-          <view v-if="confirmLogout" class="logout-popover">
-            <text class="confirm-text ink">退出当前账号？</text>
-            <view class="confirm-actions">
-              <button role="button" class="cancel-button" :disabled="leaving" @click="confirmLogout = false">取消</button>
-              <button role="button" class="confirm-button" :loading="leaving" :disabled="leaving" @click="signOut">退出</button>
-            </view>
-          </view>
+          <button
+            role="button"
+            class="tool-button"
+            aria-label="退出登录"
+            :disabled="leaving"
+            @click="confirmLogout = !confirmLogout"
+          >
+            <text class="tool-symbol">⏻</text>
+          </button>
+          <view v-if="confirmLogout" class="logout-popover"
+            ><text class="confirm-text">退出当前账号？</text
+            ><view class="confirm-actions"
+              ><button
+                role="button"
+                class="cancel-button"
+                :disabled="leaving"
+                @click="confirmLogout = false"
+              >
+                取消</button
+              ><button
+                role="button"
+                class="confirm-button"
+                :loading="leaving"
+                :disabled="leaving"
+                @click="signOut"
+              >
+                退出
+              </button></view
+            ></view
+          >
         </view>
       </view>
-
-      <view class="home-heading">
-        <text class="date-label muted">{{ dateLabel }}</text>
-        <text class="home-title ink">今日</text>
-      </view>
-
-      <view class="welcome-card">
-        <view class="welcome-copy">
-          <text class="greeting ink">{{ greeting }}{{ user ? '，' + user.name : '' }}</text>
-          <view class="welcome-title-group">
-            <text class="welcome-title ink">慢一点，</text>
-            <text class="welcome-title ink">也在向前。</text>
-          </view>
-          <text class="welcome-caption muted">今天，也为自己留一点时间。</text>
-        </view>
-        <view class="home-art">
-          <view class="home-art-circle"></view>
-          <view class="home-art-leaf"></view>
-          <view class="home-art-dot"></view>
-        </view>
-      </view>
-
-      <view class="account-card">
-        <view class="account-header">
-          <text class="section-title ink">我的账号</text>
-          <button role="button" class="icon-button refresh-button" aria-label="刷新用户信息" :loading="loading" :disabled="loading || leaving" @click="refresh"><text v-if="!loading" class="refresh-glyph">↻</text></button>
-        </view>
-        <text v-if="loading && !user" class="status-text muted">正在加载…</text>
-        <view v-if="user" class="profile-content">
-          <view class="avatar"><text class="avatar-letter">{{ user.name.slice(0, 1) }}</text></view>
-          <view class="profile-details">
-            <text class="profile-name ink">{{ user.name }}</text>
-            <text class="profile-secondary muted">{{ user.email || '暂未绑定邮箱' }}</text>
-            <text v-if="user.introduction" class="profile-secondary muted">{{ user.introduction }}</text>
-          </view>
-        </view>
-        <view v-if="errorText" class="load-error">
-          <text class="error-text" role="alert">{{ errorText }}</text>
-          <button role="button" class="retry-button" :disabled="loading || leaving" @click="refresh">重新加载</button>
-        </view>
-      </view>
-      <text class="footer-note home-footer">每一个平常日，都值得认真对待。</text>
     </view>
+    <scroll-view scroll-y class="dashboard-scroll"
+      ><view class="dashboard-content">
+        <view v-if="errorText" class="global-error" role="alert"
+          ><text class="failure-text">{{ errorText }}</text
+          ><button role="button" class="text-button" @click="refresh">
+            重新加载
+          </button></view
+        >
+        <view v-if="overview.error" class="global-error" role="alert"
+          ><text class="failure-text">{{ overview.error }}</text
+          ><button role="button" class="text-button" @click="loadOverview">
+            重试统计卡片
+          </button></view
+        >
+        <view class="overview-grid">
+          <view
+            v-if="(loading || overview.loading) && cards.length === 0"
+            v-for="n in 4"
+            :key="n"
+            class="overview-cell"
+            ><view class="overview-card placeholder-card"
+              ><text class="subtle">加载中…</text></view
+            ></view
+          >
+          <view
+            v-for="item in visibleCards"
+            :key="item.type"
+            class="overview-cell"
+          >
+            <button
+              role="button"
+              class="overview-card"
+              :aria-label="
+                item.error ? '重试' + item.title : '刷新' + item.title
+              "
+              :disabled="item.loading"
+              @click="loadCard(item)"
+            >
+              <view v-if="item.loading" class="card-progress"></view>
+              <view class="stat-top"
+                ><view class="stat-name"
+                  ><image
+                    class="stat-icon"
+                    :src="cardIcon(item.type)"
+                    mode="aspectFit"
+                  /><text class="stat-title">{{ item.title }}</text></view
+                ><text
+                  class="stat-value"
+                  :style="{ color: item.valueColor || '' }"
+                  >{{
+                    item.value == null || item.value === '' ? '—' : item.value
+                  }}</text
+                ></view
+              >
+              <view class="stat-bottom"
+                ><text class="stat-caption">{{
+                  item.error
+                    ? '加载失败，点击重试'
+                    : item.totalTitle || (item.loading ? '加载中…' : '')
+                }}</text
+                ><text class="stat-total">{{
+                  item.totalValue == null ? '—' : item.totalValue
+                }}</text></view
+              >
+            </button>
+          </view>
+        </view>
+        <view class="section-grid">
+          <view class="section-cell"
+            ><DashboardSection
+              title="时迹"
+              :loading="states.time.loading"
+              :error="states.time.error"
+              @refresh="loadSection('time')"
+            >
+              <view class="time-layout">
+                <view class="timeline-labels"
+                  ><text class="axis-label">0</text
+                  ><view class="timeline"
+                    ><view
+                      v-for="block in time.timeline"
+                      :key="block.id"
+                      class="timeline-block"
+                      :style="block"
+                    ></view></view
+                  ><text class="axis-label">24</text></view
+                >
+                <view
+                  class="donut"
+                  role="img"
+                  :aria-label="'今日已记录 ' + time.total"
+                  ><view class="donut-ring"></view
+                  ><view
+                    v-for="(segment, index) in time.segments"
+                    :key="index"
+                    class="donut-arm"
+                    :style="{ transform: segment.transform }"
+                    ><view
+                      class="donut-segment"
+                      :style="{ backgroundColor: segment.backgroundColor }"
+                    ></view></view
+                  ><text v-if="time.segments.length" class="donut-total">{{
+                    time.total
+                  }}</text></view
+                >
+                <view class="recent-times"
+                  ><text v-if="time.recent.length === 0" class="empty-label"
+                    >今日暂无记录</text
+                  ><view
+                    v-for="record in time.recent"
+                    :key="record.id"
+                    class="time-record"
+                    ><view class="time-record-title"
+                      ><view
+                        class="color-dot"
+                        :style="{ backgroundColor: record.color }"
+                      ></view
+                      ><text class="record-name">{{ record.name }}</text></view
+                    ><text class="record-time">{{ record.label }}</text></view
+                  ></view
+                >
+              </view>
+            </DashboardSection></view
+          >
+          <view class="section-cell"
+            ><DashboardSection
+              title="快捷导航"
+              :loading="states.links.loading"
+              :error="states.links.error"
+              @refresh="loadSection('links')"
+            >
+              <view v-if="links.length === 0" class="empty-state"
+                ><text class="empty-symbol">⊞</text
+                ><text class="empty-label">暂无快捷方式</text
+                ><button
+                  role="button"
+                  class="text-button"
+                  @click="openLink('/analytics')"
+                >
+                  前往网页版设置
+                </button></view
+              >
+              <view v-else class="quick-grid"
+                ><button
+                  v-for="link in links"
+                  :key="link.menuId"
+                  role="button"
+                  class="quick-link"
+                  :aria-label="link.title + '（网页版）'"
+                  @click="openLink(link.path)"
+                >
+                  <image
+                    class="quick-icon"
+                    :src="linkIcon(link.title)"
+                    mode="aspectFit"
+                  /><text class="quick-title">{{ link.title }}</text>
+                </button></view
+              >
+            </DashboardSection></view
+          >
+          <view
+            v-if="
+              states.watched.loading || states.watched.error || watched.length
+            "
+            class="section-cell"
+            ><DashboardSection
+              title="待办"
+              :loading="states.watched.loading"
+              :error="states.watched.error"
+              @refresh="loadSection('watched')"
+              ><scroll-view scroll-y class="list-scroll"
+                ><view
+                  v-for="task in watched"
+                  :key="task.id"
+                  class="list-row task-row"
+                  ><text class="task-check">{{
+                    task.isCompleted ? '☑' : '□'
+                  }}</text
+                  ><view class="task-copy"
+                    ><text
+                      class="body-text"
+                      :class="{ completed: task.isCompleted === 1 }"
+                      >{{ task.content }}</text
+                    ><text v-if="task.taskName" class="tag">{{
+                      task.taskName
+                    }}</text></view
+                  ></view
+                ></scroll-view
+              ></DashboardSection
+            ></view
+          >
+          <view class="section-cell"
+            ><DashboardSection
+              title="闪念"
+              :loading="states.thoughts.loading"
+              :error="states.thoughts.error"
+              @refresh="loadSection('thoughts')"
+              ><view v-if="thoughts.length === 0" class="empty-state"
+                ><text class="empty-symbol">♧</text
+                ><text class="empty-label">暂无固定的闪念</text></view
+              ><scroll-view v-else scroll-y class="list-scroll"
+                ><view
+                  v-for="thought in thoughts"
+                  :key="thought.id"
+                  class="list-row thought-row"
+                  ><image
+                    class="pin"
+                    src="/static/pin.png"
+                    mode="aspectFit"
+                  /><text class="thought-text">{{
+                    thought.hiddenContent ? '内容已隐藏' : thought.content
+                  }}</text
+                  ><text class="list-date">{{
+                    shortDate(thought.createTime || '')
+                  }}</text></view
+                ></scroll-view
+              ></DashboardSection
+            ></view
+          >
+          <view
+            v-if="
+              states.exercise.loading ||
+              states.exercise.error ||
+              exercise.days.length
+            "
+            class="section-cell"
+            ><DashboardSection
+              title="运动"
+              :loading="states.exercise.loading"
+              :error="states.exercise.error"
+              @refresh="loadSection('exercise')"
+              ><scroll-view scroll-y class="list-scroll"
+                ><view
+                  v-for="day in exercise.days"
+                  :key="day.date"
+                  class="exercise-day"
+                  ><view class="exercise-date"
+                    ><text class="day-label">{{ day.date.slice(5) }}</text
+                    ><text class="weekday">{{ weekday(day.date) }}</text></view
+                  ><view
+                    v-for="item in day.items"
+                    :key="item.exerciseTypeId"
+                    class="exercise-item"
+                    ><view class="exercise-chip"
+                      ><text
+                        class="exercise-value"
+                        :style="{ color: item.color || '#3b82f6' }"
+                        >{{ item.typeLabel }} {{ item.count }}</text
+                      ><text
+                        v-if="item.deltaCount != null"
+                        class="exercise-delta"
+                        :style="{ color: item.color || '#3b82f6' }"
+                        >{{
+                          item.deltaCount > 0
+                            ? '↑ +' + item.deltaCount
+                            : item.deltaCount < 0
+                              ? '↓ ' + item.deltaCount
+                              : '= 0'
+                        }}</text
+                      ></view
+                    ><view
+                      v-if="item.trend && item.trend.length"
+                      class="trend"
+                      role="img"
+                      :aria-label="
+                        item.typeLabel +
+                        '最近' +
+                        item.trend.length +
+                        '次记录趋势'
+                      "
+                      ><view
+                        v-for="(line, index) in trendLines(item.trend)"
+                        :key="index"
+                        class="trend-line"
+                        :style="{
+                          ...line,
+                          backgroundColor: item.color || '#3b82f6',
+                        }"
+                      ></view
+                      ><view
+                        v-for="(point, index) in trendPoints(item.trend)"
+                        :key="index"
+                        class="trend-dot"
+                        :style="{
+                          left: point.x - 1 + 'px',
+                          top: point.y - 1 + 'px',
+                          backgroundColor: item.color || '#3b82f6',
+                        }"
+                      ></view></view></view></view
+                ><button
+                  v-if="exercise.hasMore"
+                  role="button"
+                  class="load-more"
+                  :disabled="moreExercise"
+                  :loading="moreExercise"
+                  @click="loadMore('exercise')"
+                >
+                  {{
+                    moreErrors.exercise
+                      ? '加载失败，重试更多运动'
+                      : '加载更多运动'
+                  }}
+                </button></scroll-view
+              ></DashboardSection
+            ></view
+          >
+          <view v-if="githubBound" class="section-cell"
+            ><DashboardSection
+              title="最近提交"
+              :loading="states.commits.loading"
+              :error="states.commits.error"
+              @refresh="loadSection('commits')"
+              ><view v-if="commits.length === 0" class="empty-state"
+                ><text class="empty-label">暂无最近提交</text></view
+              ><scroll-view v-else scroll-y class="list-scroll"
+                ><view
+                  v-for="(commit, index) in commits"
+                  :key="commit.id || index"
+                  class="commit-row"
+                  ><view class="commit-top"
+                    ><text class="repo-label">{{ commit.repo }}</text
+                    ><text class="list-date">{{
+                      shortDate(commit.date)
+                    }}</text></view
+                  ><text class="commit-message">{{
+                    commit.message
+                  }}</text></view
+                ><button
+                  v-if="hasMoreCommits"
+                  role="button"
+                  class="load-more"
+                  :disabled="moreCommits"
+                  :loading="moreCommits"
+                  @click="loadMore('commits')"
+                >
+                  {{
+                    moreErrors.commits
+                      ? '加载失败，重试更多提交'
+                      : '加载更多提交'
+                  }}
+                </button></scroll-view
+              ></DashboardSection
+            ></view
+          >
+        </view>
+      </view></scroll-view
+    >
   </view>
 </template>
 
-<style>
-.home-screen { max-width: 720px; }
-.home-topbar { overflow: visible; position: relative; z-index: 5; flex-direction: row; align-items: center; justify-content: space-between; }
-.logout-anchor { position: relative; z-index: 5; overflow: visible; }
-.logout-popover { position: absolute; top: 51px; right: 0; width: 204px; padding: 18px; border-radius: 18px; background-color: #ffffff; border: 1px solid #e1e8de; }
-.confirm-text { font-size: 14px; }
-.confirm-actions { flex-direction: row; justify-content: flex-end; margin-top: 18px; }
-.cancel-button { margin: 0; padding: 0 13px; height: 34px; line-height: 34px; border: 0; font-size: 13px; background-color: #edf1ea; color: #526c58; border-radius: 10px; }
-.confirm-button { margin: 0; margin-left: 8px; padding: 0 13px; height: 34px; line-height: 34px; border: 0; font-size: 13px; background-color: #39765e; color: #ffffff; border-radius: 10px; }
-.home-heading { margin-top: 44px; margin-bottom: 22px; }
-.date-label { font-size: 13px; }
-.home-title { font-size: 34px; font-weight: 600; margin-top: 9px; line-height: 45px; }
-.welcome-card { min-height: 236px; padding: 28px; border-radius: 26px; background-color: #e5eddf; position: relative; overflow: hidden; }
-@media (prefers-color-scheme: dark) { .welcome-card { background-color: #2b3c2e; } }
-.welcome-copy { z-index: 1; }
-.greeting { font-size: 14px; line-height: 23px; }
-.welcome-title-group { margin-top: 18px; }
-.welcome-title { font-size: 30px; font-weight: 500; line-height: 43px; }
-.welcome-caption { font-size: 12px; line-height: 20px; margin-top: 18px; }
-.home-art { position: absolute; width: 138px; height: 166px; right: -22px; bottom: 18px; opacity: 0.7; }
-.home-art-circle { position: absolute; width: 144px; height: 144px; border-radius: 80px; border: 1px solid #a6bc9d; top: 25px; left: 23px; }
-.home-art-leaf { position: absolute; width: 55px; height: 90px; border-radius: 45px 5px 45px 5px; background-color: #7d9f78; left: 18px; top: 68px; transform: rotate(24deg); }
-.home-art-dot { position: absolute; width: 25px; height: 25px; border-radius: 15px; background-color: #cfb36f; top: 20px; left: 59px; }
-.account-card { padding: 24px; margin-top: 20px; border-radius: 24px; background-color: #ffffff; }
-@media (prefers-color-scheme: dark) { .account-card, .logout-popover { background-color: #202d24; border-color: #344539; } }
-.account-header { flex-direction: row; align-items: center; justify-content: space-between; }
-.section-title { font-size: 15px; font-weight: 600; }
-.refresh-button { width: 34px; height: 34px; font-size: 23px; line-height: 34px; background-color: transparent; }
-.refresh-glyph { font-size: 23px; line-height: 34px; color: #39765e; }
-@media (prefers-color-scheme: dark) { .refresh-glyph { color: #abd4b9; } }
-.profile-content { flex-direction: row; align-items: center; margin-top: 22px; }
-.avatar { width: 48px; height: 48px; flex-shrink: 0; align-items: center; justify-content: center; border-radius: 17px; background-color: #eef2e9; }
-@media (prefers-color-scheme: dark) { .avatar { background-color: #d4dfcb; } }
-.avatar-letter { font-size: 20px; color: #527349; font-weight: 600; }
-.profile-details { flex: 1; margin-left: 14px; }
-.profile-name { font-size: 17px; font-weight: 500; line-height: 25px; }
-.profile-secondary { font-size: 12px; line-height: 20px; margin-top: 4px; word-break: break-all; }
-.status-text { font-size: 14px; padding-top: 24px; padding-bottom: 8px; }
-.load-error { margin-top: 18px; }
-.retry-button { align-self: flex-start; margin: 12px 0 0; padding: 0 14px; height: 34px; line-height: 34px; border: 0; border-radius: 10px; font-size: 13px; color: #39765e; background-color: #edf2e8; }
-.home-footer { margin-top: 34px; }
+<style scoped>
+.dashboard-page {
+  flex: 1;
+  height: 100%;
+  background-color: #f0f2f5;
+}
+.dashboard-scroll {
+  flex: 1;
+  height: 0;
+}
+.topbar {
+  flex-shrink: 0;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  height: 60px;
+  padding: 0 20px;
+  background-color: #ffffff;
+  border-bottom: 1px solid #e4e4e7;
+  overflow: visible;
+  z-index: 5;
+  padding-top: env(safe-area-inset-top);
+}
+.topbar-brand,
+.toolbar {
+  flex-direction: row;
+  align-items: center;
+  overflow: visible;
+}
+.logo {
+  width: 30px;
+  height: 30px;
+}
+.brand-label {
+  font-size: 17px;
+  font-weight: 600;
+  margin-left: 8px;
+  color: #242428;
+}
+.home-label {
+  margin-left: 24px;
+  color: #3662da;
+  font-size: 14px;
+}
+.user-label {
+  color: #71717a;
+  font-size: 12px;
+  margin: 0 12px;
+  max-width: 120px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.tool-button {
+  display: flex;
+  line-height: 36px;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  margin: 0;
+  background-color: transparent;
+  border: 0;
+  align-items: center;
+  justify-content: center;
+}
+.tool-symbol {
+  color: #71717a;
+  font-size: 22px;
+}
+.dashboard-content {
+  width: 100%;
+  max-width: 1600px;
+  align-self: center;
+  padding: 10px;
+  padding-bottom: 28px;
+}
+.overview-grid,
+.section-grid {
+  flex-direction: row;
+  flex-wrap: wrap;
+}
+.overview-cell {
+  width: 50%;
+  padding: 4px;
+}
+.overview-card {
+  display: flex;
+  flex-direction: column;
+  line-height: 20px;
+  width: 100%;
+  height: 88px;
+  margin: 0;
+  padding: 12px;
+  background-color: #ffffff;
+  border: 1px solid #e4e4e7;
+  border-radius: 12px;
+  justify-content: space-between;
+  position: relative;
+  text-align: left;
+}
+.card-progress {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 2px;
+  background-color: #7196ee;
+}
+.placeholder-card {
+  justify-content: center;
+}
+.stat-top,
+.stat-bottom,
+.stat-name {
+  flex-direction: row;
+  align-items: center;
+}
+.stat-top,
+.stat-bottom {
+  justify-content: space-between;
+}
+.stat-name {
+  flex-shrink: 1;
+  min-width: 0;
+}
+.stat-icon {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  margin-right: 8px;
+}
+.stat-title {
+  color: #3f3f46;
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.stat-value {
+  margin-left: 6px;
+  max-width: 50%;
+  color: #27272a;
+  font-weight: 700;
+  font-size: 14px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.stat-caption,
+.stat-total {
+  line-height: 18px;
+  color: #71717a;
+  font-size: 11px;
+}
+.stat-caption {
+  flex-shrink: 1;
+}
+.stat-total {
+  margin-left: 4px;
+}
+.section-cell {
+  width: 100%;
+  padding: 4px;
+}
+.section-grid {
+  margin-top: 4px;
+}
+.subtle,
+.empty-label {
+  color: #85858e;
+  font-size: 12px;
+  line-height: 20px;
+}
+.empty-state {
+  flex: 1;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+.empty-symbol {
+  color: #b3b3bb;
+  font-size: 32px;
+  margin-bottom: 8px;
+}
+.time-layout {
+  flex: 1;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 12px 16px;
+}
+.timeline-labels {
+  width: 18px;
+  height: 100%;
+  align-items: center;
+  margin-right: 10px;
+}
+.axis-label {
+  color: #a1a1aa;
+  font-size: 10px;
+  line-height: 18px;
+}
+.timeline {
+  flex: 1;
+  width: 8px;
+  background-color: #f4f4f5;
+  border-radius: 5px;
+  position: relative;
+}
+.timeline-block {
+  position: absolute;
+  left: 0;
+  width: 8px;
+  min-height: 1px;
+}
+.donut {
+  width: 132px;
+  height: 132px;
+  position: relative;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+}
+.donut-ring {
+  position: absolute;
+  width: 112px;
+  height: 112px;
+  top: 10px;
+  left: 10px;
+  border: 18px solid #c9c9cc;
+  border-radius: 60px;
+}
+.donut-arm {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  width: 112px;
+  height: 112px;
+  align-items: center;
+}
+.donut-segment {
+  width: 4px;
+  height: 18px;
+}
+.donut-total {
+  color: #3f3f46;
+  font-size: 14px;
+  font-weight: 600;
+}
+.recent-times {
+  flex: 1;
+  margin-left: 12px;
+  max-width: 150px;
+  justify-content: center;
+}
+.time-record {
+  margin-bottom: 9px;
+}
+.time-record-title {
+  flex-direction: row;
+  align-items: center;
+}
+.color-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 3px;
+  flex-shrink: 0;
+  margin-right: 5px;
+}
+.record-name {
+  color: #52525b;
+  font-size: 11px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.record-time {
+  color: #a1a1aa;
+  font-size: 10px;
+  margin-left: 10px;
+  margin-top: 2px;
+}
+.quick-grid {
+  flex-direction: row;
+  flex-wrap: wrap;
+  padding: 8px;
+}
+.quick-link {
+  display: flex;
+  flex-direction: column;
+  line-height: 18px;
+  width: 20%;
+  margin: 0;
+  padding: 10px 2px;
+  border: 0;
+  border-radius: 8px;
+  background-color: transparent;
+  align-items: center;
+}
+.quick-icon {
+  width: 23px;
+  height: 23px;
+}
+.quick-title {
+  color: #52525b;
+  font-size: 11px;
+  margin-top: 4px;
+}
+.list-scroll {
+  flex: 1;
+  height: 100%;
+}
+.list-row {
+  padding: 10px 14px;
+}
+.thought-row,
+.task-row {
+  flex-direction: row;
+  align-items: flex-start;
+}
+.pin {
+  width: 15px;
+  height: 18px;
+  flex-shrink: 0;
+  margin-right: 8px;
+}
+.thought-text {
+  flex: 1;
+  color: #3f3f46;
+  font-size: 12px;
+  line-height: 19px;
+}
+.list-date {
+  color: #92929b;
+  font-size: 10px;
+  margin-left: 8px;
+}
+.task-check {
+  color: #909097;
+  margin-right: 8px;
+  font-size: 18px;
+}
+.task-copy {
+  flex: 1;
+}
+.body-text {
+  color: #3f3f46;
+  font-size: 12px;
+  line-height: 19px;
+}
+.completed {
+  text-decoration: line-through;
+  color: #92929b;
+}
+.tag {
+  align-self: flex-start;
+  background-color: #f4f4f5;
+  color: #71717a;
+  border-radius: 4px;
+  padding: 2px 6px;
+  font-size: 10px;
+  margin-top: 4px;
+}
+.exercise-day {
+  padding: 8px 14px;
+}
+.exercise-date {
+  flex-direction: row;
+  align-items: center;
+  margin-bottom: 4px;
+}
+.day-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: #52525b;
+}
+.weekday {
+  font-size: 10px;
+  color: #92929b;
+  margin-left: 5px;
+}
+.exercise-item {
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 3px;
+}
+.exercise-chip {
+  flex-direction: row;
+  align-items: center;
+  background-color: #f3f6fb;
+  border-radius: 12px;
+  padding: 3px 8px;
+}
+.exercise-value {
+  font-size: 11px;
+  font-weight: 600;
+}
+.exercise-delta {
+  font-size: 10px;
+  margin-left: 8px;
+}
+.trend {
+  position: relative;
+  width: 64px;
+  height: 26px;
+  margin-left: 12px;
+  overflow: visible;
+}
+.trend-line {
+  position: absolute;
+  height: 1px;
+  transform-origin: left center;
+  opacity: 0.65;
+}
+.trend-dot {
+  position: absolute;
+  width: 3px;
+  height: 3px;
+  border-radius: 2px;
+}
+.commit-row {
+  padding: 10px 14px;
+}
+.commit-top {
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+}
+.repo-label {
+  color: #52525b;
+  font-size: 12px;
+  font-weight: 500;
+  flex: 1;
+}
+.commit-message {
+  color: #71717a;
+  font-size: 11px;
+  line-height: 18px;
+  margin-top: 2px;
+}
+.load-more,
+.text-button {
+  background-color: transparent;
+  border: 0;
+  color: #5879ce;
+  font-size: 12px;
+  padding: 8px;
+  margin: 0;
+}
+.global-error {
+  padding: 8px 12px;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+}
+.failure-text {
+  color: #bc4949;
+  font-size: 12px;
+  flex: 1;
+}
+.logout-anchor {
+  position: relative;
+  overflow: visible;
+}
+.logout-popover {
+  position: absolute;
+  right: 0;
+  top: 44px;
+  width: 210px;
+  background-color: #ffffff;
+  border: 1px solid #e4e4e7;
+  border-radius: 12px;
+  padding: 16px;
+  z-index: 20;
+}
+.confirm-text {
+  color: #3f3f46;
+  font-size: 14px;
+}
+.confirm-actions {
+  flex-direction: row;
+  justify-content: flex-end;
+  margin-top: 14px;
+}
+.cancel-button,
+.confirm-button {
+  margin: 0;
+  padding: 4px 12px;
+  border: 0;
+  border-radius: 7px;
+  font-size: 12px;
+}
+.cancel-button {
+  color: #71717a;
+  background-color: #f4f4f5;
+}
+.confirm-button {
+  margin-left: 8px;
+  color: #ffffff;
+  background-color: #3662da;
+}
+@media (max-width: 480px) {
+  .topbar {
+    padding-left: 12px;
+    padding-right: 8px;
+    height: 54px;
+  }
+  .brand-label {
+    font-size: 15px;
+  }
+  .home-label {
+    margin-left: 12px;
+    font-size: 12px;
+  }
+  .user-label {
+    display: none;
+  }
+  .dashboard-content {
+    padding: 4px;
+  }
+  .overview-card {
+    padding: 10px;
+    height: 82px;
+  }
+  .stat-title {
+    font-size: 12px;
+  }
+  .stat-icon {
+    margin-right: 5px;
+  }
+}
+@media (min-width: 768px) {
+  .section-cell {
+    width: 50%;
+  }
+}
+@media (min-width: 1024px) {
+  .dashboard-content {
+    padding: 12px;
+  }
+  .overview-cell {
+    width: 20%;
+    padding: 6px;
+  }
+  .overview-card {
+    height: 94px;
+  }
+  .section-cell {
+    width: 33.3333%;
+    padding: 6px;
+  }
+}
+@media (prefers-color-scheme: dark) {
+  .dashboard-page {
+    background-color: #111215;
+  }
+  .topbar,
+  .overview-card,
+  .logout-popover {
+    background-color: #1c1e22;
+    border-color: #303238;
+  }
+  .brand-label,
+  .stat-title,
+  .stat-value,
+  .donut-total,
+  .quick-icon,
+  .confirm-text {
+    color: #eeeeef;
+  }
+  .home-label {
+    color: #93b0ff;
+  }
+  .stat-caption,
+  .stat-total,
+  .user-label,
+  .empty-label {
+    color: #9c9ca6;
+  }
+  .body-text,
+  .thought-text,
+  .quick-title,
+  .record-name,
+  .day-label,
+  .repo-label {
+    color: #d0d0d6;
+  }
+  .timeline,
+  .tag,
+  .cancel-button,
+  .exercise-chip {
+    background-color: #292d35;
+  }
+  .donut-ring {
+    border-color: #555960;
+  }
+  .commit-message {
+    color: #a6a6b0;
+  }
+  .failure-text {
+    color: #f7a3a3;
+  }
+}
+/* #ifdef WEB || MP-WEIXIN */
+.tool-button::after,
+.overview-card::after,
+.quick-link::after,
+.text-button::after,
+.load-more::after,
+.cancel-button::after,
+.confirm-button::after {
+  border: 0;
+}
+/* #endif */
 </style>
