@@ -1,0 +1,1112 @@
+<script setup lang="ts">
+import { recordChanged } from '../../services/time-changes.ts'
+import { computed, ref } from 'vue'
+import { onLoad, onUnload } from '@dcloudio/uni-app'
+import PageHeader from '../../components/PageHeader.uvue'
+import type { Category, TimeRecord } from '../../services/dashboard.ts'
+import { getDateRecords, todayDate } from '../../services/dashboard.ts'
+import {
+  getCategories,
+  getRecord,
+  recommendNext,
+  createRecord,
+  updateRecord,
+  deleteRecord,
+  getExerciseTypes,
+  getRelateTypes,
+  getRelated,
+} from '../../services/time.ts'
+import {
+  categoryPath,
+  clockMinutes,
+  recordMinutes,
+  validateRecord,
+  adjustRecordTime,
+  durationEnd,
+  shiftDate,
+} from '../../services/time-format.ts'
+import { clockLabel, durationLabel } from '../../services/dashboard-format.ts'
+import { restoreSession, session } from '../../services/session.ts'
+
+const id = ref(''),
+  date = ref(todayDate()),
+  loading = ref(true),
+  saving = ref(false),
+  deleting = ref(false)
+const errorText = ref(''),
+  ready = ref(false),
+  full = ref(false),
+  confirmDelete = ref(false)
+const categories = ref<Category[]>([]),
+  existing = ref<TimeRecord[]>([])
+const form = ref<TimeRecord>({
+  id: '',
+  date: date.value,
+  categoryId: '',
+  startTime: 0,
+  endTime: 59,
+  title: '',
+  description: '',
+  exercises: [],
+})
+const categorySearch = ref(''),
+  choosingCategory = ref(false)
+const categoryOptions = computed(() =>
+  categories.value.filter(
+    (c) =>
+      c.isEnabled !== 0 &&
+      categoryPath(c.id, categories.value)
+        .toLowerCase()
+        .includes(categorySearch.value.toLowerCase()),
+  ),
+)
+const categoryName = computed(() =>
+  form.value.categoryId
+    ? categoryPath(form.value.categoryId, categories.value)
+    : '选择分类',
+)
+const duration = computed(() => recordMinutes(form.value))
+const isExercise = computed(
+  () =>
+    categoryName.value.split(' / ').includes('运动') ||
+    (form.value.exercises || []).length > 0,
+)
+const exerciseTypes = ref<{ id: string; dictLabel: string }[]>([]),
+  exerciseLoading = ref(false),
+  exerciseError = ref('')
+const relateTypes = ref<{ label: string; value: number }[]>([])
+const relatedType = computed(
+  () =>
+    relateTypes.value.find((t) => categoryName.value.includes(t.label))
+      ?.value ||
+    form.value.relateType ||
+    0,
+)
+const choosingRelated = ref(false),
+  relatedLoading = ref(false),
+  relatedError = ref(''),
+  relatedSearch = ref(''),
+  relatedAll = ref(false)
+const relatedItems = ref<{ id: string; title: string }[]>([]),
+  relatedPage = ref(0),
+  relatedTotal = ref(0)
+let active = true,
+  generation = 0,
+  relatedGeneration = 0
+let autoDate = false
+let repeating: ReturnType<typeof setInterval> | null = null
+let suppressClickUntil = 0
+onLoad((options) => {
+  restoreSession()
+  if (!session.token) {
+    uni.reLaunch({ url: '/pages/login/index' })
+    return
+  }
+  id.value = options.id || ''
+  date.value = options.date || todayDate()
+  autoDate = !options.date && !id.value
+  initialize()
+})
+onUnload(() => {
+  stopAdjust()
+  active = false
+  generation++
+  relatedGeneration++
+})
+function report(error) {
+  if (error.name === 'SessionExpiredError') {
+    uni.reLaunch({ url: '/pages/login/index' })
+    return ''
+  }
+  return error.message || '操作失败，请重试'
+}
+async function initialize() {
+  const serial = ++generation,
+    token = session.token
+  loading.value = true
+  ready.value = false
+  errorText.value = ''
+  full.value = false
+  try {
+    const cats = await getCategories()
+    if (!active || serial !== generation || token !== session.token) return
+    categories.value = cats
+    if (id.value) {
+      const detail = await getRecord(id.value)
+      if (!detail) throw new Error('这条记录已不存在')
+      const day = detail.date || date.value
+      const records = await getDateRecords(day)
+      if (!active || serial !== generation || token !== session.token) return
+      date.value = day
+      existing.value = records
+      form.value = {
+        ...detail,
+        date: day,
+        exercises: (detail.exercises || []).map((e) => ({
+          exerciseTypeId: e.exerciseTypeId,
+          exerciseCount: e.exerciseCount,
+          description: e.description,
+        })),
+      }
+    } else {
+      let result
+      if (autoDate) {
+        const yesterday = shiftDate(todayDate(), -1)
+        const previous = await recommendNext(yesterday)
+        if (
+          previous.records.length &&
+          previous.recommend &&
+          Math.max(...previous.records.map((r) => r.endTime)) < 1439 - 60
+        ) {
+          result = previous
+          date.value = yesterday
+        }
+        autoDate = false
+      }
+      result = result || (await recommendNext(date.value))
+      if (!active || serial !== generation || token !== session.token) return
+      existing.value = result.records
+      if (!result.recommend) {
+        full.value = true
+        return
+      }
+      form.value = {
+        id: '',
+        date: date.value,
+        categoryId: form.value.categoryId || result.recommend.categoryId || '',
+        startTime: result.recommend.startTime,
+        endTime: result.recommend.endTime,
+        title: form.value.title || '',
+        description: form.value.description || '',
+        exercises: form.value.exercises || [],
+        relateId: form.value.relateId,
+        relateType: form.value.relateType,
+      }
+    }
+    ready.value = true
+    loadOptions()
+  } catch (error) {
+    if (active && serial === generation) errorText.value = report(error)
+  } finally {
+    if (serial === generation) loading.value = false
+  }
+}
+async function loadOptions() {
+  try {
+    relateTypes.value = await getRelateTypes()
+  } catch (error) {
+    if (active) relatedError.value = report(error)
+  }
+  if (isExercise.value) loadExercises()
+}
+async function loadExercises() {
+  if (exerciseLoading.value) return
+  exerciseLoading.value = true
+  exerciseError.value = ''
+  try {
+    exerciseTypes.value = (await getExerciseTypes()).dictDetailList || []
+  } catch (error) {
+    if (active) exerciseError.value = report(error)
+  } finally {
+    exerciseLoading.value = false
+  }
+}
+function selectCategory(category: Category) {
+  form.value.categoryId = category.id
+  choosingCategory.value = false
+  if (isExercise.value && exerciseTypes.value.length === 0) loadExercises()
+}
+function changeDate(event) {
+  autoDate = false
+  date.value = event.detail.value
+  initialize()
+}
+function changeStart(event) {
+  form.value.startTime = clockMinutes(event.detail.value)
+}
+function changeEnd(event) {
+  form.value.endTime = clockMinutes(event.detail.value)
+}
+function changeDuration(event, unit: string) {
+  const value = Number(event.detail.value)
+  if (!Number.isInteger(value) || value < 0) {
+    errorText.value = '时长须为非负整数'
+    return
+  }
+  const minutes =
+    unit === 'hours'
+      ? value * 60 + (duration.value % 60)
+      : Math.floor(duration.value / 60) * 60 + value
+  form.value.endTime = durationEnd(form.value, existing.value, minutes)
+  errorText.value = ''
+}
+function adjust(field: string, minutes: number) {
+  form.value[field] = adjustRecordTime(
+    form.value,
+    existing.value,
+    field,
+    minutes,
+  )
+}
+function tapAdjust(field: string, minutes: number) {
+  if (Date.now() < suppressClickUntil) return
+  adjust(field, minutes)
+}
+function startAdjust(field: string, minutes: number) {
+  stopAdjust()
+  suppressClickUntil = Number.POSITIVE_INFINITY
+  adjust(field, minutes)
+  repeating = setInterval(() => adjust(field, minutes), 100)
+}
+function stopAdjust() {
+  if (repeating) {
+    clearInterval(repeating)
+    suppressClickUntil = Date.now() + 350
+  }
+  repeating = null
+}
+function goBack() {
+  stopAdjust()
+  if (!saving.value && !deleting.value) uni.navigateBack()
+}
+async function submit() {
+  if (!ready.value || saving.value || deleting.value) return
+  errorText.value = validateRecord(form.value, existing.value)
+  if (errorText.value) return
+  saving.value = true
+  const token = session.token
+  try {
+    // 保存前重新拉取当天记录，避免编辑期间另一个端新增记录造成重叠。
+    const latest = await getDateRecords(form.value.date || date.value)
+    if (!active || token !== session.token) return
+    const validation = validateRecord(form.value, latest)
+    if (validation) {
+      errorText.value = validation
+      existing.value = latest
+      return
+    }
+    const payload = {
+      id: form.value.id,
+      date: form.value.date,
+      categoryId: form.value.categoryId,
+      startTime: form.value.startTime,
+      endTime: form.value.endTime,
+      relateId: form.value.relateId,
+      relateType: form.value.relateType,
+      title: form.value.title?.trim() || '',
+      description: form.value.description || '',
+      exercises: (form.value.exercises || []).map((e) => ({
+        ...e,
+        exerciseCount:
+          e.exerciseCount == null ? undefined : Number(e.exerciseCount),
+      })),
+    }
+    if (id.value) await updateRecord(payload)
+    else {
+      const { id: _id, ...body } = payload
+      payload.id = await createRecord(body as TimeRecord)
+    }
+    if (!active || token !== session.token) return
+    recordChanged(payload)
+    uni.showToast({ title: '已保存', icon: 'success' })
+    uni.navigateBack()
+  } catch (error) {
+    if (active) errorText.value = report(error)
+  } finally {
+    saving.value = false
+  }
+}
+async function remove() {
+  if (saving.value || deleting.value) return
+  deleting.value = true
+  errorText.value = ''
+  const token = session.token
+  try {
+    await deleteRecord(id.value)
+    if (!active || token !== session.token) return
+    recordChanged(null, id.value)
+    uni.showToast({ title: '已删除', icon: 'success' })
+    uni.navigateBack()
+  } catch (error) {
+    if (active) errorText.value = report(error)
+  } finally {
+    deleting.value = false
+  }
+}
+function exerciseName(typeId: string) {
+  return (
+    exerciseTypes.value.find((e) => e.id === typeId)?.dictLabel ||
+    (typeId ? '已选运动' : '选择运动')
+  )
+}
+function addExercise() {
+  form.value.exercises = [
+    ...(form.value.exercises || []),
+    { exerciseTypeId: '', exerciseCount: undefined },
+  ]
+  if (exerciseTypes.value.length === 0) loadExercises()
+}
+async function openRelated() {
+  choosingRelated.value = true
+  await searchRelated()
+}
+async function searchRelated(more = false) {
+  if (more && relatedLoading.value) return
+  const serial = ++relatedGeneration,
+    type = relatedType.value
+  const page = more ? relatedPage.value + 1 : 1
+  relatedLoading.value = true
+  relatedError.value = ''
+  try {
+    const result = await getRelated(
+      type,
+      relatedSearch.value.trim(),
+      page,
+      relatedAll.value,
+    )
+    if (!active || serial !== relatedGeneration || relatedType.value !== type)
+      return
+    relatedItems.value = more
+      ? [
+          ...relatedItems.value,
+          ...result.records.filter(
+            (r) => !relatedItems.value.some((i) => i.id === r.id),
+          ),
+        ]
+      : result.records
+    relatedPage.value = page
+    relatedTotal.value = Number(result.total)
+  } catch (error) {
+    if (serial === relatedGeneration) relatedError.value = report(error)
+  } finally {
+    if (serial === relatedGeneration) relatedLoading.value = false
+  }
+}
+function selectRelated(item) {
+  form.value.relateId = item.id
+  form.value.relateType = relatedType.value
+  form.value.title = item.title.startsWith('《')
+    ? item.title
+    : '《' + item.title + '》'
+  choosingRelated.value = false
+}
+function clearRelated() { form.value.relateId = null; form.value.relateType = null }
+function retryOptions() { relatedError.value = ''; loadOptions() }
+function closeSelection() { choosingCategory.value = false; choosingRelated.value = false }
+function changeRelatedScope(event) { relatedAll.value = event.detail.value; searchRelated() }
+</script>
+
+<template>
+  <view class="tab-page editor-page">
+    <PageHeader :title="id ? '编辑时迹' : '记录时间'" back @back="goBack" />
+    <scroll-view scroll-y class="tab-scroll">
+      <view class="tab-content editor-content">
+        <view v-if="loading" class="state-card"
+          ><text class="muted-text">加载中…</text></view
+        >
+        <view v-if="full" class="state-card"
+          ><text class="empty-title">该天已录入完毕</text
+          ><picker mode="date" :value="date" @change="changeDate"
+            ><view class="picker-field"
+              ><text class="action-label">选择其他日期</text></view
+            ></picker
+          ></view
+        >
+        <view v-if="!ready && errorText" class="state-card"
+          ><text class="error-text" role="alert">{{ errorText }}</text
+          ><button role="button" class="text-action" @click="initialize">
+            重试加载
+          </button></view
+        >
+        <view v-if="ready" class="editor-form">
+          <view class="form-card">
+            <picker
+              mode="date"
+              :value="date"
+              :disabled="!!id || saving || deleting"
+              @change="changeDate"
+              ><view class="field-row"
+                ><text class="field-label">日期</text
+                ><text class="field-value">{{ date }}</text></view
+              ></picker
+            >
+            <button
+              role="button"
+              aria-label="选择分类"
+              class="field-row field-button"
+              :disabled="saving || deleting"
+              :aria-disabled="saving || deleting"
+              @click="choosingCategory = true"
+            >
+              <text class="field-label">分类</text
+              ><text class="field-value">{{ categoryName }}</text
+              ><text class="muted-text">›</text>
+            </button>
+          </view>
+          <view class="form-card">
+            <view class="time-fields">
+              <view
+                v-for="field in ['startTime', 'endTime']"
+                :key="field"
+                class="time-column"
+              >
+                <picker
+                  class="time-picker"
+                  mode="time"
+                  :value="clockLabel(form[field])"
+                  :disabled="saving || deleting"
+                  @change="
+                    field === 'startTime'
+                      ? changeStart($event)
+                      : changeEnd($event)
+                  "
+                  ><view class="time-field"
+                    ><text class="muted-text">{{
+                      field === 'startTime' ? '开始时间' : '结束时间'
+                    }}</text
+                    ><text class="time-number">{{
+                      clockLabel(form[field])
+                    }}</text></view
+                  ></picker
+                >
+                <view class="quick-row"
+                  ><button
+                    v-for="delta in [-1, 1, -30, 30]"
+                    :key="delta"
+                    role="button"
+                    class="duration-step"
+                    :aria-label="
+                      (field === 'startTime' ? '开始时间 ' : '结束时间 ') +
+                      (delta > 0 ? '+' : '') +
+                      delta +
+                      ' 分钟'
+                    "
+                    :disabled="saving || deleting"
+                    @click="tapAdjust(field, delta)"
+                    @longpress="startAdjust(field, delta)"
+                    @touchend="stopAdjust"
+                    @touchcancel="stopAdjust"
+                  >
+                    {{ delta > 0 ? '+' : '' }}{{ delta }}
+                  </button></view
+                >
+              </view>
+            </view>
+            <view class="duration-fields"
+              ><text class="field-label">时长</text
+              ><input
+                type="number"
+                :value="String(Math.floor(duration / 60))"
+                :disabled="saving || deleting"
+                class="duration-input"
+                aria-label="时长小时"
+                @input="changeDuration($event, 'hours')"
+              /><text class="muted-text">时</text
+              ><input
+                type="number"
+                :value="String(duration % 60)"
+                :disabled="saving || deleting"
+                class="duration-input"
+                aria-label="时长分钟"
+                @input="changeDuration($event, 'minutes')"
+              /><text class="muted-text">分</text></view
+            >
+          </view>
+          <view class="form-card"
+            ><input
+              v-model="form.title"
+              class="title-input"
+              placeholder="标题（选填）"
+              aria-label="记录标题"
+              :maxlength="50"
+              :disabled="saving || deleting"
+              :aria-disabled="saving || deleting"
+            /><textarea
+              v-model="form.description"
+              class="description-input"
+              placeholder="记下这段时间的细节…"
+              aria-label="记录备注"
+              :maxlength="200"
+              :disabled="saving || deleting"
+              :aria-disabled="saving || deleting"
+              :auto-height="true"
+            />
+          </view>
+          <view v-if="relatedType" class="form-card"
+            ><text class="section-label">{{
+              relatedType === 1 ? '关联阅读' : '关联观影'
+            }}</text
+            ><button
+              role="button"
+              class="field-row field-button"
+              :disabled="saving || deleting"
+              :aria-disabled="saving || deleting"
+              @click="openRelated"
+            >
+              <text class="field-value">{{
+                form.relateId ? form.title || '已关联记录' : '选择记录'
+              }}</text
+              ><text class="muted-text">›</text></button
+            ><button
+              v-if="form.relateId && !id"
+              role="button"
+              class="small-action"
+              :disabled="saving || deleting"
+              :aria-disabled="saving || deleting"
+              @click="clearRelated"
+            >
+              清除关联
+            </button></view
+          >
+          <view v-if="relatedError && !choosingRelated" class="form-error"
+            ><text class="error-text">{{ relatedError }}</text
+            ><button
+              role="button"
+              class="small-action"
+              @click="retryOptions"
+            >
+              重试关联选项
+            </button></view
+          >
+          <view v-if="isExercise" class="form-card"
+            ><text class="section-label">运动明细</text
+            ><text v-if="exerciseLoading" class="muted-text">加载中…</text
+            ><view v-if="exerciseError"
+              ><text class="error-text">{{ exerciseError }}</text
+              ><button
+                role="button"
+                class="small-action"
+                @click="loadExercises"
+              >
+                重试运动类型
+              </button></view
+            ><view
+              v-for="(item, index) in form.exercises"
+              :key="index"
+              class="exercise-row"
+              ><picker
+                :range="exerciseTypes"
+                range-key="dictLabel"
+                :disabled="saving || deleting"
+                :aria-disabled="saving || deleting"
+                @change="
+                  item.exerciseTypeId =
+                    exerciseTypes[Number($event.detail.value)].id
+                "
+                ><view class="exercise-picker"
+                  ><text class="field-value">{{
+                    exerciseName(item.exerciseTypeId)
+                  }}</text></view
+                ></picker
+              ><input
+                v-model="item.exerciseCount"
+                type="digit"
+                class="count-input"
+                aria-label="运动数量"
+                placeholder="数量"
+                :disabled="saving || deleting"
+                :aria-disabled="saving || deleting"
+              /><button
+                role="button"
+                class="remove-exercise"
+                :aria-label="'移除运动 ' + (index + 1)"
+                :disabled="saving || deleting"
+                :aria-disabled="saving || deleting"
+                @click="form.exercises.splice(index, 1)"
+              >
+                ×
+              </button></view
+            ><button
+              role="button"
+              class="small-action"
+              :disabled="saving || deleting"
+              :aria-disabled="saving || deleting"
+              @click="addExercise"
+            >
+              ＋ 添加运动
+            </button></view
+          >
+          <view v-if="ready && errorText" class="form-error"
+            ><text class="error-text" role="alert">{{ errorText }}</text></view
+          >
+          <view class="editor-actions"
+            ><button
+              role="button"
+              class="cancel-action"
+              :disabled="saving || deleting"
+              @click="goBack"
+            >
+              取消
+            </button>
+            <button
+              role="button"
+              class="save-button"
+              :disabled="saving || deleting"
+              :aria-disabled="saving || deleting"
+              :loading="saving"
+              @click="submit"
+            >
+              保存
+            </button></view
+          >
+          <view v-if="id" class="delete-anchor"
+            ><button
+              role="button"
+              class="delete-button"
+              :disabled="saving || deleting"
+              :aria-disabled="saving || deleting"
+              @click="confirmDelete = !confirmDelete"
+            >
+              删除记录</button
+            ><view v-if="confirmDelete" class="delete-confirm"
+              ><text class="field-value">删除这条时间记录？</text
+              ><text class="muted-text">关联的运动明细也会删除</text
+              ><view class="confirm-actions"
+                ><button
+                  role="button"
+                  class="small-action"
+                  :disabled="deleting"
+                  :aria-disabled="deleting"
+                  @click="confirmDelete = false"
+                >
+                  取消</button
+                ><button
+                  role="button"
+                  class="delete-button"
+                  :disabled="deleting"
+                  :aria-disabled="deleting"
+                  :loading="deleting"
+                  @click="remove"
+                >
+                  确认删除
+                </button></view
+              ></view
+            ></view
+          >
+        </view>
+      </view>
+    </scroll-view>
+    <view v-if="choosingCategory || choosingRelated" class="selection-mask">
+      <view class="selection-panel"
+        ><view class="selection-heading"
+          ><text class="section-label">{{
+            choosingCategory ? '选择分类' : '选择关联记录'
+          }}</text
+          ><button
+            role="button"
+            class="close-selection"
+            aria-label="关闭选择"
+            @click="closeSelection"
+          >
+            ×
+          </button></view
+        >
+        <input
+          v-if="choosingCategory"
+          v-model="categorySearch"
+          class="search-input"
+          placeholder="搜索分类"
+          aria-label="搜索分类"
+        />
+        <view v-else
+          ><view class="search-row"
+            ><input
+              v-model="relatedSearch"
+              class="search-input related-search"
+              placeholder="搜索名称"
+              aria-label="搜索关联记录"
+              confirm-type="search"
+              @confirm="searchRelated()"
+            /><button
+              role="button"
+              class="small-action"
+              @click="searchRelated()"
+            >
+              搜索
+            </button></view
+          ><view class="field-row"
+            ><text class="muted-text">显示全部记录</text
+            ><switch
+              :checked="relatedAll"
+              @change="changeRelatedScope" /></view
+        ></view>
+        <scroll-view scroll-y class="selection-scroll"
+          ><template v-if="choosingCategory"
+            ><button
+              v-for="item in categoryOptions"
+              :key="item.id"
+              role="button"
+              class="category-option"
+              :class="{ 'category-selected': item.id === form.categoryId }"
+              @click="selectCategory(item)"
+            >
+              <view
+                class="category-dot"
+                :style="{ backgroundColor: item.color || '#94a3b8' }"
+              /><text class="field-value">{{
+                categoryPath(item.id, categories)
+              }}</text></button
+            ><text v-if="!categoryOptions.length" class="muted-text"
+              >没有匹配的分类</text
+            ></template
+          ><template v-else
+            ><text v-if="relatedError" class="error-text">{{
+              relatedError
+            }}</text
+            ><button
+              v-for="item in relatedItems"
+              :key="item.id"
+              role="button"
+              class="category-option"
+              @click="selectRelated(item)"
+            >
+              <text class="field-value">{{ item.title }}</text></button
+            ><text v-if="relatedLoading" class="muted-text">加载中…</text
+            ><text
+              v-else-if="!relatedItems.length && !relatedError"
+              class="muted-text"
+              >暂无匹配记录</text
+            ><button
+              v-if="relatedError || relatedItems.length < relatedTotal"
+              role="button"
+              class="small-action"
+              :disabled="relatedLoading"
+              @click="searchRelated(!relatedError)"
+            >
+              {{ relatedError ? '重试' : '加载更多' }}
+            </button></template
+          ></scroll-view
+        >
+      </view>
+    </view>
+  </view>
+</template>
+
+<style scoped>
+.editor-content {
+  padding-bottom: 48px;
+  padding-bottom: calc(32px + env(safe-area-inset-bottom));
+}
+.form-card {
+  padding: 12px 16px;
+  margin-bottom: 16px;
+  border-radius: 16px;
+  background-color: #ffffff;
+}
+.field-row {
+  display: flex;
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: center;
+  min-height: 52px;
+}
+.field-button {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  border-radius: 0;
+  background-color: transparent;
+  line-height: 24px;
+  text-align: left;
+}
+.field-label {
+  font-size: 14px;
+  color: #8b8f99;
+  margin-right: 16px;
+  flex-shrink: 0;
+}
+.field-value {
+  font-size: 14px;
+  color: #27272a;
+  flex-shrink: 1;
+}
+.time-column {
+  flex: 1;
+  width: 50%;
+  min-width: 0;
+}
+.time-picker {
+  width: 100%;
+}
+.duration-fields {
+  flex-direction: row;
+  align-items: center;
+  margin-top: 16px;
+}
+.time-fields {
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-around;
+  padding-top: 8px;
+}
+.time-field {
+  width: 100%;
+  align-items: center;
+  padding: 8px;
+}
+.time-number {
+  width: 100%;
+  text-align: center;
+  font-size: 28px;
+  line-height: 46px;
+  color: #27272a;
+  font-weight: 600;
+}
+.time-divider {
+  font-size: 20px;
+  color: #b4b4bd;
+}
+.quick-row {
+  flex-direction: row;
+  justify-content: space-between;
+}
+.small-action {
+  min-height: 44px;
+  line-height: 44px;
+  padding: 0 10px;
+  margin: 0;
+  border: 0;
+  background-color: transparent;
+  font-size: 13px;
+  color: #4e7ee3;
+}
+.duration-input {
+  flex: 1;
+  width: 0;
+  height: 44px;
+  font-size: 18px;
+  margin: 0 8px;
+  color: #27272a;
+  text-align: right;
+}
+.duration-step {
+  flex: 1;
+  height: 44px;
+  line-height: 44px;
+  margin: 2px;
+  padding: 0;
+  border: 0;
+  border-radius: 10px;
+  background-color: #f0f2f5;
+  color: #71717a;
+  font-size: 13px;
+}
+.title-input {
+  font-size: 15px;
+  min-height: 48px;
+  color: #27272a;
+}
+.description-input {
+  width: 100%;
+  min-height: 88px;
+  font-size: 14px;
+  line-height: 24px;
+  color: #71717a;
+  padding: 12px 0;
+}
+.section-label {
+  font-size: 14px;
+  color: #71717a;
+  font-weight: 600;
+  line-height: 32px;
+}
+.exercise-row {
+  flex-direction: row;
+  align-items: center;
+}
+.exercise-picker {
+  min-width: 90px;
+  padding: 12px 0;
+}
+.count-input {
+  flex: 1;
+  height: 44px;
+  color: #27272a;
+  font-size: 14px;
+  text-align: right;
+}
+.remove-exercise,
+.close-selection {
+  width: 44px;
+  height: 44px;
+  line-height: 44px;
+  padding: 0;
+  margin: 0;
+  border: 0;
+  font-size: 24px;
+  background-color: transparent;
+  color: #8b8f99;
+}
+.form-error {
+  padding: 8px 4px 16px;
+}
+.editor-actions {
+  flex-direction: row;
+  align-items: center;
+  margin-top: 8px;
+}
+.cancel-action {
+  width: 96px;
+  height: 50px;
+  line-height: 50px;
+  margin: 0 12px 0 0;
+  padding: 0;
+  border: 0;
+  border-radius: 14px;
+  background-color: #e5e8ee;
+  color: #71717a;
+  font-size: 15px;
+}
+.save-button {
+  flex: 1;
+  height: 50px;
+  line-height: 50px;
+  border: 0;
+  padding: 0;
+  margin: 8px 0;
+  border-radius: 14px;
+  background-color: #4e7ee3;
+  color: #ffffff;
+  font-size: 16px;
+}
+.delete-anchor {
+  margin-top: 8px;
+  align-items: center;
+}
+.delete-button {
+  min-height: 44px;
+  line-height: 44px;
+  padding: 0 16px;
+  margin: 0;
+  border: 0;
+  color: #c65353;
+  background-color: transparent;
+  font-size: 14px;
+}
+.delete-confirm {
+  align-self: stretch;
+  padding: 16px;
+  border-radius: 14px;
+  background-color: #ffffff;
+}
+.confirm-actions {
+  flex-direction: row;
+  justify-content: flex-end;
+  margin-top: 8px;
+}
+.selection-mask {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.4);
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+.selection-panel {
+  width: 100%;
+  max-width: 560px;
+  height: 70%;
+  border-radius: 20px;
+  padding: 16px;
+  background-color: #ffffff;
+}
+.selection-heading {
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: center;
+}
+.selection-scroll {
+  flex: 1;
+  height: 0;
+  margin-top: 12px;
+}
+.search-input {
+  height: 44px;
+  background-color: #f0f2f5;
+  border-radius: 10px;
+  padding: 0 12px;
+  font-size: 14px;
+  color: #27272a;
+}
+.search-row {
+  flex-direction: row;
+}
+.related-search {
+  flex: 1;
+}
+.category-option {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  min-height: 52px;
+  line-height: 24px;
+  text-align: left;
+  padding: 12px;
+  margin: 0;
+  border: 0;
+  border-radius: 10px;
+  background-color: transparent;
+}
+.category-selected {
+  background-color: #eaf0fc;
+}
+.category-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 4px;
+  margin-right: 12px;
+  flex-shrink: 0;
+}
+@media (prefers-color-scheme: dark) {
+  .form-card,
+  .selection-panel,
+  .delete-confirm {
+    background-color: #1c1e22;
+  }
+  .field-value,
+  .time-number,
+  .duration-input,
+  .title-input,
+  .count-input,
+  .search-input {
+    color: #eeeeef;
+  }
+  .section-label,
+  .description-input {
+    color: #b4b4bd;
+  }
+  .duration-step,
+  .search-input {
+    background-color: #282b32;
+  }
+  .category-selected {
+    background-color: #263652;
+  }
+  .cancel-action {
+    background-color: #282b32;
+    color: #b4b4bd;
+  }
+  .small-action {
+    color: #8eb1fb;
+  }
+  .delete-button {
+    color: #ed9191;
+  }
+}
+/* #ifdef WEB || MP-WEIXIN */
+.cancel-action::after,
+.field-button::after,
+.small-action::after,
+.duration-step::after,
+.remove-exercise::after,
+.save-button::after,
+.delete-button::after,
+.close-selection::after,
+.category-option::after {
+  border: 0;
+}
+/* #endif */
+</style>

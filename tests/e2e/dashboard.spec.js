@@ -24,7 +24,7 @@ test('统计卡和内容卡独立失败、重试恢复，隐藏闪念不暴露�
   await expect(page.getByText('1h30m')).toBeVisible();
   await expect(page.getByRole('button', { name: '重试GitHub', exact: true })).toBeVisible();
   await page.getByRole('button', { name: '重试GitHub', exact: true }).click();
-  await expect(page.getByRole('button', { name: '刷新GitHub', exact: true })).toBeEnabled();
+  await expect(page.getByRole('button', { name: 'GitHub', exact: true })).toBeEnabled();
   await page.getByRole('button', { name: '重试闪念' }).click();
   await expect(page.getByText('记录想法，让行动更清晰。')).toBeVisible();
   await expect(page.getByText('内容已隐藏')).toBeVisible();
@@ -51,7 +51,7 @@ test('空账号不伪造统计和记录，不请求未绑定 GitHub，手机可�
   });
   await expect(page.getByText('今日暂无记录')).toBeVisible();
   await expect(page.getByText('暂无快捷方式')).toBeVisible();
-  await page.getByRole('button', { name: '刷新闪念' }).scrollIntoViewIfNeeded();
+  await page.getByText('闪念', { exact: true }).scrollIntoViewIfNeeded();
   await expect(page.getByText('暂无固定的闪念')).toBeVisible();
   await expect(page.getByText('最近提交', { exact: true })).toHaveCount(0);
   await expect(page.getByText('运动', { exact: true })).toHaveCount(0);

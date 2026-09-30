@@ -63,12 +63,21 @@ export interface Category {
   name: string
   parentId?: string
   color?: string
+  isEnabled?: number
+  timeType?: number
+  isTrackTime?: number
 }
 export interface TimeRecord {
   id: string
   categoryId: string
   startTime: number
   endTime: number
+  date?: string
+  title?: string
+  description?: string
+  relateId?: string | null
+  relateType?: number | null
+  exercises?: { exerciseTypeId: string; exerciseCount?: number; description?: string }[]
 }
 
 export const getOverview = () => request<OverviewCard[]>('/dashboard/tasks')
@@ -84,17 +93,35 @@ export const getExercises = (lastDate = '') =>
   )
 export const getCommits = (page = 1) =>
   request<Commit[]>('/github/recent-commits?perPage=10&page=' + page)
-export async function getTime() {
+export function todayDate() {
   const now = new Date()
-  const date =
+  return (
     now.getFullYear() +
     '-' +
     String(now.getMonth() + 1).padStart(2, '0') +
     '-' +
     String(now.getDate()).padStart(2, '0')
+  )
+}
+export async function getTime(date = todayDate()) {
   const [categories, records] = await Promise.all([
-    request<Category[]>('/timeTrackerCategory/all'),
-    request<{ items: TimeRecord[] }>('/timeRecord/query?date=' + date),
+    request<Category[]>('/timeTrackerCategory/list'),
+    getDateRecords(date),
   ])
-  return { categories, records: records.items || [] }
+  return { categories, records }
+}
+export async function getDateRecords(date: string): Promise<TimeRecord[]> {
+  const records: TimeRecord[] = []
+  let page = 1
+  while (true) {
+    const result = await request<{ items: TimeRecord[]; total?: number | string }>(
+      '/timeRecord/query?date=' + encodeURIComponent(date) + '&pageSize=100&page=' + page,
+    )
+    const items = result.items || []
+    const added = items.filter(item => !records.some(record => record.id === item.id))
+    records.push(...added)
+    if (result.total == null || records.length >= Number(result.total)) return records
+    if (added.length === 0) throw new Error('记录未完整加载，请重试')
+    page++
+  }
 }

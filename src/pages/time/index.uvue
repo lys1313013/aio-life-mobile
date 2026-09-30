@@ -1,0 +1,623 @@
+<script setup lang="ts">
+import { useRefreshTheme } from '../../services/refresh-theme.ts'
+const refreshTheme = useRefreshTheme()
+import { takeRecordChange } from '../../services/time-changes.ts'
+import { nextTick, computed, ref } from 'vue'
+import { onShow, onHide } from '@dcloudio/uni-app'
+import PageHeader from '../../components/PageHeader.uvue'
+import { todayDate } from '../../services/dashboard.ts'
+import type { Category, TimeRecord } from '../../services/dashboard.ts'
+import { getCategories, getPeriodRecords } from '../../services/time.ts'
+import {
+  categoryPath,
+  categoryMatches,
+  categoryStats,
+  periodRange,
+  shiftDate,
+  recordMinutes,
+} from '../../services/time-format.ts'
+import { clockLabel, durationLabel } from '../../services/dashboard-format.ts'
+import { restoreSession, session } from '../../services/session.ts'
+
+const date = ref(todayDate())
+const mode = ref('day')
+const modeOptions = [
+  { key: 'day', label: '日' },
+  { key: 'week', label: '周' },
+  { key: 'month', label: '月' },
+]
+const loading = ref(false),
+  refreshing = ref(false)
+const errorText = ref(''),
+  selectedCategory = ref('')
+const categories = ref<Category[]>([]),
+  records = ref<TimeRecord[]>([]),
+  previous = ref<TimeRecord[]>([])
+const range = computed(() => periodRange(date.value, mode.value))
+const filters = computed(() => [
+  { id: '', name: '全部分类' },
+  ...categories.value.map((c) => ({
+    id: c.id,
+    name: categoryPath(c.id, categories.value),
+  })),
+])
+const filterIndex = computed(() =>
+  Math.max(
+    0,
+    filters.value.findIndex((c) => c.id === selectedCategory.value),
+  ),
+)
+const filtered = computed(() =>
+  records.value.filter((r) =>
+    categoryMatches(r.categoryId, selectedCategory.value, categories.value),
+  ),
+)
+const total = computed(() =>
+  filtered.value.reduce((sum, r) => sum + recordMinutes(r), 0),
+)
+const unrecorded = computed(() =>
+  Math.max(
+    0,
+    1440 - records.value.reduce((sum, r) => sum + recordMinutes(r), 0),
+  ),
+)
+const recordedDays = computed(
+  () => new Set(records.value.map((r) => r.date)).size,
+)
+const average = computed(() =>
+  Math.round(total.value / Math.max(1, recordedDays.value)),
+)
+const difference = computed(
+  () =>
+    total.value -
+    previous.value
+      .filter((r) =>
+        categoryMatches(r.categoryId, selectedCategory.value, categories.value),
+      )
+      .reduce((sum, r) => sum + recordMinutes(r), 0),
+)
+const stats = computed(() => categoryStats(filtered.value, categories.value))
+const groups = computed(() => {
+  const days: { date: string; minutes: number; entries: any[] }[] = []
+  for (const record of [...filtered.value].sort(
+    (a, b) =>
+      (b.date || '').localeCompare(a.date || '') || a.startTime - b.startTime,
+  )) {
+    const day = record.date || date.value
+    let group = days.find((g) => g.date === day)
+    if (!group) {
+      group = { date: day, minutes: 0, entries: [] }
+      days.push(group)
+    }
+    group.minutes += recordMinutes(record)
+    group.entries.push({
+      ...record,
+      name: categoryPath(record.categoryId, categories.value),
+      color:
+        categories.value.find((c) => c.id === record.categoryId)?.color ||
+        '#94a3b8',
+    })
+  }
+  return days
+})
+let generation = 0
+onShow(() => {
+  restoreSession()
+  if (!session.token) {
+    uni.reLaunch({ url: '/pages/login/index' })
+    return
+  }
+  const change = takeRecordChange()
+  if (change) {
+    records.value = records.value.filter(
+      (r) => r.id !== change.deletedId && r.id !== change.record?.id,
+    )
+    const item = change.record
+    if (
+      item?.date &&
+      item.date >= range.value.start &&
+      item.date <= range.value.end
+    )
+      records.value.push(item)
+    return
+  }
+  load()
+})
+onHide(() => {
+  generation++
+  loading.value = false
+  refreshing.value = false
+})
+async function load() {
+  const requestId = ++generation,
+    token = session.token
+  const targetDate = date.value,
+    targetMode = mode.value
+  loading.value = true
+  errorText.value = ''
+  try {
+    const [cats, current, prev] = await Promise.all([
+      getCategories(),
+      getPeriodRecords(targetDate, targetMode),
+      getPeriodRecords(shiftDate(targetDate, -1, targetMode), targetMode),
+    ])
+    if (requestId !== generation || session.token !== token) return
+    categories.value = cats
+    records.value = current
+    previous.value = prev
+  } catch (error) {
+    if (requestId !== generation) return
+    if (error.name === 'SessionExpiredError') {
+      uni.reLaunch({ url: '/pages/login/index' })
+      return
+    }
+    errorText.value = error.message || '加载失败，请重试'
+  } finally {
+    if (requestId === generation) loading.value = false
+  }
+}
+async function pullRefresh() {
+  if (refreshing.value) return
+  refreshing.value = true
+  await nextTick()
+  try {
+    await load()
+  } finally {
+    refreshing.value = false
+  }
+}
+function changePeriod() {
+  records.value = []
+  previous.value = []
+  load()
+}
+function selectDate(event) {
+  date.value = event.detail.value
+  changePeriod()
+}
+function moveDate(days: number) {
+  date.value = shiftDate(date.value, days, mode.value)
+  changePeriod()
+}
+function selectMode(value: string) {
+  if (mode.value !== value) {
+    mode.value = value
+    changePeriod()
+  }
+}
+function edit(record: TimeRecord | null = null) {
+  uni.navigateTo({
+    url:
+      '/pages/time/edit?date=' +
+      date.value +
+      (record ? '&id=' + encodeURIComponent(record.id) : ''),
+  })
+}
+function goToday() { date.value = todayDate(); changePeriod() }
+</script>
+
+<template>
+  <view class="tab-page">
+    <PageHeader title="时迹" />
+    <scroll-view
+      scroll-y
+      class="tab-scroll"
+      :refresher-enabled="true"
+      :refresher-triggered="refreshing"
+      refresher-background="transparent"
+      :refresher-default-style="refreshTheme"
+      @refresherrefresh="pullRefresh"
+    >
+      <view class="tab-content time-content">
+        <view class="period-tabs"
+          ><button
+            v-for="item in modeOptions"
+            :key="item.key"
+            role="button"
+            :aria-label="item.label + '视图'"
+            :aria-pressed="mode === item.key"
+            class="period-tab"
+            :class="{ 'period-active': mode === item.key }"
+            @click="selectMode(item.key)"
+          >
+            {{ item.label }}
+          </button></view
+        >
+        <view class="date-switch">
+          <button
+            role="button"
+            class="date-step"
+            :aria-label="mode === 'day' ? '前一天' : '上一周期'"
+            @click="moveDate(-1)"
+          >
+            ‹
+          </button>
+          <picker mode="date" :value="date" @change="selectDate"
+            ><view class="date-picker"
+              ><text class="date-value">{{
+                mode === 'day'
+                  ? date
+                  : mode === 'month'
+                    ? date.slice(0, 7)
+                    : range.start.slice(5) + ' — ' + range.end.slice(5)
+              }}</text></view
+            ></picker
+          >
+          <button
+            role="button"
+            class="date-step"
+            :aria-label="mode === 'day' ? '后一天' : '下一周期'"
+            @click="moveDate(1)"
+          >
+            ›
+          </button>
+        </view>
+        <view class="filter-row"
+          ><picker
+            :range="filters"
+            range-key="name"
+            :value="filterIndex"
+            @change="selectedCategory = filters[Number($event.detail.value)].id"
+            ><view class="filter-trigger"
+              ><text class="filter-label">{{ filters[filterIndex].name }}</text
+              ><text class="muted-text">⌄</text></view
+            ></picker
+          ><button
+            v-if="date !== todayDate()"
+            role="button"
+            class="today-button"
+            @click="goToday"
+          >
+            今天
+          </button></view
+        >
+        <view v-if="errorText" class="state-card"
+          ><text class="error-text" role="alert">{{ errorText }}</text
+          ><button role="button" class="text-action" @click="load">
+            重试时迹记录
+          </button></view
+        >
+        <view v-if="loading && !refreshing" class="loading-strip"
+          ><text class="muted-text">加载中…</text></view
+        >
+        <template
+          v-if="
+            (!loading || records.length > 0) &&
+            (!errorText || records.length > 0)
+          "
+        >
+          <view class="time-total"
+            ><text class="muted-text">已记录</text
+            ><text class="total-value">{{ durationLabel(total) }}</text
+            ><text class="muted-text">{{ filtered.length }} 条记录</text
+            ><view class="summary-row"
+              ><text class="summary-text">{{
+                mode === 'day'
+                  ? '未记录 ' + durationLabel(unrecorded)
+                  : '记录日均 ' + durationLabel(average)
+              }}</text
+              ><text class="summary-text"
+                >较上{{ mode === 'day' ? '日' : mode === 'week' ? '周' : '月' }}
+                {{ difference >= 0 ? '+' : '−'
+                }}{{ durationLabel(Math.abs(difference)) }}</text
+              ></view
+            ></view
+          >
+          <view v-if="stats.length" class="stats-card"
+            ><text class="section-label">时间分布</text
+            ><view v-for="item in stats" :key="item.id" class="stat-row"
+              ><view class="stat-heading"
+                ><text class="stat-name">{{ item.name }}</text
+                ><text class="muted-text">{{
+                  durationLabel(item.minutes)
+                }}</text></view
+              ><view class="stat-track"
+                ><view
+                  class="stat-fill"
+                  :style="{
+                    width: (item.minutes / Math.max(1, total)) * 100 + '%',
+                    backgroundColor: item.color,
+                  }" /></view></view
+          ></view>
+          <view v-if="filtered.length === 0 && !errorText" class="state-card"
+            ><text class="empty-title">{{
+              selectedCategory ? '这个分类暂无记录' : '这段时间还没有记录'
+            }}</text
+            ><text class="muted-text">点击右下角，记下你的时间</text></view
+          >
+          <view v-for="group in groups" :key="group.date" class="day-group"
+            ><view v-if="mode !== 'day'" class="day-heading"
+              ><text class="section-label">{{ group.date }}</text
+              ><text class="muted-text">{{
+                durationLabel(group.minutes)
+              }}</text></view
+            ><view class="record-list"
+              ><button
+                v-for="item in group.entries"
+                :key="item.id"
+                role="button"
+                :aria-label="'编辑记录 ' + (item.title || item.name)"
+                class="record-row"
+                @click="edit(item)"
+              >
+                <view
+                  class="record-dot"
+                  :style="{ backgroundColor: item.color }"
+                /><view class="record-main"
+                  ><text class="record-name">{{ item.title || item.name }}</text
+                  ><text v-if="item.title" class="muted-text">{{
+                    item.name
+                  }}</text
+                  ><text class="muted-text"
+                    >{{ clockLabel(item.startTime) }} –
+                    {{ clockLabel(item.endTime) }}</text
+                  ></view
+                ><text class="record-duration">{{
+                  durationLabel(recordMinutes(item))
+                }}</text
+                ><text class="record-chevron">›</text>
+              </button></view
+            ></view
+          >
+        </template>
+      </view>
+    </scroll-view>
+    <view class="add-anchor"
+      ><button
+        role="button"
+        class="add-record"
+        aria-label="新增时迹"
+        :disabled="loading || !!errorText"
+        @click="edit()"
+      >
+        ＋
+      </button></view
+    >
+  </view>
+</template>
+
+<style scoped>
+.time-content {
+  padding-bottom: 96px;
+}
+.period-tabs {
+  flex-direction: row;
+  background-color: #e5e8ee;
+  padding: 4px;
+  border-radius: 12px;
+  margin-bottom: 12px;
+}
+.period-tab {
+  flex: 1;
+  height: 44px;
+  line-height: 44px;
+  padding: 0;
+  margin: 0;
+  border: 0;
+  border-radius: 9px;
+  color: #71717a;
+  background-color: transparent;
+  font-size: 14px;
+}
+.period-active {
+  background-color: #ffffff;
+  color: #4e7ee3;
+  font-weight: 600;
+}
+.date-switch {
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: center;
+}
+.date-step {
+  width: 44px;
+  height: 44px;
+  line-height: 40px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 22px;
+  background-color: transparent;
+  font-size: 30px;
+  color: #71717a;
+}
+.date-picker {
+  align-items: center;
+  padding: 12px 16px;
+}
+.date-value {
+  font-size: 17px;
+  font-weight: 600;
+  color: #27272a;
+}
+.filter-row {
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: center;
+  margin: 4px 0;
+}
+.filter-trigger {
+  flex-direction: row;
+  align-items: center;
+  min-height: 44px;
+  padding: 0 10px;
+}
+.filter-label {
+  color: #71717a;
+  font-size: 13px;
+  margin-right: 8px;
+}
+.today-button {
+  color: #5b8ff9;
+  font-size: 13px;
+  height: 44px;
+  line-height: 44px;
+  background-color: transparent;
+  margin: 0;
+  padding: 0 12px;
+  border: 0;
+}
+.time-total {
+  align-items: center;
+  padding: 12px 0 24px;
+}
+.total-value {
+  font-size: 38px;
+  line-height: 52px;
+  font-weight: 600;
+  color: #27272a;
+  margin: 4px 0;
+}
+.summary-row {
+  flex-direction: row;
+  margin-top: 12px;
+}
+.summary-text {
+  color: #8b8f99;
+  font-size: 12px;
+  margin: 0 8px;
+}
+.loading-strip {
+  padding: 10px;
+  align-items: center;
+}
+.stats-card {
+  padding: 20px;
+  border-radius: 16px;
+  background-color: #ffffff;
+  margin-bottom: 24px;
+}
+.section-label {
+  color: #52525b;
+  font-size: 14px;
+  font-weight: 600;
+}
+.stat-row {
+  margin-top: 16px;
+}
+.stat-heading {
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: center;
+}
+.stat-name {
+  color: #71717a;
+  font-size: 13px;
+  flex: 1;
+  margin-right: 12px;
+}
+.stat-track {
+  height: 5px;
+  border-radius: 3px;
+  background-color: #f0f2f5;
+  margin-top: 8px;
+  overflow: hidden;
+}
+.stat-fill {
+  height: 5px;
+  border-radius: 3px;
+}
+.day-group {
+  margin-bottom: 20px;
+}
+.day-heading {
+  flex-direction: row;
+  justify-content: space-between;
+  margin: 0 4px 10px;
+}
+.record-list {
+  background-color: #ffffff;
+  border-radius: 16px;
+  padding: 0 16px;
+}
+.record-row {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  padding: 18px 0;
+  margin: 0;
+  border: 0;
+  background-color: transparent;
+  text-align: left;
+  line-height: 22px;
+}
+.record-dot {
+  height: 8px;
+  width: 8px;
+  border-radius: 4px;
+  margin-right: 14px;
+  flex-shrink: 0;
+}
+.record-main {
+  flex: 1;
+  min-width: 0;
+}
+.record-name {
+  color: #27272a;
+  font-size: 15px;
+  margin-bottom: 4px;
+}
+.record-duration {
+  color: #52525b;
+  font-size: 14px;
+  margin-left: 12px;
+}
+.record-chevron {
+  color: #b4b4bd;
+  margin-left: 10px;
+  font-size: 22px;
+}
+.add-anchor {
+  position: absolute;
+  bottom: 24px;
+  right: 24px;
+  border-radius: 28px;
+}
+.add-record {
+  width: 56px;
+  height: 56px;
+  line-height: 54px;
+  border-radius: 28px;
+  padding: 0;
+  margin: 0;
+  border: 0;
+  color: #ffffff;
+  background-color: #4e7ee3;
+  font-size: 30px;
+  box-shadow: 0 4px 16px rgba(78, 126, 227, 0.25);
+}
+@media (prefers-color-scheme: dark) {
+  .date-value,
+  .total-value,
+  .record-name,
+  .section-label {
+    color: #eeeeef;
+  }
+  .record-duration,
+  .date-step,
+  .filter-label,
+  .stat-name {
+    color: #b4b4bd;
+  }
+  .record-list,
+  .stats-card,
+  .period-active {
+    background-color: #1c1e22;
+  }
+  .period-tabs,
+  .stat-track {
+    background-color: #282b32;
+  }
+  .period-active {
+    color: #8eb1fb;
+  }
+}
+/* #ifdef WEB || MP-WEIXIN */
+.period-tab::after,
+.today-button::after,
+.record-row::after,
+.add-record::after {
+  border: 0;
+}
+/* #endif */
+</style>

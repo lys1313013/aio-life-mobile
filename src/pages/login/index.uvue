@@ -2,33 +2,151 @@
 import { ref } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
 import { login } from '../../services/api.ts'
-import { validateCredentials } from '../../services/contract.ts'
+import { validateCredentials, readPhoneCode } from '../../services/contract.ts'
 import { restoreSession, session } from '../../services/session.ts'
+import { fetchWechatEnabled, startWechatLogin, loginWithWechatPhone, bindWechatAccount, initializeWechatPassword } from '../../services/wechat-auth.ts'
 
 const username = ref('')
 const password = ref('')
 const busy = ref(false)
 const errorText = ref('')
+const mode = ref('password')
+const wechatEnabled = ref(false)
+const wechatCapabilityFailed = ref(false)
+const loginTicket = ref('')
+const ticketExpiresAt = ref(0)
+const accountUsername = ref('')
+const newPassword = ref('')
+const confirmPassword = ref('')
+let capabilitiesLoaded = false
 
-onShow(() => {
+onShow(async () => {
   restoreSession()
-  if (session.token.length > 0) uni.reLaunch({ url: '/pages/home/index' })
+  if (session.token.length > 0) {
+    if (mode.value !== 'set-password') goHome()
+    return
+  }
+  // #ifdef MP-WEIXIN
+  if (!capabilitiesLoaded) await loadWechatCapabilities()
+  // #endif
 })
+
+async function loadWechatCapabilities() {
+  if (busy.value) return
+  busy.value = true
+  errorText.value = ''
+  wechatCapabilityFailed.value = false
+  try {
+    wechatEnabled.value = await fetchWechatEnabled()
+    if (wechatEnabled.value) mode.value = 'wechat'
+    capabilitiesLoaded = true
+  } catch (_) {
+    wechatCapabilityFailed.value = true
+    errorText.value = '暂时无法获取微信登录方式，可重试或使用账号密码登录'
+  } finally { busy.value = false }
+}
+
+function goHome() { uni.reLaunch({ url: '/pages/home/index' }) }
+
+function switchMode(next) {
+  if (busy.value) return
+  mode.value = next
+  errorText.value = ''
+  password.value = ''
+  if (next !== 'bind') {
+    loginTicket.value = ''
+    ticketExpiresAt.value = 0
+  }
+}
+
+function acceptWechat(result) {
+  if (result.status === 'LOGGED_IN') {
+    loginTicket.value = ''
+    password.value = ''
+    if (!result.hasPassword) {
+      accountUsername.value = result.accountUsername
+      mode.value = 'set-password'
+    } else goHome()
+    return
+  }
+  loginTicket.value = result.loginTicket
+  ticketExpiresAt.value = Date.now() + result.expiresIn * 1000
+  mode.value = result.status === 'BIND_REQUIRED' ? 'bind' : 'phone'
+  if (result.status === 'BIND_REQUIRED') errorText.value = '请登录原账号，验证后绑定微信'
+}
+
+function requireTicket() {
+  if (loginTicket.value.length === 0 || Date.now() >= ticketExpiresAt.value) {
+    switchMode('wechat')
+    throw new Error('登录已超时，请重新微信登录')
+  }
+}
+
+async function wechatLogin() {
+  if (busy.value) return
+  errorText.value = ''
+  busy.value = true
+  try { acceptWechat(await startWechatLogin()) }
+  catch (error) { errorText.value = error.message || '微信登录失败，请重试' }
+  finally { busy.value = false }
+}
+
+async function phoneAuthorized(event) {
+  if (busy.value) return
+  errorText.value = ''
+  // 拒绝授权不消费票据，可在有效期内重新授权。
+  let code = ''
+  try { requireTicket(); code = readPhoneCode(event.detail) }
+  catch (error) { errorText.value = error.message; return }
+  busy.value = true
+  try { acceptWechat(await loginWithWechatPhone(loginTicket.value, code)) }
+  catch (error) {
+    loginTicket.value = ''
+    mode.value = 'wechat'
+    errorText.value = error.message || '手机号验证失败，请重新微信登录'
+  } finally { busy.value = false }
+}
 
 async function submit() {
   if (busy.value) return
   errorText.value = validateCredentials(username.value, password.value)
   if (errorText.value.length > 0) return
+  if (mode.value === 'bind') {
+    try { requireTicket() }
+    catch (error) { errorText.value = error.message; return }
+  }
   busy.value = true
   try {
-    await login(username.value, password.value)
+    if (mode.value === 'bind') acceptWechat(await bindWechatAccount(loginTicket.value, username.value, password.value))
+    else { await login(username.value, password.value); goHome() }
     password.value = ''
-    uni.reLaunch({ url: '/pages/home/index' })
   } catch (error) {
     errorText.value = error.message || '登录失败，请重试'
-  } finally {
-    busy.value = false
+    // 绑定票据可能已消费，重新识别微信身份后才能再次绑定。
+    if (mode.value === 'bind') { loginTicket.value = ''; mode.value = 'wechat' }
+  } finally { busy.value = false }
+}
+
+async function setPassword() {
+  if (busy.value) return
+  errorText.value = ''
+  if (newPassword.value.length < 8 || newPassword.value.length > 128 || newPassword.value.trim().length === 0) {
+    errorText.value = '密码长度需为 8–128 位'; return
   }
+  if (newPassword.value !== confirmPassword.value) { errorText.value = '两次输入的密码不一致'; return }
+  busy.value = true
+  try {
+    await initializeWechatPassword(newPassword.value)
+    newPassword.value = ''; confirmPassword.value = ''
+    goHome()
+  } catch (error) {
+    errorText.value = error.message || '设置失败，请重试'
+    if (session.token.length === 0) {
+      mode.value = wechatEnabled.value ? 'wechat' : 'password'
+      newPassword.value = ''; confirmPassword.value = ''
+    }
+  }
+  finally { busy.value = false }
 }
 </script>
 
@@ -51,14 +169,40 @@ async function submit() {
         <text class="login-subtitle muted">登录，继续记录你的每一天。</text>
 
         <view class="login-form">
-          <text class="field-label ink">账号</text>
-          <input v-model="username" class="field-input" placeholder="请输入账号" :disabled="busy" :maxlength="100" confirm-type="next" aria-label="账号" />
-          <text class="field-label password-label ink">密码</text>
-          <input v-model="password" class="field-input" placeholder="请输入密码" :password="true" :disabled="busy" :maxlength="200" confirm-type="go" aria-label="密码" @confirm="submit" />
+          <!-- #ifdef MP-WEIXIN -->
+          <view v-if="mode === 'wechat'">
+            <button class="primary-button" :loading="busy" :disabled="busy" @click="wechatLogin">微信登录</button>
+            <button class="text-button muted" :disabled="busy" @click="switchMode('password')">账号密码登录</button>
+          </view>
+          <view v-if="mode === 'phone'">
+            <button class="primary-button" :open-type="busy ? '' : 'getPhoneNumber'" :loading="busy" :disabled="busy" @getphonenumber="phoneAuthorized">授权手机号并注册</button>
+            <text class="phone-note muted">首次使用将创建账号，已有账号请先登录绑定。</text>
+            <button class="text-button muted" :disabled="busy" @click="switchMode('bind')">已有账号，登录并绑定</button>
+            <button class="text-button muted" :disabled="busy" @click="switchMode('wechat')">返回微信登录</button>
+          </view>
+          <view v-if="mode === 'set-password'">
+            <text class="field-label ink">设置登录密码</text>
+            <text class="account-note muted" :selectable="true">登录账号：{{ accountUsername }}</text>
+            <input v-model="newPassword" class="field-input" placeholder="设置密码，至少 8 位" :password="true" :disabled="busy" :maxlength="128" aria-label="设置密码" />
+            <input v-model="confirmPassword" class="field-input password-label" placeholder="再次输入密码" :password="true" :disabled="busy" :maxlength="128" aria-label="确认密码" @confirm="setPassword" />
+            <button class="primary-button password-label" :loading="busy" :disabled="busy" @click="setPassword">设置并进入</button>
+            <button class="text-button muted" :disabled="busy" @click="goHome">暂不设置</button>
+          </view>
+          <!-- #endif -->
+          <view v-if="mode === 'password' || mode === 'bind'">
+            <text class="field-label ink">账号</text>
+            <input v-model="username" class="field-input" placeholder="请输入账号" :disabled="busy" :maxlength="100" confirm-type="next" aria-label="账号" />
+            <text class="field-label password-label ink">密码</text>
+            <input v-model="password" class="field-input" placeholder="请输入密码" :password="true" :disabled="busy" :maxlength="200" confirm-type="go" aria-label="密码" @confirm="submit" />
+            <button role="button" :class="['primary-button', 'password-label', busy ? 'primary-disabled' : '']" :loading="busy" :disabled="busy" :aria-disabled="busy" @click="submit">{{ busy ? '正在登录' : (mode === 'bind' ? '登录并绑定微信' : '登录') }}</button>
+            <!-- #ifdef MP-WEIXIN -->
+            <button v-if="wechatCapabilityFailed" class="text-button muted" :disabled="busy" @click="loadWechatCapabilities">重试微信登录</button>
+            <button v-if="wechatEnabled" class="text-button muted" :disabled="busy" @click="switchMode('wechat')">微信登录</button>
+            <!-- #endif -->
+          </view>
           <view class="form-message">
             <text v-if="errorText" class="error-text" role="alert">{{ errorText }}</text>
           </view>
-          <button role="button" :class="['primary-button', busy ? 'primary-disabled' : '']" :loading="busy" :disabled="busy" :aria-disabled="busy" @click="submit">{{ busy ? '正在登录' : '登录' }}</button>
         </view>
       </view>
       <text class="footer-note login-footer">把日子，过成自己的样子。</text>
@@ -84,4 +228,10 @@ async function submit() {
 @media (prefers-color-scheme: dark) { .field-input { background-color: #202d24; border-color: #344539; color: #e4ece6; } }
 .form-message { min-height: 39px; padding-top: 8px; padding-bottom: 8px; }
 .login-footer { margin-top: 40px; }
+.text-button { margin: 12px 0 0; padding: 8px; min-height: 44px; border: 0; border-radius: 12px; background-color: transparent; font-size: 14px; line-height: 24px; }
+.phone-note { margin-top: 12px; font-size: 12px; line-height: 20px; text-align: center; }
+.account-note { margin-bottom: 16px; font-size: 13px; line-height: 22px; }
+/* #ifdef WEB || MP-WEIXIN */
+.text-button::after { border: 0; }
+/* #endif */
 </style>

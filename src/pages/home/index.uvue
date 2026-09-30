@@ -1,8 +1,11 @@
 <script setup lang="ts">
-import { computed, reactive, ref } from 'vue'
-import { onShow, onUnload } from '@dcloudio/uni-app'
+import { useRefreshTheme } from '../../services/refresh-theme.ts'
+const refreshTheme = useRefreshTheme()
+import { nextTick, computed, reactive, ref } from 'vue'
+import { onShow, onHide, onUnload } from '@dcloudio/uni-app'
 import DashboardSection from '../../components/DashboardSection.uvue'
-import { fetchUser, logout } from '../../services/api.ts'
+import PageHeader from '../../components/PageHeader.uvue'
+import { fetchUser } from '../../services/api.ts'
 import { restoreSession, session } from '../../services/session.ts'
 import {
   getOverview,
@@ -22,12 +25,19 @@ import type {
   ExercisePage,
   Commit,
 } from '../../services/dashboard.ts'
-import { timeSummary, webLink } from '../../services/dashboard-format.ts'
+import { takeRecordChange } from '../../services/time-changes.ts'
+import { elapsedSinceRecord } from '../../services/time-format.ts'
+import { todayDate } from '../../services/dashboard.ts'
+import { durationLabel, timeSummary, webLink } from '../../services/dashboard-format.ts'
 
-const user = computed(() => session.user)
 const loading = ref(false)
-const leaving = ref(false)
-const confirmLogout = ref(false)
+const refreshing = ref(false)
+async function pullRefresh() {
+  if (refreshing.value) return
+  refreshing.value = true
+  await nextTick()
+  try { if (refreshTask) await refreshTask; await refresh() } finally { refreshing.value = false }
+}
 const errorText = ref('')
 const cards = ref<OverviewCard[]>([])
 const overview = reactive({ loading: false, error: '' })
@@ -37,6 +47,22 @@ const watched = ref<WatchedTask[]>([])
 const exercise = ref<ExercisePage>({ days: [] })
 const commits = ref<Commit[]>([])
 const time = ref(timeSummary([], []))
+const timeDate = ref('')
+const nowMinutes = ref(0)
+let minuteTimer: ReturnType<typeof setInterval> | null = null
+function tickTime() {
+  const now = new Date()
+  nowMinutes.value = now.getHours() * 60 + now.getMinutes()
+  if (timeDate.value && timeDate.value !== todayDate()) loadSection('time')
+}
+const timeElapsed = computed(() => {
+  if (timeDate.value !== todayDate()) return ''
+  const minutes = elapsedSinceRecord(time.value.recent, nowMinutes.value)
+  return minutes == null ? '' : durationLabel(minutes)
+})
+function openTimeRecord(id = '') {
+  uni.navigateTo({ url: '/pages/time/edit' + (id ? '?id=' + encodeURIComponent(id) : '') })
+}
 const states = reactive({
   time: { loading: false, error: '' },
   links: { loading: false, error: '' },
@@ -59,6 +85,7 @@ const moreCommits = ref(false)
 const moreErrors = reactive({ exercise: '', commits: '' })
 const commitPage = ref(1)
 const hasMoreCommits = ref(false)
+let refreshTask: Promise<void> | null = null
 let active = true
 let redirecting = false
 
@@ -79,22 +106,37 @@ function handleError(error): string {
   return error.message || '加载失败，请重试'
 }
 function isCurrent(token: string) {
-  return active && !leaving.value && session.token === token
+  return active && session.token === token
 }
 onShow(() => {
+  tickTime()
+  if (minuteTimer) clearInterval(minuteTimer)
+  minuteTimer = setInterval(tickTime, 60000)
   restoreSession()
   if (!session.token) {
     goLogin()
     return
   }
+  if (takeRecordChange()) {
+    loadSection('time'); loadSection('exercise')
+    const card = cards.value.find(item => item.type === 'EXERCISE')
+    if (card) loadCard(card)
+    return
+  }
   refresh()
 })
+onHide(() => { if (minuteTimer) clearInterval(minuteTimer); minuteTimer = null })
 onUnload(() => {
   active = false
+  if (minuteTimer) clearInterval(minuteTimer)
 })
 
-async function refresh() {
-  if (loading.value || leaving.value) return
+function refresh() {
+  if (refreshTask) return refreshTask
+  refreshTask = loadHome().finally(() => { refreshTask = null })
+  return refreshTask
+}
+async function loadHome() {
   loading.value = true
   errorText.value = ''
   const token = session.token
@@ -123,7 +165,7 @@ async function loadOverview() {
   try {
     const items = await getOverview()
     if (!isCurrent(token)) return
-    cards.value = items.map((item) => ({ ...item, loading: false, error: '' }))
+    cards.value = items.map((item) => ({ ...(refreshing.value ? cards.value.find(card => card.type === item.type) : {}), ...item, loading: false, error: '' }))
     await Promise.all([
       ...cards.value.map((item) => loadCard(item)),
       ...(githubBound.value ? [loadSection('commits')] : []),
@@ -157,9 +199,12 @@ async function loadSection(key: string) {
   const token = session.token
   try {
     if (key === 'time') {
-      const data = await getTime()
-      if (isCurrent(token))
+      const requestedDate = todayDate()
+      const data = await getTime(requestedDate)
+      if (isCurrent(token)) {
         time.value = timeSummary(data.categories, data.records)
+        timeDate.value = requestedDate
+      }
     }
     if (key === 'links') {
       const data = await getQuickLinks()
@@ -308,76 +353,12 @@ function trendLines(points) {
     }
   })
 }
-async function signOut() {
-  if (leaving.value) return
-  leaving.value = true
-  try {
-    await logout()
-  } catch (_) {
-    uni.showToast({ title: '已退出本机，服务端注销未完成', icon: 'none' })
-  } finally {
-    goLogin()
-    leaving.value = false
-  }
-}
 </script>
 
 <template>
   <view class="dashboard-page">
-    <view class="topbar">
-      <view class="topbar-brand"
-        ><image class="logo" src="/static/logo.png" mode="aspectFit" /><text
-          class="brand-label"
-          >AIO-LIFE</text
-        ><text class="home-label">主页</text></view
-      >
-      <view class="toolbar">
-        <button
-          role="button"
-          class="tool-button"
-          aria-label="刷新首页"
-          :disabled="loading"
-          :loading="loading"
-          @click="refresh"
-        >
-          <text v-if="!loading" class="tool-symbol">↻</text>
-        </button>
-        <text v-if="user" class="user-label">{{ user.name }}</text>
-        <view class="logout-anchor">
-          <button
-            role="button"
-            class="tool-button"
-            aria-label="退出登录"
-            :disabled="leaving"
-            @click="confirmLogout = !confirmLogout"
-          >
-            <text class="tool-symbol">⏻</text>
-          </button>
-          <view v-if="confirmLogout" class="logout-popover"
-            ><text class="confirm-text">退出当前账号？</text
-            ><view class="confirm-actions"
-              ><button
-                role="button"
-                class="cancel-button"
-                :disabled="leaving"
-                @click="confirmLogout = false"
-              >
-                取消</button
-              ><button
-                role="button"
-                class="confirm-button"
-                :loading="leaving"
-                :disabled="leaving"
-                @click="signOut"
-              >
-                退出
-              </button></view
-            ></view
-          >
-        </view>
-      </view>
-    </view>
-    <scroll-view scroll-y class="dashboard-scroll"
+    <PageHeader title="人生仪表盘" />
+    <scroll-view scroll-y class="dashboard-scroll" :refresher-enabled="true" :refresher-triggered="refreshing" refresher-background="transparent" :refresher-default-style="refreshTheme" @refresherrefresh="pullRefresh"
       ><view class="dashboard-content">
         <view v-if="errorText" class="global-error" role="alert"
           ><text class="failure-text">{{ errorText }}</text
@@ -410,10 +391,10 @@ async function signOut() {
               role="button"
               class="overview-card"
               :aria-label="
-                item.error ? '重试' + item.title : '刷新' + item.title
+                item.error ? '重试' + item.title : item.title
               "
               :disabled="item.loading"
-              @click="loadCard(item)"
+              @click="item.error && loadCard(item)"
             >
               <view v-if="item.loading" class="card-progress"></view>
               <view class="stat-top"
@@ -448,10 +429,11 @@ async function signOut() {
           <view class="section-cell"
             ><DashboardSection
               title="时迹"
-              :loading="states.time.loading"
+              :loading="states.time.loading && !refreshing"
               :error="states.time.error"
               @refresh="loadSection('time')"
             >
+              <template #actions><button role="button" class="time-add-button" aria-label="新增时迹" :disabled="states.time.loading" @click="openTimeRecord()"><text v-if="timeElapsed" class="time-elapsed">{{ timeElapsed }}</text><text class="time-add-symbol">＋</text></button></template>
               <view class="time-layout">
                 <view class="timeline-labels"
                   ><text class="axis-label">0</text
@@ -485,17 +467,17 @@ async function signOut() {
                 <view class="recent-times"
                   ><text v-if="time.recent.length === 0" class="empty-label"
                     >今日暂无记录</text
-                  ><view
+                  ><button role="button"
                     v-for="record in time.recent"
                     :key="record.id"
-                    class="time-record"
+                    class="time-record" :aria-label="'编辑时迹 ' + record.name" @click="openTimeRecord(record.id)"
                     ><view class="time-record-title"
                       ><view
                         class="color-dot"
                         :style="{ backgroundColor: record.color }"
                       ></view
                       ><text class="record-name">{{ record.name }}</text></view
-                    ><text class="record-time">{{ record.label }}</text></view
+                    ><text class="record-time">{{ record.label }}</text></button
                   ></view
                 >
               </view>
@@ -504,7 +486,7 @@ async function signOut() {
           <view class="section-cell"
             ><DashboardSection
               title="快捷导航"
-              :loading="states.links.loading"
+              :loading="states.links.loading && !refreshing"
               :error="states.links.error"
               @refresh="loadSection('links')"
             >
@@ -544,7 +526,7 @@ async function signOut() {
             class="section-cell"
             ><DashboardSection
               title="待办"
-              :loading="states.watched.loading"
+              :loading="states.watched.loading && !refreshing"
               :error="states.watched.error"
               @refresh="loadSection('watched')"
               ><scroll-view scroll-y class="list-scroll"
@@ -571,7 +553,7 @@ async function signOut() {
           <view class="section-cell"
             ><DashboardSection
               title="闪念"
-              :loading="states.thoughts.loading"
+              :loading="states.thoughts.loading && !refreshing"
               :error="states.thoughts.error"
               @refresh="loadSection('thoughts')"
               ><view v-if="thoughts.length === 0" class="empty-state"
@@ -605,7 +587,7 @@ async function signOut() {
             class="section-cell"
             ><DashboardSection
               title="运动"
-              :loading="states.exercise.loading"
+              :loading="states.exercise.loading && !refreshing"
               :error="states.exercise.error"
               @refresh="loadSection('exercise')"
               ><scroll-view scroll-y class="list-scroll"
@@ -686,7 +668,7 @@ async function signOut() {
           <view v-if="githubBound" class="section-cell"
             ><DashboardSection
               title="最近提交"
-              :loading="states.commits.loading"
+              :loading="states.commits.loading && !refreshing"
               :error="states.commits.error"
               @refresh="loadSection('commits')"
               ><view v-if="commits.length === 0" class="empty-state"
@@ -728,6 +710,14 @@ async function signOut() {
 </template>
 
 <style scoped>
+.time-add-button { display: flex; flex-direction: row; align-items: center; justify-content: center; min-width: 44px; height: 44px; line-height: 44px; padding: 0 10px; margin: 0; border: 0; border-radius: 22px; background-color: transparent; }
+.time-elapsed { color: #71717a; font-size: 13px; margin-right: 4px; }
+.time-add-symbol { color: #8b8f99; font-size: 20px; }
+.time-record { padding: 0; margin: 0; border: 0; background-color: transparent; text-align: left; line-height: 20px; }
+@media (prefers-color-scheme: dark) { .time-elapsed { color: #b4b4bd; } }
+/* #ifdef WEB || MP-WEIXIN */
+.time-add-button::after, .time-record::after { border: 0; }
+/* #endif */
 .dashboard-page {
   flex: 1;
   height: 100%;
@@ -736,65 +726,6 @@ async function signOut() {
 .dashboard-scroll {
   flex: 1;
   height: 0;
-}
-.topbar {
-  flex-shrink: 0;
-  flex-direction: row;
-  align-items: center;
-  justify-content: space-between;
-  height: 60px;
-  padding: 0 20px;
-  background-color: #ffffff;
-  border-bottom: 1px solid #e4e4e7;
-  overflow: visible;
-  z-index: 5;
-  padding-top: env(safe-area-inset-top);
-}
-.topbar-brand,
-.toolbar {
-  flex-direction: row;
-  align-items: center;
-  overflow: visible;
-}
-.logo {
-  width: 30px;
-  height: 30px;
-}
-.brand-label {
-  font-size: 17px;
-  font-weight: 600;
-  margin-left: 8px;
-  color: #242428;
-}
-.home-label {
-  margin-left: 24px;
-  color: #3662da;
-  font-size: 14px;
-}
-.user-label {
-  color: #71717a;
-  font-size: 12px;
-  margin: 0 12px;
-  max-width: 120px;
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-}
-.tool-button {
-  display: flex;
-  line-height: 36px;
-  width: 36px;
-  height: 36px;
-  padding: 0;
-  margin: 0;
-  background-color: transparent;
-  border: 0;
-  align-items: center;
-  justify-content: center;
-}
-.tool-symbol {
-  color: #71717a;
-  font-size: 22px;
 }
 .dashboard-content {
   width: 100%;
@@ -1189,63 +1120,7 @@ async function signOut() {
   font-size: 12px;
   flex: 1;
 }
-.logout-anchor {
-  position: relative;
-  overflow: visible;
-}
-.logout-popover {
-  position: absolute;
-  right: 0;
-  top: 44px;
-  width: 210px;
-  background-color: #ffffff;
-  border: 1px solid #e4e4e7;
-  border-radius: 12px;
-  padding: 16px;
-  z-index: 20;
-}
-.confirm-text {
-  color: #3f3f46;
-  font-size: 14px;
-}
-.confirm-actions {
-  flex-direction: row;
-  justify-content: flex-end;
-  margin-top: 14px;
-}
-.cancel-button,
-.confirm-button {
-  margin: 0;
-  padding: 4px 12px;
-  border: 0;
-  border-radius: 7px;
-  font-size: 12px;
-}
-.cancel-button {
-  color: #71717a;
-  background-color: #f4f4f5;
-}
-.confirm-button {
-  margin-left: 8px;
-  color: #ffffff;
-  background-color: #3662da;
-}
 @media (max-width: 480px) {
-  .topbar {
-    padding-left: 12px;
-    padding-right: 8px;
-    height: 54px;
-  }
-  .brand-label {
-    font-size: 15px;
-  }
-  .home-label {
-    margin-left: 12px;
-    font-size: 12px;
-  }
-  .user-label {
-    display: none;
-  }
   .dashboard-content {
     padding: 4px;
   }
@@ -1285,18 +1160,14 @@ async function signOut() {
   .dashboard-page {
     background-color: #111215;
   }
-  .topbar,
-  .overview-card,
-  .logout-popover {
+  .overview-card {
     background-color: #1c1e22;
     border-color: #303238;
   }
-  .brand-label,
   .stat-title,
   .stat-value,
   .donut-total,
-  .quick-icon,
-  .confirm-text {
+  .quick-icon {
     color: #eeeeef;
   }
   .home-label {
@@ -1304,7 +1175,6 @@ async function signOut() {
   }
   .stat-caption,
   .stat-total,
-  .user-label,
   .empty-label {
     color: #9c9ca6;
   }

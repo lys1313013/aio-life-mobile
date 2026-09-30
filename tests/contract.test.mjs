@@ -30,3 +30,9 @@ test('账号去空白检查，密码原样保留', () => {
   assert.equal(validateCredentials('test', ''), '请输入密码');
   assert.equal(validateCredentials(' test ', ' pass '), '');
 });
+
+
+test('实际登录账号优先于旧接口的昵称展示字段', () => {
+  const user = readUser({ id: '123', username: '生活记录者', accountUsername: 'u_123' });
+  assert.equal(user.username, 'u_123');
+});

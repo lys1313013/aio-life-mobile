@@ -1,0 +1,90 @@
+<script setup lang="ts">
+defineProps({
+  title: { type: String, required: true },
+  back: { type: Boolean, default: false },
+})
+defineEmits(['back'])
+let statusBarHeight = 0
+let navigationHeight = 48
+// #ifdef APP
+statusBarHeight = uni.getWindowInfo().statusBarHeight || 0
+// #endif
+// #ifdef MP-WEIXIN
+const capsule = uni.getMenuButtonBoundingClientRect()
+statusBarHeight = uni.getWindowInfo().statusBarHeight || 0
+navigationHeight =
+  capsule.height + Math.max(capsule.top - statusBarHeight, 4) * 2
+// #endif
+</script>
+
+<template>
+  <view class="page-navigation" :style="{ paddingTop: statusBarHeight + 'px' }">
+    <view class="navigation-row" :style="{ height: navigationHeight + 'px' }">
+      <text class="navigation-title">{{ title }}</text>
+      <button
+        v-if="back"
+        role="button"
+        class="navigation-button"
+        aria-label="返回"
+        @click="$emit('back')"
+      >
+        <text class="navigation-symbol">‹</text>
+      </button>
+    </view>
+  </view>
+</template>
+
+<style scoped>
+.page-navigation {
+  flex-shrink: 0;
+  background-color: #f0f2f5;
+}
+.navigation-row {
+  flex-direction: row;
+  align-items: center;
+  position: relative;
+  padding: 0 16px;
+}
+.navigation-title {
+  position: absolute;
+  left: 96px;
+  right: 96px;
+  text-align: center;
+  color: #242428;
+  font-size: 17px;
+  font-weight: 600;
+  line-height: 32px;
+}
+.navigation-button {
+  width: 44px;
+  height: 44px;
+  line-height: 44px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 16px;
+  background-color: transparent;
+  align-items: center;
+  justify-content: center;
+}
+.navigation-symbol {
+  font-size: 24px;
+  color: #71717a;
+}
+@media (prefers-color-scheme: dark) {
+  .page-navigation {
+    background-color: #111215;
+  }
+  .navigation-title {
+    color: #eeeeef;
+  }
+  .navigation-symbol {
+    color: #b4b4bd;
+  }
+}
+/* #ifdef WEB || MP-WEIXIN */
+.navigation-button::after {
+  border: 0;
+}
+/* #endif */
+</style>

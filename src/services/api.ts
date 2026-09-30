@@ -7,8 +7,8 @@ baseURL = import.meta.env.VITE_WEB_API_BASE_URL || '/api'
 // #endif
 baseURL = baseURL.replace(/\/$/, '')
 
-export function request<T>(path: string, method: 'GET' | 'POST' = 'GET', data: Record<string, string> | null = null, authenticated = true): Promise<T> {
-  const token = authenticated ? session.token : ''
+export function request<T>(path: string, method: 'GET' | 'POST' | 'PUT' | 'DELETE' = 'GET', data: Record<string, any> | null = null, authenticated = true, tokenOverride: string | null = null): Promise<T> {
+  const token = tokenOverride != null ? tokenOverride : (authenticated ? session.token : '')
   return new Promise<T>((resolve, reject) => {
     const header: Record<string, string> = { 'Content-Type': 'application/json' }
     if (token.length > 0) header.Authorization = 'Bearer ' + token
