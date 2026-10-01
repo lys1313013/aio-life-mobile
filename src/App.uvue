@@ -1,11 +1,16 @@
 <script setup lang="ts">
-import { onLaunch } from '@dcloudio/uni-app'
+import { onHide, onLaunch } from '@dcloudio/uni-app'
 import { restoreSession } from './services/session.ts'
+import { installUnlockLifecycle, invalidateUnlocks } from './services/secondary-lock.ts'
 
-onLaunch(() => restoreSession())
+import { initializeTheme } from './services/theme.ts'
+
+onLaunch(() => { installUnlockLifecycle(); initializeTheme(); restoreSession() })
+onHide(invalidateUnlocks)
 </script>
 
-<style>
+<style lang="scss">
+@use './styles/spacing-tokens' as *;
 /* Vapor 使用简单类选择器；主题色显式传递，不依赖浏览器 DOM。 */
 .page {
   flex: 1;
@@ -15,11 +20,11 @@ onLaunch(() => restoreSession())
 
 .screen {
   width: 100%;
-  max-width: 960px;
+  max-width: $space-contentMax;
   align-self: center;
-  padding: 28px;
-  padding-top: 64px;
-  padding-bottom: 40px;
+  padding: $space-page;
+  padding-top: $space-overlayBlock * 2;
+  padding-bottom: $space-overlayBlock;
 }
 .brand { flex-direction: row; align-items: center; }
 .brand-mark {
@@ -31,7 +36,7 @@ onLaunch(() => restoreSession())
   background-color: #39765e;
 }
 .brand-symbol { font-size: 21px; color: #ffffff; font-weight: 700; }
-.brand-name { margin-left: 10px; font-size: 17px; font-weight: 600; color: #203b2f; }
+.brand-name { margin-left: $space-inline; font-size: 17px; font-weight: 600; color: #203b2f; }
 .ink { color: #203b2f; }
 .muted { color: #75847a; }
 
@@ -69,27 +74,33 @@ onLaunch(() => restoreSession())
 }
 
 .footer-note { font-size: 12px; color: #8b988f; line-height: 20px; text-align: center; }
-@media (prefers-color-scheme: dark) {
-  .page { background-color: #151d19; }
-  .ink, .brand-name { color: #e4ece6; }
-  .muted { color: #a0afa5; }
-  .error-text { color: #ffb4a8; }
-  .icon-button { background-color: #28372d; color: #abd4b9; }
-}
+
+  .page-dark { background-color: #151d19; }
+  .ink-dark, .brand-name-dark { color: #e4ece6; }
+  .muted-dark { color: #a0afa5; }
+  .error-text-dark { color: #ffb4a8; }
+  .icon-button-dark { background-color: #28372d; color: #abd4b9; }
+
 .tab-page { flex: 1; height: 100%; background-color: #f0f2f5; }
 .tab-scroll { flex: 1; height: 0; }
-.tab-content { width: 100%; max-width: 720px; align-self: center; padding: 20px 16px 32px; }
-.state-card { background-color: #ffffff; border-radius: 16px; padding: 32px 20px; align-items: center; }
+.tab-content { width: 100%; max-width: $space-contentMax; align-self: center; padding: $space-page; padding-bottom: calc($space-page + env(safe-area-inset-bottom)); }
+.state-card { background-color: #ffffff; border-radius: 16px; padding: $space-section $space-card; align-items: center; }
 .muted-text { font-size: 13px; line-height: 22px; color: #8b8f99; }
-.empty-title { font-size: 15px; line-height: 24px; color: #52525b; margin-bottom: 8px; }
-.text-action { font-size: 14px; padding: 4px 16px; margin-top: 12px; border: 0; background-color: transparent; color: #5b8ff9; }
-@media (prefers-color-scheme: dark) {
-  .tab-page { background-color: #111215; }
-  .state-card { background-color: #1c1e22; }
-  .empty-title { color: #d4d4d8; }
-}
+.empty-title { font-size: 15px; line-height: 24px; color: #52525b; margin-bottom: $space-inline; }
+.text-action { font-size: 14px; padding: $space-detail $space-card; margin-top: $space-section; border: 0; background-color: transparent; color: #5b8ff9; }
+
+  .tab-page-dark { background-color: #111215; }
+  .state-card-dark { background-color: #1c1e22; }
+  .empty-title-dark { color: #d4d4d8; }
+
 /* #ifdef WEB */
 page { min-height: 100%; }
+:global(.uni-tabbar) { background-color: var(--aio-tab-background, #ffffff) !important; }
+:global(.uni-tabbar-border) { background-color: var(--aio-tab-border, #ffffff) !important; }
+/* 原生 Web picker 的默认层级低于编辑弹窗。 */
+:global(.uni-picker-container) { z-index: 1200 !important; }
+:global(.uni-picker-select), :global(.uni-picker-custom) { background-color: var(--aio-tab-background, #ffffff) !important; color: var(--aio-native-text, #27272a) !important; }
+:global(.uni-picker-item) { color: var(--aio-native-text, #27272a) !important; }
 /* Web 的页面容器已扣除 tabBar 高度，移除框架重复的底部占位。 */
 uni-app.uni-app--showtabbar uni-page-body::after { display: none; }
 /* #endif */

@@ -1,0 +1,632 @@
+<script setup lang="ts">
+import AppIcon from '../../components/AppIcon.uvue'
+import SecondaryUnlock from "../../components/SecondaryUnlock.uvue";
+import { computed, nextTick, ref } from "vue";
+import { onShow, onHide } from "@dcloudio/uni-app";
+import PageHeader from "../../components/PageHeader.uvue";
+import AdaptiveModal from "../../components/AdaptiveModal.uvue";
+import LifeMenuIcon from "../../components/LifeMenuIcon.uvue";
+import { restoreSession, session } from "../../services/session.ts";
+import {
+  loadLifeCatalog,
+  loadLifeQuickLinks,
+  saveLifeQuickLinks,
+} from "../../services/life.ts";
+import {
+  catalogSections,
+  QUICK_NAV_MAX,
+} from "../../services/life-catalog.ts";
+import {
+  openBusinessLink,
+  takeQuickNavEditorRequest,
+} from "../../services/navigation.ts";
+import { useRefreshTheme } from "../../services/refresh-theme.ts";
+import { themeClass } from "../../services/theme.ts";
+
+const refreshTheme = useRefreshTheme();
+const catalog = ref<any[]>([]);
+const query = ref("");
+const catalogLoading = ref(false);
+const quickLoading = ref(false);
+const catalogError = ref("");
+const quickError = ref("");
+const refreshing = ref(false);
+const editing = ref(false);
+const draft = ref<any[]>([]);
+const editQuery = ref("");
+const saveError = ref("");
+const saving = ref(false);
+const folders = ref<any[]>([]);
+const folder = computed(() => folders.value[folders.value.length - 1] || null);
+let active = false;
+let epoch = 0;
+let account = "";
+const sections = computed(() => catalogSections(catalog.value, query.value));
+const available = computed(() => !catalogLoading.value && !catalogError.value);
+const canEdit = computed(
+  () => available.value && !quickLoading.value && !quickError.value,
+);
+const choices = computed(() =>
+  catalog.value.filter(
+    (item) =>
+      !draft.value.some((entry) => entry.menuId === item.menuId) &&
+      (item.title + " " + (item.parentTitle || ""))
+        .toLowerCase()
+        .includes(editQuery.value.trim().toLowerCase()),
+  ),
+);
+
+function current(version, token) {
+  return active && epoch === version && session.token === token;
+}
+function currentError(version, token, error) {
+  return (
+    active &&
+    epoch === version &&
+    (session.token === token ||
+      (!session.token && error.name === "SessionExpiredError"))
+  );
+}
+function fail(error, target) {
+  if (error.name === "SessionExpiredError") {
+    uni.reLaunch({ url: "/pages/login/index" });
+    return;
+  }
+  target.value = error.message || "加载失败，请重试";
+}
+async function loadPart(part: string, version = epoch, token = session.token) {
+  const loading = part === "catalog" ? catalogLoading : quickLoading;
+  const error = part === "catalog" ? catalogError : quickError;
+  if (loading.value) return;
+  loading.value = true;
+  error.value = "";
+  try {
+    const data =
+      part === "catalog" ? await loadLifeCatalog() : await loadLifeQuickLinks();
+    if (!current(version, token)) return;
+    if (part === "catalog") {
+      catalog.value = data;
+      folders.value = [];
+    }
+    else {
+      // 保留停用或目录外的快捷项，避免保存时丢失已有配置。
+      draft.value = data.map((item) => ({ ...item }));
+    }
+  } catch (reason) {
+    if (currentError(version, token, reason)) fail(reason, error);
+  } finally {
+    if (active && epoch === version) loading.value = false;
+  }
+}
+async function refresh() {
+  if (
+    refreshing.value ||
+    catalogLoading.value ||
+    quickLoading.value ||
+    saving.value ||
+    editing.value
+  )
+    return;
+  refreshing.value = true;
+  const version = epoch;
+  await nextTick();
+  try {
+    await loadPart("catalog");
+  } finally {
+    if (epoch === version) refreshing.value = false;
+  }
+}
+onShow(() => {
+  active = true;
+  epoch++;
+  const editRequested = takeQuickNavEditorRequest();
+  restoreSession();
+  if (!session.token) {
+    uni.reLaunch({ url: "/pages/login/index" });
+    return;
+  }
+  if (account !== session.token) {
+    catalog.value = [];
+    query.value = "";
+    account = session.token;
+  }
+  catalogLoading.value = false;
+  quickLoading.value = false;
+  editing.value = editRequested;
+  editQuery.value = "";
+  saveError.value = "";
+  quickError.value = "";
+  draft.value = [];
+  loadPart("catalog");
+  if (editRequested) loadPart("quick");
+});
+onHide(() => {
+  active = false;
+  epoch++;
+  editing.value = false;
+  folders.value = [];
+  refreshing.value = false;
+});
+function openEntry(item) {
+  if (!available.value) return;
+  if (item.children) folders.value.push(item);
+  else openBusinessLink(item.path);
+}
+function add(item) {
+  if (saving.value || draft.value.length >= QUICK_NAV_MAX) return;
+  draft.value.push({ ...item, enabled: 1 });
+}
+function move(index, step) {
+  if (saving.value) return;
+  const items = [...draft.value];
+  const destination = index + step;
+  if (destination < 0 || destination >= items.length) return;
+  const item = items.splice(index, 1)[0];
+  items.splice(destination, 0, item);
+  draft.value = items;
+}
+function remove(index) {
+  if (!saving.value) draft.value.splice(index, 1);
+}
+function toggle(index) {
+  if (!saving.value)
+    draft.value[index].enabled = draft.value[index].enabled === 1 ? 0 : 1;
+}
+async function save() {
+  if (saving.value || !canEdit.value) return;
+  saving.value = true;
+  saveError.value = "";
+  const token = session.token;
+  const version = epoch;
+  try {
+    await saveLifeQuickLinks(draft.value);
+    if (!current(version, token)) return;
+    editing.value = false;
+  } catch (reason) {
+    if (currentError(version, token, reason)) fail(reason, saveError);
+  } finally {
+    saving.value = false;
+  }
+}
+</script>
+
+<template>
+  <view class="tab-page life-page" :class="themeClass('life-page')">
+    <PageHeader title="生活" />
+    <scroll-view
+      scroll-y
+      class="tab-scroll"
+      :refresher-enabled="!editing && !saving"
+      :refresher-triggered="refreshing"
+      refresher-background="transparent"
+      :refresher-default-style="refreshTheme"
+      @refresherrefresh="refresh"
+    >
+      <view class="life-content ui-page-inset ui-tab-page-inset">
+        <view class="life-search ui-row ui-px-card ui-py-xs" :class="themeClass('life-surface')">
+          <LifeMenuIcon icon="lucide:search" color="#8b8f99" />
+          <input
+            v-model="query"
+            class="life-input ui-ml-section"
+            :class="themeClass('life-ink')"
+            aria-label="搜索功能"
+            placeholder="搜索功能"
+            confirm-type="search"
+          />
+          <button
+            role="button"
+            v-if="query"
+            class="life-action"
+            aria-label="清空搜索"
+            @click="query = ''"
+          >
+<AppIcon name="ant-design:close-outlined" />
+</button>
+        </view>
+        <view v-if="catalogLoading" class="life-state ui-px-sm ui-py-card"
+          ><text class="life-muted">加载中</text></view
+        >
+        <view v-if="catalogError" class="life-state ui-px-sm ui-py-card"
+          ><text class="life-error" role="alert">{{ catalogError }}</text
+          ><button
+            role="button"
+            class="life-retry ui-mt-sm ui-px-card"
+            @click="loadPart('catalog')"
+          >
+            重试功能目录
+          </button></view
+        >
+        <view
+          v-if="!catalogLoading && !catalogError && !sections.length"
+          class="life-state ui-px-sm ui-py-card"
+          ><text class="life-muted">{{
+            query.trim() ? "未找到相关功能" : "暂无可用功能"
+          }}</text></view
+        >
+        <view
+          v-for="section in sections"
+          :key="section.menuId"
+          class="life-section ui-mt-section"
+        >
+          <view v-if="section.title" class="life-heading ui-row ui-mb-section"
+            ><text class="life-title" :class="themeClass('life-ink')">{{
+              section.title
+            }}</text></view
+          >
+          <view class="life-grid">
+            <button
+              role="button"
+              v-for="item in section.items"
+              :key="item.menuId"
+              class="life-tile"
+              :disabled="!available"
+              :aria-disabled="!available"
+              :aria-label="
+                item.title +
+                (item.children ? '功能组' : item.native ? '' : '（网页版）')
+              "
+              @click="openEntry(item)"
+            >
+              <LifeMenuIcon :icon="item.icon" :color="item.color" /><text
+                class="life-label ui-mt-sm"
+                :class="themeClass('life-ink')"
+                >{{ item.title }}</text
+              ><text class="life-badge">{{
+                item.children
+                  ? item.children.length + " 项"
+                  : item.native
+                    ? "移动端"
+                    : "网页版"
+              }}</text>
+            </button>
+          </view>
+        </view>
+      </view>
+    </scroll-view>
+    <AdaptiveModal
+      v-if="folder"
+      :label="folder.title"
+      :max-width="520"
+      @close="folders = []"
+    >
+      <view class="life-modal ui-page-body" :class="themeClass('life-surface')">
+        <view class="life-heading ui-row ui-mb-section"
+          ><text class="life-title" :class="themeClass('life-ink')">{{
+            folder.title
+          }}</text
+          ><button
+            v-if="folders.length > 1"
+            role="button"
+            class="life-action"
+            aria-label="返回上级菜单"
+            @click="folders.pop()"
+          ><AppIcon name="ant-design:arrow-left-outlined" /></button><button
+            role="button"
+            class="life-action"
+            aria-label="关闭功能组"
+            @click="folders = []"
+          >
+<AppIcon name="ant-design:close-outlined" />
+</button></view
+        >
+        <view class="life-grid"
+          ><button
+            role="button"
+            v-for="item in folder.children"
+            :key="item.menuId"
+            class="life-tile"
+            :aria-label="item.title + (item.children ? '功能组' : item.native ? '' : '（网页版）')"
+            @click="openEntry(item)"
+          >
+            <LifeMenuIcon :icon="item.icon" :color="item.color" /><text
+              class="life-label ui-mt-sm"
+              :class="themeClass('life-ink')"
+              >{{ item.title }}</text
+            ><text v-if="item.children || !item.native" class="life-badge">{{ item.children ? item.children.length + " 项" : "网页版" }}</text>
+          </button></view
+        >
+      </view>
+    </AdaptiveModal>
+    <AdaptiveModal
+      v-if="editing"
+      label="编辑常用功能"
+      :max-width="560"
+      :busy="saving"
+      @close="editing = false"
+    >
+      <view class="life-modal ui-page-body" :class="themeClass('life-surface')">
+        <view class="life-heading ui-row ui-mb-section"
+          ><text class="life-title" :class="themeClass('life-ink')"
+            >常用 {{ draft.length }}/{{ QUICK_NAV_MAX }}</text
+          ><button
+            role="button"
+            class="life-action"
+            aria-label="取消编辑"
+            :disabled="saving"
+            :aria-disabled="saving"
+            @click="editing = false"
+          >
+<AppIcon name="ant-design:close-outlined" />
+</button
+          ><button
+            role="button"
+            class="life-save ui-px-card"
+            :disabled="saving || !canEdit"
+            :aria-disabled="saving || !canEdit"
+            :loading="saving"
+            @click="save"
+          >
+            保存
+          </button></view
+        >
+        <view v-if="catalogLoading || quickLoading" class="life-state ui-px-sm ui-py-card">
+          <text class="life-muted">加载中</text>
+        </view>
+        <view v-else-if="catalogError || quickError" class="life-state ui-px-sm ui-py-card">
+          <text class="life-error" role="alert">{{ catalogError || quickError }}</text>
+          <button role="button" class="life-retry ui-mt-sm ui-px-card" @click="loadPart(catalogError ? 'catalog' : 'quick')">重试加载</button>
+        </view>
+        <view v-if="canEdit">
+          <text v-if="saveError" class="life-error" role="alert">{{
+            saveError
+          }}</text>
+          <text v-if="!draft.length" class="life-muted">从下方添加功能</text>
+          <view
+            v-for="(item, index) in draft"
+            :key="item.menuId"
+            class="life-edit-row"
+          >
+            <text class="life-edit-name" :class="themeClass('life-ink')">{{
+              item.title
+            }}</text>
+            <button
+              role="button"
+              class="life-action"
+              :aria-label="(item.enabled === 1 ? '停用' : '启用') + item.title"
+              :disabled="saving"
+              :aria-disabled="saving"
+              @click="toggle(index)"
+            >
+              <text class="life-toggle">{{
+                item.enabled === 1 ? "显示" : "隐藏"
+              }}</text>
+            </button>
+            <button
+              role="button"
+              class="life-action"
+              :aria-label="'上移' + item.title"
+              :disabled="saving || index === 0"
+              :aria-disabled="saving || index === 0"
+              @click="move(index, -1)"
+            >
+<AppIcon name="ant-design:arrow-up-outlined" />
+</button>
+            <button
+              role="button"
+              class="life-action"
+              :aria-label="'下移' + item.title"
+              :disabled="saving || index === draft.length - 1"
+              :aria-disabled="saving || index === draft.length - 1"
+              @click="move(index, 1)"
+            >
+<AppIcon name="ant-design:arrow-down-outlined" />
+</button>
+            <button
+              role="button"
+              class="life-action"
+              :aria-label="'移除' + item.title"
+              :disabled="saving"
+              :aria-disabled="saving"
+              @click="remove(index)"
+            >
+<AppIcon name="ant-design:minus-outlined" />
+</button>
+          </view>
+          <view
+            class="life-search life-edit-search ui-row ui-mb-section ui-mt-section ui-px-card ui-py-xs"
+            :class="themeClass('life-page')"
+            ><LifeMenuIcon icon="lucide:search" color="#8b8f99" /><input
+              v-model="editQuery"
+              class="life-input ui-ml-section"
+              :class="themeClass('life-ink')"
+              aria-label="搜索可添加功能"
+              placeholder="搜索可添加功能"
+              :disabled="saving"
+              :aria-disabled="saving"
+          /></view>
+          <text v-if="draft.length >= QUICK_NAV_MAX" class="life-muted"
+            >已达 12 项，可移除后添加</text
+          >
+          <text v-if="!choices.length" class="life-muted">暂无可添加功能</text>
+          <view class="life-grid"
+            ><button
+              role="button"
+              v-for="item in choices"
+              :key="item.menuId"
+              class="life-tile"
+              :aria-label="'添加' + item.title"
+              :disabled="saving || draft.length >= QUICK_NAV_MAX"
+              :aria-disabled="saving || draft.length >= QUICK_NAV_MAX"
+              @click="add(item)"
+            >
+              <LifeMenuIcon :icon="item.icon" :color="item.color" /><text
+                class="life-label ui-mt-sm"
+                :class="themeClass('life-ink')"
+                >{{ item.title }}</text
+              ><AppIcon name="ant-design:plus-outlined" />
+            </button></view
+          >
+        </view>
+      </view>
+    </AdaptiveModal>
+  <SecondaryUnlock />
+  </view>
+</template>
+
+<style scoped lang="scss">
+@use '../../styles/spacing.scss';
+@use '../../styles/spacing-tokens' as *;
+.life-page {
+  background-color: #f0f2f5;
+}
+.life-content {
+
+
+
+
+}
+.life-search {
+  flex-direction: row;
+  align-items: center;
+  background-color: #ffffff;
+  border-radius: 14px;
+
+  min-height: 48px;
+}
+.life-input {
+  flex: 1;
+  min-width: 0;
+  height: 44px;
+
+  font-size: 15px;
+  color: #27272a;
+}
+.life-section {
+
+}
+.life-heading {
+  flex-direction: row;
+  align-items: center;
+  min-height: 44px;
+
+}
+.life-title {
+  flex: 1;
+  font-size: 16px;
+  font-weight: 600;
+  color: #27272a;
+}
+.life-action {
+  display: flex;
+  width: 44px;
+  height: 44px;
+  flex-shrink: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 10px;
+  background-color: transparent;
+  color: #8b8f99;
+  font-size: 23px;
+  line-height: 44px;
+  align-items: center;
+  justify-content: center;
+}
+.life-grid {
+  flex-direction: row;
+  flex-wrap: wrap;
+}
+.life-tile {
+  display: flex;
+  flex-direction: column;
+  width: 25%;
+  min-height: 96px;
+  padding: $space-card $space-micro $space-inline;
+  margin: 0;
+  border: 0;
+  background-color: transparent;
+  border-radius: 12px;
+  align-items: center;
+  justify-content: flex-start;
+}
+.life-label {
+  font-size: 13px;
+  line-height: 20px;
+
+  color: #27272a;
+  text-align: center;
+}
+.life-badge {
+  font-size: 10px;
+  line-height: 16px;
+  color: #8b8f99;
+  margin-top: $space-micro;
+}
+.life-state {
+
+  align-items: center;
+}
+.life-muted {
+  font-size: 13px;
+  line-height: 22px;
+  color: #8b8f99;
+}
+.life-error {
+  font-size: 13px;
+  line-height: 22px;
+  color: #c65353;
+}
+.life-retry {
+  min-height: 44px;
+  line-height: 44px;
+
+
+  background-color: transparent;
+  border: 0;
+  color: #5b8ff9;
+  font-size: 14px;
+}
+.life-modal {
+  background-color: #ffffff;
+  border-radius: 12px;
+}
+.life-save {
+  margin: 0 0 0 $space-detail;
+  min-width: 64px;
+  height: 44px;
+  line-height: 44px;
+
+  border: 0;
+  border-radius: 12px;
+  background-color: #5b8ff9;
+  color: #ffffff;
+  font-size: 14px;
+}
+.life-edit-row {
+  flex-direction: row;
+  align-items: center;
+  min-height: 48px;
+}
+.life-edit-name {
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
+  line-height: 20px;
+  color: #27272a;
+}
+.life-toggle {
+  font-size: 12px;
+}
+.life-edit-search {
+
+
+  background-color: #f0f2f5;
+}
+.life-page-dark {
+  background-color: #111215;
+}
+.life-surface-dark {
+  background-color: #1c1e22;
+}
+.life-ink-dark {
+  color: #eeeeef;
+}
+/* #ifdef WEB || MP-WEIXIN */
+.life-action::after,
+.life-tile::after,
+.life-retry::after,
+.life-save::after {
+  border: 0;
+}
+/* #endif */
+</style>
