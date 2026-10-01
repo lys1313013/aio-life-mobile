@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import AppIcon from '../../components/AppIcon.uvue'
+import { themeClass } from '../../services/theme.ts'
 import { ref } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
 import { login } from '../../services/api.ts'
@@ -8,6 +10,9 @@ import { fetchWechatEnabled, startWechatLogin, loginWithWechatPhone, bindWechatA
 
 const username = ref('')
 const password = ref('')
+const passwordVisible = ref(false)
+const newPasswordVisible = ref(false)
+const confirmPasswordVisible = ref(false)
 const busy = ref(false)
 const errorText = ref('')
 const mode = ref('password')
@@ -51,6 +56,7 @@ function goHome() { uni.reLaunch({ url: '/pages/home/index' }) }
 function switchMode(next) {
   if (busy.value) return
   mode.value = next
+  resetPasswordVisibility()
   errorText.value = ''
   password.value = ''
   if (next !== 'bind') {
@@ -59,7 +65,15 @@ function switchMode(next) {
   }
 }
 
+function openAuth(mode: string) { if (!busy.value) uni.navigateTo({ url: '/pages/auth/index?mode=' + mode }) }
+function resetPasswordVisibility() {
+  passwordVisible.value = false
+  newPasswordVisible.value = false
+  confirmPasswordVisible.value = false
+}
+
 function acceptWechat(result) {
+  resetPasswordVisibility()
   if (result.status === 'LOGGED_IN') {
     loginTicket.value = ''
     password.value = ''
@@ -151,87 +165,108 @@ async function setPassword() {
 </script>
 
 <template>
-  <view class="page">
-    <view class="screen login-screen">
+  <view class="page" :class="themeClass('page')">
+    <view class="screen login-screen ui-page-inset">
       <view class="brand">
         <view class="brand-mark"><text class="brand-symbol">a</text></view>
-        <text class="brand-name">AIO Life</text>
+        <text class="brand-name" :class="themeClass('brand-name')">AIO Life</text>
       </view>
 
       <view class="login-content">
-        <view class="welcome-art">
+        <view class="welcome-art ui-mb-section" :class="themeClass('welcome-art')">
           <view class="art-orbit"></view>
           <view class="art-leaf"></view>
           <view class="art-sun"></view>
         </view>
-        <text class="eyebrow muted">让生活，有迹可循</text>
-        <text class="login-title ink">欢迎回来</text>
-        <text class="login-subtitle muted">登录，继续记录你的每一天。</text>
+        <text class="eyebrow muted" :class="themeClass('muted')">让生活，有迹可循</text>
+        <text class="login-title ink ui-mt-section" :class="themeClass('ink')">欢迎回来</text>
+        <text class="login-subtitle muted ui-mt-sm" :class="themeClass('muted')">登录，继续记录你的每一天。</text>
 
-        <view class="login-form">
+        <view class="login-form ui-mt-section">
           <!-- #ifdef MP-WEIXIN -->
           <view v-if="mode === 'wechat'">
             <button class="primary-button" :loading="busy" :disabled="busy" @click="wechatLogin">微信登录</button>
-            <button class="text-button muted" :disabled="busy" @click="switchMode('password')">账号密码登录</button>
+            <button class="text-button muted ui-pad-sm ui-mt-section" :disabled="busy" @click="switchMode('password')" :class="themeClass('muted')">账号密码登录</button>
           </view>
           <view v-if="mode === 'phone'">
             <button class="primary-button" :open-type="busy ? '' : 'getPhoneNumber'" :loading="busy" :disabled="busy" @getphonenumber="phoneAuthorized">授权手机号并注册</button>
-            <text class="phone-note muted">首次使用将创建账号，已有账号请先登录绑定。</text>
-            <button class="text-button muted" :disabled="busy" @click="switchMode('bind')">已有账号，登录并绑定</button>
-            <button class="text-button muted" :disabled="busy" @click="switchMode('wechat')">返回微信登录</button>
+            <text class="phone-note muted ui-mt-section" :class="themeClass('muted')">首次使用将创建账号，已有账号请先登录绑定。</text>
+            <button class="text-button muted ui-pad-sm ui-mt-section" :disabled="busy" @click="switchMode('bind')" :class="themeClass('muted')">已有账号，登录并绑定</button>
+            <button class="text-button muted ui-pad-sm ui-mt-section" :disabled="busy" @click="switchMode('wechat')" :class="themeClass('muted')">返回微信登录</button>
           </view>
           <view v-if="mode === 'set-password'">
-            <text class="field-label ink">设置登录密码</text>
-            <text class="account-note muted" :selectable="true">登录账号：{{ accountUsername }}</text>
-            <input v-model="newPassword" class="field-input" placeholder="设置密码，至少 8 位" :password="true" :disabled="busy" :maxlength="128" aria-label="设置密码" />
-            <input v-model="confirmPassword" class="field-input password-label" placeholder="再次输入密码" :password="true" :disabled="busy" :maxlength="128" aria-label="确认密码" @confirm="setPassword" />
-            <button class="primary-button password-label" :loading="busy" :disabled="busy" @click="setPassword">设置并进入</button>
-            <button class="text-button muted" :disabled="busy" @click="goHome">暂不设置</button>
+            <text class="field-label ink" :class="themeClass('ink')">设置登录密码</text>
+            <text class="account-note muted ui-mb-section" :selectable="true" :class="themeClass('muted')">登录账号：{{ accountUsername }}</text>
+            <view class="password-field">
+              <input v-model="newPassword" class="field-input password-input ui-px-card" placeholder="设置密码，至少 8 位" :password="!newPasswordVisible" :disabled="busy" :maxlength="128" aria-label="设置密码" :class="themeClass('field-input')" />
+              <button role="button" class="password-toggle" :disabled="busy" :aria-label="newPasswordVisible ? '隐藏设置密码' : '显示设置密码'" :aria-pressed="newPasswordVisible" @click="newPasswordVisible = !newPasswordVisible">
+                <AppIcon :name="newPasswordVisible ? 'ant-design:eye-outlined' : 'ant-design:eye-invisible-outlined'" color="#8b8f99" />
+              </button>
+            </view>
+            <view class="password-field password-label ui-mt-section">
+              <input v-model="confirmPassword" class="field-input password-input ui-px-card" placeholder="再次输入密码" :password="!confirmPasswordVisible" :disabled="busy" :maxlength="128" aria-label="确认密码" @confirm="setPassword" :class="themeClass('field-input')" />
+              <button role="button" class="password-toggle" :disabled="busy" :aria-label="confirmPasswordVisible ? '隐藏确认密码' : '显示确认密码'" :aria-pressed="confirmPasswordVisible" @click="confirmPasswordVisible = !confirmPasswordVisible">
+                <AppIcon :name="confirmPasswordVisible ? 'ant-design:eye-outlined' : 'ant-design:eye-invisible-outlined'" color="#8b8f99" />
+              </button>
+            </view>
+            <button class="primary-button password-label ui-mt-section" :loading="busy" :disabled="busy" @click="setPassword">设置并进入</button>
+            <button class="text-button muted ui-pad-sm ui-mt-section" :disabled="busy" @click="goHome" :class="themeClass('muted')">暂不设置</button>
           </view>
           <!-- #endif -->
           <view v-if="mode === 'password' || mode === 'bind'">
-            <text class="field-label ink">账号</text>
-            <input v-model="username" class="field-input" placeholder="请输入账号" :disabled="busy" :maxlength="100" confirm-type="next" aria-label="账号" />
-            <text class="field-label password-label ink">密码</text>
-            <input v-model="password" class="field-input" placeholder="请输入密码" :password="true" :disabled="busy" :maxlength="200" confirm-type="go" aria-label="密码" @confirm="submit" />
+            <text class="field-label ink" :class="themeClass('ink')">账号</text>
+            <input v-model="username" class="field-input ui-px-card" placeholder="请输入账号" :disabled="busy" :maxlength="100" confirm-type="next" aria-label="账号" :class="themeClass('field-input')" />
+            <text class="field-label password-label ink ui-mt-section" :class="themeClass('ink')">密码</text>
+            <view class="password-field">
+              <input v-model="password" class="field-input password-input ui-px-card" placeholder="请输入密码" :password="!passwordVisible" :disabled="busy" :maxlength="200" confirm-type="go" aria-label="密码" @confirm="submit" :class="themeClass('field-input')" />
+              <button role="button" class="password-toggle" :disabled="busy" :aria-label="passwordVisible ? '隐藏密码' : '显示密码'" :aria-pressed="passwordVisible" @click="passwordVisible = !passwordVisible">
+                <AppIcon :name="passwordVisible ? 'ant-design:eye-outlined' : 'ant-design:eye-invisible-outlined'" color="#8b8f99" />
+              </button>
+            </view>
             <button role="button" :class="['primary-button', 'password-label', busy ? 'primary-disabled' : '']" :loading="busy" :disabled="busy" :aria-disabled="busy" @click="submit">{{ busy ? '正在登录' : (mode === 'bind' ? '登录并绑定微信' : '登录') }}</button>
+            <view class="auth-links"><button role="button" class="text-button muted ui-pad-sm ui-mt-section" :class="themeClass('muted')" :disabled="busy" @click="openAuth('register')">注册账号</button><button role="button" class="text-button muted ui-pad-sm ui-mt-section" :class="themeClass('muted')" :disabled="busy" @click="openAuth('reset')">忘记密码</button></view>
             <!-- #ifdef MP-WEIXIN -->
-            <button v-if="wechatCapabilityFailed" class="text-button muted" :disabled="busy" @click="loadWechatCapabilities">重试微信登录</button>
-            <button v-if="wechatEnabled" class="text-button muted" :disabled="busy" @click="switchMode('wechat')">微信登录</button>
+            <button v-if="wechatCapabilityFailed" class="text-button muted ui-pad-sm ui-mt-section" :disabled="busy" @click="loadWechatCapabilities" :class="themeClass('muted')">重试微信登录</button>
+            <button v-if="wechatEnabled" class="text-button muted ui-pad-sm ui-mt-section" :disabled="busy" @click="switchMode('wechat')" :class="themeClass('muted')">微信登录</button>
             <!-- #endif -->
           </view>
           <view class="form-message">
-            <text v-if="errorText" class="error-text" role="alert">{{ errorText }}</text>
+            <text v-if="errorText" class="error-text" role="alert" :class="themeClass('error-text')">{{ errorText }}</text>
           </view>
         </view>
       </view>
-      <text class="footer-note login-footer">把日子，过成自己的样子。</text>
+      <text class="footer-note login-footer ui-mt-section">把日子，过成自己的样子。</text>
     </view>
   </view>
 </template>
 
-<style>
-.login-screen { max-width: 480px; }
-.login-content { padding-top: 40px; }
-.welcome-art { width: 100px; height: 100px; margin-bottom: 28px; border-radius: 32px; background-color: #e6eee2; overflow: hidden; position: relative; }
-@media (prefers-color-scheme: dark) { .welcome-art { background-color: #283b2d; } }
+<style scoped lang="scss">
+@use '../../styles/spacing.scss';
+@use '../../styles/spacing-tokens' as *;
+.login-screen {  }
+.login-content { padding-top: ($space-overlayBlock + $space-modal); }
+.welcome-art { width: 100px; height: 100px;  border-radius: 32px; background-color: #e6eee2; overflow: hidden; position: relative; }
+ .welcome-art-dark { background-color: #283b2d; }
 .art-orbit { position: absolute; width: 85px; height: 85px; border-radius: 50px; border: 1px solid #b3c7ab; left: -24px; top: 41px; }
 .art-leaf { position: absolute; width: 38px; height: 56px; border-radius: 28px 4px 28px 4px; background-color: #719773; left: 36px; top: 31px; transform: rotate(20deg); }
 .art-sun { position: absolute; width: 18px; height: 18px; border-radius: 10px; background-color: #dabf7b; top: 18px; right: 19px; }
 .eyebrow { font-size: 12px; letter-spacing: 3px; }
-.login-title { font-size: 32px; line-height: 44px; font-weight: 600; margin-top: 12px; }
-.login-subtitle { font-size: 14px; line-height: 23px; margin-top: 8px; }
-.login-form { margin-top: 32px; }
-.field-label { font-size: 13px; margin-bottom: 9px; }
-.password-label { margin-top: 20px; }
-.field-input { height: 52px; padding: 0 16px; border: 1px solid #e2e7df; border-radius: 14px; background-color: #ffffff; color: #203b2f; font-size: 16px; }
-@media (prefers-color-scheme: dark) { .field-input { background-color: #202d24; border-color: #344539; color: #e4ece6; } }
-.form-message { min-height: 39px; padding-top: 8px; padding-bottom: 8px; }
-.login-footer { margin-top: 40px; }
-.text-button { margin: 12px 0 0; padding: 8px; min-height: 44px; border: 0; border-radius: 12px; background-color: transparent; font-size: 14px; line-height: 24px; }
-.phone-note { margin-top: 12px; font-size: 12px; line-height: 20px; text-align: center; }
-.account-note { margin-bottom: 16px; font-size: 13px; line-height: 22px; }
+.login-title { font-size: 32px; line-height: 44px; font-weight: 600;  }
+.login-subtitle { font-size: 14px; line-height: 23px;  }
+.login-form {  }
+.field-label { font-size: 13px; margin-bottom: $space-inline; }
+.password-label {  }
+.field-input { height: 52px;  border: 1px solid #e2e7df; border-radius: 14px; background-color: #ffffff; color: #203b2f; font-size: 16px; }
+ .field-input-dark { background-color: #202d24; border-color: #344539; color: #e4ece6; }
+.password-field { position: relative; }
+.password-input { padding-right: ($space-controlMin + $space-page); }
+.password-toggle { display: flex; flex-direction: row; position: absolute; right: 4px; top: 4px; width: 44px; height: 44px; padding: 0; margin: 0; border: 0; border-radius: 10px; background-color: transparent; align-items: center; justify-content: center; }
+.form-message { min-height: 39px; padding-top: $space-inline; padding-bottom: $space-inline; }
+.login-footer {  }
+.text-button {   min-height: 44px; border: 0; border-radius: 12px; background-color: transparent; font-size: 14px; line-height: 24px; }
+.phone-note {  font-size: 12px; line-height: 20px; text-align: center; }
+.account-note {  font-size: 13px; line-height: 22px; }
 /* #ifdef WEB || MP-WEIXIN */
-.text-button::after { border: 0; }
+.text-button::after, .password-toggle::after { border: 0; }
 /* #endif */
 </style>

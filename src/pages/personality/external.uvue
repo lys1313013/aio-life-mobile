@@ -1,0 +1,33 @@
+<script setup lang="ts">
+import { ref } from 'vue';
+import { onLoad } from '@dcloudio/uni-app';
+import { safeExternalUrl } from '../../services/personality/contract.ts';
+import PageHeader from '../../components/PageHeader.uvue';
+import PageState from '../../components/PageState.uvue';
+const url = ref(''),
+  error = ref('');
+onLoad((options) => {
+  try {
+    url.value = safeExternalUrl(decodeURIComponent(options?.url || ''));
+  } catch (reason) {
+    error.value = reason.message;
+  }
+});
+</script>
+<template>
+  <view class="external-page"
+    ><PageHeader title="人格测试" back @back="uni.navigateBack()" /><PageState :error="error"
+      ><web-view
+        v-if="url"
+        :src="url"
+        @error="error = '外部测试无法打开，可返回后重试或复制地址到浏览器'" /></PageState
+  ></view>
+</template>
+<style scoped lang="scss">
+@use '../../styles/spacing.scss';
+@use '../../styles/spacing-tokens' as *;
+.external-page {
+  height: 100%;
+  flex: 1;
+}
+</style>

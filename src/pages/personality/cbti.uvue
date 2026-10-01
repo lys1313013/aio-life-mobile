@@ -1,0 +1,645 @@
+<script setup lang="ts">
+import { computed, ref } from 'vue';
+import { onShow, onUnload } from '@dcloudio/uni-app';
+import PageHeader from '../../components/PageHeader.uvue';
+import MobilePage from '../../components/MobilePage.uvue';
+import MobileButton from '../../components/MobileButton.uvue';
+import PageState from '../../components/PageState.uvue';
+import ConfirmAction from '../../components/ConfirmAction.uvue';
+import AdaptiveModal from '../../components/AdaptiveModal.uvue';
+import FormField from '../../components/FormField.uvue';
+import CbtiPoster from '../../components/CbtiPoster.uvue';
+import { themeClass } from '../../services/theme.ts';
+import { fetchUser } from '../../services/api.ts';
+import { restoreSession, session } from '../../services/session.ts';
+import { createLatestTask } from '../../services/mobile-ui.ts';
+import {
+  getQuestions,
+  getPersonalities,
+  submitCbti,
+  history,
+  getHistory,
+  deleteHistory,
+  savePersonality,
+  deletePersonality,
+  uploadPersonality,
+} from '../../services/personality/index.ts';
+import { shareText, vectorValue } from '../../services/personality/contract.ts';
+const loading = ref(false),
+  refreshing = ref(false),
+  saving = ref(false),
+  uploading = ref(''),
+  error = ref(''),
+  editorError = ref('');
+const data = ref<any>(null),
+  personalities = ref<any[]>([]),
+  histories = ref<any[]>([]),
+  admins = ref<any[]>([]);
+const phase = ref('home'),
+  index = ref(0),
+  answers = ref<any>({}),
+  hidden = ref<any>({}),
+  result = ref<any>(null),
+  selectedType = ref<any>(null);
+const adminOpen = ref(false),
+  adminSearch = ref(''),
+  editorOpen = ref(false),
+  editingId = ref(null),
+  form = ref<any>({}),
+  vectorJson = ref(''),
+  vectorJsonMode = ref(false);
+const task = createLatestTask();
+let active = true,
+  account = '';
+const questions = computed(() => data.value?.questions || []),
+  current = computed(() => questions.value[index.value]);
+const isAdmin = computed(() => session.user?.roles?.includes('admin'));
+const adminShown = computed(() =>
+  admins.value.filter((row) =>
+    [row.name, row.code].some((value) =>
+      String(value).toLowerCase().includes(adminSearch.value.toLowerCase()),
+    ),
+  ),
+);
+const levels = ['低', '中', '高'];
+const formFields = [
+  { key: 'code', label: '人格代码' },
+  { key: 'name', label: '名称' },
+  { key: 'motto', label: '格言' },
+  { key: 'color', label: '颜色' },
+  { key: 'description', label: '描述', kind: 'textarea' },
+  { key: 'strengths', label: '优势（每行一项）', kind: 'textarea' },
+  { key: 'weaknesses', label: '弱点（每行一项）', kind: 'textarea' },
+  { key: 'techStack', label: '技术栈' },
+  { key: 'spirit', label: '精神' },
+  { key: 'imageObject', label: '图片对象' },
+];
+let site = '';
+// #ifdef WEB
+site = window.location.origin + '/#/pages/personality/cbti';
+// #endif
+onUnload(() => {
+  active = false;
+  task.invalidate();
+});
+onShow(() => {
+  restoreSession();
+  if (!session.token) {
+    uni.reLaunch({ url: '/pages/login/index' });
+    return;
+  }
+  load();
+});
+async function load(refresh = false) {
+  const generation = task.begin(),
+    token = session.token;
+  loading.value = true;
+  refreshing.value = refresh;
+  error.value = '';
+  try {
+    if (!session.user) await fetchUser();
+    if (account !== session.user.id) {
+      account = session.user.id;
+      answers.value = {};
+      hidden.value = {};
+      result.value = null;
+      phase.value = 'home';
+      admins.value = [];
+    }
+    const [q, p, h] = await Promise.all([getQuestions(), getPersonalities(), history('cbti')]);
+    if (
+      !q ||
+      !Array.isArray(q.questions) ||
+      !q.questions.length ||
+      !Array.isArray(q.dimensionDefs) ||
+      q.dimensionDefs.length !== 15 ||
+      !Array.isArray(q.hiddenQuestions) ||
+      q.hiddenQuestions.length < 2
+    )
+      throw Error('题目数据异常，请重试');
+    if (active && task.isCurrent(generation) && token === session.token) {
+      data.value = q;
+      personalities.value = p;
+      histories.value = h;
+    }
+  } catch (reason) {
+    if (active && task.isCurrent(generation) && token === session.token)
+      error.value = reason.message || '加载失败';
+  } finally {
+    if (active && task.isCurrent(generation)) {
+      loading.value = false;
+      refreshing.value = false;
+    }
+  }
+}
+function start() {
+  if (loading.value || !questions.value.length) return;
+  answers.value = {};
+  hidden.value = {};
+  result.value = null;
+  index.value = 0;
+  phase.value = 'questions';
+  error.value = '';
+}
+function choose(value) {
+  answers.value = { ...answers.value, [current.value.id]: value };
+}
+function next() {
+  if (answers.value[current.value.id] === undefined) {
+    error.value = '请选择答案';
+    return;
+  }
+  error.value = '';
+  if (index.value < questions.value.length - 1) index.value++;
+  else {
+    const missing = questions.value.findIndex(
+      (question) => answers.value[question.id] === undefined,
+    );
+    if (missing >= 0) {
+      index.value = missing;
+      error.value = '请完成所有题目';
+    } else phase.value = 'hidden1';
+  }
+}
+async function chooseHidden(value) {
+  if (saving.value) return;
+  if (phase.value === 'hidden1') {
+    hidden.value = { drink: value };
+    if (value === 'coffee') {
+      phase.value = 'hidden2';
+      return;
+    }
+  } else hidden.value = { drink: 'coffee', drinkAttitude: value };
+  await calculate();
+}
+async function calculate() {
+  if (saving.value) return;
+  saving.value = true;
+  error.value = '';
+  const token = session.token;
+  try {
+    const response = await submitCbti(questions.value, answers.value, hidden.value);
+    if (active && token === session.token) {
+      result.value = response;
+      phase.value = 'result';
+      histories.value = await history('cbti');
+    }
+  } catch (reason) {
+    if (active && token === session.token) error.value = reason.message || '计算失败，答案已保留';
+  } finally {
+    saving.value = false;
+  }
+}
+async function inspect(row) {
+  if (loading.value) return;
+  loading.value = true;
+  error.value = '';
+  const token = session.token;
+  try {
+    const detail: any = await getHistory('cbti', row.id);
+    if (active && token === session.token) {
+      result.value = {
+        personality: detail.personality,
+        dimensions: detail.dimensions,
+        similarity: detail.similarity,
+        isSpecial: detail.personality?.isSpecial,
+        matchDetails: [],
+      };
+      phase.value = 'result';
+    }
+  } catch (reason) {
+    if (active) error.value = reason.message || '详情加载失败';
+  } finally {
+    loading.value = false;
+  }
+}
+async function remove(row) {
+  await deleteHistory('cbti', row.id);
+  if (active) histories.value = histories.value.filter((item) => item.id !== row.id);
+}
+function copy() {
+  if (!result.value) return;
+  uni.setClipboardData({
+    data: shareText(result.value, site),
+    fail: () => {
+      error.value = '复制失败，请重试';
+    },
+  });
+}
+async function openAdmin() {
+  if (!isAdmin.value || loading.value) return;
+  loading.value = true;
+  error.value = '';
+  const token = session.token;
+  try {
+    const rows: any = await getPersonalities(true);
+    if (active && token === session.token) {
+      admins.value = rows;
+      adminOpen.value = true;
+    }
+  } catch (reason) {
+    if (active) error.value = reason.message || '管理列表加载失败';
+  } finally {
+    loading.value = false;
+  }
+}
+function edit(row = null) {
+  editingId.value = row?.id || null;
+  form.value = row
+    ? {
+        ...row,
+        vector: [...(row.vector || [])],
+        strengths: (row.strengths || []).join('\n'),
+        weaknesses: (row.weaknesses || []).join('\n'),
+      }
+    : {
+        code: '',
+        name: '',
+        color: '#427bea',
+        isSpecial: false,
+        vector: Array.from({ length: 15 }, () => 1),
+        strengths: '',
+        weaknesses: '',
+      };
+  vectorJson.value = JSON.stringify(form.value.vector);
+  vectorJsonMode.value = false;
+  editorError.value = '';
+  editorOpen.value = true;
+}
+function vectorChange(index, value) {
+  const vector = [...form.value.vector];
+  vector[index] = levels.indexOf(value);
+  form.value.vector = vector;
+  vectorJson.value = JSON.stringify(vector);
+}
+async function save() {
+  if (saving.value) return;
+  saving.value = true;
+  editorError.value = '';
+  const token = session.token;
+  try {
+    if (vectorJsonMode.value) form.value.vector = vectorValue(vectorJson.value);
+    await savePersonality(form.value, editingId.value);
+    if (active && token === session.token) {
+      editorOpen.value = false;
+      admins.value = await getPersonalities(true);
+      personalities.value = await getPersonalities();
+    }
+  } catch (reason) {
+    if (active) editorError.value = reason.message || '保存失败';
+  } finally {
+    saving.value = false;
+  }
+}
+async function removePersonality(row) {
+  await deletePersonality(row.id);
+  if (active) {
+    admins.value = admins.value.filter((item) => item.id !== row.id);
+    personalities.value = personalities.value.filter((item) => item.code !== row.code);
+  }
+}
+async function upload(row) {
+  if (uploading.value) return;
+  uploading.value = row.id;
+  editorError.value = '';
+  const token = session.token;
+  try {
+    await uploadPersonality(row.code);
+    if (active && token === session.token) {
+      admins.value = await getPersonalities(true);
+      personalities.value = await getPersonalities();
+    }
+  } catch (reason) {
+    if (active) editorError.value = reason.message || '上传失败';
+  } finally {
+    uploading.value = '';
+  }
+}
+function preview(url) {
+  if (url) uni.previewImage({ urls: [url] });
+}
+</script>
+<template>
+  <view class="cbti-page"
+    ><PageHeader title="CBTI 测试" back @back="uni.navigateBack()" /><MobilePage
+      :refreshing="refreshing"
+      @refresh="load(true)"
+      ><PageState
+        :loading="loading"
+        :error="error"
+        @retry="phase === 'hidden1' || phase === 'hidden2' ? calculate() : load()"
+      >
+        <view v-if="phase === 'home'" class="test-intro ui-card" :class="themeClass('test-intro')"><text class="cbti-muted">PROGRAMMER BEHAVIOR TEST</text><text class="cbti-title">CBTI</text><text class="cbti-title">程序员行为类型测试</text><text class="cbti-muted">你是 SUDO 还是 NULL？是 996 还是 404？</text><text class="cbti-muted">30 道题，测出你的编程人格</text></view>
+        <view class="cbti-actions ui-toolbar"
+          ><MobileButton
+            v-if="phase === 'home'"
+            label="开始测试"
+            :disabled="!data"
+            :loading="loading"
+            @click="start" /><MobileButton
+            v-else
+            label="返回"
+            icon="ant-design:left-outlined"
+            variant="quiet"
+            :disabled="saving"
+            @click="phase = 'home'" /><MobileButton
+            v-if="isAdmin"
+            label="人格管理"
+            icon="ant-design:setting-outlined"
+            variant="quiet"
+            :loading="loading"
+            @click="openAdmin"
+        /></view>
+        <view
+          v-if="phase === 'questions' && current"
+          class="cbti-card ui-card"
+          :class="themeClass('cbti-card')"
+          ><text class="cbti-muted"
+            >{{ index + 1 }} / {{ questions.length }} · 已答
+            {{ Object.keys(answers).length }} 题</text
+          ><text class="cbti-title">{{ current.text }}</text
+          ><view class="cbti-options ui-gap-sm"
+            ><MobileButton
+              v-for="option in current.options"
+              :key="option.value"
+              :label="option.label"
+              :variant="answers[current.id] === option.value ? 'primary' : 'quiet'"
+              @click="choose(option.value)" /></view
+          ><view class="cbti-actions ui-row"
+            ><MobileButton
+              label="上一题"
+              icon="ant-design:left-outlined"
+              variant="quiet"
+              :disabled="index === 0"
+              @click="index--" /><MobileButton
+              :label="index === questions.length - 1 ? '完成问卷' : '下一题'"
+              @click="next" /></view
+          ><view class="cbti-actions ui-row"
+            ><MobileButton
+              v-for="(question, i) in questions"
+              :key="question.id"
+              :label="'第' + (i + 1) + '题'"
+              :variant="answers[question.id] === undefined ? 'quiet' : 'primary'"
+              @click="index = i"
+              >{{ i + 1 }}</MobileButton
+            ></view
+          ></view
+        >
+        <view
+          v-if="phase === 'hidden1' || phase === 'hidden2'"
+          class="cbti-card ui-card"
+          :class="themeClass('cbti-card')"
+          ><text class="cbti-title">{{
+            data.hiddenQuestions[phase === 'hidden1' ? 0 : 1]?.text
+          }}</text
+          ><view class="cbti-options ui-gap-sm"
+            ><MobileButton
+              v-for="option in data.hiddenQuestions[phase === 'hidden1' ? 0 : 1]?.options || []"
+              :key="option.value"
+              :label="option.label"
+              :loading="saving"
+              @click="chooseHidden(option.value)" /></view
+        ></view>
+        <view v-if="phase === 'result' && result" class="cbti-card ui-card" :class="themeClass('cbti-card')"
+          ><image
+            v-if="result.personality.imageUrl"
+            :src="result.personality.imageUrl"
+            class="cbti-image"
+            mode="aspectFit"
+            @click="preview(result.personality.imageUrl)" /><text class="cbti-title"
+            >{{ result.personality.code }} · {{ result.personality.name }}</text
+          ><text>{{ result.personality.motto }}</text
+          ><text>匹配度 {{ result.similarity }}%</text
+          ><text class="cbti-content">{{ result.personality.description }}</text
+          ><text class="cbti-content">{{
+            '优势：' + (result.personality.strengths || []).join('、')
+          }}</text
+          ><text class="cbti-content">{{
+            '弱点：' + (result.personality.weaknesses || []).join('、')
+          }}</text
+          ><text class="cbti-content">{{ result.personality.techStack }}</text
+          ><text class="cbti-content">{{ result.personality.spirit }}</text
+          ><view v-for="dimension in result.dimensions" :key="dimension.code" class="cbti-dimension ui-gap-sm"
+            ><text
+              >{{ dimension.modelName }} · {{ dimension.name }} · {{ dimension.percentage }}%</text
+            ><view class="cbti-bar"
+              ><view
+                class="cbti-bar-value"
+                :style="{ width: Math.min(100, Math.max(0, dimension.percentage)) + '%' }" /></view
+            ><text class="cbti-muted">{{ dimension.levelDesc || dimension.level }}</text></view
+          ><text v-for="match in result.matchDetails || []" :key="match.code"
+            >{{ match.name }} · {{ match.similarity }}%</text
+          ><view class="cbti-actions ui-row"
+            ><MobileButton label="复制分享" icon="ant-design:export-outlined" variant="quiet" @click="copy" /><MobileButton
+              label="重新测试"
+              :disabled="saving"
+              @click="start" /></view
+          ><CbtiPoster :result="result" :site="site"
+        /></view>
+        <template v-if="phase === 'home'"
+          ><view class="cbti-card ui-card" :class="themeClass('cbti-card')"
+            ><text class="cbti-title">人格类型</text
+            ><view class="cbti-actions ui-row"
+              ><MobileButton
+                v-for="personality in personalities"
+                :key="personality.code"
+                :label="personality.code + ' · ' + personality.name"
+                variant="quiet"
+                @click="selectedType = personality" /></view></view
+          ><PageState :empty="!histories.length" empty-text="暂无测试记录"
+            ><view
+              v-for="row in histories"
+              :key="row.id"
+              class="cbti-card ui-card"
+              :class="themeClass('cbti-card')"
+              ><text>{{ row.personalityCode }} · {{ row.name }} · {{ row.createTime }}</text
+              ><view class="cbti-actions ui-row"
+                ><MobileButton
+                  label="查看历史"
+                  icon="ant-design:right-outlined"
+                  variant="quiet"
+                  @click="inspect(row)" /><ConfirmAction
+                  label="删除测试记录"
+                  :action="() => remove(row)" /></view></view></PageState
+        ></template> </PageState
+    ></MobilePage>
+    <AdaptiveModal
+      v-if="selectedType"
+      label="人格详情"
+      :content-key="selectedType.code"
+      @close="selectedType = null"
+      ><image
+        v-if="selectedType.imageUrl"
+        :src="selectedType.imageUrl"
+        class="cbti-image"
+        mode="aspectFit"
+        @click="preview(selectedType.imageUrl)"
+      /><text class="cbti-title ui-mb-section ui-mt-section">{{ selectedType.code }} · {{ selectedType.name }}</text
+      ><text>{{ selectedType.motto }}</text
+      ><text class="cbti-content ui-mb-section ui-mt-section">{{ selectedType.description }}</text
+      ><text>{{ '优势：' + (selectedType.strengths || []).join('、') }}</text
+      ><text>{{ '弱点：' + (selectedType.weaknesses || []).join('、') }}</text
+      ><text>{{ selectedType.techStack }}</text
+      ><text>{{ selectedType.spirit }}</text
+      ><view
+        v-for="(dimension, i) in data.dimensionDefs"
+        :key="dimension.code"
+        class="cbti-dimension ui-section ui-gap-sm"
+        ><text
+          >{{ dimension.modelName }} · {{ dimension.name }} ·
+          {{ levels[selectedType.vector?.[i] || 0] }}</text
+        ><text class="cbti-muted">{{
+          dimension.levels[['L', 'M', 'H'][selectedType.vector?.[i] || 0]]
+        }}</text></view
+      ></AdaptiveModal
+    >
+    <AdaptiveModal
+      v-if="adminOpen"
+      label="CBTI 人格管理"
+      :busy="saving || !!uploading"
+      :content-key="adminShown.length + ':' + editorError"
+      @close="adminOpen = false"
+      ><FormField label="搜索人格" v-model="adminSearch" /><MobileButton
+        label="新增人格"
+        icon="ant-design:plus-outlined"
+        @click="edit()" /><text v-if="editorError" class="cbti-error ui-mb-section ui-mt-section">{{ editorError }}</text
+      ><view v-for="row in adminShown" :key="row.id" class="cbti-admin-row ui-py-card"
+        ><text>{{ row.code }} · {{ row.name }}</text
+        ><view class="cbti-actions ui-toolbar"
+          ><MobileButton
+            label="编辑人格"
+            icon="ant-design:edit-outlined"
+            variant="quiet"
+            @click="edit(row)" /><MobileButton
+            label="上传人格图片"
+            icon="ant-design:plus-outlined"
+            variant="quiet"
+            :loading="uploading === row.id"
+            :disabled="!!uploading"
+            @click="upload(row)" /><MobileButton
+            v-if="row.imageUrl"
+            label="预览人格图片"
+            icon="ant-design:picture-outlined"
+            variant="quiet"
+            @click="preview(row.imageUrl)" /><ConfirmAction
+            label="删除人格"
+            :action="() => removePersonality(row)" /></view></view
+    ></AdaptiveModal>
+    <AdaptiveModal
+      v-if="editorOpen"
+      label="编辑人格"
+      :busy="saving"
+      :content-key="editorError + ':' + vectorJsonMode"
+      @close="editorOpen = false"
+      ><FormField
+        v-for="field in formFields"
+        :key="field.key"
+        :label="field.label"
+        :kind="field.kind || 'text'"
+        v-model="form[field.key]"
+        :disabled="saving" /><FormField label="特殊人格"
+        ><switch
+          :checked="form.isSpecial"
+          :disabled="saving"
+          aria-label="特殊人格"
+          @change="(event) => (form.isSpecial = event.detail.value)" /></FormField
+      ><FormField label="JSON 编辑向量"
+        ><switch
+          :checked="vectorJsonMode"
+          :disabled="saving"
+          aria-label="JSON 编辑向量"
+          @change="(event) => (vectorJsonMode = event.detail.value)" /></FormField
+      ><FormField
+        v-if="vectorJsonMode"
+        label="15 项向量（0低/1中/2高）"
+        kind="textarea"
+        v-model="vectorJson"
+        :disabled="saving" /><template v-else
+        ><FormField
+          v-for="(dimension, i) in data.dimensionDefs"
+          :key="dimension.code"
+          :label="dimension.modelName + ' · ' + dimension.name"
+          kind="selector"
+          :model-value="levels[form.vector[i]]"
+          :options="levels"
+          :disabled="saving"
+          @update:model-value="(value) => vectorChange(i, value)" /></template
+      ><text v-if="editorError" class="cbti-error ui-mb-section ui-mt-section" role="alert">{{ editorError }}</text
+      ><MobileButton label="保存人格" :loading="saving" @click="save"
+    /></AdaptiveModal>
+  </view>
+</template>
+<style scoped lang="scss">
+@use '../../styles/spacing.scss';
+@use '../../styles/spacing-tokens' as *;
+.cbti-page {
+  height: 100%;
+  flex: 1;
+  min-height: 0;
+}
+.cbti-card {
+
+  border-radius: 16px;
+
+  background-color: #ffffff;
+  color: #27272a;
+
+  overflow: visible;
+}
+.cbti-card-dark {
+  background-color: #1c1e22;
+  color: #eeeeef;
+}
+.cbti-title {
+  font-size: 20px;
+  font-weight: 600;
+
+}
+.cbti-actions {
+  flex-direction: row;
+  flex-wrap: wrap;
+
+
+  overflow: visible;
+}
+.cbti-options {
+
+}
+.cbti-muted {
+  font-size: 13px;
+  color: #808692;
+}
+.cbti-content {
+  font-size: 14px;
+  white-space: pre-wrap;
+
+}
+.cbti-image {
+  width: 100%;
+  height: 240px;
+}
+.cbti-dimension {
+
+
+}
+.cbti-bar {
+  height: 8px;
+  border-radius: 4px;
+  background-color: #dce1eb;
+}
+.cbti-bar-value {
+  height: 8px;
+  border-radius: 4px;
+  background-color: #427bea;
+}
+.cbti-admin-row {
+
+  overflow: visible;
+}
+.cbti-error {
+  color: #e05260;
+
+}
+.test-intro { background-color: #ffffff; border-radius: 14px; align-items: center; gap: $space-inline; }
+.test-intro-dark { background-color: #1c1e22; }
+</style>

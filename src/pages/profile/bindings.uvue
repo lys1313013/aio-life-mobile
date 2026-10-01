@@ -1,0 +1,702 @@
+<script setup lang="ts">
+import AppIcon from '../../components/AppIcon.uvue'
+import SecondaryUnlock from "../../components/SecondaryUnlock.uvue";
+import PlatformIcon from '../../components/PlatformIcon.uvue'
+import CategoryIcon from '../../components/CategoryIcon.uvue'
+import { isDark, themeClass } from '../../services/theme.ts'
+import { computed, nextTick, ref } from 'vue'
+import { onShow, onHide, onUnload } from '@dcloudio/uni-app'
+import PageHeader from '../../components/PageHeader.uvue'
+import AdaptiveModal from '../../components/AdaptiveModal.uvue'
+import { restoreSession, session } from '../../services/session.ts'
+import { useRefreshTheme } from '../../services/refresh-theme.ts'
+import {
+  loadBindings,
+  saveBinding,
+  removeBinding,
+  verifyDouban
+} from '../../services/profile.ts'
+import {
+  bindingPayload,
+  platforms,
+  platformInfo
+} from '../../services/profile-contract.ts'
+
+const refreshTheme = useRefreshTheme()
+const records = ref([])
+const loading = ref(false)
+const refreshing = ref(false)
+const loaded = ref(false)
+const saving = ref(false)
+const deleting = ref('')
+const confirmId = ref('')
+const errorText = ref('')
+const modalError = ref('')
+const editing = ref(false)
+const showHelp = ref(false)
+const verifying = ref(false)
+const verified = ref('')
+const form = ref({
+  id: '',
+  platform: 'github',
+  platformUsername: '',
+  accessToken: ''
+})
+const currentPlatform = computed(() => platformInfo(form.value.platform))
+const platformIndex = computed(() =>
+  Math.max(
+    0,
+    platforms.findIndex((item) => item.value === form.value.platform)
+  )
+)
+let active = true
+let visible = false
+let verification = 0
+let loadTask: Promise<void> | null = null
+onShow(() => {
+  visible = true
+  restoreSession()
+  if (!session.token) {
+    uni.reLaunch({ url: '/pages/login/index' })
+    return
+  }
+  load()
+})
+onHide(() => {
+  visible = false
+  confirmId.value = ''
+  closeEditor(true)
+})
+onUnload(() => {
+  active = false
+  verification++
+})
+function failure(error, modal = false) {
+  if (!active || !visible) return
+  if (error.name === 'SessionExpiredError') {
+    uni.reLaunch({ url: '/pages/login/index' })
+    return
+  }
+  if (modal) modalError.value = error.message || '操作失败，请重试'
+  else errorText.value = error.message || '加载失败，请重试'
+}
+function load() {
+  if (loadTask) return loadTask
+  loadTask = fetchList().finally(() => {
+    loadTask = null
+  })
+  return loadTask
+}
+async function fetchList() {
+  loading.value = true
+  errorText.value = ''
+  const token = session.token
+  try {
+    const data = await loadBindings()
+    if (active && token === session.token) {
+      records.value = data
+      loaded.value = true
+    }
+  } catch (error) {
+    failure(error)
+  } finally {
+    loading.value = false
+  }
+}
+async function pullRefresh() {
+  if (refreshing.value || saving.value || deleting.value) return
+  refreshing.value = true
+  await nextTick()
+  try {
+    if (loadTask) await loadTask
+    await load()
+  } finally {
+    refreshing.value = false
+  }
+}
+function edit(record = null) {
+  if (loading.value || saving.value || deleting.value) return
+  form.value = {
+    id: record?.id || '',
+    platform: record?.platform || 'github',
+    platformUsername: record?.platformUsername || '',
+    accessToken: ''
+  }
+  modalError.value = ''
+  verified.value = ''
+  showHelp.value = false
+  confirmId.value = ''
+  editing.value = true
+}
+function closeEditor(force = false) {
+  if (saving.value && !force) return
+  editing.value = false
+  form.value.accessToken = ''
+  verification++
+  verifying.value = false
+  verified.value = ''
+}
+function resetVerification() {
+  verification++
+  verified.value = ''
+  verifying.value = false
+}
+function selectPlatform(event) {
+  form.value.platform = platforms[Number(event.detail.value)].value
+  form.value.accessToken = ''
+  form.value.platformUsername = ''
+  modalError.value = ''
+  showHelp.value = false
+  resetVerification()
+}
+async function verify() {
+  if (verifying.value || saving.value) return
+  if (!form.value.platformUsername.trim()) {
+    modalError.value = '请先填写豆瓣账号 ID'
+    return
+  }
+  const version = ++verification
+  verifying.value = true
+  modalError.value = ''
+  verified.value = ''
+  try {
+    const result = await verifyDouban(form.value.platformUsername)
+    if (version === verification && active && visible)
+      verified.value = '验证成功：' + result.nickname
+  } catch (error) {
+    if (version === verification) failure(error, true)
+  } finally {
+    if (version === verification) verifying.value = false
+  }
+}
+async function save() {
+  if (saving.value || verifying.value) return
+  modalError.value = ''
+  try {
+    bindingPayload(form.value)
+    if (
+      records.value.some(
+        (item) =>
+          item.platform === form.value.platform && item.id !== form.value.id
+      )
+    )
+      throw new Error('该平台已绑定，请编辑已有账号')
+  } catch (error) {
+    failure(error, true)
+    return
+  }
+  const token = session.token
+  saving.value = true
+  try {
+    await saveBinding(form.value)
+    if (!active || !visible || token !== session.token) return
+    closeEditor(true)
+    uni.showToast({ title: '已保存', icon: 'success' })
+    await load()
+  } catch (error) {
+    failure(error, true)
+  } finally {
+    saving.value = false
+  }
+}
+async function unbind(id: string) {
+  if (deleting.value || loading.value || saving.value) return
+  deleting.value = id
+  errorText.value = ''
+  const token = session.token
+  try {
+    await removeBinding(id)
+    if (!active || token !== session.token) return
+    records.value = records.value.filter((item) => item.id !== id)
+    confirmId.value = ''
+    uni.showToast({ title: '已解除绑定', icon: 'success' })
+  } catch (error) {
+    failure(error)
+  } finally {
+    deleting.value = ''
+  }
+}
+function back() {
+  uni.navigateBack({
+    fail: () => uni.switchTab({ url: '/pages/profile/index' })
+  })
+}
+</script>
+<template>
+  <view class="tab-page" :class="themeClass('tab-page')">
+    <PageHeader title="账号绑定" back @back="back" />
+    <scroll-view
+      scroll-y
+      class="tab-scroll"
+      :refresher-enabled="!editing && !deleting"
+      :refresher-triggered="refreshing"
+      refresher-background="transparent"
+      :refresher-default-style="refreshTheme"
+      @refresherrefresh="pullRefresh"
+    >
+      <view class="tab-content ui-page-inset">
+        <view class="binding-toolbar ui-toolbar"
+          ><button
+            role="button"
+            class="binding-add"
+            aria-label="新增绑定"
+            :disabled="!loaded || loading || saving || !!deleting"
+            :aria-disabled="!loaded || loading || saving || !!deleting"
+            @click="edit()"
+          >
+<AppIcon name="ant-design:plus-outlined" />
+</button></view
+        >
+        <view v-if="loading" class="binding-status ui-mb-section"
+          ><text class="muted-text">加载中…</text></view
+        >
+        <view v-if="errorText" class="binding-status ui-mb-section"
+          ><text
+            role="alert"
+            class="error-text"
+            :class="themeClass('error-text')"
+            >{{ errorText }}</text
+          ><button
+            role="button"
+            class="text-action"
+            :disabled="loading"
+            :aria-disabled="loading"
+            @click="load"
+          >
+            重试
+          </button></view
+        >
+        <view
+          v-if="loaded && records.length === 0 && !loading"
+          class="state-card"
+          :class="themeClass('state-card')"
+          ><text class="empty-title" :class="themeClass('empty-title')"
+            >还没有绑定账号</text
+          ><button role="button" class="text-action" @click="edit()">
+            绑定第一个账号
+          </button></view
+        >
+        <view
+          v-for="record in records"
+          :key="record.id"
+          class="binding-card ui-card"
+          :class="themeClass('binding-card')"
+        >
+          <view class="binding-row ui-row">
+            <view class="platform-mark"
+              ><PlatformIcon :platform="record.platform"
+            /></view>
+            <view class="binding-details"
+              ><text class="binding-name" :class="themeClass('binding-name')">{{
+                platformInfo(record.platform).label
+              }}</text
+              ><text
+                v-if="record.platform !== 'weread'"
+                class="binding-account"
+                >{{ record.platformUsername }}</text
+              ><text v-else class="binding-account">已绑定</text></view
+            >
+            <button
+              role="button"
+              class="binding-action"
+              :aria-label="
+                '编辑' + platformInfo(record.platform).label + '绑定'
+              "
+              :disabled="loading || !!deleting"
+              :aria-disabled="loading || !!deleting"
+              @click="edit(record)"
+              :class="themeClass('binding-action')"
+            >
+              <CategoryIcon
+                icon="lucide:pencil"
+                :size="18"
+                :color="isDark ? '#b4b4bd' : '#71717a'"
+              />
+            </button>
+            <button
+              role="button"
+              class="binding-action"
+              :aria-label="
+                '解除' + platformInfo(record.platform).label + '绑定'
+              "
+              :disabled="loading || !!deleting"
+              :aria-disabled="loading || !!deleting"
+              @click="confirmId = confirmId === record.id ? '' : record.id"
+              :class="themeClass('binding-action')"
+            >
+              <CategoryIcon
+                icon="lucide:unlink"
+                :size="18"
+                :color="isDark ? '#b4b4bd' : '#71717a'"
+              />
+            </button>
+          </view>
+          <view
+            v-if="confirmId === record.id"
+            class="unbind-confirm ui-pad-card ui-mt-section"
+            :class="themeClass('unbind-confirm')"
+          >
+            <text class="binding-name" :class="themeClass('binding-name')"
+              >解除此账号绑定？</text
+            >
+            <view class="binding-actions ui-row ui-mt-section"
+              ><button
+                role="button"
+                class="binding-cancel"
+                :disabled="!!deleting"
+                :aria-disabled="!!deleting"
+                @click="confirmId = ''"
+                :class="themeClass('binding-cancel')"
+              >
+                取消</button
+              ><button
+                role="button"
+                class="binding-danger ui-px-card"
+                :loading="deleting === record.id"
+                :disabled="!!deleting"
+                :aria-disabled="!!deleting"
+                @click="unbind(record.id)"
+              >
+                解除绑定
+              </button></view
+            >
+          </view>
+        </view>
+      </view>
+    </scroll-view>
+    <AdaptiveModal
+      v-if="editing"
+      label="绑定账号"
+      :busy="saving"
+      :max-width="480"
+      :content-key="form.platform + showHelp + modalError + verified"
+      @close="closeEditor()"
+    >
+      <text class="binding-label ui-mb-section ui-mt-section" :class="themeClass('binding-label')"
+        >平台</text
+      >
+      <picker
+        :range="platforms"
+        range-key="label"
+        :value="platformIndex"
+        :disabled="!!form.id || saving"
+        :aria-disabled="!!form.id || saving"
+        @change="selectPlatform"
+        ><view class="binding-input ui-px-card" :class="themeClass('binding-input')"
+          ><text class="binding-name" :class="themeClass('binding-name')">{{
+            currentPlatform.label
+          }}</text
+          ><AppIcon name="ant-design:down-outlined" /></view
+        ></picker
+      >
+      <view class="binding-label-row ui-mt-sm"
+        ><text class="binding-label ui-mb-section ui-mt-section" :class="themeClass('binding-label')">{{
+          form.platform === 'weread'
+            ? 'API Key'
+            : form.platform === 'douban'
+              ? '豆瓣账号 ID'
+              : '账号 / 用户名'
+        }}</text
+        ><button
+          role="button"
+          class="binding-help"
+          aria-label="填写说明"
+          @click="showHelp = !showHelp"
+        >
+          ?
+        </button></view
+      >
+      <text v-if="showHelp" class="binding-hint ui-mb-section">{{
+        currentPlatform.hint
+      }}</text>
+      <input
+        v-if="form.platform !== 'weread'"
+        v-model="form.platformUsername"
+        class="binding-field ui-px-card"
+        aria-label="账号或用户名"
+        :disabled="saving"
+        :aria-disabled="saving"
+        :maxlength="255"
+        placeholder="填写账号或用户名"
+        @input="resetVerification"
+        :class="themeClass('binding-field')"
+      />
+      <view v-if="form.platform === 'douban'" class="verify-row"
+        ><text
+          v-if="verified"
+          class="verified-text ui-mt-section"
+          :class="themeClass('verified-text')"
+          >{{ verified }}</text
+        ><button
+          role="button"
+          class="text-action"
+          :loading="verifying"
+          :disabled="verifying || saving"
+          :aria-disabled="verifying || saving"
+          @click="verify"
+        >
+          验证账号
+        </button></view
+      >
+      <text
+        v-if="form.platform === 'github'"
+        class="binding-label ui-mb-section ui-mt-section"
+        :class="themeClass('binding-label')"
+        >Access Token</text
+      >
+      <input
+        v-if="form.platform === 'github' || form.platform === 'weread'"
+        v-model="form.accessToken"
+        class="binding-field ui-px-card"
+        :password="true"
+        :aria-label="form.platform === 'weread' ? 'API Key' : 'Access Token'"
+        :disabled="saving"
+        :aria-disabled="saving"
+        :maxlength="4096"
+        :placeholder="
+          form.id
+            ? '留空保留原凭证'
+            : form.platform === 'weread'
+              ? 'wrk-xxxxxxxx'
+              : '选填'
+        "
+        :class="themeClass('binding-field')"
+      />
+      <text
+        v-if="modalError"
+        role="alert"
+        class="error-text binding-error ui-mt-section"
+        :class="themeClass('error-text')"
+        >{{ modalError }}</text
+      >
+      <view class="binding-actions modal-actions ui-row ui-mt-section"
+        ><button
+          role="button"
+          class="binding-cancel"
+          :disabled="saving"
+          :aria-disabled="saving"
+          @click="closeEditor()"
+          :class="themeClass('binding-cancel')"
+        >
+          取消</button
+        ><button
+          role="button"
+          class="binding-save"
+          :loading="saving"
+          :disabled="saving || verifying"
+          :aria-disabled="saving || verifying"
+          @click="save"
+        >
+          {{ saving ? '保存中…' : '保存' }}
+        </button></view
+      >
+    </AdaptiveModal>
+  <SecondaryUnlock />
+  </view>
+</template>
+<style scoped lang="scss">
+@use '../../styles/spacing.scss';
+@use '../../styles/spacing-tokens' as *;
+.binding-toolbar {
+  flex-direction: row;
+  justify-content: flex-end;
+
+}
+.binding-add {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  line-height: 44px;
+  padding: 0;
+  margin: 0;
+  background-color: transparent;
+  color: #4e7ee3;
+  font-size: 28px;
+  border: 0;
+}
+.binding-status {
+
+}
+.binding-card {
+
+
+  border-radius: 16px;
+  background-color: #ffffff;
+}
+.binding-row {
+  flex-direction: row;
+  align-items: center;
+}
+.platform-mark {
+  width: 42px;
+  height: 42px;
+  flex-shrink: 0;
+  border-radius: 14px;
+  justify-content: center;
+  align-items: center;
+  margin-right: $space-section;
+}
+.binding-details {
+  flex: 1;
+  min-width: 0;
+}
+.binding-name {
+  color: #27272a;
+  font-size: 15px;
+  line-height: 24px;
+}
+.binding-account {
+  color: #8b8f99;
+  font-size: 13px;
+  line-height: 22px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.binding-action {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 44px;
+  height: 44px;
+  line-height: 44px;
+  padding: 0;
+  margin: 0;
+  background-color: transparent;
+  color: #71717a;
+  font-size: 24px;
+  border: 0;
+}
+.unbind-confirm {
+
+
+  border-radius: 12px;
+  background-color: #f5f6f8;
+}
+.binding-actions {
+  flex-direction: row;
+  justify-content: flex-end;
+
+}
+.binding-cancel,
+.binding-save,
+.binding-danger {
+  min-width: 80px;
+  height: 44px;
+  line-height: 44px;
+  border: 0;
+
+  margin: 0 0 0 $space-inline;
+  border-radius: 10px;
+  font-size: 14px;
+}
+.binding-cancel {
+  color: #71717a;
+  background-color: #f0f2f5;
+}
+.binding-save {
+  color: #ffffff;
+  background-color: #4e7ee3;
+}
+.binding-danger {
+  color: #ffffff;
+  background-color: #c65353;
+}
+.binding-label {
+  color: #52525b;
+  font-size: 13px;
+
+}
+.binding-label-row {
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+
+}
+.binding-help {
+  width: 44px;
+  height: 44px;
+  line-height: 44px;
+  padding: 0;
+  margin: 0;
+  border: 0;
+  background-color: transparent;
+  color: #8b8f99;
+  font-size: 16px;
+}
+.binding-hint {
+  color: #8b8f99;
+  font-size: 12px;
+  line-height: 20px;
+
+}
+.binding-input {
+  min-height: 48px;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+
+  border-radius: 12px;
+  background-color: #f5f6f8;
+}
+.binding-field {
+  height: 48px;
+
+  border-radius: 12px;
+  background-color: #f5f6f8;
+  color: #27272a;
+  font-size: 15px;
+}
+.verify-row {
+  align-items: flex-end;
+}
+.verified-text {
+  color: #39765e;
+  font-size: 13px;
+
+}
+.binding-error {
+
+}
+.modal-actions {
+
+}
+
+.binding-card-dark {
+  background-color: #1c1e22;
+}
+.binding-name-dark,
+.binding-field-dark {
+  color: #eeeeef;
+}
+.binding-action-dark,
+.binding-label-dark {
+  color: #b4b4bd;
+}
+.binding-input-dark,
+.binding-field-dark,
+.unbind-confirm-dark {
+  background-color: #282a30;
+}
+.binding-cancel-dark {
+  color: #b4b4bd;
+  background-color: #303238;
+}
+.verified-text-dark {
+  color: #abd4b9;
+}
+
+/* #ifdef WEB || MP-WEIXIN */
+.binding-add::after,
+.binding-action::after,
+.binding-help::after,
+.binding-cancel::after,
+.binding-save::after,
+.binding-danger::after {
+  border: 0;
+}
+/* #endif */
+</style>

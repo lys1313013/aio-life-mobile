@@ -1,0 +1,837 @@
+<script setup lang="ts">
+import AppIcon from '../../components/AppIcon.uvue'
+import { computed, ref } from 'vue';
+import { onLoad, onShow, onUnload } from '@dcloudio/uni-app';
+import PageHeader from '../../components/PageHeader.uvue';
+import MobilePage from '../../components/MobilePage.uvue';
+import MobileButton from '../../components/MobileButton.uvue';
+import FloatingActionButton from '../../components/FloatingActionButton.uvue';
+import PageState from '../../components/PageState.uvue';
+import LoadMore from '../../components/LoadMore.uvue';
+import ConfirmAction from '../../components/ConfirmAction.uvue';
+import AdaptiveModal from '../../components/AdaptiveModal.uvue';
+import FormField from '../../components/FormField.uvue';
+import CategoryIcon from '../../components/CategoryIcon.uvue';
+import { themeClass } from '../../services/theme.ts';
+import { fetchUser } from '../../services/api.ts';
+import { session, restoreSession } from '../../services/session.ts';
+import { createLatestTask } from '../../services/mobile-ui.ts';
+import { authFileUrl, chooseAndUploadAttachment } from '../../services/attachments.ts';
+import { specs, feedbackStatuses, feedbackTypes } from '../../services/admin/specs.ts';
+import { protectedMenu } from '../../services/admin/contract.ts';
+import {
+  queryAdmin,
+  saveAdmin,
+  deleteAdmin,
+  setMenuStatus,
+  setMenuSort,
+  sortUserDict,
+  saveConfig,
+  feedbackDetail,
+  replyFeedback,
+  feedbackStatus,
+  batchCloseFeedback,
+  adminOptions,
+} from '../../services/admin/index.ts';
+import { exportLogs } from '../../services/admin/export.ts';
+const kind = ref('users');
+const spec = computed(() => specs[kind.value]);
+const rows = ref<any[]>([]),
+  options = ref<any[]>([]),
+  total = ref(0),
+  page = ref(1);
+const loading = ref(false),
+  refreshing = ref(false),
+  saving = ref(false),
+  uploading = ref(false),
+  exporting = ref(false);
+const error = ref(''),
+  editorError = ref(''),
+  busyId = ref(''),
+  keyword = ref(''),
+  typeFilter = ref(''),
+  statusFilter = ref(''),
+  startDate = ref(''),
+  endDate = ref('');
+const sortKey = ref(''),
+  sortDescending = ref(false);
+const sortable = computed(() => ['dict-types', 'dict-data'].includes(kind.value));
+const opened = ref(false),
+  original = ref<any>(null),
+  form = ref<any>({}),
+  detail = ref<any>(null),
+  detailLoading = ref(false),
+  detailError = ref('');
+const reply = ref(''),
+  replyFiles = ref<any[]>([]),
+  newStatus = ref(''),
+  selected = ref<string[]>([]),
+  collapsed = ref<string[]>([]);
+const configValues = ref<any>({});
+const task = createLatestTask(),
+  detailTask = createLatestTask();
+let active = true;
+const authorized = computed(() => session.user?.roles?.includes('admin'));
+const isLog = computed(() => ['operation', 'access'].includes(kind.value));
+const shown = computed(() => {
+  const result =
+    kind.value === 'menus'
+      ? rows.value.filter(
+          (row) =>
+            (!keyword.value ||
+              [row.title, row.name, row.path].some((value) =>
+                String(value).includes(keyword.value),
+              )) &&
+            !hiddenByParent(row),
+        )
+      : [...rows.value];
+  if (sortable.value && sortKey.value)
+    result.sort((a, b) => {
+      const key = sortKey.value;
+      const order =
+        key === 'dictSort'
+          ? Number(a[key] || 0) - Number(b[key] || 0)
+          : String(a[key] || '').localeCompare(String(b[key] || ''));
+      return sortDescending.value ? -order : order;
+    });
+  return result;
+});
+const filterTypes = computed(() => (kind.value === 'feedback' ? feedbackTypes : options.value));
+const filterStatuses = computed(() =>
+  kind.value === 'feedback'
+    ? feedbackStatuses
+    : [
+        { label: '启用', value: '0' },
+        { label: '禁用', value: '1' },
+      ],
+);
+onLoad((params) => {
+  kind.value = typeof params?.kind === 'string' && specs[params.kind] ? params.kind : 'users';
+});
+onUnload(() => {
+  active = false;
+  task.invalidate();
+  detailTask.invalidate();
+});
+onShow(() => {
+  restoreSession();
+  if (!session.token) {
+    uni.reLaunch({ url: '/pages/login/index' });
+    return;
+  }
+  load(false);
+});
+function filters() {
+  const result: any = { [spec.value.search]: keyword.value };
+  if (typeFilter.value)
+    result[kind.value === 'feedback' ? 'feedbackType' : 'dictType'] = typeFilter.value;
+  if (statusFilter.value) result.status = statusFilter.value;
+  if (startDate.value) result.startDate = startDate.value;
+  if (endDate.value) result.endDate = endDate.value;
+  return result;
+}
+async function load(more = false, refresh = false) {
+  if (more && loading.value) return;
+  const generation = task.begin(),
+    token = session.token;
+  loading.value = true;
+  refreshing.value = refresh;
+  error.value = '';
+  const nextPage = more ? page.value + 1 : 1;
+  try {
+    if (!session.user) await fetchUser();
+    if (!authorized.value) throw Error('当前账号没有管理员权限');
+    const [result, loadedOptions] = await Promise.all([
+      queryAdmin(kind.value, { ...filters(), page: nextPage, pageSize: 20 }),
+      !options.value.length ? adminOptions(kind.value) : Promise.resolve(options.value),
+    ]);
+    if (active && task.isCurrent(generation) && token === session.token) {
+      rows.value = more ? [...rows.value, ...result.items] : result.items;
+      total.value = result.total;
+      page.value = nextPage;
+      options.value = loadedOptions;
+      if (!more) selected.value = [];
+      for (const row of rows.value)
+        if (kind.value === 'config' && configValues.value[row.configKey] === undefined)
+          configValues.value[row.configKey] = row.configValue || '';
+    }
+  } catch (reason) {
+    if (active && task.isCurrent(generation) && token === session.token)
+      error.value = reason.message || '加载失败';
+  } finally {
+    if (active && task.isCurrent(generation)) {
+      loading.value = false;
+      refreshing.value = false;
+    }
+  }
+}
+function fieldOptions(field) {
+  if (field.options.length) return field.options;
+  if (field.key === 'dictId' || field.key === 'dictType') return options.value;
+  if (field.key === 'parentId')
+    return [
+      { label: '无（根菜单）', value: '0' },
+      ...rows.value
+        .filter((row) => row.id !== form.value.id && !descendant(row, form.value.id))
+        .map((row) => ({ label: row.title + ' (' + row.id + ')', value: row.id })),
+    ];
+  return [];
+}
+function fieldValue(field) {
+  const value = form.value[field.key];
+  return field.kind === 'selector'
+    ? fieldOptions(field).find((option) => option.value === String(value))?.label || ''
+    : String(value == null ? '' : value);
+}
+function setField(field, value) {
+  form.value[field.key] =
+    field.kind === 'selector'
+      ? fieldOptions(field).find((option) => option.label === value)?.value || ''
+      : value;
+}
+function edit(row = null, parentId = '0') {
+  if (loading.value || busyId.value || !authorized.value) return;
+  original.value = row;
+  form.value = row
+    ? { ...row }
+    : {
+        role: 'user',
+        status: kind.value === 'menus' ? '1' : '0',
+        isReadonly: 'N',
+        dictSort: '0',
+        sort: '0',
+        parentId,
+        dictType: typeFilter.value,
+        color: '#427bea',
+      };
+  if (kind.value === 'menus') {
+    form.value.title = row?.meta?.title || '';
+    form.value.icon = row?.meta?.icon || '';
+    form.value.metaText = JSON.stringify(row?.meta || {}, null, 2);
+  }
+  editorError.value = '';
+  opened.value = true;
+}
+async function save() {
+  if (saving.value) return;
+  saving.value = true;
+  editorError.value = '';
+  const token = session.token;
+  try {
+    await saveAdmin(kind.value, form.value, original.value);
+    if (active && token === session.token) {
+      opened.value = false;
+      await load();
+    }
+  } catch (reason) {
+    if (active && token === session.token) editorError.value = reason.message || '保存失败';
+  } finally {
+    saving.value = false;
+  }
+}
+async function remove(row) {
+  await deleteAdmin(kind.value, row);
+  if (active) await load();
+}
+async function mutate(row, action) {
+  if (busyId.value) return;
+  busyId.value = row[spec.value.id];
+  error.value = '';
+  const token = session.token;
+  try {
+    await action();
+    if (active && token === session.token) await load();
+  } catch (reason) {
+    if (active && token === session.token) error.value = reason.message || '操作失败';
+  } finally {
+    busyId.value = '';
+  }
+}
+async function move(row, delta) {
+  const peers = rows.value.filter((item) =>
+    kind.value === 'menus' ? item.parentId === row.parentId : item.dictType === row.dictType,
+  );
+  const index = peers.findIndex((item) => item.id === row.id),
+    target = peers[index + delta];
+  if (!target) return;
+  await mutate(row, async () => {
+    if (kind.value === 'menus') {
+      await setMenuSort(row, (target.sort || 0) + (delta < 0 ? -1 : 1));
+    } else await sortUserDict(row, target, delta);
+  });
+}
+function descendant(row, id) {
+  let parent = row.parentId,
+    seen = [];
+  while (parent && parent !== '0' && !seen.includes(parent)) {
+    if (parent === id) return true;
+    seen.push(parent);
+    parent = rows.value.find((row) => row.id === parent)?.parentId;
+  }
+  return false;
+}
+function hiddenByParent(row) {
+  return collapsed.value.some((id) => descendant(row, id));
+}
+function toggleMenu(row) {
+  collapsed.value = collapsed.value.includes(row.id)
+    ? collapsed.value.filter((id) => id !== row.id)
+    : [...collapsed.value, row.id];
+}
+function label(key) {
+  return (
+    {
+      title: '标题',
+      name: '路由名称',
+      username: '用户名',
+      nickname: '昵称',
+      role: '角色',
+      email: '邮箱',
+      isOnline: '在线',
+      lastActiveTime: '最近活动',
+      createTime: '创建时间',
+      updateTime: '更新时间',
+      dictName: '字典名称',
+      dictType: '字典类型',
+      dictLabel: '展示值',
+      dictValue: '实际值',
+      dictSort: '排序',
+      remark: '备注',
+      status: '状态',
+      isReadonly: '只读',
+      color: '颜色',
+      icon: '图标',
+      path: '路由',
+      component: '组件',
+      roles: '角色',
+      sort: '排序',
+      description: '说明',
+      configKey: '配置键',
+      configType: '类型',
+      configValue: '值',
+      userName: '用户',
+      feedbackType: '反馈类型',
+      priority: '优先级',
+      commentCount: '评论',
+      functionName: '功能',
+      functionItem: '操作',
+      success: '成功',
+      ipAddress: 'IP',
+      browser: '浏览器',
+      accessType: '访问类型',
+    }[key] || key
+  );
+}
+function display(row, key) {
+  const value = row[key];
+  if (key === 'status' && kind.value === 'feedback')
+    return feedbackStatuses.find((item) => item.value === value)?.label || value;
+  if (key === 'feedbackType')
+    return feedbackTypes.find((item) => item.value === value)?.label || value;
+  return typeof value === 'boolean' ? (value ? '是' : '否') : String(value == null ? '' : value);
+}
+async function openDetail(row) {
+  const generation = detailTask.begin(),
+    token = session.token;
+  if (detail.value?.id !== row.id) {
+    reply.value = '';
+    replyFiles.value = [];
+    editorError.value = '';
+  }
+  detailLoading.value = true;
+  detailError.value = '';
+  detail.value = { ...row };
+  try {
+    const result = await feedbackDetail(row);
+    if (active && detailTask.isCurrent(generation) && token === session.token) {
+      detail.value = result;
+      newStatus.value = result.status;
+    }
+  } catch (reason) {
+    if (active && detailTask.isCurrent(generation))
+      detailError.value = reason.message || '详情加载失败';
+  } finally {
+    if (active && detailTask.isCurrent(generation)) detailLoading.value = false;
+  }
+}
+async function submitReply() {
+  if (saving.value || detailLoading.value || detailError.value || !detail.value) return;
+  saving.value = true;
+  editorError.value = '';
+  const token = session.token;
+  try {
+    await replyFeedback(
+      detail.value,
+      reply.value,
+      replyFiles.value.map((file) => file.id),
+    );
+    if (active && token === session.token) {
+      reply.value = '';
+      replyFiles.value = [];
+      await openDetail(detail.value);
+      await load();
+    }
+  } catch (reason) {
+    if (active && token === session.token) editorError.value = reason.message || '回复失败';
+  } finally {
+    saving.value = false;
+  }
+}
+async function upload() {
+  if (uploading.value) return;
+  uploading.value = true;
+  try {
+    const file = await chooseAndUploadAttachment('/file/upload', { bizType: 'feedback_comment' });
+    if (active) replyFiles.value.push(file);
+  } catch (reason) {
+    if (active) editorError.value = reason.message || '上传失败';
+  } finally {
+    uploading.value = false;
+  }
+}
+async function preview(file) {
+  if (busyId.value) return;
+  busyId.value = file.id;
+  try {
+    const url = await authFileUrl(file.id);
+    if (active) uni.previewImage({ urls: [url] });
+  } catch (reason) {
+    if (active) editorError.value = reason.message || '附件加载失败';
+  } finally {
+    busyId.value = '';
+  }
+}
+async function changeStatus() {
+  if (!detail.value || saving.value) return;
+  saving.value = true;
+  editorError.value = '';
+  try {
+    await feedbackStatus(detail.value, newStatus.value);
+    if (active) {
+      detail.value.status = newStatus.value;
+      await load();
+    }
+  } catch (reason) {
+    if (active) editorError.value = reason.message || '状态更新失败';
+  } finally {
+    saving.value = false;
+  }
+}
+function toggleSelected(id) {
+  selected.value = selected.value.includes(id)
+    ? selected.value.filter((value) => value !== id)
+    : [...selected.value, id];
+}
+async function batchClose() {
+  await batchCloseFeedback(selected.value);
+  if (active) await load();
+}
+function recipients(row) {
+  try {
+    const values = JSON.parse(configValues.value[row.configKey] || '[]');
+    return Array.isArray(values) ? values : [];
+  } catch {
+    return [];
+  }
+}
+function toggleRecipient(row, id) {
+  const values = recipients(row);
+  configValues.value[row.configKey] = JSON.stringify(
+    values.includes(id) ? values.filter((value) => value !== id) : [...values, id],
+  );
+}
+async function download() {
+  if (exporting.value) return;
+  exporting.value = true;
+  error.value = '';
+  try {
+    const file = await exportLogs(kind.value, filters());
+    if (active) uni.showToast({ title: '已导出', icon: 'success' });
+  } catch (reason) {
+    if (active) error.value = reason.message || '导出失败';
+  } finally {
+    exporting.value = false;
+  }
+}
+</script>
+<template>
+  <view class="admin-page"
+    ><PageHeader :title="spec.title" back @back="uni.navigateBack()" /><MobilePage
+      :refreshing="refreshing"
+      @refresh="load(false, true)"
+    >
+      <FormField :label="kind === 'dict-types' ? '字典名称' : kind === 'dict-data' ? '展示值' : kind === 'users' ? '用户名 / 昵称' : '关键词'" v-model="keyword" :disabled="loading" />
+      <view class="admin-filters ui-field-row">
+      <FormField
+        v-if="['dict-data', 'user-dict', 'feedback'].includes(kind)"
+        compact stretch label="类型"
+        kind="selector"
+        :model-value="
+          filterTypes.find((item) => (item.type || item.value) === typeFilter)?.label || '全部'
+        "
+        :options="['全部', ...filterTypes.map((item) => item.label)]"
+        @update:model-value="
+          (value) =>
+            (typeFilter =
+              value === '全部'
+                ? ''
+                : filterTypes.find((item) => item.label === value)?.type ||
+                  filterTypes.find((item) => item.label === value)?.value ||
+                  '')
+        "
+      />
+      <FormField
+        v-if="['user-dict', 'feedback'].includes(kind)"
+        compact stretch label="状态"
+        kind="selector"
+        :model-value="filterStatuses.find((item) => item.value === statusFilter)?.label || '全部'"
+        :options="['全部', ...filterStatuses.map((item) => item.label)]"
+        @update:model-value="
+          (value) =>
+            (statusFilter = filterStatuses.find((item) => item.label === value)?.value || '')
+        "
+      />
+      </view>
+      <view v-if="isLog" class="admin-dates ui-field-row"
+        ><FormField compact stretch label="开始日期" kind="date" v-model="startDate" /><FormField compact stretch
+          label="结束日期"
+          kind="date"
+          v-model="endDate"
+      /></view>
+      <view v-if="sortable" class="admin-actions ui-toolbar ui-mt-sm"
+        ><FormField compact stretch
+          label="已加载数据排序"
+          kind="selector"
+          :model-value="sortKey ? label(sortKey) : '服务端顺序'"
+          :options="['服务端顺序', ...spec.display.map((key) => label(key))]"
+          @update:model-value="
+            (value) => (sortKey = spec.display.find((key) => label(key) === value) || '')
+          " /><MobileButton
+          :label="sortDescending ? '降序' : '升序'"
+          :icon="sortDescending ? 'ant-design:arrow-down-outlined' : 'ant-design:arrow-up-outlined'"
+          variant="quiet"
+          @click="sortDescending = !sortDescending" /></view
+      ><view class="admin-actions ui-toolbar ui-mt-sm"
+        ><MobileButton label="重置筛选" icon="ant-design:undo-outlined" variant="quiet" :disabled="loading" @click="keyword = ''; typeFilter = ''; statusFilter = ''; startDate = ''; endDate = ''; load()" /><MobileButton label="查询" icon="ant-design:search-outlined" :loading="loading" @click="load()" /><MobileButton
+          v-if="isLog"
+          label="导出日志"
+          icon="ant-design:download-outlined"
+          variant="quiet"
+          :loading="exporting"
+          @click="download" /><ConfirmAction
+          v-if="kind === 'feedback' && selected.length"
+          label="批量关闭反馈"
+          message="关闭选中的反馈？"
+          :action="batchClose"
+      /></view>
+      <PageState :loading="loading" :error="error" :empty="!shown.length" @retry="load()"
+        ><view
+          v-for="row in shown"
+          :key="row[spec.id]"
+          class="admin-card ui-card"
+          :class="themeClass('admin-card')"
+        >
+          <view v-if="kind === 'menus'" class="admin-actions ui-toolbar ui-mt-sm"
+            ><MobileButton
+              v-if="rows.some((item) => item.parentId === row.id)"
+              :label="collapsed.includes(row.id) ? '展开子菜单' : '收起子菜单'"
+              :icon="collapsed.includes(row.id) ? 'ant-design:right-outlined' : 'ant-design:down-outlined'"
+              variant="quiet"
+              @click="toggleMenu(row)"
+            /><view :style="{ marginLeft: (row.depth || 0) * 16 + 'px' }"><AppIcon v-if="row.depth" name="lucide:corner-down-right" :size="16" /></view><text>{{ row.title }}</text></view
+          >
+          <CategoryIcon v-if="kind === 'user-dict'" :icon="row.icon" :color="row.color" />
+          <view v-for="key in spec.display" :key="key" class="admin-value ui-row ui-py-xs"
+            ><text class="admin-label">{{ label(key) }}</text
+            ><text class="admin-text">{{ display(row, key) }}</text></view
+          >
+          <view v-if="kind === 'config'">
+            <FormField v-if="row.configType === 'BOOLEAN'" label="启用"
+              ><switch
+                :checked="configValues[row.configKey] === 'true'"
+                :disabled="!!busyId"
+                aria-label="启用配置"
+                @change="
+                  (event) => (configValues[row.configKey] = event.detail.value ? 'true' : 'false')
+                "
+            /></FormField>
+            <view v-else-if="row.configKey === 'feedback.notify_admin_ids'" class="admin-recipients ui-row"
+              ><view
+                v-for="user in options"
+                :key="user.id"
+                class="admin-recipient ui-row"
+                @click="toggleRecipient(row, user.id)"
+                ><checkbox
+                  :checked="recipients(row).includes(user.id)"
+                  :aria-label="user.nickname || user.username"
+                /><text>{{ user.nickname || user.username }}</text></view
+              ></view
+            >
+            <FormField
+              v-else
+              label="配置值"
+              :kind="row.configType === 'JSON' ? 'textarea' : 'text'"
+              :input-type="row.configType === 'NUMBER' ? 'digit' : 'text'"
+              v-model="configValues[row.configKey]"
+              :disabled="!!busyId"
+            />
+            <MobileButton
+              label="保存配置"
+              icon="ant-design:check-outlined"
+              :loading="busyId === row.configKey"
+              :disabled="!!busyId && busyId !== row.configKey"
+              @click="mutate(row, () => saveConfig(row, configValues[row.configKey]))"
+            />
+          </view>
+          <view v-else class="admin-actions ui-toolbar ui-mt-sm">
+            <template v-if="!spec.readOnly"
+              ><MobileButton
+                label="编辑"
+                icon="ant-design:edit-outlined"
+                variant="quiet"
+                :disabled="loading || !!busyId"
+                @click="edit(row)" /><ConfirmAction
+                v-if="kind !== 'menus' || !protectedMenu(row)"
+                label="删除"
+                :message="kind === 'users' ? '确定删除此用户？' : '确定删除此记录？'"
+                :action="() => remove(row)"
+            /></template>
+            <template v-if="kind === 'menus'"
+              ><MobileButton
+                label="新增子菜单"
+                icon="ant-design:plus-outlined"
+                variant="quiet"
+                :disabled="loading"
+                @click="edit(null, row.id)" /><MobileButton
+                :label="row.status === 1 ? '停用菜单' : '启用菜单'"
+                icon="ant-design:stop-outlined"
+                variant="quiet"
+                :loading="busyId === row.id"
+                :disabled="protectedMenu(row) || !!busyId"
+                @click="mutate(row, () => setMenuStatus(row))"
+            /></template>
+            <template v-if="kind === 'menus' || kind === 'user-dict'"
+              ><MobileButton
+                label="上移"
+                icon="ant-design:arrow-up-outlined"
+                variant="quiet"
+                :disabled="loading || !!busyId"
+                @click="move(row, -1)" /><MobileButton
+                label="下移"
+                icon="ant-design:arrow-down-outlined"
+                variant="quiet"
+                :disabled="loading || !!busyId"
+                @click="move(row, 1)"
+            /></template>
+            <template v-if="kind === 'feedback'"
+              ><MobileButton
+                label="详情"
+                icon="ant-design:right-outlined"
+                variant="quiet"
+                @click="openDetail(row)" /><MobileButton
+                :label="selected.includes(row.id) ? '取消选择' : '选择反馈'"
+                :icon="selected.includes(row.id) ? 'ant-design:check-square-outlined' : 'ant-design:border-outlined'"
+                variant="quiet"
+                @click="toggleSelected(row.id)"
+            /></template>
+          </view> </view></PageState
+      ><LoadMore
+        v-if="!spec.tree && !spec.array"
+        :loading="loading"
+        :has-more="rows.length < total"
+        @load="load(true)"
+      />
+      <template #fixed
+        ><FloatingActionButton
+          v-if="!spec.readOnly && kind !== 'config' && authorized"
+          :disabled="loading || !!busyId"
+          @click="edit()"
+      /></template>
+    </MobilePage>
+    <AdaptiveModal
+      v-if="opened"
+      :label="spec.title"
+      :busy="saving"
+      :content-key="editorError"
+      @close="opened = false"
+      ><FormField
+        v-for="field in spec.fields"
+        :key="field.key"
+        :label="field.label"
+        :kind="field.kind === 'number' ? 'text' : field.kind"
+        :input-type="field.kind === 'number' ? 'number' : 'text'"
+        :model-value="fieldValue(field)"
+        :options="fieldOptions(field).map((item) => item.label)"
+        :disabled="saving"
+        @update:model-value="(value) => setField(field, value)" /><text
+        v-if="kind === 'menus' && options.length"
+        class="admin-muted ui-mb-section"
+        >{{ '可用角色：' + options.join('、') }}</text
+      ><text v-if="editorError" class="admin-error ui-mb-section ui-mt-section" role="alert">{{ editorError }}</text
+      ><MobileButton label="保存" :loading="saving" @click="save"
+    /></AdaptiveModal>
+    <AdaptiveModal
+      v-if="detail"
+      label="反馈详情"
+      :busy="saving || uploading"
+      :content-key="detail.id + ':' + detailLoading + ':' + editorError"
+      @close="
+        detail = null;
+        reply = '';
+        replyFiles = [];
+        editorError = '';
+        detailTask.invalidate();
+      "
+      ><PageState :loading="detailLoading" :error="detailError" @retry="openDetail(detail)"
+        ><text class="admin-title ui-mb-section">{{ detail.title }}</text
+        ><text class="admin-content ui-mb-section ui-mt-section">{{ detail.content }}</text
+        ><MobileButton
+          v-for="file in detail.files || []"
+          :key="file.id"
+          :label="file.fileName || '预览附件'"
+          icon="ant-design:picture-outlined"
+          variant="quiet"
+          :loading="busyId === file.id"
+          @click="preview(file)" /><view
+          v-for="comment in detail.comments || []"
+          :key="comment.id"
+          class="admin-comment ui-py-card"
+          ><text>{{ comment.userName }} · {{ comment.createTime }}</text
+          ><text class="admin-content ui-mb-section ui-mt-section">{{ comment.content }}</text
+          ><MobileButton
+            v-for="file in comment.files || []"
+            :key="file.id"
+            :label="file.fileName || '预览附件'"
+            icon="ant-design:picture-outlined"
+            variant="quiet"
+            :loading="busyId === file.id"
+            @click="preview(file)" /></view
+      ></PageState>
+      <FormField
+        compact stretch label="状态"
+        kind="selector"
+        :model-value="feedbackStatuses.find((item) => item.value === newStatus)?.label || ''"
+        :options="feedbackStatuses.map((item) => item.label)"
+        :disabled="saving || detailLoading || !!detailError"
+        @update:model-value="
+          (value) =>
+            (newStatus = feedbackStatuses.find((item) => item.label === value)?.value || '')
+        "
+      /><MobileButton
+        label="更新状态"
+        :loading="saving"
+        :disabled="detailLoading || !!detailError"
+        @click="changeStatus"
+      /><FormField
+        label="回复"
+        kind="textarea"
+        v-model="reply"
+        :disabled="saving || detailLoading || !!detailError"
+      /><view class="admin-actions ui-toolbar ui-mt-sm"
+        ><MobileButton
+          label="添加图片"
+          icon="ant-design:plus-outlined"
+          variant="quiet"
+          :loading="uploading"
+          :disabled="saving || detailLoading || !!detailError"
+          @click="upload" /><MobileButton
+          v-for="file in replyFiles"
+          :key="file.id"
+          :label="'移除' + (file.fileName || '图片')"
+          icon="ant-design:close-outlined"
+          variant="quiet"
+          :disabled="saving"
+          @click="replyFiles = replyFiles.filter((item) => item.id !== file.id)" /><MobileButton
+          label="回复"
+          :loading="saving"
+          :disabled="uploading || detailLoading || !!detailError"
+          @click="submitReply" /></view
+      ><text v-if="editorError" class="admin-error ui-mb-section ui-mt-section" role="alert">{{ editorError }}</text>
+    </AdaptiveModal></view
+  >
+</template>
+<style scoped lang="scss">
+@use '../../styles/spacing.scss';
+@use '../../styles/spacing-tokens' as *;
+.admin-page {
+  flex: 1;
+  height: 100%;
+  min-height: 0;
+}
+.admin-card {
+
+  border-radius: 16px;
+
+  background-color: #ffffff;
+  color: #27272a;
+  overflow: visible;
+}
+.admin-card-dark {
+  background-color: #1c1e22;
+  color: #eeeeef;
+}
+.admin-value {
+  flex-direction: row;
+
+
+}
+.admin-label {
+  width: 80px;
+  flex-shrink: 0;
+  font-size: 13px;
+  color: #808692;
+}
+.admin-text {
+  flex: 1;
+  font-size: 14px;
+  overflow-wrap: break-word;
+}
+.admin-actions {
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+
+
+
+  overflow: visible;
+}
+.admin-dates {
+  flex-direction: row;
+  flex-wrap: wrap;
+
+}
+.admin-error {
+  color: #e05260;
+
+}
+.admin-muted {
+  font-size: 13px;
+  color: #808692;
+
+}
+.admin-title {
+  font-size: 18px;
+  font-weight: 600;
+
+}
+.admin-content {
+  font-size: 15px;
+
+  white-space: pre-wrap;
+}
+.admin-comment {
+
+}
+.admin-recipients {
+  flex-direction: row;
+  flex-wrap: wrap;
+
+}
+.admin-recipient {
+  flex-direction: row;
+  min-height: 44px;
+  align-items: center;
+
+}
+.admin-filters { flex-wrap: wrap; }
+</style>

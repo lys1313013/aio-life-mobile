@@ -1,0 +1,251 @@
+<script setup lang="ts">
+import { ref, watch } from 'vue';
+import { onShow, onHide } from '@dcloudio/uni-app';
+import PageHeader from '../../components/PageHeader.uvue';
+import MobilePage from '../../components/MobilePage.uvue';
+import MobileButton from '../../components/MobileButton.uvue';
+import FormField from '../../components/FormField.uvue';
+import PageState from '../../components/PageState.uvue';
+import AdaptiveModal from '../../components/AdaptiveModal.uvue';
+import { request } from '../../services/api.ts';
+import { session, restoreSession } from '../../services/session.ts';
+import { themeClass } from '../../services/theme.ts';
+const loading = ref(false),
+  saving = ref(false),
+  sending = ref(false),
+  ready = ref(false),
+  hasPassword = ref(false),
+  error = ref(''),
+  formError = ref(''),
+  mode = ref('');
+const menus = ref<any[]>([]),
+  locked = ref<string[]>([]),
+  password = ref(''),
+  oldPassword = ref(''),
+  confirmation = ref(''),
+  code = ref('');
+let revision = 0,
+  active = true;
+function flatten(nodes, parents = []) {
+  return nodes.flatMap((node) => {
+    const title = [...parents, node.meta?.title || node.name].join(' / ');
+    const self = node.meta?.menuId != null ? [{ id: String(node.meta.menuId), title }] : [];
+    return [...self, ...flatten(node.children || [], [...parents, node.meta?.title || node.name])];
+  });
+}
+watch(
+  () => session.token,
+  () => {
+    revision++;
+    menus.value = [];
+    locked.value = [];
+    mode.value = '';
+    password.value = '';
+    oldPassword.value = '';
+    confirmation.value = '';
+    code.value = '';
+    ready.value = false;
+    error.value = '';
+    formError.value = '';
+  },
+  { flush: 'sync' },
+);
+onShow(() => {
+  active = true;
+  restoreSession();
+  if (!session.token) {
+    uni.reLaunch({ url: '/pages/login/index' });
+    return;
+  }
+  load();
+});
+onHide(() => {
+  active = false;
+  revision++;
+  mode.value = '';
+  password.value = '';
+  oldPassword.value = '';
+  confirmation.value = '';
+  code.value = '';
+  ready.value = false;
+});
+async function load() {
+  const v = ++revision,
+    token = session.token;
+  loading.value = true;
+  error.value = '';
+  try {
+    const [tree, ids, status]: any = await Promise.all([
+      request('/menu/all'),
+      request('/auth/secondary-lock/menus'),
+      request('/auth/secondary-password/status'),
+    ]);
+    if (v !== revision || !active || token !== session.token) return;
+    menus.value = flatten(tree);
+    if (!Array.isArray(ids) || ids.some((x) => typeof x !== 'string'))
+      throw new Error('菜单锁ID数据异常');
+    locked.value = ids;
+    hasPassword.value = !!status.hasPassword;
+    ready.value = true;
+  } catch (e) {
+    if (v === revision && active) error.value = e.message;
+  } finally {
+    if (v === revision) loading.value = false;
+  }
+}
+function toggle(id) {
+  if (saving.value) return;
+  locked.value = locked.value.includes(id)
+    ? locked.value.filter((x) => x !== id)
+    : [...locked.value, id];
+}
+function open(value) {
+  mode.value = value;
+  password.value = '';
+  oldPassword.value = '';
+  confirmation.value = '';
+  code.value = '';
+  formError.value = '';
+}
+async function save() {
+  if (saving.value) return;
+  saving.value = true;
+  formError.value = '';
+  const token = session.token,
+    v = revision;
+  try {
+    if (!password.value) throw new Error('请输入密码');
+    if (mode.value !== 'menus' && password.value !== confirmation.value)
+      throw new Error('两次输入的密码不一致');
+    if (mode.value === 'menus')
+      await request('/auth/secondary-lock/menus', 'PUT', {
+        menuIds: locked.value,
+        secondaryPassword: password.value,
+      });
+    else if (mode.value === 'recovery') {
+      if (!code.value) throw new Error('请输入验证码');
+      await request('/auth/reset-secondary-password', 'POST', {
+        code: code.value,
+        password: password.value,
+      });
+    } else {
+      if (hasPassword.value && !oldPassword.value) throw new Error('请输入旧密码');
+      await request('/auth/secondary-password', 'PUT', {
+        password: password.value,
+        ...(hasPassword.value ? { oldPassword: oldPassword.value } : {}),
+      });
+    }
+    if (token !== session.token || v !== revision || !active) return;
+    mode.value = '';
+    password.value = '';
+    oldPassword.value = '';
+    confirmation.value = '';
+    code.value = '';
+    await load();
+  } catch (e) {
+    if (active && token === session.token) formError.value = e.message;
+  } finally {
+    saving.value = false;
+  }
+}
+async function sendCode() {
+  if (sending.value) return;
+  sending.value = true;
+  formError.value = '';
+  const token = session.token,
+    v = revision;
+  try {
+    await request('/auth/send-reset-secondary-password-code', 'POST');
+    if (!active || token !== session.token || v !== revision) return;
+    uni.showToast({ title: '验证码已发送', icon: 'success' });
+  } catch (e) {
+    formError.value = e.message;
+  } finally {
+    sending.value = false;
+  }
+}
+function back() {
+  uni.navigateBack({ fail: () => uni.switchTab({ url: '/pages/profile/index' }) });
+}
+</script>
+<template>
+  <view class="tab-page" :class="themeClass('tab-page')"
+    ><PageHeader title="菜单锁" back @back="back" /><MobilePage
+      :refreshing="loading"
+      @refresh="load"
+      ><PageState :loading="loading" :error="error" @retry="load"
+        ><view v-if="ready" class="security-surface ui-card" :class="themeClass('security-surface')"
+          ><view v-for="item in menus" :key="item.id" class="security-row ui-row"
+            ><text class="security-name">{{ item.title }}</text
+            ><switch
+              :checked="locked.includes(item.id)"
+              :disabled="saving || !hasPassword"
+              :aria-label="'锁定' + item.title"
+              @change="toggle(item.id)" /></view
+          ><MobileButton label="保存菜单锁" :disabled="!hasPassword" @click="open('menus')" /><view
+            class="security-actions ui-row ui-mt-section"
+            ><MobileButton
+              :label="hasPassword ? '修改二级密码' : '设置二级密码'"
+              variant="quiet"
+              @click="open('password')" /><MobileButton
+              label="忘记密码"
+              variant="quiet"
+              @click="open('recovery')" /></view></view></PageState></MobilePage
+    ><AdaptiveModal
+      v-if="mode"
+      :label="mode === 'menus' ? '确认菜单锁' : '二级密码'"
+      :busy="saving"
+      :max-width="480"
+      @close="mode = ''"
+      ><FormField
+        v-if="mode === 'password' && hasPassword"
+        label="旧密码"
+        kind="password"
+        v-model="oldPassword" /><view v-if="mode === 'recovery'"
+        ><FormField label="邮箱验证码" v-model="code" /><MobileButton
+          label="发送验证码"
+          :loading="sending"
+          @click="sendCode" /></view
+      ><FormField
+        :label="mode === 'menus' ? '二级密码' : '新密码'"
+        kind="password"
+        v-model="password" /><FormField
+        v-if="mode !== 'menus'"
+        label="确认密码"
+        kind="password"
+        v-model="confirmation" /><text v-if="formError" role="alert" class="error-text">{{
+        formError
+      }}</text
+      ><MobileButton label="保存" :loading="saving" @click="save" /></AdaptiveModal
+  ></view>
+</template>
+<style scoped lang="scss">
+@use '../../styles/spacing.scss';
+@use '../../styles/spacing-tokens' as *;
+.security-surface {
+  background-color: #fff;
+  color: #27272a;
+  border-radius: 14px;
+
+}
+.security-surface-dark {
+  background-color: #1c1e22;
+  color: #eeeeef;
+}
+.security-row {
+  flex-direction: row;
+  align-items: center;
+  min-height: 52px;
+
+}
+.security-name {
+  flex: 1;
+  font-size: 14px;
+}
+.security-actions {
+  flex-direction: row;
+  flex-wrap: wrap;
+
+
+}
+</style>

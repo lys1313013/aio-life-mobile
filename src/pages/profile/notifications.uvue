@@ -1,0 +1,290 @@
+<script setup lang="ts">
+import { ref, watch } from 'vue';
+import { onShow, onHide } from '@dcloudio/uni-app';
+import PageHeader from '../../components/PageHeader.uvue';
+import MobilePage from '../../components/MobilePage.uvue';
+import MobileButton from '../../components/MobileButton.uvue';
+import FormField from '../../components/FormField.uvue';
+import PageState from '../../components/PageState.uvue';
+import ConfirmAction from '../../components/ConfirmAction.uvue';
+import AdaptiveModal from '../../components/AdaptiveModal.uvue';
+import { request } from '../../services/api.ts';
+import { session, restoreSession } from '../../services/session.ts';
+import { themeClass } from '../../services/theme.ts';
+import { notificationPayload } from '../../services/preferences-contract.ts';
+const loading = ref(false),
+  saving = ref(false),
+  testing = ref(false),
+  recipientLoading = ref(false),
+  ready = ref(false),
+  editing = ref(false),
+  error = ref(''),
+  formError = ref(''),
+  recipientWarning = ref('');
+const config = ref<any>({}),
+  preferences = ref<any[]>([]),
+  recipients = ref<any[]>([]),
+  form = ref<any>({});
+const channels = { STATION: '站内', EMAIL: '邮件', FEISHU: '飞书' };
+let revision = 0,
+  active = true;
+watch(
+  () => session.token,
+  () => {
+    revision++;
+    config.value = {};
+    preferences.value = [];
+    recipients.value = [];
+    form.value = {};
+    editing.value = false;
+    ready.value = false;
+    error.value = '';
+    formError.value = '';
+  },
+  { flush: 'sync' },
+);
+onShow(() => {
+  active = true;
+  restoreSession();
+  if (!session.token) {
+    uni.reLaunch({ url: '/pages/login/index' });
+    return;
+  }
+  load();
+});
+onHide(() => {
+  active = false;
+  revision++;
+  editing.value = false;
+  form.value = {};
+  ready.value = false;
+});
+async function load() {
+  const v = ++revision,
+    token = session.token;
+  loading.value = true;
+  error.value = '';
+  try {
+    const [c, p]: any = await Promise.all([
+      request('/notification/channels/feishu'),
+      request('/notification/preferences'),
+    ]);
+    if (v !== revision || !active || token !== session.token) return;
+    if (!Array.isArray(p)) throw new Error('通知偏好数据异常');
+    config.value = c;
+    preferences.value = p;
+    ready.value = true;
+  } catch (e) {
+    if (v === revision && active) error.value = e.message;
+  } finally {
+    if (v === revision) loading.value = false;
+  }
+}
+function edit() {
+  form.value = {
+    appId: config.value.appId || '',
+    appSecret: '',
+    openId: config.value.receiverOpenId || '',
+    enabled: !!config.value.enabled,
+  };
+  formError.value = '';
+  editing.value = true;
+}
+async function saveConfig() {
+  if (saving.value) return;
+  saving.value = true;
+  formError.value = '';
+  const token = session.token;
+  try {
+    const payload: any = { enabled: form.value.enabled };
+    for (const key of ['appId', 'appSecret', 'openId'])
+      if (form.value[key]?.trim()) payload[key] = form.value[key].trim();
+    const result = await request('/notification/channels/feishu', 'PUT', payload);
+    if (!active || token !== session.token) return;
+    config.value = result;
+    editing.value = false;
+    form.value = {};
+  } catch (e) {
+    if (active) formError.value = e.message;
+  } finally {
+    saving.value = false;
+  }
+}
+async function recipientsLoad() {
+  if (recipientLoading.value) return;
+  recipientLoading.value = true;
+  formError.value = '';
+  const token = session.token,
+    v = revision;
+  try {
+    const data: any = await request('/notification/channels/feishu/recipients');
+    if (!active || token !== session.token || v !== revision || !editing.value) return;
+    recipients.value = data.items || [];
+    recipientWarning.value = data.warning || '';
+  } catch (e) {
+    formError.value = e.message;
+  } finally {
+    recipientLoading.value = false;
+  }
+}
+async function savePreferences() {
+  if (saving.value || !ready.value) return;
+  saving.value = true;
+  error.value = '';
+  const token = session.token;
+  try {
+    const data: any = await request(
+      '/notification/preferences',
+      'PUT',
+      notificationPayload(preferences.value),
+    );
+    if (active && token === session.token) preferences.value = data;
+  } catch (e) {
+    if (active) error.value = e.message;
+  } finally {
+    saving.value = false;
+  }
+}
+async function testChannel() {
+  if (testing.value) return;
+  testing.value = true;
+  error.value = '';
+  const token = session.token,
+    v = revision;
+  try {
+    await request('/notification/channels/feishu/test', 'POST');
+    if (!active || token !== session.token || v !== revision) return;
+    uni.showToast({ title: '测试已发送', icon: 'success' });
+  } catch (e) {
+    error.value = e.message;
+  } finally {
+    testing.value = false;
+  }
+}
+async function removeChannel() {
+  const token = session.token,
+    v = revision;
+  await request('/notification/channels/feishu', 'DELETE');
+  if (active && token === session.token && v === revision) await load();
+}
+function back() {
+  uni.navigateBack({ fail: () => uni.switchTab({ url: '/pages/profile/index' }) });
+}
+</script>
+<template>
+  <view class="tab-page" :class="themeClass('tab-page')"
+    ><PageHeader title="通知设置" back @back="back" /><MobilePage
+      :refreshing="loading"
+      @refresh="load"
+      ><PageState :loading="loading" :error="error" @retry="load"
+        ><view v-if="ready" class="notification-panel ui-card" :class="themeClass('notification-panel')"
+          ><view class="notification-row ui-row"
+            ><text class="notification-name"
+              >飞书 ·
+              {{ config.enabled ? '已启用' : config.configured ? '已配置' : '未配置' }}</text
+            ><MobileButton label="配置飞书" icon="ant-design:edit-outlined" variant="quiet" @click="edit" /></view
+          ><text v-if="config.receiverName" class="notification-muted">{{
+            config.receiverName
+          }}</text
+          ><view class="notification-actions ui-row ui-mt-sm"
+            ><MobileButton
+              v-if="config.configured"
+              label="测试通知"
+              :loading="testing"
+              @click="testChannel" /><ConfirmAction
+              v-if="config.configured"
+              label="删除飞书配置"
+              message="删除飞书应用凭证和接收人配置？"
+              :action="removeChannel" /></view></view
+        ><view v-if="ready" class="notification-panel ui-card" :class="themeClass('notification-panel')"
+          ><view
+            v-for="item in preferences.filter((x) => x.visible)"
+            :key="item.bizType"
+            class="notification-group ui-section"
+            ><text class="notification-name">{{ item.description }}</text
+            ><view v-for="channel in item.channels" :key="channel.channel" class="notification-row ui-row"
+              ><text class="notification-name">{{
+                channels[channel.channel] || channel.channel
+              }}</text
+              ><switch
+                :checked="channel.enabled"
+                :disabled="saving"
+                :aria-label="item.description + channels[channel.channel]"
+                @change="channel.enabled = $event.detail.value" /></view></view
+          ><MobileButton
+            label="保存"
+            :loading="saving"
+            @click="savePreferences" /></view></PageState></MobilePage
+    ><AdaptiveModal
+      v-if="editing"
+      label="飞书通知配置"
+      :busy="saving"
+      :max-width="520"
+      @close="editing = false"
+      ><FormField label="App ID" v-model="form.appId" /><FormField
+        label="App Secret"
+        kind="password"
+        v-model="form.appSecret"
+        :placeholder="config.configured ? '留空保留原凭证' : ''" /><FormField
+        label="接收人 Open ID"
+        v-model="form.openId" /><MobileButton
+        label="选择接收人"
+        :loading="recipientLoading"
+        @click="recipientsLoad" /><text v-if="recipientWarning" class="notification-muted">{{
+        recipientWarning
+      }}</text
+      ><MobileButton
+        v-for="person in recipients"
+        :key="person.openId"
+        :label="person.name || person.openId"
+        variant="quiet"
+        @click="form.openId = person.openId" /><view class="notification-row ui-row"
+        ><text class="notification-name">启用</text
+        ><switch
+          :checked="form.enabled"
+          aria-label="启用飞书通知"
+          @change="form.enabled = $event.detail.value" /></view
+      ><text v-if="formError" class="error-text" role="alert">{{ formError }}</text
+      ><MobileButton label="保存" :loading="saving" @click="saveConfig" /></AdaptiveModal
+  ></view>
+</template>
+<style scoped lang="scss">
+@use '../../styles/spacing.scss';
+@use '../../styles/spacing-tokens' as *;
+.notification-panel {
+  background-color: #fff;
+  color: #27272a;
+  border-radius: 14px;
+
+
+}
+.notification-panel-dark {
+  background-color: #1c1e22;
+  color: #eeeeef;
+}
+.notification-row {
+  flex-direction: row;
+  align-items: center;
+  min-height: 48px;
+
+}
+.notification-name {
+  flex: 1;
+  font-size: 14px;
+  line-height: 24px;
+}
+.notification-actions {
+  flex-direction: row;
+
+  align-items: center;
+
+}
+.notification-muted {
+  font-size: 13px;
+  color: #8b8f99;
+  line-height: 22px;
+}
+.notification-group {
+
+}
+</style>

@@ -1,0 +1,366 @@
+<script setup lang="ts">
+import AppIcon from '../../components/AppIcon.uvue'
+import { computed, ref } from 'vue';
+import { onLoad, onShow, onUnload } from '@dcloudio/uni-app';
+import PageHeader from '../../components/PageHeader.uvue';
+import MobilePage from '../../components/MobilePage.uvue';
+import MobileButton from '../../components/MobileButton.uvue';
+import FloatingActionButton from '../../components/FloatingActionButton.uvue';
+import PageState from '../../components/PageState.uvue';
+import ConfirmAction from '../../components/ConfirmAction.uvue';
+import AdaptiveModal from '../../components/AdaptiveModal.uvue';
+import FormField from '../../components/FormField.uvue';
+import CategoryIcon from '../../components/CategoryIcon.uvue';
+import catalog from '../../services/icons/category-icons.json';
+import { themeClass } from '../../services/theme.ts';
+import { fetchUser } from '../../services/api.ts';
+import { restoreSession, session } from '../../services/session.ts';
+import { createLatestTask } from '../../services/mobile-ui.ts';
+import { siblingSort, orderCategories } from '../../services/admin/contract.ts';
+import {
+  listCategories,
+  saveCategory,
+  changeCategory,
+  deleteCategory,
+  sortCategories,
+} from '../../services/admin/categories.ts';
+const admin = ref(false);
+const rows = ref<any[]>([]);
+const loading = ref(false);
+const refreshing = ref(false);
+const error = ref('');
+const busyId = ref('');
+const saving = ref(false);
+const opened = ref(false);
+const editorError = ref('');
+const search = ref('');
+const collapsed = ref<string[]>([]);
+const original = ref<any>(null);
+const form = ref<any>({});
+const task = createLatestTask();
+let active = true;
+const icons = Object.keys(catalog.icons);
+const shown = computed(() =>
+  orderCategories(rows.value).filter(
+    (row) =>
+      row.name.includes(search.value) && (!row.parentId || !collapsed.value.includes(row.parentId)),
+  ),
+);
+const parents = computed(() => [
+  { id: '0', name: '无（一级分类）' },
+  ...rows.value.filter(
+    (row) =>
+      (!row.parentId || row.parentId === '0') &&
+      row.id !== form.value.id &&
+      !rows.value.some((child) => child.parentId === form.value.id),
+  ),
+]);
+const parentName = computed(
+  () => parents.value.find((row) => row.id === form.value.parentId)?.name || parents.value[0].name,
+);
+const types = ['必须', '积极', '休闲'];
+onLoad((options) => {
+  admin.value = options?.admin === '1';
+});
+onUnload(() => {
+  active = false;
+  task.invalidate();
+});
+onShow(() => {
+  restoreSession();
+  if (!session.token) {
+    uni.reLaunch({ url: '/pages/login/index' });
+    return;
+  }
+  load();
+});
+async function load(refresh = false) {
+  const generation = task.begin(),
+    token = session.token;
+  loading.value = true;
+  refreshing.value = refresh;
+  error.value = '';
+  try {
+    if (!session.user) await fetchUser();
+    if (admin.value && !session.user?.roles?.includes('admin'))
+      throw Error('当前账号没有管理员权限');
+    const result = await listCategories(admin.value);
+    if (active && task.isCurrent(generation) && token === session.token) rows.value = result;
+  } catch (reason) {
+    if (active && task.isCurrent(generation)) error.value = reason.message || '加载失败';
+  } finally {
+    if (active && task.isCurrent(generation)) {
+      loading.value = false;
+      refreshing.value = false;
+    }
+  }
+}
+function edit(row = null, parentId = '0') {
+  if (loading.value || busyId.value) return;
+  original.value = row;
+  form.value = row
+    ? { ...row, parentId: row.parentId || '0' }
+    : {
+        parentId,
+        name: '',
+        color: '#427bea',
+        icon: '',
+        description: '',
+        isTrackTime: 0,
+        isEnabled: 1,
+        sort:
+          Math.max(
+            -10,
+            ...rows.value
+              .filter((row) => (row.parentId || '0') === parentId)
+              .map((row) => row.sort || 0),
+          ) + 10,
+        timeType: 1,
+      };
+  editorError.value = '';
+  opened.value = true;
+}
+async function save() {
+  if (saving.value) return;
+  saving.value = true;
+  editorError.value = '';
+  const token = session.token;
+  try {
+    await saveCategory(form.value, original.value, admin.value);
+    if (active && token === session.token) {
+      opened.value = false;
+      await load();
+    }
+  } catch (reason) {
+    if (active && token === session.token) editorError.value = reason.message || '保存失败';
+  } finally {
+    saving.value = false;
+  }
+}
+async function change(row, changes) {
+  if (busyId.value) return;
+  busyId.value = row.id;
+  error.value = '';
+  const token = session.token;
+  try {
+    await changeCategory(row, changes, admin.value);
+    if (active && token === session.token) await load();
+  } catch (reason) {
+    if (active && token === session.token) error.value = reason.message || '操作失败';
+  } finally {
+    busyId.value = '';
+  }
+}
+async function remove(row) {
+  await deleteCategory(row, admin.value);
+  if (active) await load();
+}
+async function move(row, delta) {
+  if (busyId.value) return;
+  const sorted = siblingSort(rows.value, row, delta);
+  if (!sorted.length) return;
+  busyId.value = row.id;
+  const token = session.token;
+  try {
+    if (admin.value) {
+      for (const item of sorted)
+        await changeCategory(
+          rows.value.find((row) => row.id === item.id),
+          { sort: item.sort },
+          true,
+        );
+    } else await sortCategories(sorted);
+    if (active && token === session.token) await load();
+  } catch (reason) {
+    if (active && token === session.token) {
+      error.value = reason.message || '排序失败';
+      await load();
+    }
+  } finally {
+    busyId.value = '';
+  }
+}
+function toggle(row) {
+  collapsed.value = collapsed.value.includes(row.id)
+    ? collapsed.value.filter((id) => id !== row.id)
+    : [...collapsed.value, row.id];
+}
+function hasChildren(row) {
+  return rows.value.some((child) => child.parentId === row.id);
+}
+function privateCategory(row) {
+  return row.userId !== '0' && !row.templateId;
+}
+</script>
+<template>
+  <view class="category-page"
+    ><PageHeader
+      :title="admin ? '公共分类管理' : '我的分类'"
+      back
+      @back="uni.navigateBack()" /><MobilePage :refreshing="refreshing" @refresh="load(true)">
+      <FormField label="搜索分类" v-model="search" />
+      <PageState :loading="loading" :error="error" :empty="!rows.length" @retry="load()">
+        <view
+          v-for="row in shown"
+          :key="row.id"
+          class="category-card ui-card"
+          :class="themeClass('category-card')"
+        >
+          <view class="category-heading ui-row"
+            ><CategoryIcon :icon="row.icon" :color="row.color" /><AppIcon v-if="row.parentId && row.parentId !== '0'" name="lucide:corner-down-right" :size="16" /><text class="category-name" :style="{ color: row.color }">{{ row.name }}</text><text class="category-type">{{ types[(row.timeType || 1) - 1] }}</text><switch :checked="row.isTrackTime === 1" :disabled="!!busyId || loading" aria-label="卡片统计" @change="change(row, { isTrackTime: $event.detail.value ? 1 : 0 })" /><MobileButton
+              v-if="hasChildren(row)"
+              :label="collapsed.includes(row.id) ? '展开子分类' : '收起子分类'"
+              :icon="collapsed.includes(row.id) ? 'ant-design:right-outlined' : 'ant-design:down-outlined'"
+              variant="quiet"
+              @click="toggle(row)"
+          /></view>
+          <view class="category-actions ui-row"
+            ><MobileButton
+              label="编辑分类"
+              icon="ant-design:edit-outlined"
+              variant="quiet"
+              :disabled="!!busyId || loading"
+              @click="edit(row)" /><MobileButton
+              v-if="!row.parentId || row.parentId === '0'"
+              label="新增子分类"
+              icon="ant-design:plus-outlined"
+              variant="quiet"
+              :disabled="!!busyId || loading"
+              @click="edit(null, row.id)" /><MobileButton
+              :label="row.isEnabled === 0 ? '恢复分类' : '隐藏分类'"
+              :icon="row.isEnabled === 0 ? 'ant-design:eye-outlined' : 'ant-design:eye-invisible-outlined'"
+              variant="quiet"
+              :loading="busyId === row.id"
+              :disabled="!!busyId || loading"
+              @click="change(row, { isEnabled: row.isEnabled === 0 ? 1 : 0 })" /><ConfirmAction
+              v-if="admin || privateCategory(row)"
+              label="删除分类"
+              message="确定删除分类？已有记录或子分类时无法删除。"
+              :action="() => remove(row)"
+          /></view>
+        </view>
+      </PageState>
+      <template #fixed
+        ><FloatingActionButton :disabled="loading || !!busyId" @click="edit()"
+      /></template>
+    </MobilePage>
+    <AdaptiveModal
+      v-if="opened"
+      label="编辑分类"
+      :busy="saving"
+      :content-key="editorError"
+      @close="opened = false"
+    >
+      <FormField
+        label="上级分类"
+        kind="selector"
+        :model-value="parentName"
+        :options="parents.map((row) => row.name)"
+        @update:model-value="
+          (value) => (form.parentId = parents.find((row) => row.name === value)?.id || '0')
+        "
+      />
+      <FormField label="分类名称" v-model="form.name" :disabled="saving" /><FormField
+        label="颜色"
+        v-model="form.color"
+        :disabled="saving"
+      /><FormField label="图标" v-model="form.icon" :disabled="saving" />
+      <FormField
+        label="选择图标"
+        kind="selector"
+        :model-value="form.icon"
+        :options="icons"
+        :disabled="saving"
+        @update:model-value="(value) => (form.icon = value)"
+      /><CategoryIcon :icon="form.icon" :color="form.color" />
+      <FormField
+        label="描述"
+        kind="textarea"
+        v-model="form.description"
+        :disabled="saving"
+      /><FormField
+        label="时间类型"
+        kind="selector"
+        :model-value="types[(form.timeType || 1) - 1]"
+        :options="types"
+        :disabled="saving"
+        @update:model-value="(value) => (form.timeType = types.indexOf(value) + 1)"
+      />
+      <FormField label="卡片统计"
+        ><switch
+          :checked="form.isTrackTime === 1"
+          :disabled="saving"
+          aria-label="卡片统计"
+          @change="(event) => (form.isTrackTime = event.detail.value ? 1 : 0)" /></FormField
+      ><FormField label="启用"
+        ><switch
+          :checked="form.isEnabled === 1"
+          :disabled="saving"
+          aria-label="启用分类"
+          @change="(event) => (form.isEnabled = event.detail.value ? 1 : 0)"
+      /></FormField>
+      <FormField
+        v-if="admin"
+        label="排序"
+        :model-value="String(form.sort || 0)"
+        input-type="number"
+        :disabled="saving"
+        @update:model-value="(value) => (form.sort = Number(value))"
+      /><text v-if="editorError" class="category-error ui-mb-section" role="alert">{{ editorError }}</text
+      ><view class="category-actions ui-row ui-mb-section"><MobileButton v-if="original" label="上移分类" icon="ant-design:arrow-up-outlined" variant="quiet" :disabled="!!busyId || saving" @click="move(original, -1)" /><MobileButton v-if="original" label="下移分类" icon="ant-design:arrow-down-outlined" variant="quiet" :disabled="!!busyId || saving" @click="move(original, 1)" /></view><MobileButton label="保存" :loading="saving" @click="save" /> </AdaptiveModal
+  ></view>
+</template>
+<style scoped lang="scss">
+@use '../../styles/spacing.scss';
+@use '../../styles/spacing-tokens' as *;
+.category-page {
+  flex: 1;
+  height: 100%;
+  min-height: 0;
+}
+.category-card {
+  background-color: #ffffff;
+  color: #27272a;
+  border-radius: 8px;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: $space-inline;
+
+
+  overflow: visible;
+}
+.category-card-dark {
+  background-color: #1c1e22;
+  color: #eeeeef;
+}
+.category-heading {
+  flex: 1;
+  min-width: 220px;
+  flex-direction: row;
+
+  align-items: center;
+}
+.category-type { font-size: 12px; color: #fff; background-color: #5b8ff9; padding: $space-detail; border-radius: 4px; }
+.category-name {
+  flex: 1;
+  font-size: 16px;
+}
+.category-meta {
+  color: #808692;
+  font-size: 13px;
+
+}
+.category-actions {
+  flex-direction: row;
+  flex-wrap: wrap;
+
+
+  overflow: visible;
+}
+.category-error {
+  color: #e05260;
+
+}
+</style>

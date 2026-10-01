@@ -1,12 +1,41 @@
 <script setup lang="ts">
+import AppIcon from '../../components/AppIcon.uvue'
+import SecondaryUnlock from "../../components/SecondaryUnlock.uvue";
+import { themeClass } from '../../services/theme.ts'
 import { useRefreshTheme } from '../../services/refresh-theme.ts'
 const refreshTheme = useRefreshTheme()
 import { nextTick, computed, ref } from 'vue'
 import { onShow, onHide } from '@dcloudio/uni-app'
 import PageHeader from '../../components/PageHeader.uvue'
 import { fetchUser, logout } from '../../services/api.ts'
+import { theme, setThemeMode } from '../../services/theme.ts'
 import { restoreSession, session } from '../../services/session.ts'
 
+const preferenceLinks = [
+  {title:'反馈',path:'/pages/records/feedback'},
+  {title:'消息中心',path:'/pages/messages/index'},
+  {title:'修改密码',path:'preferences?section=password'}, {title:'菜单显示',path:'preferences?section=menus'},
+  {title:'菜单锁',path:'security'}, {title:'API Key',path:'preferences?section=keys'},
+  {title:'大模型配置',path:'preferences?section=llm'}, {title:'通知设置',path:'notifications'},
+  {title:'系统设置',path:'preferences?section=system'},
+  {title:'MBTI 测试',path:'/pages/personality/mbti'}, {title:'CBTI 测试',path:'/pages/personality/cbti'},
+]
+
+const themeOptions = [
+  { label: '跟随系统', value: 'system' },
+  { label: '日间', value: 'light' },
+  { label: '夜间', value: 'dark' }
+]
+function changeTheme(mode) {
+  try {
+    setThemeMode(mode)
+  } catch (error) {
+    uni.showToast({ title: error.message, icon: 'none' })
+  }
+}
+function openPage(name: string) {
+  uni.navigateTo({ url: name.startsWith('/') ? name : '/pages/profile/' + name })
+}
 const user = computed(() => session.user)
 const loading = ref(false)
 const refreshing = ref(false)
@@ -14,7 +43,12 @@ async function pullRefresh() {
   if (refreshing.value) return
   refreshing.value = true
   await nextTick()
-  try { if (loadTask) await loadTask; await load() } finally { refreshing.value = false }
+  try {
+    if (loadTask) await loadTask
+    await load()
+  } finally {
+    refreshing.value = false
+  }
 }
 const leaving = ref(false)
 const confirmLogout = ref(false)
@@ -24,80 +58,420 @@ let visible = false
 onShow(() => {
   visible = true
   restoreSession()
-  if (!session.token) { uni.reLaunch({ url: '/pages/login/index' }); return }
+  if (!session.token) {
+    uni.reLaunch({ url: '/pages/login/index' })
+    return
+  }
   load()
 })
-onHide(() => { visible = false; confirmLogout.value = false })
+onHide(() => {
+  visible = false
+  confirmLogout.value = false
+})
 function load() {
   if (loadTask) return loadTask
-  loadTask = loadProfile().finally(() => { loadTask = null })
+  loadTask = loadProfile().finally(() => {
+    loadTask = null
+  })
   return loadTask
 }
 async function loadProfile() {
   loading.value = true
   errorText.value = ''
-  try { await fetchUser() } catch (error) {
+  try {
+    await fetchUser()
+  } catch (error) {
     if (!visible) return
-    if (error.name === 'SessionExpiredError') { uni.reLaunch({ url: '/pages/login/index' }); return }
+    if (error.name === 'SessionExpiredError') {
+      uni.reLaunch({ url: '/pages/login/index' })
+      return
+    }
     errorText.value = error.message || '加载失败，请重试'
-  } finally { loading.value = false }
+  } finally {
+    loading.value = false
+  }
 }
 async function signOut() {
   if (leaving.value) return
   leaving.value = true
-  try { await logout() } catch (_) { uni.showToast({ title: '已退出本机，服务端注销未完成', icon: 'none' }) }
-  finally { uni.reLaunch({ url: '/pages/login/index' }); leaving.value = false }
+  try {
+    await logout()
+  } catch (_) {
+    uni.showToast({ title: '已退出本机，服务端注销未完成', icon: 'none' })
+  } finally {
+    uni.reLaunch({ url: '/pages/login/index' })
+    leaving.value = false
+  }
 }
 </script>
 
 <template>
-  <view class="tab-page">
+  <view class="tab-page" :class="themeClass('tab-page')">
     <PageHeader title="我的" />
-    <scroll-view scroll-y class="tab-scroll" :refresher-enabled="true" :refresher-triggered="refreshing" refresher-background="transparent" :refresher-default-style="refreshTheme" @refresherrefresh="pullRefresh">
-      <view class="tab-content">
-        <view v-if="errorText" class="state-card"><text class="error-text" role="alert">{{ errorText }}</text><button role="button" class="text-action" @click="load">重试账户信息</button></view>
-        <view v-if="user" class="profile-card">
-          <view class="profile-avatar"><text class="avatar-letter">{{ user.name.slice(0, 1) }}</text></view>
-          <text class="profile-name">{{ user.name }}</text>
-          <text v-if="user.introduction" class="profile-intro">{{ user.introduction }}</text>
+    <scroll-view
+      scroll-y
+      class="tab-scroll"
+      :refresher-enabled="true"
+      :refresher-triggered="refreshing"
+      refresher-background="transparent"
+      :refresher-default-style="refreshTheme"
+      @refresherrefresh="pullRefresh"
+    >
+      <view class="tab-content ui-page-inset ui-tab-page-inset">
+        <view
+          v-if="errorText"
+          class="state-card"
+          :class="themeClass('state-card')"
+          ><text
+            class="error-text"
+            role="alert"
+            :class="themeClass('error-text')"
+            >{{ errorText }}</text
+          ><button role="button" class="text-action" @click="load">
+            重试账户信息
+          </button></view
+        >
+        <view v-if="user" class="profile-card ui-pad-card">
+          <image
+            v-if="user.avatar"
+            class="profile-avatar"
+            :src="user.avatar"
+            mode="aspectFill"
+            :class="themeClass('profile-avatar')"
+          />
+          <view
+            v-else
+            class="profile-avatar"
+            :class="themeClass('profile-avatar')"
+            ><text class="avatar-letter" :class="themeClass('avatar-letter')">{{
+              user.name.slice(0, 1)
+            }}</text></view
+          >
+          <text class="profile-name ui-mt-section" :class="themeClass('profile-name')">{{
+            user.name
+          }}</text>
+          <text
+            v-if="user.introduction"
+            class="profile-intro ui-mt-sm"
+            :class="themeClass('profile-intro')"
+            >{{ user.introduction }}</text
+          >
         </view>
-        <view v-else-if="loading" class="state-card"><text class="muted-text">加载中…</text></view>
-        <view v-if="user && (user.username || user.email)" class="account-card">
-          <view v-if="user.username" class="account-row"><text class="muted-text">账号</text><text class="account-value">{{ user.username }}</text></view>
-          <view v-if="user.email" class="account-row"><text class="muted-text">邮箱</text><text class="account-value">{{ user.email }}</text></view>
+        <view
+          v-else-if="loading"
+          class="state-card"
+          :class="themeClass('state-card')"
+          ><text class="muted-text">加载中…</text></view
+        >
+        <view
+          v-if="user && (user.username || user.email)"
+          class="account-card ui-pad-card"
+          :class="themeClass('account-card')"
+        >
+          <view v-if="user.username" class="account-row ui-row ui-py-card"
+            ><text class="muted-text">账号</text
+            ><text class="account-value ui-ml-section" :class="themeClass('account-value')">{{
+              user.username
+            }}</text></view
+          >
+          <view v-if="user.email" class="account-row ui-row ui-py-card"
+            ><text class="muted-text">邮箱</text
+            ><text class="account-value ui-ml-section" :class="themeClass('account-value')">{{
+              user.email
+            }}</text></view
+          >
         </view>
-        <view class="signout-anchor">
-          <view v-if="confirmLogout" class="signout-confirm"><text class="empty-title">退出当前账号？</text><view class="signout-actions"><button role="button" class="cancel-button" :disabled="leaving" @click="confirmLogout = false">取消</button><button role="button" class="confirm-button" :disabled="leaving" :loading="leaving" @click="signOut">退出</button></view></view>
-          <button role="button" class="signout-button" :disabled="leaving" @click="confirmLogout = !confirmLogout">退出登录</button>
+        <view class="profile-menu ui-pad-card ui-mt-section" :class="themeClass('profile-menu')">
+          <button
+            role="button"
+            class="menu-row"
+            aria-label="基本设置"
+            @click="openPage('settings')"
+          >
+            <text class="menu-label" :class="themeClass('menu-label')"
+              >基本设置</text
+            ><AppIcon name="ant-design:right-outlined" />
+          </button>
+          <button
+            role="button"
+            class="menu-row"
+            aria-label="账号绑定"
+            @click="openPage('bindings')"
+          >
+            <text class="menu-label" :class="themeClass('menu-label')"
+              >账号绑定</text
+            ><AppIcon name="ant-design:right-outlined" />
+          </button>
+          <button v-for="entry in preferenceLinks" :key="entry.path" role="button" class="menu-row" :aria-label="entry.title" @click="openPage(entry.path)"><text class="menu-label" :class="themeClass('menu-label')">{{entry.title}}</text><AppIcon name="ant-design:right-outlined" /></button>
+          <button v-if="user?.roles?.includes('admin')" role="button" class="menu-row" aria-label="管理与配置" @click="uni.navigateTo({url:'/pages/admin/directory'})"><text class="menu-label" :class="themeClass('menu-label')">管理与配置</text><AppIcon name="ant-design:right-outlined" /></button>
+          <button role="button" class="menu-row" aria-label="关于" @click="uni.navigateTo({url:'/pages/about/index'})"><text class="menu-label" :class="themeClass('menu-label')">关于</text><AppIcon name="ant-design:right-outlined" /></button>
+          <view class="theme-row ui-row ui-py-sm"
+            ><text class="menu-label" :class="themeClass('menu-label')"
+              >外观</text
+            ><view class="theme-options" :class="themeClass('theme-options')"
+              ><button
+                v-for="option in themeOptions"
+                :key="option.value"
+                role="button"
+                class="theme-option ui-px-card"
+                :class="[
+                  { 'theme-selected': theme.mode === option.value },
+                  themeClass([
+                    'theme-option',
+                    { 'theme-selected': theme.mode === option.value }
+                  ])
+                ]"
+                :aria-pressed="theme.mode === option.value"
+                @click="changeTheme(option.value)"
+              >
+                {{ option.label }}
+              </button></view
+            ></view
+          >
+        </view>
+        <view class="signout-anchor ui-mt-section">
+          <view
+            v-if="confirmLogout"
+            class="signout-confirm ui-pad-card"
+            :class="themeClass('signout-confirm')"
+            ><text class="empty-title" :class="themeClass('empty-title')"
+              >退出当前账号？</text
+            ><view class="signout-actions ui-mt-section"
+              ><button
+                role="button"
+                class="cancel-button ui-px-card ui-py-xs"
+                :disabled="leaving" :aria-disabled="leaving"
+                @click="confirmLogout = false"
+                :class="themeClass('cancel-button')"
+              >
+                取消</button
+              ><button
+                role="button"
+                class="confirm-button ui-ml-section ui-px-card ui-py-xs"
+                :disabled="leaving" :aria-disabled="leaving"
+                :loading="leaving"
+                @click="signOut"
+              >
+                退出
+              </button></view
+            ></view
+          >
+          <button
+            role="button"
+            class="signout-button"
+            :disabled="leaving" :aria-disabled="leaving"
+            @click="confirmLogout = !confirmLogout"
+            :class="themeClass('signout-button')"
+          >
+            退出登录
+          </button>
         </view>
       </view>
     </scroll-view>
+  <SecondaryUnlock />
   </view>
 </template>
 
-<style scoped>
-.profile-card { align-items: center; padding: 20px 16px 32px; }
-.profile-avatar { height: 64px; width: 64px; border-radius: 32px; background-color: #e3ebfc; align-items: center; justify-content: center; }
-.avatar-letter { font-size: 24px; color: #4f78c4; font-weight: 600; }
-.profile-name { font-size: 22px; font-weight: 600; color: #27272a; margin-top: 16px; }
-.profile-intro { font-size: 13px; color: #71717a; line-height: 22px; margin-top: 8px; text-align: center; }
-.account-card { padding: 8px 18px; border-radius: 16px; background-color: #ffffff; }
-.account-row { flex-direction: row; align-items: center; justify-content: space-between; padding: 16px 0; }
-.account-value { font-size: 14px; color: #27272a; margin-left: 20px; flex-shrink: 1; text-align: right; }
-.signout-anchor { position: relative; margin-top: 24px; padding-bottom: 132px; }
-.signout-button { width: 100%; height: 48px; line-height: 48px; margin: 0; padding: 0; border: 0; border-radius: 14px; background-color: #ffffff; color: #c65353; font-size: 14px; }
-.signout-confirm { position: absolute; top: 58px; right: 0; width: 240px; padding: 18px; border-radius: 14px; background-color: #ffffff; box-shadow: 0 6px 24px rgba(0, 0, 0, 0.10); }
-.signout-actions { flex-direction: row; justify-content: flex-end; margin-top: 18px; }
-.cancel-button, .confirm-button { margin: 0; padding: 4px 16px; border: 0; border-radius: 8px; font-size: 13px; }
-.cancel-button { color: #71717a; background-color: #f4f4f5; }
-.confirm-button { margin-left: 10px; color: #ffffff; background-color: #4e7ee3; }
-@media (prefers-color-scheme: dark) {
-  .profile-name, .account-value { color: #eeeeef; }
-  .profile-avatar { background-color: #243451; }
-  .avatar-letter { color: #9dbcfa; }
-  .profile-intro { color: #9c9ca6; }
-  .account-card, .signout-button, .signout-confirm { background-color: #1c1e22; }
-  .signout-button { color: #ed9191; }
-  .cancel-button { color: #b4b4bd; background-color: #303238; }
+<style scoped lang="scss">
+@use '../../styles/spacing.scss';
+@use '../../styles/spacing-tokens' as *;
+.profile-menu {
+
+  border-radius: 16px;
+  background-color: #ffffff;
+
+}
+.menu-row {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 56px;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background-color: transparent;
+  border-radius: 0;
+}
+.menu-label {
+  color: #27272a;
+  font-size: 14px;
+}
+.menu-chevron {
+  color: #a1a1aa;
+  font-size: 23px;
+}
+.theme-row {
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+
+}
+.theme-options {
+  flex-direction: row;
+  background-color: #f0f2f5;
+  padding: $space-tight;
+  border-radius: 12px;
+  margin-left: $space-section;
+}
+.theme-option {
+  min-height: 44px;
+  line-height: 44px;
+
+  margin: 0;
+  border: 0;
+  border-radius: 9px;
+  font-size: 12px;
+  background-color: transparent;
+  color: #71717a;
+}
+.theme-selected {
+  color: #4e7ee3;
+  background-color: #ffffff;
+}
+/* #ifdef WEB || MP-WEIXIN */
+.menu-row::after,
+.theme-option::after {
+  border: 0;
+}
+/* #endif */
+.profile-card {
+  align-items: center;
+
+}
+.profile-avatar {
+  height: 64px;
+  width: 64px;
+  border-radius: 32px;
+  background-color: #e3ebfc;
+  align-items: center;
+  justify-content: center;
+}
+.avatar-letter {
+  font-size: 24px;
+  color: #4f78c4;
+  font-weight: 600;
+}
+.profile-name {
+  font-size: 22px;
+  font-weight: 600;
+  color: #27272a;
+
+}
+.profile-intro {
+  font-size: 13px;
+  color: #71717a;
+  line-height: 22px;
+
+  text-align: center;
+}
+.account-card {
+
+  border-radius: 16px;
+  background-color: #ffffff;
+}
+.account-row {
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+
+}
+.account-value {
+  font-size: 14px;
+  color: #27272a;
+
+  flex-shrink: 1;
+  text-align: right;
+}
+.signout-anchor {
+  position: relative;
+
+}
+.signout-button {
+  width: 100%;
+  height: 48px;
+  line-height: 48px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 14px;
+  background-color: #ffffff;
+  color: #c65353;
+  font-size: 14px;
+}
+.signout-confirm {
+  position: absolute;
+  top: 58px;
+  right: 0;
+  width: 240px;
+
+  border-radius: 14px;
+  background-color: #ffffff;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.1);
+}
+.signout-actions {
+  flex-direction: row;
+  justify-content: flex-end;
+
+}
+.cancel-button,
+.confirm-button {
+  margin: 0;
+
+  border: 0;
+  border-radius: 8px;
+  font-size: 13px;
+}
+.cancel-button {
+  color: #71717a;
+  background-color: #f4f4f5;
+}
+.confirm-button {
+
+  color: #ffffff;
+  background-color: #4e7ee3;
+}
+
+.profile-menu-dark {
+  background-color: #1c1e22;
+}
+.menu-label-dark {
+  color: #eeeeef;
+}
+.theme-options-dark {
+  background-color: #111215;
+}
+.theme-option-dark {
+  color: #b4b4bd;
+}
+.theme-selected-dark {
+  color: #9dbcfa;
+  background-color: #303238;
+}
+.profile-name-dark,
+.account-value-dark {
+  color: #eeeeef;
+}
+.profile-avatar-dark {
+  background-color: #243451;
+}
+.avatar-letter-dark {
+  color: #9dbcfa;
+}
+.profile-intro-dark {
+  color: #9c9ca6;
+}
+.account-card-dark,
+.signout-button-dark,
+.signout-confirm-dark {
+  background-color: #1c1e22;
+}
+.signout-button-dark {
+  color: #ed9191;
+}
+.cancel-button-dark {
+  color: #b4b4bd;
+  background-color: #303238;
 }
 </style>

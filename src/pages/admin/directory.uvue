@@ -1,0 +1,83 @@
+<script setup lang="ts">
+import { ref } from 'vue';
+import { onShow, onHide } from '@dcloudio/uni-app';
+import PageHeader from '../../components/PageHeader.uvue';
+import MobilePage from '../../components/MobilePage.uvue';
+import MobileButton from '../../components/MobileButton.uvue';
+import PageState from '../../components/PageState.uvue';
+import { request } from '../../services/api.ts';
+import { session, restoreSession } from '../../services/session.ts';
+import { nativeDestination } from '../../services/life-catalog.ts';
+import { openBusinessLink } from '../../services/navigation.ts';
+import { themeClass } from '../../services/theme.ts';
+const items = ref<any[]>([]),
+  loading = ref(false),
+  error = ref('');
+let version = 0,
+  active = true;
+function collect(nodes, parents = []) {
+  return nodes.flatMap((node) => {
+    const title = [...parents, node.meta?.title || node.name].join(' / ');
+    return node.children?.length
+      ? collect(node.children, [...parents, node.meta?.title || node.name])
+      : nativeDestination(node.path) &&
+          (/^\/(system|config-management|config)\//.test(node.path) ||
+            /category-admin|category-config/.test(node.path))
+        ? [{ path: node.path, title }]
+        : [];
+  });
+}
+onShow(() => {
+  active = true;
+  restoreSession();
+  if (!session.token) {
+    uni.reLaunch({ url: '/pages/login/index' });
+    return;
+  }
+  load();
+});
+onHide(() => {
+  active = false;
+  version++;
+});
+async function load() {
+  const v = ++version,
+    t = session.token;
+  loading.value = true;
+  error.value = '';
+  try {
+    const data: any = await request('/menu/all');
+    if (!Array.isArray(data)) throw new Error('授权菜单数据异常');
+    if (active && v === version && t === session.token) items.value = collect(data);
+  } catch (e) {
+    if (active && v === version) error.value = e.message;
+  } finally {
+    if (v === version) loading.value = false;
+  }
+}
+function back() {
+  uni.navigateBack({ fail: () => uni.switchTab({ url: '/pages/profile/index' }) });
+}
+</script>
+<template>
+  <view class="tab-page" :class="themeClass('tab-page')"
+    ><PageHeader title="管理与配置" back @back="back" /><MobilePage
+      :refreshing="loading"
+      @refresh="load"
+      ><PageState :loading="loading" :error="error" :empty="!items.length" @retry="load"
+        ><view class="directory-list ui-page-body ui-gap-md"
+          ><MobileButton
+            v-for="item in items"
+            :key="item.path"
+            :label="item.title"
+            variant="quiet"
+            @click="openBusinessLink(item.path)" /></view></PageState></MobilePage
+  ></view>
+</template>
+<style scoped lang="scss">
+@use '../../styles/spacing.scss';
+@use '../../styles/spacing-tokens' as *;
+.directory-list {
+
+}
+</style>

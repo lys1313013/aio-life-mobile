@@ -1,0 +1,197 @@
+<script setup lang="ts">
+import { getCurrentInstance, nextTick, onUnmounted, ref } from 'vue';
+import { drawPosterQr, posterSiteUrl } from '../services/personality/poster-qr.ts';
+import MobileButton from './MobileButton.uvue';
+const props = defineProps<{ result: any; site?: string }>();
+const busy = ref(false),
+  error = ref(''),
+  image = ref('');
+const instance = getCurrentInstance();
+let active = true;
+onUnmounted(() => {
+  active = false;
+});
+function wrap(ctx, text, x, y, maxWidth) {
+  let line = '',
+    row = y;
+  for (const char of String(text || '')) {
+    if (ctx.measureText(line + char).width > maxWidth && line) {
+      ctx.fillText(line, x, row);
+      line = char;
+      row += 24;
+    } else line += char;
+  }
+  if (line) ctx.fillText(line, x, row);
+  return row + 28;
+}
+async function generate() {
+  if (busy.value) return;
+  busy.value = true;
+  error.value = '';
+  await nextTick();
+  uni.createCanvasContextAsync({
+    id: 'cbti-poster',
+    component: instance?.proxy,
+    async success(context) {
+      try {
+        const ctx = context.getContext('2d');
+        if (!ctx) throw Error('画布初始化失败');
+        ctx.canvas.width = 600;
+        ctx.canvas.height = 1250;
+        ctx.fillStyle = '#f0f2f5';
+        ctx.fillRect(0, 0, 600, 1250);
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(24, 24, 552, 1202);
+        const p = props.result.personality;
+        ctx.fillStyle = /^#[\da-f]{3,6}$/i.test(p.color || '') ? p.color : '#427bea';
+        ctx.fillRect(24, 24, 552, 12);
+        ctx.fillStyle = '#27272a';
+        ctx.font = 'bold 32px sans-serif';
+        ctx.fillText('CBTI 程序员人格', 48, 84);
+        ctx.font = 'bold 40px sans-serif';
+        ctx.fillText(p.code + ' · ' + p.name, 48, 146);
+        ctx.font = '18px sans-serif';
+        let y = wrap(ctx, p.motto, 48, 184, 504);
+        ctx.fillText('匹配度 ' + props.result.similarity + '%', 48, y + 8);
+        y += 54;
+        if (p.imageUrl) {
+          const illustration = context.createImage();
+          await new Promise((resolve, reject) => {
+            illustration.onload = resolve;
+            illustration.onerror = () => reject(Error('人格图片加载失败，请重试'));
+            illustration.src = p.imageUrl;
+          });
+          ctx.drawImage(illustration, 180, y, 240, 200);
+          y += 220;
+        }
+        ctx.font = '16px sans-serif';
+        for (const dimension of props.result.dimensions || []) {
+          ctx.fillStyle = '#27272a';
+          ctx.fillText(dimension.name, 48, y);
+          ctx.fillStyle = '#e5e7eb';
+          ctx.fillRect(230, y - 13, 250, 12);
+          ctx.fillStyle = '#427bea';
+          ctx.fillRect(
+            230,
+            y - 13,
+            (250 * Math.min(100, Math.max(0, dimension.percentage || 0))) / 100,
+            12,
+          );
+          ctx.fillStyle = '#27272a';
+          ctx.fillText(String(dimension.percentage) + '%', 492, y);
+          y += 28;
+        }
+        const shareUrl = posterSiteUrl(
+          props.site || import.meta.env.VITE_WEB_SITE_URL || 'https://aiolife.top',
+        );
+        drawPosterQr(ctx, shareUrl, 48, 1070, 144);
+        ctx.font = 'bold 20px sans-serif';
+        ctx.fillStyle = '#27272a';
+        wrap(ctx, '你是什么类型的程序员？', 216, 1110, 330);
+        ctx.font = '16px sans-serif';
+        ctx.fillStyle = '#f97316';
+        ctx.fillText('扫码或访问', 216, 1150);
+        ctx.font = '14px sans-serif';
+        wrap(ctx, shareUrl, 216, 1180, 330);
+        const url = context.toDataURL();
+        if (!url.startsWith('data:image/')) throw Error('海报生成失败');
+        if (active) image.value = url;
+      } catch (reason) {
+        if (active) error.value = reason.message || '海报生成失败';
+      } finally {
+        if (active) busy.value = false;
+      }
+    },
+    fail() {
+      if (active) {
+        busy.value = false;
+        error.value = '当前平台画布暂不可用，请重试';
+      }
+    },
+  });
+}
+function save() {
+  if (!image.value || busy.value) return;
+  error.value = '';
+  // #ifdef WEB
+  const anchor = document.createElement('a');
+  anchor.href = image.value;
+  anchor.download = 'CBTI-' + props.result.personality.code + '.png';
+  anchor.click();
+  // #endif
+  // #ifndef WEB
+  busy.value = true;
+  const path = uni.env.USER_DATA_PATH + '/CBTI-' + props.result.personality.code + '.png';
+  uni.getFileSystemManager().writeFile({
+    filePath: path,
+    data: uni.base64ToArrayBuffer(image.value.split(',')[1]),
+    success() {
+      uni.saveImageToPhotosAlbum({
+        filePath: path,
+        success() {
+          if (active) uni.showToast({ title: '已保存', icon: 'success' });
+        },
+        fail() {
+          if (active) error.value = '相册保存失败，请检查权限';
+        },
+        complete() {
+          if (active) busy.value = false;
+        },
+      });
+    },
+    fail() {
+      if (active) {
+        busy.value = false;
+        error.value = '海报文件保存失败';
+      }
+    },
+  });
+  // #endif
+}
+</script>
+<template>
+  <view class="poster-container"
+    ><canvas id="cbti-poster" canvas-id="cbti-poster" type="2d" class="poster-canvas" /><image
+      v-if="image"
+      :src="image"
+      mode="widthFix"
+      class="poster-image"
+    /><view class="poster-actions"
+      ><MobileButton
+        :label="image ? '重新生成海报' : '生成海报'"
+        :loading="busy"
+        @click="generate" /><MobileButton
+        v-if="image"
+        label="保存海报"
+        :disabled="busy"
+        @click="save" /></view
+    ><text v-if="error" class="poster-error" role="alert">{{ error }}</text></view
+  >
+</template>
+<style scoped lang="scss">
+@use '../styles/spacing-tokens' as *;
+.poster-container {
+  gap: $space-section;
+}
+.poster-canvas {
+  position: absolute;
+  left: -1000px;
+  top: 0;
+  width: 600px;
+  height: 1250px;
+}
+.poster-image {
+  width: 100%;
+  max-width: 400px;
+  align-self: center;
+}
+.poster-actions {
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: $space-inline;
+}
+.poster-error {
+  color: #e05260;
+  font-size: 13px;
+}
+</style>

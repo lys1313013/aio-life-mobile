@@ -1,0 +1,221 @@
+<script setup lang="ts">
+import { ref } from 'vue';
+import { onLoad, onUnload } from '@dcloudio/uni-app';
+import PageHeader from '../../components/PageHeader.uvue';
+import MobilePage from '../../components/MobilePage.uvue';
+import MobileButton from '../../components/MobileButton.uvue';
+import FormField from '../../components/FormField.uvue';
+import AdaptiveModal from '../../components/AdaptiveModal.uvue';
+import { request } from '../../services/api.ts';
+import { authPayload } from '../../services/personality/contract.ts';
+import { themeClass } from '../../services/theme.ts';
+const agreed = ref(false),
+  policy = ref('');
+const policies = {
+  privacy: [
+    [
+      '信息收集',
+      '注册邮箱仅用于账号验证、登录与密码找回；你主动接入的第三方平台（GitHub、LeetCode、CSDN 等）凭据仅用于同步你的公开数据。',
+    ],
+    [
+      '数据存储',
+      '你的所有记录数据均存储于本站私有部署的服务器中，不会出售、共享给任何第三方。密码经加密存储，敏感数据（如密码管理器内容）加密后保存。',
+    ],
+    ['Cookie 与本地存储', '仅用于维持登录状态与界面偏好设置，不用于任何跟踪或广告用途。'],
+    ['数据权利', '你可以随时导出或删除自己的数据；注销账号后，相关数据将被彻底删除。'],
+  ],
+  terms: [
+    [
+      '账号责任',
+      '你需妥善保管账号与密码，对账号下的所有操作负责。注册即表示你提供的信息真实有效。',
+    ],
+    [
+      '合法使用',
+      '不得利用本服务存储、传播违法违规内容，不得攻击、干扰服务的正常运行。违规账号将被停用。',
+    ],
+    ['服务变更', '本服务可能随版本迭代调整功能，重要变更将通过站内通知告知。'],
+    [
+      '免责声明',
+      '本服务按“现状”提供，因不可抗力或第三方平台接口变更导致的数据同步异常，本站不承担相应责任，请自行备份重要数据。',
+    ],
+  ],
+};
+const mode = ref('register'),
+  form = ref({ username: '', email: '', password: '', confirmPassword: '', code: '' }),
+  saving = ref(false),
+  sending = ref(false),
+  wait = ref(0),
+  error = ref(''),
+  success = ref(false);
+let active = true,
+  timer = null;
+onLoad((options) => {
+  mode.value = options?.mode === 'reset' ? 'reset' : 'register';
+});
+onUnload(() => {
+  active = false;
+  if (timer) clearInterval(timer);
+});
+async function send() {
+  if (sending.value || wait.value || saving.value) return;
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.value.email.trim())) {
+    error.value = '请输入有效邮箱';
+    return;
+  }
+  sending.value = true;
+  error.value = '';
+  try {
+    await request(
+      mode.value === 'register' ? '/auth/sendEmailCode' : '/auth/sendResetPasswordCode',
+      'POST',
+      { email: form.value.email.trim() },
+      false,
+    );
+    if (active) {
+      wait.value = 60;
+      timer = setInterval(() => {
+        wait.value--;
+        if (!wait.value) {
+          clearInterval(timer);
+          timer = null;
+        }
+      }, 1000);
+    }
+  } catch (reason) {
+    if (active) error.value = reason.message || '验证码发送失败';
+  } finally {
+    sending.value = false;
+  }
+}
+async function submit() {
+  if (saving.value || sending.value) return;
+  saving.value = true;
+  error.value = '';
+  try {
+    if (mode.value === 'register' && !agreed.value) throw Error('请阅读并同意隐私政策和服务条款');
+    const data = authPayload(mode.value, form.value);
+    await request(
+      mode.value === 'register' ? '/auth/register' : '/auth/resetPassword',
+      'POST',
+      data,
+      false,
+    );
+    if (active) {
+      success.value = true;
+      form.value.password = '';
+      form.value.confirmPassword = '';
+      form.value.code = '';
+    }
+  } catch (reason) {
+    if (active) error.value = reason.message || '操作失败，请重试';
+  } finally {
+    saving.value = false;
+  }
+}
+</script>
+<template>
+  <view class="auth-page"
+    ><PageHeader
+      :title="mode === 'register' ? '注册' : '找回密码'"
+      back
+      @back="uni.navigateBack()"
+    /><MobilePage :requires-auth="false"
+      ><view class="auth-card ui-card" :class="themeClass('auth-card')"
+        ><template v-if="!success"
+          ><FormField
+            v-if="mode === 'register'"
+            label="用户名"
+            v-model="form.username"
+            :disabled="saving" /><FormField
+            label="邮箱"
+            v-model="form.email"
+            :disabled="saving || sending" /><FormField
+            label="验证码"
+            v-model="form.code"
+            input-type="number"
+            :disabled="saving" /><MobileButton
+            :label="wait ? wait + ' 秒后重发' : '发送验证码'"
+            variant="quiet"
+            :loading="sending"
+            :disabled="wait > 0 || saving"
+            @click="send" /><FormField
+            label="密码"
+            kind="password"
+            v-model="form.password"
+            :disabled="saving" /><FormField
+            label="确认密码"
+            kind="password"
+            v-model="form.confirmPassword"
+            :disabled="saving" /><view v-if="mode === 'register'" class="auth-policy ui-field-row"
+            ><switch
+              :checked="agreed"
+              aria-label="同意隐私政策和服务条款"
+              :disabled="saving"
+              @change="(event) => (agreed = event.detail.value)" /><MobileButton
+              label="隐私政策"
+              variant="quiet"
+              @click="policy = 'privacy'" /><MobileButton
+              label="服务条款"
+              variant="quiet"
+              @click="policy = 'terms'" /></view
+          ><text v-if="error" class="auth-error ui-mb-section" role="alert">{{ error }}</text
+          ><MobileButton
+            :label="mode === 'register' ? '注册' : '重置密码'"
+            :loading="saving"
+            :disabled="sending"
+            @click="submit" /></template
+        ><template v-else
+          ><text>{{ mode === 'register' ? '注册成功' : '密码已重置' }}</text
+          ><MobileButton
+            label="返回登录"
+            @click="uni.reLaunch({ url: '/pages/login/index' })" /></template></view></MobilePage
+    ><AdaptiveModal
+      v-if="policy"
+      :label="policy === 'privacy' ? '隐私政策' : '服务条款'"
+      @close="policy = ''"
+      ><view v-for="item in policies[policy]" :key="item[0]" class="auth-policy-section ui-section ui-gap-sm"
+        ><text>{{ item[0] }}</text
+        ><text>{{ item[1] }}</text></view
+      ></AdaptiveModal
+    ></view
+  >
+</template>
+<style scoped lang="scss">
+@use '../../styles/spacing.scss';
+@use '../../styles/spacing-tokens' as *;
+.auth-page {
+  flex: 1;
+  height: 100%;
+  min-height: 0;
+}
+.auth-card {
+
+  border-radius: 16px;
+  background-color: #ffffff;
+  color: #27272a;
+
+
+
+
+}
+.auth-card-dark {
+  background-color: #1c1e22;
+  color: #eeeeef;
+}
+.auth-error {
+  color: #e05260;
+  font-size: 14px;
+
+}
+.auth-policy {
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+
+
+}
+.auth-policy-section {
+
+
+}
+</style>

@@ -1,0 +1,351 @@
+<script setup lang="ts">
+import { ref, computed } from 'vue';
+import { onShow, onHide, onUnload } from '@dcloudio/uni-app';
+import PageHeader from '../../components/PageHeader.uvue';
+import MobilePage from '../../components/MobilePage.uvue';
+import MobileButton from '../../components/MobileButton.uvue';
+import PageState from '../../components/PageState.uvue';
+import ConfirmAction from '../../components/ConfirmAction.uvue';
+import AdaptiveModal from '../../components/AdaptiveModal.uvue';
+import { themeClass } from '../../services/theme.ts';
+import { fetchUser } from '../../services/api.ts';
+import { restoreSession, session } from '../../services/session.ts';
+import { createLatestTask } from '../../services/mobile-ui.ts';
+import {
+  createMbti,
+  checkMbti,
+  saveMbti,
+  history,
+  getHistory,
+  deleteHistory,
+} from '../../services/personality/index.ts';
+import { objectValue, safeExternalUrl } from '../../services/personality/contract.ts';
+const loading = ref(false),
+  saving = ref(false),
+  checking = ref(false),
+  refreshing = ref(false),
+  saved = ref(false);
+const error = ref(''),
+  testId = ref(''),
+  testUrl = ref(''),
+  result = ref<any>(null),
+  histories = ref<any[]>([]),
+  detail = ref<any>(null),
+  detailLoading = ref(false),
+  detailError = ref('');
+const resultRows = computed(() =>
+  ['predictions', 'traitOrderConscious', 'traitOrderShadow', 'matches']
+    .filter((key) => result.value?.[key] != null)
+    .map((key) => ({
+      key,
+      label: {
+        predictions: '预测',
+        traitOrderConscious: '意识特质',
+        traitOrderShadow: '影子特质',
+        matches: '匹配',
+      }[key],
+      value: objectValue(result.value[key]),
+    })),
+);
+const task = createLatestTask();
+let active = true,
+  visible = true,
+  timer = null,
+  account = '';
+const storageKey = () => 'aio-life-mobile.mbti.pending.' + account;
+function stop() {
+  if (timer) {
+    clearTimeout(timer);
+    timer = null;
+  }
+}
+function schedule() {
+  stop();
+  if (active && visible && testId.value && !result.value) timer = setTimeout(check, 5000);
+}
+onUnload(() => {
+  active = false;
+  stop();
+  task.invalidate();
+});
+onHide(() => {
+  visible = false;
+  stop();
+});
+onShow(async () => {
+  visible = true;
+  restoreSession();
+  if (!session.token) {
+    uni.reLaunch({ url: '/pages/login/index' });
+    return;
+  }
+  await load();
+  if (testId.value && !result.value) check();
+});
+async function load(refresh = false) {
+  const generation = task.begin(),
+    token = session.token;
+  loading.value = true;
+  refreshing.value = refresh;
+  error.value = '';
+  try {
+    if (!session.user) await fetchUser();
+    if (account !== session.user.id) {
+      account = session.user.id;
+      result.value = null;
+      saved.value = false;
+      testId.value = '';
+      testUrl.value = '';
+      const pending = uni.getStorageSync(storageKey());
+      if (pending && typeof pending.testId === 'string') {
+        testId.value = pending.testId;
+        testUrl.value = safeExternalUrl(pending.testUrl);
+      }
+    }
+    const rows = await history('mbti');
+    if (active && task.isCurrent(generation) && token === session.token) histories.value = rows;
+  } catch (reason) {
+    if (active && task.isCurrent(generation)) error.value = reason.message || '加载失败';
+  } finally {
+    if (active && task.isCurrent(generation)) {
+      loading.value = false;
+      refreshing.value = false;
+    }
+  }
+}
+async function start() {
+  if (loading.value || saving.value) return;
+  loading.value = true;
+  error.value = '';
+  const token = session.token;
+  try {
+    const data: any = await createMbti();
+    if (!data?.success || !data.testId) throw Error(data?.message || '创建测试失败');
+    if (!active || token !== session.token) return;
+    testId.value = data.testId;
+    testUrl.value = safeExternalUrl(
+      data.testUrl || 'https://devil.ai/api-personality-test/' + encodeURIComponent(data.testId),
+    );
+    result.value = null;
+    saved.value = false;
+    uni.setStorageSync(storageKey(), { testId: testId.value, testUrl: testUrl.value });
+    schedule();
+    open(testUrl.value);
+  } catch (reason) {
+    if (active) error.value = reason.message || '创建失败';
+  } finally {
+    loading.value = false;
+  }
+}
+function open(url) {
+  try {
+    uni.navigateTo({
+      url: '/pages/personality/external?url=' + encodeURIComponent(safeExternalUrl(url)),
+    });
+  } catch (reason) {
+    error.value = reason.message;
+  }
+}
+async function check() {
+  if (checking.value || !testId.value) return;
+  checking.value = true;
+  const token = session.token,
+    id = testId.value;
+  try {
+    const data: any = await checkMbti(id);
+    if (!active || !visible || token !== session.token || id !== testId.value) return;
+    if (data.success && data.mbtiType) {
+      result.value = data;
+      stop();
+      await save();
+    } else if (data.message) error.value = data.message;
+  } catch (reason) {
+    if (active && token === session.token) error.value = reason.message || '检查失败';
+  } finally {
+    checking.value = false;
+    schedule();
+  }
+}
+async function save() {
+  if (saving.value || saved.value || !result.value) return;
+  saving.value = true;
+  error.value = '';
+  const token = session.token,
+    id = testId.value;
+  try {
+    await saveMbti(id, result.value);
+    if (active && token === session.token && id === testId.value) {
+      saved.value = true;
+      uni.removeStorageSync(storageKey());
+      histories.value = await history('mbti');
+    }
+  } catch (reason) {
+    if (active) error.value = reason.message || '保存失败，结果已保留';
+  } finally {
+    saving.value = false;
+  }
+}
+async function inspect(row) {
+  detail.value = { ...row };
+  detailLoading.value = true;
+  detailError.value = '';
+  const token = session.token,
+    id = row.id;
+  try {
+    const data = await getHistory('mbti', id);
+    if (active && detail.value?.id === id && token === session.token) detail.value = data;
+  } catch (reason) {
+    if (active) detailError.value = reason.message || '详情加载失败';
+  } finally {
+    detailLoading.value = false;
+  }
+}
+async function remove(row) {
+  await deleteHistory('mbti', row.id);
+  if (active) histories.value = histories.value.filter((item) => item.id !== row.id);
+}
+function copy(url) {
+  uni.setClipboardData({
+    data: url,
+    fail: () => {
+      error.value = '复制失败，请重试';
+    },
+  });
+}
+function reset() {
+  stop();
+  testId.value = '';
+  testUrl.value = '';
+  result.value = null;
+  saved.value = false;
+  uni.removeStorageSync(storageKey());
+}
+function formatted(value) {
+  return typeof value === 'string' ? value : JSON.stringify(value, null, 2);
+}
+</script>
+<template>
+  <view class="mbti-page"
+    ><PageHeader title="MBTI 测试" back @back="uni.navigateBack()" /><MobilePage
+      :refreshing="refreshing"
+      @refresh="load(true)"
+      ><PageState :loading="loading" :error="error" @retry="load()"
+        ><view v-if="!testId && !result" class="test-intro ui-card" :class="themeClass('test-intro')"><text class="mbti-title">MBTI人格测试</text><text class="mbti-muted">了解你的性格类型，发现真实的自我</text></view><view class="mbti-actions ui-toolbar"
+          ><MobileButton
+            v-if="!testId"
+            label="开始测试"
+            :loading="loading"
+            @click="start" /><template v-else
+            ><MobileButton
+              label="继续答题"
+              :disabled="saving"
+              @click="open(testUrl)" /><MobileButton
+              label="检查结果"
+              :loading="checking"
+              variant="quiet"
+              @click="check" /><MobileButton
+              label="复制测试地址"
+              icon="ant-design:export-outlined"
+              variant="quiet"
+              @click="copy(testUrl)" /><ConfirmAction
+              label="重新测试"
+              icon="ant-design:undo-outlined"
+              :action="async () => reset()" /></template></view
+        ><view v-if="result" class="mbti-card ui-card" :class="themeClass('mbti-card')"
+          ><text class="mbti-title">{{ result.mbtiType }}</text
+          ><view v-for="row in resultRows" :key="row.key" class="mbti-result ui-gap-sm"
+            ><text>{{ row.label }}</text
+            ><text class="mbti-content">{{ formatted(row.value) }}</text></view
+          ><MobileButton v-if="!saved" label="保存结果" :loading="saving" @click="save" /><text
+            v-else
+            class="mbti-muted"
+            >已保存</text
+          ><MobileButton
+            v-if="result.resultsPage"
+            label="原始结果"
+            icon="ant-design:export-outlined"
+            variant="quiet"
+            @click="open(result.resultsPage)" /></view
+        ><PageState :empty="!histories.length" empty-text="暂无测试记录"
+          ><view
+            v-for="row in histories"
+            :key="row.id"
+            class="mbti-card ui-card"
+            :class="themeClass('mbti-card')"
+            ><text>{{ row.mbtiType }} · {{ row.createTime }}</text
+            ><view class="mbti-actions ui-row"
+              ><MobileButton
+                label="历史详情"
+                icon="ant-design:right-outlined"
+                variant="quiet"
+                @click="inspect(row)" /><ConfirmAction
+                label="删除测试记录"
+                :action="() => remove(row)" /></view></view></PageState></PageState></MobilePage
+    ><AdaptiveModal
+      v-if="detail"
+      label="MBTI 详情"
+      :content-key="detail.id + ':' + detailLoading"
+      @close="detail = null"
+      ><PageState :loading="detailLoading" :error="detailError" @retry="inspect(detail)"
+        ><text class="mbti-title ui-mb-section">{{ detail.mbtiType }}</text
+        ><view
+          v-for="key in ['predictions', 'traitOrderConscious', 'traitOrderShadow', 'matches']"
+          :key="key"
+          ><text class="mbti-content ui-mb-section">{{ formatted(objectValue(detail[key])) }}</text></view
+        ><MobileButton
+          v-if="detail.resultsPage"
+          label="原始结果"
+          icon="ant-design:export-outlined"
+          variant="quiet"
+          @click="open(detail.resultsPage)" /></PageState></AdaptiveModal
+  ></view>
+</template>
+<style scoped lang="scss">
+@use '../../styles/spacing.scss';
+@use '../../styles/spacing-tokens' as *;
+.mbti-page {
+  height: 100%;
+  flex: 1;
+  min-height: 0;
+}
+.mbti-card {
+
+  border-radius: 16px;
+
+  background-color: #ffffff;
+  color: #27272a;
+  overflow: visible;
+}
+.mbti-card-dark {
+  background-color: #1c1e22;
+  color: #eeeeef;
+}
+.mbti-actions {
+  flex-direction: row;
+  flex-wrap: wrap;
+
+
+  overflow: visible;
+}
+.mbti-title {
+  font-size: 28px;
+  font-weight: 600;
+
+}
+.mbti-result {
+
+
+}
+.mbti-content {
+  font-size: 14px;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+
+}
+.mbti-muted {
+  color: #808692;
+  font-size: 13px;
+}
+.test-intro { background-color: #ffffff; border-radius: 14px; align-items: center; gap: $space-inline; }
+.test-intro-dark { background-color: #1c1e22; }
+</style>

@@ -1,0 +1,337 @@
+<script setup lang="ts">
+import SecondaryUnlock from "../../components/SecondaryUnlock.uvue";
+import { themeClass } from '../../services/theme.ts'
+import { computed, ref, watch } from 'vue'
+import { onShow, onHide, onUnload } from '@dcloudio/uni-app'
+import PageHeader from '../../components/PageHeader.uvue'
+import { fetchUser, request, uploadAvatar } from '../../services/api.ts'
+import { restoreSession, session } from '../../services/session.ts'
+
+const loading = ref(false)
+const saving = ref(false)
+const uploading = ref(false)
+const ready = ref(false)
+const errorText = ref('')
+const form = ref({ nickname: '', introduction: '', avatar: '' })
+const email = computed(() => session.user?.email || '未设置')
+let active = false, revision = 0
+function clearPage() {
+  revision++
+  ready.value = false
+  loading.value = false
+  saving.value = false
+  uploading.value = false
+  errorText.value = ''
+  form.value = { nickname: '', introduction: '', avatar: '' }
+}
+function suspend() { active = false; clearPage() }
+watch(() => session.token, () => {
+  clearPage()
+  if (active && session.token) load()
+}, { flush: 'sync' })
+onHide(suspend)
+onUnload(suspend)
+onShow(() => {
+  active = false
+  clearPage()
+  restoreSession()
+  active = true
+  if (!session.token) {
+    uni.reLaunch({ url: '/pages/login/index' })
+    return
+  }
+  load()
+})
+function current(token, version) { return active && token === session.token && version === revision }
+function failure(error) {
+  if (!active) return
+  if (error.name === 'SessionExpiredError') {
+    uni.reLaunch({ url: '/pages/login/index' })
+    return
+  }
+  errorText.value = error.message || '操作失败，请重试'
+}
+async function load() {
+  if (loading.value) return
+  loading.value = true
+  errorText.value = ''
+  const token = session.token, version = revision
+  try {
+    const user = await fetchUser()
+    if (!current(token, version)) return
+    form.value = {
+      nickname: user.nickname,
+      introduction: user.introduction,
+      avatar: user.avatar
+    }
+    ready.value = true
+  } catch (error) {
+    if (current(token, version)) failure(error)
+  } finally {
+    if (current(token, version)) loading.value = false
+  }
+}
+function chooseAvatar() {
+  if (uploading.value || saving.value || !ready.value) return
+  const token = session.token, version = revision
+  uni.chooseImage({
+    count: 1,
+    sizeType: ['compressed'],
+    success: async (result) => {
+      if (!current(token, version) || !result.tempFilePaths.length) return
+      uploading.value = true
+      errorText.value = ''
+      try {
+        const url = await uploadAvatar(result.tempFilePaths[0])
+        if (current(token, version)) form.value.avatar = url
+      } catch (error) {
+        if (current(token, version)) failure(error)
+      } finally {
+        if (current(token, version)) uploading.value = false
+      }
+    },
+    fail: (error) => {
+      if (current(token, version) && !error.errMsg.includes('cancel'))
+        errorText.value = '无法选择图片，请重试'
+    }
+  })
+}
+async function save() {
+  if (!ready.value || saving.value || uploading.value) return
+  const nickname = form.value.nickname.trim()
+  if (!nickname) {
+    errorText.value = '请输入昵称'
+    return
+  }
+  saving.value = true
+  errorText.value = ''
+  const token = session.token, version = revision
+  const data = { ...form.value, nickname }
+  try {
+    await request('/users', 'PUT', data)
+    if (!current(token, version)) return
+    if (session.user)
+      session.user = { ...session.user, ...data, name: nickname }
+    uni.showToast({ title: '已保存', icon: 'success' })
+    back()
+  } catch (error) {
+    if (current(token, version)) failure(error)
+  } finally {
+    if (current(token, version)) saving.value = false
+  }
+}
+function back() {
+  uni.navigateBack({
+    fail: () => uni.switchTab({ url: '/pages/profile/index' })
+  })
+}
+</script>
+<template>
+  <view class="tab-page" :class="themeClass('tab-page')">
+    <PageHeader title="基本设置" back @back="!saving && !uploading && back()" />
+    <scroll-view scroll-y class="tab-scroll">
+      <view class="tab-content ui-page-inset">
+        <view
+          v-if="loading"
+          class="state-card"
+          :class="themeClass('state-card')"
+          ><text class="muted-text">加载中…</text></view
+        >
+        <view v-if="errorText" class="settings-error ui-mb-section"
+          ><text
+            role="alert"
+            class="error-text"
+            :class="themeClass('error-text')"
+            >{{ errorText }}</text
+          ><button
+            v-if="!ready"
+            role="button"
+            class="text-action"
+            :disabled="loading" :aria-disabled="loading"
+            @click="load"
+          >
+            重试
+          </button></view
+        >
+        <view
+          v-if="ready"
+          class="settings-card ui-card"
+          :class="themeClass('settings-card')"
+        >
+          <button
+            role="button"
+            class="avatar-picker ui-mb-section"
+            :disabled="uploading || saving" :aria-disabled="uploading || saving"
+            :loading="uploading"
+            aria-label="更换头像"
+            @click="chooseAvatar"
+          >
+            <image
+              v-if="form.avatar"
+              class="settings-avatar"
+              :src="form.avatar"
+              mode="aspectFill"
+            />
+            <view
+              v-else
+              class="settings-avatar avatar-fallback"
+              :class="themeClass('avatar-fallback')"
+              ><text
+                class="avatar-initial"
+                :class="themeClass('avatar-initial')"
+                >{{ (form.nickname || '我').slice(0, 1) }}</text
+              ></view
+            >
+            <text class="settings-link">{{
+              uploading ? '上传中…' : '更换头像'
+            }}</text>
+          </button>
+          <text class="settings-label ui-mb-section ui-mt-section" :class="themeClass('settings-label')"
+            >昵称</text
+          >
+          <input
+            v-model="form.nickname"
+            class="settings-input ui-px-card"
+            aria-label="昵称"
+            placeholder="怎么称呼你"
+            :maxlength="64"
+            :disabled="saving" :aria-disabled="saving"
+            :class="themeClass('settings-input')"
+          />
+          <text class="settings-label ui-mb-section ui-mt-section" :class="themeClass('settings-label')"
+            >邮箱</text
+          >
+          <text class="settings-readonly">{{ email }}</text>
+          <text class="settings-label ui-mb-section ui-mt-section" :class="themeClass('settings-label')"
+            >个人简介</text
+          >
+          <textarea
+            v-model="form.introduction"
+            class="settings-textarea ui-pad-card"
+            aria-label="个人简介"
+            placeholder="简单介绍一下自己"
+            :maxlength="255"
+            :disabled="saving" :aria-disabled="saving"
+            :class="themeClass('settings-textarea')"
+          />
+          <button
+            role="button"
+            class="settings-save ui-mt-section"
+            :disabled="saving || uploading" :aria-disabled="saving || uploading"
+            :loading="saving"
+            @click="save"
+          >
+            {{ saving ? '保存中…' : '保存' }}
+          </button>
+        </view>
+      </view>
+    </scroll-view>
+  <SecondaryUnlock />
+  </view>
+</template>
+<style scoped lang="scss">
+@use '../../styles/spacing.scss';
+@use '../../styles/spacing-tokens' as *;
+.settings-card {
+
+  background-color: #ffffff;
+  border-radius: 18px;
+}
+.settings-error {
+
+}
+.avatar-picker {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+
+  padding: 0;
+  background-color: transparent;
+  border: 0;
+  align-items: center;
+}
+.settings-avatar {
+  width: 72px;
+  height: 72px;
+  border-radius: 36px;
+}
+.avatar-fallback {
+  background-color: #e3ebfc;
+  align-items: center;
+  justify-content: center;
+}
+.avatar-initial {
+  color: #4f78c4;
+  font-size: 26px;
+}
+.settings-link {
+  color: #4e7ee3;
+  font-size: 13px;
+  line-height: 44px;
+}
+.settings-label {
+  color: #52525b;
+  font-size: 13px;
+
+
+}
+.settings-input {
+  height: 48px;
+
+  border-radius: 12px;
+  background-color: #f5f6f8;
+  color: #27272a;
+  font-size: 15px;
+}
+.settings-readonly {
+  color: #8b8f99;
+  font-size: 15px;
+  line-height: 28px;
+}
+.settings-textarea {
+  width: 100%;
+  height: 120px;
+
+  border-radius: 12px;
+  background-color: #f5f6f8;
+  color: #27272a;
+  font-size: 15px;
+}
+.settings-save {
+  width: 100%;
+  height: 48px;
+  line-height: 48px;
+  border: 0;
+  border-radius: 12px;
+  padding: 0;
+
+  color: #ffffff;
+  background-color: #4e7ee3;
+  font-size: 15px;
+}
+
+.settings-card-dark {
+  background-color: #1c1e22;
+}
+.settings-label-dark {
+  color: #b4b4bd;
+}
+.settings-input-dark,
+.settings-textarea-dark {
+  color: #eeeeef;
+  background-color: #282a30;
+}
+.avatar-fallback-dark {
+  background-color: #243451;
+}
+.avatar-initial-dark {
+  color: #9dbcfa;
+}
+
+/* #ifdef WEB || MP-WEIXIN */
+.avatar-picker::after,
+.settings-save::after {
+  border: 0;
+}
+/* #endif */
+</style>
