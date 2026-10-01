@@ -14,6 +14,18 @@ async function setup(page, override) {
   await page.locator('[aria-label="密码"] input').fill('fixture-password');
   await page.getByRole('button', { name: '登录', exact: true }).click();
 }
+async function swipeCardUp(page, selector) {
+  const card = page.locator(selector);
+  await card.evaluate(el => el.scrollIntoView({block:'center'}));
+  const box = await card.boundingBox();
+  const client = await page.context().newCDPSession(page);
+  await client.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 1 });
+  await client.send('Input.synthesizeScrollGesture', {
+    x: box.x + box.width / 2, y: box.y + box.height - 20,
+    yDistance: -(box.height - 40), speed: 500, gestureSourceType: 'touch',
+  });
+  await client.detach();
+}
 test('统计卡和内容卡独立失败、重试恢复，隐藏闪念不暴露原文', async ({ page }) => {
   let cards = 0, thoughts = 0;
   await setup(page, async (route, path) => {
@@ -69,9 +81,84 @@ test('运动分页失败保留已有记录，重试使用同一游标', async ({
     }
     await route.fulfill({ json: { rscode: '0', data: { ...dashboardFixture(path), hasMore: true, lastDate: '2026-09-28' } } }); return true;
   });
-  await page.getByRole('button', { name: '加载更多运动' }).click();
-  await expect(page.getByText('跑步 5', { exact: true })).toBeAttached();
+  await swipeCardUp(page, '.exercise-scroll');
+  await expect(page.locator('.exercise-main').filter({ hasText: /^跑步\s*5$/ })).toBeAttached();
   await page.getByRole('button', { name: '加载失败，重试更多运动' }).click();
-  await expect(page.getByText('骑行 15')).toBeAttached();
+  await expect(page.locator('.exercise-main').filter({ hasText: /^骑行\s*15$/ })).toBeAttached();
   expect(next).toBe(2);
+});
+
+test('首页关注待办失败可重试，完成只提交长ID与状态',async({page})=>{
+  let fail=true;const writes=[];const detail={id:'9223372036854775807',taskId:'9223372036854775806',content:'模拟关注待办',isCompleted:0};
+  await page.route('http://127.0.0.1:5180/api/**',async route=>{
+    const path=new URL(route.request().url()).pathname;let data=dashboardFixture(path);
+    if(path==='/api/auth/login')data={accessToken:'dashboard-action-fixture'};
+    if(path==='/api/user/info')data={id:'fixture-user',nickname:'模拟首页'};
+    if(path==='/api/taskDetails/watched')data=[detail];
+    if(path==='/api/taskDetails'&&route.request().method()==='PUT'){
+      const payload=route.request().postDataJSON();writes.push(payload);
+      if(fail)return route.fulfill({json:{rscode:'1',result:'模拟更新失败'}});
+      detail.isCompleted=payload.isCompleted;data=true;
+    }
+    return route.fulfill({json:{rscode:'0',data:data??[]}});
+  });
+  await page.goto('/');await page.locator('[aria-label="账号"] input').fill('fixture');await page.locator('[aria-label="密码"] input').fill('fixture-password');await page.getByRole('button',{name:'登录',exact:true}).click();
+  await page.getByRole('button',{name:'完成待办',exact:true}).click();await expect(page.getByText('模拟更新失败')).toBeVisible();
+  fail=false;await page.getByRole('button',{name:'重试待办',exact:true}).click();await page.getByRole('button',{name:'完成待办',exact:true}).click();
+  await expect(page.getByRole('button',{name:'标记未完成',exact:true})).toBeVisible();
+  expect(writes.at(-1)).toEqual({id:'9223372036854775807',isCompleted:1});
+  await page.getByRole('button',{name:'编辑待办 模拟关注待办',exact:true}).click();
+  await expect(page).toHaveURL(/detailId=9223372036854775807&taskId=9223372036854775806/);
+});
+
+for (const width of [390, 768, 1440]) {
+  test(`运动卡片在 ${width}px 内上滑分页，加载不撑高卡片、无重复请求`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 1000 });
+    let next = 0, finish;
+    const initial = Array.from({ length: 7 }, (_, i) => ({ date: `2026-09-${30-i}`, items: [{ exerciseTypeId: '1', typeLabel: '俯卧撑', count: 82, deltaCount: 57, color: '#3b82f6', trend: [30, 40, 25, 70, 82].map((count, j) => ({date: `2026-09-${20+j}`, count})) }] }));
+    await setup(page, async (route, path) => {
+      if (path !== '/api/exerciseRecord/dashboardSummary') return false;
+      const cursor = new URL(route.request().url()).searchParams.get('lastDate');
+      if (!cursor) { await route.fulfill({json:{rscode:'0',data:{days:initial,hasMore:true,lastDate:'2026-09-24'}}}); return true; }
+      expect(cursor).toBe('2026-09-24'); next++;
+      await new Promise(resolve => { finish = resolve; });
+      await route.fulfill({json:{rscode:'0',data:{days:[{date:'2026-09-23',items:[{exerciseTypeId:'2',typeLabel:'深蹲',count:50,deltaCount:-10}]}],hasMore:false}}}); return true;
+    });
+    const scroll = page.locator('.exercise-scroll');
+    await expect(scroll).toBeVisible();
+    await scroll.evaluate(el => el.scrollIntoView({block:'center'}));
+    const section = page.locator('.dashboard-section').filter({has:scroll});
+    const before = await section.boundingBox();
+    await expect(page.getByRole('button',{name:'加载更多运动',exact:true})).toHaveCount(0);
+    const row = scroll.locator('.exercise-item').first();
+    const bounds = await row.evaluate(el => ['.exercise-date','.exercise-main','.exercise-delta','.trend'].map(selector => {const r=el.querySelector(selector).getBoundingClientRect();return {left:r.left,right:r.right,top:r.top,bottom:r.bottom};}));
+    for(let i=1;i<bounds.length;i++){expect(bounds[i].left).toBeGreaterThanOrEqual(bounds[i-1].right);expect(Math.min(bounds[0].bottom,bounds[i].bottom)-Math.max(bounds[0].top,bounds[i].top)).toBeGreaterThan(0);}
+    await swipeCardUp(page, '.exercise-scroll');
+    await expect.poll(()=>next).toBe(1);
+    await expect(page.getByRole('status',{name:'正在加载更多运动'})).toBeAttached();
+    await swipeCardUp(page, '.exercise-scroll');
+    expect(next).toBe(1);
+    finish();
+    await expect(scroll.locator('.exercise-name').filter({hasText:'深蹲'})).toBeAttached();
+    const after = await section.boundingBox();
+    expect(after.height).toBe(before.height);
+    expect(Math.abs(after.y-before.y)).toBeLessThan(2);
+    await swipeCardUp(page, '.exercise-scroll');
+    expect(next).toBe(1);
+  });
+}
+
+test('最近提交在卡片内部上滑加载下一页', async ({ page }) => {
+  await page.setViewportSize({width:390,height:844});
+  const pages=[];
+  await setup(page, async (route,path)=>{
+    if(path!=='/api/github/recent-commits')return false;
+    const current=Number(new URL(route.request().url()).searchParams.get('page'));pages.push(current);
+    await route.fulfill({json:{rscode:'0',data:Array.from({length:current===1?10:1},(_,i)=>({id:`${current}-${i}`,repo:'fixture-repo',message:`模拟提交 ${current}-${i}`,date:'2026-09-30T12:00:00'}))}});return true;
+  });
+  await expect(page.locator('.commits-scroll')).toBeAttached();
+  for(let i=0;i<4&&pages.length===1;i++)await swipeCardUp(page,'.commits-scroll');
+  await expect(page.getByText('模拟提交 2-0',{exact:true})).toBeAttached();
+  expect(pages).toEqual([1,2]);
+  await expect(page.getByRole('button',{name:'加载更多提交',exact:true})).toHaveCount(0);
 });

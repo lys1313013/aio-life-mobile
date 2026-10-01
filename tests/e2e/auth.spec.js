@@ -56,10 +56,10 @@ test('空表单不请求，业务错误可见，重复点击不重复提交', as
 test('登录后携带 Bearer，刷新恢复会话，退出后不能访问首页', async ({ page }) => {
   const requests = await mockApi(page);
   await signIn(page);
-  await expect(page.getByText('人生仪表盘', { exact: true })).toBeVisible();
+  await expect(page.locator('.dashboard-scroll')).toBeVisible();
   expect(requests.authorized).toBe(true);
   await page.reload();
-  await expect(page.getByText('人生仪表盘', { exact: true })).toBeVisible();
+  await expect(page.locator('.dashboard-scroll')).toBeVisible();
   expect(requests.login).toBe(1);
   await page.getByText('我的', { exact: true }).last().click();
   await expect(page.getByText(profile.nickname)).toBeVisible();
@@ -74,7 +74,7 @@ test('登录后携带 Bearer，刷新恢复会话，退出后不能访问首页'
 test('401 清理会话并返回登录，不循环请求', async ({ page }) => {
   const requests = await mockApi(page, { expire: true });
   await signIn(page);
-  await expect(page.getByText('人生仪表盘', { exact: true })).toBeVisible();
+  await expect(page.locator('.dashboard-scroll')).toBeVisible();
   await expect(page.getByText('记录想法，让行动更清晰。')).toBeVisible();
   await pullDown(page, '.dashboard-scroll');
   await expect(page.getByText('欢迎回来', { exact: true })).toBeVisible();
@@ -89,7 +89,7 @@ test('暂时断网保留会话，重试成功，注销断网也清理本机会�
   await signIn(page);
   await expect(page.getByText('连接失败，请检查网络后重试')).toBeVisible();
   await page.getByRole('button', { name: '重新加载' }).click();
-  await expect(page.getByText('人生仪表盘', { exact: true })).toBeVisible();
+  await expect(page.locator('.dashboard-scroll')).toBeVisible();
   expect(requests.login).toBe(1);
   await page.getByText('我的', { exact: true }).last().click();
   await expect(page.getByText(profile.nickname)).toBeVisible();

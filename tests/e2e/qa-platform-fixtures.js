@@ -1,0 +1,53 @@
+const {dashboardFixture}=require('./fixtures');
+const admin=[['users','/system/user','用户中心'],['menus','/system/menu','菜单管理'],['user-dict','/system/user-dict','用户字典管理'],['feedback','/system/feedback','反馈管理'],['config','/system/config','系统配置'],['operation','/system/operation-log','操作日志'],['access','/system/access-log','访问日志'],['dict-types','/config-management/sysDictType','字典类型'],['dict-data','/config-management/sysDictData','字典数据']];
+async function setup(page, populated=false){
+const state={writes:[],fail:false,failPath:'',status:200};
+await page.route('**/*',async route=>{const req=route.request(),u=new URL(req.url()),p=u.pathname;if(u.origin!=='http://127.0.0.1:5180')return route.fulfill({body:'<!doctype html><html><body>模拟第三方测试页</body></html>',contentType:'text/html; charset=utf-8'});if(!p.startsWith('/api/'))return route.continue();if(state.failPath===p)return route.fulfill({status:state.status,json:{rscode:'1',result:'模拟加载失败'}});let data=dashboardFixture(p);if(req.method()!=='GET')state.writes.push({path:p,body:req.postData()});
+if(p==='/api/auth/login')data={accessToken:'platform-fixture'};
+if(p==='/api/user/info')data={id:'9223372036854775807',username:'fixture',nickname:'页面检查用户',email:'fixture@example.test',roles:['admin']};
+if(p==='/api/menu/all')data=[...admin.map(([id,path,title])=>({id,path,name:id,meta:{title}})),{id:'categoryadmin',path:'/time/category-admin',name:'categoryadmin',meta:{title:'管理分类'}}];
+if(p==='/api/quick-nav/candidates')data=[['category','/time/my-categories','个人分类'],['categoryadmin','/time/category-admin','管理分类'],['dashboard','/time/dashboard','时间看板']].map(([menuId,path,title])=>({menuId,path,title}));
+if(p==='/api/quick-nav/my')data=[];
+if(p==='/api/timeRecord/recommendNext')data={recommend:{categoryId:'1',startTime:600,endTime:629},records:[]};
+if(p==='/api/timeRecord/relateTypes')data=[];
+if(p==='/api/userDictType/getByDictType')data={dictDetailList:[]};
+if(p==='/api/api-key/generate')data={apiKey:'synthetic-generated-fixture'};
+if(p==='/api/timeRecord/9223372036854775807')data={id:'9223372036854775807',categoryId:'1',date:'2026-10-01',startTime:540,endTime:599};
+if(p==='/api/menu/preferences')data={menus:[{id:'9223372036854775807',title:'模拟菜单',children:[]}],hiddenMenuIds:[]};
+if(p==='/api/auth/secondary-password/status')data={hasPassword:true};
+if(p==='/api/auth/secondary-lock/menus')data=[];
+if(p==='/api/userbinds/list'||p==='/api/api-key/list'||p==='/api/llm/key/list')data=[];
+if(p==='/api/notification/channels/feishu')data={configured:true,enabled:true,appId:'fixture',receiverOpenId:'fixture-open'};
+if(p==='/api/timeTrackerCategory/admin/list')data=[{id:'9223372036854775807',name:'模拟管理分类',parentId:'0',color:'#427bea',userId:'0',isEnabled:1,isTrackTime:1}];
+if(p==='/api/notification/preferences')data=[{bizType:'fixture',description:'模拟通知',visible:true,channels:[{channel:'EMAIL',enabled:true}]}];
+if(p==='/api/menu/admin/tree')data=[];
+if(p==='/api/menu/admin/role-options')data=['admin','user'];
+if(p==='/api/sysDictType/query')data={items:[{dictId:'9223372036854775807',dictName:'模拟字典',dictType:'fixture'}],total:1};
+if(['/api/user-center/list','/api/sysDictData/query','/api/userDictData/admin/query','/api/feedback/admin/list','/api/system/logs/operation','/api/system/logs/access'].includes(p))data={items:[],total:0};
+if(p==='/api/system-config/list')data=[];
+if(p==='/api/userDictType/dictTypeEnum')data=[{label:'模拟字典',value:'fixture'}];
+if(p==='/api/mbti/test')data={success:true,testId:'mock-test',testUrl:'https://devil.ai/api-personality-test/mock-test'};
+if(p==='/api/cbti/questions')data={questions:[{id:1,text:'模拟问题',options:[{label:'模拟选项',value:1}]}],hiddenQuestions:[{id:1,text:"饮品",options:[{label:"茶",value:"tea"}]},{id:2,text:"偏好",options:[{label:"喜欢",value:"like"}]}],dimensionDefs:Array.from({length:15},(_,i)=>({code:"D"+i,name:"维度"+i,model:"C",modelName:"模拟模型",levels:{L:"低",M:"中",H:"高"}}))};
+if(p==='/api/cbti/test')data={personality:{code:'QA',name:'模拟人格',motto:'模拟格言',description:'仅用于测试',strengths:['模拟优势'],weaknesses:['模拟弱点'],vector:Array(15).fill(1)},dimensions:Array.from({length:15},(_,i)=>({code:'D'+i,name:'维度'+i,percentage:60,level:'M',levelDesc:'中等',modelName:'模拟模型'})),similarity:88,matchDetails:[]};
+if(p==='/api/cbti/personalities'||p==='/api/cbti/results'||p==='/api/mbti/results')data=[];
+if(populated){
+const id='9223372036854775807';const row={id,dictId:id,dictCode:id,userId:'0',username:'fixture-row',nickname:'模拟记录',role:'user',email:'row@example.test',dictName:'模拟字典',dictType:'fixture',dictLabel:'模拟字典值',dictValue:'value',dictSort:0,status:'0',isReadonly:'N',name:'MockMenu',parentId:'0',path:'/mock',meta:{title:'模拟菜单',keepAlive:true},title:'模拟反馈',content:'模拟反馈内容',feedbackType:'BUG',priority:'NORMAL',functionName:'模拟日志',functionItem:'检查',createTime:'2026-10-01 10:00'};
+if(['/api/user-center/list','/api/sysDictType/query','/api/sysDictData/query','/api/userDictData/admin/query','/api/feedback/admin/list','/api/system/logs/operation','/api/system/logs/access'].includes(p))data={items:[row],total:1};
+if(p==='/api/menu/admin/tree')data=[{...row,status:1}];
+if(p==='/api/system-config/list')data=[{configKey:'fixture.config',configType:'JSON',configValue:'{"enabled":true}',description:'模拟配置'}];
+if(p==='/api/userbinds/list')data=[{id,platform:'github',platformUsername:'fixture-github'}];
+if(p==='/api/api-key/list')data=[{id,remark:'模拟Key',apiKey:'masked-fixture',createTime:'2026-10-01'}];
+if(p==='/api/llm/key/list')data=[{id,modelName:'模拟模型',baseUrl:'https://example.test/v1',apiKey:'masked-fixture',isDefault:0}];
+if(p==='/api/feedback/admin/'+id)data={...row,comments:[],attachments:[]};
+const personality={id,code:'QA',name:'模拟人格',motto:'模拟格言',description:'模拟详情',color:'#427bea',vector:Array(15).fill(1),strengths:['模拟优势'],weaknesses:['模拟弱点']};
+if(p==='/api/cbti/personalities'||p==='/api/cbti/admin/personalities')data=[personality];
+if(p==='/api/cbti/results')data=[{id,personalityCode:'QA',name:'模拟人格',createTime:'2026-10-01'}];
+if(p==='/api/cbti/result/'+id)data={personality,dimensions:Array.from({length:15},(_,i)=>({code:'D'+i,name:'维度'+i,modelName:'模拟模型',percentage:60,level:'M',levelDesc:'中等'})),similarity:88};
+if(p==='/api/mbti/results')data=[{id,mbtiType:'INTJ',createTime:'2026-10-01'}];
+if(p==='/api/mbti/result/'+id)data={id,mbtiType:'INTJ',predictions:{INTJ:80},resultsPage:'https://devil.ai/mock-result'};
+}
+if(state.fail&&req.method()!=='GET')return route.fulfill({json:{rscode:'1',result:'模拟保存失败'}});
+await route.fulfill({json:{rscode:'0',data:data??[]}});});
+await page.goto('/');await page.locator('[aria-label="账号"] input').fill('fixture');await page.locator('[aria-label="密码"] input').fill('fixture-password');await page.getByRole('button',{name:'登录',exact:true}).click();await page.locator('.dashboard-scroll').waitFor();return state;
+}
+module.exports={setup,admin};
