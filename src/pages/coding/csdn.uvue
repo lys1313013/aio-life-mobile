@@ -1,0 +1,151 @@
+<script setup lang="ts">
+import { onMounted, onUnmounted, ref } from 'vue';
+import MobilePage from '../../components/MobilePage.uvue';
+import PageHeader from '../../components/PageHeader.uvue';
+import PageState from '../../components/PageState.uvue';
+import MobileButton from '../../components/MobileButton.uvue';
+import MetricCard from '../../components/MetricCard.uvue';
+import {
+  fetchCodingBindings,
+  fetchCsdnStats,
+  fetchCsdnArticles,
+  openExternal,
+} from '../../services/domains/coding.ts';
+import { useDomainPage } from '../../services/domains/page-session.ts';
+import { themeClass } from '../../services/theme.ts';
+const stats = ref<any>(null),
+  articles = ref<any[]>([]),
+  username = ref(''),
+  loading = ref(false),
+  refreshing = ref(false),
+  error = ref('');
+let alive = true,
+  stamp = 0;
+onUnmounted(() => {
+  alive = false;
+  stamp++;
+});
+async function load() {
+  const current = ++stamp;
+  loading.value = true;
+  error.value = '';
+  try {
+    const bindings = await fetchCodingBindings();
+    const account = bindings.find((item) => item.platform === 'csdn');
+    if (!account?.platformUsername) throw new Error('请先绑定 CSDN 账号');
+    const data = await Promise.allSettled([
+      fetchCsdnStats(account.platformUsername),
+      fetchCsdnArticles(account.platformUsername),
+    ]);
+    if (!alive || stamp !== current) return;
+    username.value = account.platformUsername;
+    data.forEach((item, index) => {
+      if (item.status === 'fulfilled') {
+        if (index === 0) stats.value = item.value;
+        else articles.value = item.value;
+      } else error.value += (error.value ? '；' : '') + item.reason.message;
+    });
+  } catch (e) {
+    if (alive && stamp === current) error.value = e.message;
+  } finally {
+    if (alive && stamp === current) {
+      loading.value = false;
+      refreshing.value = false;
+    }
+  }
+}
+useDomainPage(
+  () => {
+    alive = true;
+    load();
+  },
+  () => {
+    alive = false;
+    stamp++;
+    stats.value = null;
+    articles.value = [];
+    loading.value = false;
+    refreshing.value = false;
+  },
+);
+</script>
+<template>
+  <MobilePage
+    :refreshing="refreshing"
+    @refresh="
+      refreshing = true;
+      load();
+    "
+    ><PageHeader title="CSDN" back @back="uni.navigateBack()" /><view
+      class="body ui-page-body"
+      :class="themeClass('body')"
+      ><view class="actions ui-toolbar"
+        ><text>{{ username }}</text
+        ><MobileButton
+          label="账号绑定"
+          icon="ant-design:setting-outlined"
+          variant="quiet"
+          @click="uni.navigateTo({ url: '/pages/profile/bindings' })" /></view
+      ><PageState :loading="loading" :error="error" @retry="load"
+        ><view v-if="stats" class="metrics ui-row ui-section"
+          ><MetricCard label="总访问量" :value="String(stats.viewCount)" /><MetricCard
+            label="原创数"
+            :value="String(stats.originalCount)" /><MetricCard
+            label="全站排名"
+            :value="String(stats.rank)" /><MetricCard
+            label="粉丝数"
+            :value="String(stats.fansCount)" /><MetricCard
+            label="获赞数"
+            :value="String(stats.likeCount)" /><MetricCard
+            label="评论"
+            :value="String(stats.commentCount || 0)" /></view
+        ><text class="heading ui-section">近期文章</text><view v-if="!articles.length" class="article empty ui-card" :class="themeClass('article')"><text class="muted">暂无近期文章</text></view><view v-for="item in articles" :key="item.id" class="article ui-card" :class="themeClass('article')"
+          ><text class="title">{{ item.title }}</text
+          ><text>{{ item.description }}</text
+          ><text class="muted"
+            >{{ item.postTime }} · 浏览 {{ item.viewCount }} · 评论 {{ item.commentCount }} · 点赞
+            {{ item.likeCount || 0 }} · 收藏 {{ item.collectCount || 0 }}</text
+          ><MobileButton
+            label="打开文章"
+            icon="ant-design:export-outlined"
+            variant="quiet"
+            @click="openExternal(item.url)" /></view></PageState></view
+  ></MobilePage>
+</template>
+<style scoped lang="scss">
+@use '../../styles/spacing.scss';
+@use '../../styles/spacing-tokens' as *;
+.body {
+  color: #263248;
+}
+.body-dark {
+  color: #e7e9ee;
+}
+.actions {
+}
+.metrics {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: $space-inline;
+}
+@media (min-width: 768px) {
+  .metrics { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}
+.article {
+  background-color: #ffffff;
+  border-radius: 14px;
+  display: flex;
+  flex-direction: column;
+}
+.title {
+  font-size: 18px;
+  font-weight: 600;
+}
+.muted {
+  font-size: 13px;
+  color: #718096;
+}
+.record-dark, .article-dark { background-color: #1c1e22; }
+.heading { display: block; font-size: 18px; font-weight: 600; }
+.empty { min-height: 88px; align-items: center; justify-content: center; }
+</style>

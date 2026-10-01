@@ -1,0 +1,626 @@
+<script setup lang="ts">
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
+import PageHeader from '../../components/PageHeader.uvue';
+import MobilePage from '../../components/MobilePage.uvue';
+import MobileButton from '../../components/MobileButton.uvue';
+import ConfirmAction from '../../components/ConfirmAction.uvue';
+import FormField from '../../components/FormField.uvue';
+import PageState from '../../components/PageState.uvue';
+import LoadMore from '../../components/LoadMore.uvue';
+import MetricCard from '../../components/MetricCard.uvue';
+import MiniChart from '../../components/MiniChart.uvue';
+import AdaptiveModal from '../../components/AdaptiveModal.uvue';
+import { themeClass } from '../../services/theme.ts';
+import {
+  fetchLedger,
+  fetchDictionary,
+  saveLedger,
+  deleteLedger,
+  deleteExpenses,
+  ledgerId,
+  fetchFinanceStatistics,
+} from '../../services/domains/finance.ts';
+const props = defineProps<{ kind: string }>();
+const expense = computed(() => props.kind === 'expense');
+const rows = ref<any[]>([]),
+  types = ref<any[]>([]),
+  payments = ref<any[]>([]);
+const loading = ref(false),
+  refreshing = ref(false),
+  saving = ref(false),
+  error = ref(''),
+  formError = ref(''),
+  modal = ref(false);
+const overviewRows = ref<any[]>([]),
+  overviewYear = ref(String(new Date().getFullYear()));
+let statisticsSequence = 0;
+const statistics = ref<any[]>([]),
+  showStatistics = ref(false),
+  statisticsBusy = ref(false),
+  statisticsPeriod = ref('月度'),
+  statisticsError = ref('');
+async function loadStatistics() {
+  const current = ++statisticsSequence,
+    period = statisticsPeriod.value;
+  statisticsBusy.value = true;
+  statisticsError.value = '';
+  try {
+    const rows = await fetchFinanceStatistics(
+      props.kind,
+      period === '年度' ? 'Year' : 'Month',
+    );
+    if (alive && current === statisticsSequence) {
+      statistics.value = rows.sort(
+        (a, b) => b.year - a.year || (b.month || 0) - (a.month || 0),
+      );
+      if (period === '月度') overviewRows.value = rows;
+    }
+  } catch (e) {
+    if (alive && current === statisticsSequence) statisticsError.value = e.message;
+  } finally {
+    if (alive && current === statisticsSequence) statisticsBusy.value = false;
+  }
+}
+const overviewYears = computed(() =>
+  Array.from(
+    new Set([
+      String(new Date().getFullYear()),
+      ...overviewRows.value.map((row) => String(row.year)),
+    ]),
+  )
+    .sort()
+    .reverse(),
+);
+const yearRows = computed(() =>
+  overviewRows.value
+    .filter((row) => String(row.year) === overviewYear.value)
+    .slice()
+    .sort((a, b) => a.month - b.month),
+);
+function statisticsTotal(rows) {
+  return rows.reduce(
+    (sum, row) =>
+      sum + (row.detail || []).reduce((n, item) => n + Number(item.amt || 0), 0),
+    0,
+  );
+}
+const yearAmount = computed(() => statisticsTotal(yearRows.value));
+const monthlyAverage = computed(
+  () => yearAmount.value / Math.max(1, yearRows.value.length),
+);
+const distribution = computed(() => {
+  const map = {};
+  yearRows.value.forEach((row) =>
+    (row.detail || []).forEach((item) => {
+      const name = item.typeName || '未分类';
+      map[name] = (map[name] || 0) + Number(item.amt || 0);
+    }),
+  );
+  return Object.entries(map).map(([name, value]) => ({ name, value }));
+});
+function filterStatistics(group: any, item: any) {
+  const month = group.month ? String(group.month).padStart(2, '0') : '01';
+  const endMonth = group.month || 12;
+  const last = new Date(Number(group.year), Number(endMonth), 0).getDate();
+  filters.value.year = String(group.year);
+  filters.value.startTime = group.year + '-' + month + '-01';
+  filters.value.endTime =
+    group.year + '-' + String(endMonth).padStart(2, '0') + '-' + last;
+  typeFilter.value = name(types.value, String(item.typeId));
+  filters.value[expense.value ? 'expTypeId' : 'incTypeId'] = String(item.typeId);
+  showStatistics.value = false;
+  load();
+}
+function toggleStatistics() {
+  showStatistics.value = !showStatistics.value;
+  if (showStatistics.value) loadStatistics();
+}
+const total = ref(0),
+  page = ref(1),
+  selected = ref<string[]>([]),
+  draft = ref<Record<string, any>>({}),
+  continuous = ref(false);
+const filters = ref<Record<string, any>>({
+  year: '',
+  startTime: '',
+  endTime: '',
+  remark: '',
+  counterparty: '',
+  expDesc: '',
+  incTypeId: '',
+  expTypeId: '',
+  payTypeId: '',
+});
+const typeFilter = ref('全部'),
+  payFilter = ref('全部'),
+  sort = ref('日期降序');
+let version = 0,
+  alive = true;
+onUnmounted(() => {
+  alive = false;
+  version++;
+});
+const sorted = computed(() =>
+  [...rows.value].sort((a, b) =>
+    sort.value === '金额降序'
+      ? Number(b.amt) - Number(a.amt)
+      : sort.value === '金额升序'
+        ? Number(a.amt) - Number(b.amt)
+        : String(b.expTime || b.incDate).localeCompare(String(a.expTime || a.incDate)),
+  ),
+);
+const amount = computed(
+  () =>
+    rows.value.reduce((sum, row) => sum + Math.round(Number(row.amt || 0) * 100), 0) /
+    100,
+);
+function name(options: any[], id: string) {
+  return options.find((item) => String(item.id) === String(id))?.dictLabel || '未分类';
+}
+async function load(reset = true) {
+  const current = ++version;
+  loading.value = true;
+  error.value = '';
+  try {
+    const nextPage = reset ? 1 : page.value + 1;
+    const condition = { ...filters.value, page: nextPage, pageSize: 50 };
+    if (expense.value) {
+      if (condition.startTime) condition.startTime += ' 00:00:00';
+      if (condition.endTime) condition.endTime += ' 23:59:59';
+    }
+    const result = await fetchLedger(props.kind, condition);
+    if (!alive || current !== version) return;
+    rows.value = reset ? result.items || [] : [...rows.value, ...(result.items || [])];
+    total.value = result.total || 0;
+    page.value = nextPage;
+    if (reset) selected.value = [];
+  } catch (e) {
+    if (alive && current === version) error.value = e.message;
+  } finally {
+    if (alive && current === version) {
+      loading.value = false;
+      refreshing.value = false;
+    }
+  }
+}
+async function initialize() {
+  const mutationStamp = version;
+  try {
+    const results = await Promise.all([
+      fetchDictionary(expense.value ? 'exp_type' : 'income_type'),
+      ...(expense.value ? [fetchDictionary('pay_type')] : []),
+    ]);
+    if (!alive || version !== mutationStamp) return;
+    types.value = results[0].dictDetailList || [];
+    payments.value = results[1]?.dictDetailList || [];
+    await Promise.all([load(), loadStatistics()]);
+  } catch (e) {
+    error.value = e.message;
+  }
+}
+onMounted(initialize);
+function refresh() {
+  refreshing.value = true;
+  load();
+}
+watch(typeFilter, (value) => {
+  const id = types.value.find((item) => item.dictLabel === value)?.id || '';
+  filters.value[expense.value ? 'expTypeId' : 'incTypeId'] = id;
+});
+watch(payFilter, (value) => {
+  filters.value.payTypeId =
+    payments.value.find((item) => item.dictLabel === value)?.id || '';
+});
+function edit(row: any = null) {
+  const now = new Date(),
+    date =
+      now.getFullYear() +
+      '-' +
+      String(now.getMonth() + 1).padStart(2, '0') +
+      '-' +
+      String(now.getDate()).padStart(2, '0');
+  draft.value = row
+    ? { ...row, id: ledgerId(row) }
+    : {
+        amt: '',
+        transactionAmt: '',
+        incDate: date,
+        expTime: date + ' 00:00:00',
+        remark: '',
+        incTypeId: '',
+        expTypeId: '',
+        payTypeId: '',
+      };
+  formError.value = '';
+  continuous.value = false;
+  modal.value = true;
+}
+const draftType = computed({
+  get: () => name(types.value, draft.value[expense.value ? 'expTypeId' : 'incTypeId']),
+  set: (value) => {
+    draft.value[expense.value ? 'expTypeId' : 'incTypeId'] =
+      types.value.find((item) => item.dictLabel === value)?.id || '';
+  },
+});
+const draftPayment = computed({
+  get: () => name(payments.value, draft.value.payTypeId),
+  set: (value) => {
+    draft.value.payTypeId =
+      payments.value.find((item) => item.dictLabel === value)?.id || '';
+  },
+});
+const draftDate = computed({
+  get: () => String(draft.value.expTime || '').slice(0, 10),
+  set: (value) => {
+    draft.value.expTime = value + ' ' + String(draft.value.expTime || '').slice(11, 19);
+  },
+});
+const draftTime = computed({
+  get: () => String(draft.value.expTime || '').slice(11, 16),
+  set: (value) => {
+    draft.value.expTime =
+      String(draft.value.expTime || '').slice(0, 10) + ' ' + value + ':00';
+  },
+});
+function transaction(value: string) {
+  if (
+    draft.value.amt === '' ||
+    String(draft.value.amt) === String(draft.value.transactionAmt)
+  )
+    draft.value.amt = value;
+  draft.value.transactionAmt = value;
+}
+async function save() {
+  const mutationStamp = version;
+  if (saving.value) return;
+  saving.value = true;
+  formError.value = '';
+  try {
+    await saveLedger(props.kind, draft.value);
+    if (!alive || version !== mutationStamp) return;
+    if (continuous.value && !ledgerId(draft.value)) {
+      draft.value = { ...draft.value, amt: '', transactionAmt: '' };
+    } else modal.value = false;
+    await load();
+  } catch (e) {
+    formError.value = e.message;
+  } finally {
+    saving.value = false;
+  }
+}
+async function remove(row: any) {
+  const mutationStamp = version;
+  await deleteLedger(props.kind, ledgerId(row));
+  if (!alive || version !== mutationStamp) return;
+  rows.value = rows.value.filter((item) => ledgerId(item) !== ledgerId(row));
+  total.value--;
+}
+function toggle(row: any) {
+  const id = ledgerId(row);
+  selected.value = selected.value.includes(id)
+    ? selected.value.filter((item) => item !== id)
+    : [...selected.value, id];
+}
+async function removeSelected() {
+  const mutationStamp = version;
+  const ids = [...selected.value];
+  await deleteExpenses(ids);
+  if (!alive || version !== mutationStamp) return;
+  rows.value = rows.value.filter((row) => !ids.includes(ledgerId(row)));
+  total.value -= ids.length;
+  selected.value = [];
+}
+</script>
+<template>
+  <MobilePage :refreshing="refreshing" @refresh="refresh">
+    <PageHeader :title="expense ? '支出' : '收入'" back @back="uni.navigateBack()" />
+    <view class="body ui-page-body" :class="themeClass('body')"
+      ><PageState
+        :loading="statisticsBusy && !overviewRows.length"
+        :error="statisticsError"
+        @retry="loadStatistics"
+        ><view class="finance-summary ui-pad-card ui-gap-sm"
+          ><FormField
+            compact
+            stretch
+            label="选择年份"
+            kind="selector"
+            :options="overviewYears"
+            v-model="overviewYear" /><view class="metrics ui-row"
+            ><MetricCard
+              :label="expense ? '总支出' : '总收入'"
+              :value="statisticsTotal(overviewRows).toFixed(2)"
+              unit="元" /><MetricCard
+              :label="overviewYear + (expense ? '年总支出' : '年总收入')"
+              :value="yearAmount.toFixed(2)"
+              unit="元" /><MetricCard
+              :label="expense ? '月均支出' : '月均收入'"
+              :value="monthlyAverage.toFixed(2)"
+              unit="元" /></view></view
+        ><MiniChart
+          :label="expense ? '月度支出趋势' : '月度收入趋势'"
+          kind="bar"
+          :labels="yearRows.map((row) => String(row.month) + '月')"
+          :series="[
+            {
+              name: expense ? '支出' : '收入',
+              values: yearRows.map((row) => statisticsTotal([row])),
+            },
+          ]"
+          unit="元" /><MiniChart
+          :label="expense ? '支出类型分布' : '收入类型分布'"
+          kind="bar"
+          :labels="distribution.map((row) => row.name)"
+          :series="[
+            {
+              name: expense ? '支出' : '收入',
+              values: distribution.map((row) => row.value),
+            },
+          ]"
+          unit="元"
+      /></PageState>
+      <view class="tools ui-toolbar"
+        ><MobileButton
+          label="统计"
+          icon="ant-design:bar-chart-outlined"
+          variant="quiet"
+          @click="toggleStatistics" /><MobileButton
+          label="新增"
+          icon="ant-design:plus-outlined"
+          @click="edit()" /><MobileButton
+          v-if="expense"
+          label="导入账单"
+          icon="ant-design:import-outlined"
+          variant="quiet"
+          @click="uni.navigateTo({ url: '/pages/finance/import' })"
+      /></view>
+      <view v-if="showStatistics"
+        ><FormField
+          label="统计周期"
+          kind="selector"
+          :options="['月度', '年度']"
+          v-model="statisticsPeriod"
+          @update:modelValue="loadStatistics" /><PageState
+          :loading="statisticsBusy"
+          :error="statisticsError"
+          @retry="loadStatistics"
+          ><view
+            v-for="group in statistics"
+            :key="group.year + '-' + group.month"
+            class="record ui-card"
+            ><text
+              >{{ group.year
+              }}{{ group.month ? '-' + String(group.month).padStart(2, '0') : '' }} · ¥{{
+                group.detail.reduce((n, item) => n + Number(item.amt || 0), 0).toFixed(2)
+              }}</text
+            ><view
+              v-for="item in group.detail"
+              :key="item.typeId"
+              class="record-main ui-gap-sm"
+              ><text
+                >{{ item.typeName || '未分类' }} · ¥{{
+                  Number(item.amt).toFixed(2)
+                }}</text
+              ><MobileButton
+                label="查看对应记录"
+                icon="ant-design:export-outlined"
+                variant="quiet"
+                @click="filterStatistics(group, item)" /></view></view></PageState></view
+      ><view class="filters ui-field-row">
+        <FormField compact stretch label="年份" v-model="filters.year" />
+        <FormField
+          compact
+          stretch
+          label="类型"
+          kind="selector"
+          :options="['全部', ...types.map((item) => item.dictLabel)]"
+          v-model="typeFilter"
+        />
+        <FormField
+          compact
+          stretch
+          v-if="expense"
+          label="支付方式"
+          kind="selector"
+          :options="['全部', ...payments.map((item) => item.dictLabel)]"
+          v-model="payFilter"
+        />
+        <FormField
+          compact
+          stretch
+          label="起始日期"
+          kind="date"
+          v-model="filters.startTime"
+        /><FormField
+          compact
+          stretch
+          label="结束日期"
+          kind="date"
+          v-model="filters.endTime"
+        />
+        <FormField
+          compact
+          stretch
+          v-if="expense"
+          label="备注"
+          v-model="filters.remark"
+        /><FormField
+          compact
+          stretch
+          v-if="expense"
+          label="交易对方"
+          v-model="filters.counterparty"
+        /><FormField
+          compact
+          stretch
+          v-if="expense"
+          label="交易描述"
+          v-model="filters.expDesc"
+        />
+        <FormField
+          compact
+          stretch
+          label="排序"
+          kind="selector"
+          :options="['日期降序', '金额降序', '金额升序']"
+          v-model="sort"
+        />
+      </view>
+      <MobileButton label="筛选" :loading="loading" @click="load()" />
+      <text class="summary ui-py-section"
+        >{{ total }} 笔 · 已加载合计 ¥{{ amount.toFixed(2) }}</text
+      >
+      <ConfirmAction
+        v-if="expense && selected.length"
+        :label="'删除选中 ' + selected.length + ' 笔'"
+        :action="removeSelected"
+      />
+      <PageState
+        :loading="loading && rows.length === 0"
+        :error="error"
+        :empty="!loading && rows.length === 0"
+        @retry="initialize"
+      >
+        <view v-for="row in sorted" :key="ledgerId(row)" class="record ui-card">
+          <view class="record-main ui-gap-sm" @click="edit(row)"
+            ><text class="money">¥{{ Number(row.amt).toFixed(2) }}</text
+            ><text
+              >{{ name(types, row[expense ? 'expTypeId' : 'incTypeId']) }} ·
+              {{ row.expTime || row.incDate }}</text
+            ><text v-if="expense"
+              >交易金额 ¥{{ row.transactionAmt }} ·
+              {{ name(payments, row.payTypeId) }}</text
+            ><text>{{ row.remark || row.expDesc }}</text
+            ><text v-if="row.counterparty">{{ row.counterparty }}</text
+            ><text v-if="row.transactionId"
+              >{{ row.transactionId }} · {{ row.transactionStatus }}</text
+            ></view
+          >
+          <view class="tools ui-toolbar"
+            ><MobileButton
+              v-if="expense"
+              :label="selected.includes(ledgerId(row)) ? '取消选择' : '选择'"
+              :icon="
+                selected.includes(ledgerId(row))
+                  ? 'ant-design:check-square-outlined'
+                  : 'ant-design:border-outlined'
+              "
+              variant="quiet"
+              @click="toggle(row)" /><MobileButton
+              label="编辑"
+              icon="ant-design:edit-outlined"
+              variant="quiet"
+              @click="edit(row)" /><ConfirmAction
+              label="删除"
+              :action="() => remove(row)"
+          /></view>
+        </view>
+        <LoadMore :hasMore="rows.length < total" :loading="loading" @load="load(false)" />
+      </PageState>
+    </view>
+    <AdaptiveModal
+      v-if="modal"
+      :label="expense ? '编辑支出' : '编辑收入'"
+      :busy="saving"
+      @close="modal = false"
+    >
+      <FormField
+        v-if="expense"
+        label="交易金额"
+        :modelValue="String(draft.transactionAmt)"
+        @update:modelValue="transaction"
+      />
+      <FormField :label="expense ? '记账金额' : '金额'" v-model="draft.amt" />
+      <FormField
+        label="类型"
+        kind="selector"
+        :options="types.map((item) => item.dictLabel)"
+        v-model="draftType"
+      />
+      <FormField
+        v-if="expense"
+        label="支付方式"
+        kind="selector"
+        :options="payments.map((item) => item.dictLabel)"
+        v-model="draftPayment"
+      />
+      <FormField v-if="expense" label="日期" kind="date" v-model="draftDate" /><FormField
+        v-if="expense"
+        label="时间"
+        kind="time"
+        v-model="draftTime"
+      /><FormField v-else label="日期" kind="date" v-model="draft.incDate" />
+      <FormField label="备注" kind="textarea" v-model="draft.remark" />
+      <view v-if="expense && !ledgerId(draft)" class="tools ui-toolbar"
+        ><text>连续录入</text
+        ><switch :checked="continuous" @change="continuous = $event.detail.value"
+      /></view>
+      <text v-if="formError" class="error ui-py-section">{{ formError }}</text>
+      <view class="tools ui-toolbar"
+        ><MobileButton
+          label="取消"
+          variant="quiet"
+          :disabled="saving"
+          @click="modal = false" /><MobileButton
+          label="保存"
+          :loading="saving"
+          @click="save"
+      /></view>
+    </AdaptiveModal>
+  </MobilePage>
+</template>
+<style scoped lang="scss">
+@use '../../styles/spacing.scss';
+@use '../../styles/spacing-tokens' as *;
+.body {
+  color: #263248;
+}
+.body-dark {
+  color: #e7e9ee;
+}
+.finance-summary {
+  border-radius: 16px;
+  background: linear-gradient(135deg, #7381e8, #7353a5);
+}
+.metrics {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.filters {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.tools {
+  flex-wrap: wrap;
+}
+.summary {
+  display: block;
+  color: #718096;
+}
+.record {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+}
+.record-main {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 200px;
+}
+.money {
+  font-size: 22px;
+  font-weight: 600;
+}
+.error {
+  color: #dc5454;
+  display: block;
+}
+@media (min-width: 700px) {
+  .metrics {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+</style>

@@ -1,0 +1,604 @@
+<script setup lang="ts">
+import { computed, onMounted, onUnmounted, ref, watch, nextTick } from 'vue';
+import MobilePage from '../../components/MobilePage.uvue';
+import PageHeader from '../../components/PageHeader.uvue';
+import MobileButton from '../../components/MobileButton.uvue';
+import ConfirmAction from '../../components/ConfirmAction.uvue';
+import PageState from '../../components/PageState.uvue';
+import FormField from '../../components/FormField.uvue';
+import AdaptiveModal from '../../components/AdaptiveModal.uvue';
+import {
+  fetchMessages,
+  markRead,
+  markAllRead,
+  deleteMessage,
+  sendMessage,
+  fetchSessions,
+  createSession,
+  updateSession,
+  deleteSession,
+  fetchHistory,
+  clearHistory,
+  fetchAdminMessages,
+  adminSendMessage,
+  adminDeleteMessage,
+  fetchUserBasic,
+} from '../../services/domains/social.ts';
+import { streamChat, makeChatAbort } from '../../services/domains/chat-stream.ts';
+import { markdownBlocks, markdownLinks } from '../../services/domains/markdown.ts';
+import { openExternal } from '../../services/domains/coding.ts';
+import { session } from '../../services/session.ts';
+import { useDomainPage } from '../../services/domains/page-session.ts';
+import { themeClass } from '../../services/theme.ts';
+const chatScrollTarget = ref('');
+const userInfo = ref<Record<string, any>>({});
+const mode = ref('消息'),
+  filter = ref('全部'),
+  messages = ref<any[]>([]),
+  sessions = ref<any[]>([]),
+  history = ref<any[]>([]),
+  activeSession = ref(''),
+  receiver = ref(''),
+  content = ref(''),
+  title = ref(''),
+  loading = ref(false),
+  refreshing = ref(false),
+  sending = ref(false),
+  error = ref(''),
+  modal = ref(false),
+  rename = ref<any>(null),
+  adminRows = ref<any[]>([]),
+  adminUser = ref(''),
+  adminPage = ref(1),
+  adminTotal = ref(0);
+const admin = computed(() => session.user?.roles?.includes('admin') || false);
+let historyStamp = 0,
+  alive = true,
+  stamp = 0,
+  controller: any = null;
+onUnmounted(() => {
+  alive = false;
+  stamp++;
+  controller?.abort();
+});
+watch(history, () => {
+  chatScrollTarget.value = '';
+  nextTick(() => {
+    if (alive) chatScrollTarget.value = 'chat-bottom';
+  });
+});
+const modes = computed(() =>
+  admin.value ? ['消息', '私聊', 'AI', '管理'] : ['消息', '私聊', 'AI'],
+);
+const filtered = computed(() =>
+  messages.value.filter(
+    (item) =>
+      (filter.value !== '未读' || !item.isRead) &&
+      (mode.value !== '私聊' ||
+        !receiver.value ||
+        String(item.receiverId) === receiver.value ||
+        String(item.senderId) === receiver.value),
+  ),
+);
+async function load() {
+  const current = ++stamp;
+  loading.value = true;
+  error.value = '';
+  try {
+    if (mode.value === 'AI') {
+      const rows = await fetchSessions();
+      if (alive && current === stamp) sessions.value = rows;
+      if (activeSession.value) await selectSession(activeSession.value);
+    } else if (mode.value === '管理') {
+      const data = await fetchAdminMessages({
+        current: adminPage.value,
+        size: 30,
+        userId: adminUser.value,
+      });
+      if (alive && current === stamp) {
+        adminRows.value = data.records || [];
+        adminTotal.value = data.total || 0;
+      }
+    } else {
+      const rows = await fetchMessages();
+      if (alive && current === stamp) messages.value = rows;
+      await loadUserInfo(rows, current);
+    }
+  } catch (e) {
+    if (alive && current === stamp) error.value = e.message;
+  } finally {
+    if (alive && current === stamp) {
+      loading.value = false;
+      refreshing.value = false;
+    }
+  }
+}
+useDomainPage(
+  () => {
+    alive = true;
+    load();
+  },
+  () => {
+    alive = false;
+    stamp++;
+    controller?.abort();
+    messages.value = [];
+    sessions.value = [];
+    history.value = [];
+    adminRows.value = [];
+    activeSession.value = '';
+    receiver.value = '';
+    content.value = '';
+    title.value = '';
+    rename.value = null;
+    adminUser.value = '';
+    userInfo.value = {};
+    modal.value = false;
+    loading.value = false;
+    refreshing.value = false;
+  },
+);
+async function loadUserInfo(rows: any[], current: number) {
+  const ids = Array.from(
+    new Set(rows.flatMap((item) => [String(item.senderId), String(item.receiverId)])),
+  );
+  const info = await Promise.allSettled(ids.map((id) => fetchUserBasic(id)));
+  if (!alive || stamp !== current) return;
+  const map: Record<string, any> = {};
+  info.forEach((item, index) => {
+    if (item.status === 'fulfilled') map[ids[index]] = item.value;
+  });
+  userInfo.value = map;
+}
+const conversations = computed(() => {
+  const own = String(session.user?.id || '');
+  const map: Record<string, any> = {};
+  messages.value.forEach((item) => {
+    const id = String(item.senderId) === own ? String(item.receiverId) : String(item.senderId);
+    if (!map[id])
+      map[id] = {
+        id,
+        name: userInfo.value[id]?.nickname || id,
+        avatar: userInfo.value[id]?.avatar || '',
+        unread: 0,
+        last: '',
+      };
+    if (!item.isRead && String(item.receiverId) === own) map[id].unread++;
+    map[id].last = item.content;
+  });
+  return Object.values(map);
+});
+function username(id: string) {
+  return userInfo.value[String(id)]?.nickname || id;
+}
+async function selectConversation(id: string) {
+  const current = stamp;
+  receiver.value = id;
+  const unread = messages.value.filter((item) => String(item.senderId) === id && !item.isRead);
+  for (const item of unread) {
+    await markRead(item.id);
+    if (!alive || stamp !== current) return;
+    item.isRead = true;
+  }
+}
+async function read(item: any) {
+  const mutationStamp = stamp;
+  if (item.isRead) return;
+  await markRead(item.id);
+  if (!alive || stamp !== mutationStamp) return;
+  item.isRead = true;
+}
+async function readAll() {
+  const mutationStamp = stamp;
+  await markAllRead();
+  if (!alive || stamp !== mutationStamp) return;
+  messages.value = messages.value.map((item) => ({ ...item, isRead: true }));
+}
+async function remove(item: any) {
+  const mutationStamp = stamp;
+  await deleteMessage(item.id);
+  if (!alive || stamp !== mutationStamp) return;
+  messages.value = messages.value.filter((row) => row.id !== item.id);
+}
+async function removeConversation() {
+  const mutationStamp = stamp;
+  const rows = messages.value.filter(
+    (item) =>
+      String(item.senderId) === receiver.value || String(item.receiverId) === receiver.value,
+  );
+  for (const item of rows) await deleteMessage(item.id);
+  if (!alive || stamp !== mutationStamp) return;
+  messages.value = messages.value.filter((item) => !rows.some((row) => row.id === item.id));
+}
+async function send() {
+  const mutationStamp = stamp;
+  if (sending.value || !content.value.trim() || !receiver.value.trim()) return;
+  sending.value = true;
+  error.value = '';
+  try {
+    const data = {
+      receiverId: receiver.value.trim(),
+      title: title.value || 'Chat Message',
+      content: content.value.trim(),
+      type: 1,
+    };
+    if (mode.value === '管理') {
+      await adminSendMessage(data);
+      if (!alive || stamp !== mutationStamp) return;
+      modal.value = false;
+      await load();
+    } else {
+      const rows = await sendMessage(data);
+      if (!alive || stamp !== mutationStamp) return;
+      messages.value = [...messages.value, ...(Array.isArray(rows) ? rows : [rows])];
+      modal.value = false;
+    }
+    content.value = '';
+  } catch (e) {
+    error.value = e.message;
+  } finally {
+    sending.value = false;
+  }
+}
+async function selectSession(id: string) {
+  const mutationStamp = stamp,
+    current = ++historyStamp;
+  loading.value = true;
+  error.value = '';
+  try {
+    const data = await fetchHistory(id);
+    if (alive && stamp === mutationStamp && current === historyStamp) {
+      activeSession.value = id;
+      history.value = data;
+    }
+  } catch (e) {
+    if (alive && stamp === mutationStamp && current === historyStamp) error.value = e.message;
+  } finally {
+    if (alive && stamp === mutationStamp && current === historyStamp) loading.value = false;
+  }
+}
+async function newSession() {
+  const mutationStamp = stamp;
+  if (sending.value) return;
+  sending.value = true;
+  try {
+    const row = await createSession('新会话');
+    if (!alive || stamp !== mutationStamp) return;
+    sessions.value = [row, ...sessions.value];
+    activeSession.value = row.id;
+    history.value = [];
+  } catch (e) {
+    error.value = e.message;
+  } finally {
+    sending.value = false;
+  }
+}
+async function removeSession(row: any) {
+  const mutationStamp = stamp;
+  await deleteSession(row.id);
+  if (!alive || stamp !== mutationStamp) return;
+  sessions.value = sessions.value.filter((item) => item.id !== row.id);
+  if (activeSession.value === row.id) {
+    activeSession.value = '';
+    history.value = [];
+  }
+}
+async function saveTitle() {
+  const mutationStamp = stamp;
+  if (sending.value) return;
+  sending.value = true;
+  try {
+    await updateSession(rename.value.id, rename.value.title);
+    if (!alive || stamp !== mutationStamp) return;
+    sessions.value = sessions.value.map((item) =>
+      item.id === rename.value.id ? { ...item, title: rename.value.title } : item,
+    );
+    rename.value = null;
+  } catch (e) {
+    error.value = e.message;
+  } finally {
+    sending.value = false;
+  }
+}
+async function clear() {
+  const mutationStamp = stamp;
+  await clearHistory(activeSession.value);
+  if (!alive || stamp !== mutationStamp) return;
+  history.value = [];
+}
+async function ask() {
+  const mutationStamp = stamp;
+  if (sending.value || !content.value.trim()) return;
+  sending.value = true;
+  error.value = '';
+  const prompt = content.value.trim();
+  const localId = 'local-' + Date.now();
+  try {
+    if (!activeSession.value) {
+      const row = await createSession(prompt.slice(0, 20));
+      if (!alive || stamp !== mutationStamp) return;
+      sessions.value = [row, ...sessions.value];
+      activeSession.value = row.id;
+    }
+    history.value = [
+      ...history.value,
+      { id: localId, role: 'user', content: prompt },
+      { id: localId + '-reply', role: 'assistant', content: '' },
+    ];
+    controller = makeChatAbort();
+    await streamChat(
+      prompt,
+      activeSession.value,
+      (token) => {
+        if (alive && stamp === mutationStamp)
+          history.value = history.value.map((item) =>
+            item.id === localId + '-reply' ? { ...item, content: item.content + token } : item,
+          );
+      },
+      controller?.signal,
+    );
+    content.value = '';
+    await selectSession(activeSession.value);
+  } catch (e) {
+    error.value = e.message;
+  } finally {
+    sending.value = false;
+    controller = null;
+  }
+}
+async function adminRemove(row: any) {
+  const mutationStamp = stamp;
+  await adminDeleteMessage(row.id);
+  if (!alive || stamp !== mutationStamp) return;
+  adminRows.value = adminRows.value.filter((item) => item.id !== row.id);
+  adminTotal.value--;
+}
+</script>
+<template>
+  <MobilePage
+    :refreshing="refreshing"
+    @refresh="
+      refreshing = true;
+      load();
+    "
+    ><PageHeader title="消息中心" back @back="uni.navigateBack()" /><view
+      class="body ui-page-body"
+      :class="themeClass('body')"
+      ><FormField
+        label="频道"
+        kind="selector"
+        :options="modes"
+        v-model="mode"
+        @update:modelValue="load" /><PageState :loading="loading" :error="error" @retry="load"
+        ><view v-if="mode === '消息' || mode === '私聊'"
+          ><view class="actions ui-toolbar"
+            ><FormField compact stretch
+              label="筛选"
+              kind="selector"
+              :options="['全部', '未读']"
+              v-model="filter" /><ConfirmAction
+              label="全部已读"
+              icon="ant-design:check-outlined"
+              :danger="false"
+              :action="readAll" /><MobileButton
+              label="发送消息"
+              icon="ant-design:plus-outlined"
+              @click="modal = true" /></view
+          ><view v-if="mode === '私聊'"
+            ><view
+              v-for="item in conversations"
+              :key="item.id"
+              class="conversation ui-row ui-py-section"
+              @click="selectConversation(item.id)"
+              ><image v-if="item.avatar" :src="item.avatar" mode="aspectFill" class="avatar" /><text
+                >{{ item.name }} {{ item.unread ? ' · ' + item.unread : '' }}</text
+              ><text class="muted">{{ item.last }}</text></view
+            ></view
+          ><FormField compact stretch v-if="mode === '私聊'" label="会话用户 ID" v-model="receiver" /><ConfirmAction
+            v-if="mode === '私聊' && receiver"
+            label="删除当前会话"
+            :action="removeConversation" /><view
+            v-for="item in filtered"
+            :key="item.id"
+            class="message ui-card"
+            ><text class="title">{{ item.title }} {{ item.isRead ? '' : '•' }}</text
+            ><text selectable>{{ item.content }}</text
+            ><text class="muted"
+              >{{ item.createTime }} · {{ username(item.senderId) }} →
+              {{ username(item.receiverId) }}</text
+            ><view class="actions ui-row"
+              ><ConfirmAction
+                v-if="!item.isRead"
+                label="标为已读"
+                icon="ant-design:check-outlined"
+                :danger="false"
+                :action="() => read(item)" /><ConfirmAction
+                label="删除消息"
+                :action="() => remove(item)" /></view></view></view
+        ><view v-if="mode === 'AI'"
+          ><MobileButton label="新建会话" icon="ant-design:plus-outlined" :loading="sending" @click="newSession" /><view
+            v-for="item in sessions"
+            :key="item.id"
+            class="actions ui-toolbar"
+            ><MobileButton
+              :label="item.title"
+              variant="quiet"
+              :disabled="sending"
+              @click="selectSession(item.id)" /><MobileButton
+              label="修改标题"
+              icon="ant-design:edit-outlined"
+              variant="quiet"
+              :disabled="sending"
+              @click="rename = { ...item }" /><ConfirmAction
+              label="删除会话"
+              :action="() => removeSession(item)" /></view
+          ><ConfirmAction v-if="activeSession" label="清空当前历史" :action="clear" /><scroll-view
+            class="chat-scroll ui-mt-section"
+            direction="vertical"
+            :scroll-y="true"
+            :scroll-into-view="chatScrollTarget"
+            ><view v-for="item in history" :key="item.id" class="message ui-card"
+              ><text class="muted"
+                >{{ item.role === 'user' ? '我' : 'AI' }} · {{ item.modelName }}</text
+              ><view v-for="(block, blockIndex) in markdownBlocks(item.content)" :key="blockIndex"
+                ><rich-text
+                  v-if="block.kind === 'text'"
+                  :nodes="block.html"
+                  selectable /><scroll-view
+                  v-else
+                  class="markdown-table-scroll ui-mt-sm ui-section"
+                  direction="horizontal"
+                  :scroll-x="true"
+                  :scroll-y="false"
+                  aria-label="AI 表格，可横向滚动"
+                  ><view
+                    class="markdown-table"
+                    :style="{ width: block.headers.length * 160 + 'px' }"
+                    ><view class="markdown-table-row markdown-table-head"
+                      ><view
+                        v-for="(cell, column) in block.headers"
+                        :key="column"
+                        class="markdown-table-cell ui-pad-card"
+                        :style="{ textAlign: block.align[column] }"
+                        ><rich-text :nodes="cell" selectable /></view></view
+                    ><view
+                      v-for="(row, rowIndex) in block.rows"
+                      :key="rowIndex"
+                      class="markdown-table-row"
+                      ><view
+                        v-for="(cell, column) in row"
+                        :key="column"
+                        class="markdown-table-cell ui-pad-card"
+                        :style="{ textAlign: block.align[column] }"
+                        ><rich-text
+                          :nodes="cell"
+                          selectable /></view></view></view></scroll-view></view
+              ><view class="actions ui-row"
+                ><MobileButton
+                  v-for="link in markdownLinks(item.content)"
+                  :key="link.url"
+                  :label="link.label"
+                  variant="quiet"
+                  @click="openExternal(link.url)" /><MobileButton
+                  label="复制内容"
+                  icon="ant-design:copy-outlined"
+                  variant="quiet"
+                  @click="uni.setClipboardData({ data: item.content })" /></view
+              ><MobileButton
+                label="从本地隐藏"
+                icon="ant-design:close-outlined"
+                variant="quiet"
+                @click="history = history.filter((row) => row.id !== item.id)" /></view
+            ><view id="chat-bottom" /></scroll-view
+          ><FormField compact stretch
+            label="消息"
+            kind="textarea"
+            v-model="content"
+            :disabled="sending" /><MobileButton
+            label="发送给 AI"
+            :loading="sending"
+            @click="ask" /></view
+        ><view v-if="mode === '管理' && admin"
+          ><FormField label="用户 ID" v-model="adminUser" /><view class="actions ui-toolbar"
+            ><MobileButton
+              label="筛选"
+              :loading="loading"
+              @click="
+                adminPage = 1;
+                load();
+              " /><MobileButton label="发送通知" icon="ant-design:plus-outlined" @click="modal = true" /></view
+          ><view v-for="item in adminRows" :key="item.id" class="message ui-card"
+            ><text class="title">{{ item.title }}</text
+            ><text selectable>{{ item.content }}</text
+            ><text>{{ item.receiverId }} · {{ item.createTime }}</text
+            ><ConfirmAction label="管理员删除" :action="() => adminRemove(item)" /></view
+          ><view class="actions ui-toolbar"
+            ><MobileButton
+              label="上一页"
+              :disabled="adminPage === 1 || loading"
+              @click="
+                adminPage--;
+                load();
+              " /><text>{{ adminPage }} · {{ adminTotal }}</text
+            ><MobileButton
+              label="下一页"
+              :disabled="adminPage * 30 >= adminTotal || loading"
+              @click="
+                adminPage++;
+                load();
+              " /></view></view></PageState></view
+    ><AdaptiveModal v-if="modal" label="发送消息" :busy="sending" @close="modal = false"
+      ><FormField label="接收用户 ID" v-model="receiver" /><FormField
+        label="标题"
+        v-model="title" /><FormField label="内容" kind="textarea" v-model="content" /><MobileButton
+        label="发送"
+        :loading="sending"
+        @click="send" /></AdaptiveModal
+    ><AdaptiveModal v-if="rename" label="会话标题" :busy="sending" @close="rename = null"
+      ><FormField label="标题" v-model="rename.title" /><MobileButton
+        label="保存"
+        :loading="sending"
+        @click="saveTitle" /></AdaptiveModal
+  ></MobilePage>
+</template>
+<style scoped lang="scss">
+@use '../../styles/spacing.scss';
+@use '../../styles/spacing-tokens' as *;
+.markdown-table-scroll {
+  width: 100%;
+}
+.markdown-table {
+  border: 1px solid #8b93a2;
+  border-radius: 8px;
+}
+.markdown-table-row {
+  display: flex;
+  flex-direction: row;
+}
+.markdown-table-head {
+  font-weight: 600;
+  background-color: #8b93a222;
+}
+.markdown-table-cell {
+  width: 160px;
+  flex-shrink: 0;
+  box-sizing: border-box;
+  white-space: normal;
+  word-break: break-all;
+  border-bottom: 1px solid #8b93a244;
+}
+.body {
+  color: #263248;
+}
+.body-dark {
+  color: #e7e9ee;
+}
+.actions {
+  flex-wrap: wrap;
+}
+.chat-scroll {
+  height: 420px;
+  width: 100%;
+}
+.conversation {
+  min-height: 44px;
+  flex-wrap: wrap;
+}
+.avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 18px;
+}
+.message {
+  display: flex;
+  flex-direction: column;
+}
+.title {
+  font-size: 18px;
+  font-weight: 600;
+}
+.muted {
+  font-size: 13px;
+  color: #718096;
+}
+</style>

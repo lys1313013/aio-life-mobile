@@ -1,0 +1,709 @@
+<script setup lang="ts">
+import { computed, onMounted, onUnmounted, ref } from 'vue';
+import MobilePage from '../../components/MobilePage.uvue';
+import PageHeader from '../../components/PageHeader.uvue';
+import PageState from '../../components/PageState.uvue';
+import FormField from '../../components/FormField.uvue';
+import MobileButton from '../../components/MobileButton.uvue';
+import ConfirmAction from '../../components/ConfirmAction.uvue';
+import AdaptiveModal from '../../components/AdaptiveModal.uvue';
+import {
+  fetchCards,
+  fetchBanks,
+  fetchCardTags,
+  saveCard,
+  deleteCard,
+  revealCard,
+  saveCardTag,
+  deleteCardTag,
+} from '../../services/domains/finance.ts';
+import { chooseAndUploadAttachment, authFileUrl } from '../../services/attachments.ts';
+import { useDomainPage } from '../../services/domains/page-session.ts';
+import { themeClass } from '../../services/theme.ts';
+const cards = ref<any[]>([]),
+  banks = ref<any[]>([]),
+  tags = ref<any[]>([]),
+  keyword = ref(''),
+  type = ref('全部'),
+  status = ref('全部'),
+  bank = ref('全部'),
+  tag = ref('全部');
+const coverUrls = ref<Record<string, string>>({}),
+  coverErrors = ref<Record<string, string>>({}),
+  coverLoading = ref<Record<string, boolean>>({});
+const coverBusy = ref(false),
+  coverPreview = ref('');
+const loading = ref(false),
+  refreshing = ref(false),
+  saving = ref(false),
+  error = ref(''),
+  formError = ref(''),
+  modal = ref(false),
+  tagModal = ref(false),
+  moreInfo = ref(false),
+  draft = ref<Record<string, any>>({}),
+  tagDraft = ref<Record<string, any>>({}),
+  revealed = ref<Record<string, string>>({}),
+  revealBusy = ref('');
+let alive = true,
+  stamp = 0;
+onUnmounted(() => {
+  alive = false;
+  stamp++;
+  revealed.value = {};
+});
+async function load() {
+  const current = ++stamp;
+  loading.value = true;
+  error.value = '';
+  try {
+    const data = await Promise.all([fetchCards(), fetchBanks(), fetchCardTags()]);
+    if (alive && current === stamp) {
+      cards.value = data[0];
+      banks.value = data[1];
+      tags.value = data[2];
+      for (const card of cards.value) {
+        if (card.coverFileIds?.[0]) loadCover(card, current);
+      }
+    }
+  } catch (e) {
+    if (alive && current === stamp) error.value = e.message;
+  } finally {
+    if (alive && current === stamp) {
+      loading.value = false;
+      refreshing.value = false;
+    }
+  }
+}
+async function loadCover(card: any, current = stamp) {
+  coverLoading.value = { ...coverLoading.value, [card.id]: true };
+  coverErrors.value = { ...coverErrors.value, [card.id]: '' };
+  try {
+    const url = await authFileUrl(String(card.coverFileIds[0]));
+    if (alive && stamp === current)
+      coverUrls.value = { ...coverUrls.value, [card.id]: url };
+  } catch (e) {
+    if (alive && stamp === current)
+      coverErrors.value = {
+        ...coverErrors.value,
+        [card.id]: e.message || '封面加载失败',
+      };
+  } finally {
+    if (alive && stamp === current)
+      coverLoading.value = { ...coverLoading.value, [card.id]: false };
+  }
+}
+useDomainPage(
+  () => {
+    alive = true;
+    load();
+  },
+  () => {
+    alive = false;
+    stamp++;
+    cards.value = [];
+    revealed.value = {};
+    coverUrls.value = {};
+    coverErrors.value = {};
+    coverLoading.value = {};
+    coverPreview.value = '';
+    coverBusy.value = false;
+    draft.value = {};
+    modal.value = false;
+    tagModal.value = false;
+    loading.value = false;
+    refreshing.value = false;
+  },
+);
+const statusMap: Record<string, string> = {
+  normal: '正常',
+  frozen: '冻结',
+  lost: '挂失',
+  closed: '已注销',
+};
+const filtered = computed(() =>
+  cards.value
+    .filter(
+      (card) =>
+        (type.value === '全部' ||
+          (card.cardType === 'credit' ? '信用卡' : '储蓄卡') === type.value) &&
+        (status.value === '全部' || statusMap[card.status] === status.value) &&
+        (bank.value === '全部' || card.bankName === bank.value) &&
+        (tag.value === '全部' || card.tags?.some((item) => item.name === tag.value)) &&
+        [card.alias, card.cardName, card.bankName, card.cardNoLast4].some((value) =>
+          String(value || '')
+            .toLowerCase()
+            .includes(keyword.value.trim().toLowerCase()),
+        ),
+    )
+    .sort((a, b) => a.sortOrder - b.sortOrder),
+);
+async function uploadCover() {
+  const mutationStamp = stamp,
+    editingDraft = draft.value;
+  if (coverBusy.value) return;
+  coverBusy.value = true;
+  formError.value = '';
+  try {
+    const file = await chooseAndUploadAttachment('/file/upload', {
+      bizType: 'bank_card_cover',
+    });
+    if (!alive || stamp !== mutationStamp || !modal.value || draft.value !== editingDraft)
+      return;
+    draft.value.coverFileIds = [String(file.id)];
+    const url = await authFileUrl(String(file.id));
+    if (!alive || stamp !== mutationStamp || !modal.value || draft.value !== editingDraft)
+      return;
+    coverPreview.value = url;
+  } catch (e) {
+    if (alive && stamp === mutationStamp && modal.value && draft.value === editingDraft)
+      formError.value = e.message;
+  } finally {
+    if (alive && stamp === mutationStamp) coverBusy.value = false;
+  }
+}
+function edit(card: any = null) {
+  moreInfo.value = false;
+  coverPreview.value = card ? coverUrls.value[card.id] || '' : '';
+  draft.value = card
+    ? {
+        ...card,
+        tagIds: card.tags.map((item) => String(item.id)),
+        coverFileIds: [...(card.coverFileIds || [])],
+      }
+    : {
+        bankId: null,
+        customBankName: '',
+        cardName: '',
+        alias: '',
+        cardType: 'debit',
+        cardNo: '',
+        branchName: '',
+        status: 'normal',
+        openedDate: '',
+        expiryMonth: '',
+        creditLimit: '',
+        statementDay: '',
+        repaymentDay: '',
+        coverColor: '#334766',
+        coverSourceUrl: '',
+        sortOrder: 0,
+        remark: '',
+        tagIds: [],
+        coverFileIds: [],
+      };
+  formError.value = '';
+  modal.value = true;
+}
+const draftBank = computed({
+  get: () =>
+    banks.value.find((item) => String(item.id) === String(draft.value.bankId))?.name ||
+    '自定义',
+  set: (value) => {
+    draft.value.bankId = banks.value.find((item) => item.name === value)?.id || null;
+  },
+});
+const draftType = computed({
+  get: () => (draft.value.cardType === 'credit' ? '信用卡' : '储蓄卡'),
+  set: (value) => {
+    draft.value.cardType = value === '信用卡' ? 'credit' : 'debit';
+  },
+});
+const draftStatus = computed({
+  get: () => statusMap[draft.value.status] || '正常',
+  set: (value) => {
+    draft.value.status = Object.keys(statusMap).find((key) => statusMap[key] === value);
+  },
+});
+const draftTagStatus = computed({
+  get: () => (tagDraft.value.status === '1' ? '停用' : '启用'),
+  set: (value) => {
+    tagDraft.value.status = value === '停用' ? '1' : '0';
+  },
+});
+function toggleTag(id: string) {
+  draft.value.tagIds = draft.value.tagIds.includes(id)
+    ? draft.value.tagIds.filter((item) => item !== id)
+    : [...draft.value.tagIds, id];
+}
+async function save() {
+  const mutationStamp = stamp;
+  if (saving.value) return;
+  formError.value = '';
+  if (!draft.value.bankId && !String(draft.value.customBankName || '').trim()) {
+    formError.value = '请选择银行或填写自定义银行';
+    return;
+  }
+  if (!draft.value.id && !String(draft.value.cardNo || '').trim()) {
+    formError.value = '请输入卡号';
+    return;
+  }
+  if (draft.value.creditLimit !== '' && Number(draft.value.creditLimit) < 0) {
+    formError.value = '信用额度不能为负数';
+    return;
+  }
+  for (const key of ['statementDay', 'repaymentDay'])
+    if (
+      draft.value[key] !== '' &&
+      draft.value[key] != null &&
+      (!Number.isInteger(Number(draft.value[key])) ||
+        Number(draft.value[key]) < 1 ||
+        Number(draft.value[key]) > 31)
+    ) {
+      formError.value = '账单日和还款日必须为1至31';
+      return;
+    }
+  if (draft.value.expiryMonth && !/^\d{4}-\d{2}(-01)?$/.test(draft.value.expiryMonth)) {
+    formError.value = '有效期格式为YYYY-MM';
+    return;
+  }
+  saving.value = true;
+  try {
+    const data = { ...draft.value };
+    if (data.expiryMonth && data.expiryMonth.length === 7) data.expiryMonth += '-01';
+    if (!data.cardNo) delete data.cardNo;
+    for (const key of [
+      'openedDate',
+      'expiryMonth',
+      'creditLimit',
+      'statementDay',
+      'repaymentDay',
+    ])
+      if (data[key] === '') data[key] = null;
+    const saved: any = await saveCard(data, String(data.id || ''));
+    if (!alive || stamp !== mutationStamp) return;
+    cards.value = data.id
+      ? cards.value.map((item) => (item.id === data.id ? saved : item))
+      : [saved, ...cards.value];
+    modal.value = false;
+  } catch (e) {
+    formError.value = e.message;
+  } finally {
+    saving.value = false;
+  }
+}
+async function remove(card: any) {
+  const mutationStamp = stamp;
+  await deleteCard(String(card.id));
+  if (!alive || stamp !== mutationStamp) return;
+  cards.value = cards.value.filter((item) => item.id !== card.id);
+  delete revealed.value[card.id];
+}
+async function reveal(card: any) {
+  const mutationStamp = stamp;
+  if (revealBusy.value) return;
+  if (revealed.value[card.id]) {
+    delete revealed.value[card.id];
+    return;
+  }
+  revealBusy.value = card.id;
+  try {
+    const current = stamp;
+    const value = await revealCard(String(card.id));
+    if (alive && stamp === current)
+      revealed.value = { ...revealed.value, [card.id]: value };
+  } catch (e) {
+    error.value = e.message;
+  } finally {
+    revealBusy.value = '';
+  }
+}
+function copy(card: any) {
+  const value = revealed.value[card.id];
+  if (value) uni.setClipboardData({ data: value });
+}
+function editTag(value: any = null) {
+  tagDraft.value = value ? { ...value } : { name: '', color: '#419878', status: '0' };
+  formError.value = '';
+  tagModal.value = true;
+}
+async function saveTag() {
+  const mutationStamp = stamp;
+  if (saving.value) return;
+  if (!tagDraft.value.name.trim()) {
+    formError.value = '请输入标签名称';
+    return;
+  }
+  saving.value = true;
+  try {
+    const result: any = await saveCardTag(
+      tagDraft.value,
+      String(tagDraft.value.id || ''),
+    );
+    if (!alive || stamp !== mutationStamp) return;
+    tags.value = tagDraft.value.id
+      ? tags.value.map((item) => (item.id === result.id ? result : item))
+      : [...tags.value, result];
+    tagModal.value = false;
+  } catch (e) {
+    formError.value = e.message;
+  } finally {
+    saving.value = false;
+  }
+}
+async function removeTag(value: any) {
+  const mutationStamp = stamp;
+  await deleteCardTag(String(value.id));
+  if (!alive || stamp !== mutationStamp) return;
+  tags.value = tags.value.filter((item) => item.id !== value.id);
+  await load();
+}
+</script>
+<template>
+  <MobilePage
+    :refreshing="refreshing"
+    @refresh="
+      refreshing = true;
+      load();
+    "
+    ><PageHeader title="银行卡" back @back="uni.navigateBack()" /><view
+      class="body ui-page-body"
+      :class="themeClass('body')"
+      ><view class="actions ui-toolbar"
+        ><MobileButton
+          label="新增银行卡"
+          icon="ant-design:plus-outlined"
+          @click="edit()" /><MobileButton
+          label="新增标签"
+          icon="ant-design:tags-outlined"
+          variant="quiet"
+          @click="editTag()" /></view
+      ><FormField compact stretch label="搜索" v-model="keyword" /><view
+        class="filters ui-field-row"
+        ><FormField
+          compact
+          stretch
+          label="银行"
+          kind="selector"
+          :options="['全部', ...Array.from(new Set(cards.map((item) => item.bankName)))]"
+          v-model="bank" /><FormField
+          compact
+          stretch
+          label="类型"
+          kind="selector"
+          :options="['全部', '储蓄卡', '信用卡']"
+          v-model="type" /><FormField
+          compact
+          stretch
+          label="状态"
+          kind="selector"
+          :options="['全部', ...Object.values(statusMap)]"
+          v-model="status" /><FormField
+          compact
+          stretch
+          label="标签"
+          kind="selector"
+          :options="['全部', ...tags.map((item) => item.name)]"
+          v-model="tag" /></view
+      ><PageState
+        :loading="loading"
+        :error="error"
+        :empty="!loading && !filtered.length"
+        @retry="load"
+        ><view class="card-grid ui-gap-md"
+          ><view
+            v-for="card in filtered"
+            :key="card.id"
+            class="card ui-card"
+            :class="themeClass('card')"
+            ><view
+              class="card-face ui-pad-card ui-gap-sm"
+              :style="{ backgroundColor: card.coverColor || '#334766' }"
+              ><image
+                v-if="coverUrls[card.id]"
+                :src="coverUrls[card.id]"
+                mode="aspectFill"
+                class="cover"
+              /><view v-if="coverErrors[card.id]" class="actions ui-toolbar"
+                ><text>{{ coverErrors[card.id] }}</text
+                ><MobileButton
+                  label="重试封面"
+                  variant="quiet"
+                  :loading="coverLoading[card.id]"
+                  @click="loadCover(card)" /></view
+              ><text class="title">{{ card.bankName }}</text
+              ><view class="card-chip" /><view class="face-bottom ui-row"
+                ><text>{{ card.bankCode || 'BANK CARD' }}</text
+                ><text>{{ card.cardType === 'credit' ? '信用卡' : '储蓄卡' }}</text></view
+              ></view
+            ><view class="card-caption ui-row"
+              ><text class="number">{{
+                revealed[card.id] || '•••• ' + card.cardNoLast4
+              }}</text
+              ><text v-if="card.alias || card.cardName">{{
+                card.alias || card.cardName
+              }}</text
+              ><text v-if="card.status !== 'normal'">{{
+                statusMap[card.status]
+              }}</text></view
+            ><text v-if="card.cardType === 'credit'"
+              >额度 {{ card.creditLimit || '—' }} · 账单日
+              {{ card.statementDay || '—' }} · 还款日 {{ card.repaymentDay || '—' }}</text
+            ><text>{{ card.tags?.map((item) => item.name).join(' · ') }}</text
+            ><text>{{ card.remark }}</text
+            ><view class="actions ui-toolbar"
+              ><MobileButton
+                label="显示或隐藏卡号"
+                :icon="
+                  revealed[card.id]
+                    ? 'ant-design:eye-invisible-outlined'
+                    : 'ant-design:eye-outlined'
+                "
+                variant="quiet"
+                :loading="revealBusy === card.id"
+                @click="reveal(card)" /><MobileButton
+                v-if="revealed[card.id]"
+                label="复制卡号"
+                icon="ant-design:copy-outlined"
+                variant="quiet"
+                @click="copy(card)" /><MobileButton
+                label="编辑"
+                icon="ant-design:edit-outlined"
+                variant="quiet"
+                @click="edit(card)" /><ConfirmAction
+                label="删除银行卡"
+                :action="() => remove(card)" /></view></view></view></PageState
+      ><view class="tags ui-mt-section"
+        ><view v-for="item in tags" :key="item.id" class="actions ui-toolbar"
+          ><text>{{ item.name }}</text
+          ><MobileButton
+            label="编辑标签"
+            icon="ant-design:edit-outlined"
+            variant="quiet"
+            @click="editTag(item)" /><ConfirmAction
+            label="删除标签"
+            :action="() => removeTag(item)" /></view></view></view
+    ><AdaptiveModal v-if="modal" label="银行卡" :busy="saving" @close="modal = false"
+      ><view
+        class="draft-face ui-pad-card ui-gap-sm"
+        :style="{ backgroundColor: draft.coverColor || '#334766' }"
+        ><image
+          v-if="coverPreview"
+          :src="coverPreview"
+          mode="aspectFill"
+          class="draft-cover"
+        /><text class="title">{{
+          draftBank === '自定义' ? draft.customBankName || '选择银行' : draftBank
+        }}</text
+        ><view class="card-chip" /><text>{{ draftType }}</text></view
+      ><view class="actions ui-toolbar"
+        ><MobileButton
+          label="上传卡面"
+          :loading="coverBusy"
+          @click="uploadCover" /><MobileButton
+          v-if="draft.coverFileIds?.length"
+          label="移除卡面"
+          variant="quiet"
+          @click="
+            draft.coverFileIds = [];
+            coverPreview = '';
+          " /></view
+      ><view class="palette ui-row"
+        ><view
+          v-for="color in [
+            '#334766',
+            '#38605C',
+            '#685174',
+            '#87534F',
+            '#716348',
+            '#414854',
+          ]"
+          :key="color"
+          class="color-target"
+          role="button"
+          :aria-label="'卡面颜色 ' + color"
+          @click="draft.coverColor = color"
+          ><view
+            class="color-dot"
+            :class="{ 'color-selected': draft.coverColor === color }"
+            :style="{ backgroundColor: color }" /></view></view
+      ><FormField
+        label="银行"
+        kind="selector"
+        :options="['自定义', ...banks.map((item) => item.name)]"
+        v-model="draftBank" /><FormField
+        v-if="!draft.bankId"
+        label="自定义银行"
+        v-model="draft.customBankName" /><FormField
+        label="卡名称"
+        v-model="draft.cardName" /><FormField
+        label="别名"
+        v-model="draft.alias" /><FormField
+        label="类型"
+        kind="selector"
+        :options="['储蓄卡', '信用卡']"
+        v-model="draftType" /><FormField
+        :label="draft.id ? '新卡号（留空保留）' : '卡号'"
+        v-model="draft.cardNo"
+        password /><FormField
+        label="状态"
+        kind="selector"
+        :options="Object.values(statusMap)"
+        v-model="draftStatus" /><MobileButton
+        label="更多信息"
+        variant="quiet"
+        @click="moreInfo = !moreInfo"
+        ><text>更多信息</text></MobileButton
+      ><view v-if="moreInfo"
+        ><FormField label="开户支行" v-model="draft.branchName" /><FormField
+          label="开户日期"
+          kind="date"
+          v-model="draft.openedDate" /><FormField
+          label="到期月份 YYYY-MM"
+          v-model="draft.expiryMonth" /><view v-if="draft.cardType === 'credit'"
+          ><FormField label="信用额度" v-model="draft.creditLimit" /><FormField
+            label="账单日"
+            v-model="draft.statementDay" /><FormField
+            label="还款日"
+            v-model="draft.repaymentDay" /></view
+        ><FormField label="卡面颜色" v-model="draft.coverColor" /><FormField
+          label="封面来源URL"
+          v-model="draft.coverSourceUrl" /><FormField
+          label="排序"
+          v-model="draft.sortOrder" /><FormField
+          label="备注"
+          kind="textarea"
+          v-model="draft.remark" /></view
+      ><view class="actions ui-toolbar"
+        ><view v-for="item in tags" :key="item.id" class="actions ui-toolbar"
+          ><MobileButton
+            :label="item.name"
+            :icon="
+              draft.tagIds.includes(item.id)
+                ? 'ant-design:check-square-outlined'
+                : 'ant-design:border-outlined'
+            "
+            :disabled="item.status !== '0' && !draft.tagIds.includes(item.id)"
+            variant="quiet"
+            @click="toggleTag(item.id)"
+          /><text>{{ item.name }}</text></view
+        ></view
+      ><text v-if="formError" class="error ui-py-section">{{ formError }}</text
+      ><view class="actions ui-toolbar"
+        ><MobileButton
+          label="取消"
+          :disabled="saving"
+          variant="quiet"
+          @click="modal = false" /><MobileButton
+          label="保存"
+          :loading="saving"
+          @click="save" /></view></AdaptiveModal
+    ><AdaptiveModal v-if="tagModal" label="标签" :busy="saving" @close="tagModal = false"
+      ><FormField label="名称" v-model="tagDraft.name" /><FormField
+        label="颜色"
+        v-model="tagDraft.color" /><FormField
+        label="状态"
+        kind="selector"
+        :options="['启用', '停用']"
+        v-model="draftTagStatus" /><text v-if="formError" class="error ui-py-section">{{
+        formError
+      }}</text
+      ><MobileButton label="保存" :loading="saving" @click="saveTag" /></AdaptiveModal
+  ></MobilePage>
+</template>
+<style scoped lang="scss">
+@use '../../styles/spacing.scss';
+@use '../../styles/spacing-tokens' as *;
+.body {
+  color: #263248;
+}
+.body-dark {
+  color: #e7e9ee;
+}
+.actions {
+  flex-wrap: wrap;
+}
+.filters {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.card-grid {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+}
+.card {
+  width: 100%;
+  box-sizing: border-box;
+  border-radius: 18px;
+  color: #263248;
+  background-color: #ffffff;
+  display: flex;
+  flex-direction: column;
+}
+.card-dark {
+  color: #e7e9ee;
+  background-color: #1c1e22;
+}
+.card-face,
+.draft-face {
+  min-height: 180px;
+  border-radius: 14px;
+  color: #f1f4f9;
+  position: relative;
+  justify-content: space-between;
+  overflow: hidden;
+}
+.card-chip {
+  width: 34px;
+  height: 25px;
+  border-radius: 6px;
+  background-color: #b1ab91;
+  opacity: 0.75;
+}
+.card-caption,
+.face-bottom {
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+}
+.face-bottom {
+  font-size: 12px;
+}
+.palette {
+  flex-wrap: wrap;
+}
+.color-target {
+  width: 44px;
+  height: 44px;
+  align-items: center;
+  justify-content: center;
+}
+.color-dot {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+}
+.color-selected {
+  outline: 2px solid #8b8f99;
+  outline-offset: 2px;
+}
+.draft-cover {
+  width: 100%;
+  height: 120px;
+}
+.cover {
+  width: 100%;
+  height: 120px;
+  border-radius: 12px;
+}
+.title {
+  font-size: 19px;
+  font-weight: 600;
+}
+.number {
+  font-size: 22px;
+  letter-spacing: 2px;
+}
+@media (min-width: 600px) {
+  .card {
+    width: calc((100% - #{$space-section}) / 2);
+  }
+}
+.tags {
+}
+.error {
+  color: #dc5454;
+  display: block;
+}
+</style>

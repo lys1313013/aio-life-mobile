@@ -1,0 +1,182 @@
+<script setup lang="ts">
+import { computed, onMounted, onUnmounted, ref } from 'vue';
+import MobilePage from '../../components/MobilePage.uvue';
+import PageHeader from '../../components/PageHeader.uvue';
+import MobileButton from '../../components/MobileButton.uvue';
+import PageState from '../../components/PageState.uvue';
+import FormField from '../../components/FormField.uvue';
+import AdaptiveModal from '../../components/AdaptiveModal.uvue';
+import { toolFields, buildToolArguments } from '../../services/domains/mcp-schema.ts';
+import { fetchTools, callTool } from '../../services/domains/social.ts';
+import { useDomainPage } from '../../services/domains/page-session.ts';
+import { apiUrl } from '../../services/api.ts';
+import { themeClass } from '../../services/theme.ts';
+const guideOpen = ref(false);
+let serviceAddress = apiUrl('/mcp');
+// #ifdef WEB
+serviceAddress = new URL(serviceAddress, window.location.origin).toString();
+// #endif
+const clientConfig = JSON.stringify({mcpServers: {'aio-life': {type: 'streamable-http', url: serviceAddress, headers: {Authorization: 'Bearer <your-api-key>'}}}}, null, 2);
+const tools = ref<any[]>([]),
+  keyword = ref(''),
+  loading = ref(false),
+  refreshing = ref(false),
+  busy = ref(false),
+  error = ref(''),
+  callError = ref(''),
+  current = ref<any>(null),
+  args = ref<Record<string, any>>({}),
+  result = ref<any>(null);
+let alive = true,
+  stamp = 0;
+onUnmounted(() => {
+  alive = false;
+});
+async function load() {
+  const current = ++stamp;
+  loading.value = true;
+  error.value = '';
+  try {
+    const data = await fetchTools();
+    if (alive && stamp === current) tools.value = data;
+  } catch (e) {
+    if (alive) error.value = e.message;
+  } finally {
+    if (alive) {
+      loading.value = false;
+      refreshing.value = false;
+    }
+  }
+}
+useDomainPage(
+  () => {
+    alive = true;
+    load();
+  },
+  () => {
+    alive = false;
+    stamp++;
+    tools.value = [];
+    current.value = null;
+    args.value = {};
+    result.value = null;
+    loading.value = false;
+    refreshing.value = false;
+  },
+);
+const filtered = computed(() =>
+  tools.value.filter((item) =>
+    (item.name + ' ' + item.description).toLowerCase().includes(keyword.value.toLowerCase()),
+  ),
+);
+const fields = computed(() => toolFields(current.value?.inputSchema || {}));
+function open(tool: any) {
+  current.value = tool;
+  args.value = {};
+  result.value = null;
+  callError.value = '';
+}
+async function run() {
+  if (busy.value) return;
+  callError.value = '';
+  try {
+    const data = buildToolArguments(current.value.inputSchema, args.value);
+    busy.value = true;
+    const currentStamp = stamp;
+    const value = await callTool(current.value.name, data);
+    if (alive && stamp === currentStamp) result.value = value;
+  } catch (e) {
+    callError.value = e.message;
+  } finally {
+    busy.value = false;
+  }
+}
+</script>
+<template>
+  <MobilePage
+    :refreshing="refreshing"
+    @refresh="
+      refreshing = true;
+      load();
+    "
+    ><PageHeader title="MCP 工具" back @back="uni.navigateBack()" /><view
+      class="body ui-page-body"
+      :class="themeClass('body')"
+      ><view class="guide ui-card" :class="themeClass('guide')"><view class="ui-row guide-heading"><text class="title">配置指南</text><MobileButton label="配置指南" icon="ant-design:question-circle-outlined" variant="quiet" @click="guideOpen = !guideOpen" /></view><view v-if="guideOpen" class="guide-body ui-gap-sm"><text class="description">服务地址</text><text selectable>{{ serviceAddress }}</text><text class="description">传输类型</text><text>Streamable HTTP</text><text class="description">认证方式</text><text selectable>Authorization: Bearer &lt;API Key&gt;</text><MobileButton label="管理 API Key" icon="ant-design:key-outlined" variant="quiet" @click="uni.navigateTo({url:'/pages/profile/preferences?section=keys'})" /><text class="description">客户端配置</text><text class="config-code" selectable>{{ clientConfig }}</text></view></view><text class="description ui-section">共 {{ tools.length }} 个工具</text><FormField label="搜索工具名称或描述" v-model="keyword" /><PageState
+        :loading="loading"
+        :error="error"
+        :empty="!loading && !filtered.length"
+        @retry="load"
+        ><view v-for="tool in filtered" :key="tool.name" class="tool ui-card" :class="themeClass('tool')"
+          ><text class="title">{{ tool.name }}</text
+          ><text class="description">{{ Object.keys(tool.inputSchema?.properties || {}).length }} 参数</text><text>{{ tool.description }}</text
+          ><MobileButton label="输入参数并调用" icon="ant-design:play-circle-outlined" @click="open(tool)" /></view></PageState></view
+    ><AdaptiveModal v-if="current" :label="current.name" :busy="busy" @close="current = null"
+      ><text class="title">{{ current.name }}</text
+      ><text>{{ current.description }}</text><text v-if="!fields.length" class="description ui-section">该工具无需输入参数</text
+      ><view v-for="field in fields" :key="field.name"
+        ><FormField
+          :label="
+            field.name + ((current.inputSchema.required || []).includes(field.name) ? ' *' : '')
+          "
+          :kind="
+            field.enum || field.type === 'boolean'
+              ? 'selector'
+              : field.type === 'object' || field.type === 'array'
+                ? 'textarea'
+                : 'text'
+          "
+          :options="field.enum?.map((value) => String(value)) || ['true', 'false']"
+          v-model="args[field.name]"
+        /><text v-if="field.description" class="description ui-section">{{ field.description }}</text></view
+      ><text v-if="callError" class="error ui-py-section">{{ callError }}</text
+      ><MobileButton label="执行工具" :loading="busy" @click="run" /><view
+        v-if="result"
+        class="result ui-gap-md ui-mt-section"
+        ><text v-if="result.isError" class="error ui-py-section">工具返回错误</text
+        ><text v-for="(item, index) in result.content" :key="index" selectable>{{
+          item.text || JSON.stringify(item)
+        }}</text></view
+      ></AdaptiveModal
+    ></MobilePage
+  >
+</template>
+<style scoped lang="scss">
+@use '../../styles/spacing.scss';
+@use '../../styles/spacing-tokens' as *;
+.body {
+  color: #263248;
+}
+.body-dark {
+  color: #e7e9ee;
+}
+.tool {
+  background-color: #ffffff;
+  border-radius: 14px;
+  display: flex;
+  flex-direction: column;
+}
+.title {
+  font-weight: 600;
+  font-size: 18px;
+  display: block;
+}
+.description {
+  color: #718096;
+  font-size: 13px;
+  display: block;
+}
+.error {
+  color: #dc5454;
+  display: block;
+}
+.result {
+  display: flex;
+  flex-direction: column;
+}
+.guide { background-color: #ffffff; border-radius: 14px; }
+.guide-heading { align-items: center; justify-content: space-between; }
+.guide-body { display: flex; flex-direction: column; }
+.guide-dark, .tool-dark { background-color: #1c1e22; }
+.config-code { font-family: monospace; font-size: 12px; overflow-wrap: anywhere; white-space: pre-wrap; }
+</style>

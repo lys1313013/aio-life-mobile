@@ -1,0 +1,316 @@
+<script setup lang="ts">
+import { computed, onMounted, onUnmounted, ref } from 'vue';
+import MobilePage from '../../components/MobilePage.uvue';
+import PageHeader from '../../components/PageHeader.uvue';
+import PageState from '../../components/PageState.uvue';
+import FormField from '../../components/FormField.uvue';
+import MiniChart from '../../components/MiniChart.uvue';
+import MetricCard from '../../components/MetricCard.uvue';
+import MobileButton from '../../components/MobileButton.uvue';
+import { fetchFinanceStatistics } from '../../services/domains/finance.ts';
+import { useDomainPage } from '../../services/domains/page-session.ts';
+import { themeClass } from '../../services/theme.ts';
+const income = ref<any[]>([]),
+  expense = ref<any[]>([]),
+  loading = ref(false),
+  refreshing = ref(false),
+  error = ref(''),
+  year = ref('全部');
+let generation = 0,
+  alive = true;
+onUnmounted(() => {
+  alive = false;
+  generation++;
+});
+async function load() {
+  const stamp = ++generation;
+  loading.value = true;
+  error.value = '';
+  try {
+    const data = await Promise.all([
+      fetchFinanceStatistics('income'),
+      fetchFinanceStatistics('expense'),
+    ]);
+    if (alive && generation === stamp) {
+      income.value = data[0];
+      expense.value = data[1];
+    }
+  } catch (e) {
+    if (alive && generation === stamp) error.value = e.message;
+  } finally {
+    if (alive && generation === stamp) {
+      loading.value = false;
+      refreshing.value = false;
+    }
+  }
+}
+useDomainPage(
+  () => {
+    alive = true;
+    load();
+  },
+  () => {
+    alive = false;
+    generation++;
+    income.value = [];
+    expense.value = [];
+    loading.value = false;
+    refreshing.value = false;
+  },
+);
+const years = computed(() => [
+  '全部',
+  ...Array.from(
+    new Set([...income.value, ...expense.value].map((row) => String(row.year))),
+  )
+    .sort()
+    .reverse(),
+]);
+function sum(rows: any[]) {
+  return (
+    rows.reduce(
+      (total, row) =>
+        total +
+        (row.detail || []).reduce(
+          (n, item) => n + Math.round(Number(item.amt || 0) * 100),
+          0,
+        ),
+      0,
+    ) / 100
+  );
+}
+const filteredIncome = computed(() =>
+  income.value.filter((row) => year.value === '全部' || String(row.year) === year.value),
+);
+const filteredExpense = computed(() =>
+  expense.value.filter((row) => year.value === '全部' || String(row.year) === year.value),
+);
+const totalIncome = computed(() => sum(filteredIncome.value)),
+  totalExpense = computed(() => sum(filteredExpense.value));
+function timeline(a: any[], b: any[], annual = false) {
+  const keys = Array.from(
+    new Set(
+      [...a, ...b].map((row) =>
+        annual ? String(row.year) : row.year + '-' + String(row.month).padStart(2, '0'),
+      ),
+    ),
+  ).sort();
+  let deposit = 0;
+  return keys.map((key) => {
+    const match = (row: any) =>
+      (annual
+        ? String(row.year)
+        : row.year + '-' + String(row.month).padStart(2, '0')) === key;
+    const inc = sum(a.filter(match)),
+      exp = sum(b.filter(match));
+    deposit = Math.round((deposit + inc - exp) * 100) / 100;
+    return {
+      key,
+      income: inc,
+      expense: exp,
+      balance: Math.round((inc - exp) * 100) / 100,
+      deposit,
+    };
+  });
+}
+const months = computed(() => timeline(filteredIncome.value, filteredExpense.value)),
+  annual = computed(() => timeline(income.value, expense.value, true));
+function categories(rows: any[]) {
+  const map: Record<string, number> = {};
+  rows.forEach((row) =>
+    (row.detail || []).forEach((item) => {
+      const key = item.typeName || '未分类';
+      map[key] = (map[key] || 0) + Math.round(Number(item.amt || 0) * 100);
+    }),
+  );
+  return Object.entries(map)
+    .map(([name, amount]) => ({ name, amount: amount / 100 }))
+    .sort((a, b) => b.amount - a.amount);
+}
+const incCategories = computed(() => categories(filteredIncome.value)),
+  expCategories = computed(() => categories(filteredExpense.value));
+function width(amount: number, rows: any[]) {
+  return (
+    Math.max(
+      1,
+      (Math.abs(amount) / Math.max(1, ...rows.map((row) => Math.abs(row.amount)))) * 100,
+    ) + '%'
+  );
+}
+</script>
+<template>
+  <MobilePage
+    :refreshing="refreshing"
+    @refresh="
+      refreshing = true;
+      load();
+    "
+    ><PageHeader title="财务概览" back @back="uni.navigateBack()" /><view
+      class="body ui-page-body"
+      :class="themeClass('body')"
+      ><view class="actions ui-toolbar"
+        ><MobileButton
+          label="收入"
+          variant="quiet"
+          @click="uni.navigateTo({ url: '/pages/finance/income' })" /><MobileButton
+          label="支出"
+          variant="quiet"
+          @click="uni.navigateTo({ url: '/pages/finance/expense' })" /><MobileButton
+          label="银行卡"
+          variant="quiet"
+          @click="uni.navigateTo({ url: '/pages/finance/cards' })" /></view
+      ><FormField
+        label="年份"
+        kind="selector"
+        :options="years"
+        v-model="year"
+      /><PageState
+        :loading="loading"
+        :error="error"
+        :empty="!loading && !income.length && !expense.length"
+        @retry="load"
+        ><view class="metrics ui-row ui-section"
+          ><MetricCard
+            label="总收入"
+            :value="totalIncome.toFixed(2)"
+            unit="元" /><MetricCard
+            label="总支出"
+            :value="totalExpense.toFixed(2)"
+            unit="元" /><MetricCard
+            label="总结余"
+            :value="(totalIncome - totalExpense).toFixed(2)"
+            unit="元" /><MetricCard
+            label="结余率"
+            :value="
+              (totalIncome
+                ? ((totalIncome - totalExpense) / totalIncome) * 100
+                : 0
+              ).toFixed(1)
+            "
+            unit="%" /></view
+        ><MiniChart
+          label="月度收支与结余趋势"
+          :labels="months.map((row) => row.key)"
+          :series="[
+            { name: '收入', values: months.map((row) => row.income) },
+            { name: '支出', values: months.map((row) => row.expense) },
+            { name: '结余', values: months.map((row) => row.balance) },
+          ]"
+          unit="元"
+        /><MiniChart
+          label="年度累计存款趋势"
+          :labels="months.map((row) => row.key)"
+          :series="[{ name: '累计结余', values: months.map((row) => row.deposit) }]"
+          unit="元"
+        /><text class="heading ui-mt-section ui-section">月度收支与累计结余</text
+        ><view v-for="row in months" :key="row.key" class="line ui-gap-sm ui-section"
+          ><text>{{ row.key }}</text
+          ><text
+            >收入 {{ row.income.toFixed(2) }} · 支出 {{ row.expense.toFixed(2) }}</text
+          ><text
+            >结余 {{ row.balance.toFixed(2) }} · 累计 {{ row.deposit.toFixed(2) }}</text
+          ></view
+        ><MiniChart
+          label="收入构成金额"
+          kind="bar"
+          :labels="incCategories.map((row) => row.name)"
+          :series="[{ name: '收入', values: incCategories.map((row) => row.amount) }]"
+          unit="元"
+        /><text class="heading ui-mt-section ui-section">收入构成</text
+        ><view
+          v-for="row in incCategories"
+          :key="row.name"
+          class="line ui-gap-sm ui-section"
+          ><text
+            >{{ row.name }} · {{ row.amount.toFixed(2) }} ·
+            {{ ((row.amount / Math.max(1, totalIncome)) * 100).toFixed(1) }}%</text
+          ><view class="bar" :style="{ width: width(row.amount, incCategories) }" /></view
+        ><MiniChart
+          label="支出构成金额"
+          kind="bar"
+          :labels="expCategories.map((row) => row.name)"
+          :series="[{ name: '支出', values: expCategories.map((row) => row.amount) }]"
+          unit="元"
+        /><text class="heading ui-mt-section ui-section">支出构成</text
+        ><view
+          v-for="row in expCategories"
+          :key="row.name"
+          class="line ui-gap-sm ui-section"
+          ><text
+            >{{ row.name }} · {{ row.amount.toFixed(2) }} ·
+            {{ ((row.amount / Math.max(1, totalExpense)) * 100).toFixed(1) }}%</text
+          ><view
+            class="bar expense-bar"
+            :style="{ width: width(row.amount, expCategories) }" /></view
+        ><MiniChart
+          label="年度收支结余对比"
+          kind="bar"
+          :labels="annual.map((row) => row.key)"
+          :series="[
+            { name: '收入', values: annual.map((row) => row.income) },
+            { name: '支出', values: annual.map((row) => row.expense) },
+            { name: '结余', values: annual.map((row) => row.balance) },
+          ]"
+          unit="元"
+        /><MiniChart
+          label="每年结余占比"
+          kind="bar"
+          :labels="annual.map((row) => row.key)"
+          :series="[
+            {
+              name: '结余率',
+              values: annual.map((row) =>
+                row.income ? (row.balance / row.income) * 100 : 0,
+              ),
+            },
+          ]"
+          unit="%"
+        /><text class="heading ui-mt-section ui-section">年度结余明细</text
+        ><view v-for="row in annual" :key="row.key" class="line ui-gap-sm ui-section"
+          ><text
+            >{{ row.key }} · 收入 {{ row.income.toFixed(2) }} · 支出
+            {{ row.expense.toFixed(2) }} · 结余 {{ row.balance.toFixed(2) }}</text
+          ></view
+        ></PageState
+      ></view
+    ></MobilePage
+  >
+</template>
+<style scoped lang="scss">
+@use '../../styles/spacing.scss';
+@use '../../styles/spacing-tokens' as *;
+.body {
+  color: #263248;
+}
+.body-dark {
+  color: #e7e9ee;
+}
+.actions {
+  flex-wrap: wrap;
+}
+.metrics {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.heading {
+  display: block;
+  font-weight: 600;
+}
+.line {
+  display: flex;
+  flex-direction: column;
+}
+.bar {
+  height: 8px;
+  border-radius: 4px;
+  background-color: #419878;
+}
+.expense-bar {
+  background-color: #cb7055;
+}
+@media (min-width: 700px) {
+  .metrics {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+</style>

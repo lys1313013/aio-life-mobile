@@ -1,0 +1,266 @@
+<script setup lang="ts">
+import { computed, onMounted, onUnmounted, ref } from 'vue';
+import MobilePage from '../../components/MobilePage.uvue';
+import PageHeader from '../../components/PageHeader.uvue';
+import PageState from '../../components/PageState.uvue';
+import MobileButton from '../../components/MobileButton.uvue';
+import MetricCard from '../../components/MetricCard.uvue';
+import {
+  fetchCodingBindings,
+  fetchLeetcodeProfile,
+  fetchLeetcodeContest,
+  fetchLeetcodeCalendar,
+  fetchLeetcodeDaily,
+  fetchLeetcodeRecent,
+  openExternal,
+  calendarSummary,
+} from '../../services/domains/coding.ts';
+import { useDomainPage } from '../../services/domains/page-session.ts';
+import { themeClass } from '../../services/theme.ts';
+const username = ref(''),
+  profile = ref<any>(null),
+  progress = ref<any>(null),
+  contest = ref<any>(null),
+  calendar = ref<any>(null),
+  daily = ref<any[]>([]),
+  recent = ref<any[]>([]),
+  days = ref<any[]>([]),
+  loading = ref(false),
+  refreshing = ref(false),
+  error = ref('');
+let alive = true,
+  stamp = 0;
+onUnmounted(() => {
+  alive = false;
+  stamp++;
+});
+const solved = computed(() =>
+  (progress.value?.numAcceptedQuestions || []).reduce((n, row) => n + row.count, 0),
+);
+const total = computed(() =>
+  ['numAcceptedQuestions', 'numFailedQuestions', 'numUntouchedQuestions'].reduce(
+    (n, key) => n + (progress.value?.[key] || []).reduce((sum, row) => sum + row.count, 0),
+    0,
+  ),
+);
+const today = new Date();
+const todayKey =
+  today.getFullYear() +
+  '-' +
+  String(today.getMonth() + 1).padStart(2, '0') +
+  '-' +
+  String(today.getDate()).padStart(2, '0');
+const summary = computed(() => calendarSummary(days.value, todayKey));
+const peakDay = computed(() => days.value.reduce((peak, day) => day.count > peak.count ? day : peak, {date: '—', count: 0}));
+const difficultyProgress = computed(() => ['EASY', 'MEDIUM', 'HARD'].map((difficulty) => ({
+  difficulty,
+  accepted: (progress.value?.numAcceptedQuestions || []).find((row) => row.difficulty === difficulty)?.count || 0,
+  total: ['numAcceptedQuestions', 'numFailedQuestions', 'numUntouchedQuestions'].reduce((sum, key) => sum + ((progress.value?.[key] || []).find((row) => row.difficulty === difficulty)?.count || 0), 0),
+})));
+
+async function load() {
+  const current = ++stamp;
+  loading.value = true;
+  error.value = '';
+  try {
+    const bindings = await fetchCodingBindings();
+    const account = bindings.find((item) => item.platform === 'leetcode');
+    if (!account?.platformUsername) throw new Error('请先绑定 LeetCode 账号');
+    const data = await Promise.allSettled([
+      fetchLeetcodeProfile(account.platformUsername),
+      fetchLeetcodeContest(account.platformUsername),
+      fetchLeetcodeCalendar(account.platformUsername),
+      fetchLeetcodeDaily(),
+      fetchLeetcodeRecent(account.platformUsername),
+    ]);
+    if (!alive || stamp !== current) return;
+    username.value = account.platformUsername;
+    data.forEach((item, index) => {
+      if (item.status === 'fulfilled') {
+        if (index === 0) {
+          profile.value = item.value.userProfilePublicProfile;
+          progress.value = item.value.userProfileUserQuestionProgress;
+        }
+        if (index === 1) contest.value = item.value.userContestRanking;
+        if (index === 2) {
+          calendar.value = item.value.userCalendar;
+          const values = JSON.parse(calendar.value.submissionCalendar || '{}');
+          const now = new Date();
+          now.setHours(0, 0, 0, 0);
+          days.value = Array.from({ length: 365 }, (_, i) => {
+            const date = new Date(now);
+            date.setDate(date.getDate() - 364 + i);
+            const key =
+              date.getFullYear() +
+              '-' +
+              String(date.getMonth() + 1).padStart(2, '0') +
+              '-' +
+              String(date.getDate()).padStart(2, '0');
+            const count = Object.entries(values)
+              .filter(([timestamp]) => {
+                const d = new Date(Number(timestamp) * 1000);
+                return (
+                  d.getFullYear() +
+                    '-' +
+                    String(d.getMonth() + 1).padStart(2, '0') +
+                    '-' +
+                    String(d.getDate()).padStart(2, '0') ===
+                  key
+                );
+              })
+              .reduce((n, [, value]) => n + Number(value), 0);
+            return { date: key, count };
+          });
+        }
+        if (index === 3) daily.value = item.value.todayRecord || [];
+        if (index === 4) recent.value = item.value.recentACSubmissions || [];
+      } else error.value += (error.value ? '；' : '') + item.reason.message;
+    });
+  } catch (e) {
+    if (alive && stamp === current) error.value = e.message;
+  } finally {
+    if (alive && stamp === current) {
+      loading.value = false;
+      refreshing.value = false;
+    }
+  }
+}
+useDomainPage(
+  () => {
+    alive = true;
+    load();
+  },
+  () => {
+    alive = false;
+    stamp++;
+    profile.value = null;
+    progress.value = null;
+    contest.value = null;
+    calendar.value = null;
+    daily.value = [];
+    recent.value = [];
+    days.value = [];
+    loading.value = false;
+    refreshing.value = false;
+  },
+);
+const labels: Record<string, string> = { EASY: '简单', MEDIUM: '中等', HARD: '困难' };
+</script>
+<template>
+  <MobilePage
+    :refreshing="refreshing"
+    @refresh="
+      refreshing = true;
+      load();
+    "
+    ><PageHeader title="LeetCode" back @back="uni.navigateBack()" /><view
+      class="body ui-page-body"
+      :class="themeClass('body')"
+      ><view class="actions ui-toolbar"
+        ><text>{{ username }}</text
+        ><MobileButton
+          label="账号绑定"
+          icon="ant-design:setting-outlined"
+          variant="quiet"
+          @click="uni.navigateTo({ url: '/pages/profile/bindings' })" /></view
+      ><PageState :loading="loading" :error="error" @retry="load"
+        ><view class="metrics ui-row ui-section"><MetricCard label="全站排名" :value="String(profile?.siteRanking || '—')" /><MetricCard label="竞赛分数" :value="String(Math.round(contest?.rating || 0))" /><MetricCard label="全球排名" :value="String(contest?.globalRanking || '—')" :unit="'/ ' + (contest?.globalTotalParticipants || '—')" /><MetricCard label="全国排名" :value="String(contest?.localRanking || '—')" :unit="'/ ' + (contest?.localTotalParticipants || '—')" /></view>
+        <view class="progress-surface ui-card" :class="themeClass('progress-surface')"><view class="metrics ui-row ui-section"><MetricCard label="已解题" :value="String(solved)" :unit="'/ ' + total" /><MetricCard label="声望" :value="String(profile?.profile?.reputation || 0)" /><MetricCard label="累计活跃天数" :value="String(calendar?.totalActiveDays || 0)" unit="天" /><MetricCard label="最活跃的一天" :value="String(peakDay.count)" :unit="'次 · ' + peakDay.date" /><MetricCard label="今日提交次数" :value="String(summary.today)" /><MetricCard label="每日一题" :value="daily.some((item) => item.userStatus === 'FINISH') ? '已完成' : '未完成'" /></view><text class="heading ui-section">做题进度</text><view class="metrics ui-row"><MetricCard label="总计" :value="String(solved)" :unit="'/ ' + total" /><MetricCard v-for="row in difficultyProgress" :key="row.difficulty" :label="labels[row.difficulty]" :value="String(row.accepted)" :unit="'/ ' + row.total" /></view></view><text class="muted">过去一年共提交 {{ summary.total }} 次 · 连续提交 {{ calendar?.recentStreak || summary.streak }} 天</text
+        ><scroll-view scroll-x class="calendar-scroll ui-mt-section"
+          ><view class="calendar ui-gap-xs"
+            ><view
+              v-for="day in days"
+              :key="day.date"
+              class="day"
+              :class="day.count > 0 ? 'active-day' : ''"
+              :aria-label="day.date + ' ' + day.count + ' 次提交'"
+              @click="
+                uni.showToast({ title: day.date + ' · ' + day.count, icon: 'none' })
+              " /></view></scroll-view
+        ><text class="heading ui-mt-section ui-section">每日一题</text
+        ><view v-for="item in daily" :key="item.date" class="record ui-card" :class="themeClass('record')"
+          ><text class="title">{{ item.question.translatedTitle || item.question.title }}</text
+          ><text>{{ item.date }} · {{ item.userStatus }}</text
+          ><MobileButton
+            label="打开题目"
+            icon="ant-design:export-outlined"
+            variant="quiet"
+            @click="
+              openExternal('https://leetcode.cn/problems/' + item.question.titleSlug + '/')
+            " /></view
+        ><text class="heading ui-mt-section ui-section">最近通过</text
+        ><view v-for="item in recent" :key="item.submissionId" class="record ui-card" :class="themeClass('record')"
+          ><text class="title"
+            >{{ item.question.questionFrontendId }} ·
+            {{ item.question.translatedTitle || item.question.title }}</text
+          ><text class="muted">{{ new Date(Number(item.submitTime) * 1000).toLocaleString() }}</text
+          ><MobileButton
+            label="打开题目"
+            icon="ant-design:export-outlined"
+            variant="quiet"
+            @click="
+              openExternal('https://leetcode.cn/problems/' + item.question.titleSlug + '/')
+            " /></view></PageState></view
+  ></MobilePage>
+</template>
+<style scoped lang="scss">
+@use '../../styles/spacing.scss';
+@use '../../styles/spacing-tokens' as *;
+.body {
+  color: #263248;
+}
+.body-dark {
+  color: #e7e9ee;
+}
+.actions {
+}
+.metrics {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: $space-inline;
+}
+@media (min-width: 768px) {
+  .metrics { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}
+.record {
+  background-color: #ffffff;
+  border-radius: 14px;
+  display: flex;
+  flex-direction: column;
+}
+.title {
+  font-size: 18px;
+  font-weight: 600;
+}
+.muted {
+  font-size: 13px;
+  color: #718096;
+}
+.heading {
+  font-size: 20px;
+  font-weight: 600;
+  display: block;
+}
+.calendar-scroll {
+  width: 100%;
+}
+.calendar {
+  display: flex;
+  flex-wrap: wrap;
+  width: 760px;
+  height: 110px;
+  flex-direction: column;
+}
+.day {
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+  background-color: #dbe3df;
+}
+.active-day {
+  background-color: #3d9974;
+}
+.record-dark, .article-dark { background-color: #1c1e22; }
+.progress-surface { background-color: #ffffff; border-radius: 14px; }
+.progress-surface-dark { background-color: #1c1e22; }
+</style>

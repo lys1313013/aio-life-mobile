@@ -1,0 +1,412 @@
+<script setup lang="ts">
+import { computed, onMounted, ref } from 'vue';
+import MobilePage from '../../components/MobilePage.uvue';
+import PageHeader from '../../components/PageHeader.uvue';
+import FormField from '../../components/FormField.uvue';
+import MobileButton from '../../components/MobileButton.uvue';
+import ConfirmAction from '../../components/ConfirmAction.uvue';
+import AdaptiveModal from '../../components/AdaptiveModal.uvue';
+import PageState from '../../components/PageState.uvue';
+import { fetchDictionary, importExpenses } from '../../services/domains/finance.ts';
+import { parseCSV, parseMobileCSV } from '../../services/domains/import-parser.ts';
+import { chooseBill, parseBillFile } from '../../services/domains/import-files.ts';
+import { useDomainPage } from '../../services/domains/page-session.ts';
+import { themeClass } from '../../services/theme.ts';
+const text = ref(''),
+  types = ref<any[]>([]),
+  payments = ref<any[]>([]),
+  rows = ref<any[]>([]),
+  error = ref(''),
+  busy = ref(false),
+  initializing = ref(false),
+  ready = ref(false),
+  modal = ref(false),
+  pasteOpen = ref(false),
+  draft = ref<any>({}),
+  editIndex = ref(-1),
+  type = ref(''),
+  payment = ref(''),
+  selected = ref<number[]>([]);
+let alive = true,
+  stamp = 0;
+async function initialize() {
+  if (initializing.value || busy.value) return;
+  const current = ++stamp;
+  error.value = '';
+  initializing.value = true;
+  try {
+    const data = await Promise.all([
+      fetchDictionary('exp_type'),
+      fetchDictionary('pay_type'),
+    ]);
+    if (!alive || stamp !== current) return;
+    types.value = data[0].dictDetailList;
+    payments.value = data[1].dictDetailList;
+    type.value = types.value[0]?.dictLabel || '';
+    ready.value = true;
+  } catch (e) {
+    error.value = e.message;
+  } finally {
+    initializing.value = false;
+  }
+}
+useDomainPage(
+  () => {
+    alive = true;
+    initialize();
+  },
+  () => {
+    alive = false;
+    stamp++;
+    rows.value = [];
+    text.value = '';
+    draft.value = {};
+    modal.value = false;
+    selected.value = [];
+    ready.value = false;
+    busy.value = false;
+  },
+);
+const categoryFilter = ref('全部'),
+  sort = ref('日期降序');
+const categoryOptions = computed(() => [
+  '全部',
+  ...Array.from(
+    new Set(rows.value.map((row) => row.transactionType || row.type || '未分类')),
+  ),
+]);
+const visibleIndices = computed(() =>
+  rows.value
+    .map((_, index) => index)
+    .filter(
+      (index) =>
+        categoryFilter.value === '全部' ||
+        (rows.value[index].transactionType || rows.value[index].type || '未分类') ===
+          categoryFilter.value,
+    )
+    .sort((a, b) =>
+      sort.value === '金额降序'
+        ? Number(rows.value[b].amt) - Number(rows.value[a].amt)
+        : String(rows.value[b].expTime).localeCompare(String(rows.value[a].expTime)),
+    ),
+);
+const categoryTotals = computed(() =>
+  categoryOptions.value.slice(1).map((name) => ({
+    name,
+    count: rows.value.filter(
+      (row) => (row.transactionType || row.type || '未分类') === name,
+    ).length,
+    amt:
+      rows.value
+        .filter((row) => (row.transactionType || row.type || '未分类') === name)
+        .reduce((n, row) => n + Math.round(Number(row.amt) * 100), 0) / 100,
+  })),
+);
+const total = computed(
+  () => rows.value.reduce((sum, row) => sum + Math.round(Number(row.amt) * 100), 0) / 100,
+);
+async function choose() {
+  if (busy.value || !ready.value) return;
+  busy.value = true;
+  error.value = '';
+  try {
+    const current = stamp;
+    const file = await chooseBill();
+    if (!alive || stamp !== current) return;
+    const ctx = {
+      dictOptions: types.value.map((item) => ({
+        ...item,
+        label: item.dictLabel,
+      })),
+      payTypeOptions: payments.value.map((item) => ({
+        ...item,
+        label: item.dictLabel,
+      })),
+      defaultExpTypeId:
+        types.value.find((item) => item.dictLabel === type.value)?.id || '',
+    };
+    const result = await parseBillFile(file.name, file.buffer, ctx);
+    if (!alive || stamp !== current) return;
+    if (!result.transactions.length) throw new Error('账单没有可导入的成功支出');
+    rows.value = result.transactions;
+    selected.value = [];
+  } catch (e) {
+    error.value = e.message;
+  } finally {
+    busy.value = false;
+  }
+}
+function parse() {
+  error.value = '';
+  try {
+    if (!ready.value) throw new Error('请先加载分类');
+    const ctx = {
+      dictOptions: types.value.map((item) => ({
+        ...item,
+        label: item.dictLabel,
+      })),
+      payTypeOptions: payments.value.map((item) => ({
+        ...item,
+        label: item.dictLabel,
+      })),
+      defaultExpTypeId:
+        types.value.find((item) => item.dictLabel === type.value)?.id || '',
+    };
+    const result = text.value.includes('交易分类')
+      ? parseMobileCSV(text.value, ctx)
+      : parseCSV(text.value, ctx);
+    if (!result.transactions.length)
+      throw new Error('未识别到成功支出记录，请检查账单内容');
+    rows.value = result.transactions;
+    selected.value = [];
+  } catch (e) {
+    error.value = e.message;
+  }
+}
+function toggle(index: number) {
+  selected.value = selected.value.includes(index)
+    ? selected.value.filter((value) => value !== index)
+    : [...selected.value, index];
+}
+function batch() {
+  const expTypeId = types.value.find((item) => item.dictLabel === type.value)?.id,
+    payTypeId = payments.value.find((item) => item.dictLabel === payment.value)?.id;
+  rows.value = rows.value.map((row, index) =>
+    selected.value.includes(index)
+      ? {
+          ...row,
+          ...(expTypeId ? { expTypeId } : {}),
+          ...(payTypeId ? { payTypeId } : {}),
+        }
+      : row,
+  );
+}
+function edit(row: any, index: number) {
+  draft.value = { ...row };
+  editIndex.value = index;
+  modal.value = true;
+}
+const draftType = computed({
+  get: () =>
+    types.value.find((item) => item.id === draft.value.expTypeId)?.dictLabel || '',
+  set: (value) => {
+    draft.value.expTypeId =
+      types.value.find((item) => item.dictLabel === value)?.id || '';
+  },
+});
+const draftPay = computed({
+  get: () =>
+    payments.value.find((item) => item.id === draft.value.payTypeId)?.dictLabel || '',
+  set: (value) => {
+    draft.value.payTypeId =
+      payments.value.find((item) => item.dictLabel === value)?.id || '';
+  },
+});
+function saveRow() {
+  if (
+    !draft.value.expTypeId ||
+    !draft.value.payTypeId ||
+    !Number.isFinite(Number(draft.value.amt))
+  ) {
+    error.value = '请填写有效金额、类型和支付方式';
+    return;
+  }
+  rows.value[editIndex.value] = {
+    ...draft.value,
+    amt: Number(draft.value.amt),
+    transactionAmt: Number(draft.value.transactionAmt),
+  };
+  modal.value = false;
+}
+async function submit() {
+  const mutationStamp = stamp;
+  if (busy.value) return;
+  const ids = rows.value.map((row) => row.transactionId).filter(Boolean);
+  if (new Set(ids).size !== ids.length) {
+    error.value = '预览包含重复交易号，请删除重复记录后导入';
+    return;
+  }
+  if (rows.value.some((row) => !row.expTypeId || !row.payTypeId || !row.expTime)) {
+    error.value = '请补全每笔记录的类型、支付方式及日期';
+    return;
+  }
+  busy.value = true;
+  error.value = '';
+  try {
+    await importExpenses(rows.value);
+    if (!alive || stamp !== mutationStamp) return;
+    rows.value = [];
+    text.value = '';
+    selected.value = [];
+    uni.showToast({ title: '导入成功', icon: 'success' });
+  } catch (e) {
+    error.value = e.message;
+  } finally {
+    busy.value = false;
+  }
+}
+async function removeSelected() {
+  rows.value = rows.value.filter((_, index) => !selected.value.includes(index));
+  selected.value = [];
+}
+</script>
+<template>
+  <MobilePage :refreshing="initializing" @refresh="initialize"
+    ><PageHeader title="账单导入" back @back="uni.navigateBack()" /><view
+      class="body ui-page-body"
+      :class="themeClass('body')"
+      ><PageState :loading="initializing && !ready" :error="error" @retry="initialize"
+        ><view
+          class="upload-panel ui-pad-card ui-gap-sm"
+          :class="themeClass('upload-panel')"
+          ><text class="upload-title">选择账单文件</text
+          ><text class="upload-hint">支持支付宝 ZIP、CSV 或微信账单 Excel</text
+          ><MobileButton
+            label="选择文件"
+            icon="ant-design:upload-outlined"
+            :loading="busy"
+            :disabled="!ready"
+            @click="choose" /><MobileButton
+            label="粘贴 CSV 内容"
+            variant="quiet"
+            @click="pasteOpen = !pasteOpen" /></view
+        ><view v-if="pasteOpen" class="ui-section"
+          ><FormField
+            label="支付宝 CSV 内容"
+            kind="textarea"
+            v-model="text" /><MobileButton
+            label="解析预览"
+            :disabled="!ready || busy"
+            @click="parse" /></view
+        ><FormField
+          v-if="rows.length"
+          label="默认类型"
+          kind="selector"
+          :options="types.map((item) => item.dictLabel)"
+          v-model="type" /><text v-if="rows.length" class="summary ui-py-section"
+          >{{ rows.length }} 笔 · ¥{{ total.toFixed(2) }}</text
+        ><view v-if="rows.length" class="actions ui-toolbar"
+          ><MobileButton
+            label="全选"
+            variant="quiet"
+            @click="selected = [...visibleIndices]" /><MobileButton
+            label="取消全选"
+            variant="quiet"
+            @click="selected = []" /><ConfirmAction
+            v-if="selected.length"
+            label="删除选中"
+            :action="removeSelected" /></view
+        ><FormField
+          v-if="rows.length"
+          label="批量支付方式"
+          kind="selector"
+          :options="payments.map((item) => item.dictLabel)"
+          v-model="payment" /><MobileButton
+          v-if="selected.length"
+          label="批量设置类型和支付方式"
+          @click="batch" /><view v-if="rows.length"
+          ><FormField
+            label="原交易分类"
+            kind="selector"
+            :options="categoryOptions"
+            v-model="categoryFilter"
+          /><FormField
+            label="排序"
+            kind="selector"
+            :options="['日期降序', '金额降序']"
+            v-model="sort"
+          /><view
+            v-for="group in categoryTotals"
+            :key="group.name"
+            class="actions ui-toolbar"
+            ><text
+              >{{ group.name }} · {{ group.count }} 笔 · ¥{{ group.amt.toFixed(2) }}</text
+            ></view
+          ></view
+        ><view
+          v-for="index in visibleIndices"
+          :key="rows[index].transactionId || index"
+          class="record ui-card"
+          ><view class="actions ui-toolbar"
+            ><MobileButton
+              :label="selected.includes(index) ? '取消选择' : '选择'"
+              :icon="
+                selected.includes(index)
+                  ? 'ant-design:check-square-outlined'
+                  : 'ant-design:border-outlined'
+              "
+              variant="quiet"
+              @click="toggle(index)" /><text
+              >{{ rows[index].expTime }} · ¥{{ rows[index].amt }}</text
+            ><MobileButton
+              label="编辑"
+              icon="ant-design:edit-outlined"
+              variant="quiet"
+              @click="edit(rows[index], index)" /></view
+          ><text>{{ rows[index].counterparty }} · {{ rows[index].expDesc }}</text
+          ><text
+            >{{ rows[index].transactionId }} · 退款
+            {{ rows[index].successfulRefund }}</text
+          ></view
+        ><MobileButton
+          v-if="rows.length"
+          label="确认导入"
+          :loading="busy"
+          @click="submit" /></PageState></view
+    ><AdaptiveModal v-if="modal" label="导入记录" @close="modal = false"
+      ><FormField label="记账金额" v-model="draft.amt" /><FormField
+        label="交易金额"
+        v-model="draft.transactionAmt" /><FormField
+        label="类型"
+        kind="selector"
+        :options="types.map((item) => item.dictLabel)"
+        v-model="draftType" /><FormField
+        label="支付方式"
+        kind="selector"
+        :options="payments.map((item) => item.dictLabel)"
+        v-model="draftPay" /><FormField
+        label="备注"
+        kind="textarea"
+        v-model="draft.remark" /><MobileButton
+        label="保存预览"
+        @click="saveRow" /></AdaptiveModal
+  ></MobilePage>
+</template>
+<style scoped lang="scss">
+@use '../../styles/spacing.scss';
+@use '../../styles/spacing-tokens' as *;
+.upload-panel {
+  border: 1px dashed #6c93e7;
+  border-radius: 12px;
+  background-color: #eef5ff;
+  align-items: center;
+}
+.upload-panel-dark {
+  background-color: #202b40;
+}
+.upload-title {
+  font-size: 16px;
+  font-weight: 600;
+}
+.upload-hint {
+  font-size: 12px;
+  color: #808692;
+  text-align: center;
+}
+.body {
+  color: #263248;
+}
+.body-dark {
+  color: #e7e9ee;
+}
+.actions {
+  flex-wrap: wrap;
+}
+.record {
+  display: flex;
+  flex-direction: column;
+}
+.summary {
+  display: block;
+}
+</style>
