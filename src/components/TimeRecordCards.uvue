@@ -1,0 +1,178 @@
+<script setup lang="ts">
+import { themeClass } from '../services/theme.ts'
+import { computed } from 'vue'
+import CategoryIcon from './CategoryIcon.uvue'
+import type { Category, TimeRecord } from '../services/dashboard.ts'
+import {
+  categoryPath,
+  parseDate,
+  recordMinutes,
+} from '../services/time-format.ts'
+import { clockLabel, durationLabel } from '../services/dashboard-format.ts'
+const props = defineProps<{ records: TimeRecord[]; categories: Category[]; showDate?: boolean }>()
+const emit = defineEmits(['edit'])
+const groups = computed(() => {
+  const dates = [...new Set(props.records.map((r) => r.date || ''))].sort()
+  return dates.map((date) => ({
+    date,
+    weekday: '周' + '日一二三四五六'[parseDate(date).getDay()],
+    entries: props.records
+      .filter((r) => r.date === date)
+      .sort((a, b) => a.startTime - b.startTime)
+      .map((r) => ({
+        ...r,
+        category: props.categories.find((c) => c.id === r.categoryId),
+        name: categoryPath(r.categoryId, props.categories),
+      })),
+  }))
+})
+</script>
+<template>
+  <view class="record-groups">
+    <view v-for="group in groups" :key="group.date" class="record-group">
+      <text v-if="showDate" class="record-group-date"
+        >{{ group.date.slice(5) }} · {{ group.weekday }}</text
+      >
+      <view class="record-card-grid">
+        <view
+          v-for="item in group.entries"
+          :key="item.id"
+          class="record-card-cell"
+        >
+          <button
+            role="button"
+            class="record-card"
+            :style="{ borderLeftColor: item.category?.color || '#94a3b8' }"
+            :aria-label="
+              '编辑记录 ' + (item.title || item.category?.name || '未分类')
+            "
+            @click="emit('edit', item)"
+            :class="themeClass('record-card')"
+          >
+            <view class="record-card-heading"
+              ><CategoryIcon
+                :icon="item.category?.icon"
+                :color="item.category?.color"
+                :size="20"
+              /><text
+                class="record-card-category"
+                :class="themeClass('record-card-category')"
+                >{{ item.name }}</text
+              ></view
+            >
+            <text
+              class="record-card-time"
+              :class="themeClass('record-card-time')"
+              >{{ clockLabel(item.startTime) }}–{{
+                clockLabel(item.endTime)
+              }}</text
+            >
+            <view class="record-card-footer"
+              ><text
+                class="record-card-duration"
+                :class="themeClass('record-card-duration')"
+                >{{ durationLabel(recordMinutes(item)) }}</text
+              ><text v-if="item.title" class="record-card-title">{{
+                item.title
+              }}</text></view
+            >
+          </button>
+        </view>
+      </view>
+    </view>
+  </view>
+</template>
+<style scoped lang="scss">
+@use '../styles/spacing.scss';
+@use '../styles/spacing-tokens' as *;
+.record-group {
+  margin-bottom: $space-section;
+}
+.record-group-date {
+  font-size: 12px;
+  color: #8b8f99;
+  padding: 0 0 $space-inline;
+}
+.record-card-grid {
+  flex-direction: row;
+  flex-wrap: wrap;
+  margin: 0 (-$space-detail);
+}
+.record-card-cell {
+  width: 50%;
+  padding: $space-detail;
+  box-sizing: border-box;
+}
+.record-card {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  min-height: 116px;
+  margin: 0;
+  padding: $space-card;
+  border: 0;
+  border-left: 3px solid #94a3b8;
+  border-radius: 12px;
+  background-color: #ffffff;
+  text-align: left;
+  line-height: 20px;
+}
+.record-card-heading {
+  flex-direction: row;
+  align-items: center;
+}
+.record-card-category {
+  flex: 1;
+  margin-left: $space-inline;
+  font-size: 12px;
+  color: #71717a;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.record-card-time {
+  font-size: 16px;
+  font-weight: 600;
+  color: #27272a;
+  margin-top: $space-inline;
+}
+.record-card-footer {
+  flex-direction: row;
+  align-items: center;
+  margin-top: $space-inline;
+}
+.record-card-duration {
+  font-size: 12px;
+  color: #71717a;
+}
+.record-card-title {
+  flex: 1;
+  margin-left: $space-inline;
+  font-size: 12px;
+  color: #8b8f99;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  text-align: right;
+}
+@media (min-width: 700px) {
+  .record-card-cell {
+    width: 33.333%;
+  }
+}
+.record-card-dark {
+  background-color: #1c1e22;
+}
+.record-card-time-dark {
+  color: #eeeeef;
+}
+.record-card-category-dark,
+.record-card-duration-dark {
+  color: #b4b4bd;
+}
+/* #ifdef WEB || MP-WEIXIN */
+.record-card::after {
+  border: 0;
+}
+/* #endif */
+</style>

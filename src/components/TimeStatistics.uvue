@@ -1,0 +1,245 @@
+<script setup lang="ts">
+import { themeClass } from '../services/theme.ts'
+import { computed, ref, watch, onUnmounted } from 'vue'
+import MiniChart from './MiniChart.uvue'
+import type { Category, TimeRecord } from '../services/dashboard.ts'
+import { request } from '../services/api.ts'
+import { distributionStats, matchesCategories, recordMinutes, periodRange, periodStatistics, shiftDate, trendPeriods } from '../services/time-format.ts'
+import { durationLabel } from '../services/dashboard-format.ts'
+const props = defineProps<{
+  records: TimeRecord[]
+  categories: Category[]
+  selected: string[]
+  date: string
+  mode: string
+  revision: number
+}>()
+const trend = ref<TimeRecord[]>([])
+const loading = ref(false), error = ref('')
+let generation = 0
+const filtered = computed(() => props.records.filter(r => matchesCategories(r.categoryId, props.selected, props.categories)))
+const total = computed(() => filtered.value.reduce((sum, r) => sum + recordMinutes(r), 0))
+const distribution = computed(() => distributionStats(props.records, props.categories, props.selected))
+const types = computed(() => [
+  { id: 1, name: '必须', color: '#3b82f6' },
+  { id: 2, name: '积极', color: '#10b981' },
+  { id: 3, name: '消极', color: '#f43f5e' },
+  { id: 0, name: '未设置', color: '#94a3b8' },
+].map(item => ({ ...item, minutes: filtered.value.filter(r => (props.categories.find(c => c.id === r.categoryId)?.timeType || 0) === item.id).reduce((sum, r) => sum + recordMinutes(r), 0) })).filter(item => item.minutes > 0))
+function ringSegments(rows) {
+  const total = rows.reduce((sum, row) => sum + row.minutes, 0)
+  if (total <= 0) return []
+  return Array.from({ length: 120 }, (_, index) => {
+    const minute = (index + 0.5) / 120 * total
+    let elapsed = 0
+    const row = rows.find(item => { elapsed += item.minutes; return minute <= elapsed })
+    return { transform: 'rotate(' + index * 3 + 'deg)', color: row?.color || '#94a3b8' }
+  })
+}
+const panels = computed(() => [
+  ...(props.mode === 'day' || !props.selected.length ? [{ id: 'category', title: '时间分布', rows: distribution.value }] : []),
+  ...(!props.selected.length ? [{ id: 'type', title: '时间类型分布', rows: types.value }] : []),
+])
+const periods = computed(() => {
+  const range = periodRange(props.date, props.mode)
+  return Array.from({ length: range.days }, (_, index) => periodRange(shiftDate(range.start, index), 'day'))
+})
+const daily = computed(() => periodStatistics(props.records, props.categories, props.selected, periods.value))
+const maximum = computed(() => Math.max(1, ...daily.value.map(item => item.minutes)))
+const trendData = computed(() => periodStatistics(trend.value, props.categories, props.selected, trendPeriods(props.date, props.mode), props.mode !== 'day'))
+const trendLegend = computed(() => distributionStats(trend.value, props.categories, props.selected))
+const trendSeries = computed(() => trendLegend.value.map(item => ({ name: item.name, color: item.color, values: trendData.value.map(period => Math.round((period.segments.find(segment => segment.id === item.id)?.minutes || 0) / 60 * 100) / 100) })))
+const trendLabels = computed(() => trendData.value.map(item => props.mode === 'month' ? item.start.slice(0, 7) : item.start.slice(5)))
+const trendTitle = computed(() => '近 10 ' + (props.mode === 'day' ? '天' : props.mode === 'week' ? '周 · 记录日均' : '个月 · 记录日均'))
+async function loadTrend() {
+  const id = ++generation
+  const range = trendPeriods(props.date, props.mode)
+  loading.value = true
+  error.value = ''
+  try {
+    const result = await request<TimeRecord[]>('/timeRecord/queryByDateRange?startDate=' + range[0].start + '&endDate=' + range[9].end)
+    if (id === generation) trend.value = result
+  } catch (e) {
+    if (id === generation) error.value = e.message || '加载失败'
+  } finally {
+    if (id === generation) loading.value = false
+  }
+}
+watch(() => [props.date, props.mode, props.revision], loadTrend, { immediate: true })
+onUnmounted(() => generation++)
+</script>
+<template>
+  <view class="time-statistics">
+    <view v-if="loading || error" class="stats-card" :class="themeClass('stats-card')">
+      <text class="stats-caption" :class="themeClass('stats-caption')">{{ trendTitle }}</text>
+      <text v-if="loading" class="stats-empty">加载中…</text>
+      <view v-else class="stats-error"><text class="error-text" role="alert" :class="themeClass('error-text')">{{ error }}</text><button role="button" class="text-action" @click="loadTrend">重试趋势统计</button></view>
+    </view>
+    <MiniChart v-else-if="trendSeries.length" :label="trendTitle" :labels="trendLabels" :series="trendSeries" unit="h" />
+    <view v-else class="stats-card" :class="themeClass('stats-card')"><text class="stats-caption" :class="themeClass('stats-caption')">{{ trendTitle }}</text><text class="stats-empty">暂无记录</text></view>
+    <view v-for="panel in panels" :key="panel.id" class="stats-card" :class="themeClass('stats-card')" role="figure" :aria-label="panel.title">
+      <text class="stats-caption" :class="themeClass('stats-caption')">{{ panel.title }}</text>
+      <text v-if="!panel.rows.length" class="stats-empty">暂无记录</text>
+      <view v-else class="distribution-overview">
+        <view class="distribution-ring" role="img" :aria-label="panel.title + '，合计 ' + durationLabel(total)">
+          <view v-for="(segment, index) in ringSegments(panel.rows)" :key="index" class="distribution-arm" :style="{ transform: segment.transform }"><view class="distribution-segment" :style="{ backgroundColor: segment.color }" /></view>
+          <text class="distribution-total" :class="themeClass('distribution-total')">{{ durationLabel(total) }}</text>
+        </view>
+      </view>
+      <view v-for="item in panel.rows" :key="item.id" class="stat-row">
+        <view class="stat-heading"><text class="stat-name" :class="themeClass('stat-name')">{{ item.name }}</text><text class="stat-value">{{ durationLabel(item.minutes) }} · {{ Math.round(item.minutes / Math.max(1, total) * 100) }}%</text></view>
+        <view class="stat-track" :class="themeClass('stat-track')"><view class="stat-fill" :style="{ width: item.minutes / Math.max(1, total) * 100 + '%', backgroundColor: item.color }" /></view>
+      </view>
+    </view>
+    <view v-if="mode !== 'day'" class="stats-card" :class="themeClass('stats-card')" role="figure" aria-label="每日时间分布">
+      <text class="stats-caption" :class="themeClass('stats-caption')">每日时间分布</text>
+      <view v-for="item in daily" :key="item.start" class="daily-stat">
+        <view class="stat-heading"><text class="stat-name" :class="themeClass('stat-name')">{{ item.start.slice(5) }}</text><text class="stat-value">{{ durationLabel(item.minutes) }}</text></view>
+        <view class="daily-track" :class="themeClass('daily-track')"><view v-for="segment in item.segments" :key="segment.id" class="daily-segment" :style="{ width: segment.minutes / maximum * 100 + '%', backgroundColor: segment.color }" /></view>
+        <view v-if="item.segments.length" class="daily-detail"><text v-for="segment in item.segments" :key="segment.id" class="daily-detail-text">{{ segment.name }} {{ durationLabel(segment.minutes) }}</text></view>
+      </view>
+    </view>
+  </view>
+</template>
+<style scoped lang="scss">
+@use '../styles/spacing.scss';
+@use '../styles/spacing-tokens' as *;
+.distribution-overview { align-items: center; margin-top: $space-section; }
+.distribution-ring { position: relative; width: 132px; height: 132px; align-items: center; justify-content: center; }
+.distribution-arm { position: absolute; top: 0; left: 0; width: 132px; height: 132px; align-items: center; }
+.distribution-segment { width: 5px; height: 22px; }
+.distribution-total { font-size: 16px; font-weight: 600; color: #27272a; }
+.distribution-total-dark { color: #eeeeef; }
+.stats-card {
+  padding: $space-card;
+  border-radius: 8px;
+  background-color: #ffffff;
+  margin-bottom: $space-section;
+}
+.stats-tabs {
+  flex-direction: row;
+  margin-bottom: $space-section;
+}
+.stats-tab {
+  flex: 1;
+  height: $space-controlMin;
+  line-height: $space-controlMin;
+  padding: 0;
+  margin: 0;
+  border: 0;
+  border-radius: 10px;
+  background-color: transparent;
+  color: #8b8f99;
+  font-size: 14px;
+}
+.stats-tab-active {
+  color: #427bea;
+  background-color: #edf3ff;
+  font-weight: 600;
+}
+.stats-caption {
+  color: #71717a;
+  font-size: 12px;
+}
+.stats-empty {
+  color: #8b8f99;
+  font-size: 13px;
+  padding: $space-section 0;
+}
+.stat-row {
+  margin-top: $space-section;
+}
+.stat-heading {
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+}
+.stat-name {
+  flex: 1;
+  color: #52525b;
+  font-size: 13px;
+  margin-right: $space-inline;
+}
+.stat-value {
+  color: #8b8f99;
+  font-size: 12px;
+}
+.stat-track {
+  height: 6px;
+  border-radius: 3px;
+  background-color: #f0f2f5;
+  margin-top: $space-inline;
+  overflow: hidden;
+}
+.stat-fill {
+  height: 6px;
+  border-radius: 3px;
+}
+.daily-stat {
+  margin-top: $space-section;
+}
+.daily-track {
+  height: 10px;
+  border-radius: 4px;
+  flex-direction: row;
+  background-color: #f0f2f5;
+  overflow: hidden;
+  margin-top: $space-fieldLabel;
+}
+.daily-segment {
+  height: 10px;
+}
+.daily-detail {
+  flex-direction: row;
+  flex-wrap: wrap;
+  margin-top: $space-detail;
+}
+.daily-detail-text {
+  color: #8b8f99;
+  font-size: 10px;
+  margin-right: $space-inline;
+  line-height: 16px;
+}
+.stats-legend {
+  flex-direction: row;
+  flex-wrap: wrap;
+  margin-top: $space-section;
+}
+.legend-item {
+  flex-direction: row;
+  align-items: center;
+  margin: 0 $space-section $space-fieldLabel 0;
+}
+.legend-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 4px;
+  margin-right: $space-detail;
+}
+.legend-name {
+  color: #8b8f99;
+  font-size: 11px;
+}
+
+.stats-card-dark {
+  background-color: #1c1e22;
+}
+.stats-tab-active-dark {
+  color: #91b4ff;
+  background-color: #28344e;
+}
+.stat-name-dark,
+.stats-caption-dark {
+  color: #b4b4bd;
+}
+.stat-track-dark,
+.daily-track-dark {
+  background-color: #282b32;
+}
+
+/* #ifdef WEB || MP-WEIXIN */
+.stats-tab::after {
+  border: 0;
+}
+/* #endif */
+</style>

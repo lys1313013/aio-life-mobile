@@ -1,0 +1,362 @@
+<script setup lang="ts">
+import AppIcon from './AppIcon.uvue'
+import { themeClass } from '../services/theme.ts'
+import { computed, ref, onMounted, onUnmounted } from 'vue'
+import CategoryIcon from './CategoryIcon.uvue'
+import AdaptiveModal from './AdaptiveModal.uvue'
+import type { Category, TimeRecord } from '../services/dashboard.ts'
+import {
+  categoryPath,
+  matchesCategories,
+  recordMinutes,
+  shiftDate,
+  parseDate,
+  dateLabel,
+} from '../services/time-format.ts'
+import { clockLabel, durationLabel } from '../services/dashboard-format.ts'
+
+const props = defineProps<{
+  records: TimeRecord[]
+  categories: Category[]
+  startDate: string
+  days: number
+  selected?: string[]
+}>()
+const emit = defineEmits(['edit'])
+const selectedDay = ref('')
+// 全天随视口缩放；短记录从日期列表 / 卡片进入，保持真实时间比例。
+const windowHeight = ref(uni.getWindowInfo().windowHeight)
+const windowWidth = ref(uni.getWindowInfo().windowWidth)
+const now = ref(new Date())
+let clock: ReturnType<typeof setInterval> | undefined
+const trackHeight = computed(() =>
+  Math.max(300, windowHeight.value - 206),
+)
+const minuteHeight = computed(() => trackHeight.value / 1440)
+function resize() {
+  windowHeight.value = uni.getWindowInfo().windowHeight
+  windowWidth.value = uni.getWindowInfo().windowWidth
+}
+onMounted(() => {
+  uni.onWindowResize(resize)
+  clock = setInterval(() => { now.value = new Date() }, 60000)
+})
+onUnmounted(() => {
+  uni.offWindowResize(resize)
+  if (clock) clearInterval(clock)
+})
+const hours = computed(() =>
+  Array.from({ length: 23 }, (_, index) => ({
+    label: String(index + 1),
+    top: (index + 1) * 60 * minuteHeight.value + 'px',
+  })),
+)
+const columns = computed(() =>
+  Array.from({ length: props.days }, (_, index) => {
+    const date = shiftDate(props.startDate, index)
+    const entries = props.records
+      .filter((record) => (record.date || props.startDate) === date)
+      .sort((a, b) => a.startTime - b.startTime)
+      .map((record) => {
+        const category = props.categories.find(
+          (item) => item.id === record.categoryId,
+        )
+        const minutes = recordMinutes(record)
+        const highlighted = (props.selected || []).length > 0 && matchesCategories(record.categoryId, props.selected || [], props.categories)
+        const future = date > dateLabel(now.value) || (date === dateLabel(now.value) && record.startTime > now.value.getHours() * 60 + now.value.getMinutes())
+        return {
+          ...record,
+          name: categoryPath(record.categoryId, props.categories),
+          title: record.title || category?.name || '未分类',
+          icon: category?.icon,
+          color: category?.color || '#64748b',
+          minutes,
+          highlighted,
+          future,
+          height: minutes * minuteHeight.value,
+          style: {
+            top: record.startTime * minuteHeight.value + 'px',
+            height: minutes * minuteHeight.value + 'px',
+            backgroundColor: category?.color || '#64748b',
+            opacity: matchesCategories(
+              record.categoryId,
+              props.selected || [],
+              props.categories,
+            )
+              ? 1
+              : 0.25,
+          },
+        }
+      })
+    return {
+      date,
+      weekday: '日一二三四五六'[parseDate(date).getDay()],
+      entries,
+    }
+  }),
+)
+const selected = computed(() =>
+  columns.value.find((column) => column.date === selectedDay.value),
+)
+function edit(record: TimeRecord) {
+  selectedDay.value = ''
+  emit('edit', record)
+}
+</script>
+
+<template>
+  <view class="timeline" :class="[themeClass('timeline'), { 'timeline-multiple': days > 1 }]">
+    <view class="timeline-axis" :class="themeClass('timeline-axis')">
+      <view class="axis-heading" :class="themeClass('axis-heading')" />
+      <view class="axis-hours" :style="{ height: trackHeight + 'px' }">
+        <text
+          v-for="hour in hours"
+          :key="hour.label"
+          class="hour-label"
+          :style="{ top: hour.top }"
+          :class="themeClass('hour-label')"
+          >{{ hour.label }}</text
+        >
+      </view>
+    </view>
+    <scroll-view
+      direction="horizontal"
+      :scroll-x="true"
+      class="timeline-scroll"
+    >
+      <view
+        class="timeline-columns"
+        :style="{ minWidth: days > 7 ? days * (windowWidth > 1024 ? 80 : 45) + 'px' : days > 1 ? '308px' : '0px' }"
+      >
+        <view
+          v-for="column in columns"
+          :key="column.date"
+          class="timeline-column"
+        >
+          <button
+            role="button"
+            class="column-heading"
+            :class="themeClass('column-heading')"
+            :aria-label="'查看 ' + column.date + ' 记录列表'"
+            @click="selectedDay = column.date"
+          >
+            <text class="column-weekday" :class="themeClass('column-weekday')">{{ column.weekday }}</text>
+            <text class="column-date" :class="themeClass('column-date')">{{ column.date.slice(5) }}</text>
+          </button>
+          <view
+            class="day-track"
+            :style="{ height: trackHeight + 'px' }"
+            :class="themeClass('day-track')"
+          >
+            <button
+              v-for="item in column.entries"
+              :key="item.id"
+              role="button"
+              class="timeline-event"
+              :class="[
+                {
+                  'event-multiple': days > 1,
+                  'event-compact': item.height < 44,
+                  'event-tiny': item.height < 18,
+                  'event-highlighted': item.highlighted,
+                  'event-future': item.future,
+                },
+                themeClass([
+                  'timeline-event',
+                  {
+                    'event-compact': item.height < 44,
+                    'event-tiny': item.height < 18,
+                  },
+                ]),
+              ]"
+              :style="item.style"
+              :aria-label="'编辑记录 ' + item.title"
+              @click="edit(item)"
+            >
+              <view class="event-info" :class="{ 'event-info-column': days > 1 }">
+                <CategoryIcon v-if="item.height >= 40 && item.icon" :icon="item.icon" color="#ffffff" :size="days > 1 ? 14 : 16" />
+                <text class="event-title" :class="{ 'event-title-small': item.height < 40 || days > 1 }">{{ item.title }}</text>
+                <text class="event-time">{{ (days === 1 ? clockLabel(item.startTime) + ' - ' + clockLabel(item.endTime) + '  ' : '') + durationLabel(item.minutes) }}</text>
+              </view>
+            </button>
+          </view>
+        </view>
+      </view>
+    </scroll-view>
+  </view>
+  <!-- 短记录保持真实比例，通过日期标题打开大触控区域的记录列表。 -->
+  <AdaptiveModal
+    v-if="selected"
+    :label="selected.date + ' 记录列表'"
+    @close="selectedDay = ''"
+  >
+    <view class="day-sheet" @click.stop :class="themeClass('day-sheet')">
+      <view class="sheet-heading">
+        <text class="sheet-title" :class="themeClass('sheet-title')">{{
+          selected.date
+        }}</text>
+      </view>
+      <view class="sheet-scroll">
+        <text
+          v-if="!selected.entries.length"
+          class="sheet-empty"
+          :class="themeClass('sheet-empty')"
+          >当天暂无记录</text
+        >
+        <button
+          v-for="item in selected.entries"
+          :key="item.id"
+          role="button"
+          class="sheet-record"
+          :aria-label="'编辑记录 ' + item.title"
+          @click="edit(item)"
+        >
+          <view class="sheet-dot" :style="{ backgroundColor: item.color }" />
+          <view class="sheet-main">
+            <text class="sheet-name" :class="themeClass('sheet-name')">{{
+              item.title
+            }}</text>
+            <text class="sheet-meta" :class="themeClass('sheet-meta')"
+              >{{ clockLabel(item.startTime) }}–{{ clockLabel(item.endTime) }} ·
+              {{ durationLabel(item.minutes) }}</text
+            >
+            <text class="sheet-meta" :class="themeClass('sheet-meta')">{{
+              item.name
+            }}</text>
+          </view>
+          <AppIcon name="ant-design:right-outlined" />
+        </button>
+      </view>
+    </view>
+  </AdaptiveModal>
+</template>
+
+<style scoped lang="scss">
+@use '../styles/spacing.scss';
+@use '../styles/spacing-tokens' as *;
+.timeline { flex-direction: row; background-color: #ffffff; border-radius: 6px; overflow: hidden; }
+.timeline-axis { width: 28px; flex-shrink: 0; border-right: 1px solid #eef0f3; }
+.axis-heading { height: $space-controlMin; border-bottom: 1px solid #eef0f3; }
+.axis-hours { position: relative; }
+.hour-label { position: absolute; right: 0; width: 100%; text-align: center; font-size: 10px; line-height: 14px; color: #8b8f99; transform: translateY(-7px); }
+.timeline-scroll { flex: 1; width: 0; }
+.timeline-columns { flex-direction: row; width: 100%; }
+.timeline-column { flex: 1; min-width: 0; }
+.column-heading { display: flex; flex-direction: column; justify-content: center; align-items: center; height: $space-controlMin; width: 100%; margin: 0; padding: 0; border: 0; border-bottom: 1px solid #eef0f3; background-color: transparent; border-radius: 0; line-height: 18px; }
+.column-weekday { font-size: 12px; color: #52525b; }
+.column-date { font-size: 9px; line-height: 14px; color: #8b8f99; }
+.day-track { position: relative; border-right: 1px solid #eef0f3; }
+.timeline-event { display: flex; position: absolute; left: 8px; right: 8px; margin: 0; padding: 0 $space-detail; border: 0; box-shadow: inset 0 -1px 0 #ffffff; min-height: 0; border-radius: 4px; align-items: center; justify-content: center; overflow: hidden; line-height: 16px; }
+.event-info { flex-direction: row; align-items: center; justify-content: center; width: 100%; gap: $space-detail; }
+/* Dense timeline labels and multi-day event insets follow chart geometry. */
+.event-info-column { flex-direction: column; gap: 1px; }
+.event-title { min-width: 0; max-width: 100%; color: #ffffff; font-size: 12px; line-height: 16px; font-weight: 500; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.event-title-small { font-size: 10px; line-height: 12px; }
+.event-time { flex-shrink: 0; max-width: 100%; color: #ffffff; opacity: 0.9; font-size: 9px; line-height: 12px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.event-compact { border-radius: 3px; }
+.event-tiny { border-radius: 2px; }
+.event-highlighted { outline: 1px solid #5b8ff9; box-shadow: 0 0 5px #5b8ff980; z-index: 1; }
+.event-future { outline: 1px dashed #ffffff; outline-offset: -1px; }
+.event-multiple { left: 2px; right: 2px; padding: 0 1px; }
+.day-sheet {
+  width: 100%;
+}
+.sheet-heading {
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: $space-section;
+}
+.sheet-title {
+  font-size: 17px;
+  font-weight: 600;
+  color: #27272a;
+}
+.sheet-close {
+  width: $space-controlMin;
+  height: $space-controlMin;
+  line-height: $space-controlMin;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  color: #71717a;
+  background-color: transparent;
+  font-size: 26px;
+}
+.sheet-scroll {
+  width: 100%;
+}
+.sheet-record {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  text-align: left;
+  padding: $space-section 0;
+  margin: 0;
+  border: 0;
+  background-color: transparent;
+  line-height: 20px;
+}
+.sheet-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 4px;
+  margin-right: $space-section;
+  flex-shrink: 0;
+}
+.sheet-main {
+  flex: 1;
+  min-width: 0;
+}
+.sheet-name {
+  font-size: 15px;
+  color: #27272a;
+}
+.sheet-meta,
+.sheet-empty {
+  font-size: 12px;
+  line-height: 20px;
+  color: #8b8f99;
+}
+.sheet-arrow {
+  font-size: 22px;
+  color: #8b8f99;
+  margin-left: $space-section;
+}
+
+.timeline-dark,
+.day-sheet-dark {
+  background-color: #1c1e22;
+}
+.timeline-axis-dark,
+.day-track-dark,
+.axis-heading-dark,
+.column-heading-dark { border-color: #32353c; }
+.hour-line-dark {
+  background-color: #32353c;
+}
+.timeline-event-dark {
+  box-shadow: inset 0 -1px 0 #1c1e22;
+}
+.column-weekday-dark,
+.sheet-title-dark,
+.sheet-name-dark {
+  color: #eeeeef;
+}
+.hour-label-dark,
+.column-date-dark,
+.axis-caption-dark,
+.sheet-meta-dark,
+.sheet-empty-dark {
+  color: #a1a1aa;
+}
+
+/* #ifdef WEB || MP-WEIXIN */
+.column-heading::after,
+.timeline-event::after,
+.sheet-close::after,
+.sheet-record::after {
+  border: 0;
+}
+/* #endif */
+</style>

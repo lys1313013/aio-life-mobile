@@ -1,11 +1,18 @@
 <script setup lang="ts">
+import AppIcon from '../../components/AppIcon.uvue'
+import SecondaryUnlock from "../../components/SecondaryUnlock.uvue";
+import { isDark, themeClass } from '../../services/theme.ts'
 import { useRefreshTheme } from '../../services/refresh-theme.ts'
 const refreshTheme = useRefreshTheme()
 import { nextTick, computed, reactive, ref } from 'vue'
-import { onShow, onHide, onUnload } from '@dcloudio/uni-app'
+import { onShow, onHide, onUnload, onResize } from '@dcloudio/uni-app'
+import DashboardAction from '../../components/DashboardAction.uvue'
+import iconCatalog from '../../services/icons/category-icons.json'
 import DashboardSection from '../../components/DashboardSection.uvue'
+// #ifndef WEB
 import PageHeader from '../../components/PageHeader.uvue'
-import { fetchUser } from '../../services/api.ts'
+// #endif
+import { fetchUser, request } from '../../services/api.ts'
 import { restoreSession, session } from '../../services/session.ts'
 import {
   getOverview,
@@ -25,11 +32,20 @@ import type {
   ExercisePage,
   Commit,
 } from '../../services/dashboard.ts'
+import TimeRecordEditor from '../../components/TimeRecordEditor.uvue'
 import { takeRecordChange } from '../../services/time-changes.ts'
 import { elapsedSinceRecord } from '../../services/time-format.ts'
 import { todayDate } from '../../services/dashboard.ts'
-import { durationLabel, timeSummary, webLink } from '../../services/dashboard-format.ts'
+import { durationLabel, summaryDonutLabels, timeSummary } from '../../services/dashboard-format.ts'
+import { openBusinessLink, openQuickNavEditor } from '../../services/navigation.ts'
+import { nativeDestination } from '../../services/life-catalog.ts'
+import LifeMenuIcon from '../../components/LifeMenuIcon.uvue'
+import CategoryIcon from '../../components/CategoryIcon.uvue'
+import spacing from '../../styles/spacing.json'
 
+const viewportWidth = ref(uni.getWindowInfo().windowWidth)
+const quickIconSize = computed(() => viewportWidth.value < 640 ? 20 : 24)
+onResize(event => { viewportWidth.value = event.size.windowWidth })
 const loading = ref(false)
 const refreshing = ref(false)
 async function pullRefresh() {
@@ -47,6 +63,32 @@ const watched = ref<WatchedTask[]>([])
 const exercise = ref<ExercisePage>({ days: [] })
 const commits = ref<Commit[]>([])
 const time = ref(timeSummary([], []))
+const timeDonutLabels = computed(() => summaryDonutLabels(time.value.groups))
+// 与 Web 的卡片高度上限一致；手机列表按内容收紧，超出后在卡片内滚动。
+function sectionInset(section: string) {
+  return spacing.controlMin + (section === 'exercise' ? 0 : spacing.fieldLabel) + spacing.card + spacing.hairline * 2
+}
+function sectionHeight(section: string) {
+  const limit = viewportWidth.value >= 1024 ? 280 : viewportWidth.value >= 640 ? 250 : 240
+  if (viewportWidth.value >= 768) return limit
+  if (states[section].error || (states[section].loading && !refreshing.value)) return 196
+  const inset = sectionInset(section)
+  // 窄屏图表与记录分两行，记录区域最多显示两行，保持 44px 点击区。
+  if (section === 'time') return viewportWidth.value < 375 ? inset + 164 + spacing.controlMin * 2 : limit
+  if (section === 'links') {
+    if (links.value.length === 0) return 196
+    let contentHeight = 0
+    for (let index = 0; index < links.value.length; index += 5) {
+      const hasWebLink = links.value.slice(index, index + 5).some(link => !nativeDestination(link.path))
+      contentHeight += quickIconSize.value + 18 + spacing.detail + spacing.inline * 2 + (hasWebLink ? 16 + spacing.micro : 0)
+    }
+    return Math.min(limit, inset + contentHeight)
+  }
+  if (section === 'watched') return Math.min(limit, inset + Math.max(1, watched.value.length) * 56)
+  if (section === 'thoughts') return thoughts.value.length === 0 ? 120 : Math.min(limit, inset + thoughts.value.length * 32)
+  if (section === 'exercise') return Math.min(limit, inset + Math.max(1, exercise.value.days.reduce((count, day) => count + day.items.length, 0)) * 40)
+  return Math.min(limit, inset + Math.max(1, commits.value.length) * 68)
+}
 const timeDate = ref('')
 const nowMinutes = ref(0)
 let minuteTimer: ReturnType<typeof setInterval> | null = null
@@ -60,8 +102,15 @@ const timeElapsed = computed(() => {
   const minutes = elapsedSinceRecord(time.value.recent, nowMinutes.value)
   return minutes == null ? '' : durationLabel(minutes)
 })
-function openTimeRecord(id = '') {
-  uni.navigateTo({ url: '/pages/time/edit' + (id ? '?id=' + encodeURIComponent(id) : '') })
+const timeEditor = ref<{ recordId: string } | null>(null)
+function openTimeRecord(id = '') { timeEditor.value = { recordId: id } }
+function closeTimeEditor() {
+  timeEditor.value = null
+  if (takeRecordChange()) {
+    loadSection('time'); loadSection('exercise')
+    const card = cards.value.find(item => item.type === 'EXERCISE')
+    if (card) loadCard(card)
+  }
 }
 const states = reactive({
   time: { loading: false, error: '' },
@@ -85,6 +134,21 @@ const moreCommits = ref(false)
 const moreErrors = reactive({ exercise: '', commits: '' })
 const commitPage = ref(1)
 const hasMoreCommits = ref(false)
+const pageVersions = { exercise: 0, commits: 0 }
+const cardTouchY = { exercise: 0, commits: 0 }
+function startCardSwipe(key: string, event) { cardTouchY[key] = event.touches[0]?.clientY || 0 }
+function finishCardSwipe(key: string, event) {
+  const distance = cardTouchY[key] - (event.changedTouches[0]?.clientY || 0)
+  const inset = sectionInset(key)
+  const rowsHeight = key === 'exercise'
+    ? exercise.value.days.reduce((count, day) => count + day.items.length, 0) * 40
+    : commits.value.length * 68
+  // 内容不足一屏时没有 scrolltolower，仍支持在卡片上向上滑动加载。
+  if (distance > 40 && rowsHeight <= sectionHeight(key) - inset) maybeLoadMore(key)
+}
+function maybeLoadMore(key: string) {
+  if (!moreErrors[key]) loadMore(key)
+}
 let refreshTask: Promise<void> | null = null
 let active = true
 let redirecting = false
@@ -109,6 +173,7 @@ function isCurrent(token: string) {
   return active && session.token === token
 }
 onShow(() => {
+  active = true
   tickTime()
   if (minuteTimer) clearInterval(minuteTimer)
   minuteTimer = setInterval(tickTime, 60000)
@@ -125,7 +190,7 @@ onShow(() => {
   }
   refresh()
 })
-onHide(() => { if (minuteTimer) clearInterval(minuteTimer); minuteTimer = null })
+onHide(() => { active = false; timeEditor.value = null; if (minuteTimer) clearInterval(minuteTimer); minuteTimer = null })
 onUnload(() => {
   active = false
   if (minuteTimer) clearInterval(minuteTimer)
@@ -196,6 +261,7 @@ async function loadSection(key: string) {
   if (state.loading) return
   state.loading = true
   state.error = ''
+  if (key === 'exercise' || key === 'commits') pageVersions[key]++
   const token = session.token
   try {
     if (key === 'time') {
@@ -245,16 +311,17 @@ async function loadSection(key: string) {
 }
 async function loadMore(key: string) {
   const isExercise = key === 'exercise'
-  if (states[key].loading || moreExercise.value || moreCommits.value) return
+  if (!active || states[key].loading || (isExercise ? moreExercise.value : moreCommits.value)) return
   if (isExercise ? !exercise.value.hasMore : !hasMoreCommits.value) return
   const busy = isExercise ? moreExercise : moreCommits
   busy.value = true
   moreErrors[key] = ''
+  const version = pageVersions[key]
   const token = session.token
   try {
     if (isExercise) {
       const data = await getExercises(exercise.value.lastDate || '')
-      if (isCurrent(token))
+      if (isCurrent(token) && pageVersions[key] === version)
         exercise.value = {
           ...data,
           days: [...exercise.value.days, ...data.days],
@@ -262,63 +329,61 @@ async function loadMore(key: string) {
         }
     } else {
       const data = await getCommits(commitPage.value + 1)
-      if (isCurrent(token)) {
-        commits.value = [...commits.value, ...data]
+      if (isCurrent(token) && pageVersions[key] === version) {
+        commits.value = [...commits.value, ...data.filter(item => !commits.value.some(existing => existing.id === item.id))]
         commitPage.value++
-        hasMoreCommits.value = data.length === 10
+        hasMoreCommits.value = data.length === 10 && commitPage.value < 100
       }
     }
   } catch (error) {
-    if (active) moreErrors[key] = handleError(error)
+    if (isCurrent(token) && pageVersions[key] === version) moreErrors[key] = handleError(error)
   } finally {
     busy.value = false
   }
 }
-function openLink(path: string) {
-  const url = webLink(path)
-  if (!url) {
-    uni.showToast({ title: '暂不支持此链接', icon: 'none' })
-    return
-  }
-  // 业务详情尚未迁移：Web 打开既有页面，App / 小程序通过明确的复制提示衔接。
-  // #ifdef WEB
-  window.open(url, '_blank', 'noopener,noreferrer')
-  // #endif
-  // #ifndef WEB
-  uni.showModal({
-    title: '在网页版继续',
-    content: '该功能目前在网页版提供，复制链接后可在浏览器打开。',
-    confirmText: '复制链接',
-    success: (result) => {
-      if (result.confirm) uni.setClipboardData({ data: url })
-    },
-  })
-  // #endif
+function openLink(path: string) { openBusinessLink(path) }
+function openOverview(item) {
+  if(item.error){loadCard(item);return}
+  const destination=item.titleClickUrl || item.iconClickUrl || ''
+  if(destination==='action:open-time-tracker-modal' || item.type==='TIME_TRACKER'){openTimeRecord();return}
+  if(destination==='action:open-exercise-modal' || item.type==='EXERCISE'){addExercise();return}
+  if(destination){openBusinessLink(destination);return}
+  const pages={GITHUB:'/coding/github',LEETCODE:'/coding/leetcode'}
+  if(pages[item.type])openBusinessLink(pages[item.type])
 }
-function cardIcon(type: string) {
+const taskBusy = ref('')
+function openWatched(task) {uni.navigateTo({url:'/pages/tasks/todo?detailId='+encodeURIComponent(task.id)+(task.taskId?'&taskId='+encodeURIComponent(task.taskId):'')})}
+function openThought(thought) {uni.navigateTo({url:'/pages/records/notes?kind=think&editId='+encodeURIComponent(thought.id)})}
+function addThought() { uni.navigateTo({ url: '/pages/records/notes?kind=think&create=1' }) }
+function addExercise(){uni.navigateTo({url:'/pages/records/exercise?create=1'})}
+async function completeWatched(task) {
+  if(taskBusy.value) return
+  taskBusy.value=task.id;states.watched.error='';const token=session.token
+  try {await request('/taskDetails','PUT',{id:task.id,isCompleted:task.isCompleted===1?0:1});if(isCurrent(token))await loadSection('watched')}
+  catch(e){if(isCurrent(token))states.watched.error=e.message}
+  finally {taskBusy.value=''}
+}
+
+function cardIcon(item: OverviewCard) {
   const icons = {
-    LEETCODE: 'code',
-    GITHUB: 'github',
-    EXERCISE: 'exercise',
-    SHANBAY: 'book',
-    TIME_TRACKER: 'clock',
-    WEREAD: 'book',
+    LEETCODE: isDark.value ? 'platform:leetcode' : 'devicon:leetcode', GITHUB: 'simple-icons:github',
+    EXERCISE: 'mdi:run', TIME_TRACKER: 'lucide:clock',
+    READ: 'svg:weread', WEREAD: 'svg:weread', SHANBAY: 'svg:shanbay',
   }
-  return '/static/' + (icons[type] || 'grid') + '.png'
+  return icons[item.type] || item.icon || 'lucide:layout-dashboard'
 }
-function linkIcon(title: string) {
-  const names = title.includes('待办')
-    ? 'todo'
-    : title.includes('目标')
-      ? 'target'
-      : title.includes('时')
-        ? 'clock'
-        : title.includes('运动')
-          ? 'exercise'
-          : title.includes('闪念')
-            ? 'bulb'
-            : 'grid'
-  return '/static/' + names + '.png'
+function linkIcon(link: QuickLink) {
+  if (iconCatalog.icons[link.icon || ''] || link.icon?.startsWith('svg:')) return link.icon
+  const icons = [
+    ['待办', 'lucide:list-checks'], ['目标', 'lucide:crosshair'],
+    ['时', 'lucide:clock'], ['运动', 'lucide:activity'],
+    ['闪念', 'lucide:lightbulb'], ['github', 'simple-icons:github'],
+    ['设备', 'lucide:monitor'], ['关系', 'lucide:users'],
+    ['用户', 'lucide:users'], ['支出', 'lucide:banknote'],
+    ['笔记', 'lucide:file-text'], ['备忘', 'lucide:file-text'],
+    ['密码', 'lucide:key-round'],
+  ]
+  return icons.find(([name]) => link.title.toLowerCase().includes(name))?.[1] || 'lucide:layout-dashboard'
 }
 function weekday(date: string) {
   return (
@@ -335,8 +400,8 @@ function trendPoints(points) {
   const min = Math.min(...values)
   const max = Math.max(...values)
   return points.map((point, index) => ({
-    x: points.length === 1 ? 30 : (index * 60) / (points.length - 1),
-    y: max === min ? 12 : 22 - ((point.count - min) / (max - min)) * 20,
+    x: points.length === 1 ? 60 : 4 + (index * 56) / (points.length - 1),
+    y: max === min ? 14 : 21 - ((point.count - min) / (max - min)) * 14,
   }))
 }
 function trendLines(points) {
@@ -356,19 +421,21 @@ function trendLines(points) {
 </script>
 
 <template>
-  <view class="dashboard-page">
-    <PageHeader title="人生仪表盘" />
-    <scroll-view scroll-y class="dashboard-scroll" :refresher-enabled="true" :refresher-triggered="refreshing" refresher-background="transparent" :refresher-default-style="refreshTheme" @refresherrefresh="pullRefresh"
-      ><view class="dashboard-content">
+  <view class="dashboard-page" :class="themeClass('dashboard-page')">
+    <!-- #ifndef WEB -->
+    <PageHeader title="" />
+    <!-- #endif -->
+    <scroll-view scroll-y :show-scrollbar="false" class="dashboard-scroll" :refresher-enabled="true" :refresher-triggered="refreshing" refresher-background="transparent" :refresher-default-style="refreshTheme" @refresherrefresh="pullRefresh"
+      ><view class="dashboard-content ui-page-inset ui-tab-page-inset">
         <view v-if="errorText" class="global-error" role="alert"
-          ><text class="failure-text">{{ errorText }}</text
-          ><button role="button" class="text-button" @click="refresh">
+          ><text class="failure-text" :class="themeClass('failure-text')">{{ errorText }}</text
+          ><button role="button" class="text-button ui-pad-sm" @click="refresh">
             重新加载
           </button></view
         >
         <view v-if="overview.error" class="global-error" role="alert"
-          ><text class="failure-text">{{ overview.error }}</text
-          ><button role="button" class="text-button" @click="loadOverview">
+          ><text class="failure-text" :class="themeClass('failure-text')">{{ overview.error }}</text
+          ><button role="button" class="text-button ui-pad-sm" @click="loadOverview">
             重试统计卡片
           </button></view
         >
@@ -377,68 +444,70 @@ function trendLines(points) {
             v-if="(loading || overview.loading) && cards.length === 0"
             v-for="n in 4"
             :key="n"
-            class="overview-cell"
-            ><view class="overview-card placeholder-card"
-              ><text class="subtle">加载中…</text></view
+            class="overview-cell ui-pad-xs"
+            ><view class="overview-card placeholder-card ui-pad-card"
+               :class="themeClass('overview-card')"><text class="subtle">加载中…</text></view
             ></view
           >
           <view
             v-for="item in visibleCards"
             :key="item.type"
-            class="overview-cell"
+            class="overview-cell ui-pad-xs"
           >
             <button
               role="button"
-              class="overview-card"
+              class="overview-card ui-pad-card"
               :aria-label="
                 item.error ? '重试' + item.title : item.title
               "
               :disabled="item.loading"
-              @click="item.error && loadCard(item)"
-            >
-              <view v-if="item.loading" class="card-progress"></view>
+              @click="openOverview(item)"
+             :class="themeClass('overview-card')">
+              <view v-if="item.loading" class="card-progress"
+                ><view class="card-progress-bar"></view
+              ></view>
               <view class="stat-top"
                 ><view class="stat-name"
-                  ><image
-                    class="stat-icon"
-                    :src="cardIcon(item.type)"
-                    mode="aspectFit"
-                  /><text class="stat-title">{{ item.title }}</text></view
+                  ><view class="stat-icon"><LifeMenuIcon :icon="cardIcon(item)" :size="18" :color="isDark ? '#d4d4d8' : '#52525b'" /></view><text class="stat-title" :class="themeClass('stat-title')">{{ item.title }}</text></view
                 ><text
                   class="stat-value"
                   :style="{ color: item.valueColor || '' }"
-                  >{{
+                   :class="themeClass('stat-value')">{{
                     item.value == null || item.value === '' ? '—' : item.value
                   }}</text
                 ></view
               >
               <view class="stat-bottom"
-                ><text class="stat-caption">{{
+                ><text class="stat-caption" :class="themeClass('stat-caption')">{{
                   item.error
                     ? '加载失败，点击重试'
                     : item.totalTitle || (item.loading ? '加载中…' : '')
                 }}</text
-                ><text class="stat-total">{{
+                ><text class="stat-total" :class="themeClass('stat-total')">{{
                   item.totalValue == null ? '—' : item.totalValue
                 }}</text></view
               >
             </button>
           </view>
-        </view>
-        <view class="section-grid">
-          <view class="section-cell"
+        <SecondaryUnlock />
+  </view>
+        <view class="section-grid ui-mt-xs">
+          <view class="section-cell ui-pad-xs"
             ><DashboardSection
               title="时迹"
+              :height="sectionHeight('time')"
               :loading="states.time.loading && !refreshing"
               :error="states.time.error"
               @refresh="loadSection('time')"
             >
-              <template #actions><button role="button" class="time-add-button" aria-label="新增时迹" :disabled="states.time.loading" @click="openTimeRecord()"><text v-if="timeElapsed" class="time-elapsed">{{ timeElapsed }}</text><text class="time-add-symbol">＋</text></button></template>
+              <template #actions>
+                <DashboardAction label="新增时迹" :text="timeElapsed" :disabled="states.time.loading" @click="openTimeRecord()" />
+              </template>
               <view class="time-layout">
                 <view class="timeline-labels"
                   ><text class="axis-label">0</text
                   ><view class="timeline"
-                    ><view
+                     :class="themeClass('timeline')"><view
                       v-for="block in time.timeline"
                       :key="block.id"
                       class="timeline-block"
@@ -446,11 +515,11 @@ function trendLines(points) {
                     ></view></view
                   ><text class="axis-label">24</text></view
                 >
-                <view
+                <view class="donut-stage"><view
                   class="donut"
                   role="img"
                   :aria-label="'今日已记录 ' + time.total"
-                  ><view class="donut-ring"></view
+                  ><view class="donut-ring" :class="themeClass('donut-ring')"></view
                   ><view
                     v-for="(segment, index) in time.segments"
                     :key="index"
@@ -460,119 +529,110 @@ function trendLines(points) {
                       class="donut-segment"
                       :style="{ backgroundColor: segment.backgroundColor }"
                     ></view></view
-                  ><text v-if="time.segments.length" class="donut-total">{{
+                  ><text v-if="time.segments.length" class="donut-total" :class="themeClass('donut-total')">{{
                     time.total
-                  }}</text></view
-                >
-                <view class="recent-times"
+                  }}</text>
+                  <view v-for="label in timeDonutLabels" :key="label.id" class="donut-annotation">
+                    <view v-for="(line, index) in label.lines" :key="index" class="donut-leader" :style="line" />
+                    <view class="donut-label" :class="['donut-label-' + label.side, themeClass('donut-label')]" :style="label.position">
+                      <text class="donut-label-name">{{ label.name }}</text>
+                      <text class="donut-label-duration">{{ label.duration }}</text>
+                    </view>
+                  </view>
+                </view></view>
+                <scroll-view scroll-y :show-scrollbar="false" class="recent-times ui-ml-sm"><view class="recent-time-list"
                   ><text v-if="time.recent.length === 0" class="empty-label"
-                    >今日暂无记录</text
+                     :class="themeClass('empty-label')">今日暂无记录</text
                   ><button role="button"
                     v-for="record in time.recent"
                     :key="record.id"
                     class="time-record" :aria-label="'编辑时迹 ' + record.name" @click="openTimeRecord(record.id)"
-                    ><view class="time-record-title"
-                      ><view
-                        class="color-dot"
-                        :style="{ backgroundColor: record.color }"
-                      ></view
-                      ><text class="record-name">{{ record.name }}</text></view
-                    ><text class="record-time">{{ record.label }}</text></button
-                  ></view
-                >
+                    :style="{ color: record.color }"
+                    ><text class="record-clock">{{ record.startLabel }}</text>
+                    <text class="record-duration">{{ record.durationLabel }}</text>
+                    <text class="record-name">{{ record.shortName }}</text></button
+                  ></view></scroll-view>
               </view>
             </DashboardSection></view
           >
-          <view class="section-cell"
+          <view class="section-cell ui-pad-xs"
             ><DashboardSection
               title="快捷导航"
+              :height="sectionHeight('links')"
               :loading="states.links.loading && !refreshing"
               :error="states.links.error"
               @refresh="loadSection('links')"
             >
-              <view v-if="links.length === 0" class="empty-state"
-                ><text class="empty-symbol">⊞</text
-                ><text class="empty-label">暂无快捷方式</text
+              <template #actions>
+                <DashboardAction label="管理快捷导航" icon="lucide:settings-2" @click="openQuickNavEditor" />
+              </template>
+              <view v-if="links.length === 0" class="empty-state ui-pad-card"
+                ><AppIcon name="ant-design:appstore-outlined" :size="32" color="#8b8f99" /><text class="empty-label" :class="themeClass('empty-label')">暂无快捷方式</text
                 ><button
                   role="button"
-                  class="text-button"
-                  @click="openLink('/analytics')"
+                  class="text-button ui-pad-sm"
+                  @click="openQuickNavEditor"
                 >
-                  前往网页版设置
+                  添加常用功能
                 </button></view
               >
-              <view v-else class="quick-grid"
+              <scroll-view v-else scroll-y :show-scrollbar="false" class="quick-scroll"><view class="quick-grid"
                 ><button
                   v-for="link in links"
                   :key="link.menuId"
                   role="button"
                   class="quick-link"
-                  :aria-label="link.title + '（网页版）'"
+                  :aria-label="link.title + (nativeDestination(link.path) ? '' : '（网页版）')"
                   @click="openLink(link.path)"
                 >
-                  <image
-                    class="quick-icon"
-                    :src="linkIcon(link.title)"
-                    mode="aspectFit"
-                  /><text class="quick-title">{{ link.title }}</text>
-                </button></view
-              >
+                  <LifeMenuIcon :icon="linkIcon(link)" :size="quickIconSize" :color="isDark ? '#e4e4e7' : '#27272a'" /><text class="quick-title" :class="themeClass('quick-title')">{{ link.title }}</text><text v-if="!nativeDestination(link.path)" class="quick-platform">网页版</text>
+                </button></view></scroll-view>
             </DashboardSection></view
           >
           <view
             v-if="
               states.watched.loading || states.watched.error || watched.length
             "
-            class="section-cell"
+            class="section-cell ui-pad-xs"
             ><DashboardSection
               title="待办"
+              :height="sectionHeight('watched')"
               :loading="states.watched.loading && !refreshing"
               :error="states.watched.error"
               @refresh="loadSection('watched')"
-              ><scroll-view scroll-y class="list-scroll"
+              ><scroll-view scroll-y :show-scrollbar="false" class="list-scroll"
                 ><view
                   v-for="task in watched"
                   :key="task.id"
-                  class="list-row task-row"
-                  ><text class="task-check">{{
-                    task.isCompleted ? '☑' : '□'
-                  }}</text
-                  ><view class="task-copy"
-                    ><text
-                      class="body-text"
-                      :class="{ completed: task.isCompleted === 1 }"
-                      >{{ task.content }}</text
-                    ><text v-if="task.taskName" class="tag">{{
-                      task.taskName
-                    }}</text></view
+                  class="list-row task-row ui-pad-sm"
+                  ><button role="button" class="task-check" :aria-label="task.isCompleted === 1 ? '标记未完成' : '完成待办'" :aria-busy="taskBusy === task.id" :loading="taskBusy === task.id" :disabled="!!taskBusy" @click="completeWatched(task)"><CategoryIcon v-if="taskBusy !== task.id" :icon="task.isCompleted === 1 ? 'lucide:circle-check' : 'lucide:circle'" :size="20" :color="task.isCompleted === 1 ? '#5b8ff9' : isDark ? '#a1a1aa' : '#71717a'" /></button><view class="task-copy" role="button" :aria-label="'编辑待办 '+task.content" @click="openWatched(task)"
+                    ><view class="task-main"><text v-if="task.priority === 1 || task.priority === 10 || task.priority === 20" class="task-priority" :class="task.priority === 1 ? 'priority-high' : task.priority === 10 ? 'priority-medium' : 'priority-low'">{{ task.priority === 1 ? '高' : task.priority === 10 ? '中' : '低' }}</text><text class="body-text" :class="[{ completed: task.isCompleted === 1 }, themeClass('body-text')]">{{ task.content }}</text></view>
+                    <text v-if="task.taskName" class="tag" :class="themeClass('tag')">{{ task.taskName }}</text></view
                   ></view
                 ></scroll-view
               ></DashboardSection
             ></view
           >
-          <view class="section-cell"
+          <view class="section-cell ui-pad-xs"
             ><DashboardSection
               title="闪念"
+              compact
+              :height="sectionHeight('thoughts')"
               :loading="states.thoughts.loading && !refreshing"
               :error="states.thoughts.error"
               @refresh="loadSection('thoughts')"
-              ><view v-if="thoughts.length === 0" class="empty-state"
-                ><text class="empty-symbol">♧</text
-                ><text class="empty-label">暂无固定的闪念</text></view
-              ><scroll-view v-else scroll-y class="list-scroll"
+              ><template #actions><DashboardAction label="新增闪念" @click="addThought" /></template><view v-if="thoughts.length === 0" class="empty-state ui-pad-card"
+                ><AppIcon name="ant-design:inbox-outlined" :size="32" color="#8b8f99" /><text class="empty-label" :class="themeClass('empty-label')">暂无固定的闪念</text></view
+              ><scroll-view v-else scroll-y :show-scrollbar="false" class="list-scroll"
                 ><view
                   v-for="thought in thoughts"
                   :key="thought.id"
-                  class="list-row thought-row"
-                  ><image
-                    class="pin"
-                    src="/static/pin.png"
-                    mode="aspectFit"
-                  /><text class="thought-text">{{
+                  class="list-row thought-row ui-pad-sm" role="button" :aria-label="'编辑闪念'" @click="openThought(thought)"
+                  ><text class="thought-text" :class="themeClass('thought-text')">{{
                     thought.hiddenContent ? '内容已隐藏' : thought.content
                   }}</text
-                  ><text class="list-date">{{
-                    shortDate(thought.createTime || '')
+                  ><text class="list-date ui-ml-section">{{
+                    (thought.createTime || '').slice(5, 10)
                   }}</text></view
                 ></scroll-view
               ></DashboardSection
@@ -584,44 +644,33 @@ function trendLines(points) {
               states.exercise.error ||
               exercise.days.length
             "
-            class="section-cell"
+            class="section-cell ui-pad-xs"
             ><DashboardSection
               title="运动"
+              icon="mdi:run"
+              compact
+              flush-top
+              :height="sectionHeight('exercise')"
               :loading="states.exercise.loading && !refreshing"
               :error="states.exercise.error"
               @refresh="loadSection('exercise')"
-              ><scroll-view scroll-y class="list-scroll"
+              ><template #actions><DashboardAction label="新增运动" @click="addExercise" /></template><scroll-view scroll-y :show-scrollbar="false" class="list-scroll exercise-scroll" :lower-threshold="40" @scrolltolower="maybeLoadMore('exercise')" @touchstart="startCardSwipe('exercise', $event)" @touchend="finishCardSwipe('exercise', $event)"
                 ><view
                   v-for="day in exercise.days"
                   :key="day.date"
                   class="exercise-day"
-                  ><view class="exercise-date"
-                    ><text class="day-label">{{ day.date.slice(5) }}</text
-                    ><text class="weekday">{{ weekday(day.date) }}</text></view
                   ><view
-                    v-for="item in day.items"
+                    v-for="(item, itemIndex) in day.items"
                     :key="item.exerciseTypeId"
                     class="exercise-item"
-                    ><view class="exercise-chip"
-                      ><text
-                        class="exercise-value"
-                        :style="{ color: item.color || '#3b82f6' }"
-                        >{{ item.typeLabel }} {{ item.count }}</text
-                      ><text
-                        v-if="item.deltaCount != null"
-                        class="exercise-delta"
-                        :style="{ color: item.color || '#3b82f6' }"
-                        >{{
-                          item.deltaCount > 0
-                            ? '↑ +' + item.deltaCount
-                            : item.deltaCount < 0
-                              ? '↓ ' + item.deltaCount
-                              : '= 0'
-                        }}</text
-                      ></view
+                    ><view class="exercise-date"><text v-if="itemIndex === 0" class="day-label" :class="themeClass('day-label')">{{ day.date.slice(5) }}</text><text v-if="itemIndex === 0" class="weekday">{{ weekday(day.date) }}</text></view>
+                    <view class="exercise-details">
+                      <view class="exercise-main"><CategoryIcon :icon="item.icon || 'mdi:run'" :size="14" :color="item.color || '#5b8ff9'" /><text class="exercise-name" :class="themeClass('exercise-name')">{{ item.typeLabel }}</text><text class="exercise-count" :class="themeClass('exercise-count')">{{ item.count }}</text></view>
+                      <text v-if="item.deltaCount != null" class="exercise-delta" :class="item.deltaCount > 0 ? 'delta-up' : item.deltaCount < 0 ? 'delta-down' : ''">{{ item.deltaCount > 0 ? '↑ +' + item.deltaCount : item.deltaCount < 0 ? '↓ ' + item.deltaCount : '—' }}</text>
+                    </view
                     ><view
                       v-if="item.trend && item.trend.length"
-                      class="trend"
+                      class="trend ui-ml-section"
                       role="img"
                       :aria-label="
                         item.typeLabel +
@@ -639,7 +688,7 @@ function trendLines(points) {
                         }"
                       ></view
                       ><view
-                        v-for="(point, index) in trendPoints(item.trend)"
+                        v-for="(point, index) in trendPoints(item.trend).slice(-1)"
                         :key="index"
                         class="trend-dot"
                         :style="{
@@ -648,75 +697,61 @@ function trendLines(points) {
                           backgroundColor: item.color || '#3b82f6',
                         }"
                       ></view></view></view></view
-                ><button
-                  v-if="exercise.hasMore"
-                  role="button"
-                  class="load-more"
-                  :disabled="moreExercise"
-                  :loading="moreExercise"
-                  @click="loadMore('exercise')"
-                >
-                  {{
-                    moreErrors.exercise
-                      ? '加载失败，重试更多运动'
-                      : '加载更多运动'
-                  }}
-                </button></scroll-view
+                > <view v-if="moreExercise || moreErrors.exercise" class="pagination-status">
+                  <view v-if="moreExercise" class="pagination-spinner" role="status" aria-label="正在加载更多运动" />
+                  <button v-else role="button" class="pagination-retry" aria-label="加载失败，重试更多运动" @click="loadMore('exercise')"><CategoryIcon icon="lucide:rotate-cw" :size="16" :color="isDark ? '#a9bfff' : '#5879ce'" /></button>
+                </view></scroll-view
               ></DashboardSection
             ></view
           >
-          <view v-if="githubBound" class="section-cell"
+          <view v-if="githubBound" class="section-cell ui-pad-xs"
             ><DashboardSection
               title="最近提交"
+              icon="simple-icons:github"
+              :height="sectionHeight('commits')"
               :loading="states.commits.loading && !refreshing"
               :error="states.commits.error"
               @refresh="loadSection('commits')"
-              ><view v-if="commits.length === 0" class="empty-state"
-                ><text class="empty-label">暂无最近提交</text></view
-              ><scroll-view v-else scroll-y class="list-scroll"
+              ><view v-if="commits.length === 0" class="empty-state ui-pad-card"
+                ><text class="empty-label" :class="themeClass('empty-label')">暂无最近提交</text></view
+              ><scroll-view v-else scroll-y :show-scrollbar="false" class="list-scroll commits-scroll" :lower-threshold="40" @scrolltolower="maybeLoadMore('commits')" @touchstart="startCardSwipe('commits', $event)" @touchend="finishCardSwipe('commits', $event)"
                 ><view
                   v-for="(commit, index) in commits"
                   :key="commit.id || index"
                   class="commit-row"
                   ><view class="commit-top"
-                    ><text class="repo-label">{{ commit.repo }}</text
-                    ><text class="list-date">{{
+                    ><text class="repo-label" :class="themeClass('repo-label')">{{ commit.repo }}</text
+                    ><text class="list-date ui-ml-section">{{
                       shortDate(commit.date)
                     }}</text></view
-                  ><text class="commit-message">{{
+                  ><text class="commit-message" :class="themeClass('commit-message')">{{
                     commit.message
                   }}</text></view
-                ><button
-                  v-if="hasMoreCommits"
-                  role="button"
-                  class="load-more"
-                  :disabled="moreCommits"
-                  :loading="moreCommits"
-                  @click="loadMore('commits')"
-                >
-                  {{
-                    moreErrors.commits
-                      ? '加载失败，重试更多提交'
-                      : '加载更多提交'
-                  }}
-                </button></scroll-view
+                > <view v-if="moreCommits || moreErrors.commits" class="pagination-status">
+                  <view v-if="moreCommits" class="pagination-spinner" role="status" aria-label="正在加载更多提交" />
+                  <button v-else role="button" class="pagination-retry" aria-label="加载失败，重试更多提交" @click="loadMore('commits')"><CategoryIcon icon="lucide:rotate-cw" :size="16" :color="isDark ? '#a9bfff' : '#5879ce'" /></button>
+                </view></scroll-view
               ></DashboardSection
             ></view
           >
         </view>
       </view></scroll-view
     >
+    <TimeRecordEditor v-if="timeEditor" :record-id="timeEditor.recordId" @close="closeTimeEditor" />
   </view>
 </template>
 
-<style scoped>
-.time-add-button { display: flex; flex-direction: row; align-items: center; justify-content: center; min-width: 44px; height: 44px; line-height: 44px; padding: 0 10px; margin: 0; border: 0; border-radius: 22px; background-color: transparent; }
-.time-elapsed { color: #71717a; font-size: 13px; margin-right: 4px; }
-.time-add-symbol { color: #8b8f99; font-size: 20px; }
+<style scoped lang="scss">
+@use '../../styles/spacing.scss';
+@use '../../styles/spacing-tokens' as *;
 .time-record { padding: 0; margin: 0; border: 0; background-color: transparent; text-align: left; line-height: 20px; }
-@media (prefers-color-scheme: dark) { .time-elapsed { color: #b4b4bd; } }
 /* #ifdef WEB || MP-WEIXIN */
-.time-add-button::after, .time-record::after { border: 0; }
+.task-check::after, .time-record::after { border: 0; }
+/* #endif */
+/* #ifdef WEB */
+/* H5 的实际滚动节点在内置组件内部，避免滚到底后把手势传给整页。 */
+.exercise-scroll :deep(.uni-scroll-view),
+.commits-scroll :deep(.uni-scroll-view) { overscroll-behavior-y: contain; }
 /* #endif */
 .dashboard-page {
   flex: 1;
@@ -728,20 +763,27 @@ function trendLines(points) {
   height: 0;
 }
 .dashboard-content {
-  width: 100%;
-  max-width: 1600px;
-  align-self: center;
-  padding: 10px;
-  padding-bottom: 28px;
+
+
+
+
+
 }
 .overview-grid,
 .section-grid {
   flex-direction: row;
   flex-wrap: wrap;
+  align-self: stretch;
+  margin-left: -$space-detail;
+  margin-right: -$space-detail;
+}
+.overview-cell,
+.section-cell {
+  box-sizing: border-box;
 }
 .overview-cell {
   width: 50%;
-  padding: 4px;
+
 }
 .overview-card {
   display: flex;
@@ -750,13 +792,14 @@ function trendLines(points) {
   width: 100%;
   height: 88px;
   margin: 0;
-  padding: 12px;
+
   background-color: #ffffff;
-  border: 1px solid #e4e4e7;
-  border-radius: 12px;
+  border: 1px solid #e8e8ed;
+  border-radius: 14px;
   justify-content: space-between;
   position: relative;
   text-align: left;
+  overflow: hidden;
 }
 .card-progress {
   position: absolute;
@@ -764,7 +807,27 @@ function trendLines(points) {
   left: 0;
   width: 100%;
   height: 2px;
-  background-color: #7196ee;
+  overflow: hidden;
+}
+.card-progress-bar {
+  width: 35%;
+  height: 100%;
+  background-image: linear-gradient(90deg, transparent, #7196ee, transparent);
+  background-color: transparent;
+  animation: card-progress-slide 1.1s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+@keyframes card-progress-slide {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(386%);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .card-progress-bar {
+    animation-duration: 2s;
+  }
 }
 .placeholder-card {
   justify-content: center;
@@ -787,7 +850,7 @@ function trendLines(points) {
   width: 18px;
   height: 18px;
   flex-shrink: 0;
-  margin-right: 8px;
+  margin-right: $space-inline;
 }
 .stat-title {
   color: #3f3f46;
@@ -798,7 +861,7 @@ function trendLines(points) {
   text-overflow: ellipsis;
 }
 .stat-value {
-  margin-left: 6px;
+  margin-left: $space-fieldLabel;
   max-width: 50%;
   color: #27272a;
   font-weight: 700;
@@ -817,14 +880,13 @@ function trendLines(points) {
   flex-shrink: 1;
 }
 .stat-total {
-  margin-left: 4px;
+  margin-left: $space-detail;
 }
 .section-cell {
   width: 100%;
-  padding: 4px;
 }
 .section-grid {
-  margin-top: 4px;
+
 }
 .subtle,
 .empty-label {
@@ -836,25 +898,25 @@ function trendLines(points) {
   flex: 1;
   align-items: center;
   justify-content: center;
-  padding: 20px;
+
 }
 .empty-symbol {
   color: #b3b3bb;
   font-size: 32px;
-  margin-bottom: 8px;
+
 }
 .time-layout {
   flex: 1;
+  min-height: 0;
   flex-direction: row;
   align-items: center;
-  justify-content: center;
-  padding: 8px 12px 16px;
 }
 .timeline-labels {
-  width: 18px;
-  height: 100%;
+  width: 14px;
+  height: 164px;
+  flex-shrink: 0;
   align-items: center;
-  margin-right: 10px;
+  margin-right: $space-detail;
 }
 .axis-label {
   color: #a1a1aa;
@@ -874,9 +936,15 @@ function trendLines(points) {
   width: 8px;
   min-height: 1px;
 }
+.donut-stage {
+  flex: 1;
+  min-width: 0;
+  align-items: center;
+  justify-content: center;
+}
 .donut {
-  width: 132px;
-  height: 132px;
+  width: 176px;
+  height: 176px;
   position: relative;
   flex-shrink: 0;
   align-items: center;
@@ -884,67 +952,117 @@ function trendLines(points) {
 }
 .donut-ring {
   position: absolute;
-  width: 112px;
-  height: 112px;
-  top: 10px;
-  left: 10px;
-  border: 18px solid #c9c9cc;
-  border-radius: 60px;
+  width: 108px;
+  height: 108px;
+  top: 34px;
+  left: 34px;
+  border: 19px solid #c9c9cc;
+  border-radius: 54px;
 }
 .donut-arm {
   position: absolute;
-  top: 10px;
-  left: 10px;
-  width: 112px;
-  height: 112px;
+  top: 34px;
+  left: 34px;
+  width: 108px;
+  height: 108px;
   align-items: center;
 }
 .donut-segment {
   width: 4px;
-  height: 18px;
+  height: 19px;
 }
 .donut-total {
   color: #3f3f46;
   font-size: 14px;
   font-weight: 600;
 }
-.recent-times {
-  flex: 1;
-  margin-left: 12px;
-  max-width: 150px;
-  justify-content: center;
+.donut-annotation {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 176px;
+  height: 176px;
+  pointer-events: none;
 }
-.time-record {
-  margin-bottom: 9px;
+.donut-leader {
+  position: absolute;
+  height: 1px;
+  transform-origin: left center;
 }
-.time-record-title {
-  flex-direction: row;
-  align-items: center;
-}
-.color-dot {
-  width: 5px;
-  height: 5px;
-  border-radius: 3px;
-  flex-shrink: 0;
-  margin-right: 5px;
-}
-.record-name {
+.donut-label {
+  position: absolute;
+  width: 32px;
   color: #52525b;
-  font-size: 11px;
+  font-size: 10px;
+  line-height: 12px;
+}
+.donut-label-left { left: 0; align-items: flex-end; text-align: right; }
+.donut-label-right { right: 0; align-items: flex-start; }
+.donut-label-name {
+  max-width: 100%;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.record-time {
-  color: #a1a1aa;
+.donut-label-name, .donut-label-duration {
   font-size: 10px;
-  margin-left: 10px;
-  margin-top: 2px;
+  line-height: 12px;
+  white-space: nowrap;
+}
+.donut-label-dark { color: #d0d0d6; }
+.recent-times {
+  width: 112px;
+  height: 100%;
+  min-height: 0;
+  flex-shrink: 0;
+}
+.recent-time-list {
+  min-height: 100%;
+  align-items: flex-end;
+  justify-content: center;
+}
+.time-record {
+  display: flex;
+  width: 100%;
+  height: 44px;
+  flex-shrink: 0;
+  flex-direction: row;
+  align-items: center;
+  justify-content: flex-end;
+  text-align: right;
+  font-size: 11px;
+  font-family: monospace;
+  line-height: 20px;
+}
+.record-clock { flex-shrink: 0; }
+.record-duration { flex-shrink: 0; margin-left: $space-detail; }
+.record-clock, .record-duration, .record-name {
+  font-size: 11px;
+  line-height: 20px;
+  color: inherit;
+  white-space: nowrap;
+}
+.record-name {
+  min-width: 0;
+  max-width: 44px;
+  flex-shrink: 1;
+  margin-left: $space-detail;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+@media (max-width: 374px) {
+  .time-layout { flex-wrap: wrap; }
+  .timeline-labels { height: 148px; }
+  .donut-stage { height: 164px; }
+  .donut { transform: scale(0.94); }
+  .recent-times { height: $space-controlMin * 2; width: 100%; margin-left: 0; }
+  .recent-time-list { flex-direction: row; flex-wrap: wrap; }
+  .time-record { width: 50%; justify-content: center; }
 }
 .quick-grid {
   flex-direction: row;
   flex-wrap: wrap;
-  padding: 8px;
 }
 .quick-link {
   display: flex;
@@ -952,127 +1070,67 @@ function trendLines(points) {
   line-height: 18px;
   width: 20%;
   margin: 0;
-  padding: 10px 2px;
+  min-height: $space-controlMin;
+  padding: $space-inline $space-micro;
   border: 0;
   border-radius: 8px;
   background-color: transparent;
   align-items: center;
 }
-.quick-icon {
-  width: 23px;
-  height: 23px;
-}
+.quick-platform { font-size: 10px; line-height: 16px; color: #8b8f99; margin-top: $space-micro; }
 .quick-title {
   color: #52525b;
-  font-size: 11px;
-  margin-top: 4px;
+  font-size: 12px;
+  line-height: 18px;
+  margin-top: $space-detail;
 }
+.quick-scroll,
 .list-scroll {
   flex: 1;
+  min-height: 0;
   height: 100%;
 }
-.list-row {
-  padding: 10px 14px;
-}
-.thought-row,
-.task-row {
-  flex-direction: row;
-  align-items: flex-start;
-}
-.pin {
-  width: 15px;
-  height: 18px;
-  flex-shrink: 0;
-  margin-right: 8px;
-}
-.thought-text {
-  flex: 1;
-  color: #3f3f46;
-  font-size: 12px;
-  line-height: 19px;
-}
-.list-date {
-  color: #92929b;
-  font-size: 10px;
-  margin-left: 8px;
-}
-.task-check {
-  color: #909097;
-  margin-right: 8px;
-  font-size: 18px;
-}
-.task-copy {
-  flex: 1;
-}
-.body-text {
-  color: #3f3f46;
-  font-size: 12px;
-  line-height: 19px;
-}
-.completed {
-  text-decoration: line-through;
-  color: #92929b;
-}
-.tag {
-  align-self: flex-start;
-  background-color: #f4f4f5;
-  color: #71717a;
-  border-radius: 4px;
-  padding: 2px 6px;
-  font-size: 10px;
-  margin-top: 4px;
-}
-.exercise-day {
-  padding: 8px 14px;
-}
-.exercise-date {
-  flex-direction: row;
-  align-items: center;
-  margin-bottom: 4px;
-}
-.day-label {
-  font-size: 12px;
-  font-weight: 600;
-  color: #52525b;
-}
-.weekday {
-  font-size: 10px;
-  color: #92929b;
-  margin-left: 5px;
-}
-.exercise-item {
-  flex-direction: row;
-  align-items: center;
-  justify-content: space-between;
-  margin-top: 3px;
-}
-.exercise-chip {
-  flex-direction: row;
-  align-items: center;
-  background-color: #f3f6fb;
-  border-radius: 12px;
-  padding: 3px 8px;
-}
-.exercise-value {
-  font-size: 11px;
-  font-weight: 600;
-}
-.exercise-delta {
-  font-size: 10px;
-  margin-left: 8px;
-}
+.list-row {  min-height: 56px; }
+.thought-row, .task-row { flex-direction: row; align-items: center; }
+.thought-row { padding: $space-detail $space-inline; min-height: 32px; }
+.task-row { padding: $space-detail $space-inline; }
+.task-check { display: flex; align-items: center; justify-content: center; flex-shrink: 0; width: 44px; height: 44px; margin: 0 $space-micro 0 (-$space-inline); padding: 0; border: 0; background-color: transparent; line-height: 44px; }
+.task-copy { flex: 1; min-width: 0; min-height: 44px; justify-content: center; }
+.task-main { flex-direction: row; align-items: center; }
+.task-priority { flex-shrink: 0; border-radius: 4px; padding: $space-hairline $space-detail; margin-right: $space-inline; font-size: 10px; line-height: 18px; color: #ffffff; }
+.priority-high { background-color: #dc5968; }
+.priority-medium { background-color: #cc8736; }
+.priority-low { background-color: #9299a6; }
+.thought-text, .body-text { flex: 1; min-width: 0; color: #3f3f46; font-size: 13px; line-height: 21px; }
+.thought-text { overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.list-date { flex-shrink: 0; color: #92929b; font-size: 10px; line-height: 18px;  }
+.completed { text-decoration: line-through; opacity: 0.6; }
+.tag { align-self: flex-start; max-width: 100%; background-color: #f4f4f5; color: #71717a; border-radius: 4px; padding: 0 $space-fieldLabel; font-size: 10px; line-height: 18px; margin-top: $space-tight; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.exercise-day { padding: 0; }
+.exercise-item { min-height: 40px; padding: $space-tight 0; flex-direction: row; align-items: center; }
+.exercise-date { width: 64px; flex-shrink: 0; margin-right: $space-inline; flex-direction: row; align-items: baseline; }
+.day-label { font-size: 11px; line-height: 18px; color: #71717a; }
+.weekday { margin-left: $space-detail; font-size: 10px; line-height: 16px; color: #92929b; }
+.exercise-details { flex: 1; min-width: 0; flex-direction: row; align-items: center; }
+.exercise-main { flex-direction: row; align-items: center; min-width: 0; flex-shrink: 1; }
+.exercise-name { margin-left: $space-fieldLabel; min-width: 0; flex-shrink: 1; color: #52525b; font-size: 12px; line-height: 20px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.exercise-count { flex-shrink: 0; color: #27272a; font-size: 13px; font-weight: 600; line-height: 20px; margin-left: $space-fieldLabel; }
+.exercise-delta { flex-shrink: 0; color: #92929b; font-size: 10px; line-height: 16px; margin-left: $space-inline; }
+.delta-up { color: #319d77; }
+.delta-down { color: #e26279; }
 .trend {
   position: relative;
   width: 64px;
-  height: 26px;
-  margin-left: 12px;
+  height: 28px;
+  flex-shrink: 0;
+
   overflow: visible;
 }
 .trend-line {
   position: absolute;
   height: 1px;
   transform-origin: left center;
-  opacity: 0.65;
+  opacity: 0.85;
 }
 .trend-dot {
   position: absolute;
@@ -1080,8 +1138,13 @@ function trendLines(points) {
   height: 3px;
   border-radius: 2px;
 }
+.pagination-status { height: 44px; flex-shrink: 0; align-items: center; justify-content: center; }
+.pagination-spinner { width: 14px; height: 14px; border: 2px solid #a9bfff; border-top-color: transparent; border-radius: 7px; animation: pagination-spin 0.8s linear infinite; }
+@keyframes pagination-spin { to { transform: rotate(360deg); } }
+.pagination-retry { display: flex; align-items: center; justify-content: center; width: 44px; height: 44px; margin: 0; padding: 0; border: 0; background-color: transparent; }
 .commit-row {
-  padding: 10px 14px;
+  min-height: 68px;
+  padding: $space-inline $space-inline;
 }
 .commit-top {
   flex-direction: row;
@@ -1091,26 +1154,29 @@ function trendLines(points) {
 .repo-label {
   color: #52525b;
   font-size: 12px;
-  font-weight: 500;
+  font-weight: 600;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
   flex: 1;
 }
 .commit-message {
   color: #71717a;
-  font-size: 11px;
-  line-height: 18px;
-  margin-top: 2px;
+  font-size: 12px;
+  line-height: 19px;
+  margin-top: $space-tight;
 }
-.load-more,
 .text-button {
   background-color: transparent;
   border: 0;
   color: #5879ce;
   font-size: 12px;
-  padding: 8px;
+
   margin: 0;
 }
 .global-error {
-  padding: 8px 12px;
+  padding: $space-inline $space-section;
   flex-direction: row;
   align-items: center;
   justify-content: space-between;
@@ -1122,92 +1188,106 @@ function trendLines(points) {
 }
 @media (max-width: 480px) {
   .dashboard-content {
-    padding: 4px;
+
   }
   .overview-card {
-    padding: 10px;
+
     height: 82px;
   }
   .stat-title {
     font-size: 12px;
   }
   .stat-icon {
-    margin-right: 5px;
+    margin-right: $space-detail;
   }
 }
 @media (min-width: 768px) {
+  .overview-cell { width: 25%; }
+  .thought-text, .body-text, .repo-label { font-size: 14px; }
+  .commit-message { font-size: 13px; line-height: 20px; }
+  .list-date { font-size: 11px; }
+  .task-copy { flex-direction: row; align-items: center; }
+  .task-main { flex: 1; min-width: 0; }
+  .tag { align-self: center; max-width: 72px; margin-top: 0; margin-left: $space-inline; }
   .section-cell {
     width: 50%;
   }
 }
-@media (min-width: 1024px) {
+@media (min-width: 1400px) {
+  .time-record, .record-clock, .record-duration, .record-name { font-size: 12px; }
+}
+@media (min-width: 1200px) {
+  /* 内容最大宽度下三列卡片较窄，为圆环标签与记录保留各自空间。 */
+  .donut { transform: scale(0.8); }
+  .recent-times { width: 100px; }
   .dashboard-content {
-    padding: 12px;
+
   }
   .overview-cell {
     width: 20%;
-    padding: 6px;
+    flex-grow: 1;
+
   }
   .overview-card {
     height: 94px;
   }
   .section-cell {
     width: 33.3333%;
-    padding: 6px;
+
   }
 }
-@media (prefers-color-scheme: dark) {
-  .dashboard-page {
+
+  .dashboard-page-dark {
     background-color: #111215;
   }
-  .overview-card {
+  .overview-card-dark {
     background-color: #1c1e22;
     border-color: #303238;
   }
-  .stat-title,
-  .stat-value,
-  .donut-total,
-  .quick-icon {
+  .stat-title-dark,
+  .stat-value-dark,
+  .donut-total-dark {
     color: #eeeeef;
   }
-  .home-label {
+  .home-label-dark {
     color: #93b0ff;
   }
-  .stat-caption,
-  .stat-total,
-  .empty-label {
+  .stat-caption-dark,
+  .stat-total-dark,
+  .empty-label-dark {
     color: #9c9ca6;
   }
-  .body-text,
-  .thought-text,
-  .quick-title,
-  .record-name,
-  .day-label,
-  .repo-label {
+  .body-text-dark,
+  .thought-text-dark,
+  .quick-title-dark,
+  .record-name-dark,
+  .day-label-dark,
+  .exercise-name-dark,
+  .exercise-count-dark,
+  .repo-label-dark {
     color: #d0d0d6;
   }
-  .timeline,
-  .tag,
-  .cancel-button,
-  .exercise-chip {
+  .timeline-dark,
+  .tag-dark,
+  .cancel-button-dark {
     background-color: #292d35;
   }
-  .donut-ring {
+  .donut-ring-dark {
     border-color: #555960;
   }
-  .commit-message {
+  .commit-message-dark {
     color: #a6a6b0;
   }
-  .failure-text {
+  .failure-text-dark {
     color: #f7a3a3;
   }
-}
+
 /* #ifdef WEB || MP-WEIXIN */
 .tool-button::after,
 .overview-card::after,
 .quick-link::after,
 .text-button::after,
-.load-more::after,
+.pagination-retry::after,
 .cancel-button::after,
 .confirm-button::after {
   border: 0;

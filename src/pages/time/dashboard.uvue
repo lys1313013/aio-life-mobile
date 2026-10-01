@@ -1,0 +1,243 @@
+<script setup lang="ts">
+import { computed, ref } from 'vue';
+import { onShow, onUnload } from '@dcloudio/uni-app';
+import PageHeader from '../../components/PageHeader.uvue';
+import MobilePage from '../../components/MobilePage.uvue';
+import MobileButton from '../../components/MobileButton.uvue';
+import PageState from '../../components/PageState.uvue';
+import FormField from '../../components/FormField.uvue';
+import TimeStatistics from '../../components/TimeStatistics.uvue';
+import MiniChart from '../../components/MiniChart.uvue';
+import { request } from '../../services/api.ts';
+import { restoreSession, session } from '../../services/session.ts';
+import { todayDate } from '../../services/dashboard.ts';
+import { getPeriodRecords } from '../../services/time.ts';
+import {
+  categoryPath,
+  matchesCategories,
+  recordMinutes,
+  shiftDate,
+  periodRange,
+} from '../../services/time-format.ts';
+import { durationLabel } from '../../services/dashboard-format.ts';
+import { themeClass } from '../../services/theme.ts';
+import { createLatestTask } from '../../services/mobile-ui.ts';
+const date = ref(todayDate()),
+  mode = ref('week'),
+  selected = ref<string[]>([]),
+  records = ref<any[]>([]),
+  previous = ref<any[]>([]),
+  categories = ref<any[]>([]),
+  loading = ref(false),
+  refreshing = ref(false),
+  error = ref(''),
+  revision = ref(0);
+const task = createLatestTask();
+let active = true;
+const modes = [
+  { label: '日', value: 'day' },
+  { label: '周', value: 'week' },
+  { label: '月', value: 'month' },
+];
+const range = computed(() => periodRange(date.value, mode.value));
+const cards = computed(() =>
+  categories.value
+    .filter(
+      (category) =>
+        category.isTrackTime === 1 &&
+        category.isEnabled !== 0 &&
+        matchesCategories(category.id, selected.value, categories.value),
+    )
+    .map((category) => {
+      const sum = (rows) =>
+        rows
+          .filter((row) => matchesCategories(row.categoryId, [category.id], categories.value))
+          .reduce((value, row) => value + recordMinutes(row), 0);
+      const current = sum(records.value),
+        before = sum(previous.value);
+      return {
+        id: category.id,
+        name: categoryPath(category.id, categories.value),
+        duration: durationLabel(current),
+        current,
+        before,
+        difference: current - before,
+      };
+    }),
+);
+onUnload(() => {
+  active = false;
+  task.invalidate();
+});
+onShow(() => {
+  restoreSession();
+  if (!session.token) {
+    uni.reLaunch({ url: '/pages/login/index' });
+    return;
+  }
+  load();
+});
+async function load(refresh = false) {
+  const generation = task.begin(),
+    token = session.token;
+  loading.value = true;
+  refreshing.value = refresh;
+  error.value = '';
+  const currentDate = date.value,
+    currentMode = mode.value;
+  try {
+    const [categoryRows, current, prev] = await Promise.all([
+      request('/timeTrackerCategory/all'),
+      getPeriodRecords(currentDate, currentMode),
+      getPeriodRecords(shiftDate(currentDate, -1, currentMode), currentMode),
+    ]);
+    if (!Array.isArray(categoryRows) || !Array.isArray(current) || !Array.isArray(prev))
+      throw Error('统计数据异常');
+    if (active && task.isCurrent(generation) && token === session.token) {
+      categories.value = categoryRows;
+      records.value = current;
+      previous.value = prev;
+      revision.value++;
+    }
+  } catch (reason) {
+    if (active && task.isCurrent(generation) && token === session.token)
+      error.value = reason.message || '加载失败';
+  } finally {
+    if (active && task.isCurrent(generation)) {
+      loading.value = false;
+      refreshing.value = false;
+    }
+  }
+}
+function setMode(value) {
+  mode.value = value;
+  load();
+}
+function setDate(value) {
+  date.value = value;
+  load();
+}
+function move(delta) {
+  date.value = shiftDate(date.value, delta, mode.value);
+  load();
+}
+function toggle(id) {
+  selected.value = selected.value.includes(id)
+    ? selected.value.filter((value) => value !== id)
+    : [...selected.value, id];
+}
+</script>
+<template>
+  <view class="time-dashboard-page"
+    ><PageHeader title="时间看板" back @back="uni.navigateBack()" /><MobilePage
+      :refreshing="refreshing"
+      @refresh="load(true)"
+      ><view class="time-dashboard-actions ui-toolbar"
+        ><MobileButton
+          v-for="item in modes"
+          :key="item.value"
+          :label="item.label"
+          :variant="mode === item.value ? 'primary' : 'quiet'"
+          @click="setMode(item.value)" /><MobileButton
+          label="上一时段"
+          icon="ant-design:left-outlined"
+          variant="quiet"
+          @click="move(-1)" /><MobileButton
+          label="下一时段"
+          icon="ant-design:right-outlined"
+          variant="quiet"
+          @click="move(1)" /></view
+      ><FormField label="日期" kind="date" :model-value="date" @update:model-value="setDate" /><text
+        class="time-dashboard-range"
+        >{{ range.start }} — {{ range.end }}</text
+      ><view class="time-dashboard-actions ui-toolbar"
+        ><MobileButton
+          label="全部分类"
+          :variant="!selected.length ? 'primary' : 'quiet'"
+          @click="selected = []" /><MobileButton
+          v-for="category in categories"
+          :key="category.id"
+          :label="categoryPath(category.id, categories)"
+          :variant="selected.includes(category.id) ? 'primary' : 'quiet'"
+          @click="toggle(category.id)" /></view
+      ><PageState :loading="loading" :error="error" :empty="!records.length" @retry="load()"
+        ><view class="time-dashboard-cards ui-row"
+          ><view
+            v-for="card in cards"
+            :key="card.id"
+            class="time-dashboard-card ui-card"
+            :class="themeClass('time-dashboard-card')"
+            ><text class="time-dashboard-name">{{ card.name }}</text
+            ><text class="time-dashboard-value">{{ card.duration }}</text
+            ><text class="time-dashboard-diff">{{
+              card.difference === 0
+                ? '与上期相同'
+                : (card.difference > 0 ? '↑ ' : '↓ ') + durationLabel(Math.abs(card.difference))
+            }}</text></view
+          ></view
+        ><MiniChart
+          v-if="cards.length"
+          label="追踪分类与上期对比"
+          :labels="cards.map((card) => card.name)"
+          :series="[
+            { name: '上期', color: '#94a3b8', values: cards.map((card) => card.before) },
+            { name: '本期', color: '#427bea', values: cards.map((card) => card.current) },
+          ]"
+          kind="bar"
+          unit="分钟" /><TimeStatistics
+          :records="records"
+          :categories="categories"
+          :selected="selected"
+          :date="date"
+          :mode="mode"
+          :revision="revision" /></PageState></MobilePage
+  ></view>
+</template>
+<style scoped lang="scss">
+@use '../../styles/spacing.scss';
+@use '../../styles/spacing-tokens' as *;
+.time-dashboard-page {
+  height: 100%;
+  flex: 1;
+  min-height: 0;
+}
+.time-dashboard-actions {
+  flex-direction: row;
+  flex-wrap: wrap;
+
+
+}
+.time-dashboard-range {
+  color: #808692;
+  font-size: 13px;
+}
+.time-dashboard-cards {
+  flex-direction: row;
+  flex-wrap: wrap;
+
+}
+.time-dashboard-card {
+
+  border-radius: 16px;
+  background-color: #ffffff;
+  color: #27272a;
+  min-width: 150px;
+  flex: 1;
+
+}
+.time-dashboard-card-dark {
+  background-color: #1c1e22;
+  color: #eeeeef;
+}
+.time-dashboard-name {
+  font-size: 14px;
+}
+.time-dashboard-value {
+  font-size: 24px;
+  font-weight: 600;
+}
+.time-dashboard-diff {
+  font-size: 13px;
+  color: #808692;
+}
+</style>

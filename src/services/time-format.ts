@@ -169,3 +169,63 @@ export function elapsedSinceRecord(records, nowMinutes) {
   const last = [...records].sort((a, b) => b.startTime - a.startTime)[0]
   return Math.max(0, nowMinutes - last.endTime - 1)
 }
+
+export function matchesCategories(id, selected, categories) {
+  return (
+    selected.length === 0 ||
+    selected.some((value) => categoryMatches(id, value, categories))
+  )
+}
+
+// 默认归并一级分类；筛选后显示明细，父子同时选中只统计一次。
+export function distributionStats(records, categories, selected = []) {
+  const projected = records
+    .filter((r) => matchesCategories(r.categoryId, selected, categories))
+    .map((r) => {
+      let id = r.categoryId
+      const seen = []
+      while (selected.length === 0 && !seen.includes(id)) {
+        seen.push(id)
+        const parent = categories.find(
+          (c) => c.id === categories.find((c) => c.id === id)?.parentId,
+        )
+        if (!parent) break
+        id = parent.id
+      }
+      return { ...r, categoryId: id }
+    })
+  return categoryStats(projected, categories)
+}
+
+export function trendPeriods(date, mode) {
+  // 从周期首日移动，避免 31 日经短月连续夹紧导致边界漂移。
+  const anchor = periodRange(date, mode).start
+  return Array.from({ length: 10 }, (_, index) =>
+    periodRange(shiftDate(anchor, index - 9, mode), mode),
+  )
+}
+
+export function periodStatistics(
+  records,
+  categories,
+  selected,
+  periods,
+  average = false,
+) {
+  return periods.map((period) => {
+    const all = records.filter(
+      (r) => r.date >= period.start && r.date <= period.end,
+    )
+    const divisor = average
+      ? Math.max(1, new Set(all.map((r) => r.date)).size)
+      : 1
+    const segments = distributionStats(all, categories, selected).map(
+      (item) => ({ ...item, minutes: item.minutes / divisor }),
+    )
+    return {
+      ...period,
+      segments,
+      minutes: segments.reduce((sum, item) => sum + item.minutes, 0),
+    }
+  })
+}

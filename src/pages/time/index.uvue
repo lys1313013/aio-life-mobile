@@ -1,26 +1,72 @@
 <script setup lang="ts">
+import AppIcon from '../../components/AppIcon.uvue'
+import SecondaryUnlock from "../../components/SecondaryUnlock.uvue";
+import { themeClass } from '../../services/theme.ts'
 import { useRefreshTheme } from '../../services/refresh-theme.ts'
 const refreshTheme = useRefreshTheme()
 import { takeRecordChange } from '../../services/time-changes.ts'
 import { nextTick, computed, ref } from 'vue'
 import { onShow, onHide } from '@dcloudio/uni-app'
 import PageHeader from '../../components/PageHeader.uvue'
+import FloatingActionButton from '../../components/FloatingActionButton.uvue'
+import AdaptiveModal from '../../components/AdaptiveModal.uvue'
+import CategoryIcon from '../../components/CategoryIcon.uvue'
+import TimeRecordCards from '../../components/TimeRecordCards.uvue'
+import TimeStatistics from '../../components/TimeStatistics.uvue'
+import TimeTimeline from '../../components/TimeTimeline.uvue'
+import TimeRecordEditor from '../../components/TimeRecordEditor.uvue'
 import { todayDate } from '../../services/dashboard.ts'
 import type { Category, TimeRecord } from '../../services/dashboard.ts'
 import { getCategories, getPeriodRecords } from '../../services/time.ts'
 import {
   categoryPath,
   categoryMatches,
-  categoryStats,
+  matchesCategories,
   periodRange,
   shiftDate,
   recordMinutes,
 } from '../../services/time-format.ts'
-import { clockLabel, durationLabel } from '../../services/dashboard-format.ts'
+import { durationLabel } from '../../services/dashboard-format.ts'
 import { restoreSession, session } from '../../services/session.ts'
 
 const date = ref(todayDate())
 const mode = ref('day')
+const showFilters = ref(false)
+const selectedCategories = ref<string[]>([])
+const draftCategories = ref<string[]>([])
+let savedView = 'timeline'
+try {
+  savedView =
+    uni.getStorageSync('time-tracker-view-mode') === 'card'
+      ? 'card'
+      : 'timeline'
+} catch (_) {
+  /* 默认时间轴 */
+}
+const viewMode = ref(savedView)
+const revision = ref(0)
+function selectView(value: string) {
+  viewMode.value = value
+  try {
+    uni.setStorageSync('time-tracker-view-mode', value)
+  } catch (_) {
+    /* 存储不可用时仍可切换视图 */
+  }
+}
+function openFilters() {
+  draftCategories.value = [...selectedCategories.value]
+  showFilters.value = true
+}
+function toggleFilter(id: string) {
+  draftCategories.value = draftCategories.value.includes(id)
+    ? draftCategories.value.filter((value) => value !== id)
+    : [...draftCategories.value, id]
+}
+function applyFilters() {
+  selectedCategories.value = [...draftCategories.value]
+  showFilters.value = false
+}
+const editor = ref<{ recordId: string; initialDate: string } | null>(null)
 const modeOptions = [
   { key: 'day', label: '日' },
   { key: 'week', label: '周' },
@@ -28,29 +74,38 @@ const modeOptions = [
 ]
 const loading = ref(false),
   refreshing = ref(false)
-const errorText = ref(''),
-  selectedCategory = ref('')
+const errorText = ref('')
 const categories = ref<Category[]>([]),
   records = ref<TimeRecord[]>([]),
   previous = ref<TimeRecord[]>([])
 const range = computed(() => periodRange(date.value, mode.value))
-const filters = computed(() => [
-  { id: '', name: '全部分类' },
-  ...categories.value.map((c) => ({
-    id: c.id,
-    name: categoryPath(c.id, categories.value),
-  })),
-])
-const filterIndex = computed(() =>
-  Math.max(
-    0,
-    filters.value.findIndex((c) => c.id === selectedCategory.value),
-  ),
-)
 const filtered = computed(() =>
   records.value.filter((r) =>
-    categoryMatches(r.categoryId, selectedCategory.value, categories.value),
+    matchesCategories(r.categoryId, selectedCategories.value, categories.value),
   ),
+)
+const filterLabel = computed(() =>
+  selectedCategories.value.length === 0
+    ? '全部分类'
+    : selectedCategories.value.length === 1
+      ? categoryPath(selectedCategories.value[0], categories.value)
+      : selectedCategories.value.length + ' 个分类',
+)
+const comparisons = computed(() =>
+  categories.value
+    .filter((c) => c.isTrackTime === 1 && c.isEnabled !== 0)
+    .map((c) => {
+      const sum = (items: TimeRecord[]) =>
+        items
+          .filter((r) => categoryMatches(r.categoryId, c.id, categories.value))
+          .reduce((total, r) => total + recordMinutes(r), 0)
+      return {
+        id: c.id,
+        name: categoryPath(c.id, categories.value),
+        minutes: sum(records.value),
+        diff: sum(records.value) - sum(previous.value),
+      }
+    }),
 )
 const total = computed(() =>
   filtered.value.reduce((sum, r) => sum + recordMinutes(r), 0),
@@ -58,7 +113,8 @@ const total = computed(() =>
 const unrecorded = computed(() =>
   Math.max(
     0,
-    1440 - records.value.reduce((sum, r) => sum + recordMinutes(r), 0),
+    range.value.days * 1440 -
+      records.value.reduce((sum, r) => sum + recordMinutes(r), 0),
   ),
 )
 const recordedDays = computed(
@@ -67,39 +123,6 @@ const recordedDays = computed(
 const average = computed(() =>
   Math.round(total.value / Math.max(1, recordedDays.value)),
 )
-const difference = computed(
-  () =>
-    total.value -
-    previous.value
-      .filter((r) =>
-        categoryMatches(r.categoryId, selectedCategory.value, categories.value),
-      )
-      .reduce((sum, r) => sum + recordMinutes(r), 0),
-)
-const stats = computed(() => categoryStats(filtered.value, categories.value))
-const groups = computed(() => {
-  const days: { date: string; minutes: number; entries: any[] }[] = []
-  for (const record of [...filtered.value].sort(
-    (a, b) =>
-      (b.date || '').localeCompare(a.date || '') || a.startTime - b.startTime,
-  )) {
-    const day = record.date || date.value
-    let group = days.find((g) => g.date === day)
-    if (!group) {
-      group = { date: day, minutes: 0, entries: [] }
-      days.push(group)
-    }
-    group.minutes += recordMinutes(record)
-    group.entries.push({
-      ...record,
-      name: categoryPath(record.categoryId, categories.value),
-      color:
-        categories.value.find((c) => c.id === record.categoryId)?.color ||
-        '#94a3b8',
-    })
-  }
-  return days
-})
 let generation = 0
 onShow(() => {
   restoreSession()
@@ -107,27 +130,47 @@ onShow(() => {
     uni.reLaunch({ url: '/pages/login/index' })
     return
   }
+  if (applyRecordChange()) return
+  load()
+})
+onHide(() => {
+  editor.value = null
+  showFilters.value = false
+  generation++
+  loading.value = false
+  refreshing.value = false
+})
+function applyRecordChange() {
   const change = takeRecordChange()
   if (change) {
     records.value = records.value.filter(
       (r) => r.id !== change.deletedId && r.id !== change.record?.id,
     )
+    previous.value = previous.value.filter(
+      (r) => r.id !== change.deletedId && r.id !== change.record?.id,
+    )
     const item = change.record
+    const previousRange = periodRange(
+      shiftDate(date.value, -1, mode.value),
+      mode.value,
+    )
+    if (
+      item?.date &&
+      item.date >= previousRange.start &&
+      item.date <= previousRange.end
+    )
+      previous.value.push(item)
     if (
       item?.date &&
       item.date >= range.value.start &&
       item.date <= range.value.end
     )
       records.value.push(item)
-    return
+    revision.value++
+    return true
   }
-  load()
-})
-onHide(() => {
-  generation++
-  loading.value = false
-  refreshing.value = false
-})
+  return false
+}
 async function load() {
   const requestId = ++generation,
     token = session.token
@@ -145,6 +188,7 @@ async function load() {
     categories.value = cats
     records.value = current
     previous.value = prev
+    revision.value++
   } catch (error) {
     if (requestId !== generation) return
     if (error.name === 'SessionExpiredError') {
@@ -186,18 +230,23 @@ function selectMode(value: string) {
   }
 }
 function edit(record: TimeRecord | null = null) {
-  uni.navigateTo({
-    url:
-      '/pages/time/edit?date=' +
-      date.value +
-      (record ? '&id=' + encodeURIComponent(record.id) : ''),
-  })
+  editor.value = {
+    recordId: record?.id || '',
+    initialDate: record?.date || date.value,
+  }
 }
-function goToday() { date.value = todayDate(); changePeriod() }
+function closeEditor() {
+  editor.value = null
+  applyRecordChange()
+}
+function goToday() {
+  date.value = todayDate()
+  changePeriod()
+}
 </script>
 
 <template>
-  <view class="tab-page">
+  <view class="tab-page" :class="themeClass('tab-page')">
     <PageHeader title="时迹" />
     <scroll-view
       scroll-y
@@ -208,76 +257,46 @@ function goToday() { date.value = todayDate(); changePeriod() }
       :refresher-default-style="refreshTheme"
       @refresherrefresh="pullRefresh"
     >
-      <view class="tab-content time-content">
-        <view class="period-tabs"
-          ><button
-            v-for="item in modeOptions"
-            :key="item.key"
-            role="button"
-            :aria-label="item.label + '视图'"
-            :aria-pressed="mode === item.key"
-            class="period-tab"
-            :class="{ 'period-active': mode === item.key }"
-            @click="selectMode(item.key)"
-          >
-            {{ item.label }}
-          </button></view
-        >
-        <view class="date-switch">
-          <button
-            role="button"
-            class="date-step"
-            :aria-label="mode === 'day' ? '前一天' : '上一周期'"
-            @click="moveDate(-1)"
-          >
-            ‹
-          </button>
-          <picker mode="date" :value="date" @change="selectDate"
-            ><view class="date-picker"
-              ><text class="date-value">{{
-                mode === 'day'
-                  ? date
-                  : mode === 'month'
-                    ? date.slice(0, 7)
-                    : range.start.slice(5) + ' — ' + range.end.slice(5)
-              }}</text></view
-            ></picker
-          >
-          <button
-            role="button"
-            class="date-step"
-            :aria-label="mode === 'day' ? '后一天' : '下一周期'"
-            @click="moveDate(1)"
-          >
-            ›
-          </button>
+      <view class="tab-content time-content ui-page-inset ui-tab-page-inset">
+        <scroll-view direction="horizontal" :scroll-x="true" :show-scrollbar="false" class="time-toolbar-scroll ui-section">
+        <view class="time-toolbar ui-toolbar" :class="{ 'time-toolbar-with-today': date !== todayDate() }">
+          <view class="toolbar-date-group ui-row">
+            <button role="button" class="filter-trigger" :class="[themeClass('filter-trigger'), { 'filter-active': selectedCategories.length > 0 }]" aria-label="筛选分类" :aria-description="filterLabel" @click="openFilters">
+              <AppIcon name="ant-design:filter-outlined" :color="selectedCategories.length ? '#5b8ff9' : '#8b8f99'" />
+              <view v-if="selectedCategories.length" class="filter-dot" />
+            </button>
+            <view class="date-switch" :class="themeClass('date-switch')">
+              <button role="button" class="date-step" :aria-label="mode === 'day' ? '前一天' : '上一周期'" @click="moveDate(-1)"><AppIcon name="ant-design:left-outlined" /></button>
+              <picker mode="date" :value="date" @change="selectDate"><view class="date-picker"><text class="date-value" :class="themeClass('date-value')">{{ date }}</text></view></picker>
+              <button role="button" class="date-step" :aria-label="mode === 'day' ? '后一天' : '下一周期'" @click="moveDate(1)"><AppIcon name="ant-design:right-outlined" /></button>
+            </view>
+          </view>
+          <view class="toolbar-view-group ui-row">
+            <view class="period-tabs" :class="themeClass('period-tabs')">
+              <button v-for="item in modeOptions" :key="item.key" role="button" :aria-label="item.label + '视图'" :aria-pressed="mode === item.key" class="period-tab" :class="[{ 'period-active': mode === item.key }, themeClass({ 'period-active': mode === item.key })]" @click="selectMode(item.key)">{{ item.label }}</button>
+            </view>
+            <view class="view-tabs" :class="themeClass('view-tabs')">
+              <button role="button" class="view-tab" :class="[{ 'view-active': viewMode === 'timeline' }, themeClass({ 'view-active': viewMode === 'timeline' })]" aria-label="时间轴视图" :aria-pressed="viewMode === 'timeline'" @click="selectView('timeline')"><AppIcon name="ant-design:clock-circle-outlined" :color="viewMode === 'timeline' ? '#5b8ff9' : '#8b8f99'" /></button>
+              <button role="button" class="view-tab" :class="[{ 'view-active': viewMode === 'card' }, themeClass({ 'view-active': viewMode === 'card' })]" aria-label="卡片视图" :aria-pressed="viewMode === 'card'" @click="selectView('card')"><AppIcon name="ant-design:appstore-outlined" :color="viewMode === 'card' ? '#5b8ff9' : '#8b8f99'" /></button>
+            </view>
+            <button v-if="date !== todayDate()" role="button" class="today-button" aria-label="回到今天" @click="goToday"><AppIcon name="ant-design:calendar-outlined" color="#5b8ff9" /></button>
+          </view>
         </view>
-        <view class="filter-row"
-          ><picker
-            :range="filters"
-            range-key="name"
-            :value="filterIndex"
-            @change="selectedCategory = filters[Number($event.detail.value)].id"
-            ><view class="filter-trigger"
-              ><text class="filter-label">{{ filters[filterIndex].name }}</text
-              ><text class="muted-text">⌄</text></view
-            ></picker
-          ><button
-            v-if="date !== todayDate()"
-            role="button"
-            class="today-button"
-            @click="goToday"
-          >
-            今天
-          </button></view
-        >
-        <view v-if="errorText" class="state-card"
-          ><text class="error-text" role="alert">{{ errorText }}</text
+        </scroll-view>
+        <view
+          v-if="errorText"
+          class="state-card"
+          :class="themeClass('state-card')"
+          ><text
+            class="error-text"
+            role="alert"
+            :class="themeClass('error-text')"
+            >{{ errorText }}</text
           ><button role="button" class="text-action" @click="load">
             重试时迹记录
           </button></view
         >
-        <view v-if="loading && !refreshing" class="loading-strip"
+        <view v-if="loading && !refreshing" class="loading-strip ui-pad-card"
           ><text class="muted-text">加载中…</text></view
         >
         <template
@@ -286,337 +305,223 @@ function goToday() { date.value = todayDate(); changePeriod() }
             (!errorText || records.length > 0)
           "
         >
-          <view class="time-total"
-            ><text class="muted-text">已记录</text
-            ><text class="total-value">{{ durationLabel(total) }}</text
-            ><text class="muted-text">{{ filtered.length }} 条记录</text
-            ><view class="summary-row"
-              ><text class="summary-text">{{
-                mode === 'day'
-                  ? '未记录 ' + durationLabel(unrecorded)
-                  : '记录日均 ' + durationLabel(average)
-              }}</text
-              ><text class="summary-text"
-                >较上{{ mode === 'day' ? '日' : mode === 'week' ? '周' : '月' }}
-                {{ difference >= 0 ? '+' : '−'
-                }}{{ durationLabel(Math.abs(difference)) }}</text
-              ></view
-            ></view
-          >
-          <view v-if="stats.length" class="stats-card"
-            ><text class="section-label">时间分布</text
-            ><view v-for="item in stats" :key="item.id" class="stat-row"
-              ><view class="stat-heading"
-                ><text class="stat-name">{{ item.name }}</text
-                ><text class="muted-text">{{
-                  durationLabel(item.minutes)
-                }}</text></view
-              ><view class="stat-track"
-                ><view
-                  class="stat-fill"
-                  :style="{
-                    width: (item.minutes / Math.max(1, total)) * 100 + '%',
-                    backgroundColor: item.color,
-                  }" /></view></view
-          ></view>
-          <view v-if="filtered.length === 0 && !errorText" class="state-card"
-            ><text class="empty-title">{{
-              selectedCategory ? '这个分类暂无记录' : '这段时间还没有记录'
+          <view class="time-layout ui-gap-md">
+          <view class="time-main-panel">
+          <TimeTimeline
+            v-if="viewMode === 'timeline'"
+            :key="mode + date"
+            :records="records"
+            :selected="selectedCategories"
+            :categories="categories"
+            :start-date="range.start"
+            :days="range.days"
+            @edit="edit"
+          />
+          <TimeRecordCards
+            v-else
+            :records="filtered"
+            :show-date="mode !== 'day'"
+            :categories="categories"
+            @edit="edit"
+          />
+          </view>
+          <view class="time-stats-panel">
+            <view class="summary-grid ui-row ui-mb-section">
+              <view class="summary-card ui-pad-card" :class="themeClass('summary-card')"><text class="summary-label">时长</text><text class="summary-value" :class="themeClass('summary-value')">{{ durationLabel(total) }}</text></view>
+              <view v-if="!selectedCategories.length" class="summary-card ui-pad-card" :class="themeClass('summary-card')"><text class="summary-label">空闲</text><text class="summary-value" :class="themeClass('summary-value')">{{ durationLabel(unrecorded) }}</text></view>
+              <view v-else-if="mode !== 'day'" class="summary-card ui-pad-card" :class="themeClass('summary-card')"><text class="summary-label">平均</text><text class="summary-value" :class="themeClass('summary-value')">{{ durationLabel(average) }}</text></view>
+              <view v-for="item in comparisons" :key="item.id" class="summary-card tracked-item ui-pad-card" :class="themeClass('summary-card')">
+                <view class="summary-heading"><text class="summary-label">{{ item.name }}</text><text class="summary-diff" :class="{ 'diff-up': item.diff > 0, 'diff-down': item.diff < 0 }">{{ item.diff === 0 ? '−' : (item.diff > 0 ? '↑ ' : '↓ ') + durationLabel(Math.abs(item.diff)) }}</text></view>
+                <text class="summary-value" :class="themeClass('summary-value')">{{ durationLabel(item.minutes) }}</text>
+              </view>
+            </view>
+            <TimeStatistics :records="records" :categories="categories" :selected="selectedCategories" :date="date" :mode="mode" :revision="revision" />
+          </view>
+          </view>
+          <view
+            v-if="filtered.length === 0 && !errorText"
+            class="state-card"
+            :class="themeClass('state-card')"
+            ><text class="empty-title" :class="themeClass('empty-title')">{{
+              selectedCategories.length
+                ? '这个分类暂无记录'
+                : '这段时间还没有记录'
             }}</text
             ><text class="muted-text">点击右下角，记下你的时间</text></view
-          >
-          <view v-for="group in groups" :key="group.date" class="day-group"
-            ><view v-if="mode !== 'day'" class="day-heading"
-              ><text class="section-label">{{ group.date }}</text
-              ><text class="muted-text">{{
-                durationLabel(group.minutes)
-              }}</text></view
-            ><view class="record-list"
-              ><button
-                v-for="item in group.entries"
-                :key="item.id"
-                role="button"
-                :aria-label="'编辑记录 ' + (item.title || item.name)"
-                class="record-row"
-                @click="edit(item)"
-              >
-                <view
-                  class="record-dot"
-                  :style="{ backgroundColor: item.color }"
-                /><view class="record-main"
-                  ><text class="record-name">{{ item.title || item.name }}</text
-                  ><text v-if="item.title" class="muted-text">{{
-                    item.name
-                  }}</text
-                  ><text class="muted-text"
-                    >{{ clockLabel(item.startTime) }} –
-                    {{ clockLabel(item.endTime) }}</text
-                  ></view
-                ><text class="record-duration">{{
-                  durationLabel(recordMinutes(item))
-                }}</text
-                ><text class="record-chevron">›</text>
-              </button></view
-            ></view
           >
         </template>
       </view>
     </scroll-view>
-    <view class="add-anchor"
-      ><button
-        role="button"
-        class="add-record"
-        aria-label="新增时迹"
-        :disabled="loading || !!errorText"
-        @click="edit()"
-      >
-        ＋
-      </button></view
+    <SecondaryUnlock />
+    <FloatingActionButton
+      label="新增时迹"
+      :disabled="loading || !!errorText"
+      @click="edit()"
+    />
+    <AdaptiveModal
+      v-if="showFilters"
+      label="筛选分类"
+      @close="showFilters = false"
     >
+      <view class="filter-heading ui-mb-sm"
+        ><text class="filter-title" :class="themeClass('filter-title')"
+          >分类筛选</text
+        ><button
+          role="button"
+          class="today-button"
+          @click="draftCategories = []"
+        >
+          重置
+        </button></view
+      >
+      <text v-if="!categories.length" class="muted-text">暂无分类</text>
+      <button
+        v-for="item in categories"
+        :key="item.id"
+        role="button"
+        class="filter-option ui-px-card ui-py-sm"
+        :class="{ 'filter-option-active': draftCategories.includes(item.id) }"
+        :aria-label="'筛选 ' + categoryPath(item.id, categories)"
+        :aria-pressed="draftCategories.includes(item.id)"
+        @click="toggleFilter(item.id)"
+      >
+        <CategoryIcon :icon="item.icon" :color="item.color" :size="22" /><text
+          class="filter-option-name ui-ml-section"
+          :class="themeClass('filter-option-name')"
+          >{{ categoryPath(item.id, categories) }}</text
+        ><AppIcon v-if="draftCategories.includes(item.id)" name="ant-design:check-outlined" color="#5b8ff9" />
+      </button>
+      <view class="filter-footer ui-mt-section"
+        ><button
+          role="button"
+          class="filter-cancel ui-mr-section"
+          @click="showFilters = false"
+        >
+          取消</button
+        ><button role="button" class="filter-apply" @click="applyFilters">
+          应用筛选
+        </button></view
+      >
+    </AdaptiveModal>
+    <TimeRecordEditor
+      v-if="editor"
+      :record-id="editor.recordId"
+      :initial-date="editor.initialDate"
+      @close="closeEditor"
+    />
   </view>
 </template>
 
-<style scoped>
-.time-content {
-  padding-bottom: 96px;
+<style scoped lang="scss">
+@use '../../styles/spacing.scss';
+@use '../../styles/spacing-tokens' as *;
+.time-content { max-width: $space-contentMax; }
+.time-toolbar-scroll { width: 100%; }
+// Eight 44px controls plus the date field; scrolling keeps every touch target reachable.
+.time-toolbar { width: 100%; min-width: 8 * $space-controlMin + 80px + 3 * $space-inline; flex-direction: row; flex-wrap: nowrap; align-items: center; justify-content: flex-end; margin-bottom: 0; }
+.time-toolbar-with-today { min-width: 9 * $space-controlMin + 80px + 4 * $space-inline; }
+.toolbar-date-group, .toolbar-view-group { flex-direction: row; flex-wrap: nowrap; flex-shrink: 0; align-items: center; }
+.date-switch, .period-tabs, .view-tabs { flex-direction: row; flex-shrink: 0; align-items: center; background-color: #ffffff; border-radius: 6px; }
+.date-step, .period-tab, .view-tab, .filter-trigger, .today-button { display: flex; flex-direction: row; align-items: center; justify-content: center; flex-shrink: 0; width: 44px; height: 44px; line-height: 44px; margin: 0; padding: 0; border: 0; border-radius: 6px; background-color: transparent; color: #8b8f99; font-size: 14px; }
+.date-picker { width: 80px; box-sizing: border-box; align-items: center; padding: $space-section $space-micro; }
+.date-value { font-size: 12px; color: #27272a; }
+.filter-trigger { position: relative; background-color: #ffffff; }
+.filter-active { background-color: #edf3ff; }
+.filter-dot { position: absolute; top: 8px; right: 8px; width: 5px; height: 5px; border-radius: 3px; background-color: #5b8ff9; }
+.period-active, .view-active { color: #427bea; background-color: #edf3ff; box-shadow: inset 0 0 0 1px #91b4ff; }
+.time-layout {  }
+.time-main-panel, .time-stats-panel { min-width: 0; }
+.summary-grid { flex-direction: row; flex-wrap: wrap;   }
+.summary-card { flex: 1; min-width: 100px; height: 86px;  background-color: #ffffff; border-radius: 8px; justify-content: space-between; }
+.summary-heading { flex-direction: row; flex-wrap: wrap; justify-content: space-between; gap: $space-micro; }
+.summary-label { font-size: 11px; color: #8b8f99; }
+.summary-value { font-size: 18px; font-weight: 600; line-height: 32px; color: #27272a; text-align: center; }
+.summary-diff { font-size: 10px; color: #8b8f99; }
+.diff-up { color: #e05260; }
+.diff-down { color: #20a574; }
+.loading-strip {  align-items: center; }
+.date-value-dark, .summary-value-dark { color: #eeeeef; }
+.date-switch-dark, .period-tabs-dark, .view-tabs-dark, .filter-trigger-dark, .summary-card-dark { background-color: #1c1e22; }
+.period-active-dark, .view-active-dark { background-color: #28344e; color: #91b4ff; }
+@media (min-width: 1025px) {
+  .time-layout { flex-direction: row; align-items: flex-start; }
+  .time-main-panel { flex: 1; }
+  .time-stats-panel { flex: 1; }
 }
-.period-tabs {
+.filter-heading {
   flex-direction: row;
-  background-color: #e5e8ee;
-  padding: 4px;
-  border-radius: 12px;
-  margin-bottom: 12px;
-}
-.period-tab {
-  flex: 1;
-  height: 44px;
-  line-height: 44px;
-  padding: 0;
-  margin: 0;
-  border: 0;
-  border-radius: 9px;
-  color: #71717a;
-  background-color: transparent;
-  font-size: 14px;
-}
-.period-active {
-  background-color: #ffffff;
-  color: #4e7ee3;
-  font-weight: 600;
-}
-.date-switch {
-  flex-direction: row;
+  align-items: center;
   justify-content: space-between;
-  align-items: center;
+
 }
-.date-step {
-  width: 44px;
-  height: 44px;
-  line-height: 40px;
-  margin: 0;
-  padding: 0;
-  border: 0;
-  border-radius: 22px;
-  background-color: transparent;
-  font-size: 30px;
-  color: #71717a;
-}
-.date-picker {
-  align-items: center;
-  padding: 12px 16px;
-}
-.date-value {
+.filter-title {
   font-size: 17px;
   font-weight: 600;
   color: #27272a;
 }
-.filter-row {
-  flex-direction: row;
-  justify-content: space-between;
-  align-items: center;
-  margin: 4px 0;
-}
-.filter-trigger {
-  flex-direction: row;
-  align-items: center;
-  min-height: 44px;
-  padding: 0 10px;
-}
-.filter-label {
-  color: #71717a;
-  font-size: 13px;
-  margin-right: 8px;
-}
-.today-button {
-  color: #5b8ff9;
-  font-size: 13px;
-  height: 44px;
-  line-height: 44px;
-  background-color: transparent;
-  margin: 0;
-  padding: 0 12px;
-  border: 0;
-}
-.time-total {
-  align-items: center;
-  padding: 12px 0 24px;
-}
-.total-value {
-  font-size: 38px;
-  line-height: 52px;
-  font-weight: 600;
-  color: #27272a;
-  margin: 4px 0;
-}
-.summary-row {
-  flex-direction: row;
-  margin-top: 12px;
-}
-.summary-text {
-  color: #8b8f99;
-  font-size: 12px;
-  margin: 0 8px;
-}
-.loading-strip {
-  padding: 10px;
-  align-items: center;
-}
-.stats-card {
-  padding: 20px;
-  border-radius: 16px;
-  background-color: #ffffff;
-  margin-bottom: 24px;
-}
-.section-label {
-  color: #52525b;
-  font-size: 14px;
-  font-weight: 600;
-}
-.stat-row {
-  margin-top: 16px;
-}
-.stat-heading {
-  flex-direction: row;
-  justify-content: space-between;
-  align-items: center;
-}
-.stat-name {
-  color: #71717a;
-  font-size: 13px;
-  flex: 1;
-  margin-right: 12px;
-}
-.stat-track {
-  height: 5px;
-  border-radius: 3px;
-  background-color: #f0f2f5;
-  margin-top: 8px;
-  overflow: hidden;
-}
-.stat-fill {
-  height: 5px;
-  border-radius: 3px;
-}
-.day-group {
-  margin-bottom: 20px;
-}
-.day-heading {
-  flex-direction: row;
-  justify-content: space-between;
-  margin: 0 4px 10px;
-}
-.record-list {
-  background-color: #ffffff;
-  border-radius: 16px;
-  padding: 0 16px;
-}
-.record-row {
+.filter-option {
   display: flex;
   flex-direction: row;
   align-items: center;
-  padding: 18px 0;
+  min-height: 48px;
+  width: 100%;
   margin: 0;
+
   border: 0;
+  border-radius: 10px;
   background-color: transparent;
   text-align: left;
   line-height: 22px;
 }
-.record-dot {
-  height: 8px;
-  width: 8px;
-  border-radius: 4px;
-  margin-right: 14px;
-  flex-shrink: 0;
+.filter-option-active {
+  background-color: rgba(78, 126, 227, 0.12);
 }
-.record-main {
+.filter-option-name {
   flex: 1;
-  min-width: 0;
-}
-.record-name {
-  color: #27272a;
-  font-size: 15px;
-  margin-bottom: 4px;
-}
-.record-duration {
   color: #52525b;
   font-size: 14px;
-  margin-left: 12px;
+
 }
-.record-chevron {
-  color: #b4b4bd;
-  margin-left: 10px;
-  font-size: 22px;
+.filter-check {
+  color: #4e7ee3;
+  width: 24px;
+  font-size: 18px;
+  text-align: right;
 }
-.add-anchor {
-  position: absolute;
-  bottom: 24px;
-  right: 24px;
-  border-radius: 28px;
+.filter-footer {
+  flex-direction: row;
+
 }
-.add-record {
-  width: 56px;
-  height: 56px;
-  line-height: 54px;
-  border-radius: 28px;
-  padding: 0;
-  margin: 0;
+.filter-cancel,
+.filter-apply {
+  flex: 1;
+  height: 44px;
+  line-height: 44px;
   border: 0;
-  color: #ffffff;
+  border-radius: 10px;
+  margin: 0;
+  font-size: 14px;
+}
+.filter-cancel {
+  background-color: transparent;
+  color: #8b8f99;
+
+}
+.filter-apply {
   background-color: #4e7ee3;
-  font-size: 30px;
-  box-shadow: 0 4px 16px rgba(78, 126, 227, 0.25);
+  color: #ffffff;
 }
-@media (prefers-color-scheme: dark) {
-  .date-value,
-  .total-value,
-  .record-name,
-  .section-label {
-    color: #eeeeef;
-  }
-  .record-duration,
-  .date-step,
-  .filter-label,
-  .stat-name {
-    color: #b4b4bd;
-  }
-  .record-list,
-  .stats-card,
-  .period-active {
-    background-color: #1c1e22;
-  }
-  .period-tabs,
-  .stat-track {
-    background-color: #282b32;
-  }
-  .period-active {
-    color: #8eb1fb;
-  }
-}
+.filter-title-dark, .filter-option-name-dark { color: #eeeeef; }
 /* #ifdef WEB || MP-WEIXIN */
+.date-step::after,
 .period-tab::after,
 .today-button::after,
-.record-row::after,
-.add-record::after {
+.stats-toggle::after,
+.filter-trigger::after,
+.view-tab::after,
+.filter-option::after,
+.filter-cancel::after,
+.filter-apply::after {
   border: 0;
 }
 /* #endif */

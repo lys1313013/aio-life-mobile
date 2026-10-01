@@ -1,6 +1,8 @@
 import { request } from './api.ts'
 
 export interface OverviewCard {
+  titleClickUrl?: string
+  iconClickUrl?: string
   type: string
   title: string
   totalTitle?: string
@@ -28,6 +30,7 @@ export interface Thought {
   createTime?: string
 }
 export interface WatchedTask {
+  taskId?: string
   id: string
   content: string
   taskName?: string
@@ -35,6 +38,7 @@ export interface WatchedTask {
   priority?: number
 }
 export interface ExerciseItem {
+  icon?: string
   exerciseTypeId: string
   typeLabel: string
   count: number
@@ -59,6 +63,7 @@ export interface Commit {
   commitUrl?: string
 }
 export interface Category {
+  icon?: string
   id: string
   name: string
   parentId?: string
