@@ -1,0 +1,120 @@
+<script setup lang="ts">
+import spacing from '../styles/spacing.json'
+import AppIcon from './AppIcon.uvue'
+import { themeClass } from '../services/theme.ts'
+const props = withDefaults(
+  defineProps<{
+    label?: string
+    disabled?: boolean
+    loading?: boolean
+    bottom?: number
+    right?: number
+  }>(),
+  { label: '新增', disabled: false, loading: false, bottom: spacing.page + spacing.inline, right: spacing.page + spacing.inline },
+)
+const emit = defineEmits(['click'])
+function activate() {
+  if (!props.disabled && !props.loading) emit('click')
+}
+</script>
+<template>
+  <view
+    class="floating-action-anchor"
+    :style="{ bottom: bottom + 'px', right: right + 'px' }"
+  >
+    <button
+      role="button"
+      class="floating-action"
+      :class="[
+        { 'floating-action-disabled': disabled || loading },
+        themeClass([
+          'floating-action',
+          { 'floating-action-disabled': disabled || loading },
+        ]),
+      ]"
+      hover-class="floating-action-pressed"
+      :hover-stay-time="100"
+      :aria-label="label"
+      :aria-busy="loading"
+      :disabled="disabled || loading"
+      :loading="loading"
+      @click="activate"
+    >
+      <AppIcon v-if="!loading" name="ant-design:plus-outlined" :size="24" color="#ffffff" />
+    </button>
+  </view>
+</template>
+<style scoped lang="scss">
+@use '../styles/spacing-tokens' as *;
+/* 放在页面滚动容器外；相对于已扣除原生 tabBar / 安全区的页面定位。 */
+.floating-action-anchor {
+  position: absolute;
+  z-index: 90;
+  width: 56px;
+  height: 56px;
+  border-radius: 28px;
+  overflow: visible;
+}
+.floating-action {
+  display: flex;
+  width: 56px;
+  height: 56px;
+  margin: 0;
+  padding: 0;
+  align-items: center;
+  justify-content: center;
+  border-radius: 28px;
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  color: #ffffff;
+  background-color: rgba(24, 144, 255, 0.45);
+  box-shadow:
+    0 4px 16px rgba(0, 0, 0, 0.15),
+    inset 0 1px 0 rgba(255, 255, 255, 0.2);
+  transition:
+    transform 0.16s,
+    box-shadow 0.16s;
+}
+.floating-action-pressed {
+  transform: scale(0.94);
+  box-shadow: 0 3px 10px rgba(47, 96, 204, 0.25);
+}
+.floating-action-disabled {
+  opacity: 0.45;
+}
+
+.floating-action-dark {
+  background-color: rgba(24, 144, 255, 0.45);
+  border-color: rgba(255, 255, 255, 0.22);
+  box-shadow:
+    0 4px 16px rgba(0, 0, 0, 0.25),
+    inset 0 1px 0 rgba(255, 255, 255, 0.14);
+}
+
+/* #ifdef WEB || MP-WEIXIN */
+.floating-action {
+  -webkit-backdrop-filter: blur(10px) saturate(160%);
+  backdrop-filter: blur(10px) saturate(160%);
+}
+.floating-action::after {
+  border: 0;
+}
+/* #endif */
+/* #ifdef WEB */
+.floating-action:focus-visible {
+  outline: 3px solid #93b4fc;
+  outline-offset: 4px;
+}
+/* #endif */
+@media (max-width: 1024px) {
+  .floating-action-anchor {
+    width: 48px;
+    height: 48px;
+    border-radius: 24px;
+  }
+  .floating-action {
+    width: 48px;
+    height: 48px;
+    border-radius: 24px;
+  }
+  }
+</style>

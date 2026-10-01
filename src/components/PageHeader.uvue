@@ -1,9 +1,14 @@
 <script setup lang="ts">
+import { onMounted, inject } from 'vue'
+import AppIcon from './AppIcon.uvue'
+import { refreshNativeTheme, themeClass } from '../services/theme.ts'
+onMounted(refreshNativeTheme)
 defineProps({
   title: { type: String, required: true },
   back: { type: Boolean, default: false },
 })
 defineEmits(['back'])
+const insidePageInset = inject('mobile-page-inset', false)
 let statusBarHeight = 0
 let navigationHeight = 48
 // #ifdef APP
@@ -18,23 +23,28 @@ navigationHeight =
 </script>
 
 <template>
-  <view class="page-navigation" :style="{ paddingTop: statusBarHeight + 'px' }">
-    <view class="navigation-row" :style="{ height: navigationHeight + 'px' }">
-      <text class="navigation-title">{{ title }}</text>
+  <view class="page-navigation" :style="{ paddingTop: statusBarHeight + 'px' }" :class="themeClass('page-navigation')">
+    <view class="navigation-row" :class="{ 'ui-header-inset': !insidePageInset }" :style="{ height: navigationHeight + 'px' }">
+      <text class="navigation-title" :class="themeClass('navigation-title')">{{ title }}</text>
       <button
         v-if="back"
         role="button"
         class="navigation-button"
+        hover-class="navigation-button-pressed"
         aria-label="返回"
         @click="$emit('back')"
       >
-        <text class="navigation-symbol">‹</text>
+        <view class="navigation-back-surface" :class="themeClass('navigation-back-surface')">
+          <AppIcon name="ant-design:left-outlined" :size="20" />
+        </view>
       </button>
     </view>
   </view>
 </template>
 
-<style scoped>
+<style scoped lang="scss">
+@use '../styles/spacing.scss';
+@use '../styles/spacing-tokens' as *;
 .page-navigation {
   flex-shrink: 0;
   background-color: #f0f2f5;
@@ -43,7 +53,7 @@ navigationHeight =
   flex-direction: row;
   align-items: center;
   position: relative;
-  padding: 0 16px;
+
 }
 .navigation-title {
   position: absolute;
@@ -56,35 +66,51 @@ navigationHeight =
   line-height: 32px;
 }
 .navigation-button {
+  display: flex;
+  flex-direction: row;
   width: 44px;
   height: 44px;
   line-height: 44px;
   margin: 0;
   padding: 0;
   border: 0;
-  border-radius: 16px;
+  border-radius: 22px;
   background-color: transparent;
   align-items: center;
   justify-content: center;
 }
-.navigation-symbol {
-  font-size: 24px;
-  color: #71717a;
+.navigation-back-surface {
+  display: flex;
+  width: 36px;
+  height: 36px;
+  border-radius: 18px;
+  background-color: #ffffff;
+  align-items: center;
+  justify-content: center;
 }
-@media (prefers-color-scheme: dark) {
-  .page-navigation {
+.navigation-button-pressed {
+  opacity: 0.65;
+  transform: scale(0.94);
+}
+
+  .page-navigation-dark {
     background-color: #111215;
   }
-  .navigation-title {
+  .navigation-title-dark {
     color: #eeeeef;
   }
-  .navigation-symbol {
-    color: #b4b4bd;
+  .navigation-back-surface-dark {
+    background-color: #292c32;
   }
-}
-/* #ifdef WEB || MP-WEIXIN */
+  /* #ifdef WEB || MP-WEIXIN */
 .navigation-button::after {
   border: 0;
+}
+/* #endif */
+/* #ifdef WEB */
+.navigation-button:focus-visible {
+  outline: 2px solid #93b4fc;
+  outline-offset: 2px;
 }
 /* #endif */
 </style>

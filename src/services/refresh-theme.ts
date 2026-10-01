@@ -1,12 +1,8 @@
-import { ref, onUnmounted } from 'vue'
+import { computed, nextTick } from 'vue'
+import { onShow } from '@dcloudio/uni-app'
+import { isDark, refreshNativeTheme } from './theme.ts'
 
-// 原生下拉指示器跟随系统主题，不依赖浏览器 DOM。
 export function useRefreshTheme() {
-  const style = ref(uni.getAppBaseInfo().theme === 'dark' ? 'white' : 'black')
-  function change(event) {
-    style.value = event.theme === 'dark' ? 'white' : 'black'
-  }
-  uni.onThemeChange(change)
-  onUnmounted(() => uni.offThemeChange(change))
-  return style
+  onShow(() => nextTick(refreshNativeTheme))
+  return computed(() => (isDark.value ? 'white' : 'black'))
 }

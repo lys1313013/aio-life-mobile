@@ -1,0 +1,239 @@
+<script setup lang="ts">
+import {
+  computed,
+  getCurrentInstance,
+  nextTick,
+  onMounted,
+  onUnmounted,
+  onUpdated,
+  ref,
+} from 'vue';
+import MobileButton from './MobileButton.uvue';
+import FormField from './FormField.uvue';
+import { themeClass } from '../services/theme.ts';
+import { chartGeometry } from '../services/mobile-ui.ts';
+const props = withDefaults(
+  defineProps<{
+    label: string;
+    labels: string[];
+    series: { name: string; color?: string; values: number[] }[];
+    kind?: string;
+    unit?: string;
+  }>(),
+  { kind: 'line', unit: '' },
+);
+const width = ref(280),
+  hidden = ref<string[]>([]),
+  selected = ref(0);
+const instance = getCurrentInstance();
+let active = true,
+  measuring = false;
+const palette = ['#427bea', '#e05260', '#20a574', '#e7a638', '#9560c6'];
+const visible = computed(() =>
+  props.series
+    .filter((item) => !hidden.value.includes(item.name))
+    .map((item, index) => ({
+      ...item,
+      color: /^#[\da-f]{6}$/i.test(item.color || '') ? item.color : palette[index % palette.length],
+    })),
+);
+const geometry = computed(() => {
+  try {
+    return { ...chartGeometry(props.labels, visible.value, width.value, 180), error: '' };
+  } catch (reason) {
+    return { min: 0, max: 1, zero: 180, series: [], error: reason.message };
+  }
+});
+const selection = computed(() => Math.min(selected.value, Math.max(0, props.labels.length - 1)));
+async function measure() {
+  if (!active || measuring) return;
+  measuring = true;
+  await nextTick();
+  uni
+    .createSelectorQuery()
+    .in(instance?.proxy)
+    .select('.mini-chart-plot')
+    .boundingClientRect((rect) => {
+      if (active && rect && !Array.isArray(rect) && rect.width > 0) width.value = rect.width;
+      measuring = false;
+    })
+    .exec();
+}
+onMounted(() => {
+  measure();
+  uni.onWindowResize(measure);
+});
+onUpdated(measure);
+onUnmounted(() => {
+  active = false;
+  uni.offWindowResize(measure);
+});
+function toggle(name) {
+  hidden.value = hidden.value.includes(name)
+    ? hidden.value.filter((value) => value !== name)
+    : [...hidden.value, name];
+}
+function barStyle(point, index, seriesIndex) {
+  const groupWidth = width.value / props.labels.length,
+    barWidth = Math.max(3, groupWidth / (visible.value.length + 1));
+  return {
+    left: index * groupWidth + seriesIndex * barWidth + barWidth / 2 + 'px',
+    top: Math.min(geometry.value.zero, point.y) + 'px',
+    height: Math.max(1, Math.abs(geometry.value.zero - point.y)) + 'px',
+    width: barWidth + 'px',
+    backgroundColor: visible.value[seriesIndex].color,
+  };
+}
+</script>
+<template>
+  <view class="mini-chart" :class="themeClass('mini-chart')" role="figure" :aria-label="label"
+    ><text class="mini-chart-title">{{ label }}</text
+    ><view class="mini-chart-legend"
+      ><MobileButton
+        v-for="item in series"
+        :key="item.name"
+        :label="item.name"
+        :variant="hidden.includes(item.name) ? 'quiet' : 'primary'"
+        @click="toggle(item.name)" /></view
+    ><text v-if="geometry.error" class="mini-chart-error" role="alert">{{ geometry.error }}</text
+    ><template v-else-if="labels.length"
+      ><view class="mini-chart-scale"
+        ><text>{{ geometry.max }}{{ unit }}</text
+        ><text>{{ geometry.min }}{{ unit }}</text></view
+      ><view class="mini-chart-plot"
+        ><view class="mini-chart-zero" :style="{ top: geometry.zero + 'px' }" /><view
+          v-for="(item, seriesIndex) in geometry.series"
+          :key="item.name"
+          class="mini-chart-series"
+          ><template v-if="kind === 'bar'"
+            ><view
+              v-for="(point, index) in item.points"
+              :key="index"
+              class="mini-chart-bar"
+              :style="barStyle(point, index, seriesIndex)" /></template
+          ><template v-else
+            ><view
+              v-for="(segment, index) in item.segments"
+              :key="index"
+              class="mini-chart-line"
+              :style="{
+                left: segment.left + 'px',
+                top: segment.top + 'px',
+                width: segment.length + 'px',
+                backgroundColor: item.color,
+                transform: 'rotate(' + segment.angle + 'deg)',
+              }" /><view
+              v-for="(point, index) in item.points"
+              :key="index"
+              class="mini-chart-dot"
+              :style="{
+                left: point.x - 3 + 'px',
+                top: point.y - 3 + 'px',
+                backgroundColor: item.color,
+              }" /></template></view></view
+      ><view class="mini-chart-axis"
+        ><text>{{ labels[0] }}</text
+        ><text>{{ labels[labels.length - 1] }}</text></view
+      ><FormField
+        label="查看数值"
+        kind="selector"
+        :model-value="labels[selection]"
+        :options="labels"
+        @update:model-value="(value) => (selected = labels.indexOf(value))"
+      /><view class="mini-chart-values"
+        ><text v-for="item in visible" :key="item.name" :style="{ color: item.color }"
+          >{{ item.name }} {{ item.values[selection] }}{{ unit }}</text
+        ></view
+      ></template
+    ><text v-else class="mini-chart-empty">暂无数据</text></view
+  >
+</template>
+<style scoped lang="scss">
+@use '../styles/spacing-tokens' as *;
+.mini-chart {
+  padding: $space-card;
+  border-radius: 16px;
+  background-color: #ffffff;
+  color: #27272a;
+  margin-bottom: $space-section;
+}
+.mini-chart-dark {
+  background-color: #1c1e22;
+  color: #eeeeef;
+}
+.mini-chart-title {
+  font-size: 15px;
+  font-weight: 600;
+}
+.mini-chart-legend {
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: $space-inline;
+  margin: $space-section 0;
+}
+.mini-chart-plot {
+  height: 180px;
+  width: 100%;
+  position: relative;
+  overflow: visible;
+}
+.mini-chart-series {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 180px;
+  overflow: visible;
+}
+.mini-chart-line {
+  position: absolute;
+  height: 2px;
+  transform-origin: left center;
+}
+.mini-chart-dot {
+  position: absolute;
+  width: 6px;
+  height: 6px;
+  border-radius: 3px;
+}
+.mini-chart-bar {
+  position: absolute;
+  border-radius: 3px;
+}
+.mini-chart-zero {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background-color: #a1a6b0;
+}
+.mini-chart-scale {
+  flex-direction: row;
+  justify-content: space-between;
+  font-size: 12px;
+  color: #808692;
+  margin-bottom: $space-inline;
+}
+.mini-chart-axis {
+  flex-direction: row;
+  justify-content: space-between;
+  font-size: 12px;
+  color: #808692;
+  margin: $space-inline 0 $space-modal;
+}
+.mini-chart-values {
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: $space-section;
+  font-size: 14px;
+}
+.mini-chart-error {
+  color: #e05260;
+  font-size: 13px;
+}
+.mini-chart-empty {
+  color: #808692;
+  font-size: 14px;
+  margin-top: $space-modal;
+}
+</style>

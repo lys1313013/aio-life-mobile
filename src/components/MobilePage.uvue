@@ -1,0 +1,60 @@
+<script setup lang="ts">
+import { onMounted, provide } from 'vue';
+import { session } from '../services/session.ts';
+import { themeClass } from '../services/theme.ts';
+import { useRefreshTheme } from '../services/refresh-theme.ts';
+import SecondaryUnlock from './SecondaryUnlock.uvue';
+provide('mobile-page-inset', true);
+const refreshIndicatorStyle = useRefreshTheme();
+const props = withDefaults(defineProps<{ refreshing?: boolean; requiresAuth?: boolean }>(), {
+  requiresAuth: true,
+});
+// 子组件页面生命周期不可靠；初次挂载检查，401由请求层统一处理。
+onMounted(() => {
+  if (props.requiresAuth && session.initialized && !session.token)
+    uni.reLaunch({ url: '/pages/login/index' });
+});
+const emit = defineEmits(['refresh']);
+</script>
+<template>
+  <view class="mobile-page" :class="themeClass('mobile-page')">
+    <scroll-view
+      class="mobile-page-scroll"
+      direction="vertical"
+      :scroll-y="true"
+      :refresher-enabled="true"
+      :refresher-triggered="!!refreshing"
+      :refresher-default-style="refreshIndicatorStyle"
+      @refresherrefresh="emit('refresh')"
+      ><view class="mobile-page-content ui-page-inset"><slot /></view
+    ></scroll-view>
+    <slot name="fixed" />
+    <SecondaryUnlock />
+  </view>
+</template>
+<style scoped lang="scss">
+@use '../styles/spacing.scss';
+@use '../styles/spacing-tokens' as *;
+.mobile-page {
+  flex: 1;
+  height: 100%;
+  min-height: 0;
+  position: relative;
+  background-color: #f0f2f5;
+}
+.mobile-page-dark {
+  background-color: #111215;
+}
+.mobile-page-scroll {
+  flex: 1;
+  height: 100%;
+  min-height: 0;
+}
+.mobile-page-content {
+
+
+
+
+
+}
+</style>

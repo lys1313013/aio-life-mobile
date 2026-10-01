@@ -1,0 +1,122 @@
+<script setup lang="ts">
+import { getCurrentInstance, nextTick, onMounted, onUpdated } from 'vue';
+import { themeClass } from '../services/theme.ts';
+import { pickerValue } from '../services/mobile-ui.ts';
+const props = withDefaults(
+  defineProps<{
+    label: string;
+    compact?: boolean;
+    stretch?: boolean;
+    modelValue?: string;
+    kind?: string;
+    options?: string[];
+    error?: string;
+    disabled?: boolean;
+    placeholder?: string;
+    password?: boolean;
+    inputType?: string;
+  }>(),
+  { modelValue: '', kind: 'text', options: () => [] },
+);
+const instance = getCurrentInstance();
+function syncWebLabel() {
+  // #ifdef WEB
+  nextTick(() => {
+    const root = instance?.proxy?.$el;
+    const input = root?.querySelector?.('input, textarea');
+    if (input) input.setAttribute('aria-label', props.label);
+  });
+  // #endif
+}
+onMounted(syncWebLabel);
+onUpdated(syncWebLabel);
+const emit = defineEmits(['update:modelValue']);
+function change(event) {
+  emit('update:modelValue', pickerValue(props.kind, event.detail.value, props.options));
+}
+</script>
+<template>
+  <view class="form-field ui-form-field" :class="[themeClass('form-field'), { 'ui-field-compact': compact, 'ui-field-stretch': stretch }]">
+    <text class="form-field-label ui-field-label">{{ label }}</text>
+    <slot>
+      <picker
+        v-if="kind === 'date' || kind === 'time' || kind === 'selector'"
+        :mode="kind"
+        :value="kind === 'selector' ? Math.max(0, options.indexOf(modelValue)) : modelValue"
+        :range="options"
+        :disabled="disabled"
+        :aria-label="label"
+        @change="change"
+        ><view class="form-field-input ui-input-inset" :class="themeClass('form-field-input')"
+          ><text>{{ modelValue || placeholder || '请选择' }}</text></view
+        ></picker
+      >
+      <textarea
+        v-else-if="kind === 'textarea'"
+        class="form-field-input ui-input-inset form-field-textarea ui-pad-card"
+        :class="themeClass('form-field-input')"
+        :value="modelValue"
+        :placeholder="placeholder"
+        :disabled="disabled"
+        :aria-label="label"
+        :maxlength="-1"
+        @input="change"
+        @blur="change"
+      />
+      <input
+        v-else
+        class="form-field-input ui-input-inset"
+        :class="themeClass('form-field-input')"
+        :value="modelValue"
+        :type="inputType || 'text'"
+        :password="password || kind === 'password'"
+        :placeholder="placeholder"
+        :disabled="disabled"
+        :aria-label="label"
+        @input="change"
+        @blur="change"
+      />
+    </slot>
+    <text v-if="error" class="form-field-error" role="alert">{{ error }}</text>
+  </view>
+</template>
+<style scoped lang="scss">
+@use '../styles/spacing.scss';
+@use '../styles/spacing-tokens' as *;
+.form-field {
+
+  color: #27272a;
+}
+.form-field-dark {
+  color: #eeeeef;
+}
+.form-field-label {
+  font-size: 14px;
+
+}
+.form-field-input {
+  min-height: $space-controlMin;
+
+  border-radius: 10px;
+  background-color: #ffffff;
+  border: 1px solid #d8dde4;
+  justify-content: center;
+  font-size: 15px;
+  color: #27272a;
+}
+.form-field-input-dark {
+  background-color: #292c32;
+  border-color: #454a54;
+  color: #eeeeef;
+}
+.form-field-textarea {
+  height: 120px;
+  width: 100%;
+
+}
+.form-field-error {
+  color: #e05260;
+  font-size: 13px;
+  margin-top: $space-fieldLabel;
+}
+</style>

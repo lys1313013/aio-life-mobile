@@ -1,0 +1,98 @@
+<script setup lang="ts">
+import { isDark, themeClass } from '../services/theme.ts';
+import AppIcon from './AppIcon.uvue';
+const props = withDefaults(
+  defineProps<{
+    label: string;
+    icon?: string;
+    loading?: boolean;
+    disabled?: boolean;
+    danger?: boolean;
+    variant?: string;
+  }>(),
+  { variant: 'primary' },
+);
+const emit = defineEmits(['click']);
+function activate() {
+  if (!props.loading && !props.disabled) emit('click');
+}
+</script>
+<template>
+  <button
+    role="button"
+    class="mobile-button"
+    :class="[
+      {
+        'mobile-button-quiet': variant === 'quiet',
+        'mobile-button-danger': danger,
+        'mobile-button-icon': !!icon,
+      },
+      themeClass([
+        'mobile-button',
+        { 'mobile-button-quiet': variant === 'quiet', 'mobile-button-danger': danger },
+      ]),
+    ]"
+    :aria-label="label"
+    :aria-busy="loading"
+    :aria-disabled="loading || disabled"
+    :loading="loading"
+    :disabled="loading || disabled"
+    @click="activate"
+  >
+    <AppIcon
+      v-if="icon && !loading"
+      :name="icon"
+      :size="20"
+      :color="danger || variant !== 'quiet' ? '#ffffff' : isDark ? '#e2e4e9' : '#52525b'"
+    />
+    <slot v-else-if="!icon">{{ label }}</slot>
+  </button>
+</template>
+<style scoped lang="scss">
+@use '../styles/spacing-tokens' as *;
+.mobile-button {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  min-height: $space-controlMin;
+  min-width: $space-controlMin;
+  padding: 0 $space-card;
+  margin: 0;
+  border-radius: 12px;
+  background-color: #427bea;
+  color: #ffffff;
+  font-size: 15px;
+  line-height: 44px;
+}
+.mobile-button-quiet {
+  background-color: #eef2f8;
+  color: #334155;
+}
+.mobile-button-danger {
+  background-color: #dc3545;
+  color: #ffffff;
+}
+.mobile-button-icon {
+  padding: 0;
+  width: 44px;
+  font-size: 22px;
+}
+.mobile-button-dark {
+  background-color: #315b9c;
+  color: #ffffff;
+}
+.mobile-button-quiet-dark {
+  background-color: #292c32;
+  color: #eeeeef;
+}
+.mobile-button-danger-dark {
+  background-color: #c94050;
+  color: #ffffff;
+}
+/* #ifdef WEB || MP-WEIXIN */
+.mobile-button::after {
+  border: 0;
+}
+/* #endif */
+</style>

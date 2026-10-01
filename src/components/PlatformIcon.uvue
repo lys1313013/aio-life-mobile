@@ -1,0 +1,62 @@
+<script setup lang="ts">
+import { computed } from 'vue'
+import CategoryIcon from './CategoryIcon.uvue'
+import { isDark } from '../services/theme.ts'
+const props = defineProps<{ platform: string }>()
+const icon = computed(() => {
+  if (props.platform === 'github') return 'simple-icons:github'
+  if (props.platform === 'leetcode') return 'platform:leetcode'
+  if (props.platform === 'douban') return 'simple-icons:douban'
+  if (props.platform === 'weread') return 'simple-icons:weread'
+  return 'lucide:link'
+})
+const color = computed(() => {
+  if (props.platform === 'douban') return '#ffffff'
+  if (props.platform === 'weread') return '#37a7ff'
+  return isDark.value ? '#eeeeef' : '#27272a'
+})
+</script>
+<template>
+  <view
+    class="platform-icon"
+    :class="{
+      'platform-douban': platform === 'douban',
+      'platform-weread': platform === 'weread'
+    }"
+  >
+    <image
+      v-if="platform === 'csdn' || platform === 'shanbay'"
+      class="platform-brand"
+      :src="'/static/platforms/' + platform + '.png'"
+      mode="aspectFit"
+    />
+    <CategoryIcon
+      v-else
+      :icon="icon"
+      :color="color"
+      :size="platform === 'douban' ? 20 : 28"
+    />
+  </view>
+</template>
+<style scoped>
+.platform-icon {
+  width: 28px;
+  height: 28px;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.platform-brand {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+}
+.platform-douban {
+  border-radius: 6px;
+  background-color: #00b51d;
+}
+.platform-weread {
+  border-radius: 6px;
+  background-color: #ffffff;
+}
+</style>

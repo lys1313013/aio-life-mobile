@@ -1,0 +1,156 @@
+<script setup lang="ts">
+import spacing from '../styles/spacing.json';
+import { getCurrentInstance, nextTick, onUnmounted, ref, watch } from 'vue';
+import MobileButton from './MobileButton.uvue';
+import { themeClass } from '../services/theme.ts';
+const props = withDefaults(
+  defineProps<{
+    label: string;
+    message?: string;
+    action: () => Promise<unknown>;
+    icon?: string;
+    danger?: boolean;
+  }>(),
+  { icon: 'ant-design:delete-outlined', danger: true },
+);
+const emit = defineEmits(['success']);
+const opened = ref(false);
+const busy = ref(false);
+const error = ref('');
+const left = ref(0);
+const width = ref(240);
+const top = ref(48);
+const panelHeight = ref(200);
+const instance = getCurrentInstance();
+let active = true;
+async function place() {
+  await nextTick();
+  if (!active || !opened.value) return;
+  uni.createSelectorQuery().in(instance?.proxy)
+    .select('.confirm-anchor').boundingClientRect()
+    .select('.confirm-panel').boundingClientRect()
+    .exec((rects) => {
+      if (!active || !opened.value) return;
+      const anchor = rects?.[0], panel = rects?.[1];
+      if (!anchor || !panel || !panel.height) return;
+      const viewport = uni.getWindowInfo();
+      left.value = Math.max(spacing.overlayInline, Math.min(anchor.left, viewport.windowWidth - spacing.overlayInline - width.value));
+      const below = anchor.top + anchor.height + spacing.detail;
+      const desired = below + panel.height <= viewport.windowHeight - spacing.overlayInline
+        ? below : anchor.top - panel.height - spacing.detail;
+      top.value = Math.max(spacing.overlayInline, Math.min(desired, viewport.windowHeight - panel.height - spacing.overlayInline));
+    });
+}
+watch(error, place);
+function open() {
+  if (busy.value) return;
+  error.value = '';
+  const info = uni.getWindowInfo();
+  const viewport = info.windowWidth;
+  panelHeight.value = Math.max(80, Math.min(200, info.windowHeight - spacing.overlayInline * 2));
+  width.value = Math.min(240, viewport - spacing.overlayInline * 2);
+  uni
+    .createSelectorQuery()
+    .in(instance?.proxy)
+    .select('.confirm-anchor')
+    .boundingClientRect((rect) => {
+      if (!active) return;
+      if (rect && !Array.isArray(rect)) {
+        left.value = Math.max(spacing.overlayInline, Math.min(rect.left, viewport - spacing.overlayInline - width.value));
+        top.value =
+          rect.top + rect.height + panelHeight.value + 44 <= info.windowHeight
+            ? rect.top + rect.height + spacing.detail
+            : Math.max(spacing.overlayInline, rect.top - panelHeight.value - 32);
+      }
+      opened.value = true;
+      place();
+    })
+    .exec();
+}
+async function confirm() {
+  if (busy.value) return;
+  busy.value = true;
+  error.value = '';
+  try {
+    const result = await props.action();
+    if (active) {
+      opened.value = false;
+      emit('success', result);
+    }
+  } catch (reason) {
+    if (active) error.value = reason instanceof Error ? reason.message : '操作失败，请重试';
+  } finally {
+    if (active) busy.value = false;
+  }
+}
+onUnmounted(() => {
+  active = false;
+});
+</script>
+<template>
+  <view class="confirm-anchor" :style="{ zIndex: opened ? 1200 : 0 }">
+    <slot :open="open" :busy="busy">
+      <MobileButton :label="label" :icon="icon" variant="quiet" :loading="busy" @click="open" />
+    </slot>
+    <view
+      v-if="opened"
+      class="confirm-panel ui-pad-card"
+      :class="themeClass('confirm-panel')"
+      :style="{ left: left + 'px', width: width + 'px', top: top + 'px' }"
+      role="dialog"
+      :aria-label="label"
+    >
+      <scroll-view direction="vertical" :scroll-y="true" :style="{ maxHeight: panelHeight + 'px' }">
+        <text class="confirm-message">{{ message || '确定' + label + '？' }}</text>
+        <text v-if="error" class="confirm-error ui-mt-sm" role="alert">{{ error }}</text>
+        <view class="confirm-actions ui-gap-sm ui-mt-section"
+          ><MobileButton
+            label="取消"
+            variant="quiet"
+            :disabled="busy"
+            @click="opened = false" /><MobileButton
+            label="确认"
+            :danger="danger"
+            :loading="busy"
+            @click="confirm"
+        /></view>
+      </scroll-view>
+    </view>
+  </view>
+</template>
+<style scoped lang="scss">
+@use '../styles/spacing.scss';
+@use '../styles/spacing-tokens' as *;
+.confirm-anchor {
+  position: relative;
+  overflow: visible;
+}
+.confirm-panel {
+  position: fixed;
+  top: 48px;
+  z-index: 120;
+
+  border-radius: 14px;
+  background-color: #ffffff;
+  color: #27272a;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.18);
+}
+.confirm-panel-dark {
+  background-color: #292c32;
+  color: #eeeeef;
+}
+.confirm-message {
+  font-size: 14px;
+}
+.confirm-error {
+  font-size: 13px;
+  color: #e05260;
+
+}
+.confirm-actions {
+  flex-direction: row;
+  justify-content: flex-end;
+
+
+}
+</style>

@@ -16,6 +16,12 @@ export function readResponse(statusCode, body) {
     throw new Error('服务返回异常，请稍后重试')
   }
   if (body.rscode !== '0') {
+    if (body.rscode === '2001' && typeof body.data?.menuPath === 'string') {
+      const error = new Error('需要二级密码验证')
+      error.name = 'SecondaryLockRequiredError'
+      error.menuPath = body.data.menuPath
+      throw error
+    }
     throw new Error(typeof body.result === 'string' && body.result.length > 0 ? body.result : '请求未完成，请重试')
   }
   return body.data
@@ -50,8 +56,11 @@ export function readUser(data) {
     id: data.id,
     username: typeof data.accountUsername === 'string' ? data.accountUsername : (typeof data.username === 'string' ? data.username : ''),
     name: data.nickname || data.realName || data.username || '朋友',
+    nickname: typeof data.nickname === 'string' ? data.nickname : '',
+    avatar: typeof data.avatar === 'string' ? data.avatar : '',
     email: typeof data.email === 'string' ? data.email : '',
     introduction: typeof data.introduction === 'string' ? data.introduction : '',
+    roles: Array.isArray(data.roles) ? data.roles.filter(role => typeof role === 'string') : [],
   }
 }
 

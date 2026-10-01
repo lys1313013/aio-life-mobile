@@ -1,0 +1,145 @@
+<script setup lang="ts">
+import AppIcon from './AppIcon.uvue'
+import { onUnmounted, ref, watch } from 'vue';
+import { authFileUrl } from '../services/attachments.ts';
+import { session } from '../services/session.ts';
+import { isDark } from '../services/theme.ts';
+const props = defineProps<{
+  fileId: string;
+  url: string;
+  title: string;
+  kind: string;
+}>();
+const source = ref(''),
+  loading = ref(false),
+  failed = ref(false);
+let generation = 0;
+function release(url: string) {
+  // #ifdef WEB
+  if (url.startsWith('blob:')) URL.revokeObjectURL(url);
+  // #endif
+}
+async function load() {
+  const current = ++generation;
+  release(source.value);
+  source.value = '';
+  failed.value = false;
+  loading.value = !!(props.fileId || props.url);
+  if (!loading.value) return;
+  try {
+    const url = props.fileId ? await authFileUrl(props.fileId) : props.url;
+    if (current !== generation) {
+      release(url);
+      return;
+    }
+    source.value = url;
+  } catch (_) {
+    if (current === generation) {
+      failed.value = true;
+      loading.value = false;
+    }
+  }
+}
+function imageError() {
+  failed.value = true;
+  loading.value = false;
+}
+watch(() => [props.fileId, props.url, session.token], load, {
+  immediate: true,
+});
+onUnmounted(() => {
+  generation++;
+  release(source.value);
+});
+</script>
+<template>
+  <view class="library-cover" :class="{ 'library-cover-dark': isDark }">
+    <image
+      v-if="source && !failed"
+      class="library-cover-image"
+      :src="source"
+      mode="aspectFill"
+      :aria-label="title + ' 封面'"
+      @load="loading = false"
+      @error="imageError"
+    />
+    <view v-if="!source || failed || loading" class="library-cover-fallback">
+      <AppIcon :name="kind === 'movie' ? 'lucide:clapperboard' : 'lucide:book-open'" :size="28" color="#8b8f99" />
+      <text class="library-cover-title">{{ title }}</text>
+      <text v-if="loading" class="library-cover-hint">加载中…</text>
+      <button
+        role="button"
+        v-if="failed"
+        class="library-cover-retry"
+        aria-label="重试封面"
+        @click.stop="load"
+        @keydown.stop
+      >
+<AppIcon name="ant-design:reload-outlined" />
+</button>
+    </view>
+  </view>
+</template>
+<style scoped lang="scss">
+@use '../styles/spacing-tokens' as *;
+.library-cover {
+  position: absolute;
+  left: 0;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  background-color: #e8ecf1;
+  color: #788698;
+}
+.library-cover-dark {
+  background-color: #252b34;
+  color: #a1afc0;
+}
+.library-cover-image {
+  width: 100%;
+  height: 100%;
+}
+.library-cover-fallback {
+  position: absolute;
+  left: 0;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  padding: $space-overlayBlock $space-inline $space-inline;
+  align-items: center;
+  justify-content: center;
+  gap: $space-inline;
+}
+.library-cover-symbol {
+  font-size: 24px;
+}
+.library-cover-title {
+  font-size: 11px;
+  line-height: 16px;
+  text-align: center;
+  max-height: 48px;
+  overflow: hidden;
+}
+.library-cover-hint {
+  font-size: 10px;
+}
+.library-cover-retry {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  flex-shrink: 0;
+  margin: 0;
+  padding: 0;
+  font-size: 22px;
+  line-height: 44px;
+  background-color: transparent;
+  color: inherit;
+}
+/* #ifdef WEB || MP-WEIXIN */
+.library-cover-retry::after {
+  border: 0;
+}
+/* #endif */
+</style>

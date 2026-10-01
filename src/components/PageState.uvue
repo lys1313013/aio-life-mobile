@@ -1,0 +1,47 @@
+<script setup lang="ts">
+import MobileButton from './MobileButton.uvue';
+import { themeClass } from '../services/theme.ts';
+withDefaults(
+  defineProps<{ loading?: boolean; error?: string; empty?: boolean; emptyText?: string }>(),
+  { emptyText: '暂无记录' },
+);
+const emit = defineEmits(['retry']);
+</script>
+<template>
+  <view class="page-state" :class="themeClass('page-state')">
+    <view v-if="loading" class="page-state-notice ui-pad-card ui-gap-md" role="status" aria-live="polite"
+      ><text>加载中…</text></view
+    >
+    <view v-if="error" class="page-state-notice ui-pad-card ui-gap-md" role="alert"
+      ><text>{{ error }}</text
+      ><MobileButton
+        label="重试"
+        icon="ant-design:reload-outlined"
+        variant="quiet"
+        :loading="loading"
+        @click="emit('retry')"
+    /></view>
+    <view v-if="empty && !loading && !error" class="page-state-notice ui-pad-card ui-gap-md"
+      ><text>{{ emptyText }}</text></view
+    >
+    <slot />
+  </view>
+</template>
+<style scoped lang="scss">
+@use '../styles/spacing.scss';
+@use '../styles/spacing-tokens' as *;
+.page-state {
+  width: 100%;
+  color: #27272a;
+}
+.page-state-dark {
+  color: #eeeeef;
+}
+.page-state-notice {
+
+  align-items: center;
+
+  color: #808692;
+  font-size: 14px;
+}
+</style>

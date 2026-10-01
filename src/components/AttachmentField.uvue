@@ -1,0 +1,158 @@
+<script setup lang="ts">
+import { onUnmounted, ref } from 'vue';
+import MobileButton from './MobileButton.uvue';
+import { themeClass } from '../services/theme.ts';
+import {
+  authFileUrl,
+  chooseAndUploadAttachment,
+  chooseAndUploadDocument,
+} from '../services/attachments.ts';
+const props = withDefaults(
+  defineProps<{
+    files: any[];
+    uploadPath: string;
+    formData?: Record<string, string>;
+    disabled?: boolean;
+    readonly?: boolean;
+    imagesOnly?: boolean;
+  }>(),
+  { formData: () => ({}) },
+);
+const emit = defineEmits(['update:files', 'busy-change']);
+const uploading = ref(false),
+  previewing = ref(''),
+  error = ref('');
+const failedFile = ref<any>(null);
+const failedDocument = ref(false);
+let active = true;
+onUnmounted(() => {
+  active = false;
+  emit('busy-change', false);
+});
+async function upload(document = false) {
+  if (uploading.value || props.disabled || props.readonly) return;
+  uploading.value = true;
+  error.value = '';
+  failedFile.value = null;
+  failedDocument.value = document;
+  emit('busy-change', true);
+  try {
+    const file = await (document
+      ? chooseAndUploadDocument(props.uploadPath, props.formData)
+      : chooseAndUploadAttachment(props.uploadPath, props.formData));
+    if (!file || typeof file.id !== 'string') throw Error('附件 ID 异常，请重试');
+    if (active) emit('update:files', [...props.files, file]);
+  } catch (reason) {
+    if (active) error.value = reason.message || '上传失败，请重试';
+  } finally {
+    if (active) {
+      uploading.value = false;
+      emit('busy-change', false);
+    }
+  }
+}
+async function preview(file) {
+  if (previewing.value) return;
+  previewing.value = file.id;
+  error.value = '';
+  failedFile.value = file;
+  try {
+    const path = await authFileUrl(file.id);
+    if (!active) return;
+    const name = String(file.fileName || file.name || '').toLowerCase();
+    if (/\.(pdf|docx?|xlsx?|pptx?)$/.test(name)) {
+      // #ifdef WEB
+      window.open(path, '_blank', 'noopener');
+      // #endif
+      // #ifndef WEB
+      uni.openDocument({
+        filePath: path,
+        showMenu: true,
+        fail: () => {
+          if (active) error.value = '当前平台无法预览此文件';
+        },
+      });
+      // #endif
+    } else uni.previewImage({ urls: [path] });
+  } catch (reason) {
+    if (active) error.value = reason.message || '预览失败，请重试';
+  } finally {
+    if (active) previewing.value = '';
+  }
+}
+function remove(file) {
+  if (!props.disabled && !props.readonly && !uploading.value)
+    emit(
+      'update:files',
+      props.files.filter((item) => item.id !== file.id),
+    );
+}
+</script>
+<template>
+  <view class="attachment-field ui-gap-sm ui-mb-section" :class="themeClass('attachment-field')"
+    ><view v-for="file in files" :key="file.id" class="attachment-row ui-gap-sm"
+      ><text class="attachment-name">{{ file.fileName || file.name || '附件' }}</text
+      ><MobileButton
+        label="预览附件"
+        icon="ant-design:picture-outlined"
+        variant="quiet"
+        :loading="previewing === file.id"
+        @click="preview(file)" /><MobileButton
+        v-if="!readonly"
+        label="移除附件"
+        icon="ant-design:close-outlined"
+        variant="quiet"
+        :disabled="disabled || uploading"
+        @click="remove(file)" /></view
+    ><view v-if="!readonly" class="attachment-actions"><MobileButton
+      label="添加图片"
+      icon="ant-design:plus-outlined"
+      variant="quiet"
+      :loading="uploading"
+      :disabled="disabled"
+      @click="upload(false)" /><!-- #ifdef WEB || MP-WEIXIN || APP --><MobileButton
+      v-if="!imagesOnly"
+      label="添加文件"
+      icon="ant-design:file-text-outlined"
+      variant="quiet"
+      :loading="uploading"
+      :disabled="disabled"
+      @click="upload(true)" /><!-- #endif --></view><view
+      v-if="error"
+      class="attachment-error"
+      role="alert"
+      ><text>{{ error }}</text
+      ><MobileButton
+        :label="failedFile ? '重试预览' : '重试上传'"
+        icon="ant-design:reload-outlined"
+        variant="quiet"
+        :disabled="disabled"
+        :loading="uploading"
+        @click="failedFile ? preview(failedFile) : upload(failedDocument)" /></view
+  ></view>
+</template>
+<style scoped lang="scss">
+@use '../styles/spacing.scss';
+@use '../styles/spacing-tokens' as *;
+.attachment-field {
+
+  color: #27272a;
+}
+.attachment-field-dark {
+  color: #eeeeef;
+}
+.attachment-row {
+  flex-direction: row;
+  align-items: center;
+}
+.attachment-name {
+  flex: 1;
+  font-size: 14px;
+}
+.attachment-error {
+  color: #e05260;
+  font-size: 13px;
+  gap: $space-inline;
+}
+.attachment-actions { flex-direction: row; align-items: center; gap: $space-inline; }
+</style>

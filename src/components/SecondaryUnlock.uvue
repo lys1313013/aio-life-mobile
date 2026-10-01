@@ -1,0 +1,73 @@
+<script setup lang="ts">
+import { onUnmounted, ref, watch } from 'vue';
+import { onHide } from '@dcloudio/uni-app';
+import AdaptiveModal from './AdaptiveModal.uvue';
+import MobileButton from './MobileButton.uvue';
+import FormField from './FormField.uvue';
+import { request } from '../services/api.ts';
+import { secondaryLock, finishUnlock, cancelUnlock } from '../services/secondary-lock.ts';
+const password = ref('');
+const error = ref('');
+const saving = ref(false);
+watch(
+  () => [secondaryLock.menuPath, secondaryLock.token, secondaryLock.visible],
+  () => {
+    password.value = '';
+    error.value = '';
+  },
+);
+onUnmounted(() => {
+  password.value = '';
+});
+onHide(() => {
+  password.value = '';
+  cancelUnlock();
+});
+async function unlock() {
+  if (saving.value) return;
+  if (!password.value) {
+    error.value = '请输入二级密码';
+    return;
+  }
+  saving.value = true;
+  error.value = '';
+  const path = secondaryLock.menuPath;
+  const token = secondaryLock.token;
+  try {
+    await request(
+      '/auth/secondary-verify',
+      'POST',
+      { password: password.value, menuPath: path },
+      true,
+      token,
+      true,
+    );
+    if (secondaryLock.menuPath === path && secondaryLock.token === token) finishUnlock();
+    password.value = '';
+  } catch (reason) {
+    if (secondaryLock.visible && secondaryLock.menuPath === path && secondaryLock.token === token)
+      error.value = reason.message;
+  } finally {
+    saving.value = false;
+  }
+}
+</script>
+<template>
+  <AdaptiveModal
+    v-if="secondaryLock.visible"
+    label="解锁菜单"
+    :busy="saving"
+    :max-width="420"
+    @close="cancelUnlock"
+  >
+    <FormField
+      label="二级密码"
+      v-model="password"
+      kind="password"
+      :error="error"
+      :disabled="saving"
+    />
+    <MobileButton label="解锁" :loading="saving" @click="unlock" />
+    <MobileButton label="取消" variant="quiet" :disabled="saving" @click="cancelUnlock" />
+  </AdaptiveModal>
+</template>

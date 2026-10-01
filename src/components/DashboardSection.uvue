@@ -1,49 +1,53 @@
 <script setup lang="ts">
-defineProps<{ title: string; loading?: boolean; error?: string }>()
+import CategoryIcon from './CategoryIcon.uvue'
+import { isDark, themeClass } from '../services/theme.ts'
+defineProps<{ title: string; icon?: string; height?: number; loading?: boolean; error?: string; compact?: boolean; flushTop?: boolean }>()
 defineEmits<{ refresh: [] }>()
 </script>
 <template>
-  <view class="dashboard-section">
-    <view class="section-heading">
-      <text class="section-title">{{ title }}</text>
+  <view class="dashboard-section" :class="themeClass('dashboard-section')" :style="height ? { height: height + 'px' } : {}">
+    <view class="section-heading" :class="{ 'section-heading-compact': compact }">
+      <view class="section-label"><CategoryIcon v-if="icon" :icon="icon" :size="16" :color="isDark ? '#d4d4d8' : '#52525b'" /><text class="section-title" :class="[{ 'section-title-with-icon': !!icon }, themeClass('section-title')]">{{ title }}</text></view>
       <slot name="actions" />
 
     </view>
     <view v-if="error" class="section-error" role="alert">
-      <text class="section-error-text">{{ error }}</text>
+      <text class="section-error-text" :class="themeClass('section-error-text')">{{ error }}</text>
       <button
         role="button"
         class="section-retry"
         :aria-label="'重试' + title"
         :disabled="loading"
         @click="$emit('refresh')"
-      >
+       :class="themeClass('section-retry')">
         重试
       </button>
     </view>
     <view v-else-if="loading" class="section-loading"
-      ><view class="skeleton"></view
-      ><view class="skeleton skeleton-short"></view
-      ><view class="skeleton"></view
+      ><view class="skeleton" :class="themeClass('skeleton')"></view
+      ><view class="skeleton skeleton-short" :class="themeClass('skeleton')"></view
+      ><view class="skeleton" :class="themeClass('skeleton')"></view
       ><text class="loading-caption">加载中…</text></view
     >
-    <view v-else class="section-content"><slot /></view>
+    <view v-else class="section-content" :class="{ 'section-content-flush-top': flushTop }"><slot /></view>
   </view>
 </template>
-<style scoped>
+<style scoped lang="scss">
+@use '../styles/spacing.scss';
+@use '../styles/spacing-tokens' as *;
 .dashboard-section {
   height: 260px;
   background-color: #ffffff;
-  border: 1px solid #e4e4e7;
-  border-radius: 12px;
+  border: 1px solid #e8e8ed;
+  border-radius: 14px;
   overflow: hidden;
 }
 .section-heading {
   flex-direction: row;
   justify-content: space-between;
   align-items: center;
-  padding: 4px 12px;
-  min-height: 44px;
+  padding: 0 $space-card;
+  height: $space-controlMin;
   flex-shrink: 0;
 }
 .section-title {
@@ -51,31 +55,20 @@ defineEmits<{ refresh: [] }>()
   font-size: 16px;
   font-weight: 600;
 }
-.refresh-button {
-  display: flex;
-  line-height: 32px;
-  width: 32px;
-  height: 32px;
-  margin: 0;
-  padding: 0;
-  border: 0;
-  background-color: transparent;
-  align-items: center;
-  justify-content: center;
-}
-.refresh-icon {
-  color: #909097;
-  font-size: 22px;
-  line-height: 32px;
-}
+.section-heading-compact { height: $space-controlMin; padding-top: 0; padding-bottom: 0; }
+.section-label { flex-direction: row; align-items: center; }
+.section-title-with-icon { margin-left: $space-inline; }
 .section-content {
   flex: 1;
   min-height: 0;
+  padding: $space-fieldLabel $space-card $space-card;
 }
+.section-content-flush-top { padding-top: 0; }
+
 .section-error,
 .section-loading {
   flex: 1;
-  padding: 20px;
+  padding: $space-section;
   justify-content: center;
 }
 .section-error {
@@ -87,8 +80,9 @@ defineEmits<{ refresh: [] }>()
   text-align: center;
 }
 .section-retry {
-  margin: 12px 0 0;
-  padding: 4px 14px;
+  margin: $space-section 0 0;
+  padding: $space-detail $space-card;
+  min-height: $space-controlMin;
   font-size: 12px;
   color: #3662da;
   background-color: #eef2ff;
@@ -98,7 +92,7 @@ defineEmits<{ refresh: [] }>()
   height: 12px;
   background-color: #f1f1f4;
   border-radius: 6px;
-  margin-bottom: 16px;
+  margin-bottom: $space-section;
 }
 .skeleton-short {
   width: 60%;
@@ -107,27 +101,26 @@ defineEmits<{ refresh: [] }>()
   color: #8b8b94;
   font-size: 12px;
 }
-@media (prefers-color-scheme: dark) {
-  .dashboard-section {
+
+  .dashboard-section-dark {
     background-color: #1c1e22;
     border-color: #303238;
   }
-  .section-title {
+  .section-title-dark {
     color: #ececf0;
   }
-  .skeleton {
+  .skeleton-dark {
     background-color: #2b2e34;
   }
-  .section-error-text {
+  .section-error-text-dark {
     color: #f7a3a3;
   }
-  .section-retry {
+  .section-retry-dark {
     color: #a9bfff;
     background-color: #29334b;
   }
-}
+
 /* #ifdef WEB || MP-WEIXIN */
-.refresh-button::after,
 .section-retry::after {
   border: 0;
 }
