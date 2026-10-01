@@ -1,0 +1,268 @@
+<script setup lang="ts">
+import { computed, ref } from 'vue';
+import { onShow } from '@dcloudio/uni-app';
+import MobilePage from '../../components/MobilePage.uvue';
+import PageHeader from '../../components/PageHeader.uvue';
+import MobileButton from '../../components/MobileButton.uvue';
+import FormField from '../../components/FormField.uvue';
+import PageState from '../../components/PageState.uvue';
+import ConfirmAction from '../../components/ConfirmAction.uvue';
+import AdaptiveModal from '../../components/AdaptiveModal.uvue';
+import FloatingActionButton from '../../components/FloatingActionButton.uvue';
+import RecordCover from '../../components/RecordCover.uvue';
+import AppIcon from '../../components/AppIcon.uvue';
+import AttachmentField from '../../components/AttachmentField.uvue';
+import { isDark } from '../../services/theme.ts';
+import { createRecordScope } from '../../services/records/page-scope.ts';
+import {
+  fetchPerformancePage,
+  fetchDictionary,
+  savePerformance,
+  deletePerformance,
+} from '../../services/records/goods.ts';
+const showMore = ref(false);
+const rows = ref<any[]>([]),
+  types = ref<any[]>([]),
+  loading = ref(false),
+  error = ref(''),
+  keyword = ref(''),
+  typeFilter = ref('全部类型'),
+  form = ref<any>(null),
+  saving = ref(false),
+  formError = ref(''),
+  attachmentBusy = ref(false);
+let generation = 0;
+const scope = createRecordScope((clear) => {
+  form.value = null;
+  if (clear) {
+    rows.value = [];
+    types.value = [];
+  }
+});
+onShow(() => load());
+const filtered = computed(() =>
+  rows.value
+    .filter(
+      (item) =>
+        (typeFilter.value === '全部类型' || typeName(item.performanceType) === typeFilter.value) &&
+        (!keyword.value ||
+          [item.performanceName, item.performer, item.city, item.venue]
+            .join(' ')
+            .includes(keyword.value)),
+    )
+    .sort((a, b) => String(b.performanceDate || '').localeCompare(String(a.performanceDate || ''))),
+);
+function typeName(value) {
+  return (
+    types.value.find((item) => String(item.value) === String(value))?.label || value || '未分类'
+  );
+}
+async function load() {
+  const current = ++generation;
+  loading.value = true;
+  error.value = '';
+  try {
+    const dictionary = await scope.wait(fetchDictionary('performance_type'));
+    let page = 1;
+    const data = [];
+    while (true) {
+      const result = await scope.wait(fetchPerformancePage(page++));
+      data.push(...result.items);
+      if (data.length >= result.total || result.items.length < 30) break;
+    }
+    if (current === generation) {
+      rows.value = data;
+      types.value = dictionary.dictDetailList || [];
+    }
+  } catch (e) {
+    if (e.name !== 'PageInactiveError' && current === generation) error.value = e.message;
+  } finally {
+    if (current === generation) loading.value = false;
+  }
+}
+function open(item = null) {
+  formError.value = '';
+  showMore.value = false;
+  form.value = item
+    ? {
+        ...item,
+        ticketPrice: String(item.ticketPrice ?? ''),
+        duration: String(item.duration ?? ''),
+        rating: String(item.rating ?? ''),
+        files: [...(item.files || [])],
+      }
+    : {
+        performanceName: '',
+        performer: '',
+        performanceType: '',
+        performanceDate: '',
+        city: '',
+        venue: '',
+        ticketPrice: '',
+        seatInfo: '',
+        duration: '',
+        rating: '',
+        review: '',
+        purchasePlatform: '',
+        orderNumber: '',
+        files: [],
+      };
+}
+async function save() {
+  if (saving.value || attachmentBusy.value) return;
+  if (
+    !form.value.performanceName.trim() ||
+    !form.value.performer.trim() ||
+    !form.value.venue.trim()
+  ) {
+    formError.value = '请输入活动名称、参与人和地点';
+    return;
+  }
+  const price = form.value.ticketPrice === '' ? null : Number(form.value.ticketPrice),
+    duration = form.value.duration === '' ? null : Number(form.value.duration),
+    rating = form.value.rating === '' ? null : Number(form.value.rating);
+  if (
+    (price != null && (!Number.isFinite(price) || price < 0)) ||
+    (duration != null && (!Number.isInteger(duration) || duration < 0)) ||
+    (rating != null && (!Number.isInteger(rating) || rating < 1 || rating > 5))
+  ) {
+    formError.value = '请检查票价、时长和评分';
+    return;
+  }
+  saving.value = true;
+  formError.value = '';
+  try {
+    const payload = {
+      ...form.value,
+      ticketPrice: price,
+      duration,
+      rating,
+      fileIds: form.value.files.map((file) => (typeof file === 'string' ? file : file.id)),
+    };
+    const response = await scope.wait(savePerformance(payload));
+    const saved = { ...payload, ...response, files: payload.files };
+    rows.value = payload.id
+      ? rows.value.map((row) => (row.id === payload.id ? saved : row))
+      : [saved, ...rows.value];
+    form.value = null;
+  } catch (e) {
+    if (e.name !== 'PageInactiveError') formError.value = e.message;
+  } finally {
+    saving.value = false;
+  }
+}
+async function remove(item) {
+  const ok = await scope.wait(deletePerformance(item.id));
+  if (!ok) throw new Error('删除失败');
+  rows.value = rows.value.filter((row) => row.id !== item.id);
+}
+</script>
+<template>
+  <MobilePage :refreshing="loading" @refresh="load"
+    ><view class="activity-page ui-page-body" :class="{ 'activity-page-dark': isDark }"
+      ><PageHeader title="活动" :back="true" @back="uni.navigateBack()" />
+      <PageState :loading="loading" :error="error" :empty="!filtered.length" @retry="load">
+        <view class="activity-grid">
+          <view v-for="item in filtered" :key="item.id" class="activity-card" :class="{ 'card-dark': isDark }"
+            role="button" :aria-label="'编辑活动：' + item.performanceName" tabindex="0" @click="open(item)" @keydown.enter="open(item)">
+            <view class="activity-cover">
+              <RecordCover :file-id="item.files?.[0]?.id || ''" placeholder="🎵" />
+              <text class="activity-type">{{ typeName(item.performanceType) }}</text>
+              <view class="activity-caption"><text class="activity-title">{{ item.performanceName }}</text></view>
+            </view>
+            <view class="activity-meta">
+              <view v-if="item.performer" class="meta-row"><AppIcon name="lucide:user" :size="13" color="#8b8f99" /><text class="secondary">{{ item.performer }}</text></view>
+              <view class="meta-row"><AppIcon name="ant-design:calendar-outlined" :size="13" color="#8b8f99" /><text class="secondary">{{ (item.performanceDate || '—').slice(0, 10) }}</text></view>
+              <view v-if="item.city || item.venue" class="meta-row"><AppIcon name="lucide:map-pin" :size="13" color="#8b8f99" /><text class="secondary">{{ [item.city, item.venue].filter(Boolean).join(' · ') }}</text></view>
+            </view>
+          </view>
+        </view>
+      </PageState
+      ><AdaptiveModal
+        v-if="form"
+        label="编辑活动"
+        :busy="saving || attachmentBusy"
+        @close="form = null"
+        >
+        <FormField label="活动名称" v-model="form.performanceName" />
+        <view class="ui-field-row">
+          <FormField compact stretch label="类型" kind="selector" :model-value="typeName(form.performanceType)" :options="['未分类', ...types.map((item) => item.label)]" @update:model-value="form.performanceType = types.find((item) => item.label === $event)?.value || ''" />
+          <FormField compact stretch label="参与人" v-model="form.performer" />
+        </view>
+        <view class="ui-field-row"><FormField compact stretch label="日期" kind="date" v-model="form.performanceDate" /><FormField compact stretch label="票价" input-type="digit" v-model="form.ticketPrice" /></view>
+        <view class="ui-field-row"><FormField compact stretch label="城市" v-model="form.city" /><FormField compact stretch label="地点" v-model="form.venue" /></view>
+        <MobileButton :label="showMore ? '收起更多信息' : '更多信息'" variant="quiet" @click="showMore = !showMore" />
+        <view v-if="showMore" class="ui-mt-section">
+          <FormField label="座位" v-model="form.seatInfo" />
+          <view class="ui-field-row"><FormField compact stretch label="时长（分钟）" input-type="number" v-model="form.duration" /><FormField compact stretch label="评分" kind="selector" v-model="form.rating" :options="['', '1', '2', '3', '4', '5']" /></view>
+          <FormField label="评价" kind="textarea" v-model="form.review" />
+          <FormField label="购票平台" v-model="form.purchasePlatform" /><FormField label="订单号" v-model="form.orderNumber" />
+        </view>
+        <AttachmentField images-only
+          :files="form.files"
+          upload-path="/file/upload"
+          :form-data="{ bizType: 'performance' }"
+          :disabled="saving"
+          @update:files="form.files = $event"
+          @busy-change="attachmentBusy = $event" /><text v-if="formError" class="error ui-section">{{
+          formError
+        }}</text
+        ><view class="toolbar ui-row"
+          ><ConfirmAction v-if="form.id" label="删除活动" :action="() => remove(form)" @success="form = null" /><view class="footer-spacer" /><MobileButton
+            label="取消"
+            variant="quiet"
+            :disabled="saving || attachmentBusy"
+            @click="form = null" /><MobileButton
+            label="保存"
+            :loading="saving"
+            :disabled="attachmentBusy"
+            @click="save" /></view></AdaptiveModal></view
+  ><template #fixed><FloatingActionButton label="新增活动" :disabled="loading || !!error" @click="open()" /></template></MobilePage>
+</template>
+<style scoped lang="scss">
+@use '../../styles/spacing.scss';
+@use '../../styles/spacing-tokens' as *;
+.activity-page {
+  padding-bottom: 80px; /* 浮动新增按钮避让 */
+  color: #27272a;
+}
+.activity-page-dark {
+  color: #eeeeef;
+}
+.toolbar,
+.metrics {
+  flex-direction: row;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.card {
+  border-radius: 16px;
+  background-color: #ffffff;
+}
+.card-dark {
+  background-color: #1c1e22;
+}
+.title {
+  flex: 1;
+  font-size: 17px;
+  font-weight: 600;
+}
+.secondary {
+  color: #8b8f99;
+  font-size: 13px;
+}
+.error {
+  color: #e05252;
+}
+.activity-grid { flex-direction: row; flex-wrap: wrap; gap: $space-section; }
+.activity-card { width: calc((100% - #{$space-section}) / 2); min-width: 0; overflow: hidden; border-radius: 12px; background-color: #ffffff; }
+.activity-cover { position: relative; height: 150px; }
+.activity-type { position: absolute; top: $space-inline; left: $space-inline; padding: $space-micro $space-detail; border-radius: 4px; color: #ffffff; background-color: #5986db; font-size: 11px; }
+.activity-caption { position: absolute; bottom: 0; left: 0; right: 0; padding: $space-card; background-image: linear-gradient(transparent, rgba(0,0,0,0.65)); }
+.activity-title { color: #ffffff; font-size: 14px; line-height: 20px; }
+.activity-meta { padding: $space-card; gap: $space-detail; }
+.meta-row { flex-direction: row; align-items: center; gap: $space-detail; }
+@media (min-width: 600px) { .activity-card { width: calc((100% - #{$space-section * 2}) / 3); } .activity-cover { height: 190px; } }
+.footer-spacer { flex: 1; }
+.card-dark { background-color: #1c1e22; }
+</style>

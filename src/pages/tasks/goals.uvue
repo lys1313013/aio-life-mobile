@@ -1,0 +1,310 @@
+<script setup lang="ts">
+import { onUnmounted, ref } from 'vue';
+import { onShow } from '@dcloudio/uni-app';
+import MobilePage from '../../components/MobilePage.uvue';
+import PageHeader from '../../components/PageHeader.uvue';
+import MobileButton from '../../components/MobileButton.uvue';
+import FormField from '../../components/FormField.uvue';
+import ConfirmAction from '../../components/ConfirmAction.uvue';
+import PageState from '../../components/PageState.uvue';
+import AdaptiveModal from '../../components/AdaptiveModal.uvue';
+import FloatingActionButton from '../../components/FloatingActionButton.uvue';
+import { createRecordScope } from '../../services/records/page-scope.ts';
+import { isDark } from '../../services/theme.ts';
+import { fetchGoals, saveGoal, deleteGoal } from '../../services/records/tasks.ts';
+import {
+  dateTime,
+  goalDateRange,
+  goalPayload,
+  goalTypes,
+  statuses,
+  statusLabels,
+  textTags,
+} from '../../services/records/contracts.ts';
+const goals = ref<any[]>([]),
+  loading = ref(false),
+  refreshing = ref(false),
+  error = ref(''),
+  keyword = ref(''),
+  typeFilter = ref('全部类型'),
+  statusFilter = ref('全部状态');
+const form = ref<any>(null),
+  saving = ref(false),
+  formError = ref('');
+const scope = createRecordScope((clearData) => {
+  form.value = null;
+  if (clearData) goals.value = [];
+});
+let generation = 0,
+  alive = true;
+onUnmounted(() => {
+  alive = false;
+  generation++;
+});
+async function load(refresh = false) {
+  const current = ++generation;
+  loading.value = true;
+  refreshing.value = refresh;
+  error.value = '';
+  try {
+    const type = goalTypes.indexOf(typeFilter.value);
+    const status = statusLabels.indexOf(statusFilter.value);
+    const data = await scope.wait(
+      fetchGoals({
+        keyword: keyword.value.trim(),
+        ...(type >= 0 ? { type: type + 1 } : {}),
+        ...(status >= 0 ? { status: statuses[status] } : {}),
+      }),
+    );
+    if (alive && current === generation) goals.value = data;
+  } catch (e) {
+    if (e.name === 'PageInactiveError') return;
+    if (alive && current === generation) error.value = e.message;
+  } finally {
+    if (current === generation) {
+      loading.value = false;
+      refreshing.value = false;
+    }
+  }
+}
+onShow(() => load());
+function shortDate(value) { return value ? String(value).slice(5, 10) : ''; }
+function resetFilters() { keyword.value = ''; typeFilter.value = '全部类型'; statusFilter.value = '全部状态'; load(); }
+function open(item = null) {
+  formError.value = '';
+  form.value = item
+    ? { ...item, tags: textTags(item.tags) }
+    : {
+        title: '',
+        type: 1,
+        status: 'in_progress',
+        description: '',
+        content: '',
+        tags: '',
+        currentValue: '',
+        targetValue: '',
+        startDate: null,
+        endDate: null,
+      };
+}
+function setType(label) {
+  const type = goalTypes.indexOf(label) + 1;
+  form.value.type = type;
+  Object.assign(form.value, goalDateRange(type));
+}
+function setDate(key, date) {
+  form.value[key] = dateTime(date, form.value[key]?.slice(11, 16) || '00:00');
+}
+function setTime(key, time) {
+  form.value[key] = dateTime(
+    form.value[key]?.slice(0, 10) || new Date().toISOString().slice(0, 10),
+    time,
+  );
+}
+function progress(item) {
+  return item.targetValue > 0
+    ? Math.min(100, Math.round(((item.currentValue || 0) / item.targetValue) * 100))
+    : item.status === 'completed'
+      ? 100
+      : 0;
+}
+async function save() {
+  if (saving.value) return;
+  let payload;
+  try {
+    payload = goalPayload(form.value);
+  } catch (e) {
+    if (e.name === 'PageInactiveError') return;
+    formError.value = e.message;
+    return;
+  }
+  saving.value = true;
+  formError.value = '';
+  try {
+    const saved = await scope.wait(saveGoal(payload));
+    const id = payload.id || saved.id;
+    const row = { ...payload, ...saved, id };
+    const index = goals.value.findIndex((g) => g.id === id);
+    if (index >= 0) goals.value[index] = row;
+    else goals.value.unshift(row);
+    form.value = null;
+  } catch (e) {
+    if (e.name === 'PageInactiveError') return;
+    formError.value = e.message;
+  } finally {
+    saving.value = false;
+  }
+}
+async function remove(item) {
+  await scope.wait(deleteGoal(item.id));
+  goals.value = goals.value.filter((g) => g.id !== item.id);
+  if (form.value?.id === item.id) form.value = null;
+}
+</script>
+<template>
+  <MobilePage :refreshing="refreshing" @refresh="load(true)">
+    <view class="records-page ui-page-body" :class="{ 'records-page-dark': isDark }">
+      <PageHeader title="目标" :back="true" @back="uni.navigateBack()" />
+      <view class="ui-toolbar"
+        ><FormField compact stretch label="搜索" v-model="keyword" /><MobileButton
+          label="搜索目标"
+          icon="ant-design:search-outlined"
+          :loading="loading"
+          @click="load()" /><MobileButton label="重置筛选" icon="ant-design:undo-outlined" variant="quiet" @click="resetFilters()"
+      /></view>
+      <view class="filters ui-field-row"
+        ><FormField compact stretch
+          label="类型"
+          kind="selector"
+          v-model="typeFilter"
+          :options="['全部类型', ...goalTypes]"
+          @update:model-value="load()" /><FormField compact stretch
+          label="状态"
+          kind="selector"
+          v-model="statusFilter"
+          :options="['全部状态', ...statusLabels]"
+          @update:model-value="load()"
+      /></view>
+      <PageState :loading="loading" :error="error" :empty="!goals.length" @retry="load()">
+        <view class="goal-grid">
+          <view v-for="item in goals" :key="item.id" class="record-card ui-card" :class="{ 'record-card-dark': isDark }" role="button" :aria-label="'编辑目标：' + item.title" @click="open(item)">
+            <view class="goal-meta ui-row">
+              <text class="goal-type">{{ goalTypes[item.type - 1] }}</text>
+              <view class="goal-status ui-row"><view class="status-dot" :class="'status-' + item.status" /><text>{{ statusLabels[statuses.indexOf(item.status)] }}</text></view>
+            </view>
+            <text class="record-title">{{ item.title }}</text>
+            <text v-if="item.tags" class="record-secondary">{{ textTags(item.tags) }}</text>
+            <text v-if="item.description" class="record-content">{{ item.description }}</text>
+            <view class="goal-footer ui-row"><text class="record-secondary">{{ item.startDate || item.endDate ? (shortDate(item.startDate) || '—') + ' ~ ' + (shortDate(item.endDate) || '—') : '无期限' }}</text><text class="record-secondary">{{ progress(item) }}%</text></view>
+            <view class="progress-track"><view class="progress-fill" :class="{ 'progress-completed': item.status === 'completed' }" :style="{ width: progress(item) + '%' }" /></view>
+          </view>
+        </view>
+      </PageState>
+      <AdaptiveModal v-if="form" label="编辑目标" :busy="saving" @close="form = null">
+        <FormField label="标题" v-model="form.title" />
+        <FormField
+          label="类型"
+          kind="selector"
+          :model-value="goalTypes[form.type - 1]"
+          :options="goalTypes"
+          @update:model-value="setType($event)"
+        />
+        <FormField
+          label="状态"
+          kind="selector"
+          :model-value="statusLabels[statuses.indexOf(form.status)]"
+          :options="statusLabels"
+          @update:model-value="form.status = statuses[statusLabels.indexOf($event)]"
+        />
+        <FormField label="目标值" input-type="number" v-model="form.targetValue" /><FormField
+          label="当前值"
+          input-type="number"
+          v-model="form.currentValue"
+        />
+        <view class="filters ui-field-row"
+          ><FormField compact stretch
+            label="开始日期"
+            kind="date"
+            :model-value="form.startDate?.slice(0, 10) || ''"
+            @update:model-value="setDate('startDate', $event)" /><FormField compact stretch
+            label="开始时间"
+            kind="time"
+            :model-value="form.startDate?.slice(11, 16) || ''"
+            @update:model-value="setTime('startDate', $event)"
+        /></view>
+        <view class="filters ui-field-row"
+          ><FormField compact stretch
+            label="结束日期"
+            kind="date"
+            :model-value="form.endDate?.slice(0, 10) || ''"
+            @update:model-value="setDate('endDate', $event)" /><FormField compact stretch
+            label="结束时间"
+            kind="time"
+            :model-value="form.endDate?.slice(11, 16) || ''"
+            @update:model-value="setTime('endDate', $event)"
+        /></view>
+        <FormField label="描述" kind="textarea" v-model="form.description" /><FormField
+          label="行动计划"
+          kind="textarea"
+          v-model="form.content"
+        /><FormField label="标签" v-model="form.tags" />
+        <text v-if="formError" class="record-error ui-section">{{ formError }}</text
+        ><view class="toolbar ui-row"
+          ><ConfirmAction v-if="form.id" label="删除目标" :action="() => remove(form)" /><MobileButton
+            label="取消"
+            variant="quiet"
+            :disabled="saving"
+            @click="form = null" /><MobileButton label="保存" :loading="saving" @click="save"
+        /></view>
+      </AdaptiveModal>
+    </view>
+    <template #fixed><FloatingActionButton label="新增目标" @click="open()" /></template>
+  </MobilePage>
+</template>
+<style scoped lang="scss">
+@use '../../styles/spacing.scss';
+@use '../../styles/spacing-tokens' as *;
+.records-page {
+  color: #27272a;
+}
+.records-page-dark {
+  color: #eeeeef;
+}
+.toolbar {
+  flex-direction: row;
+  align-items: center;
+}
+.filters {
+  flex-direction: row;
+  flex-wrap: wrap;
+}
+.goal-grid { display: flex; flex-direction: row; flex-wrap: wrap; gap: $space-section; align-items: flex-start; }
+.record-card { box-sizing: border-box; width: calc((100% - #{$space-section}) / 2); }
+.goal-meta, .goal-footer { justify-content: space-between; align-items: center; }
+.goal-status { align-items: center; gap: $space-detail; color: #8b8f99; font-size: 12px; }
+.goal-type { color: #6366a5; background-color: #f0effa; border-radius: 4px; padding: $space-detail; font-size: 12px; }
+.status-dot { width: 7px; height: 7px; border-radius: 50%; background-color: #8b8f99; }
+.status-in_progress { background-color: #5285ed; }
+.status-completed { background-color: #76c995; }
+.status-on_hold { background-color: #e3b251; }
+.goal-footer { margin-top: $space-detail; }
+.progress-track { height: 5px; border-radius: 5px; background-color: #eef0f3; overflow: hidden; }
+.progress-fill { height: 5px; border-radius: 5px; background-color: #427bea; }
+.progress-completed { background-color: #76c995; }
+@media (min-width: 600px) { .record-card { width: calc((100% - #{$space-section} * 2) / 3); } }
+@media (min-width: 960px) { .record-card { width: calc((100% - #{$space-section} * 3) / 4); } }
+.record-card {
+  background-color: #ffffff;
+  border-radius: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: $space-inline;
+  margin: 0;
+}
+.record-card-dark {
+  background-color: #1c1e22;
+}
+.card-heading {
+  flex-direction: row;
+  align-items: center;
+}
+.record-title {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  font-size: 17px;
+  font-weight: 600;
+}
+.record-secondary {
+  color: #8b8f99;
+  font-size: 13px;
+}
+.record-content {
+  font-size: 14px;
+  line-height: 22px;
+}
+.record-error {
+  color: #e05252;
+}
+</style>

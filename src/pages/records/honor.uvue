@@ -1,0 +1,301 @@
+<script setup lang="ts">
+import { computed, onUnmounted, ref } from 'vue';
+import { onShow } from '@dcloudio/uni-app';
+import MobilePage from '../../components/MobilePage.uvue';
+import PageHeader from '../../components/PageHeader.uvue';
+import MobileButton from '../../components/MobileButton.uvue';
+import FormField from '../../components/FormField.uvue';
+import ConfirmAction from '../../components/ConfirmAction.uvue';
+import PageState from '../../components/PageState.uvue';
+import AdaptiveModal from '../../components/AdaptiveModal.uvue';
+import FloatingActionButton from '../../components/FloatingActionButton.uvue';
+import AppIcon from '../../components/AppIcon.uvue';
+import AttachmentField from '../../components/AttachmentField.uvue';
+import { createRecordScope } from '../../services/records/page-scope.ts';
+import { isDark } from '../../services/theme.ts';
+import { textTags, recordId } from '../../services/records/contracts.ts';
+import {
+  fetchHonors,
+  fetchHonorCategories,
+  saveHonor,
+  deleteHonor,
+  toggleHonorTop,
+} from '../../services/records/honor.ts';
+const attachmentBusy = ref(false);
+const rows = ref<any[]>([]),
+  categories = ref<any[]>([]),
+  loading = ref(false),
+  refreshing = ref(false),
+  error = ref(''),
+  form = ref<any>(null),
+  saving = ref(false),
+  formError = ref(''),
+  busy = ref('');
+const levels = ['school', 'district', 'city', 'province', 'national', 'international', 'other'],
+  levelLabels = ['校级', '区级', '市级', '省级', '国家级', '国际级', '其他'];
+const keyword = ref(''),
+  categoryFilter = ref('全部分类'),
+  levelFilter = ref('全部级别');
+const filtered = computed(() =>
+  rows.value
+    .filter(
+      (item) =>
+        (!keyword.value ||
+          [item.title, item.description, item.issuer, textTags(item.tags)].some((text) =>
+            (text || '').toLowerCase().includes(keyword.value.toLowerCase()),
+          )) &&
+        (categoryFilter.value === '全部分类' ||
+          item.categoryId === categories.value.find((c) => c.name === categoryFilter.value)?.id) &&
+        (levelFilter.value === '全部级别' ||
+          item.level === levels[levelLabels.indexOf(levelFilter.value)]),
+    )
+    .slice()
+    .sort((a, b) => (b.isTop || 0) - (a.isTop || 0) || b.honorDate.localeCompare(a.honorDate)),
+);
+const scope = createRecordScope((clearData) => {
+  form.value = null;
+  if (clearData) {
+    rows.value = [];
+    categories.value = [];
+  }
+});
+let alive = true,
+  generation = 0;
+onUnmounted(() => {
+  alive = false;
+  generation++;
+});
+onShow(() => load());
+async function load(refresh = false) {
+  const current = ++generation;
+  loading.value = true;
+  refreshing.value = refresh;
+  error.value = '';
+  try {
+    const [data, categoryData] = await scope.wait(
+      Promise.all([fetchHonors(), fetchHonorCategories()]),
+    );
+    if (alive && current === generation) {
+      rows.value = data;
+      categories.value = categoryData;
+    }
+  } catch (e) {
+    if (e.name === 'PageInactiveError') return;
+    if (current === generation) error.value = e.message;
+  } finally {
+    if (current === generation) {
+      loading.value = false;
+      refreshing.value = false;
+    }
+  }
+}
+function open(item = null) {
+  formError.value = '';
+  form.value = item
+    ? { ...item, tags: textTags(item.tags), files: (item.files || []).map((file) => ({ ...file })) }
+    : {
+        title: '',
+        honorDate: new Date().toLocaleDateString('sv-SE'),
+        description: '',
+        issuer: '',
+        level: '',
+        categoryId: null,
+        customCategory: '',
+        tags: '',
+        files: [],
+        isPublic: 1,
+        isTop: 0,
+      };
+}
+async function save() {
+  if (saving.value || attachmentBusy.value) return;
+  if (!form.value.title.trim() || !form.value.honorDate) {
+    formError.value = '请输入标题和获得日期';
+    return;
+  }
+  const payload = {
+    ...form.value,
+    title: form.value.title.trim(),
+    fileIds: form.value.files.map((file) => recordId(file.id)),
+    tags: JSON.stringify(
+      form.value.tags
+        .split(/[,，]/)
+        .map((t) => t.trim())
+        .filter(Boolean),
+    ),
+  };
+  saving.value = true;
+  formError.value = '';
+  try {
+    const saved = await scope.wait(saveHonor(payload));
+    const row = { ...payload, ...saved, files: payload.files };
+    const index = rows.value.findIndex((r) => r.id === row.id);
+    if (index >= 0) rows.value[index] = row;
+    else rows.value.push(row);
+    form.value = null;
+  } catch (e) {
+    if (e.name === 'PageInactiveError') return;
+    formError.value = e.message;
+  } finally {
+    saving.value = false;
+  }
+}
+async function remove(item) {
+  await scope.wait(deleteHonor(item.id));
+  rows.value = rows.value.filter((r) => r.id !== item.id);
+}
+async function top(item) {
+  if (busy.value) return;
+  busy.value = item.id;
+  try {
+    await scope.wait(toggleHonorTop(item.id));
+    item.isTop = item.isTop === 1 ? 0 : 1;
+    const row = rows.value.find(value => value.id === item.id);
+    if (row) row.isTop = item.isTop;
+  } catch (e) {
+    if (e.name === 'PageInactiveError') return;
+    error.value = e.message;
+  } finally {
+    busy.value = '';
+  }
+}
+function categoryName(item) {
+  return categories.value.find((c) => c.id === item.categoryId)?.name || item.customCategory || '';
+}
+</script>
+<template>
+  <MobilePage :refreshing="refreshing" @refresh="load(true)"
+    ><view class="honor-page ui-page-body" :class="{ 'honor-page-dark': isDark }"
+      ><PageHeader title="荣誉" :back="true" @back="uni.navigateBack()" /><view class="ui-toolbar"
+        ><FormField compact stretch label="搜索" v-model="keyword" /><MobileButton
+          label="重置筛选"
+          icon="ant-design:reload-outlined" variant="quiet"
+          @click="keyword = ''; categoryFilter = '全部分类'; levelFilter = '全部级别'" /></view
+      ><view class="filters ui-field-row"
+        ><FormField compact stretch
+          label="分类"
+          kind="selector"
+          v-model="categoryFilter"
+          :options="['全部分类', ...categories.map((c) => c.name)]" /><FormField compact stretch
+          label="级别"
+          kind="selector"
+          v-model="levelFilter"
+          :options="['全部级别', ...levelLabels]" /></view
+      >
+      <PageState :loading="loading" :error="error" :empty="!filtered.length" @retry="load()">
+        <view class="honor-grid">
+          <view v-for="item in filtered" :key="item.id" class="honor-card ui-pad-card" :class="{ 'honor-card-dark': isDark }"
+            role="button" :aria-label="'编辑荣誉：' + item.title" tabindex="0" @click="open(item)" @keydown.enter="open(item)">
+            <view class="honor-badges ui-row">
+              <text v-if="item.level" class="honor-badge level-badge">{{ levelLabels[levels.indexOf(item.level)] || item.level }}</text>
+              <text v-if="categoryName(item)" class="honor-badge">{{ categoryName(item) }}</text>
+              <AppIcon v-if="item.isTop === 1" name="ant-design:star-filled" :size="14" color="#e5ad42" />
+            </view>
+            <text class="honor-title">{{ item.title }}</text>
+            <text v-if="item.issuer" class="honor-secondary">{{ item.issuer }}</text>
+            <text v-if="item.description" class="honor-content">{{ item.description }}</text>
+            <text v-if="item.tags" class="honor-secondary">{{ textTags(item.tags) }}</text>
+            <view class="honor-date ui-row"><AppIcon name="ant-design:calendar-outlined" :size="13" color="#8b8f99" /><text class="honor-secondary">{{ item.honorDate?.slice(0, 10) }}</text></view>
+          </view>
+        </view>
+      </PageState
+      ><AdaptiveModal
+        v-if="form"
+        label="编辑荣誉"
+        :busy="saving || attachmentBusy"
+        @close="form = null"
+        >
+        <FormField label="标题" v-model="form.title" />
+        <view class="ui-field-row">
+          <FormField compact stretch label="获得日期" kind="date" v-model="form.honorDate" />
+          <FormField compact stretch label="级别" kind="selector" :model-value="levelLabels[levels.indexOf(form.level)] || '未设置'" :options="['未设置', ...levelLabels]" @update:model-value="form.level = levels[levelLabels.indexOf($event)] || ''" />
+        </view>
+        <view class="ui-field-row">
+          <FormField compact stretch label="颁发机构" v-model="form.issuer" />
+          <FormField compact stretch label="分类" kind="selector" :model-value="categories.find((c) => c.id === form.categoryId)?.name || '自定义'" :options="['自定义', ...categories.map((c) => c.name)]" @update:model-value="form.categoryId = categories.find((c) => c.name === $event)?.id || null" />
+        </view>
+        <FormField
+          v-if="!form.categoryId"
+          label="自定义分类"
+          v-model="form.customCategory" /><FormField
+          label="描述"
+          kind="textarea"
+          v-model="form.description" /><FormField label="标签" v-model="form.tags" /><FormField
+          label="公开"
+          kind="selector"
+          :model-value="form.isPublic === 1 ? '公开' : '私密'"
+          :options="['公开', '私密']"
+          @update:model-value="form.isPublic = $event === '公开' ? 1 : 0" /><AttachmentField
+          :files="form.files"
+          upload-path="/file/upload"
+          :form-data="{ bizType: 'honor_record' }"
+          @update:files="form.files = $event"
+          @busy-change="attachmentBusy = $event" /><text v-if="formError" class="honor-error ui-section">{{
+          formError
+        }}</text
+        ><view class="toolbar ui-row"
+          ><ConfirmAction v-if="form.id" label="删除荣誉" :action="() => remove(form)" @success="form = null" /><MobileButton v-if="form.id" :label="form.isTop === 1 ? '取消置顶' : '置顶荣誉'" :icon="form.isTop === 1 ? 'ant-design:star-filled' : 'ant-design:star-outlined'" variant="quiet" :loading="!!busy" @click="top(form)" /><view class="footer-spacer" /><MobileButton
+            label="取消"
+            variant="quiet"
+            :disabled="saving || attachmentBusy"
+            @click="form = null" /><MobileButton
+            label="保存"
+            :loading="saving"
+            :disabled="attachmentBusy"
+            @click="save" /></view></AdaptiveModal></view
+  ><template #fixed><FloatingActionButton label="新增荣誉" :disabled="loading || !!error" @click="open()" /></template></MobilePage>
+</template>
+<style scoped lang="scss">
+@use '../../styles/spacing.scss';
+@use '../../styles/spacing-tokens' as *;
+.honor-page {
+  padding-bottom: 80px; /* 浮动新增按钮避让 */
+  color: #27272a;
+}
+.honor-page-dark {
+  color: #eeeeef;
+}
+.toolbar {
+  flex-direction: row;
+  align-items: center;
+}
+.filters {
+  flex-direction: row;
+  flex-wrap: wrap;
+}
+.metrics {
+  flex-direction: row;
+}
+.honor-card {
+  background-color: #ffffff;
+  border-radius: 16px;
+}
+.honor-card-dark {
+  background-color: #1c1e22;
+}
+.honor-title {
+  flex: 1;
+  font-size: 17px;
+  font-weight: 600;
+}
+.honor-content {
+  font-size: 14px;
+  line-height: 22px;
+}
+.honor-secondary {
+  color: #8b8f99;
+  font-size: 13px;
+}
+.honor-error {
+  color: #e05252;
+}
+.honor-grid { flex-direction: row; flex-wrap: wrap; gap: $space-section; }
+.honor-card { width: calc((100% - #{$space-section}) / 2); min-width: 0; gap: $space-inline; }
+.honor-badges { flex-wrap: wrap; align-items: center; }
+.honor-badge { font-size: 11px; line-height: 18px; color: #4177c1; background-color: rgba(74,144,226,0.12); border-radius: 4px; padding: 0 $space-detail; }
+.level-badge { color: #b77927; background-color: rgba(229,173,66,0.12); }
+.honor-title { flex: none; line-height: 24px; }
+.honor-date { align-items: center; margin-top: $space-inline; }
+@media (min-width: 600px) { .honor-card { width: calc((100% - #{$space-section * 2}) / 3); } }
+.footer-spacer { flex: 1; }
+</style>

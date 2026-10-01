@@ -1,0 +1,576 @@
+<script setup lang="ts">
+import { computed, ref } from 'vue';
+import { onShow } from '@dcloudio/uni-app';
+import MobilePage from '../../components/MobilePage.uvue';
+import PageHeader from '../../components/PageHeader.uvue';
+import MobileButton from '../../components/MobileButton.uvue';
+import FormField from '../../components/FormField.uvue';
+import PageState from '../../components/PageState.uvue';
+import ConfirmAction from '../../components/ConfirmAction.uvue';
+import AdaptiveModal from '../../components/AdaptiveModal.uvue';
+import MetricCard from '../../components/MetricCard.uvue';
+import MiniChart from '../../components/MiniChart.uvue';
+import { isDark } from '../../services/theme.ts';
+import { createRecordScope } from '../../services/records/page-scope.ts';
+import {
+  fetchWereadConnection,
+  connectWeread,
+  disconnectWeread,
+  syncWeread,
+  fetchWereadStats,
+  fetchWereadNotes,
+  fetchWereadProgress,
+} from '../../services/records/weread.ts';
+const connection = ref<any>({ connected: false }),
+  snapshot = ref<any>(null),
+  stats = ref<any>({}),
+  loading = ref(false),
+  syncing = ref(false),
+  error = ref(''),
+  tab = ref('阅读看板'),
+  mode = ref('年'),
+  date = ref(new Date().toLocaleDateString('sv-SE')),
+  statsLoading = ref(false),
+  settings = ref(false),
+  keyInput = ref(''),
+  saving = ref(false),
+  settingsError = ref(''),
+  keyword = ref(''),
+  status = ref('全部图书'),
+  sort = ref('最近阅读'),
+  detail = ref<any>(null),
+  progress = ref<any>(null),
+  detailLoading = ref(false),
+  detailError = ref(''),
+  selectedBook = ref(''),
+  notes = ref<any>(null),
+  notesLoading = ref(false),
+  notesError = ref(''),
+  noteKind = ref('划线'),
+  noteQuery = ref(''),
+  copyError = ref('');
+const modes = { 周: 'weekly', 月: 'monthly', 年: 'annually', 累计: 'overall' };
+const disconnecting = ref(false);
+let generation = 0,
+  statsRevision = 0,
+  detailRevision = 0,
+  notesRevision = 0,
+  appliedMode = '年',
+  appliedDate = date.value;
+const scope = createRecordScope((clear) => {
+  settings.value = false;
+  keyInput.value = '';
+  detail.value = null;
+  detailRevision++;
+  notesRevision++;
+  if (clear) {
+    connection.value = { connected: false };
+    snapshot.value = null;
+    stats.value = {};
+    notes.value = null;
+    selectedBook.value = '';
+  }
+});
+onShow(() => initialize());
+const notebooks = computed(() => snapshot.value?.notebooks?.books || []);
+const books = computed(() =>
+  [...(snapshot.value?.shelf?.books || [])]
+    .filter(
+      (book) =>
+        (book.title + ' ' + (book.author || ''))
+          .toLowerCase()
+          .includes(keyword.value.toLowerCase()) &&
+        (status.value === '全部图书' ||
+          (status.value === '已读完' && book.finishReading === 1) ||
+          (status.value === '未读完' && book.finishReading !== 1) ||
+          (status.value === '有笔记' && notebooks.value.some((n) => n.bookId === book.bookId))),
+    )
+    .sort(
+      sort.value === '书名排序'
+        ? (a, b) => a.title.localeCompare(b.title, 'zh-CN')
+        : (a, b) => (b.readUpdateTime || 0) - (a.readUpdateTime || 0),
+    ),
+);
+const trend = computed(() =>
+  Object.entries(stats.value.readTimes || {})
+    .sort((a, b) => Number(a[0]) - Number(b[0]))
+    .map(([time, value]) => ({
+      label: new Date(Number(time) * 1000).toLocaleDateString('zh-CN', {
+        timeZone: 'Asia/Shanghai',
+      }),
+      value: Math.round(Number(value) / 60),
+    })),
+);
+const noteItems = computed(() => {
+  if (!notes.value) return [];
+  const chapters = new Map((notes.value.marks?.chapters || []).map((c) => [c.chapterUid, c.title]));
+  const reviews = notes.value.reviews || [];
+  const items =
+    noteKind.value === '划线'
+      ? (notes.value.marks?.updated || []).map((mark) => ({
+          id: mark.bookmarkId,
+          text: mark.markText,
+          chapter: chapters.get(mark.chapterUid) || '划线',
+          time: mark.createTime,
+          thought: reviews
+            .filter(
+              (r) =>
+                r.review.type === 1 &&
+                mark.range != null &&
+                r.review.chapterUid === mark.chapterUid &&
+                r.review.range === mark.range,
+            )
+            .map((r) => r.review.content)
+            .join('\n'),
+        }))
+      : reviews
+          .filter((r) => (noteKind.value === '想法' ? r.review.type === 1 : r.review.type !== 1))
+          .map(({ review: r }) => ({
+            id: r.reviewId,
+            text: r.abstract || '',
+            thought: r.content || '',
+            chapter: r.chapterName || '书评',
+            time: r.createTime,
+          }));
+  return items.filter((item) =>
+    (item.text + ' ' + item.thought).toLowerCase().includes(noteQuery.value.toLowerCase()),
+  );
+});
+function readingTime(seconds) {
+  if (seconds == null) return '—';
+  return (
+    Math.floor(Number(seconds) / 3600) +
+    ' 小时 ' +
+    Math.floor((Number(seconds) % 3600) / 60) +
+    ' 分钟'
+  );
+}
+function readingDate(seconds) {
+  return seconds ? new Date(Number(seconds) * 1000).toLocaleString('zh-CN') : '—';
+}
+function safeLink(url) {
+  return typeof url === 'string' && /^https?:\/\//.test(url) ? url : '';
+}
+async function initialize() {
+  const current = ++generation;
+  loading.value = true;
+  error.value = '';
+  try {
+    const result = await scope.wait(fetchWereadConnection());
+    if (current !== generation) return;
+    connection.value = result;
+    if (result.connected && !snapshot.value) await refresh();
+  } catch (e) {
+    if (e.name !== 'PageInactiveError') error.value = e.message;
+  } finally {
+    if (current === generation) loading.value = false;
+  }
+}
+async function refresh() {
+  if (syncing.value || saving.value) return;
+  syncing.value = true;
+  error.value = '';
+  try {
+    const result = await scope.wait(syncWeread(modes[mode.value], timestamp()));
+    snapshot.value = result;
+    stats.value = result.stats || {};
+    connection.value.lastSyncTime = result.lastSyncTime;
+    notesRevision++;
+    notes.value = null;
+    selectedBook.value = '';
+  } catch (e) {
+    if (e.name !== 'PageInactiveError') error.value = e.message;
+  } finally {
+    syncing.value = false;
+  }
+}
+function timestamp() {
+  return mode.value === '累计'
+    ? 0
+    : Math.floor(new Date(date.value + 'T00:00:00+08:00').getTime() / 1000);
+}
+async function changeMode() {
+  if (statsLoading.value || syncing.value) return;
+  const current = ++statsRevision;
+  statsLoading.value = true;
+  error.value = '';
+  try {
+    if (date.value > new Date().toLocaleDateString('sv-SE'))
+      throw new Error('请选择当前或过去的日期');
+    const result = await scope.wait(fetchWereadStats(modes[mode.value], timestamp()));
+    if (current === statsRevision) {
+      stats.value = result;
+      appliedMode = mode.value;
+      appliedDate = date.value;
+    }
+  } catch (e) {
+    if (e.name !== 'PageInactiveError') {
+      error.value = e.message;
+      mode.value = appliedMode;
+      date.value = appliedDate;
+    }
+  } finally {
+    if (current === statsRevision) statsLoading.value = false;
+  }
+}
+async function saveConnection() {
+  if (saving.value || disconnecting.value) return;
+  if (!/^wrk-[\w-]+$/.test(keyInput.value.trim())) {
+    settingsError.value = '请输入有效的微信读书 Key';
+    return;
+  }
+  saving.value = true;
+  settingsError.value = '';
+  try {
+    const result = await scope.wait(connectWeread(keyInput.value.trim()));
+    connection.value = result;
+    snapshot.value = null;
+    stats.value = {};
+    notes.value = null;
+    detail.value = null;
+    selectedBook.value = '';
+    keyInput.value = '';
+    settings.value = false;
+    saving.value = false;
+    await refresh();
+  } catch (e) {
+    if (e.name !== 'PageInactiveError') settingsError.value = e.message;
+  } finally {
+    saving.value = false;
+  }
+}
+async function disconnect() {
+  if (saving.value || disconnecting.value) return;
+  disconnecting.value = true;
+  try {
+    await scope.wait(disconnectWeread());
+    connection.value = { connected: false };
+    snapshot.value = null;
+    stats.value = {};
+    notes.value = null;
+    detail.value = null;
+    selectedBook.value = '';
+    settings.value = false;
+    keyInput.value = '';
+    notesRevision++;
+    detailRevision++;
+  } finally {
+    disconnecting.value = false;
+  }
+}
+async function showBook(book) {
+  const current = ++detailRevision;
+  detail.value = book;
+  progress.value = null;
+  detailLoading.value = true;
+  detailError.value = '';
+  try {
+    const result = await scope.wait(fetchWereadProgress(book.bookId));
+    if (current === detailRevision && detail.value?.bookId === book.bookId) progress.value = result;
+  } catch (e) {
+    if (e.name !== 'PageInactiveError' && current === detailRevision) detailError.value = e.message;
+  } finally {
+    if (current === detailRevision) detailLoading.value = false;
+  }
+}
+async function selectNotebook(id) {
+  const current = ++notesRevision;
+  if (selectedBook.value !== id) notes.value = null;
+  selectedBook.value = id;
+  notesLoading.value = true;
+  notesError.value = '';
+  noteQuery.value = '';
+  try {
+    const result = await scope.wait(fetchWereadNotes(id));
+    if (current === notesRevision) notes.value = result;
+  } catch (e) {
+    if (e.name !== 'PageInactiveError' && current === notesRevision) notesError.value = e.message;
+  } finally {
+    if (current === notesRevision) notesLoading.value = false;
+  }
+}
+function showNotes() {
+  const id = detail.value.bookId;
+  detailRevision++;
+  detail.value = null;
+  tab.value = '阅读笔记';
+  selectNotebook(id);
+}
+function copy(text) {
+  copyError.value = '';
+  uni.setClipboardData({
+    data: text,
+    fail: () => {
+      copyError.value = '复制失败，可长按选择文本';
+    },
+  });
+}
+function openLink(url) {
+  if (!safeLink(url)) return;
+  // #ifdef WEB
+  window.open(url, '_blank', 'noopener,noreferrer');
+  // #endif
+  // #ifdef APP
+  plus.runtime.openURL(url);
+  // #endif
+  // #ifdef MP-WEIXIN
+  uni.setClipboardData({ data: url });
+  // #endif
+}
+</script>
+<template>
+  <MobilePage :refreshing="syncing || loading" @refresh="initialize"
+    ><view class="weread-page ui-page-body" :class="{ 'weread-page-dark': isDark }"
+      ><PageHeader title="微信读书" :back="true" @back="uni.navigateBack()" /><view class="ui-toolbar"
+        ><MobileButton
+          label="连接设置"
+          icon="ant-design:setting-outlined"
+          variant="quiet"
+          :disabled="syncing || statsLoading"
+          @click="settings = true"
+        /><MobileButton
+          v-if="connection.connected"
+          label="同步微信读书"
+          icon="ant-design:reload-outlined"
+          :loading="syncing"
+          :disabled="saving || statsLoading || loading"
+          @click="refresh"
+        /><text class="secondary">{{ connection.lastSyncTime || '' }}</text></view
+      ><PageState :loading="loading" :error="error" @retry="initialize"
+        ><MobileButton
+          v-if="!connection.connected"
+          label="连接微信读书"
+          @click="settings = true"
+        /><template v-if="snapshot"
+          ><view class="weread-tabs ui-row ui-section"><button v-for="label in ['阅读看板', '我的书架', '阅读笔记']" :key="label" role="button" class="weread-tab" :class="{ 'weread-tab-active': tab === label }" :aria-pressed="tab === label" @click="tab = label">{{ label }}</button></view><view v-if="tab === '阅读看板'"
+            ><view class="toolbar ui-row"
+              ><FormField compact stretch
+                label="周期"
+                kind="selector"
+                v-model="mode"
+                :options="['周', '月', '年', '累计']"
+                :disabled="statsLoading || syncing"
+                @update:model-value="changeMode" /><FormField compact stretch
+                v-if="mode !== '累计'"
+                label="统计日期"
+                kind="date"
+                v-model="date"
+                :disabled="statsLoading || syncing"
+                @update:model-value="changeMode" /></view
+            ><view class="metrics ui-row ui-section"
+              ><MetricCard label="阅读时长" :value="readingTime(stats.totalReadTime)" /><MetricCard
+                label="阅读天数"
+                :value="stats.readDays ?? '—'"
+                unit="天" /><MetricCard
+                label="日均阅读"
+                :value="readingTime(stats.dayAverageReadTime)" /><MetricCard
+                label="已读完"
+                :value="
+                  stats.readStat?.find((item) => item.stat === '读完')?.counts ?? '—'
+                " /></view
+            ><MiniChart
+              label="阅读时长趋势"
+              kind="bar"
+              :labels="trend.map((item) => item.label)"
+              :series="[{ name: '阅读时长', values: trend.map((item) => item.value) }]"
+              unit="分钟"
+            /><view class="card ui-card" :class="{ 'card-dark': isDark }"
+              ><text class="title">阅读最多的书</text
+              ><view v-for="(item, index) in stats.readLongest || []" :key="index" class="toolbar ui-row"
+                ><text>{{ index + 1 }}</text
+                ><text class="title">{{ item.book?.title || item.albumInfo?.name }}</text
+                ><text class="secondary">{{ readingTime(item.readTime) }}</text></view
+              ></view
+            ></view
+          ><view v-else-if="tab === '我的书架'"
+            ><FormField label="搜索书名或作者" v-model="keyword" /><view class="toolbar ui-row"
+              ><FormField compact stretch
+                label="阅读状态"
+                kind="selector"
+                v-model="status"
+                :options="['全部图书', '已读完', '未读完', '有笔记']" /><FormField compact stretch
+                label="排序"
+                kind="selector"
+                v-model="sort"
+                :options="['最近阅读', '书名排序']" /></view
+            ><text class="secondary">{{ books.length }} 本</text
+            ><view class="weread-shelf"><view
+              v-for="book in books"
+              :key="book.bookId"
+              class="weread-book-card card ui-card"
+              :class="{ 'card-dark': isDark }"
+              role="button" :aria-label="'书籍详情：' + book.title" @click="showBook(book)"
+              ><view class="book-card-body"
+                ><image
+                  v-if="safeLink(book.cover)"
+                  :src="safeLink(book.cover)"
+                  class="cover"
+                  mode="aspectFit" /><view class="book-body ui-gap-sm"
+                  ><text class="title">{{ book.title }}</text
+                  ><text class="secondary"
+                    >{{ book.author }} · {{ book.finishReading === 1 ? '已读完' : '未读完' }}</text
+                  ><text class="secondary"
+                    >{{ notebooks.find((n) => n.bookId === book.bookId)?.noteCount || 0 }} 划线 ·
+                    {{ notebooks.find((n) => n.bookId === book.bookId)?.reviewCount || 0 }}
+                    点评</text
+                  ></view
+                ></view></view></view
+            ><text v-if="!books.length" class="secondary">没有匹配的图书</text></view
+          ><view v-else
+            ><FormField
+              label="笔记本"
+              kind="selector"
+              :model-value="notebooks.find((n) => n.bookId === selectedBook)?.book.title || ''"
+              :options="notebooks.map((n) => n.book.title)"
+              @update:model-value="
+                selectNotebook(notebooks.find((n) => n.book.title === $event)?.bookId || '')
+              "
+            /><view class="toolbar ui-row"
+              ><FormField compact stretch
+                label="笔记类型"
+                kind="selector"
+                v-model="noteKind"
+                :options="['划线', '想法', '书评']" /></view
+            ><FormField label="搜索笔记" v-model="noteQuery" /><PageState
+              :loading="notesLoading"
+              :error="notesError"
+              :empty="!noteItems.length"
+              @retry="selectNotebook(selectedBook)"
+              ><view
+                v-for="item in noteItems"
+                :key="item.id"
+                class="card ui-card"
+                :class="{ 'card-dark': isDark }"
+                ><view class="toolbar ui-row"
+                  ><text class="title">{{ item.chapter }}</text
+                  ><MobileButton
+                    label="复制笔记"
+                    icon="ant-design:copy-outlined"
+                    variant="quiet"
+                    @click="copy([item.text, item.thought].filter(Boolean).join('\n'))" /></view
+                ><text selectable>{{ item.text }}</text
+                ><text v-if="item.thought" selectable>{{ item.thought }}</text
+                ><text class="secondary">{{ readingDate(item.time) }}</text></view
+              ></PageState
+            ><text v-if="copyError" class="error ui-section">{{ copyError }}</text></view
+          ></template
+        ></PageState
+      ><AdaptiveModal
+        v-if="settings"
+        label="微信读书连接"
+        :busy="saving || disconnecting"
+        @close="
+          settings = false;
+          keyInput = '';
+        "
+        ><FormField
+          label="微信读书 Key"
+          v-model="keyInput"
+          :password="true"
+          :disabled="saving || disconnecting" /><text class="secondary"
+          >凭证保存在账号绑定中，仅用于读取你的微信读书数据。</text
+        ><MobileButton
+          label="获取微信读书 Key"
+          variant="quiet"
+          @click="openLink('https://weread.qq.com/r/weread-skills')" /><text
+          v-if="settingsError"
+          class="error ui-section"
+          >{{ settingsError }}</text
+        ><view class="toolbar ui-row"
+          ><ConfirmAction
+            v-if="connection.connected"
+            label="断开微信读书"
+            message="断开连接并清除保存的 Key？"
+            :action="disconnect" /><MobileButton
+            label="验证并保存"
+            :loading="saving"
+            :disabled="disconnecting"
+            @click="saveConnection" /></view></AdaptiveModal
+      ><AdaptiveModal
+        v-if="detail"
+        label="书籍详情"
+        :content-key="String(detailLoading)"
+        @close="
+          detailRevision++;
+          detail = null;
+        "
+        ><text class="title">{{ detail.title }}</text
+        ><text class="secondary">{{ detail.author }}</text
+        ><PageState :loading="detailLoading" :error="detailError" @retry="showBook(detail)"
+          ><view class="metrics ui-row ui-section"
+            ><MetricCard
+              label="阅读进度"
+              :value="progress?.book?.progress ?? '—'"
+              unit="%" /><MetricCard
+              label="累计阅读"
+              :value="readingTime(progress?.book?.readingTime)" /></view
+          ><text class="secondary">最近阅读 {{ readingDate(progress?.book?.updateTime) }}</text
+          ><text>{{ detail.finishReading === 1 ? '已读完' : '未读完' }}</text></PageState
+        ><view class="toolbar ui-row"
+          ><MobileButton label="查看笔记" @click="showNotes" /><MobileButton
+            v-if="safeLink(detail.deepLink)"
+            label="微信读书打开"
+            icon="ant-design:export-outlined"
+            variant="quiet"
+            @click="openLink(detail.deepLink)" /></view></AdaptiveModal></view
+  ></MobilePage>
+</template>
+<style scoped lang="scss">
+@use '../../styles/spacing.scss';
+@use '../../styles/spacing-tokens' as *;
+.weread-page {
+  color: #27272a;
+}
+.weread-page-dark {
+  color: #eeeeef;
+}
+.toolbar,
+.metrics {
+  flex-direction: row;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.card {
+  border-radius: 16px;
+  background-color: #ffffff;
+}
+.card-dark {
+  background-color: #1c1e22;
+}
+.title {
+  font-size: 16px;
+  font-weight: 600;
+  flex: 1;
+}
+.secondary {
+  font-size: 13px;
+  color: #8b8f99;
+}
+.cover {
+  width: 60px;
+  height: 84px;
+  flex-shrink: 0;
+}
+.book-body {
+  flex: 1;
+}
+.error {
+  color: #e05252;
+}
+</style>
+
+<style scoped lang="scss">
+@use '../../styles/spacing-tokens' as *;
+.weread-tabs { flex-direction: row; }
+.weread-tab { margin: 0; padding: 0 $space-inline; min-height: $space-controlMin; border-radius: 0; background-color: transparent; color: #8b8f99; font-size: 14px; }
+.weread-tab::after { border: 0; }
+.weread-tab-active { color: #427bea; border-bottom: 2px solid #427bea; }
+.weread-shelf { display: flex; flex-direction: row; flex-wrap: wrap; gap: $space-section; margin-top: $space-section; }
+.weread-book-card { width: calc((100% - #{$space-section}) / 2); box-sizing: border-box; }
+.weread-shelf .card { margin: 0; }
+.book-card-body { display: flex; flex-direction: column; gap: $space-inline; }
+.weread-shelf .cover { width: 100%; height: 160px; }
+.weread-shelf .title { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+@media (min-width: 600px) { .weread-book-card { width: calc((100% - #{$space-section} * 2) / 3); } }
+@media (min-width: 1000px) { .weread-book-card { width: calc((100% - #{$space-section} * 3) / 4); } }
+</style>

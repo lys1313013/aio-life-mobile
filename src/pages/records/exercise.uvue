@@ -1,0 +1,380 @@
+<script setup lang="ts">
+import { computed, ref } from 'vue';
+import { onLoad, onShow } from '@dcloudio/uni-app';
+import MobilePage from '../../components/MobilePage.uvue';
+import PageHeader from '../../components/PageHeader.uvue';
+import MobileButton from '../../components/MobileButton.uvue';
+import FormField from '../../components/FormField.uvue';
+import PageState from '../../components/PageState.uvue';
+import ConfirmAction from '../../components/ConfirmAction.uvue';
+import AdaptiveModal from '../../components/AdaptiveModal.uvue';
+import FloatingActionButton from '../../components/FloatingActionButton.uvue';
+import MetricCard from '../../components/MetricCard.uvue';
+import MiniChart from '../../components/MiniChart.uvue';
+import { isDark } from '../../services/theme.ts';
+import { createRecordScope } from '../../services/records/page-scope.ts';
+import { fetchDictionary } from '../../services/records/goods.ts';
+import {
+  fetchExercisePage,
+  saveExercise,
+  deleteExercises,
+} from '../../services/records/exercise.ts';
+const rows = ref<any[]>([]),
+  types = ref<any[]>([]),
+  loading = ref(false),
+  error = ref(''),
+  typeFilter = ref('全部类型'),
+  startDate = ref(''),
+  endDate = ref(''),
+  form = ref<any>(null),
+  saving = ref(false),
+  formError = ref(''),
+  saved = ref(false),
+  selected = ref<string[]>([]);
+let generation = 0,
+  autoCreate = false;
+const scope = createRecordScope((clear) => {
+  form.value = null;
+  selected.value = [];
+  if (clear) {
+    rows.value = [];
+    types.value = [];
+  }
+});
+onLoad((query) => {
+  autoCreate = query?.create === '1';
+});
+onShow(() => load());
+const filtered = computed(() =>
+  rows.value.filter(
+    (item) =>
+      (!startDate.value || item.exerciseDate >= startDate.value) &&
+      (!endDate.value || item.exerciseDate <= endDate.value),
+  ),
+);
+const counts = computed(() => {
+  const unique = new Set(
+    filtered.value.map((item) => item.exerciseDate + '_' + item.exerciseTypeId),
+  );
+  return unique.size;
+});
+const quantity = computed(() =>
+  filtered.value.reduce((sum, item) => sum + Number(item.exerciseCount || 0), 0),
+);
+const monthly = computed(() => {
+  const groups = new Map<string, Set<string>>();
+  filtered.value.forEach((item) => {
+    const key = item.exerciseDate.slice(0, 7);
+    if (!groups.has(key)) groups.set(key, new Set());
+    groups.get(key).add(item.exerciseDate + '_' + item.exerciseTypeId);
+  });
+  return [...groups]
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .map(([label, values]) => ({ label, value: values.size }));
+});
+const visibleTypes = computed(() => {
+  const all = [...types.value];
+  for (const item of filtered.value)
+    if (!all.some((type) => type.id === item.exerciseTypeId))
+      all.push({ id: item.exerciseTypeId, dictLabel: item.exerciseTypeId });
+  return all;
+});
+const distribution = computed(() =>
+  visibleTypes.value
+    .map((type) => ({
+      label: type.dictLabel || type.label,
+      value: new Set(
+        filtered.value
+          .filter((item) => item.exerciseTypeId === type.id)
+          .map((item) => item.exerciseDate),
+      ).size,
+    }))
+    .filter((item) => item.value > 0),
+);
+const dailyGroups = computed(() =>
+  visibleTypes.value
+    .map((type) => {
+      const values = new Map<string, number>();
+      filtered.value
+        .filter((item) => item.exerciseTypeId === type.id)
+        .forEach((item) =>
+          values.set(
+            item.exerciseDate,
+            (values.get(item.exerciseDate) || 0) + Number(item.exerciseCount || 0),
+          ),
+        );
+      return {
+        id: type.id,
+        label: type.dictLabel || type.label,
+        points: [...values]
+          .sort((a, b) => a[0].localeCompare(b[0]))
+          .map(([label, value]) => ({ label, value })),
+      };
+    })
+    .filter((group) => group.points.length),
+);
+function name(id) {
+  return (
+    types.value.find((item) => item.id === id)?.dictLabel ||
+    types.value.find((item) => item.id === id)?.label ||
+    id
+  );
+}
+async function load() {
+  const current = ++generation;
+  loading.value = true;
+  error.value = '';
+  try {
+    const dict = await scope.wait(fetchDictionary('exercise_type', true));
+    const typeId =
+      (dict.dictDetailList || []).find((t) => (t.dictLabel || t.label) === typeFilter.value)?.id ||
+      '';
+    const data = [];
+    let page = 1;
+    while (true) {
+      const result = await scope.wait(fetchExercisePage(page++, typeId));
+      data.push(...result.items);
+      if (data.length >= result.total || result.items.length < 100) break;
+    }
+    if (current === generation) {
+      types.value = dict.dictDetailList || [];
+      rows.value = data;
+      if (autoCreate) {
+        autoCreate = false;
+        open();
+      }
+    }
+  } catch (e) {
+    if (e.name !== 'PageInactiveError' && current === generation) error.value = e.message;
+  } finally {
+    if (current === generation) loading.value = false;
+  }
+}
+function open(item = null) {
+  saved.value = false;
+  formError.value = '';
+  form.value = item
+    ? { ...item, exerciseCount: String(item.exerciseCount ?? '') }
+    : {
+        exerciseTypeId:
+          types.value.find((t) => (t.dictLabel || t.label) === typeFilter.value)?.id ||
+          types.value[0]?.id ||
+          '',
+        exerciseDate: new Date().toLocaleDateString('sv-SE'),
+        exerciseCount: '',
+        description: '',
+      };
+}
+async function save() {
+  if (saving.value) return;
+  if (!form.value.exerciseTypeId || !form.value.exerciseDate) {
+    formError.value = '请选择运动类型和日期';
+    return;
+  }
+  const count = form.value.exerciseCount === '' ? null : Number(form.value.exerciseCount);
+  if (count != null && (!Number.isInteger(count) || count < 0)) {
+    formError.value = '运动数量必须为非负整数';
+    return;
+  }
+  saving.value = true;
+  formError.value = '';
+  try {
+    if (!saved.value) {
+      const payload = { ...form.value, exerciseCount: count };
+      const ok = await scope.wait(saveExercise(payload));
+      if (!ok) throw new Error('保存失败');
+      saved.value = true;
+    }
+    await load();
+    if (error.value) throw new Error(error.value);
+    form.value = null;
+  } catch (e) {
+    if (e.name !== 'PageInactiveError') formError.value = e.message;
+  } finally {
+    saving.value = false;
+  }
+}
+async function remove(ids) {
+  await scope.wait(deleteExercises(ids));
+  const removed = new Set(ids);
+  rows.value = rows.value.filter((row) => !removed.has(row.id));
+  selected.value = selected.value.filter((id) => !removed.has(id));
+}
+function toggle(id) {
+  selected.value = selected.value.includes(id)
+    ? selected.value.filter((value) => value !== id)
+    : [...selected.value, id];
+}
+</script>
+<template>
+  <MobilePage :refreshing="loading" @refresh="load"
+    ><view class="exercise-page ui-page-body" :class="{ 'exercise-page-dark': isDark }"
+      ><PageHeader title="运动记录" :back="true" @back="uni.navigateBack()" /><view class="ui-toolbar"
+        ><MobileButton
+          label="分类配置"
+          icon="ant-design:setting-outlined"
+          variant="quiet"
+          @click="uni.navigateTo({ url: '/pages/records/categories' })" /><ConfirmAction
+          v-if="selected.length"
+          :label="'删除所选 ' + selected.length + ' 条记录'"
+          :action="() => remove(selected)" /></view
+      ><FormField
+        label="运动类型"
+        kind="selector"
+        v-model="typeFilter"
+        :options="['全部类型', ...types.map((t) => t.dictLabel || t.label)]"
+        @update:model-value="
+          selected = [];
+          load();
+        " /><view class="ui-field-row"
+        ><FormField compact stretch label="开始日期" kind="date" v-model="startDate" /><FormField compact stretch
+          label="结束日期"
+          kind="date"
+          v-model="endDate" /><MobileButton
+          label="清除日期筛选"
+          icon="ant-design:close-outlined"
+          variant="quiet"
+          @click="
+            startDate = '';
+            endDate = '';
+          " /></view
+      ><text v-if="startDate && endDate && startDate > endDate" class="error ui-section"
+        >开始日期不能晚于结束日期</text
+      ><view class="metrics ui-row ui-section"
+        ><MetricCard label="运动次数" :value="counts" /><MetricCard
+          v-if="typeFilter !== '全部类型'"
+          label="运动量"
+          :value="quantity" /><MetricCard label="记录" :value="filtered.length" /></view
+      ><PageState :loading="loading" :error="error" :empty="!filtered.length" @retry="load"
+        ><MiniChart
+          label="每月运动次数"
+          kind="bar"
+          :labels="monthly.map((item) => item.label)"
+          :series="[{ name: '运动次数', values: monthly.map((item) => item.value) }]"
+          unit="次"
+        /><MiniChart
+          label="运动类型分布"
+          kind="bar"
+          :labels="distribution.map((item) => item.label)"
+          :series="[{ name: '运动次数', values: distribution.map((item) => item.value) }]"
+          unit="次"
+        /><MiniChart
+          v-for="group in dailyGroups"
+          :key="group.id"
+          :label="group.label + '每日运动量'"
+          :labels="group.points.map((item) => item.label)"
+          :series="[{ name: group.label, values: group.points.map((item) => item.value) }]"
+        /><view
+          v-for="item in filtered"
+          :key="item.id"
+          class="card ui-card"
+          :class="{ 'card-dark': isDark }"
+          ><view class="toolbar ui-row"
+            ><MobileButton
+              :label="selected.includes(item.id) ? '取消选择记录' : '选择记录'"
+              :icon="selected.includes(item.id) ? 'ant-design:check-square-outlined' : 'ant-design:border-outlined'"
+              variant="quiet"
+              @click="toggle(item.id)" /><text class="title"
+              >{{ name(item.exerciseTypeId) }} · {{ item.exerciseCount ?? '—' }}</text
+            ><MobileButton
+              label="编辑运动"
+              icon="ant-design:edit-outlined"
+              variant="quiet"
+              @click="open(item)" /><ConfirmAction
+              label="删除运动"
+              :action="() => remove([item.id])" /></view
+          ><text class="secondary">{{ item.exerciseDate }}</text
+          ><text>{{ item.description }}</text></view
+        ></PageState
+      ><AdaptiveModal v-if="form" label="编辑运动记录" :busy="saving" @close="form = null"
+        ><FormField
+          label="运动类型"
+          kind="selector"
+          :model-value="name(form.exerciseTypeId)"
+          :options="types.map((t) => t.dictLabel || t.label)"
+          @update:model-value="
+            form.exerciseTypeId = types.find((t) => (t.dictLabel || t.label) === $event)?.id || ''
+          " /><FormField label="运动日期" kind="date" v-model="form.exerciseDate" /><FormField
+          label="运动数量"
+          input-type="number"
+          v-model="form.exerciseCount" /><FormField
+          label="备注"
+          kind="textarea"
+          v-model="form.description" /><text v-if="formError" class="error ui-section">{{ formError }}</text
+        ><view class="toolbar ui-row"
+          ><MobileButton
+            label="取消"
+            variant="quiet"
+            :disabled="saving"
+            @click="form = null" /><MobileButton
+            :label="saved ? '重新读取' : '保存'"
+            :loading="saving"
+            @click="save" /></view></AdaptiveModal></view>
+    <template #fixed><FloatingActionButton label="新增运动" :disabled="loading || !!error" @click="open()" /></template>
+  </MobilePage>
+</template>
+<style scoped lang="scss">
+@use '../../styles/spacing.scss';
+@use '../../styles/spacing-tokens' as *;
+.exercise-page {
+  color: #27272a;
+}
+.exercise-page-dark {
+  color: #eeeeef;
+}
+.toolbar,
+.metrics {
+  flex-direction: row;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.card,
+.chart {
+  border-radius: 16px;
+  background-color: #ffffff;
+}
+.card-dark {
+  background-color: #1c1e22;
+}
+.title {
+  font-weight: 600;
+  font-size: 16px;
+  flex: 1;
+}
+.secondary {
+  color: #8b8f99;
+  font-size: 13px;
+}
+.error {
+  color: #e05252;
+}
+.bar-row {
+  flex-direction: row;
+  align-items: center;
+  font-size: 12px;
+}
+.bar {
+  height: 10px;
+  background-color: #4ecdc4;
+  border-radius: 4px;
+}
+.daily {
+  width: 100%;
+}
+.daily-series {
+  flex-direction: row;
+  align-items: flex-end;
+  min-height: 132px;
+}
+.daily-column {
+  align-items: center;
+  width: 44px;
+  font-size: 11px;
+  flex-shrink: 0;
+}
+.daily-bar {
+  width: 22px;
+  background-color: #4ecdc4;
+  border-radius: 4px;
+}
+</style>

@@ -1,0 +1,280 @@
+<script setup lang="ts">
+import { computed, onUnmounted, ref } from 'vue';
+import { onLoad, onShow } from '@dcloudio/uni-app';
+import MobilePage from '../../components/MobilePage.uvue';
+import PageHeader from '../../components/PageHeader.uvue';
+import FloatingActionButton from '../../components/FloatingActionButton.uvue';
+import MobileButton from '../../components/MobileButton.uvue';
+import FormField from '../../components/FormField.uvue';
+import ConfirmAction from '../../components/ConfirmAction.uvue';
+import PageState from '../../components/PageState.uvue';
+import LoadMore from '../../components/LoadMore.uvue';
+import AdaptiveModal from '../../components/AdaptiveModal.uvue';
+import { createRecordScope } from '../../services/records/page-scope.ts';
+import { isDark } from '../../services/theme.ts';
+import { fetchNotes, saveNote, deleteNote, fetchNoteById } from '../../services/records/notes.ts';
+const kind = ref('think'),
+  title = computed(() => (kind.value === 'think' ? '闪念' : '笔记'));
+const rows = ref<any[]>([]),
+  page = ref(1),
+  total = ref(0),
+  keyword = ref(''),
+  loading = ref(false),
+  refreshing = ref(false),
+  error = ref(''),
+  busy = ref('');
+const created = ref(false);
+const form = ref<any>(null),
+  saving = ref(false),
+  formError = ref('');
+const scope = createRecordScope((clearData) => {
+  form.value = null;
+  if (clearData) {
+    rows.value = [];
+    total.value = 0;
+    created.value = false;
+  }
+});
+let requestedEdit = '';
+let requestedCreate = false;
+let alive = true,
+  generation = 0;
+onLoad((options) => {
+  kind.value = options?.kind === 'memo' ? 'memo' : 'think';
+  requestedEdit = options?.editId || '';
+  requestedCreate = options?.create === '1';
+});
+onShow(() => load());
+onUnmounted(() => {
+  alive = false;
+  generation++;
+});
+async function load(refresh = false, more = false) {
+  const current = ++generation,
+    nextPage = more ? page.value + 1 : 1;
+  loading.value = true;
+  refreshing.value = refresh;
+  error.value = '';
+  try {
+    const data = await scope.wait(fetchNotes(kind.value, nextPage, keyword.value.trim()));
+    if (alive && current === generation) {
+      rows.value = more ? [...rows.value, ...data.items] : data.items;
+      total.value = data.total;
+      page.value = nextPage;
+      if (requestedEdit && kind.value === 'think') {
+        const selected = await scope.wait(fetchNoteById(requestedEdit));
+        if (current === generation && selected.items[0]) open(selected.items[0]);
+        requestedEdit = '';
+      } else if (requestedCreate) {
+        requestedCreate = false;
+        open();
+      }
+    }
+  } catch (e) {
+    if (e.name === 'PageInactiveError') return;
+    if (alive && current === generation) error.value = e.message;
+  } finally {
+    if (current === generation) {
+      loading.value = false;
+      refreshing.value = false;
+    }
+  }
+}
+function open(item = null) {
+  created.value = false;
+  formError.value = '';
+  form.value = item
+    ? { ...item, events: (item.events || []).map((event) => ({ ...event })) }
+    : { title: '', content: '', hiddenContent: false, isPinned: 0, events: [] };
+}
+async function save() {
+  if (saving.value) return;
+  if (!form.value.content.trim() || (kind.value === 'memo' && !form.value.title.trim())) {
+    formError.value = kind.value === 'memo' ? '请输入标题和内容' : '请输入内容';
+    return;
+  }
+  const payload = {
+    ...form.value,
+    content: form.value.content.trim(),
+    events: form.value.events
+      .filter((event) => event.content.trim())
+      .map((event) => ({ ...event, content: event.content.trim() })),
+  };
+  saving.value = true;
+  formError.value = '';
+  try {
+    if (!created.value) {
+      await scope.wait(saveNote(kind.value, payload));
+      created.value = true;
+    }
+    if (payload.id) {
+      const selected =
+        kind.value === 'think' ? (await scope.wait(fetchNoteById(payload.id))).items[0] : payload;
+      if (!selected) throw Error('保存成功，请重试读取');
+      const index = rows.value.findIndex((row) => row.id === payload.id);
+      if (index >= 0) rows.value[index] = selected;
+    } else {
+      const data = await scope.wait(fetchNotes(kind.value, 1, keyword.value.trim()));
+      rows.value = data.items;
+      page.value = 1;
+      total.value = data.total;
+    }
+    form.value = null;
+  } catch (e) {
+    if (e.name === 'PageInactiveError') return;
+    formError.value = e.message;
+  } finally {
+    saving.value = false;
+  }
+}
+async function toggle(item, field) {
+  if (busy.value) return;
+  busy.value = item.id + field;
+  const value = field === 'isPinned' ? (item.isPinned === 1 ? 0 : 1) : !item.hiddenContent;
+  try {
+    await scope.wait(saveNote(kind.value, { id: item.id, [field]: value }));
+    item[field] = value;
+  } catch (e) {
+    if (e.name === 'PageInactiveError') return;
+    error.value = e.message;
+  } finally {
+    busy.value = '';
+  }
+}
+async function remove(item) {
+  await scope.wait(deleteNote(kind.value, item.id));
+  rows.value = rows.value.filter((row) => row.id !== item.id);
+  total.value--;
+}
+function displayDate(value) {
+  if (kind.value !== 'memo') return String(value || '').slice(0, 16);
+  const timestamp = new Date(String(value || '').replace(' ', 'T')).getTime();
+  if (!Number.isFinite(timestamp)) return '';
+  const days = Math.max(0, Math.floor((Date.now() - timestamp) / 86400000));
+  return days < 1 ? '今天' : days < 30 ? days + ' 天前' : days < 365 ? Math.floor(days / 30) + ' 个月前' : Math.floor(days / 365) + ' 年前';
+}
+</script>
+<template>
+  <MobilePage :refreshing="refreshing" @refresh="load(true)"
+    ><view class="notes-page ui-page-body" :class="{ 'notes-page-dark': isDark }">
+      <PageHeader :title="title" :back="true" @back="uni.navigateBack()" /><view class="ui-toolbar"
+        ><FormField compact stretch label="搜索内容" v-model="keyword" /><MobileButton
+          label="搜索"
+          icon="ant-design:search-outlined"
+          :loading="loading"
+          @click="load()"
+      /></view>
+      <PageState
+        :loading="loading && !rows.length"
+        :error="error"
+        :empty="!rows.length"
+        @retry="load()"
+      >
+        <view class="notes-grid"><view
+          v-for="item in rows"
+          :key="item.id"
+          class="note-card ui-card"
+          :class="{ 'note-card-dark': isDark }"
+          role="button" :aria-label="'编辑' + title" @click="open(item)"
+        >
+          <view v-if="kind === 'memo'" class="toolbar ui-row"><text class="note-title">{{ item.title }}</text></view>
+          <text v-if="!item.hiddenContent" class="note-content">{{ item.content }}</text
+          ><text v-else class="note-secondary">••••••</text>
+          <view class="note-footer ui-row"><text class="note-secondary">{{ displayDate(item.updateTime || item.createTime) }}</text><text v-if="kind === 'think' && (item.events || []).length" class="note-secondary">{{ item.events.length }}</text><MobileButton :label="item.hiddenContent ? '显示内容' : '隐藏内容'" :icon="item.hiddenContent ? 'ant-design:eye-outlined' : 'ant-design:eye-invisible-outlined'" variant="quiet" :loading="busy === item.id + 'hiddenContent'" :disabled="!!busy" @click.stop="toggle(item, 'hiddenContent')" /></view>
+        </view></view> </PageState
+      ><LoadMore :loading="loading" :has-more="rows.length < total" @load="load(false, true)" />
+      <AdaptiveModal v-if="form" :label="'编辑' + title" :busy="saving" @close="form = null">
+        <FormField v-if="kind === 'memo'" label="标题" v-model="form.title" /><FormField
+          label="内容"
+          kind="textarea"
+          v-model="form.content"
+        />
+        <template v-if="kind === 'think'"
+          ><view v-for="(event, index) in form.events" :key="event.id || index" class="event-item ui-section ui-gap-sm"
+            ><FormField
+              :label="'关联事件 ' + (index + 1)"
+              kind="textarea"
+              v-model="event.content" /><MobileButton
+              label="移除此事件"
+              icon="ant-design:close-outlined"
+              variant="quiet"
+              @click="form.events.splice(index, 1)" /></view
+          ><MobileButton
+            label="新增关联事件"
+            icon="ant-design:plus-outlined"
+            variant="quiet"
+            @click="form.events.push({ content: '' })"
+        /></template>
+        <view class="toolbar ui-row"
+          ><MobileButton
+            v-if="kind === 'memo' || form.id"
+            :label="form.hiddenContent ? '显示内容' : '隐藏内容'"
+            :icon="form.hiddenContent ? 'ant-design:eye-outlined' : 'ant-design:eye-invisible-outlined'"
+            variant="quiet"
+            @click="form.hiddenContent = !form.hiddenContent" /><MobileButton
+            v-if="kind === 'think'"
+            :label="form.isPinned === 1 ? '取消看板展示' : '展示到看板'"
+            :icon="form.isPinned === 1 ? 'ant-design:star-filled' : 'ant-design:star-outlined'"
+            variant="quiet"
+            @click="form.isPinned = form.isPinned === 1 ? 0 : 1"
+        /></view>
+        <text v-if="formError" class="note-error ui-section">{{ formError }}</text
+        ><view class="toolbar ui-row"
+          ><ConfirmAction v-if="form.id" :label="'删除' + title" :action="() => remove(form)" /><MobileButton
+            label="取消"
+            variant="quiet"
+            :disabled="saving"
+            @click="form = null" /><MobileButton
+            :label="created ? '重新读取' : '保存'"
+            :loading="saving"
+            @click="save"
+        /></view>
+      </AdaptiveModal> </view>
+    <template #fixed><FloatingActionButton :label="'新增' + title" @click="open()" /></template>
+  </MobilePage>
+</template>
+<style scoped lang="scss">
+@use '../../styles/spacing.scss';
+@use '../../styles/spacing-tokens' as *;
+.notes-page {
+  color: #27272a;
+}
+.notes-page-dark {
+  color: #eeeeef;
+}
+.toolbar {
+  flex-direction: row;
+  align-items: center;
+}
+.notes-grid { display: flex; flex-direction: row; flex-wrap: wrap; gap: $space-section; align-items: flex-start; }
+.note-card { width: 100%; box-sizing: border-box; }
+@media (min-width: 600px) { .note-card { width: calc((100% - #{$space-section}) / 2); } }
+@media (min-width: 1000px) { .note-card { width: calc((100% - #{$space-section} * 2) / 3); } }
+.note-footer { align-items: center; justify-content: space-between; gap: $space-detail; margin-top: $space-inline; }
+.note-card {
+  margin: 0;
+  background-color: #ffffff;
+  border-radius: 16px;
+}
+.note-card-dark {
+  background-color: #1c1e22;
+}
+.note-title {
+  flex: 1;
+  font-size: 16px;
+  font-weight: 600;
+}
+.note-content {
+  font-size: 15px;
+  line-height: 24px;
+  white-space: pre-wrap;
+}
+.note-secondary {
+  color: #8b8f99;
+  font-size: 13px;
+  flex: 1;
+}
+.note-error {
+  color: #e05252;
+}
+</style>

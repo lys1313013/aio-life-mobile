@@ -1,0 +1,490 @@
+<script setup lang="ts">
+import { computed, onUnmounted, ref } from 'vue';
+import { onShow } from '@dcloudio/uni-app';
+import MobilePage from '../../components/MobilePage.uvue';
+import PageHeader from '../../components/PageHeader.uvue';
+import MobileButton from '../../components/MobileButton.uvue';
+import FormField from '../../components/FormField.uvue';
+import ConfirmAction from '../../components/ConfirmAction.uvue';
+import PageState from '../../components/PageState.uvue';
+import AdaptiveModal from '../../components/AdaptiveModal.uvue';
+import MetricCard from '../../components/MetricCard.uvue';
+import AttachmentField from '../../components/AttachmentField.uvue';
+import { authFileUrl } from '../../services/attachments.ts';
+import { session } from '../../services/session.ts';
+import { isDark } from '../../services/theme.ts';
+import { createRecordScope } from '../../services/records/page-scope.ts';
+import {
+  fetchDevicePage,
+  fetchDictionary,
+  saveDevice,
+  deleteDevice,
+} from '../../services/records/goods.ts';
+const rows = ref<any[]>([]),
+  types = ref<any[]>([]),
+  statuses = ref<any[]>([]),
+  loading = ref(false),
+  refreshing = ref(false),
+  error = ref(''),
+  typeFilter = ref('全部类型'),
+  keyword = ref('');
+const photos = ref<Record<string, string>>({}),
+  photoBusy = ref<Record<string, boolean>>({}),
+  photoErrors = ref<Record<string, string>>({});
+const form = ref<any>(null),
+  saving = ref(false),
+  formError = ref(''),
+  attachmentBusy = ref(false),
+  created = ref(false);
+const scope = createRecordScope((clear) => {
+  form.value = null;
+  photos.value = {};
+  photoBusy.value = {};
+  photoErrors.value = {};
+  if (clear) {
+    rows.value = [];
+    types.value = [];
+    statuses.value = [];
+  }
+});
+const filtered = computed(() =>
+  rows.value.filter(
+    (item) =>
+      !keyword.value ||
+      (item.name + ' ' + item.spec + ' ' + item.remark).includes(keyword.value),
+  ),
+);
+const amount = computed(() =>
+  filtered.value
+    .reduce((sum, item) => sum + Number(item.purchasePrice || 0), 0)
+    .toFixed(2),
+);
+const dailyCost = computed(() =>
+  filtered.value
+    .reduce((sum, item) => sum + Number(item.purchasePrice || 0) / usageDays(item), 0)
+    .toFixed(2),
+);
+let alive = true,
+  generation = 0;
+onUnmounted(() => {
+  alive = false;
+  generation++;
+});
+onShow(() => load());
+async function load(refresh = false) {
+  const current = ++generation;
+  loading.value = true;
+  refreshing.value = refresh;
+  error.value = '';
+  try {
+    const [typeDict, statusDict] = await scope.wait(
+      Promise.all([
+        fetchDictionary('device_type', true),
+        fetchDictionary('device_status'),
+      ]),
+    );
+    const typeId =
+      (typeDict.dictDetailList || []).find(
+        (item) => (item.dictLabel || item.label) === typeFilter.value,
+      )?.id || '';
+    const data = [];
+    let page = 1;
+    while (true) {
+      const response = await scope.wait(fetchDevicePage(page++, typeId));
+      data.push(...response.items);
+      if (data.length >= response.total || response.items.length < 100) break;
+    }
+    if (alive && current === generation) {
+      rows.value = data;
+      types.value = typeDict.dictDetailList || [];
+      statuses.value = statusDict.dictDetailList || [];
+      data.forEach((item) => {
+        if (item.fileId) loadPhoto(item);
+      });
+    }
+  } catch (e) {
+    if (e.name === 'PageInactiveError') return;
+    if (current === generation) error.value = e.message;
+  } finally {
+    if (current === generation) {
+      loading.value = false;
+      refreshing.value = false;
+    }
+  }
+}
+async function loadPhoto(item) {
+  const current = generation,
+    token = session.token;
+  photoBusy.value = { ...photoBusy.value, [item.id]: true };
+  photoErrors.value = { ...photoErrors.value, [item.id]: '' };
+  try {
+    const url = await scope.wait(authFileUrl(item.fileId));
+    if (alive && current === generation && token === session.token)
+      photos.value = { ...photos.value, [item.id]: url };
+  } catch (e) {
+    if (
+      e.name !== 'PageInactiveError' &&
+      alive &&
+      current === generation &&
+      token === session.token
+    )
+      photoErrors.value = { ...photoErrors.value, [item.id]: e.message };
+  } finally {
+    if (alive && current === generation && token === session.token)
+      photoBusy.value = { ...photoBusy.value, [item.id]: false };
+  }
+}
+const statusCounts = computed(() =>
+  ['1', '4', '2', '3'].map((status) => ({
+    status,
+    count: filtered.value.filter((item) => String(item.status) === status).length,
+  })),
+);
+function usageDays(item) {
+  if (!item.purchaseDate) return 1;
+  const difference =
+    (new Date(item.endDate || new Date()).getTime() -
+      new Date(item.purchaseDate).getTime()) /
+    86400000;
+  return Math.max(1, Math.floor(difference));
+}
+function statusName(value) {
+  return (
+    statuses.value.find((item) => String(item.value) === String(value))?.label ||
+    { '1': '使用中', '2': '已损坏', '3': '已送人', '4': '吃灰中' }[value] ||
+    value
+  );
+}
+function open(item = null) {
+  created.value = false;
+  formError.value = '';
+  form.value = item
+    ? {
+        ...item,
+        files: item.fileId ? [{ id: item.fileId, fileName: item.name + ' 图片' }] : [],
+      }
+    : {
+        name: '',
+        spec: '',
+        type:
+          types.value.find((t) => (t.dictLabel || t.label) === typeFilter.value)?.id ||
+          types.value[0]?.id ||
+          '',
+        status: '1',
+        purchaseDate: '',
+        endDate: '',
+        purchasePrice: '',
+        purchasePlace: '',
+        remark: '',
+        fileId: '',
+        files: [],
+      };
+}
+async function save() {
+  if (saving.value || attachmentBusy.value) return;
+  if (!form.value.name.trim()) {
+    formError.value = '请输入设备名称';
+    return;
+  }
+  const price = form.value.purchasePrice === '' ? null : Number(form.value.purchasePrice);
+  if (price != null && (!Number.isFinite(price) || price < 0)) {
+    formError.value = '购买价格必须为非负数字';
+    return;
+  }
+  if (
+    form.value.endDate &&
+    form.value.purchaseDate &&
+    form.value.endDate < form.value.purchaseDate
+  ) {
+    formError.value = '结束日期不能早于购买日期';
+    return;
+  }
+  const payload = {
+    ...form.value,
+    name: form.value.name.trim(),
+    purchasePrice: price,
+    purchaseDate: form.value.purchaseDate || null,
+    endDate: form.value.endDate || null,
+    fileId: form.value.files.at(-1)?.id || '',
+  };
+  delete payload.files;
+  saving.value = true;
+  formError.value = '';
+  try {
+    if (!created.value) {
+      await scope.wait(saveDevice(payload));
+      if (!payload.id) created.value = true;
+    }
+    if (payload.id) {
+      const index = rows.value.findIndex((item) => item.id === payload.id);
+      if (index >= 0) rows.value[index] = payload;
+    } else {
+      const data = [];
+      let page = 1;
+      while (true) {
+        const response = await scope.wait(fetchDevicePage(page++, payload.type));
+        data.push(...response.items);
+        if (data.length >= response.total || response.items.length < 100) break;
+      }
+      rows.value = data;
+      typeFilter.value =
+        types.value.find((t) => t.id === payload.type)?.dictLabel || '全部类型';
+    }
+    form.value = null;
+  } catch (e) {
+    if (e.name === 'PageInactiveError') return;
+    formError.value = e.message;
+  } finally {
+    saving.value = false;
+  }
+}
+async function remove(item) {
+  await scope.wait(deleteDevice(item.id));
+  rows.value = rows.value.filter((r) => r.id !== item.id);
+}
+</script>
+<template>
+  <MobilePage :refreshing="refreshing" @refresh="load(true)"
+    ><view class="goods-page ui-page-body" :class="{ 'goods-page-dark': isDark }"
+      ><PageHeader title="设备" :back="true" @back="uni.navigateBack()" /><view
+        class="ui-toolbar"
+        ><FormField compact stretch label="搜索设备" v-model="keyword" /><MobileButton
+          label="新增设备"
+          icon="ant-design:plus-outlined"
+          :disabled="loading || !!error"
+          @click="open()" /></view
+      ><FormField
+        label="类型"
+        kind="selector"
+        v-model="typeFilter"
+        :options="['全部类型', ...types.map((t) => t.dictLabel || t.label)]"
+        @update:model-value="load()"
+      /><view class="metrics ui-row ui-section"
+        ><MetricCard label="资产数量" :value="filtered.length" /><MetricCard
+          label="总资产"
+          :value="amount"
+          unit="元" /><MetricCard label="每日成本" :value="dailyCost" unit="元" /></view
+      ><view class="status-summary ui-row ui-section"
+        ><text
+          v-for="entry in statusCounts"
+          :key="entry.status"
+          class="status-tag"
+          :class="'status-' + entry.status"
+          >{{ statusName(entry.status) }} {{ entry.count }}</text
+        ></view
+      ><PageState
+        :loading="loading"
+        :error="error"
+        :empty="!filtered.length"
+        @retry="load()"
+        ><view class="goods-grid ui-gap-md"
+          ><view
+            v-for="item in filtered"
+            :key="item.id"
+            class="goods-card ui-card"
+            :class="{ 'goods-card-dark': isDark }"
+            ><view class="goods-media"
+              ><image
+                v-if="photos[item.id]"
+                class="goods-photo"
+                :src="photos[item.id]"
+                mode="aspectFit"
+                :aria-label="item.name + '图片'"
+                @click="open(item)"
+              /><view v-else class="goods-placeholder"
+                ><text>{{ photoBusy[item.id] ? '加载图片…' : '设备' }}</text
+                ><MobileButton
+                  v-if="photoErrors[item.id]"
+                  label="重试设备图片"
+                  variant="quiet"
+                  @click="loadPhoto(item)" /></view
+              ><text class="goods-badge status-tag" :class="'status-' + item.status">{{
+                statusName(item.status)
+              }}</text></view
+            ><view class="toolbar ui-row"
+              ><text class="goods-title" @click="open(item)">{{ item.name }}</text
+              ><MobileButton
+                label="编辑设备"
+                icon="ant-design:edit-outlined"
+                variant="quiet"
+                @click="open(item)" /><ConfirmAction
+                label="删除设备"
+                :action="() => remove(item)" /></view
+            ><text class="goods-secondary"
+              >购买时间 {{ item.purchaseDate || '—' }} · {{ usageDays(item) }} 天</text
+            ><text class="goods-content">{{ item.spec }}</text
+            ><text class="goods-secondary"
+              >{{ item.purchasePrice || 0 }} 元 · 日均
+              {{ (Number(item.purchasePrice || 0) / usageDays(item)).toFixed(2) }}
+              元</text
+            ><text v-if="item.purchasePlace" class="goods-secondary">{{
+              item.purchasePlace
+            }}</text
+            ><text v-if="item.remark" class="goods-content">{{ item.remark }}</text></view
+          ></view
+        >
+        ></PageState
+      >
+      <AdaptiveModal
+        v-if="form"
+        label="编辑设备"
+        :busy="saving || attachmentBusy"
+        @close="form = null"
+        ><FormField label="名称" v-model="form.name" /><FormField
+          label="配置"
+          v-model="form.spec" /><FormField
+          label="类型"
+          kind="selector"
+          :model-value="types.find((t) => t.id === form.type)?.dictLabel || ''"
+          :options="types.map((t) => t.dictLabel || t.label)"
+          @update:model-value="
+            form.type = types.find((t) => (t.dictLabel || t.label) === $event)?.id || ''
+          " /><FormField
+          label="状态"
+          kind="selector"
+          :model-value="statusName(form.status)"
+          :options="statuses.map((t) => t.label)"
+          @update:model-value="
+            form.status = String(statuses.find((t) => t.label === $event)?.value || '1')
+          " /><FormField
+          label="购买日期"
+          kind="date"
+          v-model="form.purchaseDate" /><FormField
+          label="退役日期"
+          kind="date"
+          v-model="form.endDate" /><FormField
+          label="购买价格"
+          input-type="digit"
+          v-model="form.purchasePrice" /><FormField
+          label="购买平台"
+          v-model="form.purchasePlace" /><FormField
+          label="备注"
+          kind="textarea"
+          v-model="form.remark" /><AttachmentField
+          :files="form.files"
+          upload-path="/file/upload"
+          :form-data="{ bizType: 'device' }"
+          :disabled="saving"
+          @update:files="form.files = $event.slice(-1)"
+          @busy-change="attachmentBusy = $event" /><text
+          v-if="formError"
+          class="goods-error ui-section"
+          >{{ formError }}</text
+        ><view class="toolbar ui-row"
+          ><MobileButton
+            label="取消"
+            variant="quiet"
+            :disabled="saving || attachmentBusy"
+            @click="form = null" /><MobileButton
+            :label="created ? '重新读取' : '保存'"
+            :loading="saving"
+            :disabled="attachmentBusy"
+            @click="save" /></view
+      ></AdaptiveModal> </view
+  ></MobilePage>
+</template>
+<style scoped lang="scss">
+@use '../../styles/spacing.scss';
+@use '../../styles/spacing-tokens' as *;
+.goods-page {
+  color: #27272a;
+}
+.goods-page-dark {
+  color: #eeeeef;
+}
+.toolbar {
+  flex-direction: row;
+  align-items: center;
+}
+.metrics {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.goods-grid {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+}
+.goods-card {
+  width: 100%;
+  box-sizing: border-box;
+  background-color: #ffffff;
+  border-radius: 16px;
+}
+.goods-card-dark {
+  background-color: #1c1e22;
+}
+.goods-title {
+  flex: 1;
+  font-size: 17px;
+  font-weight: 600;
+}
+.goods-content {
+  font-size: 14px;
+  line-height: 22px;
+}
+.goods-secondary {
+  color: #8b8f99;
+  font-size: 13px;
+}
+.goods-media {
+  position: relative;
+}
+.goods-photo,
+.goods-placeholder {
+  width: 100%;
+  height: 180px;
+}
+.goods-placeholder {
+  align-items: center;
+  justify-content: center;
+  color: #8b8f99;
+}
+.goods-badge {
+  position: absolute;
+  top: $space-detail;
+  right: $space-detail;
+}
+.status-summary {
+  flex-wrap: wrap;
+}
+.status-tag {
+  padding: $space-detail $space-inline;
+  border-radius: 12px;
+  font-size: 12px;
+}
+.status-1 {
+  background-color: #e8f5ed;
+  color: #389367;
+}
+.status-4 {
+  background-color: #fff5da;
+  color: #aa801a;
+}
+.status-2 {
+  background-color: #fbe9e9;
+  color: #bd5050;
+}
+.status-3 {
+  background-color: #edf0f5;
+  color: #687385;
+}
+@media (min-width: 600px) {
+  .goods-card {
+    width: calc((100% - #{$space-section}) / 2);
+  }
+}
+@media (min-width: 1000px) {
+  .goods-card {
+    width: calc((100% - #{$space-section} * 2) / 3);
+  }
+}
+.goods-error {
+  color: #e05252;
+}
+@media (min-width: 700px) {
+  .metrics {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+</style>

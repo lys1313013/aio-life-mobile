@@ -1,0 +1,279 @@
+<script setup lang="ts">
+import { computed, ref } from 'vue';
+import { onShow } from '@dcloudio/uni-app';
+import CategoryIcon from '../../components/CategoryIcon.uvue';
+import iconCatalog from '../../services/icons/category-icons.json';
+import MobilePage from '../../components/MobilePage.uvue';
+import PageHeader from '../../components/PageHeader.uvue';
+import MobileButton from '../../components/MobileButton.uvue';
+import FormField from '../../components/FormField.uvue';
+import PageState from '../../components/PageState.uvue';
+import ConfirmAction from '../../components/ConfirmAction.uvue';
+import AdaptiveModal from '../../components/AdaptiveModal.uvue';
+import { isDark } from '../../services/theme.ts';
+import { createRecordScope } from '../../services/records/page-scope.ts';
+import {
+  fetchCategoryTypes,
+  fetchCategoryPage,
+  saveCategory,
+  deleteCategory,
+} from '../../services/records/exercise.ts';
+const rows = ref<any[]>([]),
+  types = ref<any[]>([]),
+  type = ref('exercise_type'),
+  loading = ref(false),
+  error = ref(''),
+  form = ref<any>(null),
+  saving = ref(false),
+  formError = ref(''),
+  busyId = ref(''),
+  saved = ref(false);
+const statusFilter = ref('全部');
+const iconOptions = Object.keys(iconCatalog.icons);
+const visibleRows = computed(() => rows.value.map((item, index) => ({item, index})).filter(({item}) => statusFilter.value === '全部' || (statusFilter.value === '已启用' ? item.status !== '1' : item.status === '1')));
+let generation = 0;
+const scope = createRecordScope((clear) => {
+  form.value = null;
+  if (clear) {
+    rows.value = [];
+    types.value = [];
+  }
+});
+onShow(() => load());
+async function load() {
+  const current = ++generation;
+  loading.value = true;
+  error.value = '';
+  try {
+    const options = await scope.wait(fetchCategoryTypes());
+    const data = [];
+    let page = 1;
+    while (true) {
+      const result = await scope.wait(fetchCategoryPage(page++, type.value));
+      data.push(...result.items);
+      if (data.length >= result.total || result.items.length < 100) break;
+    }
+    if (current === generation) {
+      types.value = options;
+      rows.value = data.sort((a, b) => Number(a.dictSort || 0) - Number(b.dictSort || 0));
+    }
+  } catch (e) {
+    if (e.name !== 'PageInactiveError' && current === generation) error.value = e.message;
+  } finally {
+    if (current === generation) loading.value = false;
+  }
+}
+function open(item = null) {
+  saved.value = false;
+  formError.value = '';
+  form.value = item
+    ? { ...item, dictSort: String(item.dictSort ?? 0) }
+    : {
+        dictType: type.value,
+        dictLabel: '',
+        dictValue: '',
+        color: '#4ecdc4',
+        icon: '',
+        dictSort: String((rows.value.length + 1) * 10),
+        status: '0',
+        remark: '',
+      };
+}
+async function save() {
+  if (saving.value) return;
+  if (!form.value.dictLabel.trim()) {
+    formError.value = '请输入分类名称';
+    return;
+  }
+  const sort = Number(form.value.dictSort);
+  if (!Number.isInteger(sort) || sort < 0) {
+    formError.value = '排序必须是非负整数';
+    return;
+  }
+  saving.value = true;
+  formError.value = '';
+  try {
+    if (!saved.value) {
+      await scope.wait(saveCategory({ ...form.value, dictSort: sort }));
+      saved.value = true;
+    }
+    await load();
+    if (error.value) throw new Error(error.value);
+    form.value = null;
+  } catch (e) {
+    if (e.name !== 'PageInactiveError') formError.value = e.message;
+  } finally {
+    saving.value = false;
+  }
+}
+async function toggle(item) {
+  if (busyId.value) return;
+  busyId.value = item.id;
+  try {
+    await scope.wait(saveCategory({ ...item, status: item.status === '1' ? '0' : '1' }));
+    await load();
+  } catch (e) {
+    if (e.name !== 'PageInactiveError') error.value = e.message;
+  } finally {
+    busyId.value = '';
+  }
+}
+async function remove(item) {
+  await scope.wait(deleteCategory(item.id));
+  await load();
+  if (error.value) throw new Error(error.value);
+}
+async function move(index, offset) {
+  if (busyId.value) return;
+  const item = rows.value[index],
+    other = rows.value[index + offset];
+  if (!other || item.isReadonly === 'Y' || other.isReadonly === 'Y') return;
+  busyId.value = item.id;
+  try {
+    const ordered = [...rows.value];
+    [ordered[index], ordered[index + offset]] = [ordered[index + offset], ordered[index]];
+    for (let i = 0; i < ordered.length; i++) {
+      if (ordered[i].isReadonly === 'Y') continue;
+      await scope.wait(saveCategory({ ...ordered[i], dictSort: i * 10 }));
+    }
+    await load();
+  } catch (e) {
+    if (e.name !== 'PageInactiveError') error.value = e.message;
+  } finally {
+    busyId.value = '';
+  }
+}
+</script>
+<template>
+  <MobilePage :refreshing="loading" @refresh="load"
+    ><view class="categories-page ui-page-body" :class="{ 'categories-page-dark': isDark }"
+      ><PageHeader title="分类配置" :back="true" @back="uni.navigateBack()" /><view class="ui-toolbar"
+        ><FormField compact stretch
+          label="分类类型"
+          kind="selector"
+          :model-value="types.find((t) => t.value === type)?.label || '运动分类'"
+          :options="types.filter((t) => t.value !== 'bank_tag').map((t) => t.label)"
+          @update:model-value="
+            type = types.find((t) => t.label === $event)?.value || 'exercise_type';
+            load();
+          " /><MobileButton
+          label="新增分类"
+          icon="ant-design:plus-outlined"
+          :disabled="loading || !!error"
+          @click="open()" /></view
+      ><FormField label="状态" kind="selector" :options="['全部', '已启用', '已禁用']" v-model="statusFilter" /><PageState :loading="loading" :error="error" :empty="!rows.length" @retry="load"
+        ><view
+          v-for="{item, index} in visibleRows"
+          :key="item.id"
+          class="card ui-card"
+          :class="{ 'card-dark': isDark }"
+          ><view class="toolbar ui-row"
+            ><CategoryIcon :icon="item.icon" :color="item.color" /><text
+              class="title"
+              >{{ item.dictLabel }}</text
+            ><MobileButton
+              :label="item.status === '1' ? '启用分类' : '停用分类'"
+              :icon="item.status === '1' ? 'ant-design:stop-outlined' : 'ant-design:check-circle-outlined'"
+              variant="quiet"
+              :loading="busyId === item.id"
+              :disabled="!!busyId && busyId !== item.id"
+              @click="toggle(item)" /><MobileButton
+              label="编辑分类"
+              icon="ant-design:edit-outlined"
+              variant="quiet"
+              :disabled="item.isReadonly === 'Y' || !!busyId"
+              @click="open(item)" /><ConfirmAction
+              label="删除分类"
+              :message="item.userId === '0' ? '公共分类会在你的分类列表中停用' : '确认删除分类？'"
+              :action="() => remove(item)" /></view
+          ><text class="secondary"
+            >{{ item.status === '1' ? '已停用' : '已启用'
+            }}{{ item.isReadonly === 'Y' ? ' · 只读分类' : '' }}</text
+          ><view class="toolbar ui-row"
+            ><MobileButton
+              label="上移分类"
+              icon="ant-design:arrow-up-outlined"
+              variant="quiet"
+              :disabled="
+                index === 0 ||
+                item.isReadonly === 'Y' ||
+                rows[index - 1]?.isReadonly === 'Y' ||
+                !!busyId
+              "
+              @click="move(index, -1)" /><MobileButton
+              label="下移分类"
+              icon="ant-design:arrow-down-outlined"
+              variant="quiet"
+              :disabled="
+                index === rows.length - 1 ||
+                item.isReadonly === 'Y' ||
+                rows[index + 1]?.isReadonly === 'Y' ||
+                !!busyId
+              "
+              @click="move(index, 1)" /></view></view></PageState
+      ><AdaptiveModal v-if="form" label="编辑分类" :busy="saving" @close="form = null"
+        ><FormField label="名称" v-model="form.dictLabel" /><FormField
+          label="分类标识"
+          v-model="form.dictValue" /><FormField label="颜色" v-model="form.color" /><FormField
+          label="图标"
+          v-model="form.icon" /><FormField label="选择图标" kind="selector" :options="iconOptions" v-model="form.icon" /><CategoryIcon :icon="form.icon" :color="form.color" /><FormField
+          label="排序"
+          input-type="number"
+          v-model="form.dictSort" /><FormField
+          label="状态"
+          kind="selector"
+          :model-value="form.status === '1' ? '停用' : '启用'"
+          :options="['启用', '停用']"
+          @update:model-value="form.status = $event === '停用' ? '1' : '0'" /><FormField
+          label="备注"
+          kind="textarea"
+          v-model="form.remark" /><text v-if="formError" class="error ui-section">{{ formError }}</text
+        ><view class="toolbar ui-row"
+          ><MobileButton
+            label="取消"
+            variant="quiet"
+            :disabled="saving"
+            @click="form = null" /><MobileButton
+            :label="saved ? '重新读取' : '保存'"
+            :loading="saving"
+            @click="save" /></view></AdaptiveModal></view
+  ></MobilePage>
+</template>
+<style scoped lang="scss">
+@use '../../styles/spacing.scss';
+@use '../../styles/spacing-tokens' as *;
+.categories-page {
+  color: #27272a;
+}
+.categories-page-dark {
+  color: #eeeeef;
+}
+.toolbar {
+  flex-direction: row;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.card {
+  border-radius: 16px;
+  background-color: #ffffff;
+}
+.card-dark {
+  background-color: #1c1e22;
+}
+.title {
+  flex: 1;
+  font-weight: 600;
+}
+.swatch {
+  width: 14px;
+  height: 14px;
+  border-radius: 7px;
+}
+.secondary {
+  color: #8b8f99;
+  font-size: 13px;
+}
+.error {
+  color: #e05252;
+}
+</style>

@@ -1,0 +1,559 @@
+<script setup lang="ts">
+import { computed, ref, onUnmounted, watch } from 'vue';
+import { onShow, onHide } from '@dcloudio/uni-app';
+import MobilePage from '../../components/MobilePage.uvue';
+import PageHeader from '../../components/PageHeader.uvue';
+import PageState from '../../components/PageState.uvue';
+import MobileButton from '../../components/MobileButton.uvue';
+import ConfirmAction from '../../components/ConfirmAction.uvue';
+import FormField from '../../components/FormField.uvue';
+import AdaptiveModal from '../../components/AdaptiveModal.uvue';
+import MetricCard from '../../components/MetricCard.uvue';
+import {
+  loadWardrobe,
+  itemDetail,
+  saveItem,
+  deleteItem,
+  saveCategory,
+  deleteCategory,
+} from '../../services/wardrobe/index.ts';
+import { matchesItem, seasons } from '../../services/wardrobe/contract.ts';
+import { chooseAndUploadAttachment, authFileUrl } from '../../services/attachments.ts';
+import { session } from '../../services/session.ts';
+import { themeClass } from '../../services/theme.ts';
+const items = ref<any[]>([]),
+  categories = ref<any[]>([]),
+  stats = ref<any>({}),
+  loading = ref(false),
+  error = ref(''),
+  keyword = ref(''),
+  category = ref(''),
+  season = ref(''),
+  section = ref('衣物');
+const modal = ref(''),
+  original = ref<any>(null),
+  form = ref<any>({}),
+  busy = ref(false),
+  uploading = ref(false),
+  formError = ref(''),
+  detailBusy = ref('');
+const photos = ref<Record<string, string>>({}),
+  photoErrors = ref<Record<string, string>>({}),
+  photoBusy = ref<Record<string, boolean>>({});
+let alive = true,
+  visible = false,
+  sequence = 0,
+  photoSequence = 0;
+function clearPrivate() {
+  sequence++;
+  photoSequence++;
+  photos.value = {};
+  photoErrors.value = {};
+  photoBusy.value = {};
+  modal.value = '';
+  form.value = {};
+  original.value = null;
+  items.value = [];
+  categories.value = [];
+  stats.value = {};
+  busy.value = false;
+  uploading.value = false;
+  detailBusy.value = '';
+  formError.value = '';
+  error.value = '';
+}
+onHide(() => {
+  visible = false;
+  clearPrivate();
+});
+watch(
+  () => session.token,
+  () => clearPrivate(),
+);
+async function photo(fileId) {
+  if (!fileId || photos.value[fileId] || photoBusy.value[fileId]) return;
+  const token = session.token,
+    task = photoSequence;
+  photoBusy.value = { ...photoBusy.value, [fileId]: true };
+  photoErrors.value = { ...photoErrors.value, [fileId]: '' };
+  try {
+    const url = await authFileUrl(fileId);
+    if (alive && visible && task === photoSequence && token === session.token)
+      photos.value = { ...photos.value, [fileId]: url };
+  } catch (reason) {
+    if (alive && visible && task === photoSequence && token === session.token)
+      photoErrors.value = { ...photoErrors.value, [fileId]: reason.message };
+  } finally {
+    if (task === photoSequence) photoBusy.value = { ...photoBusy.value, [fileId]: false };
+  }
+}
+onUnmounted(() => {
+  alive = false;
+  sequence++;
+});
+function categoryLabel(row) {
+  const names = [row.name],
+    seen = new Set([row.id]);
+  let parent = categories.value.find((value) => value.id === row.parentId);
+  while (parent && !seen.has(parent.id)) {
+    names.unshift(parent.name);
+    seen.add(parent.id);
+    parent = categories.value.find((value) => value.id === parent.parentId);
+  }
+  return names.join(' / ');
+}
+const categoryNames = computed(() => [
+  '全部分类',
+  ...categories.value.map(categoryLabel),
+]);
+const filterName = computed(
+  () =>
+    categoryNames.value[
+      categories.value.findIndex((row) => row.id === category.value) + 1
+    ] || '全部分类',
+);
+const shown = computed(() =>
+  items.value.filter((row) =>
+    matchesItem(row, keyword.value, category.value, season.value),
+  ),
+);
+const seasonLabels = computed(() => Object.keys(stats.value.seasonCount || {}));
+const categoryLabels = computed(() => Object.keys(stats.value.categoryCount || {}));
+async function load() {
+  const task = ++sequence,
+    token = session.token;
+  loading.value = true;
+  error.value = '';
+  try {
+    const value = await loadWardrobe();
+    if (alive && task === sequence && token === session.token) {
+      items.value = value.items;
+      categories.value = value.categories;
+      stats.value = value.stats;
+      value.items.forEach((row) => {
+        if (row.fileId) photo(row.fileId);
+      });
+    }
+  } catch (reason) {
+    if (alive && task === sequence) error.value = reason.message;
+  } finally {
+    if (alive && task === sequence) loading.value = false;
+  }
+}
+onShow(() => {
+  visible = true;
+  load();
+});
+function blank() {
+  return {
+    name: '',
+    categoryId: '',
+    color: '',
+    brand: '',
+    season: [],
+    purchaseDate: '',
+    price: '',
+    fileId: '',
+    size: '',
+    memo: '',
+  };
+}
+function openItem(row = null) {
+  original.value = row;
+  form.value = row
+    ? {
+        ...blank(),
+        ...row,
+        season:
+          typeof row.season === 'string'
+            ? row.season.split(',').filter(Boolean)
+            : row.season || [],
+        price: row.price == null ? '' : String(row.price),
+      }
+    : blank();
+  formError.value = '';
+  modal.value = 'item';
+  if (form.value.fileId) photo(form.value.fileId);
+}
+async function edit(row) {
+  const task = sequence;
+  detailBusy.value = row.id;
+  try {
+    const token = session.token,
+      value = await itemDetail(row.id);
+    if (alive && visible && task === sequence && token === session.token) openItem(value);
+  } catch (reason) {
+    if (alive && visible && task === sequence) error.value = reason.message;
+  } finally {
+    if (task === sequence) detailBusy.value = '';
+  }
+}
+function openCategory(row = null) {
+  original.value = row;
+  form.value = row
+    ? {
+        ...row,
+        sort: String(row.sort || 0),
+        parentId: row.parentId && row.parentId !== '0' ? row.parentId : '',
+      }
+    : { name: '', icon: '', parentId: '', sort: '0' };
+  formError.value = '';
+  modal.value = 'category';
+}
+function close() {
+  if (!busy.value && !uploading.value) modal.value = '';
+}
+function toggleSeason(value) {
+  form.value.season = form.value.season.includes(value)
+    ? form.value.season.filter((item) => item !== value)
+    : [...form.value.season, value];
+}
+async function upload() {
+  const token = session.token,
+    task = sequence;
+  uploading.value = true;
+  formError.value = '';
+  try {
+    const file = await chooseAndUploadAttachment('/file/upload', {
+      bizType: 'wardrobe_item',
+    });
+    if (alive && visible && task === sequence && token === session.token) {
+      form.value.fileId = file.id;
+      photo(file.id);
+    }
+  } catch (reason) {
+    if (alive && visible && task === sequence) formError.value = reason.message;
+  } finally {
+    if (task === sequence) uploading.value = false;
+  }
+}
+async function preview(fileId) {
+  await photo(fileId);
+  if (photos.value[fileId]) uni.previewImage({ urls: [photos.value[fileId]] });
+}
+async function save() {
+  if (busy.value || uploading.value) return;
+  busy.value = true;
+  formError.value = '';
+  const token = session.token,
+    task = sequence;
+  try {
+    if (modal.value === 'item') await saveItem(form.value, original.value);
+    else await saveCategory(form.value, original.value);
+    if (alive && visible && task === sequence && token === session.token) {
+      modal.value = '';
+      await load();
+    }
+  } catch (reason) {
+    if (alive && visible && task === sequence) formError.value = reason.message;
+  } finally {
+    busy.value = false;
+  }
+}
+async function removeItem(row) {
+  await deleteItem(row);
+  await load();
+}
+async function removeCategory(row) {
+  if (
+    categories.value.some((value) => value.parentId === row.id) ||
+    items.value.some((value) => value.categoryId === row.id)
+  )
+    throw Error('请先转移该分类的衣物和子分类');
+  await deleteCategory(row);
+  await load();
+}
+const parentOptions = computed(() => {
+  const excluded = new Set([original.value?.id]);
+  let changed = true;
+  while (changed) {
+    changed = false;
+    categories.value.forEach((row) => {
+      if (excluded.has(row.parentId) && !excluded.has(row.id)) {
+        excluded.add(row.id);
+        changed = true;
+      }
+    });
+  }
+  return categories.value.filter((row) => !excluded.has(row.id));
+});
+function chooseCategory(value) {
+  const index = categoryNames.value.indexOf(value) - 1;
+  form.value.categoryId = categories.value[index]?.id || '';
+}
+</script>
+<template>
+  <MobilePage :refreshing="loading" @refresh="load"
+    ><PageHeader title="衣柜" back @back="uni.navigateBack()" /><view
+      class="wardrobe ui-page-body"
+      :class="themeClass('wardrobe')"
+      ><view class="tabs ui-row ui-section"
+        ><MobileButton
+          v-for="tab in ['衣物', '分类']"
+          :key="tab"
+          :label="tab"
+          :variant="section === tab ? 'primary' : 'quiet'"
+          @click="section = tab" /><MobileButton
+          :label="section === '衣物' ? '新增衣物' : '新增衣柜分类'"
+          icon="ant-design:plus-outlined"
+          @click="section === '衣物' ? openItem() : openCategory()" /></view
+      ><view class="metrics ui-row ui-section"
+        ><MetricCard label="衣物" :value="String(stats.totalCount || 0)" /><MetricCard
+          label="总价值"
+          :value="String(stats.totalValue || 0)"
+          unit="元" /><MetricCard
+          label="均价"
+          :value="String(stats.avgPrice || 0)"
+          unit="元" /></view
+      ><view class="tabs ui-row ui-section"
+        ><text class="muted">季节分布</text
+        ><text v-for="name in seasonLabels" :key="name" class="season-count"
+          >{{ name }} {{ stats.seasonCount[name] }}</text
+        ></view
+      ><PageState
+        :loading="loading"
+        :error="error"
+        :empty="!loading && !items.length && section === '衣物'"
+        @retry="load"
+        ><template v-if="section === '衣物'"
+          ><FormField
+            label="搜索衣物"
+            v-model="keyword"
+            placeholder="名称、颜色、品牌" /><FormField
+            label="筛选分类"
+            kind="selector"
+            :model-value="filterName"
+            :options="categoryNames"
+            @update:model-value="
+              (value) =>
+                (category = categories[categoryNames.indexOf(value) - 1]?.id || '')
+            " /><view class="tabs ui-row ui-section"
+            ><MobileButton
+              v-for="value in seasons"
+              :key="value"
+              :label="value"
+              :variant="season === value ? 'primary' : 'quiet'"
+              @click="season = season === value ? '' : value" /></view
+          ><view class="item-grid ui-gap-md ui-section"
+            ><view
+              v-for="row in shown"
+              :key="row.id"
+              class="item-card ui-pad-card ui-gap-sm"
+              :class="themeClass('item-card')"
+              ><image
+                v-if="row.fileId"
+                class="item-photo"
+                :src="photos[row.fileId] || ''"
+                mode="aspectFill"
+                :aria-label="row.name + '照片'"
+                @click="preview(row.fileId)" /><MobileButton
+                v-if="row.fileId && (photoBusy[row.fileId] || photoErrors[row.fileId])"
+                :label="photoErrors[row.fileId] ? '重试衣物照片' : '加载衣物照片'"
+                :loading="photoBusy[row.fileId]"
+                @click="photo(row.fileId)" /><text class="item-title">{{ row.name }}</text
+              ><text class="muted">{{
+                [row.categoryName, row.color, row.brand, row.size, row.season]
+                  .filter(Boolean)
+                  .join(' · ')
+              }}</text
+              ><text>{{ row.price == null ? '' : row.price + '元' }}</text
+              ><view class="tools ui-row"
+                ><MobileButton
+                  :label="'编辑衣物' + row.name"
+                  icon="ant-design:edit-outlined"
+                  :loading="detailBusy === row.id"
+                  @click="edit(row)" /><ConfirmAction
+                  :label="'删除衣物' + row.name"
+                  :action="() => removeItem(row)" /></view></view></view></template
+        ><template v-else
+          ><view
+            v-for="row in categories"
+            :key="row.id"
+            class="category-row ui-row ui-section"
+            :style="{ marginLeft: row.depth * 16 + 'px' }"
+            ><text>{{ row.name }}</text
+            ><text v-if="row.categoryType === 0" class="muted">预设</text
+            ><view v-else class="tools ui-row"
+              ><MobileButton
+                :label="'编辑分类' + row.name"
+                icon="ant-design:edit-outlined"
+                @click="openCategory(row)" /><ConfirmAction
+                :label="'删除分类' + row.name"
+                :action="() => removeCategory(row)" /></view></view></template></PageState
+    ></view>
+    <template #fixed
+      ><AdaptiveModal
+        v-if="modal"
+        :label="modal === 'item' ? '衣物编辑' : '衣柜分类编辑'"
+        :busy="busy || uploading"
+        @close="close"
+        ><FormField label="名称" v-model="form.name" :disabled="busy" /><template
+          v-if="modal === 'item'"
+          ><FormField
+            label="衣物分类"
+            kind="selector"
+            :model-value="
+              categoryNames[
+                categories.findIndex((row) => row.id === form.categoryId) + 1
+              ] || '全部分类'
+            "
+            :options="categoryNames"
+            @update:model-value="chooseCategory" /><FormField
+            label="颜色"
+            v-model="form.color" /><FormField
+            label="品牌"
+            v-model="form.brand" /><FormField label="尺码" v-model="form.size" /><view
+            class="tabs ui-row ui-section"
+            ><MobileButton
+              v-for="value in seasons"
+              :key="value"
+              :label="'适用季节' + value"
+              :variant="form.season.includes(value) ? 'primary' : 'quiet'"
+              @click="toggleSeason(value)"
+              >{{ value }}</MobileButton
+            ></view
+          ><FormField
+            label="购买日期"
+            kind="date"
+            v-model="form.purchaseDate" /><FormField
+            label="价格"
+            input-type="digit"
+            v-model="form.price" /><FormField
+            label="备注"
+            kind="textarea"
+            v-model="form.memo" /><image
+            v-if="form.fileId"
+            class="edit-photo ui-section"
+            :src="photos[form.fileId] || ''"
+            mode="aspectFit"
+            aria-label="预览衣物照片"
+            @click="preview(form.fileId)" /><MobileButton
+            v-if="form.fileId && (photoBusy[form.fileId] || photoErrors[form.fileId])"
+            label="重试编辑照片"
+            :loading="photoBusy[form.fileId]"
+            @click="photo(form.fileId)" /><view class="tabs ui-row ui-section"
+            ><MobileButton
+              label="上传衣物照片"
+              :loading="uploading"
+              :disabled="busy"
+              @click="upload" /><MobileButton
+              v-if="form.fileId"
+              label="移除衣物照片"
+              icon="ant-design:delete-outlined"
+              danger
+              :disabled="busy || uploading"
+              @click="form.fileId = ''" /></view></template
+        ><template v-else
+          ><FormField label="分类图标" v-model="form.icon" /><FormField
+            label="父分类"
+            kind="selector"
+            :model-value="
+              form.parentId
+                ? categoryLabel(
+                    parentOptions.find((row) => row.id === form.parentId) || {
+                      name: '未知',
+                      id: form.parentId,
+                    },
+                  )
+                : '无父分类'
+            "
+            :options="['无父分类', ...parentOptions.map(categoryLabel)]"
+            @update:model-value="
+              (value) =>
+                (form.parentId =
+                  parentOptions.find((row) => categoryLabel(row) === value)?.id || '')
+            " /><FormField
+            label="分类排序"
+            input-type="number"
+            v-model="form.sort" /></template
+        ><text v-if="formError" class="error ui-section" role="alert">{{
+          formError
+        }}</text
+        ><MobileButton
+          label="保存衣柜内容"
+          :loading="busy"
+          :disabled="uploading"
+          @click="save" /></AdaptiveModal></template
+  ></MobilePage>
+</template>
+<style scoped lang="scss">
+@use '../../styles/spacing.scss';
+@use '../../styles/spacing-tokens' as *;
+.wardrobe {
+  color: #27272a;
+}
+.wardrobe-dark {
+  color: #eeeeef;
+}
+.tabs {
+  flex-direction: row;
+  flex-wrap: wrap;
+}
+.metrics {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.item-grid {
+  flex-direction: row;
+  flex-wrap: wrap;
+}
+.item-card {
+  width: calc((100% - #{$space-section}) / 2);
+  box-sizing: border-box;
+  border-radius: 16px;
+  background-color: #ffffff;
+}
+.item-card-dark {
+  background-color: #1c1e22;
+}
+.item-photo {
+  height: 160px;
+  width: 100%;
+  border-radius: 12px;
+}
+.season-count {
+  font-size: 12px;
+  color: #808692;
+  padding: $space-detail $space-inline;
+  border-radius: 8px;
+  background-color: #eef0f3;
+}
+.item-title {
+  font-weight: 600;
+  font-size: 16px;
+}
+.muted {
+  color: #808692;
+  font-size: 12px;
+}
+.tools {
+  flex-direction: row;
+  overflow: visible;
+}
+.category-row {
+  /* 16px per depth is the category tree indentation geometry. */
+  padding: $space-card;
+  flex-direction: row;
+  align-items: center;
+  min-height: 60px;
+  border-radius: 12px;
+}
+.edit-photo {
+  width: 100%;
+  height: 180px;
+}
+.error {
+  color: #e05260;
+  font-size: 14px;
+}
+@media (min-width: 700px) {
+  .item-card {
+    width: calc((100% - #{$space-section} * 2) / 3);
+  }
+}
+@media (min-width: 700px) {
+  .metrics {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+</style>

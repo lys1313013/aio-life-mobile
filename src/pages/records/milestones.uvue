@@ -1,0 +1,267 @@
+<script setup lang="ts">
+import { computed, onUnmounted, ref } from 'vue';
+import { onShow } from '@dcloudio/uni-app';
+import MobilePage from '../../components/MobilePage.uvue';
+import PageHeader from '../../components/PageHeader.uvue';
+import MobileButton from '../../components/MobileButton.uvue';
+import FloatingActionButton from '../../components/FloatingActionButton.uvue';
+import FormField from '../../components/FormField.uvue';
+import ConfirmAction from '../../components/ConfirmAction.uvue';
+import PageState from '../../components/PageState.uvue';
+import AdaptiveModal from '../../components/AdaptiveModal.uvue';
+import { createRecordScope } from '../../services/records/page-scope.ts';
+import { isDark } from '../../services/theme.ts';
+import { textTags } from '../../services/records/contracts.ts';
+import { fetchEvents, saveEvent, deleteEvent } from '../../services/records/events.ts';
+const rows = ref<any[]>([]),
+  loading = ref(false),
+  refreshing = ref(false),
+  error = ref(''),
+  form = ref<any>(null),
+  saving = ref(false),
+  formError = ref('');
+const types = ['life', 'study', 'work', 'other'],
+  labels = ['生活', '学业', '工作', '其他'];
+const typeFilter = ref('全部类型'),
+  tagFilter = ref('全部标签'),
+  start = ref(''),
+  end = ref('');
+const allTags = computed(() => [
+  ...new Set(rows.value.flatMap((item) => textTags(item.tags).split(/[,，]/).filter(Boolean))),
+]);
+const filtered = computed(() =>
+  rows.value
+    .filter(
+      (item) =>
+        (typeFilter.value === '全部类型' ||
+          item.type === types[labels.indexOf(typeFilter.value)]) &&
+        (tagFilter.value === '全部标签' ||
+          textTags(item.tags).split(/[,，]/).includes(tagFilter.value)) &&
+        (!start.value || item.date >= start.value) &&
+        (!end.value || item.date <= end.value),
+    )
+    .slice()
+    .sort((a, b) => b.date.localeCompare(a.date)),
+);
+const scope = createRecordScope((clearData) => {
+  form.value = null;
+  if (clearData) rows.value = [];
+});
+let alive = true,
+  generation = 0;
+onUnmounted(() => {
+  alive = false;
+  generation++;
+});
+onShow(() => load());
+async function load(refresh = false) {
+  const current = ++generation;
+  loading.value = true;
+  refreshing.value = refresh;
+  error.value = '';
+  try {
+    const data = await scope.wait(fetchEvents('milestone'));
+    if (alive && current === generation) rows.value = data;
+  } catch (e) {
+    if (e.name === 'PageInactiveError') return;
+    if (current === generation) error.value = e.message;
+  } finally {
+    if (current === generation) {
+      loading.value = false;
+      refreshing.value = false;
+    }
+  }
+}
+function open(item = null) {
+  formError.value = '';
+  form.value = item
+    ? { ...item, tags: textTags(item.tags) }
+    : {
+        title: '',
+        date: new Date().toLocaleDateString('sv-SE'),
+        end_date: '',
+        description: '',
+        type: 'life',
+        tags: '',
+      };
+}
+async function save() {
+  if (saving.value) return;
+  if (!form.value.title.trim() || !form.value.date) {
+    formError.value = '请输入标题和日期';
+    return;
+  }
+  if (form.value.end_date && form.value.end_date < form.value.date) {
+    formError.value = '结束日期不能早于开始日期';
+    return;
+  }
+  const payload = {
+    ...form.value,
+    title: form.value.title.trim(),
+    tags: JSON.stringify(
+      form.value.tags
+        .split(/[,，]/)
+        .map((t) => t.trim())
+        .filter(Boolean),
+    ),
+  };
+  saving.value = true;
+  formError.value = '';
+  try {
+    const saved = await scope.wait(saveEvent('milestone', payload));
+    const row = { ...payload, ...saved };
+    const index = rows.value.findIndex((r) => r.id === row.id);
+    if (index >= 0) rows.value[index] = row;
+    else rows.value.push(row);
+    form.value = null;
+  } catch (e) {
+    if (e.name === 'PageInactiveError') return;
+    formError.value = e.message;
+  } finally {
+    saving.value = false;
+  }
+}
+async function remove(item) {
+  await scope.wait(deleteEvent('milestone', item.id));
+  rows.value = rows.value.filter((r) => r.id !== item.id);
+}
+function clear() {
+  typeFilter.value = '全部类型';
+  tagFilter.value = '全部标签';
+  start.value = '';
+  end.value = '';
+}
+</script>
+<template>
+  <MobilePage :refreshing="refreshing" @refresh="load(true)"
+    ><view class="event-page ui-page-body" :class="{ 'event-page-dark': isDark }"
+      ><PageHeader title="里程碑" :back="true" @back="uni.navigateBack()" /><view class="filters ui-field-row"
+        ><FormField compact stretch
+          label="类型"
+          kind="selector"
+          v-model="typeFilter"
+          :options="['全部类型', ...labels]" /><FormField compact stretch
+          label="标签"
+          kind="selector"
+          v-model="tagFilter"
+          :options="['全部标签', ...allTags]" /></view><view class="filters ui-field-row"><FormField compact stretch
+          label="开始日期"
+          kind="date"
+          v-model="start" /><FormField compact stretch label="结束日期" kind="date" v-model="end" /></view
+      ><view class="ui-toolbar"
+        ><MobileButton label="清空筛选" icon="ant-design:close-outlined" variant="quiet" @click="clear" /></view
+      ><PageState :loading="loading" :error="error" :empty="!filtered.length" @retry="load()">
+        <template v-for="(item, index) in filtered" :key="item.id"
+          ><text
+            v-if="index === 0 || item.date.slice(0, 4) !== filtered[index - 1].date.slice(0, 4)"
+            class="year-title ui-section"
+            >{{ item.date.slice(0, 4) }}年</text
+          ><view class="timeline-entry">
+            <text v-if="index === 0 || item.date.slice(0, 7) !== filtered[index - 1].date.slice(0, 7)" class="month-title">{{ item.date.slice(5, 7) }}月</text>
+            <view class="timeline-dot" :class="'dot-' + item.type" />
+            <view class="event-card ui-card" :class="{ 'event-card-dark': isDark }"
+            ><view class="toolbar ui-row"
+              ><text class="event-title">{{ item.title }}</text><text class="type-badge" :class="'badge-' + item.type">{{ labels[types.indexOf(item.type)] || item.type }}</text
+              ><MobileButton
+                label="编辑里程碑"
+                icon="ant-design:edit-outlined"
+                variant="quiet"
+                @click="open(item)" /><ConfirmAction
+                label="删除里程碑"
+                :action="() => remove(item)" /></view
+            ><text class="event-secondary"
+              >{{ item.date }}{{ item.end_date ? ' → ' + item.end_date : '' }}</text
+            ><text v-if="item.description" class="event-content">{{ item.description }}</text
+            ><text v-if="item.tags" class="event-secondary">{{ textTags(item.tags) }}</text></view></view
+          ></template
+        > </PageState
+      ><AdaptiveModal v-if="form" label="编辑里程碑" :busy="saving" @close="form = null"
+        ><FormField label="标题" v-model="form.title" /><FormField
+          label="开始日期"
+          kind="date"
+          v-model="form.date" /><FormField
+          label="结束日期"
+          kind="date"
+          v-model="form.end_date" /><MobileButton
+          v-if="form.end_date"
+          label="清空结束日期"
+          icon="ant-design:close-outlined"
+          variant="quiet"
+          @click="form.end_date = ''" /><FormField
+          label="类型"
+          kind="selector"
+          :model-value="labels[types.indexOf(form.type)] || form.type"
+          :options="labels"
+          @update:model-value="form.type = types[labels.indexOf($event)]" /><FormField
+          label="描述"
+          kind="textarea"
+          v-model="form.description" /><FormField label="标签" v-model="form.tags" /><text
+          v-if="formError"
+          class="event-error ui-section"
+          >{{ formError }}</text
+        ><view class="toolbar ui-row"
+          ><MobileButton
+            label="取消"
+            variant="quiet"
+            :disabled="saving"
+            @click="form = null" /><MobileButton
+            label="保存"
+            :loading="saving"
+            @click="save" /></view></AdaptiveModal></view
+  ><template #fixed><FloatingActionButton label="新增里程碑" :disabled="loading || !!error" @click="open()" /></template></MobilePage>
+</template>
+<style scoped lang="scss">
+@use '../../styles/spacing.scss';
+@use '../../styles/spacing-tokens' as *;
+.event-page {
+  padding-bottom: 80px; /* 浮动新增按钮避让 */
+  color: #27272a;
+}
+.event-page-dark {
+  color: #eeeeef;
+}
+.toolbar {
+  flex-direction: row;
+  align-items: center;
+}
+.filters {
+  flex-direction: row;
+  flex-wrap: wrap;
+}
+.event-card {
+  background-color: #ffffff;
+  border-radius: 16px;
+}
+.event-card-dark {
+  background-color: #1c1e22;
+}
+.event-title {
+  flex: 1;
+  font-size: 17px;
+  font-weight: 600;
+}
+.year-title {
+  font-size: 22px;
+  font-weight: 600;
+}
+.event-content {
+  font-size: 14px;
+  line-height: 22px;
+}
+.event-secondary {
+  color: #8b8f99;
+  font-size: 13px;
+}
+.event-error {
+  color: #e05252;
+}
+.timeline-entry { position: relative; margin-left: $space-inline; padding-left: $space-modal; border-left: $space-hairline solid #dfe3e9; }
+.month-title { color: #5986db; font-size: 12px; font-weight: 600; margin-bottom: $space-section; }
+.timeline-dot { position: absolute; top: 22px; left: -$space-detail; width: 9px; height: 9px; border-radius: 5px; background-color: #5986db; border: 2px solid #ffffff; }
+.dot-work { background-color: #77be7b; } .dot-life { background-color: #5986db; } .dot-study { background-color: #bd8ee2; }
+.type-badge { font-size: 11px; color: #5986db; background-color: rgba(89,134,219,0.12); padding: $space-micro $space-detail; border-radius: 4px; }
+.badge-work { color: #72a851; background-color: rgba(114,168,81,0.12); }
+.badge-study { color: #ac7bd1; background-color: rgba(172,123,209,0.12); }
+.event-card { border-radius: 10px; }
+.event-title { min-width: 0; font-size: 15px; line-height: 22px; }
+</style>

@@ -1,0 +1,348 @@
+<script setup lang="ts">
+import { computed, onUnmounted, ref } from 'vue';
+import { onShow } from '@dcloudio/uni-app';
+import MobilePage from '../../components/MobilePage.uvue';
+import PageHeader from '../../components/PageHeader.uvue';
+import MobileButton from '../../components/MobileButton.uvue';
+import FormField from '../../components/FormField.uvue';
+import ConfirmAction from '../../components/ConfirmAction.uvue';
+import PageState from '../../components/PageState.uvue';
+import LoadMore from '../../components/LoadMore.uvue';
+import AdaptiveModal from '../../components/AdaptiveModal.uvue';
+import AttachmentField from '../../components/AttachmentField.uvue';
+import { createRecordScope } from '../../services/records/page-scope.ts';
+import { isDark } from '../../services/theme.ts';
+import { recordId } from '../../services/records/contracts.ts';
+import {
+  fetchFeedbacks,
+  fetchFeedback,
+  createFeedback,
+  commentFeedback,
+  cancelFeedback,
+} from '../../services/records/feedback.ts';
+const statuses = ['PENDING', 'PROCESSING', 'RESOLVED', 'CLOSED', 'REJECTED'],
+  statusLabels = ['待处理', '处理中', '已解决', '已关闭', '已驳回'];
+const types = ['BUG', 'SUGGESTION', 'QUESTION', 'OTHER'],
+  typeLabels = ['缺陷', '建议', '咨询', '其他'];
+const rows = ref<any[]>([]),
+  page = ref(1),
+  total = ref(0),
+  status = ref('全部状态'),
+  loading = ref(false),
+  refreshing = ref(false),
+  error = ref('');
+const form = ref<any>(null),
+  saving = ref(false),
+  formError = ref(''),
+  attachmentBusy = ref(false);
+const detailId = ref(''),
+  detail = ref<any>(null),
+  detailLoading = ref(false),
+  detailError = ref(''),
+  comment = ref(''),
+  commentFiles = ref<any[]>([]),
+  commenting = ref(false),
+  commentError = ref(''),
+  commentAttachmentBusy = ref(false);
+const filtered = computed(() =>
+  rows.value.filter(
+    (item) =>
+      status.value === '全部状态' || item.status === statuses[statusLabels.indexOf(status.value)],
+  ),
+);
+const scope = createRecordScope((clearData) => {
+  form.value = null;
+  detailId.value = '';
+  detail.value = null;
+  comment.value = '';
+  commentFiles.value = [];
+  if (clearData) rows.value = [];
+});
+let alive = true,
+  generation = 0,
+  detailGeneration = 0;
+onUnmounted(() => {
+  alive = false;
+  generation++;
+  detailGeneration++;
+});
+onShow(() => load());
+async function load(refresh = false, more = false) {
+  const current = ++generation;
+  loading.value = true;
+  refreshing.value = refresh;
+  error.value = '';
+  try {
+    const nextPage = more ? page.value + 1 : 1;
+    const data = await scope.wait(
+      fetchFeedbacks(nextPage, statuses[statusLabels.indexOf(status.value)] || ''),
+    );
+    if (alive && current === generation) {
+      rows.value = more ? [...rows.value, ...data.items] : data.items;
+      page.value = nextPage;
+      total.value = data.total;
+    }
+  } catch (e) {
+    if (e.name === 'PageInactiveError') return;
+    if (current === generation) error.value = e.message;
+  } finally {
+    if (current === generation) {
+      loading.value = false;
+      refreshing.value = false;
+    }
+  }
+}
+function open() {
+  formError.value = '';
+  form.value = { title: '', content: '', feedbackType: 'BUG', files: [] };
+}
+async function save() {
+  if (saving.value || attachmentBusy.value) return;
+  if (!form.value.title.trim() || !form.value.content.trim()) {
+    formError.value = '请输入标题和内容';
+    return;
+  }
+  const payload = {
+    title: form.value.title.trim(),
+    content: form.value.content.trim(),
+    feedbackType: form.value.feedbackType,
+    fileIds: form.value.files.map((file) => recordId(file.id)),
+  };
+  saving.value = true;
+  formError.value = '';
+  try {
+    const saved = await scope.wait(createFeedback(payload));
+    rows.value.unshift(saved);
+    form.value = null;
+  } catch (e) {
+    if (e.name === 'PageInactiveError') return;
+    formError.value = e.message;
+  } finally {
+    saving.value = false;
+  }
+}
+async function showDetail(item) {
+  detailId.value = item.id;
+  detail.value = null;
+  comment.value = '';
+  commentFiles.value = [];
+  commentError.value = '';
+  await loadDetail();
+}
+async function loadDetail() {
+  const id = detailId.value,
+    current = ++detailGeneration;
+  detailLoading.value = true;
+  detailError.value = '';
+  try {
+    const data = await scope.wait(fetchFeedback(id));
+    if (alive && current === detailGeneration && detailId.value === id) detail.value = data;
+  } catch (e) {
+    if (e.name === 'PageInactiveError') return;
+    if (current === detailGeneration) detailError.value = e.message;
+  } finally {
+    if (current === detailGeneration) detailLoading.value = false;
+  }
+}
+function closeDetail() {
+  detailId.value = '';
+  detail.value = null;
+  detailGeneration++;
+}
+async function addComment() {
+  if (commenting.value || commentAttachmentBusy.value || !detail.value) return;
+  if (!comment.value.trim()) {
+    commentError.value = '请输入评论内容';
+    return;
+  }
+  commenting.value = true;
+  commentError.value = '';
+  const id = detailId.value;
+  try {
+    const saved = await scope.wait(
+      commentFeedback(id, {
+        content: comment.value.trim(),
+        fileIds: commentFiles.value.map((file) => recordId(file.id)),
+      }),
+    );
+    if (id === detailId.value) {
+      detail.value.comments.push(saved);
+      comment.value = '';
+      commentFiles.value = [];
+      const row = rows.value.find((r) => r.id === id);
+      if (row) row.commentCount = (row.commentCount || 0) + 1;
+    }
+  } catch (e) {
+    if (e.name === 'PageInactiveError') return;
+    commentError.value = e.message;
+  } finally {
+    commenting.value = false;
+  }
+}
+async function cancel(item) {
+  await scope.wait(cancelFeedback(item.id));
+  rows.value = rows.value.filter((r) => r.id !== item.id);
+  if (detailId.value === item.id) closeDetail();
+}
+</script>
+<template>
+  <MobilePage :refreshing="refreshing" @refresh="load(true)"
+    ><view class="feedback-page ui-page-body" :class="{ 'feedback-page-dark': isDark }"
+      ><PageHeader title="反馈中心" :back="true" @back="uni.navigateBack()" /><view class="ui-toolbar"
+        ><FormField compact stretch
+          label="状态"
+          kind="selector"
+          v-model="status"
+          :options="['全部状态', ...statusLabels]"
+          @update:model-value="load()" /><MobileButton
+          label="提交反馈"
+          icon="ant-design:plus-outlined"
+          @click="open" /></view
+      ><PageState :loading="loading" :error="error" :empty="!filtered.length" @retry="load()"
+        ><view
+          v-for="item in filtered"
+          :key="item.id"
+          class="feedback-card ui-card"
+          :class="{ 'feedback-card-dark': isDark }"
+          ><view class="toolbar ui-row"
+            ><text class="feedback-title">{{ item.title }}</text
+            ><MobileButton
+              label="反馈详情"
+              icon="ant-design:right-outlined"
+              variant="quiet"
+              @click="showDetail(item)" /><ConfirmAction
+              v-if="item.status === 'PENDING'"
+              label="撤销反馈"
+              message="撤销此反馈？"
+              :action="() => cancel(item)" /></view
+          ><text class="feedback-secondary"
+            >{{ typeLabels[types.indexOf(item.feedbackType)] }} ·
+            {{ statusLabels[statuses.indexOf(item.status)] }} ·
+            {{ item.commentCount || 0 }} 条评论</text
+          ><text class="feedback-content ui-section">{{ item.summary }}</text
+          ><text class="feedback-secondary">{{ item.createTime }}</text></view
+        ></PageState
+      ><LoadMore :loading="loading" :has-more="rows.length < total" @load="load(false, true)" />
+      <AdaptiveModal
+        v-if="form"
+        label="提交反馈"
+        :busy="saving || attachmentBusy"
+        @close="form = null"
+        ><FormField label="标题" v-model="form.title" /><FormField
+          label="类型"
+          kind="selector"
+          :model-value="typeLabels[types.indexOf(form.feedbackType)]"
+          :options="typeLabels"
+          @update:model-value="form.feedbackType = types[typeLabels.indexOf($event)]" /><FormField
+          label="内容"
+          kind="textarea"
+          v-model="form.content" /><AttachmentField
+          :files="form.files"
+          upload-path="/file/upload"
+          :form-data="{ bizType: 'feedback' }"
+          :disabled="saving"
+          @update:files="form.files = $event"
+          @busy-change="attachmentBusy = $event" /><text v-if="formError" class="feedback-error ui-section">{{
+          formError
+        }}</text
+        ><view class="toolbar ui-row"
+          ><MobileButton
+            label="取消"
+            variant="quiet"
+            :disabled="saving || attachmentBusy"
+            @click="form = null" /><MobileButton
+            label="提交"
+            :loading="saving"
+            :disabled="attachmentBusy"
+            @click="save" /></view
+      ></AdaptiveModal>
+      <AdaptiveModal
+        v-if="detailId"
+        label="反馈详情"
+        :content-key="String(detailLoading) + String(detail?.comments?.length || 0)"
+        :show-close="false"
+        :busy="commenting || commentAttachmentBusy"
+        @close="closeDetail"
+        ><PageState :loading="detailLoading" :error="detailError" @retry="loadDetail"
+          ><template v-if="detail"
+            ><text class="feedback-title">{{ detail.title }}</text
+            ><text class="feedback-secondary">{{
+              statusLabels[statuses.indexOf(detail.status)]
+            }}</text
+            ><text class="feedback-content ui-section">{{ detail.content }}</text
+            ><AttachmentField
+              :files="detail.files || []"
+              upload-path="/file/upload"
+              :readonly="true" /><view
+              v-for="item in detail.comments || []"
+              :key="item.id"
+              class="comment-item ui-section ui-gap-sm"
+              ><text class="feedback-secondary"
+                >{{ item.roleType === 'ADMIN' ? '管理员' : item.userName }} ·
+                {{ item.createTime }}</text
+              ><text class="feedback-content ui-section">{{ item.content }}</text
+              ><AttachmentField
+                :files="item.files || []"
+                upload-path="/file/upload"
+                :readonly="true" /></view
+            ><FormField label="评论" kind="textarea" v-model="comment" /><AttachmentField
+              :files="commentFiles"
+              upload-path="/file/upload"
+              :form-data="{ bizType: 'feedback_comment' }"
+              :disabled="commenting"
+              @update:files="commentFiles = $event"
+              @busy-change="commentAttachmentBusy = $event" /><text
+              v-if="commentError"
+              class="feedback-error ui-section"
+              >{{ commentError }}</text
+            ><MobileButton
+              label="发送评论"
+              :loading="commenting"
+              :disabled="commentAttachmentBusy"
+              @click="addComment" /></template></PageState
+        ><MobileButton
+          label="关闭详情"
+          variant="quiet"
+          :disabled="commenting || commentAttachmentBusy"
+          @click="closeDetail"
+      /></AdaptiveModal> </view
+  ></MobilePage>
+</template>
+<style scoped lang="scss">
+@use '../../styles/spacing.scss';
+@use '../../styles/spacing-tokens' as *;
+.feedback-page {
+  color: #27272a;
+}
+.feedback-page-dark {
+  color: #eeeeef;
+}
+.toolbar {
+  flex-direction: row;
+  align-items: center;
+}
+.feedback-card {
+  background-color: #ffffff;
+  border-radius: 16px;
+}
+.feedback-card-dark {
+  background-color: #1c1e22;
+}
+.feedback-title {
+  flex: 1;
+  font-size: 17px;
+  font-weight: 600;
+}
+.feedback-content {
+  font-size: 14px;
+  line-height: 22px;
+  white-space: pre-wrap;
+}
+.feedback-secondary {
+  color: #8b8f99;
+  font-size: 13px;
+}
+.feedback-error {
+  color: #e05252;
+}
+</style>

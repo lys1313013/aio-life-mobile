@@ -1,0 +1,856 @@
+<script setup lang="ts">
+import AppIcon from '../../components/AppIcon.uvue'
+import { computed, onUnmounted, ref } from 'vue';
+import { onLoad, onShow } from '@dcloudio/uni-app';
+import MobilePage from '../../components/MobilePage.uvue';
+import PageHeader from '../../components/PageHeader.uvue';
+import MobileButton from '../../components/MobileButton.uvue';
+import FormField from '../../components/FormField.uvue';
+import ConfirmAction from '../../components/ConfirmAction.uvue';
+import PageState from '../../components/PageState.uvue';
+import LoadMore from '../../components/LoadMore.uvue';
+import AdaptiveModal from '../../components/AdaptiveModal.uvue';
+import AttachmentField from '../../components/AttachmentField.uvue';
+import LibraryCover from '../../components/LibraryCover.uvue';
+import FloatingActionButton from '../../components/FloatingActionButton.uvue';
+import MetricCard from '../../components/MetricCard.uvue';
+import { isDark } from '../../services/theme.ts';
+import { createRecordScope } from '../../services/records/page-scope.ts';
+import { statuses, dateTime } from '../../services/records/contracts.ts';
+import { chooseImportFile } from '../../services/records/import-file.ts';
+import { parseDoubanWorkbook } from '../../services/records/douban-import.ts';
+import {
+  fetchLibrary,
+  fetchLibraryDetail,
+  saveLibrary,
+  deleteLibrary,
+  parseDouban,
+  previewDoubanImport,
+  importDouban,
+} from '../../services/records/media.ts';
+const kind = ref('movie'),
+  title = computed(() => (kind.value === 'movie' ? '观影' : '阅读记录')),
+  typeLabels = computed(() =>
+    kind.value === 'movie'
+      ? ['电影', '剧集', '动漫', '纪录片', '其他']
+      : ['书籍', '文章/网页'],
+  );
+const statusLabels = computed(() =>
+  kind.value === 'movie'
+    ? ['想看', '在看', '看过', '搁置']
+    : ['想读', '在读', '读完', '搁置'],
+);
+const rows = ref<any[]>([]),
+  page = ref(1),
+  total = ref(0),
+  keyword = ref(''),
+  typeFilter = ref('全部类型'),
+  statusFilter = ref('全部状态'),
+  loading = ref(false),
+  refreshing = ref(false),
+  error = ref(''),
+  editing = ref('');
+const form = ref<any>(null),
+  saving = ref(false),
+  parsing = ref(false),
+  formError = ref(''),
+  attachmentBusy = ref(false),
+  created = ref(false);
+const importingOpen = ref(false),
+  importRequest = ref<any>(null),
+  preview = ref<any>(null),
+  localIssues = ref<any[]>([]),
+  importText = ref(''),
+  importName = ref(''),
+  importBusy = ref(false),
+  importError = ref(''),
+  importResult = ref<any>(null),
+  policy = ref('跳过重复');
+const issues = computed(() => [
+  ...localIssues.value,
+  ...(preview.value?.errors || []),
+]);
+const scope = createRecordScope((clear) => {
+  form.value = null;
+  importingOpen.value = false;
+  if (clear) {
+    rows.value = [];
+    importRequest.value = null;
+    preview.value = null;
+    importText.value = '';
+    importResult.value = null;
+  }
+});
+let alive = true,
+  generation = 0;
+onLoad((options) => {
+  kind.value = options?.kind === 'read' ? 'read' : 'movie';
+});
+onShow(() => load());
+onUnmounted(() => {
+  alive = false;
+  generation++;
+});
+async function load(refresh = false, more = false) {
+  if (more && loading.value) return;
+  const current = ++generation,
+    next = more ? page.value + 1 : 1;
+  loading.value = true;
+  refreshing.value = refresh;
+  error.value = '';
+  try {
+    const type = typeLabels.value.indexOf(typeFilter.value);
+    const status = statusLabels.value.indexOf(statusFilter.value);
+    const data = await scope.wait(
+      fetchLibrary(kind.value, {
+        current: next,
+        size: 30,
+        title: keyword.value.trim(),
+        ...(type >= 0 ? { type: type + 1 } : {}),
+        ...(status >= 0 ? { status: statuses[status] } : {}),
+      }),
+    );
+    if (alive && current === generation) {
+      rows.value = more ? [...rows.value, ...data.records] : data.records;
+      page.value = next;
+      total.value = data.total;
+    }
+  } catch (e) {
+    if (e.name === 'PageInactiveError') return;
+    if (current === generation) error.value = e.message;
+  } finally {
+    if (current === generation) {
+      loading.value = false;
+      refreshing.value = false;
+    }
+  }
+}
+async function open(item = null) {
+  if (editing.value) return;
+  formError.value = '';
+  created.value = false;
+  if (!item) {
+    form.value = {
+      title: '',
+      type: 1,
+      status: 'not_started',
+      director: '',
+      author: '',
+      url: '',
+      coverImgUrl: '',
+      fileId: '',
+      files: [],
+      totalProgress: 0,
+      currentProgress: 0,
+      startTime: null,
+      finishTime: null,
+      rating: null,
+      remark: '',
+    };
+    return;
+  }
+  editing.value = item.id;
+  try {
+    const detail = await scope.wait(fetchLibraryDetail(kind.value, item.id));
+    form.value = {
+      ...detail,
+      files: detail.fileId
+        ? [{ id: detail.fileId, fileName: detail.title + ' 封面' }]
+        : [],
+    };
+  } catch (e) {
+    if (e.name === 'PageInactiveError') return;
+    error.value = e.message;
+  } finally {
+    editing.value = '';
+  }
+}
+function setDate(key, date) {
+  form.value[key] = dateTime(date, form.value[key]?.slice(11, 16) || '00:00');
+}
+async function parse() {
+  if (parsing.value || !form.value.url.trim()) return;
+  parsing.value = true;
+  formError.value = '';
+  const id = form.value.id;
+  try {
+    const result = await scope.wait(
+      parseDouban(kind.value, form.value.url.trim()),
+    );
+    if (form.value?.id === id)
+      Object.assign(form.value, result, { id, files: form.value.files });
+  } catch (e) {
+    if (e.name === 'PageInactiveError') return;
+    formError.value = e.message;
+  } finally {
+    parsing.value = false;
+  }
+}
+async function save() {
+  if (saving.value || parsing.value || attachmentBusy.value) return;
+  if (!form.value.title.trim()) {
+    formError.value = '请输入名称';
+    return;
+  }
+  const payload = {
+    ...form.value,
+    title: form.value.title.trim(),
+    fileId: form.value.files.at(-1)?.id || '',
+  };
+  delete payload.files;
+  for (const key of ['totalProgress', 'currentProgress']) {
+    const value = Number(payload[key] || 0);
+    if (!Number.isInteger(value) || value < 0) {
+      formError.value = '进度必须为非负整数';
+      return;
+    }
+    payload[key] = value;
+  }
+  if (
+    payload.startTime &&
+    payload.finishTime &&
+    payload.finishTime < payload.startTime
+  ) {
+    formError.value = '完成日期不能早于开始日期';
+    return;
+  }
+  if (
+    kind.value === 'movie' &&
+    payload.rating != null &&
+    payload.rating !== ''
+  ) {
+    const rating = Number(payload.rating);
+    if (!Number.isInteger(rating) || rating < 1 || rating > 5) {
+      formError.value = '评分必须为1至5';
+      return;
+    }
+    payload.rating = rating;
+  }
+  saving.value = true;
+  formError.value = '';
+  try {
+    if (!created.value) {
+      await scope.wait(saveLibrary(kind.value, payload));
+      created.value = true;
+    }
+    if (payload.id) {
+      const updated = await scope.wait(
+        fetchLibraryDetail(kind.value, payload.id),
+      );
+      const index = rows.value.findIndex((row) => row.id === payload.id);
+      if (index >= 0) rows.value[index] = updated;
+    } else {
+      const data = await scope.wait(
+        fetchLibrary(kind.value, { current: 1, size: 30 }),
+      );
+      rows.value = data.records;
+      page.value = 1;
+      total.value = data.total;
+      keyword.value = '';
+      typeFilter.value = '全部类型';
+      statusFilter.value = '全部状态';
+    }
+    form.value = null;
+  } catch (e) {
+    if (e.name === 'PageInactiveError') return;
+    formError.value = e.message;
+  } finally {
+    saving.value = false;
+  }
+}
+async function remove(item) {
+  await scope.wait(deleteLibrary(kind.value, item.id));
+  rows.value = rows.value.filter((r) => r.id !== item.id);
+  total.value--;
+  form.value = null;
+}
+function openImport() {
+  importingOpen.value = true;
+  importRequest.value = null;
+  preview.value = null;
+  localIssues.value = [];
+  importResult.value = null;
+  importError.value = '';
+  importText.value = '';
+  importName.value = '';
+}
+async function chooseWorkbook() {
+  if (importBusy.value) return;
+  importBusy.value = true;
+  importError.value = '';
+  preview.value = null;
+  importRequest.value = null;
+  importResult.value = null;
+  try {
+    const file = await scope.wait(chooseImportFile(['xlsx'], true));
+    const parsed = parseDoubanWorkbook(file.data);
+    localIssues.value = parsed.issues;
+    importRequest.value = parsed.request;
+    importName.value = file.name;
+    preview.value = await scope.wait(previewDoubanImport(parsed.request));
+  } catch (e) {
+    if (e.name === 'PageInactiveError') return;
+    importError.value = e.message;
+  } finally {
+    importBusy.value = false;
+  }
+}
+async function previewText() {
+  if (importBusy.value) return;
+  importBusy.value = true;
+  importError.value = '';
+  importRequest.value = null;
+  preview.value = null;
+  importResult.value = null;
+  try {
+    const data = JSON.parse(importText.value);
+    if (!Array.isArray(data.records)) throw Error('导入内容缺少 records');
+    localIssues.value = [];
+    importRequest.value = data;
+    preview.value = await scope.wait(previewDoubanImport(data));
+  } catch (e) {
+    if (e.name === 'PageInactiveError') return;
+    importError.value = e.message;
+  } finally {
+    importBusy.value = false;
+  }
+}
+function pasteImport() {
+  uni.getClipboardData({
+    success: (result) => {
+      importText.value = result.data;
+    },
+    fail: () => {
+      importError.value = '无法读取剪贴板，请手动粘贴';
+    },
+  });
+}
+async function submitImport() {
+  if (
+    importBusy.value ||
+    !importRequest.value ||
+    !preview.value ||
+    issues.value.length ||
+    importResult.value
+  )
+    return;
+  importBusy.value = true;
+  importError.value = '';
+  try {
+    importResult.value = await scope.wait(
+      importDouban({
+        ...importRequest.value,
+        duplicatePolicy: policy.value === '覆盖重复' ? 'overwrite' : 'skip',
+      }),
+    );
+    await load();
+  } catch (e) {
+    if (e.name === 'PageInactiveError') return;
+    importError.value = e.message;
+  } finally {
+    importBusy.value = false;
+  }
+}
+</script>
+<template>
+  <MobilePage :refreshing="refreshing" @refresh="load(true)"
+    ><view class="library-page ui-page-body" :class="{ 'library-page-dark': isDark }"
+      ><PageHeader :title="title" :back="true" @back="uni.navigateBack()" />
+      <view class="library-search-row ui-toolbar">
+        <view
+          class="library-search"
+          :class="{ 'library-control-dark': isDark }"
+        >
+          <input
+            class="library-search-input ui-input-inset"
+            :class="{ 'library-text-dark': isDark }"
+            v-model="keyword"
+            aria-label="搜索名称"
+            :placeholder="
+              kind === 'movie' ? '搜索影视名称或导演' : '搜索标题或作者'
+            "
+            confirm-type="search"
+            @confirm="load()"
+          />
+          <button
+            role="button"
+            class="library-search-button"
+            :class="{ 'library-text-dark': isDark }"
+            aria-label="搜索"
+            :loading="loading"
+            :disabled="loading"
+            @click="load()"
+          >
+            <view v-if="!loading" class="search-symbol"
+              ><view class="search-ring" /><view class="search-handle"
+            /></view>
+          </button>
+        </view>
+        <MobileButton
+          v-if="kind === 'movie'"
+          label="豆瓣导入"
+          icon="ant-design:download-outlined"
+          variant="quiet"
+          @click="openImport"
+        />
+      </view>
+      <view class="filters ui-field-row">
+        <picker
+          mode="selector"
+          :value="Math.max(0, ['全部类型', ...typeLabels].indexOf(typeFilter))"
+          :range="['全部类型', ...typeLabels]"
+          aria-label="类型"
+          @change="
+            typeFilter = ['全部类型', ...typeLabels][
+              Number($event.detail.value)
+            ];
+            load();
+          "
+        >
+          <view class="library-filter ui-row" :class="{ 'library-text-dark': isDark }"
+            ><text>{{ typeFilter }}</text
+            ><AppIcon name="ant-design:down-outlined" /></view
+          >
+        </picker>
+        <picker
+          mode="selector"
+          :value="
+            Math.max(0, ['全部状态', ...statusLabels].indexOf(statusFilter))
+          "
+          :range="['全部状态', ...statusLabels]"
+          aria-label="状态"
+          @change="
+            statusFilter = ['全部状态', ...statusLabels][
+              Number($event.detail.value)
+            ];
+            load();
+          "
+        >
+          <view class="library-filter ui-row" :class="{ 'library-text-dark': isDark }"
+            ><text>{{ statusFilter }}</text
+            ><AppIcon name="ant-design:down-outlined" /></view
+          >
+        </picker>
+        <text class="library-count">{{ total }} 条</text>
+      </view>
+      <PageState
+        :loading="loading && !rows.length"
+        :error="error"
+        :empty="!rows.length"
+        @retry="load()"
+      >
+        <view class="library-grid ui-gap-md ui-section">
+          <view v-for="item in rows" :key="item.id" class="library-card ui-gap-sm">
+            <view
+              class="library-poster"
+              role="button"
+              tabindex="0"
+              aria-label="编辑记录"
+              :aria-description="item.title"
+              :aria-busy="editing === item.id"
+              @click="open(item)"
+              @keydown.enter="open(item)"
+              @keydown.space.prevent="open(item)"
+            >
+              <LibraryCover
+                :file-id="item.fileId || ''"
+                :url="item.coverImgUrl || ''"
+                :title="item.title"
+                :kind="kind"
+              />
+              <text
+                v-if="item.status"
+                class="library-status"
+                :class="'library-status-' + item.status"
+                >{{
+                  statusLabels[statuses.indexOf(item.status)] || '未知'
+                }}</text
+              >
+              <view v-if="editing === item.id" class="library-opening"
+                ><text>加载中…</text></view
+              >
+            </view>
+            <text v-if="item.finishTime" class="library-date ui-gap-sm">{{
+              item.finishTime.slice(0, 10)
+            }}</text>
+          </view>
+        </view>
+      </PageState>
+      <LoadMore
+        :loading="loading"
+        :has-more="rows.length < total"
+        @load="load(false, true)"
+      />
+      <AdaptiveModal
+        v-if="form"
+        :label="'编辑' + title"
+        :busy="saving || parsing || attachmentBusy"
+        @close="form = null"
+        ><view class="library-link-row ui-field-row"
+          ><view class="library-link-field"
+            ><FormField compact stretch label="豆瓣链接" v-model="form.url" /></view
+          ><MobileButton
+            label="解析豆瓣链接"
+            icon="ant-design:import-outlined"
+            :loading="parsing"
+            @click="parse" /></view
+        ><FormField compact stretch label="名称" v-model="form.title" /><FormField compact stretch
+          label="封面链接"
+          v-model="form.coverImgUrl" /><FormField compact stretch
+          label="类型"
+          kind="selector"
+          :model-value="typeLabels[form.type - 1]"
+          :options="typeLabels"
+          @update:model-value="
+            form.type = typeLabels.indexOf($event) + 1
+          " /><FormField compact stretch
+          label="状态"
+          kind="selector"
+          :model-value="statusLabels[statuses.indexOf(form.status)]"
+          :options="statusLabels"
+          @update:model-value="
+            form.status = statuses[statusLabels.indexOf($event)]
+          " /><FormField compact stretch
+          v-if="kind === 'movie'"
+          label="导演/演员"
+          v-model="form.director" /><FormField compact stretch
+          v-else-if="form.type === 1"
+          label="作者"
+          v-model="form.author" /><FormField compact stretch
+          :label="kind === 'movie' ? '当前集数/时长' : '当前页数/进度'"
+          input-type="number"
+          v-model="form.currentProgress" /><FormField compact stretch
+          :label="kind === 'movie' ? '总集数/时长' : '总页数/进度'"
+          input-type="number"
+          v-model="form.totalProgress" /><FormField compact stretch
+          label="开始日期"
+          kind="date"
+          :model-value="form.startTime?.slice(0, 10) || ''"
+          @update:model-value="setDate('startTime', $event)" /><FormField compact stretch
+          label="完成日期"
+          kind="date"
+          :model-value="form.finishTime?.slice(0, 10) || ''"
+          @update:model-value="setDate('finishTime', $event)" /><FormField compact stretch
+          v-if="kind === 'movie'"
+          label="评分"
+          kind="selector"
+          :model-value="form.rating ? String(form.rating) : '未评分'"
+          :options="['未评分', '1', '2', '3', '4', '5']"
+          @update:model-value="
+            form.rating = $event === '未评分' ? null : Number($event)
+          " /><FormField compact stretch
+          :label="kind === 'movie' ? '短评/备注' : '书评'"
+          kind="textarea"
+          v-model="form.remark" /><AttachmentField
+          :files="form.files"
+          upload-path="/file/upload"
+          :form-data="{ bizType: kind === 'movie' ? 'movie' : 'read' }"
+          :disabled="saving || parsing"
+          @update:files="
+            form.files = $event.slice(-1);
+            if (!$event.length) {
+              form.fileId = '';
+              form.coverImgUrl = '';
+            }
+          "
+          @busy-change="attachmentBusy = $event" /><text
+          v-if="formError"
+          class="library-error ui-section"
+          >{{ formError }}</text
+        ><view class="library-form-actions ui-row">
+          <ConfirmAction
+            v-if="form.id && !saving && !parsing && !attachmentBusy"
+            label="删除记录"
+            :message="'确定删除“' + form.title + '”？'"
+            :action="() => remove(form)" />
+          <view class="library-action-spacer" />
+          <MobileButton
+            label="取消"
+            variant="quiet"
+            :disabled="saving || parsing || attachmentBusy"
+            @click="form = null" /><MobileButton
+            :label="created ? '重新读取' : '保存'"
+            :loading="saving"
+            :disabled="parsing || attachmentBusy"
+            @click="save" /></view
+      ></AdaptiveModal>
+      <AdaptiveModal
+        v-if="importingOpen"
+        label="豆瓣观影导入"
+        :busy="importBusy"
+        @close="importingOpen = false"
+        ><MobileButton
+          label="选择 Excel"
+          :loading="importBusy"
+          @click="chooseWorkbook" /><text
+          v-if="importName"
+          class="library-secondary"
+          >{{ importName }}</text
+        ><FormField compact stretch
+          label="导入内容"
+          kind="textarea"
+          v-model="importText" /><view class="ui-toolbar"
+          ><MobileButton
+            label="粘贴导入内容"
+            icon="lucide:clipboard-paste"
+            variant="quiet"
+            :disabled="importBusy"
+            @click="pasteImport" /><MobileButton
+            label="预览内容"
+            :loading="importBusy"
+            @click="previewText" /></view
+        ><template v-if="preview"
+          ><view class="metrics ui-row ui-section"
+            ><MetricCard label="可新增" :value="preview.newCount" /><MetricCard
+              label="重复"
+              :value="preview.duplicateCount" /><MetricCard
+              label="错误"
+              :value="issues.length" /></view
+          ><FormField compact stretch
+            label="重复处理"
+            kind="selector"
+            v-model="policy"
+            :options="['跳过重复', '覆盖重复']"
+          /><view
+            v-for="record in importRequest.records"
+            :key="record.rowNumber"
+            class="import-row ui-section ui-gap-sm"
+            ><text class="library-content"
+              >{{ record.rowNumber }} · {{ record.title }}</text
+            ><text class="library-secondary"
+              >{{
+                preview.duplicates.some(
+                  (item) => item.rowNumber === record.rowNumber,
+                )
+                  ? '重复'
+                  : '新增'
+              }}
+              · {{ record.markedDate || '' }}</text
+            ></view
+          ></template
+        ><text
+          v-for="issue in issues"
+          :key="issue.rowNumber + issue.message"
+          class="library-error ui-section"
+          >第{{ issue.rowNumber }}行：{{ issue.message }}</text
+        ><text v-if="importError" class="library-error ui-section">{{ importError }}</text
+        ><text v-if="importResult" class="library-content"
+          >新增 {{ importResult.createdCount }} · 覆盖
+          {{ importResult.updatedCount }} · 跳过
+          {{ importResult.skippedCount }}</text
+        ><view class="toolbar ui-row"
+          ><MobileButton
+            label="关闭导入"
+            variant="quiet"
+            :disabled="importBusy"
+            @click="importingOpen = false" /><MobileButton
+            label="导入"
+            :loading="importBusy"
+            :disabled="!preview || !!issues.length || !!importResult"
+            @click="submitImport" /></view
+      ></AdaptiveModal> </view
+    ><template #fixed
+      ><FloatingActionButton
+        :label="'新增' + title"
+        @click="open()" /></template
+  ></MobilePage>
+</template>
+<style scoped lang="scss">
+@use '../../styles/spacing.scss';
+@use '../../styles/spacing-tokens' as *;
+.library-page {
+  padding-bottom: 64px;
+  color: #27272a;
+}
+.library-page-dark {
+  color: #eeeeef;
+}
+.toolbar {
+  flex-direction: row;
+  align-items: center;
+}
+.filters {
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+}
+.metrics {
+  flex-direction: row;
+  flex-wrap: wrap;
+}
+.library-search-row {
+  flex-direction: row;
+  align-items: center;
+}
+.library-search {
+  flex: 1;
+  min-width: 0;
+  flex-direction: row;
+  align-items: center;
+  background-color: #ffffff;
+  border-radius: 12px;
+}
+.library-search-input {
+  flex: 1;
+  min-width: 0;
+  height: 44px;
+  font-size: 14px;
+  color: #27272a;
+}
+.library-search-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  flex-shrink: 0;
+  margin: 0;
+  padding: 0;
+  background-color: transparent;
+  color: #64748b;
+}
+.search-symbol {
+  position: relative;
+  width: 20px;
+  height: 20px;
+}
+.search-ring {
+  width: 13px;
+  height: 13px;
+  border: 2px solid currentColor;
+  border-radius: 8px;
+}
+.search-handle {
+  position: absolute;
+  width: 8px;
+  height: 2px;
+  left: 11px;
+  top: 14px;
+  background-color: currentColor;
+  transform: rotate(45deg);
+}
+.library-control-dark {
+  background-color: #1c1e22;
+}
+.library-text-dark {
+  color: #eeeeef;
+}
+.library-filter {
+  flex-direction: row;
+  align-items: center;
+  min-height: 44px;
+  font-size: 13px;
+}
+.filter-chevron {
+  color: #8b8f99;
+}
+.library-count {
+  margin-left: auto;
+  font-size: 12px;
+  color: #8b8f99;
+}
+.library-grid {
+  flex-direction: row;
+  flex-wrap: wrap;
+
+}
+.library-card {
+  width: calc((100% - #{$space-section * 2}) / 3);
+
+
+  box-sizing: border-box;
+  min-width: 0;
+}
+.library-poster {
+  position: relative;
+  width: 100%;
+  padding-top: 133.333333%;
+  border-radius: 6px;
+  overflow: hidden;
+  background-color: #e6e9ed;
+}
+.library-status {
+  position: absolute;
+  right: 0;
+  top: 0;
+  padding: $space-detail $space-inline;
+  border-bottom-left-radius: 6px;
+  color: #ffffff;
+  background-color: #737e90;
+  font-size: 10px;
+  line-height: 15px;
+}
+.library-status-in_progress {
+  background-color: #3b82f6;
+}
+.library-status-completed {
+  background-color: #22a06b;
+}
+.library-status-on_hold {
+  background-color: #c77d18;
+}
+.library-date {
+  font-size: 11px;
+  line-height: 16px;
+  text-align: center;
+  color: #8b8f99;
+}
+.library-opening {
+  position: absolute;
+  left: 0;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  align-items: center;
+  justify-content: center;
+  color: #ffffff;
+  background-color: rgba(0, 0, 0, 0.45);
+  font-size: 12px;
+}
+.library-link-row {
+  flex-direction: row;
+  align-items: center;
+}
+.library-link-field {
+  flex: 1;
+  min-width: 0;
+}
+.library-form-actions {
+  flex-direction: row;
+  align-items: center;
+}
+.library-action-spacer {
+  flex: 1;
+}
+/* #ifdef WEB || MP-WEIXIN */
+.library-search-button::after {
+  border: 0;
+}
+/* #endif */
+@media (min-width: 640px) {
+  .library-card {
+    width: calc((100% - #{$space-section * 3}) / 4);
+  }
+}
+@media (min-width: 768px) {
+  .library-card {
+    width: calc((100% - #{$space-section * 4}) / 5);
+  }
+}
+@media (min-width: 1200px) {
+  .library-card {
+    width: calc((100% - #{$space-section * 6}) / 7);
+  }
+}
+.library-content {
+  font-size: 14px;
+  line-height: 22px;
+}
+.library-secondary {
+  color: #8b8f99;
+  font-size: 13px;
+}
+.library-error {
+  color: #e05252;
+}
+</style>

@@ -1,0 +1,386 @@
+<script setup lang="ts">
+import { computed, ref } from 'vue';
+import { onShow } from '@dcloudio/uni-app';
+import MobilePage from '../../components/MobilePage.uvue';
+import PageHeader from '../../components/PageHeader.uvue';
+import MobileButton from '../../components/MobileButton.uvue';
+import FormField from '../../components/FormField.uvue';
+import PageState from '../../components/PageState.uvue';
+import ConfirmAction from '../../components/ConfirmAction.uvue';
+import AdaptiveModal from '../../components/AdaptiveModal.uvue';
+import FloatingActionButton from '../../components/FloatingActionButton.uvue';
+import { isDark } from '../../services/theme.ts';
+import { createRecordScope } from '../../services/records/page-scope.ts';
+import {
+  statuses,
+  statusLabels as statusNames,
+  dateTime,
+} from '../../services/records/contracts.ts';
+import {
+  fetchVideoPage,
+  saveVideo,
+  deleteVideo,
+  fetchVideoCounts,
+  fetchVideoStatistics,
+  parseVideoLink,
+  extractVideoId,
+} from '../../services/records/video.ts';
+const rows = ref<any[]>([]),
+  counts = ref<any>({}),
+  statistics = ref<any>({}),
+  loading = ref(false),
+  error = ref(''),
+  status = ref('进行中'),
+  keyword = ref(''),
+  form = ref<any>(null),
+  saving = ref(false),
+  parsing = ref(false),
+  formError = ref(''),
+  saved = ref(false);
+const statusLabels = {
+  not_started: '未开始',
+  in_progress: statusNames[1],
+  completed: statusNames[2],
+  on_hold: '已暂停',
+};
+let generation = 0,
+  formRevision = 0;
+const scope = createRecordScope((clear) => {
+  formRevision++;
+  form.value = null;
+  if (clear) {
+    rows.value = [];
+    counts.value = {};
+    statistics.value = {};
+  }
+});
+onShow(() => load());
+const filtered = computed(() =>
+  rows.value.filter((item) =>
+    [item.title, item.ownerName, item.notes]
+      .join(' ')
+      .toLowerCase()
+      .includes(keyword.value.toLowerCase()),
+  ),
+);
+const progressPercent = computed(() =>
+  Number(statistics.value.totalSeconds) > 0
+    ? Math.round(
+        (Number(statistics.value.studiedSeconds || 0) / Number(statistics.value.totalSeconds)) *
+          100,
+      )
+    : 0,
+);
+function formatSeconds(value) {
+  return (
+    Math.floor(Number(value || 0) / 3600) +
+    ' 小时 ' +
+    Math.floor((Number(value || 0) % 3600) / 60) +
+    ' 分钟'
+  );
+}
+async function load() {
+  const current = ++generation;
+  loading.value = true;
+  error.value = '';
+  try {
+    const [statusCounts, stats] = await scope.wait(
+      Promise.all([fetchVideoCounts(), fetchVideoStatistics()]),
+    );
+    const data = [];
+    let page = 1;
+    while (true) {
+      const result = await scope.wait(
+        fetchVideoPage(page++, statuses.find((code) => statusLabels[code] === status.value) || ''),
+      );
+      data.push(...result.items);
+      if (data.length >= result.total || result.items.length < 100) break;
+    }
+    if (current === generation) {
+      rows.value = data;
+      counts.value = statusCounts;
+      statistics.value = stats;
+    }
+  } catch (e) {
+    if (e.name !== 'PageInactiveError' && current === generation) error.value = e.message;
+  } finally {
+    if (current === generation) loading.value = false;
+  }
+}
+function open(item = null) {
+  formRevision++;
+  saved.value = false;
+  formError.value = '';
+  form.value = item
+    ? {
+        ...item,
+        duration: String(item.duration || 0),
+        watchedDuration: String(item.watchedDuration || 0),
+        episodes: String(item.episodes || 1),
+        currentEpisode: String(item.currentEpisode || 1),
+        date: (item.lastWatched || '').slice(0, 10),
+        time: (item.lastWatched || '').slice(11, 16),
+      }
+    : {
+        title: '',
+        url: '',
+        cover: '',
+        duration: '0',
+        watchedDuration: '0',
+        episodes: '1',
+        currentEpisode: '1',
+        status: 'not_started',
+        date: '',
+        time: '',
+        notes: '',
+        bvid: '',
+        aid: '',
+        description: '',
+        ownerName: '',
+        pagesInfo: '[]',
+      };
+}
+async function parse() {
+  if (parsing.value || saving.value) return;
+  const current = formRevision;
+  parsing.value = true;
+  formError.value = '';
+  try {
+    const result = await scope.wait(parseVideoLink(form.value.url));
+    if (current === formRevision && form.value)
+      form.value = {
+        ...form.value,
+        ...result,
+        duration: String(result.duration),
+        watchedDuration: String(result.watchedDuration),
+        episodes: String(result.episodes),
+        currentEpisode: String(result.currentEpisode),
+      };
+  } catch (e) {
+    if (e.name !== 'PageInactiveError' && current === formRevision) formError.value = e.message;
+  } finally {
+    parsing.value = false;
+  }
+}
+function updateEpisode(value) {
+  form.value.currentEpisode = value;
+  const episode = Number(value);
+  try {
+    const pages = JSON.parse(form.value.pagesInfo || '[]');
+    if (pages.length && Number.isInteger(episode)) {
+      form.value.watchedDuration = String(
+        pages
+          .slice(0, Math.max(0, episode - 1))
+          .reduce((sum, p) => sum + Number(p.duration || 0), 0),
+      );
+    }
+  } catch {}
+}
+async function save() {
+  if (saving.value || parsing.value) return;
+  if (!form.value.title.trim() || !form.value.url.trim()) {
+    formError.value = '请输入标题和视频链接';
+    return;
+  }
+  const duration = Number(form.value.duration),
+    watchedDuration = Number(form.value.watchedDuration),
+    episodes = Number(form.value.episodes),
+    currentEpisode = Number(form.value.currentEpisode);
+  if (
+    [duration, watchedDuration, episodes, currentEpisode].some(
+      (value) => !Number.isInteger(value),
+    ) ||
+    duration < 0 ||
+    watchedDuration < 0 ||
+    watchedDuration > duration ||
+    episodes < 1 ||
+    currentEpisode < 1 ||
+    currentEpisode > episodes
+  ) {
+    formError.value = '请检查时长与当前集数范围';
+    return;
+  }
+  saving.value = true;
+  formError.value = '';
+  try {
+    if (!saved.value) {
+      const id = extractVideoId(form.value.url);
+      const payload = {
+        ...form.value,
+        ...id,
+        duration,
+        watchedDuration: form.value.status === 'completed' ? duration : watchedDuration,
+        episodes,
+        currentEpisode,
+        lastWatched: dateTime(form.value.date, form.value.time),
+      };
+      if (!(await scope.wait(saveVideo(payload)))) throw new Error('保存失败');
+      saved.value = true;
+    }
+    await load();
+    if (error.value) throw new Error(error.value);
+    form.value = null;
+  } catch (e) {
+    if (e.name !== 'PageInactiveError') formError.value = e.message;
+  } finally {
+    saving.value = false;
+  }
+}
+async function remove(item) {
+  if (!(await scope.wait(deleteVideo(item.id)))) throw new Error('删除失败');
+  rows.value = rows.value.filter((row) => row.id !== item.id);
+  await load();
+  if (error.value) throw new Error(error.value);
+}
+function play(url) {
+  if (!/^https:\/\/([\w-]+\.)?bilibili\.com\//.test(url)) return;
+  // #ifdef WEB
+  window.open(url, '_blank', 'noopener,noreferrer');
+  // #endif
+  // #ifdef APP
+  plus.runtime.openURL(url);
+  // #endif
+  // #ifdef MP-WEIXIN
+  uni.setClipboardData({ data: url });
+  // #endif
+}
+</script>
+<template>
+  <MobilePage :refreshing="loading" @refresh="load"
+    ><view class="video-page ui-page-body" :class="{ 'video-page-dark': isDark }"
+      ><PageHeader title="视频观看" :back="true" @back="uni.navigateBack()" /><view class="ui-toolbar"
+        ><FormField compact stretch label="搜索视频" v-model="keyword" /></view
+      ><view class="video-summary ui-row ui-section"><view class="summary-panel ui-card"><text class="secondary">学习总数</text><text class="summary-number">{{ Object.values(counts).reduce((sum, count) => sum + Number(count), 0) }}</text><text class="secondary">{{ counts.completed || 0 }} 已完成 · {{ counts.in_progress || 0 }} 进行中 · {{ counts.not_started || 0 }} 未开始</text></view><view class="summary-panel ui-card"><text class="secondary">已学时长</text><text class="summary-number">{{ formatSeconds(statistics.studiedSeconds) }}</text><text class="secondary">剩余预估 {{ formatSeconds(statistics.unstudiedSeconds) }}</text></view></view><scroll-view :scroll-x="true" direction="horizontal" class="status-scroll ui-section"><view class="status-tabs ui-row"><button v-for="label in ['未开始', '进行中', '已暂停', '已完成', '全部状态']" :key="label" role="button" class="status-tab" :class="{ 'status-active': status === label }" :aria-pressed="status === label" @click="status = label; load()">{{ label === '全部状态' ? '全部' : label }} {{ label === '全部状态' ? Object.values(counts).reduce((sum, count) => sum + Number(count), 0) : counts[statuses.find((code) => statusLabels[code] === label)] || 0 }}</button></view></scroll-view>
+      <PageState :loading="loading" :error="error" :empty="!filtered.length" @retry="load"
+        ><view class="video-grid"><view v-for="item in filtered" :key="item.id" class="video-card" :class="{ 'video-card-dark': isDark }" role="button" :aria-label="'编辑视频：' + item.title" @click="open(item)"><view class="video-poster"><image v-if="item.cover" class="cover" :src="item.cover" mode="aspectFill" /><text class="video-status">{{ statusLabels[item.status] }}</text><text class="video-duration">{{ formatSeconds(item.duration) }}</text></view><view class="video-body"><text class="title">{{ item.title }}</text><view class="toolbar ui-row"><text class="secondary">{{ item.ownerName || '' }}</text><text class="episode">{{ item.currentEpisode || 1 }}/{{ item.episodes || 1 }}</text></view><view class="toolbar ui-row"><text class="secondary">{{ formatSeconds(item.watchedDuration) }} / {{ formatSeconds(item.duration) }}</text><text class="episode">{{ item.duration ? Math.min(100, Math.round((item.watchedDuration || 0) / item.duration * 100)) : 0 }}%</text></view><view class="progress-track"><view class="progress-fill" :style="{ width: (item.duration ? Math.min(100, Math.round((item.watchedDuration || 0) / item.duration * 100)) : 0) + '%' }" /></view></view></view></view></PageState
+      ><AdaptiveModal
+        v-if="form"
+        label="编辑学习视频"
+        :busy="saving || parsing"
+        @close="
+          formRevision++;
+          form = null;
+        "
+        ><view class="toolbar ui-row"
+          ><FormField compact stretch label="视频链接" v-model="form.url" /><MobileButton
+            label="解析视频"
+            icon="ant-design:reload-outlined"
+            :loading="parsing"
+            :disabled="saving"
+            @click="parse" /></view
+        ><FormField label="标题" v-model="form.title" /><FormField
+          label="封面链接"
+          v-model="form.cover" /><FormField label="UP主" v-model="form.ownerName" /><FormField
+          label="状态"
+          kind="selector"
+          :model-value="statusLabels[form.status]"
+          :options="statuses.map((code) => statusLabels[code])"
+          @update:model-value="
+            form.status = statuses.find((code) => statusLabels[code] === $event) || 'not_started'
+          " /><FormField label="总集数" input-type="number" v-model="form.episodes" /><FormField
+          label="当前集数"
+          input-type="number"
+          :model-value="form.currentEpisode"
+          @update:model-value="updateEpisode" /><FormField
+          label="总时长（秒）"
+          input-type="number"
+          v-model="form.duration" /><FormField
+          label="已学习时长（秒）"
+          input-type="number"
+          v-model="form.watchedDuration" /><FormField
+          label="最近观看日期"
+          kind="date"
+          v-model="form.date" /><FormField
+          label="最近观看时间"
+          kind="time"
+          v-model="form.time" /><FormField
+          label="学习笔记"
+          kind="textarea"
+          v-model="form.notes" /><FormField
+          label="视频简介"
+          kind="textarea"
+          v-model="form.description" /><text v-if="formError" class="error ui-section">{{ formError }}</text
+        ><view class="toolbar ui-row"
+          ><ConfirmAction v-if="form.id" label="删除视频" :action="() => remove(form)" /><MobileButton label="播放视频" icon="ant-design:play-circle-outlined" variant="quiet" @click="play(form.url)" /><MobileButton
+            label="取消"
+            variant="quiet"
+            :disabled="saving || parsing"
+            @click="
+              formRevision++;
+              form = null;
+            " /><MobileButton
+            :label="saved ? '重新读取' : '保存'"
+            :loading="saving"
+            :disabled="parsing"
+            @click="save" /></view></AdaptiveModal></view>
+    <template #fixed><FloatingActionButton label="新增视频" :disabled="loading || !!error" @click="open()" /></template>
+  </MobilePage>
+</template>
+<style scoped lang="scss">
+@use '../../styles/spacing.scss';
+@use '../../styles/spacing-tokens' as *;
+.video-page {
+  color: #27272a;
+}
+.video-page-dark {
+  color: #eeeeef;
+}
+.toolbar,
+.metrics {
+  flex-direction: row;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.card {
+  border-radius: 16px;
+  background-color: #ffffff;
+}
+.card-dark {
+  background-color: #1c1e22;
+}
+.title {
+  flex: 1;
+  font-size: 16px;
+  font-weight: 600;
+}
+.secondary {
+  font-size: 13px;
+  color: #8b8f99;
+}
+.cover {
+  width: 100%;
+  height: 120px;
+  flex-shrink: 0;
+}
+.error {
+  color: #e05252;
+}
+</style>
+
+<style scoped lang="scss">
+@use '../../styles/spacing-tokens' as *;
+.video-summary { align-items: stretch; flex-wrap: wrap; }
+.summary-panel { flex: 1; min-width: 140px; margin: 0; gap: $space-inline; background-color: #fff; border-radius: 12px; }
+.video-page-dark .summary-panel { background-color: #1c1e22; }
+.summary-number { font-size: 23px; font-weight: 600; }
+.status-scroll { width: 100%; }
+.status-tabs { flex-direction: row; }
+.status-tab { margin: 0; padding: 0 $space-inline; background-color: transparent; font-size: 13px; min-height: $space-controlMin; flex-shrink: 0; color: #8b8f99; border-radius: 0; }
+.status-active { color: #427bea; border-bottom: 2px solid #427bea; }
+.video-grid { display: flex; flex-direction: row; flex-wrap: wrap; gap: $space-section; }
+.video-card { box-sizing: border-box; width: calc((100% - #{$space-section}) / 2); background-color: #fff; border-radius: 8px; overflow: hidden; }
+.video-card-dark { background-color: #1c1e22; }
+.video-poster { position: relative; height: 120px; background-color: #eef0f3; }
+.video-status, .video-duration { position: absolute; background-color: #427bea; color: white; padding: $space-detail; font-size: 11px; }
+.video-status { top: $space-detail; left: $space-detail; border-radius: 4px; }
+.video-duration { bottom: $space-detail; right: $space-detail; background-color: #0008; }
+.video-body { padding: $space-card; display: flex; flex-direction: column; gap: $space-inline; }
+.video-body .title { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; font-size: 14px; min-height: 42px; }
+.video-body .toolbar { justify-content: space-between; gap: $space-detail; }
+.video-body .secondary { font-size: 11px; }
+.episode { color: #427bea; font-size: 11px; }
+.progress-track { height: 5px; background-color: #eef0f3; border-radius: 5px; overflow: hidden; }
+.progress-fill { height: 5px; background-color: #427bea; }
+@media (min-width: 600px) { .video-card { width: calc((100% - #{$space-section} * 2) / 3); } }
+@media (min-width: 1000px) { .video-card { width: calc((100% - #{$space-section} * 3) / 4); } }
+</style>
