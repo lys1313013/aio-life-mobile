@@ -5,7 +5,14 @@ export const fetchCommits = (page=1) => request<any[]>(queryPath('/github/recent
 export const fetchCsdnStats = (username:string) => request<any>(queryPath('/csdn/stats',{username}))
 export const fetchCsdnArticles = (username:string,limit=20) => request<any[]>(queryPath('/csdn/articles',{username,limit}))
 export function externalRequest(url:string, data:Record<string,any>|null=null, token=''):Promise<any>{return new Promise((resolve,reject)=>{uni.request({url,method:data?'POST':'GET',data,header:{'Content-Type':'application/json',...(token?{Authorization:'Bearer '+token}:{})},success:response=>{if(response.statusCode<200||response.statusCode>=300)reject(new Error('外部服务请求失败 '+response.statusCode));else if((response.data as any)?.errors)reject(new Error((response.data as any).errors[0].message));else resolve(response.data)},fail:()=>reject(new Error('外部服务连接失败，请重试'))})})}
-export const fetchRepos=(username:string,token='')=>externalRequest('https://api.github.com/users/'+encodeURIComponent(username)+'/repos?sort=pushed&per_page=100',null,token)
+export async function fetchRepos(username:string,token=''){
+  const repos:any[]=[]
+  for(let page=1;;page++){
+    const rows=await externalRequest('https://api.github.com/users/'+encodeURIComponent(username)+'/repos?sort=pushed&per_page=100&page='+page,null,token)
+    repos.push(...rows)
+    if(rows.length<100)return repos
+  }
+}
 export const fetchRepoContributors=(fullName:string,token='')=>externalRequest('https://api.github.com/repos/'+fullName.split('/').map(encodeURIComponent).join('/')+'/contributors?per_page=100',null,token)
 export const fetchRepoInfo=(fullName:string,token='')=>externalRequest('https://api.github.com/repos/'+fullName.split('/').map(encodeURIComponent).join('/'),null,token)
 export const fetchGithubCalendar=(username:string,token:string)=>externalRequest('https://api.github.com/graphql',{query:'query($login:String!){user(login:$login){contributionsCollection{contributionCalendar{totalContributions weeks{contributionDays{contributionCount date contributionLevel}}}}}}',variables:{login:username}},token)

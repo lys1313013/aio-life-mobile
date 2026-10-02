@@ -28,8 +28,6 @@ const username = ref(''),
   loading = ref(false),
   refreshing = ref(false),
   error = ref(''),
-  keyword = ref(''),
-  kind = ref('全部'),
   sort = ref('最近推送'),
   page = ref(1),
   hasMore = ref(false),
@@ -48,15 +46,8 @@ onUnmounted(() => {
   stamp++;
   token = '';
 });
-const filtered = computed(() =>
-  repos.value
-    .filter(
-      (item) =>
-        (kind.value === '全部' || (kind.value === '原创' ? !item.fork : item.fork)) &&
-        (item.name + ' ' + (item.description || ''))
-          .toLowerCase()
-          .includes(keyword.value.toLowerCase()),
-    )
+const sortedRepos = computed(() =>
+  [...repos.value]
     .sort((a, b) =>
       sort.value === 'Star'
         ? b.stargazers_count - a.stargazers_count
@@ -73,6 +64,24 @@ const todayKey =
   '-' +
   String(today.getDate()).padStart(2, '0');
 const summary = computed(() => calendarSummary(days.value, todayKey));
+const totalStars = computed(() =>
+  repos.value.reduce((sum, repo) => sum + Number(repo.stargazers_count || 0), 0),
+);
+const longestStreak = computed(() => {
+  const calendar = days.value
+    .filter(day => day.date <= todayKey)
+    .sort((a, b) => a.date.localeCompare(b.date));
+  let longest = 0;
+  let current = 0;
+  let previous = 0;
+  for (const day of calendar) {
+    const date = Date.parse(day.date + 'T00:00:00Z');
+    current = day.count > 0 ? (date - previous === 86400000 ? current + 1 : 1) : 0;
+    longest = Math.max(longest, current);
+    previous = date;
+  }
+  return longest;
+});
 async function load(section = '') {
   if (section ? sections[section].loading : loading.value) return;
   const current = section ? stamp : ++stamp;
@@ -210,14 +219,21 @@ useDomainPage(
           variant="quiet"
           @click="uni.navigateTo({ url: '/pages/profile/bindings' })" /></view
       ><PageState v-if="error" :error="error" @retry="load()" />
-      <template v-if="!error || username"><PageState skeleton="calendar" :loading="sections.calendar.loading" :error="sections.calendar.error" @retry="load('calendar')"
-        ><view class="metrics ui-row ui-section"
-          ><MetricCard label="过去一年提交" :value="String(total)" /><MetricCard
+      <template v-if="!error || username"><view class="metrics ui-row ui-section"
+          ><MetricCard label="过去一年提交" :value="sections.calendar.error ? '—' : String(total)" :loading="sections.calendar.loading" /><MetricCard
             label="今日提交次数"
-            :value="String(summary.today)" /><MetricCard
+            :value="sections.calendar.error ? '—' : String(summary.today)" :loading="sections.calendar.loading" /><MetricCard
             label="连续提交"
-            :value="String(summary.streak)"
-            unit="天" /><MetricCard label="活跃天数" :value="String(summary.active)" unit="天" /></view
+            :value="sections.calendar.error ? '—' : String(summary.streak)" :loading="sections.calendar.loading"
+            unit="天" /><MetricCard label="活跃天数" :value="sections.calendar.error ? '—' : String(summary.active)" :loading="sections.calendar.loading" unit="天" /><MetricCard
+            label="总 Star 数"
+            :value="sections.repos.error ? '—' : String(totalStars)"
+            :loading="sections.repos.loading" /><MetricCard
+            label="最长连续"
+            :value="sections.calendar.error ? '—' : String(longestStreak)"
+            :loading="sections.calendar.loading"
+            unit="天" /></view
+        ><PageState skeleton="calendar" :loading="sections.calendar.loading" :error="sections.calendar.error" @retry="load('calendar')"
         ><scroll-view scroll-x class="calendar-scroll ui-card" :class="themeClass('calendar-scroll')"
           ><view class="calendar ui-gap-xs"
             ><view
@@ -229,18 +245,14 @@ useDomainPage(
               @click="
                 uni.showToast({ title: day.date + ' · ' + day.count, icon: 'none' })
               " /></view></scroll-view
-        ></PageState><text class="heading ui-section">仓库</text><FormField label="搜索仓库" placeholder="仓库名称或简介" v-model="keyword" /><view
-          class="filters ui-field-row"
+        ></PageState><text class="heading ui-section">仓库</text><view
+          class="ui-field-row"
           ><FormField
-            label="类型"
-            kind="selector"
-            compact stretch :options="['全部', '原创', 'Fork']"
-            v-model="kind" /><FormField
             label="排序"
             kind="selector"
             compact stretch :options="['最近推送', 'Star', '我的提交']"
             v-model="sort" /></view
-        ><PageState skeleton="list" :loading="sections.repos.loading" :error="sections.repos.error" :empty="!filtered.length" empty-text="暂无仓库" @retry="load('repos')"><view v-for="repo in filtered" :key="repo.id" class="record ui-card" :class="themeClass('record')">
+        ><PageState skeleton="list" :loading="sections.repos.loading" :error="sections.repos.error" :empty="!sortedRepos.length" empty-text="暂无仓库" @retry="load('repos')"><view v-for="repo in sortedRepos" :key="repo.id" class="record ui-card" :class="themeClass('record')">
           <view class="record-head">
             <view class="record-copy"><view class="meta-list"><text class="record-title">{{ repo.name }}</text><AppIcon v-if="repo.fork" name="ant-design:fork-outlined" :size="14" /></view><text v-if="repo.description" class="record-description" :class="themeClass('description')">{{ repo.description }}</text></view>
             <MobileButton label="打开仓库" icon="ant-design:export-outlined" variant="quiet" @click="openExternal(repo.html_url)" />
@@ -286,11 +298,7 @@ useDomainPage(
   gap: $space-inline;
 }
 @media (min-width: 768px) {
-  .metrics { grid-template-columns: repeat(4, minmax(0, 1fr)); }
-}
-.filters {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  .metrics { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
 .record {
   background-color: #ffffff;
