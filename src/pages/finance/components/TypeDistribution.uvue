@@ -1,0 +1,121 @@
+<script setup lang="ts">
+import { computed, getCurrentInstance, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
+import { themeClass } from '../../../services/theme.ts';
+import MobileButton from '../../../components/MobileButton.uvue';
+
+const props = defineProps<{ label: string; items: { name: string; value: number }[]; iconToggle?: boolean }>();
+const palette = ['#427bea', '#20a574', '#e7a638', '#9560c6', '#e05260', '#29a4b8', '#cf773e', '#688747'];
+const rows = computed(() => props.items
+  .filter((item) => Number.isFinite(Number(item.value)) && Number(item.value) !== 0)
+  .slice().sort((a, b) => Number(b.value) - Number(a.value))
+  .map((item, index) => ({ ...item, value: Number(item.value), color: palette[index % palette.length] })));
+const expanded = ref(false);
+const canExpand = computed(() => rows.value.length > 5);
+// Only the legend is folded; every category always keeps its own pie sector.
+const displayRows = computed(() => expanded.value ? rows.value : rows.value.slice(0, 5));
+// Refund-only categories remain visible, but cannot form a negative pie sector.
+const positiveTotal = computed(() => rows.value.reduce((sum, item) => sum + Math.max(0, item.value), 0));
+const total = computed(() => rows.value.reduce((sum, item) => sum + item.value, 0));
+const error = ref('');
+const instance = getCurrentInstance();
+const canvasId = 'finance-type-distribution-' + instance?.uid;
+let alive = true;
+function percentage(value: number) {
+  if (value < 0) return '净退款';
+  return positiveTotal.value > 0 ? (value / positiveTotal.value * 100).toFixed(1) + '%' : '0%';
+}
+async function draw() {
+  await nextTick();
+  if (!alive || !positiveTotal.value) return;
+  error.value = '';
+  uni.createCanvasContextAsync({
+    id: canvasId,
+    component: instance?.proxy,
+    success(context) {
+      if (!alive) return;
+      try {
+        const ctx = context.getContext('2d');
+        if (!ctx) throw new Error('画布初始化失败');
+        // Fixed chart geometry; backing resolution follows the device pixel ratio.
+        const ratio = uni.getWindowInfo().pixelRatio || 1;
+        ctx.canvas.width = 180 * ratio;
+        ctx.canvas.height = 180 * ratio;
+        ctx.scale(ratio, ratio);
+        ctx.clearRect(0, 0, 180, 180);
+        let start = -Math.PI / 2;
+        for (const item of rows.value) {
+          if (item.value <= 0) continue;
+          const end = start + item.value / positiveTotal.value * Math.PI * 2;
+          ctx.beginPath();
+          ctx.arc(90, 90, 72, start, end);
+          ctx.strokeStyle = item.color;
+          ctx.lineWidth = 28;
+          ctx.stroke();
+          start = end;
+        }
+      } catch (_) { error.value = '图表加载失败'; }
+    },
+    fail() { if (alive) error.value = '图表加载失败'; },
+  });
+}
+onMounted(draw);
+watch(rows, draw);
+watch(() => props.items, () => { expanded.value = false; });
+onUnmounted(() => { alive = false; });
+</script>
+
+<template>
+  <view class="distribution" :class="themeClass('distribution')" role="figure" :aria-label="label">
+    <text class="distribution-title">{{ label }}</text>
+    <template v-if="rows.length">
+      <view v-if="positiveTotal > 0" class="distribution-chart">
+        <canvas :id="canvasId" :canvas-id="canvasId" type="2d" class="distribution-canvas" :aria-label="label + '环形图'" />
+        <view class="distribution-center">
+          <text class="distribution-caption" :class="themeClass('distribution-caption')">合计（元）</text>
+          <text class="distribution-total">{{ total.toFixed(2) }}</text>
+        </view>
+      </view>
+      <view v-if="error" class="distribution-error"><text class="distribution-caption">{{ error }}</text><MobileButton label="重试" variant="quiet" @click="draw" /></view>
+      <text v-if="positiveTotal === 0" class="distribution-caption" :class="themeClass('distribution-caption')">暂无正向金额可展示占比</text>
+      <view v-for="(item, index) in displayRows" :key="index" class="distribution-row">
+        <view class="distribution-swatch" :style="{ backgroundColor: item.color }" />
+        <text class="distribution-name">{{ item.name }}</text>
+        <text class="distribution-amount">¥{{ item.value.toFixed(2) }}</text>
+        <text class="distribution-percent" :class="themeClass('distribution-caption')">{{ percentage(item.value) }}</text>
+      </view>
+      <view v-if="canExpand" class="distribution-toggle">
+        <MobileButton
+          :label="expanded ? '收起' : '展开全部'"
+          variant="ghost"
+          :compact="!iconToggle"
+          :icon="iconToggle ? (expanded ? 'ant-design:up-outlined' : 'ant-design:down-outlined') : undefined"
+          :aria-expanded="expanded"
+          @click="expanded = !expanded"
+        />
+      </view>
+    </template>
+    <text v-else class="distribution-caption" :class="themeClass('distribution-caption')">暂无数据</text>
+  </view>
+</template>
+
+<style scoped lang="scss">
+@use '../../../styles/spacing-tokens' as *;
+@use '../../../styles/typography' as *;
+@use '../../../styles/text-colors' as *;
+.distribution { padding: $space-card; border-radius: 16px; background-color: #fff; color: #27272a; gap: $space-inline; min-width: 0; }
+.distribution-dark { background-color: #1c1e22; color: #eeeeef; }
+.distribution-title { @include type-style('body-strong'); }
+.distribution-chart { position: relative; width: 180px; height: 180px; align-self: center; }
+.distribution-canvas { width: 180px; height: 180px; }
+.distribution-center { position: absolute; left: 32px; right: 32px; top: 0; bottom: 0; justify-content: center; align-items: center; pointer-events: none; }
+.distribution-caption { @include type-style('caption'); color: $text-secondary-light; }
+.distribution-total { @include type-style('body-strong'); font-variant-numeric: tabular-nums; }
+.distribution-row { display: flex; flex-direction: row; align-items: center; gap: $space-inline; }
+.distribution-swatch { width: 8px; height: 8px; border-radius: 4px; flex-shrink: 0; }
+.distribution-name { flex: 1; min-width: 0; overflow-wrap: anywhere; @include type-style('label'); }
+.distribution-amount { @include type-style('label-strong'); font-variant-numeric: tabular-nums; }
+.distribution-percent { min-width: 48px; text-align: right; @include type-style('caption'); color: $text-secondary-light; }
+.distribution-caption-dark { color: $text-secondary-dark; }
+.distribution-error { flex-direction: row; align-items: center; gap: $space-inline; }
+.distribution-toggle { align-self: center; }
+</style>

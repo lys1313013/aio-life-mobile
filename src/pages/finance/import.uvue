@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { isRequired, missingRequired } from '../../services/form-required.ts';
 import { computed, onMounted, ref } from 'vue';
 import MobilePage from '../../components/MobilePage.uvue';
 import PageHeader from '../../components/PageHeader.uvue';
@@ -204,8 +205,7 @@ const draftPay = computed({
 });
 function saveRow() {
   if (
-    !draft.value.expTypeId ||
-    !draft.value.payTypeId ||
+    missingRequired('importExpense', draft.value) ||
     !Number.isFinite(Number(draft.value.amt))
   ) {
     error.value = '请填写有效金额、类型和支付方式';
@@ -356,11 +356,11 @@ async function removeSelected() {
     ><AdaptiveModal v-if="modal" label="导入记录" @close="modal = false"
       ><FormField label="记账金额" v-model="draft.amt" /><FormField
         label="交易金额"
-        v-model="draft.transactionAmt" /><FormField
+        v-model="draft.transactionAmt" /><FormField :required="isRequired('importExpense', 'expTypeId')"
         label="类型"
         kind="selector"
         :options="types.map((item) => item.dictLabel)"
-        v-model="draftType" /><FormField
+        v-model="draftType" /><FormField :required="isRequired('importExpense', 'payTypeId')"
         label="支付方式"
         kind="selector"
         :options="payments.map((item) => item.dictLabel)"

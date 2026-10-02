@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import ContentSkeleton from "../../components/ContentSkeleton.uvue";
-import { computed, onUnmounted, ref, watch } from "vue";
+import { computed, onUnmounted, ref } from "vue";
 import MobilePage from "../../components/MobilePage.uvue";
 import PageHeader from "../../components/PageHeader.uvue";
 import PageState from "../../components/PageState.uvue";
@@ -9,6 +9,7 @@ import MiniChart from "../../components/MiniChart.uvue";
 import MetricCard from "../../components/MetricCard.uvue";
 import MobileButton from "../../components/MobileButton.uvue";
 import FinanceLedger from "./components/FinanceLedger.uvue";
+import TypeDistribution from "./components/TypeDistribution.uvue";
 import { fetchFinanceStatistics } from "./services/finance.ts";
 import { useDomainPage } from "../../services/domains/page-session.ts";
 import { themeClass } from "../../services/theme.ts";
@@ -103,7 +104,9 @@ function timeline(a: any[], b: any[], annual = false) {
       ),
     ),
   ).sort();
-  let deposit = 0;
+  let deposit = 0,
+    cumulativeIncome = 0,
+    cumulativeExpense = 0;
   return keys.map((key) => {
     const match = (row: any) =>
       (annual
@@ -112,12 +115,16 @@ function timeline(a: any[], b: any[], annual = false) {
     const inc = sum(a.filter(match)),
       exp = sum(b.filter(match));
     deposit = Math.round((deposit + inc - exp) * 100) / 100;
+    cumulativeIncome = Math.round((cumulativeIncome + inc) * 100) / 100;
+    cumulativeExpense = Math.round((cumulativeExpense + exp) * 100) / 100;
     return {
       key,
       income: inc,
       expense: exp,
       balance: Math.round((inc - exp) * 100) / 100,
       deposit,
+      cumulativeIncome,
+      cumulativeExpense,
     };
   });
 }
@@ -186,36 +193,13 @@ const categoryGroups = computed(() => [
     key: "income",
     title: "收入构成",
     rows: incCategories.value,
-    total: totalIncome.value,
-    color: colors.income,
   },
   {
     key: "expense",
     title: "支出构成",
     rows: expCategories.value,
-    total: totalExpense.value,
-    color: colors.expense,
   },
 ]);
-const expandedCategories = ref<string[]>([]);
-watch(year, () => {
-  expandedCategories.value = [];
-});
-function toggleCategory(key: string) {
-  expandedCategories.value = expandedCategories.value.includes(key)
-    ? expandedCategories.value.filter((value) => value !== key)
-    : [...expandedCategories.value, key];
-}
-function categoryWidth(amount: number, rows: any[]) {
-  return (
-    Math.min(
-      100,
-      (Math.abs(amount) /
-        Math.max(1, ...rows.map((row) => Math.abs(row.amount)))) *
-        100,
-    ) + "%"
-  );
-}
 </script>
 <template>
   <MobilePage
@@ -281,6 +265,7 @@ function categoryWidth(amount: number, rows: any[]) {
             <MiniChart
               compact
               label="月度收支趋势"
+              hide-period-selector
               :labels="months.map((row) => row.key)"
               :series="[
                 {
@@ -304,8 +289,22 @@ function categoryWidth(amount: number, rows: any[]) {
             <MiniChart
               compact
               label="累计结余趋势"
+              hide-period-selector
+              hide-scale
+              hide-values
+              show-end-values
               :labels="months.map((row) => row.key)"
               :series="[
+                {
+                  name: '累计收入',
+                  color: colors.income,
+                  values: months.map((row) => row.cumulativeIncome),
+                },
+                {
+                  name: '累计支出',
+                  color: colors.expense,
+                  values: months.map((row) => row.cumulativeExpense),
+                },
                 {
                   name: '累计结余',
                   color: colors.balance,
@@ -316,66 +315,14 @@ function categoryWidth(amount: number, rows: any[]) {
             />
           </view>
           <view class="chart-grid">
-            <view
+            <TypeDistribution
               v-for="group in categoryGroups"
               :key="group.key"
-              class="panel category-panel"
-              :class="themeClass('panel')"
-            >
-              <view class="section-header"
-                ><text class="heading">{{ group.title }}</text
-                ><text class="muted" :class="themeClass('muted')"
-                  >元</text
-                ></view
-              >
-              <text
-                v-if="!group.rows.length"
-                class="muted"
-                :class="themeClass('muted')"
-                >暂无数据</text
-              >
-              <view
-                v-for="row in expandedCategories.includes(group.key)
-                  ? group.rows
-                  : group.rows.slice(0, 5)"
-                :key="row.name"
-                class="category-row"
-              >
-                <view class="category-heading"
-                  ><text class="category-name ui-type-label">{{ row.name }}</text
-                  ><text class="category-amount ui-type-label">{{ money(row.amount) }}</text
-                  ><text
-                    class="category-percent muted"
-                    :class="themeClass('muted')"
-                    >{{
-                      (group.total
-                        ? (row.amount / group.total) * 100
-                        : 0
-                      ).toFixed(1)
-                    }}%</text
-                  ></view
-                >
-                <view class="bar-track" :class="themeClass('bar-track')"
-                  ><view
-                    class="bar"
-                    :style="{
-                      width: categoryWidth(row.amount, group.rows),
-                      backgroundColor: group.color,
-                    }"
-                /></view>
-              </view>
-              <MobileButton
-                v-if="group.rows.length > 5"
-                compact
-                variant="quiet"
-                :label="
-                  expandedCategories.includes(group.key)
-                    ? '收起分类'
-                    : '全部分类（' + group.rows.length + '）'
-                "
-                @click="toggleCategory(group.key)"
-              />
-            </view>
+              class="category-panel"
+              :label="group.title"
+              :items="group.rows.map((row) => ({ name: row.name, value: row.amount }))"
+              icon-toggle
+            />
           </view>
           <FinanceLedger
             :key="year"
@@ -388,6 +335,7 @@ function categoryWidth(amount: number, rows: any[]) {
             compact
             :label="comparisonTitle"
             kind="bar"
+            selectable
             :labels="comparisonRows.map((row) => row.key)"
             :series="
               comparisonMode === '收支'
@@ -508,65 +456,9 @@ function categoryWidth(amount: number, rows: any[]) {
   grid-template-columns: minmax(0, 1fr);
   column-gap: $space-section;
 }
-.panel {
-  min-width: 0;
-  padding: $space-card;
-  border-radius: 16px;
-  background-color: #ffffff;
-  margin-bottom: $space-section;
-}
-.panel-dark {
-  background-color: #1c1e22;
-}
 .category-panel {
   align-self: start;
-}
-.heading {
-  @include type-style('body-strong');
-
-}
-.section-header {
-  display: flex;
-  flex-direction: row;
-  align-items: center;
-  justify-content: space-between;
   margin-bottom: $space-section;
-}
-.category-row {
-  margin-bottom: $space-section;
-}
-.category-heading {
-  display: flex;
-  flex-direction: row;
-  align-items: baseline;
-  gap: $space-inline;
-  @include type-style('label');
-}
-.category-name {
-  flex: 1;
-  min-width: 0;
-  overflow-wrap: anywhere;
-}
-.category-amount {
-  font-variant-numeric: tabular-nums;
-}
-.category-percent {
-  width: 50px;
-  text-align: right;
-}
-.bar-track {
-  height: 4px;
-  border-radius: 2px;
-  background-color: #f0f2f5;
-  margin-top: $space-inline;
-  overflow: hidden;
-}
-.bar-track-dark {
-  background-color: #2b3039;
-}
-.bar {
-  height: 4px;
-  border-radius: 2px;
 }
 .comparison-tabs {
   display: flex;

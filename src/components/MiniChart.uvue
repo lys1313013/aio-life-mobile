@@ -13,6 +13,8 @@ import MobileButton from "./MobileButton.uvue";
 import FormField from "./FormField.uvue";
 import { themeClass } from "../services/theme.ts";
 import { chartGeometry } from "../services/mobile-ui.ts";
+import spacing from "../styles/spacing.json";
+import typography from "../styles/typography.json";
 const props = withDefaults(
   defineProps<{
     label: string;
@@ -21,6 +23,12 @@ const props = withDefaults(
     kind?: string;
     unit?: string;
     compact?: boolean;
+    periodControls?: boolean;
+    selectable?: boolean;
+    hidePeriodSelector?: boolean;
+    hideScale?: boolean;
+    hideValues?: boolean;
+    showEndValues?: boolean;
   }>(),
   { kind: "line", unit: "" },
 );
@@ -44,21 +52,87 @@ const visible = computed(() =>
     (item) => props.series.length <= 1 || !hidden.value.includes(item.name),
   ),
 );
+const labelStep = typography.roles["chart-label"].lineHeight + spacing.detail;
 const geometry = computed(() => {
   try {
+    // Reserve room for two staggered extreme labels without increasing chart height.
+    const inset = props.showEndValues
+      ? labelStep * Math.max(1, visible.value.length - 1)
+      : props.periodControls && props.kind === "bar" ? labelStep * 2 : 0;
+    const bottomInset = props.showEndValues ? labelStep : 0;
+    const chart = chartGeometry(props.labels, visible.value, width.value, 180 - inset - bottomInset);
     return {
-      ...chartGeometry(props.labels, visible.value, width.value, 180),
+      ...chart,
+      zero: chart.zero + inset,
+      series: chart.series.map((item) => ({
+        ...item,
+        points: item.points.map((point) => ({ ...point, y: point.y + inset })),
+        segments: item.segments.map((segment) => ({ ...segment, top: segment.top + inset })),
+      })),
       error: "",
     };
   } catch (reason) {
     return { min: 0, max: 1, zero: 180, series: [], error: reason.message };
   }
 });
+const endLabels = computed(() => {
+  if (!props.showEndValues || props.kind === "bar") return [];
+  const endpoints = geometry.value.series
+    .filter((item) => item.points.length)
+    .map((item) => ({ ...item, point: item.points[item.points.length - 1] }))
+    .sort((a, b) => a.point.y - b.point.y);
+  const placed = endpoints.map((item, index) => ({
+    name: item.name,
+    color: item.color,
+    text: displayNumber(item.point.value) + props.unit,
+    right: Math.min(
+      width.value - item.point.x,
+      Math.max(0, width.value - (displayNumber(item.point.value) + props.unit).length * typography.roles["chart-label"].size),
+    ),
+    // Highest and middle lines label above; the lowest line labels below.
+    top: endpoints.length > 1 && index === endpoints.length - 1
+      ? item.point.y + spacing.detail
+      : item.point.y - labelStep,
+  }));
+  // Close or equal endpoints keep separate labels, preserving top/bottom placement.
+  for (let index = placed.length - 2; index >= 0; index--) {
+    placed[index].top = Math.min(placed[index].top, placed[index + 1].top - labelStep);
+  }
+  return placed;
+});
+const extremeLabels = computed(() => {
+  if (!props.periodControls || props.kind !== "bar") return [];
+  return geometry.value.series.flatMap((item, seriesIndex) => {
+    const values = item.points.map((point) => point.value);
+    if (!values.length) return [];
+    // Ties use the first matching month; a single/all-equal series needs one label.
+    const indices = [...new Set([values.indexOf(Math.max(...values)), values.indexOf(Math.min(...values))])];
+    const groupWidth = width.value / props.labels.length;
+    const barWidth = Math.max(3, groupWidth / (visible.value.length + 1));
+    const placed: { left: number; top: number; width: number }[] = [];
+    return indices.map((index) => {
+      const point = item.points[index];
+      const text = String(Math.round(point.value * 100) / 100) + props.unit;
+      const labelWidth = Math.min(width.value, text.length * typography.roles["chart-label"].size);
+      const center = index * groupWidth + (seriesIndex + 1) * barWidth;
+      const left = Math.max(0, Math.min(width.value - labelWidth, center - labelWidth / 2));
+      let top = Math.min(geometry.value.zero, point.y) - labelStep;
+      if (placed.some((other) => left < other.left + other.width && left + labelWidth > other.left && Math.abs(top - other.top) < labelStep)) top -= labelStep;
+      placed.push({ left, top, width: labelWidth });
+      return {
+        key: item.name + index,
+        label: props.labels[index] + item.name + text,
+        text,
+        style: { left: left + "px", top: top + "px", width: labelWidth + "px" },
+      };
+    });
+  });
+});
 // Compact dashboards start with the latest period; keep the selected period on refresh.
 watch(
   () => props.labels.join("|"),
   (_, previous) => {
-    if (!props.compact) return;
+    if (!props.compact && !props.periodControls && !props.selectable) return;
     const previousLabel = previous?.split("|")[selected.value];
     const index = previousLabel ? props.labels.indexOf(previousLabel) : -1;
     selected.value = index >= 0 ? index : Math.max(0, props.labels.length - 1);
@@ -66,20 +140,34 @@ watch(
   { immediate: true },
 );
 function displayNumber(value: number) {
-  if (!props.compact) return String(value);
+  if (!props.compact && !props.periodControls && !props.selectable) return String(value);
   return value
     .toFixed(props.unit === "%" ? 1 : 2)
     .replace(/\B(?=(\d{3})+(?!\d))/g, ",");
 }
 function scaleNumber(value: number) {
-  if (!props.compact) return String(value);
+  if (!props.compact && !props.periodControls && !props.selectable) return String(value);
   return Math.abs(value) >= 10000
     ? (value / 10000).toFixed(1) + "万"
     : String(Math.round(value * 100) / 100);
 }
 const selection = computed(() =>
-  Math.min(selected.value, Math.max(0, props.labels.length - 1)),
+  props.hidePeriodSelector && !props.periodControls && !props.selectable
+    ? Math.max(0, props.labels.length - 1)
+    : Math.min(selected.value, Math.max(0, props.labels.length - 1)),
 );
+const interactive = computed(() => props.periodControls || props.selectable);
+function selectPeriod(event) {
+  if (!interactive.value) return;
+  const x = event.detail?.x ?? event.clientX;
+  if (typeof x !== 'number') return;
+  uni.createSelectorQuery().in(instance?.proxy).select('.mini-chart-plot')
+    .boundingClientRect((rect) => {
+      if (!active || !rect || Array.isArray(rect) || rect.width <= 0) return;
+      selected.value = Math.max(0, Math.min(props.labels.length - 1,
+        Math.floor((x - rect.left) / rect.width * props.labels.length)));
+    }).exec();
+}
 async function measure() {
   if (!active || measuring) return;
   measuring = true;
@@ -118,16 +206,17 @@ function barStyle(point, index, seriesIndex) {
     height: Math.max(1, Math.abs(geometry.value.zero - point.y)) + "px",
     width: barWidth + "px",
     backgroundColor: visible.value[seriesIndex].color,
+    opacity: interactive.value && index !== selection.value ? 0.45 : 1,
   };
 }
 </script>
 <template>
   <view
     class="mini-chart"
-    :class="[themeClass('mini-chart'), { 'mini-chart-compact': compact }]"
+    :class="[themeClass('mini-chart'), { 'mini-chart-compact': compact, 'mini-chart-period': periodControls }]"
     role="figure"
     :aria-label="label"
-    ><view v-if="compact" class="mini-chart-header"
+    ><view v-if="compact || periodControls" class="mini-chart-header"
       ><text class="mini-chart-title">{{ label }}</text
       ><slot name="actions" /></view
     ><text v-else class="mini-chart-title">{{ label }}</text
@@ -158,10 +247,21 @@ function barStyle(point, index, seriesIndex) {
       geometry.error
     }}</text
     ><template v-else-if="labels.length"
-      ><view class="mini-chart-scale"
+      ><view v-if="!periodControls && !hideScale" class="mini-chart-scale"
         ><text class="ui-type-caption mini-chart-tick" :class="themeClass('mini-chart-tick')">{{ scaleNumber(geometry.max) }}{{ unit }}</text
         ><text class="ui-type-caption mini-chart-tick" :class="themeClass('mini-chart-tick')">{{ scaleNumber(geometry.min) }}{{ unit }}</text></view
-      ><view class="mini-chart-plot"
+      ><view :class="{ 'chart-coordinate': periodControls }">
+      <view class="mini-chart-plot" :class="{ 'chart-plot-interactive': periodControls, 'chart-plot-selectable': selectable }"
+        :role="interactive ? 'slider' : undefined"
+        :tabindex="interactive ? 0 : undefined"
+        :aria-label="interactive ? label + (unit === '%' ? '，点击柱子查看比例' : '，点击柱子查看金额') : undefined"
+        :aria-valuemin="interactive ? 0 : undefined"
+        :aria-valuemax="interactive ? labels.length - 1 : undefined"
+        :aria-valuenow="interactive ? selection : undefined"
+        :aria-valuetext="interactive ? labels[selection] + ' ' + visible.map((item) => item.name + displayNumber(item.values[selection] ?? 0) + unit).join('，') : undefined"
+        @click="selectPeriod"
+        @keydown.left.prevent="interactive && (selected = Math.max(0, selection - 1))"
+        @keydown.right.prevent="interactive && (selected = Math.min(labels.length - 1, selection + 1))"
         ><view
           class="mini-chart-zero"
           :style="{ top: geometry.zero + 'px' }" /><view
@@ -195,11 +295,28 @@ function barStyle(point, index, seriesIndex) {
                 left: point.x - 3 + 'px',
                 top: point.y - 3 + 'px',
                 backgroundColor: item.color,
-              }" /></template></view></view
-      ><view class="mini-chart-axis"
+              }" /></template></view>
+        <text v-for="item in extremeLabels" :key="item.key" class="chart-extreme-label" :class="themeClass('chart-extreme-label')" :style="item.style" :aria-label="item.label">{{ item.text }}</text>
+        <text
+          v-for="item in endLabels"
+          :key="item.name"
+          class="chart-end-label"
+          :class="themeClass('chart-end-label')"
+          :style="{ top: item.top + 'px', right: item.right + 'px', color: item.color }"
+          :aria-label="item.name + '总金额'"
+        >{{ item.text }}</text>
+      </view></view
+      ><view v-if="periodControls" class="chart-month-axis">
+        <text v-for="(month, index) in labels" :key="month" class="chart-month-label" :class="[themeClass('chart-month-label'), { 'chart-month-selected': index === selection }]">{{ month }}</text>
+      </view><view v-else class="mini-chart-axis"
         ><text class="ui-type-caption mini-chart-tick" :class="themeClass('mini-chart-tick')">{{ labels[0] }}</text
         ><text class="ui-type-caption mini-chart-tick" :class="themeClass('mini-chart-tick')">{{ labels[labels.length - 1] }}</text></view
-      ><FormField
+      ><view v-if="periodControls" class="chart-period-controls">
+        <view class="chart-period-value" aria-live="polite">
+          <text class="chart-period-label">{{ labels[selection] }}{{ visible.map((item) => item.name).join(' / ') }}</text>
+          <text v-for="item in visible" :key="item.name" class="chart-period-amount">{{ displayNumber(item.values[selection] ?? 0) }}{{ unit }}</text>
+        </view>
+      </view><FormField v-else-if="!hidePeriodSelector && !selectable"
         :label="compact ? '统计周期' : '查看数值'"
         :compact="compact"
         :hide-label="compact"
@@ -207,7 +324,13 @@ function barStyle(point, index, seriesIndex) {
         :model-value="labels[selection]"
         :options="labels"
         @update:model-value="(value) => (selected = labels.indexOf(value))"
-      /><view
+      /><text
+        v-if="selectable && !periodControls"
+        class="chart-selected-label mini-chart-tick"
+        :class="themeClass('mini-chart-tick')"
+        aria-live="polite"
+      >{{ labels[selection] }}</text><view
+        v-if="!periodControls && !hideValues"
         class="mini-chart-values"
         :class="{ 'chart-values-compact': compact }"
         ><template v-if="!compact"
@@ -399,4 +522,31 @@ function barStyle(point, index, seriesIndex) {
 
 .mini-chart-tick { color: $text-secondary-light; }
 .mini-chart-tick-dark, .mini-chart-empty-dark { color: $text-secondary-dark; }
+.chart-coordinate { display: flex; flex-direction: row; gap: $space-inline; margin-top: $space-section; overflow: visible; }
+.chart-extreme-label { position: absolute; text-align: center; white-space: nowrap; pointer-events: none; @include type-style('chart-label'); color: $text-secondary-light; }
+.chart-extreme-label-dark { color: $text-secondary-dark; }
+.chart-end-label {
+  @include type-style('chart-label');
+  position: absolute;
+  right: 0;
+  max-width: 100%;
+  text-align: right;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+  background-color: #ffffff;
+}
+.chart-end-label-dark { background-color: #1c1e22; }
+.chart-plot-interactive { flex: 1; min-width: 0; width: auto; cursor: pointer; }
+.chart-plot-selectable { cursor: pointer; }
+.chart-selected-label { @include type-style('caption'); }
+.chart-month-axis { display: flex; flex-direction: row; margin-top: $space-inline; }
+.chart-month-label { flex: 1; text-align: center; color: $text-secondary-light; @include type-style('chart-label'); }
+.chart-month-label-dark { color: $text-secondary-dark; }
+.chart-month-selected { color: #427bea; }
+.mini-chart-period { margin-bottom: 0; }
+.chart-period-controls { display: flex; flex-direction: row; align-items: center; justify-content: space-between; gap: $space-inline; margin-top: $space-inline; }
+.chart-period-value { flex: 1; min-width: 0; flex-direction: row; justify-content: center; align-items: baseline; gap: $space-inline; }
+.chart-period-label { @include type-style('caption'); }
+.chart-period-amount { @include type-style('title'); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
 </style>

@@ -70,9 +70,18 @@ for (const width of [390, 768, 1440])
         "2026-09",
       );
       await expect(page.locator(".overview-tools")).toHaveCount(0);
-      await expect(trend.locator("uni-picker .form-field-input")).toHaveText(
-        "2026-09",
-      );
+      await expect(trend.locator("uni-picker")).toHaveCount(0);
+      const cumulative = page.getByRole("figure", {
+        name: "累计结余趋势",
+        exact: true,
+      });
+      await expect(cumulative.locator("uni-picker")).toHaveCount(0);
+      await expect(cumulative.locator(".mini-chart-series")).toHaveCount(3);
+      await expect(cumulative.locator(".mini-chart-values")).toHaveCount(0);
+      await expect(cumulative.locator(".mini-chart-scale")).toHaveCount(0);
+      await expect(cumulative.getByLabel("累计结余总金额")).toHaveText("676,041.25元");
+      await expect(cumulative.locator(".chart-end-label")).toHaveCount(3);
+      await expect(cumulative.locator(".mini-chart-header .chart-end-label")).toHaveCount(0);
       await screenshot(page, `${width}-${theme}-overview`);
       // Legend toggles stay identifiable and retain the series color.
       const expense = trend
@@ -96,10 +105,20 @@ for (const width of [390, 768, 1440])
       await monthly.getByRole("button", { name: "收起明细" }).click();
       await expect(monthly.locator(".ledger-row")).toHaveCount(6);
       const category = page.locator(".category-panel").last();
-      await expect(category.locator(".category-row")).toHaveCount(5);
-      await category.getByRole("button", { name: "全部分类（6）" }).click();
-      await expect(category.locator(".category-row")).toHaveCount(6);
-      await category.getByRole("button", { name: "收起分类" }).click();
+      // Both instances must paint independently; duplicate canvas IDs can hide one chart.
+      for (const chart of await page.locator(".category-panel").all()) {
+        await chart.scrollIntoViewIfNeeded();
+        await expect.poll(() => chart.locator(".distribution-canvas canvas").evaluate((canvas) => {
+          const pixels = canvas.getContext("2d").getImageData(0, 0, canvas.width, canvas.height).data;
+          let painted = 0;
+          for (let i = 3; i < pixels.length; i += 4) if (pixels[i] > 0) painted++;
+          return painted;
+        })).toBeGreaterThan(500);
+      }
+      await expect(category.locator(".distribution-row")).toHaveCount(5);
+      await category.getByRole("button", { name: "展开全部" }).click();
+      await expect(category.locator(".distribution-row")).toHaveCount(6);
+      await category.getByRole("button", { name: "收起", exact: true }).click();
       await category.scrollIntoViewIfNeeded();
       await screenshot(page, `${width}-${theme}-categories`);
       await selectYear(page, "2026");
@@ -111,6 +130,7 @@ for (const width of [390, 768, 1440])
       await expect(page.locator(".summary-number").first()).toHaveText(
         "164,704.50",
       );
+      await expect(page.getByRole("figure", { name: "收入构成", exact: true }).locator(".distribution-total")).toHaveText("164704.50");
       await monthly.getByRole("button", { name: "2026-09累计结余" }).click();
       await expect(monthly.locator(".ledger-detail")).toContainText(
         "81,578.75 元",

@@ -1,5 +1,7 @@
 <script setup lang="ts">
-import ContentSkeleton from '../../components/ContentSkeleton.uvue';
+import FormActions from '../../components/FormActions.uvue';
+import { isRequired, missingRequired } from '../../services/form-required.ts';
+import CardFaceLoading from './components/CardFaceLoading.uvue';
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 import spacing from '../../styles/spacing.json';
 import AppIcon from '../../components/AppIcon.uvue';
@@ -43,6 +45,8 @@ function cardColor(card: Record<string, any>) {
   const hash = [...String(code)].reduce((total, char) => total + (char.codePointAt(0) || 0), 0);
   return cardColors[hash % cardColors.length];
 }
+const coverFileIds = ref<Record<string, string>>({});
+const coverAttempts: Record<string, number> = {};
 const coverUrls = ref<Record<string, string>>({}),
   coverErrors = ref<Record<string, string>>({}),
   coverLoading = ref<Record<string, boolean>>({});
@@ -142,6 +146,7 @@ let alive = true,
   stamp = 0;
 onUnmounted(() => {
   finishStackDrag();
+  stopStackRebound();
   uni.offWindowResize(measureStackFace);
   alive = false;
   stamp++;
@@ -157,8 +162,9 @@ async function load() {
       cards.value = data[0];
       banks.value = data[1];
       tags.value = data[2];
-      coverUrls.value = {};
-      coverErrors.value = {};
+      for (const id of Object.keys(coverFileIds.value)) {
+        if (!cards.value.some(card => String(card.id) === id && String(coverFile(card) || '') === coverFileIds.value[id])) clearCardCover(id);
+      }
       for (const card of cards.value) {
         if (coverFile(card)) loadCover(card, current);
       }
@@ -172,22 +178,40 @@ async function load() {
     }
   }
 }
+function clearCardCover(id: string) {
+  coverAttempts[id] = (coverAttempts[id] || 0) + 1;
+  delete coverFileIds.value[id];
+  delete coverUrls.value[id];
+  delete coverErrors.value[id];
+  delete coverLoading.value[id];
+}
 async function loadCover(card: any, current = stamp) {
-  coverLoading.value = { ...coverLoading.value, [card.id]: true };
-  coverErrors.value = { ...coverErrors.value, [card.id]: '' };
+  const id = String(card.id), fileId = String(coverFile(card));
+  // 同一卡面刷新时复用已经显示的图片，不先清空再下载。
+  if (coverFileIds.value[id] === fileId && coverUrls.value[id] && !coverLoading.value[id] && !coverErrors.value[id]) return;
+  clearCardCover(id);
+  const attempt = coverAttempts[id];
+  coverFileIds.value[id] = fileId;
+  coverLoading.value[id] = true;
+  coverErrors.value[id] = '';
   try {
-    const url = await authFileUrl(String(coverFile(card)));
-    if (alive && stamp === current)
-      coverUrls.value = { ...coverUrls.value, [card.id]: url };
+    const url = await authFileUrl(fileId);
+    if (alive && stamp === current && coverAttempts[id] === attempt)
+      coverUrls.value[id] = url;
+    // 下载完成不代表图片可见，交给 image 的 load/error 结束骨架。
   } catch (e) {
-    if (alive && stamp === current)
-      coverErrors.value = {
-        ...coverErrors.value,
-        [card.id]: e.message || '封面加载失败',
-      };
-  } finally {
-    if (alive && stamp === current)
-      coverLoading.value = { ...coverLoading.value, [card.id]: false };
+    if (alive && stamp === current && coverAttempts[id] === attempt) {
+      coverErrors.value[id] = e.message || '封面加载失败';
+      coverLoading.value[id] = false;
+    }
+  }
+}
+function finishCover(id: string, source: string, failed = false) {
+  if (!alive || coverUrls.value[id] !== source) return;
+  coverLoading.value[id] = false;
+  if (failed) {
+    coverErrors.value[id] = '封面加载失败';
+    delete coverUrls.value[id];
   }
 }
 useDomainPage(
@@ -200,9 +224,12 @@ useDomainPage(
     stamp++;
     cards.value = [];
     finishStackDrag();
+    stopStackRebound();
+    cardTouchActive.value = false;
     expandedCardId.value = '';
     menuCardId.value = "";
     revealed.value = {};
+    for (const id of Object.keys(coverFileIds.value)) clearCardCover(id);
     coverUrls.value = {};
     coverErrors.value = {};
     coverLoading.value = {};
@@ -234,11 +261,42 @@ try {
   if (uni.getStorageSync('bank-card-view-mode') === 'grid') savedView = 'grid';
 } catch (_) { /* 存储不可用时默认卡包视图 */ }
 const viewMode = ref(savedView), expandedCardId = ref('');
-// 手势只调整卡间距；保持浮点进度，松手不吸附到预设档位。
+// 正常区间松手停留，仅越过两端边界时产生阻尼和回弹。
 const stackSpread = ref(0), stackHolding = ref(false);
+const stackElastic = ref(0), stackRebounding = ref(false);
+let stackReboundTimer: ReturnType<typeof setTimeout> | undefined;
+let stackDragPosition = 0;
+// 从卡包起手的整段触摸禁用刷新；短划取消长按后仍允许正常滚动。
+const cardTouchActive = ref(false);
+function finishCardTouch(event: any) {
+  if (!event.touches?.length) cardTouchActive.value = false;
+}
 const stackFaceHeight = ref(184);
 const stackPeek = spacing.controlMin + spacing.card + spacing.inline + spacing.detail;
 const stackRange = computed(() => Math.max(1, stackFaceHeight.value + spacing.section - stackPeek));
+// 回弹几何上限保留至少 44px 的卡片可点选区域，避免卡数多时过度拉伸。
+const stackElasticLimit = (stackPeek - spacing.controlMin) * 0.75;
+function stopStackRebound(reset = true) {
+  if (stackReboundTimer !== undefined) clearTimeout(stackReboundTimer);
+  stackReboundTimer = undefined;
+  stackRebounding.value = false;
+  if (reset) stackElastic.value = 0;
+}
+function reboundStack() {
+  stopStackRebound(false);
+  if (Math.abs(stackElastic.value) < 0.1 || !alive) { stackElastic.value = 0; return; }
+  const from = stackElastic.value, started = Date.now();
+  stackRebounding.value = true;
+  function frame() {
+    const elapsed = (Date.now() - started) / 1000;
+    if (!alive || viewMode.value !== 'stack' || elapsed >= 0.6) { stopStackRebound(); return; }
+    // 欠阻尼弹簧：初速为零，轻微越过原位后衰减，避免反复大幅抖动。
+    stackElastic.value = from * Math.exp(-12 * elapsed) *
+      (Math.cos(18 * elapsed) + 12 / 18 * Math.sin(18 * elapsed));
+    stackReboundTimer = setTimeout(frame, 16);
+  }
+  stackReboundTimer = setTimeout(frame, 16);
+}
 let stackHoldTimer: ReturnType<typeof setTimeout> | undefined;
 let stackTouchId: number | null = null;
 let stackStartX = 0, stackStartY = 0, stackLastY = 0;
@@ -256,7 +314,7 @@ onMounted(() => { measureStackFace(); uni.onWindowResize(measureStackFace); });
 watch(() => [viewMode.value, cards.value.length, loading.value], measureStackFace);
 function stackCardStyle(card: any, index: number) {
   if (viewMode.value !== 'stack' || cardExpanded(card) || index === sortedCards.value.length - 1) return {};
-  return { height: (stackPeek + stackRange.value * stackSpread.value) + 'px' };
+  return { height: (stackPeek + stackRange.value * stackSpread.value + stackElastic.value) + 'px' };
 }
 function finishStackDrag() {
   if (stackHoldTimer !== undefined) clearTimeout(stackHoldTimer);
@@ -266,6 +324,7 @@ function finishStackDrag() {
   stackTouchId = null;
   if (stackTouchInput) ignoreStackMouseUntil = Date.now() + 750;
   stackTouchInput = false;
+  reboundStack();
   // #ifdef WEB
   window.removeEventListener('mousemove', moveStackDrag);
   window.removeEventListener('mouseup', finishStackDrag);
@@ -279,6 +338,14 @@ function startStackDrag(event: any) {
   finishStackDrag();
   if (event.touches && event.touches.length !== 1) return;
   if (!event.touches && event.type !== 'mousedown') return;
+  // 回弹中重新按住，接住当前视觉位置，不突然跳回边界。
+  stopStackRebound(false);
+  const visualPosition = stackSpread.value * stackRange.value + stackElastic.value;
+  const boundary = Math.max(0, Math.min(stackRange.value, visualPosition));
+  const overshoot = visualPosition - boundary;
+  stackDragPosition = boundary + (overshoot === 0 ? 0 :
+    Math.sign(overshoot) * -stackElasticLimit / 0.35 *
+    Math.log(Math.max(0.001, 1 - Math.abs(overshoot) / stackElasticLimit)));
   stackTouchInput = event.type === 'touchstart';
   const point = event.touches ? event.touches[0] : event;
   stackTouchId = point.identifier ?? 0;
@@ -314,10 +381,16 @@ function moveStackDrag(event: any) {
   event.stopPropagation?.();
   const delta = point.clientY - stackLastY;
   stackLastY = point.clientY;
-  stackSpread.value = Math.max(0, Math.min(1, stackSpread.value + delta / stackRange.value));
+  stackDragPosition += delta;
+  const bounded = Math.max(0, Math.min(stackRange.value, stackDragPosition));
+  const overshoot = stackDragPosition - bounded;
+  stackSpread.value = bounded / stackRange.value;
+  stackElastic.value = Math.sign(overshoot) * stackElasticLimit *
+    (1 - Math.exp(-Math.abs(overshoot) * 0.35 / stackElasticLimit));
 }
 function toggleView() {
   finishStackDrag();
+  stopStackRebound();
   viewMode.value = viewMode.value === 'stack' ? 'grid' : 'stack';
   menuCardId.value = '';
   expandedCardId.value = '';
@@ -440,7 +513,7 @@ async function save() {
   const mutationStamp = stamp;
   if (saving.value) return;
   formError.value = '';
-  if (!draft.value.bankId && !String(draft.value.customBankName || '').trim()) {
+  if (missingRequired('card', draft.value)) {
     formError.value = '请选择银行或填写自定义银行';
     return;
   }
@@ -487,7 +560,7 @@ async function save() {
       ? cards.value.map((item) => (item.id === data.id ? saved : item))
       : [saved, ...cards.value];
     if (coverFile(saved)) loadCover(saved, mutationStamp);
-    else { delete coverUrls.value[saved.id]; delete coverErrors.value[saved.id]; }
+    else clearCardCover(String(saved.id));
     modal.value = false;
   } catch (e) {
     formError.value = e.message;
@@ -501,6 +574,7 @@ async function remove(card: any) {
   if (!alive || stamp !== mutationStamp) return;
   cards.value = cards.value.filter((item) => item.id !== card.id);
   delete revealed.value[card.id];
+  clearCardCover(String(card.id));
 }
 function cardNumber(card: any) {
   if (!card.cardNoLast4) return '';
@@ -539,7 +613,7 @@ function editTag(value: any = null) {
 async function saveTag() {
   const mutationStamp = stamp;
   if (saving.value) return;
-  if (!tagDraft.value.name.trim()) {
+  if (missingRequired('cardTag', tagDraft.value)) {
     formError.value = '请输入标签名称';
     return;
   }
@@ -572,6 +646,7 @@ async function removeTag(value: any) {
   <MobilePage
     :refreshing="refreshing"
     :scroll-locked="stackHolding"
+    :refresh-disabled="cardTouchActive"
     @refresh="
       refreshing = true;
       load();
@@ -597,8 +672,11 @@ async function removeTag(value: any) {
         :empty="!loading && !sortedCards.length"
         @retry="load"
         >
-<template #loading><view class="card-grid ui-gap-md" :class="{ 'card-stack': viewMode === 'stack' }"><view v-for="n in 4" :key="n" class="card ui-gap-sm" :class="[themeClass('card'), { 'card-stack-folded': viewMode === 'stack' && n < 4 }]"><view class="card-face ui-pad-card ui-gap-sm"><ContentSkeleton variant="cover" /></view><ContentSkeleton variant="caption" /></view></view></template>
-<view class="card-grid ui-gap-md" :class="{ 'card-stack': viewMode === 'stack' }"
+<template #loading><view class="card-grid ui-gap-md" :class="{ 'card-stack': viewMode === 'stack' }"><view v-for="n in 4" :key="n" class="card ui-gap-sm" :class="[themeClass('card'), { 'card-stack-folded': viewMode === 'stack' && n < 4 }]"><view class="card-face ui-pad-card ui-gap-sm"><CardFaceLoading :layer="n - 1" /></view></view></view></template>
+<view class="card-grid ui-gap-md" :class="{ 'card-stack': viewMode === 'stack', 'card-stack-rebounding': stackRebounding }"
+          @touchstart="cardTouchActive = true"
+          @touchend="finishCardTouch"
+          @touchcancel="cardTouchActive = false"
           ><view
             v-for="(card, cardIndex) in sortedCards"
             :key="card.id"
@@ -607,8 +685,9 @@ async function removeTag(value: any) {
             :class="[themeClass('card'), { 'card-stack-folded': viewMode === 'stack' && !cardExpanded(card) && cardIndex < sortedCards.length - 1, 'card-stack-expanded': viewMode === 'stack' && cardExpanded(card) }]"
             ><view class="card-face-shell"><view
               class="card-face ui-pad-card ui-gap-sm"
-              :class="{ 'card-face-image': !!coverUrls[card.id], 'card-face-draggable': viewMode === 'stack', 'card-face-dragging': stackHolding }"
-              :style="{ backgroundColor: cardColor(card) }"
+              :class="[themeClass('card-face'), { 'card-face-image': !!coverFile(card), 'card-face-draggable': viewMode === 'stack', 'card-face-dragging': stackHolding }]"
+              :style="coverFile(card) ? {} : { backgroundColor: cardColor(card) }"
+              :aria-busy="!!coverLoading[card.id]"
               role="button"
               tabindex="0"
               :aria-label="cardActionLabel(card)"
@@ -622,46 +701,52 @@ async function removeTag(value: any) {
               @click="activateCard(card)"
               @keydown.enter.self.prevent="activateCard(card)"
               @keydown.space.self.prevent="activateCard(card)"
-              ><view v-if="!coverUrls[card.id]" class="face-orbit" aria-hidden="true" />
+              ><view v-if="!coverFile(card)" class="face-orbit" aria-hidden="true" />
               <image
-                v-if="coverUrls[card.id]"
-                :src="coverUrls[card.id]"
+                v-for="source in coverUrls[card.id] ? [coverUrls[card.id]] : []"
+                :key="source"
+                :src="source"
+                :class="{ 'cover-pending': coverLoading[card.id] }"
+                @load="finishCover(card.id, source)"
+                @error="finishCover(card.id, source, true)"
                 mode="aspectFill"
                 class="cover"
-              /><view v-if="coverErrors[card.id] && cardExpanded(card)" class="actions ui-toolbar" @click.stop
+              />
+              <CardFaceLoading v-if="coverLoading[card.id]" :layer="cardIndex" />
+              <view v-if="coverErrors[card.id]" class="cover-error ui-gap-sm" :class="themeClass('cover-error')" role="alert"
                 ><text class="ui-type-body">{{ coverErrors[card.id] }}</text
-                ><MobileButton
+                ><view @click.stop><MobileButton
                   label="重试封面"
                   variant="quiet"
                   :loading="coverLoading[card.id]"
-                  @click="loadCover(card)" /></view
-              ><view v-if="!coverUrls[card.id]" class="face-heading ui-row">
+                  @click="loadCover(card)" /></view></view
+              ><view v-if="!coverFile(card)" class="face-heading ui-row">
                 <view class="bank-mark"><AppIcon name="ant-design:bank-outlined" :size="20" color="#f1f4f9" /></view>
                 <text class="title face-title">{{ card.bankName }}</text>
               </view>
-              <view v-if="!coverUrls[card.id]" class="face-type-anchor">
+              <view v-if="!coverFile(card)" class="face-type-anchor">
                 <text class="face-type">{{ card.cardType === 'credit' ? '信用卡' : '储蓄卡' }}</text>
               </view>
-              <view v-if="!coverUrls[card.id]" class="face-middle ui-row">
+              <view v-if="!coverFile(card)" class="face-middle ui-row">
                 <view class="card-chip" aria-hidden="true"><view class="chip-core" /><view class="chip-line chip-line-top" /><view class="chip-line chip-line-bottom" /></view>
                 <text class="number" :class="{ 'number-revealed': !!revealed[card.id] }">{{ cardNumber(card) }}</text>
-              </view><view v-if="!coverUrls[card.id]" class="face-bottom ui-row"
+              </view><view v-if="!coverFile(card)" class="face-bottom ui-row"
                 ><text class="face-product ui-type-caption">{{ card.cardName || card.bankCode || 'BANK CARD' }}</text
                 ></view
               ></view
             ><view
               v-if="cardExpanded(card)"
-              :class="{ 'card-menu-anchor': !coverUrls[card.id], 'card-menu-active': menuCardId === card.id, 'card-image-footer': !!coverUrls[card.id] }"
+              :class="{ 'card-menu-anchor': !coverFile(card), 'card-menu-active': menuCardId === card.id, 'card-image-footer': !!coverFile(card) }"
             >
-              <view v-if="coverUrls[card.id]" class="footer-caption ui-row">
+              <view v-if="coverFile(card)" class="footer-caption ui-row">
                 <text class="card-name footer-name" :class="themeClass('footer-name')">{{ card.alias || card.bankName }}</text>
                 <text v-if="card.status !== 'normal'" class="card-status">{{ statusMap[card.status] }}</text>
               </view>
-              <text v-if="coverUrls[card.id]" class="number number-outside" :class="themeClass('secondary-text')">{{ cardNumber(card) }}</text>
+              <text v-if="coverFile(card)" class="number number-outside" :class="themeClass('secondary-text')">{{ cardNumber(card) }}</text>
               <view class="card-menu-control"><ConfirmAction label="删除银行卡" :message="card.cardNoLast4 ? '删除尾号 ' + card.cardNoLast4 + ' 的银行卡？' : '删除' + (card.alias || card.cardName || card.bankName) + '的银行卡？'" :action="() => remove(card)">
                 <template #default="{ open, busy }">
                   <button class="card-more ui-type-body" :id="'card-more-' + card.id" role="button" aria-label="银行卡更多操作" aria-haspopup="menu" :aria-expanded="menuCardId === card.id" :loading="revealBusy === card.id || busy" :disabled="revealBusy === card.id || busy" @click="toggleMenu(card)">
-                    <AppIcon v-if="revealBusy !== card.id && !busy" name="lucide:ellipsis" :size="20" :color="coverUrls[card.id] ? undefined : '#f1f4f9'" />
+                    <AppIcon v-if="revealBusy !== card.id && !busy" name="lucide:ellipsis" :size="20" :color="coverFile(card) ? undefined : '#f1f4f9'" />
                   </button>
                   <view v-if="menuCardId === card.id" class="card-menu ui-pad-sm ui-gap-xs" :style="{ left: menuLeft + 'px', top: menuTop + 'px' }" :class="themeClass('card-menu')" role="menu">
                     <button v-if="viewMode === 'stack'" class="card-menu-item ui-row" role="menuitem" @click="edit(card)"><AppIcon name="ant-design:edit-outlined" :size="18" /><text class="ui-type-body">编辑银行卡</text></button>
@@ -672,7 +757,7 @@ async function removeTag(value: any) {
                 </template>
               </ConfirmAction></view>
             </view></view>
-            <view v-if="cardExpanded(card) && !coverUrls[card.id] && (card.alias || card.status !== 'normal')" class="card-caption ui-row"
+            <view v-if="cardExpanded(card) && !coverFile(card) && (card.alias || card.status !== 'normal')" class="card-caption ui-row"
               ><text class="card-name">{{ card.alias || '' }}</text
               ><text v-if="card.status !== 'normal'" class="card-status">{{
                 statusMap[card.status]
@@ -742,9 +827,9 @@ async function removeTag(value: any) {
             class="color-dot"
             :class="{ 'color-selected': cardColor(draft) === color }"
             :style="{ backgroundColor: color }" /></view></view
-      ><FormField appearance="soft" label="银行" kind="selector"
+      ><FormField :required="isRequired('card', 'bankId', draft)" appearance="soft" label="银行" kind="selector"
         :options="['自定义', ...banks.map((item) => item.name)]" v-model="draftBank" />
-      <FormField v-if="!draft.bankId" appearance="soft" label="自定义银行" v-model="draft.customBankName" />
+      <FormField :required="isRequired('card', 'customBankName', draft)" v-if="!draft.bankId" appearance="soft" label="自定义银行" v-model="draft.customBankName" />
       <view class="ui-field-row">
         <FormField appearance="soft" compact stretch label="卡名称" v-model="draft.cardName" />
         <FormField appearance="soft" compact stretch label="别名" v-model="draft.alias" />
@@ -794,17 +879,18 @@ async function removeTag(value: any) {
           /><text class="ui-type-body">{{ item.name }}</text></view
         ></view
       ><text v-if="formError" class="error ui-py-section ui-type-body">{{ formError }}</text
-      ><view class="actions ui-toolbar"
-        ><MobileButton
+      ><FormActions>
+          <MobileButton
           label="取消"
           :disabled="saving"
           variant="quiet"
           @click="modal = false" /><MobileButton
           label="保存"
           :loading="saving"
-          @click="save" /></view></AdaptiveModal
+          @click="save" />
+        </FormActions></AdaptiveModal
     ><AdaptiveModal v-if="tagModal" label="标签" :busy="saving" @close="tagModal = false"
-      ><FormField label="名称" v-model="tagDraft.name" /><FormField
+      ><FormField :required="isRequired('cardTag', 'name')" label="名称" v-model="tagDraft.name" /><FormField
         label="颜色"
         v-model="tagDraft.color" /><FormField
         label="状态"
@@ -1053,8 +1139,12 @@ async function removeTag(value: any) {
   outline-offset: 2px;
 }
 .draft-cover { position: absolute; inset: 0; width: 100%; height: 100%; }
+.cover-error { position: absolute; inset: 0; align-items: center; justify-content: center; background-color: #e8ecf1; color: $text-secondary-light; }
+.cover-error-dark { background-color: #30343c; color: $text-secondary-dark; }
 .cover { position: absolute; inset: 0; width: 100%; height: 100%; border-radius: 16px; }
-.card-face-image { padding: 0; background-image: none; }
+.cover-pending { visibility: hidden; }
+.card-face-image { padding: 0; background-image: none; background-color: #dce3ec; }
+.card-face-dark { background-color: #2a3341; }
 .card-meta { color: $text-secondary-light; @include type-style('caption');  overflow-wrap: anywhere; }
 .card-name { @include type-style('label'); }
 .card-status { color: #c87942; @include type-style('caption'); }

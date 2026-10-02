@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import FormActions from '../../components/FormActions.uvue';
+import { isRequired } from '../../services/form-required.ts';
 import ContentSkeleton from '../../components/ContentSkeleton.uvue';
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import PageHeader from '../../components/PageHeader.uvue';
@@ -10,6 +12,8 @@ import PageState from '../../components/PageState.uvue';
 import LoadMore from '../../components/LoadMore.uvue';
 import MetricCard from '../../components/MetricCard.uvue';
 import MiniChart from '../../components/MiniChart.uvue';
+import TypeDistribution from './components/TypeDistribution.uvue';
+import LedgerRow from './components/LedgerRow.uvue';
 import AdaptiveModal from '../../components/AdaptiveModal.uvue';
 import { themeClass } from '../../services/theme.ts';
 import {
@@ -41,20 +45,22 @@ const statistics = ref<any[]>([]),
   statisticsPeriod = ref('月度'),
   statisticsError = ref('');
 async function loadStatistics() {
+  if (!alive || mutationBusy.value) return;
   const current = ++statisticsSequence,
     period = statisticsPeriod.value;
   statisticsBusy.value = true;
   statisticsError.value = '';
   try {
-    const rows = await fetchFinanceStatistics(
-      props.kind,
-      period === '年度' ? 'Year' : 'Month',
-    );
+    // 月度概览始终可见，年度明细展开时也要同步刷新它。
+    const [monthly, annual] = await Promise.all([
+      fetchFinanceStatistics(props.kind, 'Month'),
+      ...(period === '年度' ? [fetchFinanceStatistics(props.kind, 'Year')] : []),
+    ]);
     if (alive && current === statisticsSequence) {
-      statistics.value = rows.sort(
+      statistics.value = (annual || monthly).slice().sort(
         (a, b) => b.year - a.year || (b.month || 0) - (a.month || 0),
       );
-      if (period === '月度') overviewRows.value = rows;
+      overviewRows.value = monthly;
     }
   } catch (e) {
     if (alive && current === statisticsSequence) statisticsError.value = e.message;
@@ -90,7 +96,7 @@ const monthlyAverage = computed(
   () => yearAmount.value / Math.max(1, yearRows.value.length),
 );
 const distribution = computed(() => {
-  const map = {};
+  const map: Record<string, number> = {};
   yearRows.value.forEach((row) =>
     (row.detail || []).forEach((item) => {
       const name = item.typeName || '未分类';
@@ -133,18 +139,34 @@ const filters = ref<Record<string, any>>({
   payTypeId: '',
 });
 const showFilters = ref(false);
+const filterYear = computed({
+  get: () => filters.value.year || '全部年份',
+  set: (value: string) => { filters.value.year = value === '全部年份' ? '' : value; },
+});
+const selecting = ref(false);
+const openedRow = ref('');
+function toggleSelection() {
+  selecting.value = !selecting.value;
+  selected.value = [];
+  openedRow.value = '';
+}
 const activeFilterCount = computed(() =>
   ['year', 'startTime', 'endTime', 'remark', 'counterparty', 'expDesc', 'payTypeId']
     .filter((key) => String(filters.value[key] || '').trim()).length,
 );
 const typeFilter = ref('全部类型'),
-  payFilter = ref('全部'),
+  payFilter = ref('全部支付方式'),
   sort = ref('日期降序');
+const mutationBusy = ref(false);
 let version = 0,
+  refreshSequence = 0,
+  needsReset = false,
   alive = true;
 onUnmounted(() => {
   alive = false;
   version++;
+  statisticsSequence++;
+  refreshSequence++;
 });
 const sorted = computed(() =>
   [...rows.value].sort((a, b) =>
@@ -163,10 +185,19 @@ const amount = computed(
 function name(options: any[], id: string) {
   return options.find((item) => String(item.id) === String(id))?.dictLabel || '未分类';
 }
+const moreError = ref(''), pageEnded = ref(false);
+function loadMore() {
+  if (loading.value || error.value || moreError.value) return;
+  load(false);
+}
 async function load(reset = true) {
+  if (!alive || mutationBusy.value) return;
+  reset = reset || needsReset;
+  if (!reset && (loading.value || !rows.value.length || rows.value.length >= total.value || pageEnded.value)) return;
   const current = ++version;
   loading.value = true;
   error.value = '';
+  moreError.value = '';
   try {
     const nextPage = reset ? 1 : page.value + 1;
     const condition = { ...filters.value, page: nextPage, pageSize: 50 };
@@ -176,20 +207,31 @@ async function load(reset = true) {
     }
     const result = await fetchLedger(props.kind, condition);
     if (!alive || current !== version) return;
-    rows.value = reset ? result.items || [] : [...rows.value, ...(result.items || [])];
+    const items = reset ? result.items || [] : [...rows.value, ...(result.items || [])];
+    const seen = new Set<string>();
+    rows.value = items.filter((item) => {
+      const id = ledgerId(item);
+      if (seen.has(id)) return false;
+      seen.add(id);
+      return true;
+    });
+    pageEnded.value = !(result.items || []).length;
     total.value = result.total || 0;
     page.value = nextPage;
-    if (reset) selected.value = [];
+    if (reset) { needsReset = false; selected.value = []; openedRow.value = ''; }
   } catch (e) {
-    if (alive && current === version) error.value = e.message;
+    if (alive && current === version) {
+      if (reset) error.value = e.message;
+      else moreError.value = e.message;
+    }
   } finally {
     if (alive && current === version) {
       loading.value = false;
-      refreshing.value = false;
     }
   }
 }
 async function initialize() {
+  if (!alive || mutationBusy.value) return;
   loading.value = true;
   statisticsBusy.value = true;
   error.value = '';
@@ -205,15 +247,40 @@ async function initialize() {
     payments.value = results[1]?.dictDetailList || [];
     await Promise.all([load(), loadStatistics()]);
   } catch (e) {
-    if (alive) { error.value = e.message; statisticsError.value = e.message; }
-  } finally {
-    if (alive) { loading.value = false; statisticsBusy.value = false; }
+    if (alive && version === mutationStamp) {
+      error.value = e.message; statisticsError.value = e.message;
+      loading.value = false; statisticsBusy.value = false;
+    }
   }
 }
 onMounted(initialize);
-function refresh() {
+async function refresh() {
+  if (!alive || mutationBusy.value) return;
+  const current = ++refreshSequence;
   refreshing.value = true;
-  load();
+  try { await Promise.all([load(), loadStatistics()]); }
+  finally { if (alive && current === refreshSequence) refreshing.value = false; }
+}
+
+// 写入与分页共用同一快照边界；不能让写入前的响应覆盖写入后的数据。
+async function mutate(action: () => Promise<any>, accepted: () => void) {
+  if (!alive) return;
+  if (mutationBusy.value) throw new Error('正在更新账单，请稍后重试');
+  mutationBusy.value = true;
+  version++;
+  statisticsSequence++;
+  refreshSequence++;
+  loading.value = false;
+  statisticsBusy.value = false;
+  refreshing.value = false;
+  try {
+    const result = await action();
+    if (result === false) throw new Error('记录未更新，请重试');
+    if (!alive) return;
+    needsReset = true;
+    accepted();
+  } finally { mutationBusy.value = false; }
+  if (alive) await Promise.all([load(), loadStatistics()]);
 }
 watch(typeFilter, (value) => {
   const id = types.value.find((item) => item.dictLabel === value)?.id || '';
@@ -243,6 +310,7 @@ function edit(row: any = null) {
         expTypeId: '',
         payTypeId: '',
       };
+  openedRow.value = '';
   formError.value = '';
   continuous.value = false;
   modal.value = true;
@@ -283,17 +351,15 @@ function transaction(value: string) {
   draft.value.transactionAmt = value;
 }
 async function save() {
-  const mutationStamp = version;
-  if (saving.value) return;
+  if (saving.value || mutationBusy.value) return;
   saving.value = true;
   formError.value = '';
   try {
-    await saveLedger(props.kind, draft.value);
-    if (!alive || version !== mutationStamp) return;
-    if (continuous.value && !ledgerId(draft.value)) {
-      draft.value = { ...draft.value, amt: '', transactionAmt: '' };
-    } else modal.value = false;
-    await load();
+    await mutate(() => saveLedger(props.kind, draft.value), () => {
+      if (continuous.value && !ledgerId(draft.value)) {
+        draft.value = { ...draft.value, amt: '', transactionAmt: '' };
+      } else modal.value = false;
+    });
   } catch (e) {
     formError.value = e.message;
   } finally {
@@ -301,11 +367,14 @@ async function save() {
   }
 }
 async function remove(row: any) {
-  const mutationStamp = version;
-  await deleteLedger(props.kind, ledgerId(row));
-  if (!alive || version !== mutationStamp) return;
-  rows.value = rows.value.filter((item) => ledgerId(item) !== ledgerId(row));
-  total.value--;
+  await mutate(() => deleteLedger(props.kind, ledgerId(row)), () => {
+    selected.value = selected.value.filter((id) => id !== ledgerId(row));
+    openedRow.value = '';
+  });
+}
+async function removeDraft() {
+  await remove(draft.value);
+  modal.value = false;
 }
 function toggle(row: any) {
   const id = ledgerId(row);
@@ -314,17 +383,12 @@ function toggle(row: any) {
     : [...selected.value, id];
 }
 async function removeSelected() {
-  const mutationStamp = version;
   const ids = [...selected.value];
-  await deleteExpenses(ids);
-  if (!alive || version !== mutationStamp) return;
-  rows.value = rows.value.filter((row) => !ids.includes(ledgerId(row)));
-  total.value -= ids.length;
-  selected.value = [];
+  await mutate(() => deleteExpenses(ids), () => { selected.value = []; });
 }
 </script>
 <template>
-  <MobilePage :refreshing="refreshing" @refresh="refresh">
+  <MobilePage :refreshing="refreshing" @refresh="refresh" @reachbottom="loadMore">
     <PageHeader :title="expense ? '支出' : '收入'" back @back="uni.navigateBack()" />
     <view class="body ui-page-body" :class="themeClass('body')"
       ><PageState skeleton="overview"
@@ -355,6 +419,7 @@ async function removeSelected() {
         ><view class="chart-grid ui-gap-md"><MiniChart
           :label="expense ? '月度支出趋势' : '月度收入趋势'"
           kind="bar"
+          period-controls
           :labels="yearRows.map((row) => String(row.month) + '月')"
           :series="[
             {
@@ -362,9 +427,11 @@ async function removeSelected() {
               values: yearRows.map((row) => statisticsTotal([row])),
             },
           ]"
-          unit="元" /><MiniChart
+          unit="元" /><TypeDistribution v-if="expense" label="支出类型分布" :items="distribution" /><MiniChart v-else
           :label="expense ? '支出类型分布' : '收入类型分布'"
           kind="bar"
+          compact
+          selectable
           :labels="distribution.map((row) => row.name)"
           :series="[
             {
@@ -423,7 +490,8 @@ async function removeSelected() {
                 variant="quiet"
                 @click="filterStatistics(group, item)" /></view></view></PageState></view
       ><view class="filters ui-field-row">
-        <FormField v-if="showFilters" compact stretch label="年份" v-model="filters.year" />
+        <FormField v-if="showFilters" compact stretch hide-label label="年份" kind="selector"
+          :options="['全部年份', ...overviewYears]" v-model="filterYear" />
         <FormField
           compact
           stretch
@@ -437,23 +505,28 @@ async function removeSelected() {
           compact
           stretch
           v-if="expense && showFilters"
+          hide-label
           label="支付方式"
           kind="selector"
-          :options="['全部', ...payments.map((item) => item.dictLabel)]"
+          :options="['全部支付方式', ...payments.map((item) => item.dictLabel)]"
           v-model="payFilter"
         />
         <FormField
           compact
           stretch
           v-if="showFilters"
+          hide-label
           label="起始日期"
+          placeholder="起始日期"
           kind="date"
           v-model="filters.startTime"
         /><FormField
           compact
           stretch
           v-if="showFilters"
+          hide-label
           label="结束日期"
+          placeholder="结束日期"
           kind="date"
           v-model="filters.endTime"
         />
@@ -461,19 +534,25 @@ async function removeSelected() {
           compact
           stretch
           v-if="expense && showFilters"
+          hide-label
           label="备注"
+          placeholder="备注"
           v-model="filters.remark"
         /><FormField
           compact
           stretch
           v-if="expense && showFilters"
+          hide-label
           label="交易对方"
+          placeholder="交易对方"
           v-model="filters.counterparty"
         /><FormField
           compact
           stretch
           v-if="expense && showFilters"
+          hide-label
           label="交易描述"
+          placeholder="交易描述"
           v-model="filters.expDesc"
         />
         <FormField
@@ -486,7 +565,7 @@ async function removeSelected() {
           v-model="sort"
         />
       </view>
-      <view class="filter-footer ui-row" :class="{ 'filter-footer-loading': loading && !rows.length }"><text v-if="!loading || rows.length" class="summary">{{ total }} 笔 · 已加载合计 ¥{{ amount.toFixed(2) }}</text><MobileButton label="筛选" icon="ant-design:search-outlined" :loading="loading" @click="load()" /></view>
+      <view class="filter-footer ui-row" :class="{ 'filter-footer-loading': loading && !rows.length }"><text v-if="!loading || rows.length" class="summary">{{ total }} 笔 · 已加载合计 ¥{{ amount.toFixed(2) }}</text><view class="ui-row"><MobileButton v-if="expense" :label="selecting ? '退出批量选择' : '批量选择'" :icon="selecting ? 'ant-design:close-outlined' : 'ant-design:check-square-outlined'" variant="quiet" @click="toggleSelection" /><MobileButton label="筛选" icon="ant-design:search-outlined" :loading="loading" @click="load()" /></view></view>
       <ConfirmAction
         v-if="expense && selected.length"
         :label="'删除选中 ' + selected.length + ' 笔'"
@@ -498,41 +577,14 @@ async function removeSelected() {
         :empty="!loading && rows.length === 0"
         @retry="initialize"
       >
-        <view v-for="row in sorted" :key="ledgerId(row)" class="record ui-card" :class="themeClass('record')">
-          <view class="record-main ui-gap-xs" @click="edit(row)"
-            ><text class="money" :class="expense ? 'money-expense' : 'money-income'">¥{{ Number(row.amt).toFixed(2) }}</text
-            ><text class="record-meta" :class="themeClass('secondary-text')"
-              >{{ name(types, row[expense ? 'expTypeId' : 'incTypeId']) }} ·
-              {{ row.expTime || row.incDate }}</text
-            ><text v-if="expense" class="record-meta" :class="themeClass('secondary-text')"
-              >交易金额 ¥{{ row.transactionAmt }} ·
-              {{ name(payments, row.payTypeId) }}</text
-            ><text v-if="row.remark || row.expDesc" class="record-description">{{ row.remark || row.expDesc }}</text
-            ><text v-if="row.counterparty" class="record-meta" :class="themeClass('secondary-text')">{{ row.counterparty }}</text
-            ><text v-if="row.transactionId" class="record-reference" :class="themeClass('secondary-text')"
-              >{{ row.transactionId }} · {{ row.transactionStatus }}</text
-            ></view
-          >
-          <view class="record-actions ui-row"
-            ><MobileButton
-              v-if="expense"
-              :label="selected.includes(ledgerId(row)) ? '取消选择' : '选择'"
-              :icon="
-                selected.includes(ledgerId(row))
-                  ? 'ant-design:check-square-outlined'
-                  : 'ant-design:border-outlined'
-              "
-              variant="quiet"
-              @click="toggle(row)" /><MobileButton
-              label="编辑"
-              icon="ant-design:edit-outlined"
-              variant="quiet"
-              @click="edit(row)" /><ConfirmAction
-              label="删除"
-              :action="() => remove(row)"
-          /></view>
-        </view>
-        <LoadMore :hasMore="rows.length < total" :loading="loading" @load="load(false)" />
+        <LedgerRow v-for="(row, index) in sorted" :key="ledgerId(row)"
+          :kind="kind" :row="row" :category="name(types, row[expense ? 'expTypeId' : 'incTypeId'])"
+          :payment="expense ? name(payments, row.payTypeId) : ''"
+          :first="index === 0" :last="index === sorted.length - 1"
+          :opened="openedRow === ledgerId(row)" :selecting="expense && selecting" :selected="selected.includes(ledgerId(row))"
+          :remove="() => remove(row)" @edit="edit(row)" @select="toggle(row)"
+          @open="openedRow = ledgerId(row)" @close="openedRow === ledgerId(row) && (openedRow = '')" />
+        <LoadMore :error="moreError" :hasMore="!pageEnded && rows.length < total" :loading="loading" @load="load(false)" />
       </PageState>
     </view>
     <AdaptiveModal
@@ -542,38 +594,35 @@ async function removeSelected() {
       @close="modal = false"
     >
       <view v-if="expense" class="ui-field-row">
-        <FormField appearance="soft" compact stretch label="交易金额" input-type="digit"
+        <FormField :required="isRequired(expense ? 'expense' : 'income', 'transactionAmt')" appearance="soft" compact stretch label="交易金额" input-type="digit"
           :modelValue="String(draft.transactionAmt)" @update:modelValue="transaction" />
-        <FormField appearance="soft" compact stretch label="记账金额" input-type="digit" v-model="draft.amt" />
+        <FormField :required="isRequired(expense ? 'expense' : 'income', 'amt')" appearance="soft" compact stretch label="记账金额" input-type="digit" v-model="draft.amt" />
       </view>
       <view class="ui-field-row">
-        <FormField v-if="!expense" appearance="soft" compact stretch label="金额" input-type="digit" v-model="draft.amt" />
-        <FormField appearance="soft" compact stretch label="类型" kind="selector"
+        <FormField :required="isRequired(expense ? 'expense' : 'income', 'amt')" v-if="!expense" appearance="soft" compact stretch label="金额" input-type="digit" v-model="draft.amt" />
+        <FormField :required="isRequired(expense ? 'expense' : 'income', 'expTypeId')" appearance="soft" compact stretch label="类型" kind="selector"
           :options="types.map((item) => item.dictLabel)" v-model="draftType" />
-        <FormField v-if="expense" appearance="soft" compact stretch label="支付方式" kind="selector"
+        <FormField :required="isRequired(expense ? 'expense' : 'income', 'payTypeId')" v-if="expense" appearance="soft" compact stretch label="支付方式" kind="selector"
           :options="payments.map((item) => item.dictLabel)" v-model="draftPayment" />
       </view>
       <view v-if="expense" class="ui-field-row">
-        <FormField appearance="soft" compact stretch label="日期" kind="date" v-model="draftDate" />
-        <FormField appearance="soft" compact stretch label="时间" kind="time" v-model="draftTime" />
+        <FormField :required="isRequired(expense ? 'expense' : 'income', expense ? 'expTime' : 'incDate')" appearance="soft" compact stretch label="日期" kind="date" v-model="draftDate" />
+        <FormField :required="isRequired(expense ? 'expense' : 'income', 'expTime')" appearance="soft" compact stretch label="时间" kind="time" v-model="draftTime" />
       </view>
-      <FormField v-else appearance="soft" label="日期" kind="date" v-model="draft.incDate" />
+      <FormField :required="isRequired(expense ? 'expense' : 'income', expense ? 'expTime' : 'incDate')" v-else appearance="soft" label="日期" kind="date" v-model="draft.incDate" />
       <FormField appearance="soft" label="备注" kind="textarea" v-model="draft.remark" />
       <view v-if="expense && !ledgerId(draft)" class="tools ui-toolbar"
-        ><text class="ui-type-body">连续录入</text
-        ><switch :checked="continuous" @change="continuous = $event.detail.value"
+        ><text class="continuous-label ui-type-body" :class="themeClass('continuous-label')">连续录入</text
+        ><switch aria-label="连续录入" :checked="continuous" @change="continuous = $event.detail.value"
       /></view>
       <text v-if="formError" class="error ui-py-section ui-type-body">{{ formError }}</text>
-      <view class="tools ui-toolbar"
-        ><MobileButton
-          label="取消"
-          variant="quiet"
-          :disabled="saving"
-          @click="modal = false" /><MobileButton
-          label="保存"
-          :loading="saving"
-          @click="save"
-      /></view>
+      <FormActions>
+        <template v-if="ledgerId(draft)" #secondary>
+          <ConfirmAction :label="expense ? '删除支出' : '删除收入'" :action="removeDraft" />
+        </template>
+        <MobileButton label="取消" variant="quiet" :disabled="saving" @click="modal = false" />
+        <MobileButton label="保存" :loading="saving" @click="save" />
+      </FormActions>
     </AdaptiveModal>
   </MobilePage>
 </template>
@@ -606,6 +655,8 @@ async function removeSelected() {
 .tools {
   flex-wrap: wrap;
 }
+.continuous-label { color: $text-secondary-light; }
+.continuous-label-dark { color: $text-secondary-dark; }
 .summary {
   display: block;
   color: #718096;
@@ -620,30 +671,14 @@ async function removeSelected() {
   justify-content: space-between;
   flex-wrap: wrap;
 }
-.record-main {
-  display: flex;
-  flex-direction: column;
-  flex: 1;
-  min-width: 0;
-  overflow-wrap: anywhere;
-}
-.money {
-  @include type-style('metric-compact');
-
-}
 .record-dark { background-color: #1c1e22; }
+.record-main { display: flex; flex-direction: column; flex: 1; min-width: 0; overflow-wrap: anywhere; }
 .ledger-toolbar { align-items: center; margin-top: $space-section; }
 .section-title { flex: 1; @include type-style('title');  }
 .filter-trigger { position: relative; flex-shrink: 0; }
 .filter-count { position: absolute; top: 0; right: 0; min-width: 16px; height: 16px; border-radius: 8px; background-color: #427bea; color: #fff; @include type-style('chart-label'); text-align: center;  pointer-events: none; }
 .filter-footer { align-items: center; justify-content: space-between; margin-bottom: $space-section; }
 .summary { @include type-style('caption'); }
-.record-meta { @include type-style('caption'); color: $text-secondary-light;  }
-.record-description { @include type-style('body');  }
-.record-reference { @include type-style('badge'); color: $text-secondary-light; overflow-wrap: anywhere; }
-.record-actions { flex-shrink: 0; align-items: center; }
-.money-income { color: #2f9e75; }
-.money-expense { color: #d67842; }
 .chart-grid { display: grid; grid-template-columns: minmax(0, 1fr); }
 .error {
   color: #dc5454;
