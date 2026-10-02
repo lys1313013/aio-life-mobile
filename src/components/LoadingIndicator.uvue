@@ -1,0 +1,22 @@
+<script setup lang="ts">
+import { themeClass } from '../services/theme.ts';
+withDefaults(defineProps<{ label?: string; compact?: boolean }>(), { label: '正在加载', compact: false });
+</script>
+<template>
+  <view class="loading-indicator" :class="{ 'loading-indicator-compact': compact }" role="status" :aria-label="label" aria-live="polite">
+    <view class="loading-track" :class="themeClass('loading-track')"><view class="loading-runner" :class="themeClass('loading-runner')" /></view>
+  </view>
+</template>
+<style scoped lang="scss">
+@use '../styles/spacing-tokens' as *;
+.loading-indicator { width: 100%; padding: $space-inline 0; }
+.loading-indicator-compact { width: 48px; }
+.loading-track { height: 3px; width: 100%; border-radius: 3px; overflow: hidden; background-color: #e8edf5; }
+.loading-runner { height: 3px; width: 35%; border-radius: 3px; background-color: #7198df; animation: loading-slide 1.35s ease-in-out infinite; }
+.loading-track-dark { background-color: #2a303a; }
+.loading-runner-dark { background-color: #7395ce; }
+@keyframes loading-slide { from { transform: translateX(-100%); } to { transform: translateX(386%); } }
+/* #ifdef WEB */
+@media (prefers-reduced-motion: reduce) { .loading-runner { animation: none; transform: translateX(90%); } }
+/* #endif */
+</style>

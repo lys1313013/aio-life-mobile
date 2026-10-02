@@ -1,10 +1,12 @@
 <script setup lang="ts">
-import { getCurrentInstance, nextTick, onMounted, onUpdated } from 'vue';
+import { getCurrentInstance, nextTick, onMounted, onUpdated, ref } from 'vue';
 import { themeClass } from '../services/theme.ts';
 import { pickerValue } from '../services/mobile-ui.ts';
+import AppIcon from './AppIcon.uvue';
 const props = withDefaults(
   defineProps<{
     label: string;
+    hideLabel?: boolean;
     compact?: boolean;
     stretch?: boolean;
     modelValue?: string;
@@ -14,11 +16,13 @@ const props = withDefaults(
     disabled?: boolean;
     placeholder?: string;
     password?: boolean;
+    revealable?: boolean;
     inputType?: string;
   }>(),
-  { modelValue: '', kind: 'text', options: () => [] },
+  { modelValue: '', kind: 'text', options: () => [], hideLabel: false },
 );
 const instance = getCurrentInstance();
+const passwordVisible = ref(false);
 function syncWebLabel() {
   // #ifdef WEB
   nextTick(() => {
@@ -37,18 +41,20 @@ function change(event) {
 </script>
 <template>
   <view class="form-field ui-form-field" :class="[themeClass('form-field'), { 'ui-field-compact': compact, 'ui-field-stretch': stretch }]">
-    <text class="form-field-label ui-field-label">{{ label }}</text>
+    <text v-if="!hideLabel" class="form-field-label ui-field-label">{{ label }}</text>
     <slot>
       <picker
         v-if="kind === 'date' || kind === 'time' || kind === 'selector'"
+        class="form-field-picker"
         :mode="kind"
         :value="kind === 'selector' ? Math.max(0, options.indexOf(modelValue)) : modelValue"
         :range="options"
         :disabled="disabled"
         :aria-label="label"
         @change="change"
-        ><view class="form-field-input ui-input-inset" :class="themeClass('form-field-input')"
-          ><text>{{ modelValue || placeholder || '请选择' }}</text></view
+        ><view class="form-field-input form-field-picker-input ui-input-inset" :class="themeClass('form-field-input')"
+          ><text class="form-field-picker-value">{{ modelValue || placeholder || '请选择' }}</text
+          ><view v-if="kind === 'selector'" class="form-field-picker-arrow"><AppIcon name="ant-design:down-outlined" :size="12" /></view></view
         ></picker
       >
       <textarea
@@ -63,6 +69,32 @@ function change(event) {
         @input="change"
         @blur="change"
       />
+      <view
+        v-else-if="kind === 'password' && revealable"
+        class="form-field-input form-field-password"
+        :class="themeClass('form-field-input')"
+      >
+        <input
+          class="form-field-password-value ui-input-inset"
+          :value="modelValue"
+          :password="!passwordVisible"
+          :placeholder="placeholder"
+          :disabled="disabled"
+          :aria-label="label"
+          @input="change"
+          @blur="change"
+        />
+        <button
+          class="form-field-password-toggle"
+          role="button"
+          :aria-label="passwordVisible ? '隐藏密码' : '显示密码'"
+          :aria-pressed="passwordVisible"
+          :disabled="disabled"
+          @click="passwordVisible = !passwordVisible"
+        >
+          <AppIcon :name="passwordVisible ? 'ant-design:eye-invisible-outlined' : 'ant-design:eye-outlined'" :size="20" />
+        </button>
+      </view>
       <input
         v-else
         class="form-field-input ui-input-inset"
@@ -84,7 +116,7 @@ function change(event) {
 @use '../styles/spacing.scss';
 @use '../styles/spacing-tokens' as *;
 .form-field {
-
+  min-width: 0;
   color: #27272a;
 }
 .form-field-dark {
@@ -105,9 +137,58 @@ function change(event) {
   color: #27272a;
 }
 .form-field-input-dark {
-  background-color: #292c32;
-  border-color: #454a54;
+  background-color: #1c1e22;
+  border-color: #363940;
   color: #eeeeef;
+}
+.form-field-picker {
+  min-width: 0;
+  width: 100%;
+}
+.form-field-password {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+}
+.form-field-password-value {
+  flex: 1;
+  min-width: 0;
+  min-height: $space-controlMin;
+  color: inherit;
+  font-size: 15px;
+}
+.form-field-password-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: $space-controlMin;
+  height: $space-controlMin;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background-color: transparent;
+}
+/* #ifdef WEB || MP-WEIXIN */
+.form-field-password-toggle::after { border: 0; }
+/* #endif */
+.form-field-picker-input {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: $space-inline;
+  min-width: 0;
+}
+.form-field-picker-value {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.form-field-picker-arrow {
+  flex-shrink: 0;
 }
 .form-field-textarea {
   height: 120px;

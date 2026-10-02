@@ -1,11 +1,12 @@
 <script setup lang="ts">
+import LoadingIndicator from './LoadingIndicator.uvue';
 import { themeClass } from '../services/theme.ts';
-defineProps<{ label: string; value: string | number; unit?: string }>();
+defineProps<{ label: string; value: string | number; unit?: string; loading?: boolean }>();
 </script>
 <template>
   <view class="metric-card ui-pad-card" :class="themeClass('metric-card')"
     ><text class="metric-label">{{ label }}</text
-    ><view class="metric-value ui-gap-xs ui-mt-xs"
+    ><view v-if="loading" class="metric-placeholder"><LoadingIndicator :label="'正在加载' + label" compact /></view><view v-else class="metric-value ui-gap-xs ui-mt-xs"
       ><text class="metric-number">{{ value }}</text
       ><text v-if="unit" class="metric-unit">{{ unit }}</text></view
     ></view
@@ -43,6 +44,7 @@ defineProps<{ label: string; value: string | number; unit?: string }>();
   line-height: 28px;
   font-weight: 600;
 }
+.metric-placeholder { height: 28px; margin-top: $space-detail; justify-content: center; }
 .metric-unit {
   font-size: 13px;
 }

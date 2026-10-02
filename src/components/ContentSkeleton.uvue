@@ -1,0 +1,92 @@
+<script setup lang="ts">
+import { themeClass } from '../services/theme.ts';
+withDefaults(defineProps<{ variant?: string; rows?: number; label?: string; compact?: boolean; metrics?: number }>(), { variant: 'list', rows: 3, label: '正在加载内容', metrics: 4 });
+</script>
+<template>
+  <view class="content-skeleton" :class="[themeClass('content-skeleton'), { 'skeleton-cover-root': variant === 'cover' }]" role="status" :aria-label="label" aria-live="polite">
+    <view class="skeleton-content" :class="{ 'skeleton-cover-content': variant === 'cover' }" aria-hidden="true">
+      <view v-if="variant === 'cover'" class="skeleton-shape skeleton-cover" :class="themeClass('skeleton-shape')" />
+      <view v-if="variant === 'caption'" class="skeleton-shape skeleton-short" :class="themeClass('skeleton-shape')" />
+      <view v-if="variant === 'tile' || variant === 'goal-tile' || variant === 'date-tile'" class="skeleton-tile">
+        <view class="skeleton-shape skeleton-label" :class="themeClass('skeleton-shape')" />
+        <view class="skeleton-shape" :class="[themeClass('skeleton-shape'), variant === 'date-tile' ? 'skeleton-date-value' : 'skeleton-title']" />
+        <view class="skeleton-shape skeleton-line" :class="themeClass('skeleton-shape')" />
+        <view v-if="!compact" class="skeleton-shape skeleton-short" :class="themeClass('skeleton-shape')" />
+        <view v-if="variant === 'goal-tile'" class="skeleton-shape skeleton-progress" :class="themeClass('skeleton-shape')" />
+      </view>
+      <view v-if="variant === 'distribution'" class="skeleton-list"><view v-for="n in rows" :key="n" class="skeleton-card" :class="themeClass('skeleton-card')"><view class="skeleton-shape skeleton-label" :class="themeClass('skeleton-shape')" /><view class="skeleton-ring" :class="themeClass('skeleton-ring')" /><view class="skeleton-shape skeleton-line" :class="themeClass('skeleton-shape')" /></view></view>
+      <view v-if="variant === 'summary'" class="skeleton-copy"><view :class="themeClass('skeleton-shape')" class="skeleton-shape skeleton-title" /><view :class="themeClass('skeleton-shape')" class="skeleton-shape skeleton-value" /><view :class="themeClass('skeleton-shape')" class="skeleton-shape skeleton-short" /></view>
+      <view v-if="variant === 'profile'" class="skeleton-profile"><view :class="themeClass('skeleton-shape')" class="skeleton-shape skeleton-avatar" /><view :class="themeClass('skeleton-shape')" class="skeleton-shape skeleton-title" /><view :class="themeClass('skeleton-shape')" class="skeleton-shape skeleton-short" /></view>
+      <view v-if="['metrics', 'dashboard', 'calendar', 'overview', 'articles'].includes(variant)" class="skeleton-metrics" :style="metrics < 3 ? { gridTemplateColumns: 'repeat(' + metrics + ', minmax(0, 1fr))' } : {}">
+        <view v-for="n in metrics" :key="n" class="skeleton-card" :class="themeClass('skeleton-card')"><view :class="themeClass('skeleton-shape')" class="skeleton-shape skeleton-label" /><view :class="themeClass('skeleton-shape')" class="skeleton-shape skeleton-value" /></view>
+      </view>
+      <view v-if="variant === 'calendar' || variant === 'heatmap'" class="skeleton-card skeleton-calendar" :class="themeClass('skeleton-card')"><view v-for="n in 420" :key="n" :class="themeClass('skeleton-shape')" class="skeleton-shape skeleton-day" /></view>
+      <view v-if="['chart', 'dashboard', 'overview'].includes(variant)" class="skeleton-card" :class="themeClass('skeleton-card')"><view :class="themeClass('skeleton-shape')" class="skeleton-shape skeleton-title" /><view class="skeleton-chart"><view v-for="(height, n) in [36, 58, 45, 76, 60, 92, 70, 85]" :key="n" :class="themeClass('skeleton-shape')" class="skeleton-shape skeleton-bar" :style="{ height: height + '%' }" /></view></view>
+      <view v-if="variant === 'media'" class="skeleton-media"><view v-for="n in 6" :key="n" class="skeleton-media-item"><view :class="themeClass('skeleton-shape')" class="skeleton-shape skeleton-poster" /><view :class="themeClass('skeleton-shape')" class="skeleton-shape skeleton-line" /></view></view>
+      <view v-else-if="variant === 'grid'" class="skeleton-menu"><view v-for="n in 8" :key="n" class="skeleton-menu-item"><view :class="themeClass('skeleton-shape')" class="skeleton-shape skeleton-icon" /><view :class="themeClass('skeleton-shape')" class="skeleton-shape skeleton-label" /></view></view>
+      <view v-else-if="variant === 'graph'" class="skeleton-graph"><view class="skeleton-connection" :class="themeClass('skeleton-connection')" /><view v-for="n in 5" :key="n" class="skeleton-shape skeleton-node" :class="[themeClass('skeleton-shape'), 'skeleton-node-' + n]" /></view>
+      <view v-else-if="variant === 'form'" class="skeleton-fields"><view v-for="n in rows" :key="n" class="skeleton-field"><view :class="themeClass('skeleton-shape')" class="skeleton-shape skeleton-label" /><view :class="themeClass('skeleton-shape')" class="skeleton-shape skeleton-input" /></view></view>
+      <view v-else-if="!['metrics', 'calendar', 'heatmap', 'chart', 'profile', 'summary', 'overview', 'cover', 'caption', 'tile', 'goal-tile', 'date-tile', 'distribution'].includes(variant)" class="skeleton-list">
+        <view v-for="n in rows" :key="n" class="skeleton-row" :class="[{ 'skeleton-timeline-row': variant === 'timeline', 'skeleton-row-compact': compact }, themeClass('skeleton-row')]"><view v-if="variant === 'timeline'" :class="themeClass('skeleton-shape')" class="skeleton-shape skeleton-time" /><view class="skeleton-copy"><view :class="themeClass('skeleton-shape')" class="skeleton-shape skeleton-title" /><view :class="themeClass('skeleton-shape')" class="skeleton-shape skeleton-line" /><view v-if="!compact" :class="themeClass('skeleton-shape')" class="skeleton-shape skeleton-short" /></view></view>
+      </view>
+    </view>
+  </view>
+</template>
+<style scoped lang="scss">
+@use '../styles/spacing-tokens' as *;
+.content-skeleton { width: 100%; }
+.skeleton-content { display: flex; gap: $space-section; animation: skeleton-breathe 1.8s ease-in-out infinite; }
+.skeleton-shape { background-color: #e8ecf1; border-radius: 5px; flex-shrink: 0; }
+.skeleton-shape-dark { background-color: #30343c; }
+.skeleton-card, .skeleton-row { padding: $space-card; background-color: #fff; border-radius: 14px; gap: $space-inline; }
+.skeleton-card-dark, .skeleton-row-dark { background-color: #1c1e22; border-left-color: #3b4658; }
+.skeleton-metrics { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: $space-inline; }
+.skeleton-label { width: 46%; height: 12px; }
+.skeleton-title { width: 58%; height: 16px; }
+.skeleton-value { width: 38%; height: 27px; }
+.skeleton-line { width: 88%; height: 12px; }
+.skeleton-short { width: 34%; height: 10px; }
+.skeleton-calendar { display: flex; flex-direction: column; flex-wrap: wrap; align-content: flex-start; height: 134px; gap: $space-detail; overflow: hidden; }
+.skeleton-day { width: 12px; height: 12px; border-radius: 3px; }
+.skeleton-chart { display: flex; flex-direction: row; align-items: flex-end; height: 132px; gap: $space-inline; }
+.skeleton-bar { flex: 1; border-radius: 4px 4px 0 0; }
+.skeleton-list, .skeleton-fields { gap: $space-section; }
+.skeleton-row { display: flex; flex-direction: row; align-items: center; min-height: 86px; }
+.skeleton-copy { flex: 1; gap: $space-inline; }
+.skeleton-time { width: 38px; height: 12px; margin-right: $space-inline; }
+.skeleton-timeline-row { border-left: 2px solid #d9e3f1; }
+.skeleton-media { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: $space-section; }
+.skeleton-media-item { gap: $space-inline; }
+.skeleton-poster { width: 100%; aspect-ratio: 2 / 3; border-radius: 8px; }
+.skeleton-menu { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: $space-section; }
+.skeleton-menu-item { align-items: center; padding: $space-inline 0; gap: $space-inline; }
+.skeleton-icon { width: 40px; height: 40px; border-radius: 12px; }
+.skeleton-field { gap: $space-inline; }
+.skeleton-input { width: 100%; height: $space-controlMin; border-radius: 10px; }
+.skeleton-profile { align-items: center; gap: $space-section; padding: $space-card; }
+.skeleton-avatar { width: 64px; height: 64px; border-radius: 50%; }
+.skeleton-graph { height: 240px; position: relative; }
+.skeleton-connection { position: absolute; left: 20%; top: 25%; width: 60%; height: 50%; border: 1px solid #dce2ec; border-radius: 50%; }
+.skeleton-node { width: 40px; height: 40px; border-radius: 50%; position: absolute; }
+.skeleton-node-1 { left: 45%; top: 40%; }
+.skeleton-node-2 { left: 18%; top: 20%; }
+.skeleton-node-3 { right: 18%; top: 20%; }
+.skeleton-node-4 { left: 18%; bottom: 20%; }
+.skeleton-node-5 { right: 18%; bottom: 20%; }
+.skeleton-row-compact { min-height: 60px; }
+.skeleton-row-dark { border-left-color: #3b4658; }
+.skeleton-connection-dark { border-color: #30343c; }
+.skeleton-cover-root { position: absolute; left: 0; right: 0; top: 0; bottom: 0; height: 100%; }
+.skeleton-cover-content, .skeleton-cover { height: 100%; width: 100%; }
+.skeleton-cover { border-radius: inherit; }
+.skeleton-tile { gap: $space-section; min-height: 96px; }
+.skeleton-date-value { width: 48%; height: 36px; }
+.skeleton-progress { width: 100%; height: 5px; margin-top: auto; }
+.skeleton-ring { width: 132px; height: 132px; border-radius: 50%; border: 20px solid #e8ecf1; align-self: center; margin: $space-section 0; box-sizing: border-box; }
+.skeleton-ring-dark { border-color: #30343c; }
+@keyframes skeleton-breathe { 0%, 100% { opacity: 1; } 50% { opacity: .45; } }
+@media (min-width: 768px) { .skeleton-metrics { grid-template-columns: repeat(4, minmax(0, 1fr)); } .skeleton-media { grid-template-columns: repeat(6, minmax(0, 1fr)); } }
+/* #ifdef WEB */
+@media (prefers-reduced-motion: reduce) { .skeleton-content { animation: none; } }
+/* #endif */
+</style>

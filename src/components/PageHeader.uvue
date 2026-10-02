@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, inject } from 'vue'
+import { onMounted } from 'vue'
 import AppIcon from './AppIcon.uvue'
 import { refreshNativeTheme, themeClass } from '../services/theme.ts'
 onMounted(refreshNativeTheme)
@@ -8,7 +8,6 @@ defineProps({
   back: { type: Boolean, default: false },
 })
 defineEmits(['back'])
-const insidePageInset = inject('mobile-page-inset', false)
 let statusBarHeight = 0
 let navigationHeight = 48
 // #ifdef APP
@@ -23,8 +22,10 @@ navigationHeight =
 </script>
 
 <template>
+  <!-- 保留导航高度，固定定位后不遮住首屏内容。 -->
+  <view class="navigation-placeholder" :style="{ height: statusBarHeight + navigationHeight + 'px' }">
   <view class="page-navigation" :style="{ paddingTop: statusBarHeight + 'px' }" :class="themeClass('page-navigation')">
-    <view class="navigation-row" :class="{ 'ui-header-inset': !insidePageInset }" :style="{ height: navigationHeight + 'px' }">
+    <view class="navigation-row ui-header-inset" :style="{ height: navigationHeight + 'px' }">
       <text class="navigation-title" :class="themeClass('navigation-title')">{{ title }}</text>
       <button
         v-if="back"
@@ -34,19 +35,25 @@ navigationHeight =
         aria-label="返回"
         @click="$emit('back')"
       >
-        <view class="navigation-back-surface" :class="themeClass('navigation-back-surface')">
-          <AppIcon name="ant-design:left-outlined" :size="20" />
-        </view>
+        <AppIcon name="ant-design:left-outlined" :size="20" />
       </button>
     </view>
+  </view>
   </view>
 </template>
 
 <style scoped lang="scss">
 @use '../styles/spacing.scss';
 @use '../styles/spacing-tokens' as *;
-.page-navigation {
+.navigation-placeholder {
   flex-shrink: 0;
+}
+.page-navigation {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 100;
   background-color: #f0f2f5;
 }
 .navigation-row {
@@ -79,15 +86,6 @@ navigationHeight =
   align-items: center;
   justify-content: center;
 }
-.navigation-back-surface {
-  display: flex;
-  width: 36px;
-  height: 36px;
-  border-radius: 18px;
-  background-color: #ffffff;
-  align-items: center;
-  justify-content: center;
-}
 .navigation-button-pressed {
   opacity: 0.65;
   transform: scale(0.94);
@@ -98,9 +96,6 @@ navigationHeight =
   }
   .navigation-title-dark {
     color: #eeeeef;
-  }
-  .navigation-back-surface-dark {
-    background-color: #292c32;
   }
   /* #ifdef WEB || MP-WEIXIN */
 .navigation-button::after {

@@ -1,7 +1,8 @@
 <script setup lang="ts">
+import ContentSkeleton from './ContentSkeleton.uvue';
 import CategoryIcon from './CategoryIcon.uvue'
 import { isDark, themeClass } from '../services/theme.ts'
-defineProps<{ title: string; icon?: string; height?: number; loading?: boolean; error?: string; compact?: boolean; flushTop?: boolean }>()
+defineProps<{ title: string; icon?: string; height?: number; loading?: boolean; error?: string; compact?: boolean; flushTop?: boolean; skeleton?: string }>()
 defineEmits<{ refresh: [] }>()
 </script>
 <template>
@@ -23,12 +24,7 @@ defineEmits<{ refresh: [] }>()
         重试
       </button>
     </view>
-    <view v-else-if="loading" class="section-loading"
-      ><view class="skeleton" :class="themeClass('skeleton')"></view
-      ><view class="skeleton skeleton-short" :class="themeClass('skeleton')"></view
-      ><view class="skeleton" :class="themeClass('skeleton')"></view
-      ><text class="loading-caption">加载中…</text></view
-    >
+    <view v-else-if="loading" class="section-loading"><ContentSkeleton compact :variant="skeleton || 'list'" :rows="2" :label="'正在加载' + title" /></view>
     <view v-else class="section-content" :class="{ 'section-content-flush-top': flushTop }"><slot /></view>
   </view>
 </template>
@@ -88,29 +84,12 @@ defineEmits<{ refresh: [] }>()
   background-color: #eef2ff;
   border-radius: 8px;
 }
-.skeleton {
-  height: 12px;
-  background-color: #f1f1f4;
-  border-radius: 6px;
-  margin-bottom: $space-section;
-}
-.skeleton-short {
-  width: 60%;
-}
-.loading-caption {
-  color: #8b8b94;
-  font-size: 12px;
-}
-
   .dashboard-section-dark {
     background-color: #1c1e22;
     border-color: #303238;
   }
   .section-title-dark {
     color: #ececf0;
-  }
-  .skeleton-dark {
-    background-color: #2b2e34;
   }
   .section-error-text-dark {
     color: #f7a3a3;

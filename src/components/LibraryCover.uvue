@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import LoadingIndicator from './LoadingIndicator.uvue';
 import AppIcon from './AppIcon.uvue'
 import { onUnmounted, ref, watch } from 'vue';
 import { authFileUrl } from '../services/attachments.ts';
@@ -66,7 +67,7 @@ onUnmounted(() => {
     <view v-if="!source || failed || loading" class="library-cover-fallback">
       <AppIcon :name="kind === 'movie' ? 'lucide:clapperboard' : 'lucide:book-open'" :size="28" color="#8b8f99" />
       <text class="library-cover-title">{{ title }}</text>
-      <text v-if="loading" class="library-cover-hint">加载中…</text>
+      <LoadingIndicator v-if="loading" compact label="正在加载封面" />
       <button
         role="button"
         v-if="failed"
@@ -119,9 +120,6 @@ onUnmounted(() => {
   text-align: center;
   max-height: 48px;
   overflow: hidden;
-}
-.library-cover-hint {
-  font-size: 10px;
 }
 .library-cover-retry {
   display: flex;

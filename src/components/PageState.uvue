@@ -1,17 +1,24 @@
 <script setup lang="ts">
+import { ref, watch } from 'vue';
+import ContentSkeleton from './ContentSkeleton.uvue';
+import LoadingIndicator from './LoadingIndicator.uvue';
 import MobileButton from './MobileButton.uvue';
 import { themeClass } from '../services/theme.ts';
-withDefaults(
-  defineProps<{ loading?: boolean; error?: string; empty?: boolean; emptyText?: string }>(),
-  { emptyText: '暂无记录' },
+const props = withDefaults(
+  defineProps<{ loading?: boolean; error?: string; empty?: boolean; emptyText?: string; skeleton?: string; retainContent?: boolean; hasContent?: boolean }>(),
+  { emptyText: '暂无记录', skeleton: 'list', retainContent: true },
 );
+// A completed request (including an empty result) may stay visible during refresh.
+const settled = ref(false);
+watch(() => props.loading, (loading, previous) => {
+  if (previous && !loading && !props.error) settled.value = true;
+});
 const emit = defineEmits(['retry']);
 </script>
 <template>
   <view class="page-state" :class="themeClass('page-state')">
-    <view v-if="loading" class="page-state-notice ui-pad-card ui-gap-md" role="status" aria-live="polite"
-      ><text>加载中…</text></view
-    >
+    <template v-if="loading && !(retainContent && (settled || hasContent))"><slot name="loading"><ContentSkeleton :variant="skeleton" /></slot></template>
+    <LoadingIndicator v-else-if="loading" label="正在更新内容" />
     <view v-if="error" class="page-state-notice ui-pad-card ui-gap-md" role="alert"
       ><text>{{ error }}</text
       ><MobileButton
@@ -24,7 +31,7 @@ const emit = defineEmits(['retry']);
     <view v-if="empty && !loading && !error" class="page-state-notice ui-pad-card ui-gap-md"
       ><text>{{ emptyText }}</text></view
     >
-    <slot />
+    <slot v-if="(!loading && !error) || (retainContent && (settled || hasContent))" />
   </view>
 </template>
 <style scoped lang="scss">
