@@ -1,10 +1,12 @@
 <script setup lang="ts">
+import ContentSkeleton from '../../components/ContentSkeleton.uvue';
 import { computed, onUnmounted, ref } from 'vue';
 import { onLoad, onShow } from '@dcloudio/uni-app';
 import MobilePage from '../../components/MobilePage.uvue';
 import PageHeader from '../../components/PageHeader.uvue';
 import FloatingActionButton from '../../components/FloatingActionButton.uvue';
 import MobileButton from '../../components/MobileButton.uvue';
+import AppIcon from '../../components/AppIcon.uvue';
 import FormField from '../../components/FormField.uvue';
 import ConfirmAction from '../../components/ConfirmAction.uvue';
 import PageState from '../../components/PageState.uvue';
@@ -158,29 +160,37 @@ function displayDate(value) {
   <MobilePage :refreshing="refreshing" @refresh="load(true)"
     ><view class="notes-page ui-page-body" :class="{ 'notes-page-dark': isDark }">
       <PageHeader :title="title" :back="true" @back="uni.navigateBack()" /><view class="ui-toolbar"
-        ><FormField compact stretch label="搜索内容" v-model="keyword" /><MobileButton
+        ><FormField compact stretch hide-label label="搜索内容" placeholder="搜索内容…" v-model="keyword" /><MobileButton
           label="搜索"
           icon="ant-design:search-outlined"
           :loading="loading"
           @click="load()"
       /></view>
-      <PageState
+      <PageState skeleton="list"
         :loading="loading && !rows.length"
         :error="error"
         :empty="!rows.length"
         @retry="load()"
       >
-        <view class="notes-grid"><view
+<template #loading><view class="notes-grid" :class="{ 'notes-grid-memo': kind === 'memo' }"><view v-for="n in 6" :key="n" class="note-card ui-card" :class="{ 'note-card-dark': isDark, 'note-card-memo': kind === 'memo' }"><ContentSkeleton variant="tile" /></view></view></template>
+
+        <view class="notes-grid" :class="{ 'notes-grid-memo': kind === 'memo' }"><view
           v-for="item in rows"
           :key="item.id"
           class="note-card ui-card"
-          :class="{ 'note-card-dark': isDark }"
-          role="button" :aria-label="'编辑' + title" @click="open(item)"
+          :class="{ 'note-card-dark': isDark, 'note-card-memo': kind === 'memo' }"
+          role="button" :aria-label="'编辑' + title + (item.title ? '：' + item.title : '')" tabindex="0" @click="open(item)" @keydown.enter.self="open(item)" @keydown.space.self.prevent="open(item)"
         >
           <view v-if="kind === 'memo'" class="toolbar ui-row"><text class="note-title">{{ item.title }}</text></view>
           <text v-if="!item.hiddenContent" class="note-content">{{ item.content }}</text
           ><text v-else class="note-secondary">••••••</text>
-          <view class="note-footer ui-row"><text class="note-secondary">{{ displayDate(item.updateTime || item.createTime) }}</text><text v-if="kind === 'think' && (item.events || []).length" class="note-secondary">{{ item.events.length }}</text><MobileButton :label="item.hiddenContent ? '显示内容' : '隐藏内容'" :icon="item.hiddenContent ? 'ant-design:eye-outlined' : 'ant-design:eye-invisible-outlined'" variant="quiet" :loading="busy === item.id + 'hiddenContent'" :disabled="!!busy" @click.stop="toggle(item, 'hiddenContent')" /></view>
+          <view class="note-footer ui-row">
+            <AppIcon v-if="kind === 'think' && item.isPinned === 1" name="ant-design:pushpin-filled" :size="13" color="#6989bc" aria-label="已展示到看板" /><text class="note-date">{{ displayDate(item.updateTime || item.createTime) }}</text>
+            <view v-if="kind === 'think' && (item.events || []).length" class="note-event-count"><AppIcon name="ant-design:link-outlined" :size="12" color="#8b8f99" /><text>{{ item.events.length }}</text></view>
+            <button class="note-visibility" role="button" :aria-label="item.hiddenContent ? '显示内容' : '隐藏内容'" :loading="busy === item.id + 'hiddenContent'" :disabled="!!busy" @click.stop="toggle(item, 'hiddenContent')" @keydown.enter.stop @keydown.space.stop>
+              <AppIcon v-if="busy !== item.id + 'hiddenContent'" :name="item.hiddenContent ? 'ant-design:eye-outlined' : 'ant-design:eye-invisible-outlined'" :size="16" color="#8b8f99" />
+            </button>
+          </view>
         </view></view> </PageState
       ><LoadMore :loading="loading" :has-more="rows.length < total" @load="load(false, true)" />
       <AdaptiveModal v-if="form" :label="'编辑' + title" :busy="saving" @close="form = null">
@@ -237,6 +247,7 @@ function displayDate(value) {
 @use '../../styles/spacing.scss';
 @use '../../styles/spacing-tokens' as *;
 .notes-page {
+  padding-bottom: 80px; /* 浮动新增按钮避让 */
   color: #27272a;
 }
 .notes-page-dark {
@@ -247,14 +258,15 @@ function displayDate(value) {
   align-items: center;
 }
 .notes-grid { display: flex; flex-direction: row; flex-wrap: wrap; gap: $space-section; align-items: flex-start; }
-.note-card { width: 100%; box-sizing: border-box; }
+.note-card { width: 100%; min-width: 0; box-sizing: border-box; }
+.note-card-memo { width: calc((100% - #{$space-section}) / 2); }
 @media (min-width: 600px) { .note-card { width: calc((100% - #{$space-section}) / 2); } }
 @media (min-width: 1000px) { .note-card { width: calc((100% - #{$space-section} * 2) / 3); } }
 .note-footer { align-items: center; justify-content: space-between; gap: $space-detail; margin-top: $space-inline; }
 .note-card {
   margin: 0;
   background-color: #ffffff;
-  border-radius: 16px;
+  border-radius: 10px;
 }
 .note-card-dark {
   background-color: #1c1e22;
@@ -268,6 +280,9 @@ function displayDate(value) {
   font-size: 15px;
   line-height: 24px;
   white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 240px;
+  overflow: hidden;
 }
 .note-secondary {
   color: #8b8f99;
@@ -277,4 +292,13 @@ function displayDate(value) {
 .note-error {
   color: #e05252;
 }
+.note-date { flex: 1; min-width: 0; color: #8b8f99; font-size: 11px; line-height: 16px; }
+.note-event-count { flex-direction: row; align-items: center; gap: $space-micro; color: #8b8f99; font-size: 11px; }
+.note-visibility { display: flex; align-items: center; justify-content: center; flex-shrink: 0; width: $space-controlMin; height: $space-controlMin; margin: (-$space-inline) (-$space-inline) (-$space-inline) 0; padding: 0; border: 0; background-color: transparent; }
+.note-title { word-break: break-word; }
+/* #ifdef WEB || MP-WEIXIN */
+.note-visibility::after { border: 0; }
+.note-card:focus-visible { outline: 2px solid #417ce8; outline-offset: 2px; }
+/* #endif */
+@media (min-width: 1000px) { .note-card-memo { width: calc((100% - #{$space-section * 2}) / 3); } }
 </style>

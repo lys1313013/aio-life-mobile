@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import ContentSkeleton from '../../components/ContentSkeleton.uvue';
+import LoadingIndicator from '../../components/LoadingIndicator.uvue';
 import AppIcon from '../../components/AppIcon.uvue'
 import { computed, onUnmounted, ref } from 'vue';
 import { onLoad, onShow } from '@dcloudio/uni-app';
@@ -111,7 +113,7 @@ async function load(refresh = false, more = false) {
       }),
     );
     if (alive && current === generation) {
-      rows.value = more ? [...rows.value, ...data.records] : data.records;
+      rows.value = more ? [...rows.value, ...data.items] : data.items;
       page.value = next;
       total.value = data.total;
     }
@@ -243,7 +245,7 @@ async function save() {
       const data = await scope.wait(
         fetchLibrary(kind.value, { current: 1, size: 30 }),
       );
-      rows.value = data.records;
+      rows.value = data.items;
       page.value = 1;
       total.value = data.total;
       keyword.value = '';
@@ -407,7 +409,7 @@ async function submitImport() {
             load();
           "
         >
-          <view class="library-filter ui-row" :class="{ 'library-text-dark': isDark }"
+          <view class="library-filter ui-row" :class="{ 'library-filter-dark': isDark }"
             ><text>{{ typeFilter }}</text
             ><AppIcon name="ant-design:down-outlined" /></view
           >
@@ -426,19 +428,21 @@ async function submitImport() {
             load();
           "
         >
-          <view class="library-filter ui-row" :class="{ 'library-text-dark': isDark }"
+          <view class="library-filter ui-row" :class="{ 'library-filter-dark': isDark }"
             ><text>{{ statusFilter }}</text
             ><AppIcon name="ant-design:down-outlined" /></view
           >
         </picker>
-        <text class="library-count">{{ total }} 条</text>
+        <text v-if="!loading || rows.length" class="library-count">{{ total }} 条</text>
       </view>
-      <PageState
+      <PageState skeleton="media"
         :loading="loading && !rows.length"
         :error="error"
         :empty="!rows.length"
         @retry="load()"
       >
+<template #loading><view class="library-grid ui-gap-md ui-section" ><view v-for="n in 9" :key="n" class="library-card ui-gap-sm" ><view class="library-poster"><ContentSkeleton variant="cover" /></view><ContentSkeleton variant="caption" /></view></view></template>
+
         <view class="library-grid ui-gap-md ui-section">
           <view v-for="item in rows" :key="item.id" class="library-card ui-gap-sm">
             <view
@@ -467,10 +471,10 @@ async function submitImport() {
                 }}</text
               >
               <view v-if="editing === item.id" class="library-opening"
-                ><text>加载中…</text></view
+                ><LoadingIndicator compact label="正在加载记录详情" /></view
               >
             </view>
-            <text v-if="item.finishTime" class="library-date ui-gap-sm">{{
+            <text v-if="item.finishTime" class="library-date">{{
               item.finishTime.slice(0, 10)
             }}</text>
           </view>
@@ -494,43 +498,43 @@ async function submitImport() {
             icon="ant-design:import-outlined"
             :loading="parsing"
             @click="parse" /></view
-        ><FormField compact stretch label="名称" v-model="form.title" /><FormField compact stretch
+        ><FormField label="名称" v-model="form.title" /><FormField
           label="封面链接"
-          v-model="form.coverImgUrl" /><FormField compact stretch
+          v-model="form.coverImgUrl" /><FormField
           label="类型"
           kind="selector"
           :model-value="typeLabels[form.type - 1]"
           :options="typeLabels"
           @update:model-value="
             form.type = typeLabels.indexOf($event) + 1
-          " /><FormField compact stretch
+          " /><FormField
           label="状态"
           kind="selector"
           :model-value="statusLabels[statuses.indexOf(form.status)]"
           :options="statusLabels"
           @update:model-value="
             form.status = statuses[statusLabels.indexOf($event)]
-          " /><FormField compact stretch
+          " /><FormField
           v-if="kind === 'movie'"
           label="导演/演员"
-          v-model="form.director" /><FormField compact stretch
+          v-model="form.director" /><FormField
           v-else-if="form.type === 1"
           label="作者"
-          v-model="form.author" /><FormField compact stretch
+          v-model="form.author" /><FormField
           :label="kind === 'movie' ? '当前集数/时长' : '当前页数/进度'"
           input-type="number"
-          v-model="form.currentProgress" /><FormField compact stretch
+          v-model="form.currentProgress" /><FormField
           :label="kind === 'movie' ? '总集数/时长' : '总页数/进度'"
           input-type="number"
-          v-model="form.totalProgress" /><FormField compact stretch
+          v-model="form.totalProgress" /><FormField
           label="开始日期"
           kind="date"
           :model-value="form.startTime?.slice(0, 10) || ''"
-          @update:model-value="setDate('startTime', $event)" /><FormField compact stretch
+          @update:model-value="setDate('startTime', $event)" /><FormField
           label="完成日期"
           kind="date"
           :model-value="form.finishTime?.slice(0, 10) || ''"
-          @update:model-value="setDate('finishTime', $event)" /><FormField compact stretch
+          @update:model-value="setDate('finishTime', $event)" /><FormField
           v-if="kind === 'movie'"
           label="评分"
           kind="selector"
@@ -538,7 +542,7 @@ async function submitImport() {
           :options="['未评分', '1', '2', '3', '4', '5']"
           @update:model-value="
             form.rating = $event === '未评分' ? null : Number($event)
-          " /><FormField compact stretch
+          " /><FormField
           :label="kind === 'movie' ? '短评/备注' : '书评'"
           kind="textarea"
           v-model="form.remark" /><AttachmentField
@@ -586,7 +590,7 @@ async function submitImport() {
           v-if="importName"
           class="library-secondary"
           >{{ importName }}</text
-        ><FormField compact stretch
+        ><FormField
           label="导入内容"
           kind="textarea"
           v-model="importText" /><view class="ui-toolbar"
@@ -606,7 +610,7 @@ async function submitImport() {
               :value="preview.duplicateCount" /><MetricCard
               label="错误"
               :value="issues.length" /></view
-          ><FormField compact stretch
+          ><FormField
             label="重复处理"
             kind="selector"
             v-model="policy"
@@ -736,11 +740,15 @@ async function submitImport() {
   color: #eeeeef;
 }
 .library-filter {
+  padding: 0 $space-inline;
+  border-radius: 8px;
+  background-color: #ffffff;
   flex-direction: row;
   align-items: center;
   min-height: 44px;
   font-size: 13px;
 }
+.library-filter-dark { background-color: #1c1e22; color: #eeeeef; }
 .filter-chevron {
   color: #8b8f99;
 }
@@ -826,6 +834,9 @@ async function submitImport() {
 .library-search-button::after {
   border: 0;
 }
+/* #endif */
+/* #ifdef WEB */
+.library-poster:focus-visible { outline: 2px solid #427bea; outline-offset: $space-micro; }
 /* #endif */
 @media (min-width: 640px) {
   .library-card {

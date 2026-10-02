@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import ContentSkeleton from '../../components/ContentSkeleton.uvue';
 import { computed, ref } from 'vue';
 import { onLoad, onShow } from '@dcloudio/uni-app';
 import MobilePage from '../../components/MobilePage.uvue';
@@ -11,6 +12,7 @@ import AdaptiveModal from '../../components/AdaptiveModal.uvue';
 import FloatingActionButton from '../../components/FloatingActionButton.uvue';
 import MetricCard from '../../components/MetricCard.uvue';
 import MiniChart from '../../components/MiniChart.uvue';
+import CategoryIcon from '../../components/CategoryIcon.uvue';
 import { isDark } from '../../services/theme.ts';
 import { createRecordScope } from '../../services/records/page-scope.ts';
 import { fetchDictionary } from '../../services/records/goods.ts';
@@ -120,6 +122,9 @@ function name(id) {
     id
   );
 }
+function exerciseType(id) {
+  return types.value.find((item) => item.id === id);
+}
 async function load() {
   const current = ++generation;
   loading.value = true;
@@ -226,11 +231,12 @@ function toggle(id) {
         @update:model-value="
           selected = [];
           load();
-        " /><view class="ui-field-row"
+        " /><view class="date-filters ui-field-row"
         ><FormField compact stretch label="开始日期" kind="date" v-model="startDate" /><FormField compact stretch
           label="结束日期"
           kind="date"
           v-model="endDate" /><MobileButton
+          v-if="startDate || endDate"
           label="清除日期筛选"
           icon="ant-design:close-outlined"
           variant="quiet"
@@ -241,12 +247,14 @@ function toggle(id) {
       ><text v-if="startDate && endDate && startDate > endDate" class="error ui-section"
         >开始日期不能晚于结束日期</text
       ><view class="metrics ui-row ui-section"
-        ><MetricCard label="运动次数" :value="counts" /><MetricCard
+        ><MetricCard :loading="loading && !rows.length" label="运动次数" :value="counts" /><MetricCard :loading="loading && !rows.length"
           v-if="typeFilter !== '全部类型'"
           label="运动量"
-          :value="quantity" /><MetricCard label="记录" :value="filtered.length" /></view
-      ><PageState :loading="loading" :error="error" :empty="!filtered.length" @retry="load"
-        ><MiniChart
+          :value="quantity" /><MetricCard :loading="loading && !rows.length" label="记录" :value="filtered.length" /></view
+      ><PageState skeleton="list" :loading="loading" :error="error" :empty="!filtered.length" @retry="load"
+        >
+<template #loading><view class="ui-gap-md"><ContentSkeleton v-for="n in 2" :key="n" variant="chart" /><ContentSkeleton variant="list" :rows="2" /></view></template>
+<MiniChart
           label="每月运动次数"
           kind="bar"
           :labels="monthly.map((item) => item.label)"
@@ -269,13 +277,12 @@ function toggle(id) {
           :key="item.id"
           class="card ui-card"
           :class="{ 'card-dark': isDark }"
-          ><view class="toolbar ui-row"
+          ><view class="record-header"
             ><MobileButton
               :label="selected.includes(item.id) ? '取消选择记录' : '选择记录'"
               :icon="selected.includes(item.id) ? 'ant-design:check-square-outlined' : 'ant-design:border-outlined'"
               variant="quiet"
-              @click="toggle(item.id)" /><text class="title"
-              >{{ name(item.exerciseTypeId) }} · {{ item.exerciseCount ?? '—' }}</text
+              @click="toggle(item.id)" /><view class="record-copy"><view class="record-type"><CategoryIcon :icon="exerciseType(item.exerciseTypeId)?.icon || 'mdi:run'" :color="exerciseType(item.exerciseTypeId)?.color || '#5b8ff9'" :size="20" /><text class="title">{{ name(item.exerciseTypeId) }}</text></view><text class="secondary">{{ item.exerciseDate }}</text></view><text class="record-quantity">{{ item.exerciseCount ?? '—' }}</text
             ><MobileButton
               label="编辑运动"
               icon="ant-design:edit-outlined"
@@ -283,8 +290,7 @@ function toggle(id) {
               @click="open(item)" /><ConfirmAction
               label="删除运动"
               :action="() => remove([item.id])" /></view
-          ><text class="secondary">{{ item.exerciseDate }}</text
-          ><text>{{ item.description }}</text></view
+          ><text v-if="item.description" class="record-description">{{ item.description }}</text></view
         ></PageState
       ><AdaptiveModal v-if="form" label="编辑运动记录" :busy="saving" @close="form = null"
         ><FormField
@@ -318,6 +324,7 @@ function toggle(id) {
 @use '../../styles/spacing-tokens' as *;
 .exercise-page {
   color: #27272a;
+  padding-bottom: 80px; /* 浮动新增按钮避让 */
 }
 .exercise-page-dark {
   color: #eeeeef;
@@ -377,4 +384,13 @@ function toggle(id) {
   background-color: #4ecdc4;
   border-radius: 4px;
 }
+
+.record-header { display: flex; flex-direction: row; align-items: center; gap: $space-detail; }
+.record-copy { flex: 1; min-width: 0; gap: $space-detail; }
+.record-type { flex-direction: row; align-items: center; gap: $space-detail; }
+.record-quantity { font-size: 21px; font-weight: 600; color: #469d95; }
+.record-description { font-size: 13px; line-height: 20px; color: #8b8f99; overflow-wrap: anywhere; }
+.date-filters { align-items: flex-end; }
+.metrics { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: $space-inline; }
+@media (min-width: 600px) { .metrics { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
 </style>

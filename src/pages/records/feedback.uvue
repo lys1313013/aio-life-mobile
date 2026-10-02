@@ -4,6 +4,7 @@ import { onShow } from '@dcloudio/uni-app';
 import MobilePage from '../../components/MobilePage.uvue';
 import PageHeader from '../../components/PageHeader.uvue';
 import MobileButton from '../../components/MobileButton.uvue';
+import AppIcon from '../../components/AppIcon.uvue';
 import FormField from '../../components/FormField.uvue';
 import ConfirmAction from '../../components/ConfirmAction.uvue';
 import PageState from '../../components/PageState.uvue';
@@ -189,7 +190,7 @@ async function cancel(item) {
   <MobilePage :refreshing="refreshing" @refresh="load(true)"
     ><view class="feedback-page ui-page-body" :class="{ 'feedback-page-dark': isDark }"
       ><PageHeader title="反馈中心" :back="true" @back="uni.navigateBack()" /><view class="ui-toolbar"
-        ><FormField compact stretch
+        ><FormField compact stretch hide-label
           label="状态"
           kind="selector"
           v-model="status"
@@ -198,30 +199,27 @@ async function cancel(item) {
           label="提交反馈"
           icon="ant-design:plus-outlined"
           @click="open" /></view
-      ><PageState :loading="loading" :error="error" :empty="!filtered.length" @retry="load()"
-        ><view
-          v-for="item in filtered"
-          :key="item.id"
-          class="feedback-card ui-card"
-          :class="{ 'feedback-card-dark': isDark }"
-          ><view class="toolbar ui-row"
-            ><text class="feedback-title">{{ item.title }}</text
-            ><MobileButton
-              label="反馈详情"
-              icon="ant-design:right-outlined"
-              variant="quiet"
-              @click="showDetail(item)" /><ConfirmAction
-              v-if="item.status === 'PENDING'"
-              label="撤销反馈"
-              message="撤销此反馈？"
-              :action="() => cancel(item)" /></view
-          ><text class="feedback-secondary"
-            >{{ typeLabels[types.indexOf(item.feedbackType)] }} ·
-            {{ statusLabels[statuses.indexOf(item.status)] }} ·
-            {{ item.commentCount || 0 }} 条评论</text
-          ><text class="feedback-content ui-section">{{ item.summary }}</text
-          ><text class="feedback-secondary">{{ item.createTime }}</text></view
-        ></PageState
+      ><PageState skeleton="list" :loading="loading" :error="error" :empty="!filtered.length" @retry="load()"
+        ><view class="feedback-list">
+          <view v-for="item in filtered" :key="item.id" class="feedback-card ui-card" :class="{ 'feedback-card-dark': isDark }">
+            <view class="feedback-heading ui-row">
+              <text class="feedback-title">{{ item.title }}</text>
+              <MobileButton label="反馈详情" icon="ant-design:right-outlined" variant="quiet" @click="showDetail(item)" />
+            </view>
+            <view class="feedback-tags ui-row">
+              <text v-if="item.feedbackType" class="feedback-tag" :class="[{ 'feedback-tag-dark': isDark }, 'feedback-type-' + item.feedbackType + (isDark ? '-dark' : '')]">{{ typeLabels[types.indexOf(item.feedbackType)] || item.feedbackType }}</text>
+              <text class="feedback-tag" :class="[{ 'feedback-tag-dark': isDark }, 'feedback-status-' + item.status + (isDark ? '-dark' : '')]">{{ statusLabels[statuses.indexOf(item.status)] || item.status }}</text>
+            </view>
+            <text v-if="item.summary" class="feedback-content feedback-summary">{{ item.summary }}</text>
+            <view class="feedback-footer ui-row">
+              <view class="feedback-meta">
+                <view class="feedback-meta-item ui-row"><AppIcon name="ant-design:clock-circle-outlined" :size="13" :color="isDark ? '#9ca5b4' : '#748094'" /><text class="feedback-secondary">{{ item.createTime }}</text></view>
+                <view class="feedback-meta-item ui-row"><AppIcon name="ant-design:message-outlined" :size="13" :color="isDark ? '#9ca5b4' : '#748094'" /><text class="feedback-secondary">{{ item.commentCount || 0 }} 条评论</text></view>
+              </view>
+              <ConfirmAction v-if="item.status === 'PENDING'" label="撤销反馈" message="撤销此反馈？" :action="() => cancel(item)" />
+            </view>
+          </view>
+        </view></PageState
       ><LoadMore :loading="loading" :has-more="rows.length < total" @load="load(false, true)" />
       <AdaptiveModal
         v-if="form"
@@ -263,7 +261,7 @@ async function cancel(item) {
         :show-close="false"
         :busy="commenting || commentAttachmentBusy"
         @close="closeDetail"
-        ><PageState :loading="detailLoading" :error="detailError" @retry="loadDetail"
+        ><PageState skeleton="form" :retain-content="false" :loading="detailLoading" :error="detailError" @retry="loadDetail"
           ><template v-if="detail"
             ><text class="feedback-title">{{ detail.title }}</text
             ><text class="feedback-secondary">{{
@@ -321,7 +319,30 @@ async function cancel(item) {
   flex-direction: row;
   align-items: center;
 }
+.feedback-list { display: flex; flex-direction: column; gap: $space-section; }
+.feedback-heading { align-items: flex-start; }
+.feedback-tags { flex-wrap: wrap; }
+.feedback-tag { font-size: 11px; line-height: 18px; border-radius: 4px; padding: $space-micro $space-detail; background-color: #eef1f5; color: #647084; }
+.feedback-type-BUG, .feedback-status-REJECTED { color: #bb4141; background-color: #faeaea; }
+.feedback-type-SUGGESTION, .feedback-status-PROCESSING { color: #2866b0; background-color: #eaf1fc; }
+.feedback-type-QUESTION { color: #7952b4; background-color: #f1eafb; }
+.feedback-status-PENDING { color: #a76a16; background-color: #fcf2dd; }
+.feedback-status-RESOLVED { color: #247c57; background-color: #e5f4ec; }
+.feedback-tag-dark { color: #acb3bf; background-color: #2a2e36; }
+.feedback-type-BUG-dark, .feedback-status-REJECTED-dark { color: #f09b9b; background-color: #412b30; }
+.feedback-type-SUGGESTION-dark, .feedback-status-PROCESSING-dark { color: #94baf0; background-color: #25374e; }
+.feedback-type-QUESTION-dark { color: #c6a6ef; background-color: #352b45; }
+.feedback-status-PENDING-dark { color: #e9c17c; background-color: #3b3325; }
+.feedback-status-RESOLVED-dark { color: #82cfaa; background-color: #263c32; }
+.feedback-summary { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.feedback-footer { align-items: center; justify-content: space-between; }
+.feedback-meta { flex: 1; min-width: 0; display: flex; flex-wrap: wrap; column-gap: $space-inline; row-gap: $space-detail; }
+.feedback-meta-item { gap: $space-detail; align-items: center; }
 .feedback-card {
+  display: flex;
+  flex-direction: column;
+  gap: $space-inline;
+  margin-bottom: 0;
   background-color: #ffffff;
   border-radius: 16px;
 }
@@ -330,7 +351,10 @@ async function cancel(item) {
 }
 .feedback-title {
   flex: 1;
-  font-size: 17px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  line-height: 24px;
+  font-size: 16px;
   font-weight: 600;
 }
 .feedback-content {

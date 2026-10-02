@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import ContentSkeleton from '../../components/ContentSkeleton.uvue';
 import { computed, onUnmounted, ref } from 'vue';
 import { onShow } from '@dcloudio/uni-app';
 import MobilePage from '../../components/MobilePage.uvue';
@@ -22,6 +23,8 @@ const rows = ref<any[]>([]),
   formError = ref('');
 const types = ['life', 'study', 'work', 'other'],
   labels = ['生活', '学业', '工作', '其他'];
+const showDates = ref(false);
+const hasFilters = computed(() => typeFilter.value !== '全部类型' || tagFilter.value !== '全部标签' || !!start.value || !!end.value);
 const typeFilter = ref('全部类型'),
   tagFilter = ref('全部标签'),
   start = ref(''),
@@ -136,43 +139,37 @@ function clear() {
   <MobilePage :refreshing="refreshing" @refresh="load(true)"
     ><view class="event-page ui-page-body" :class="{ 'event-page-dark': isDark }"
       ><PageHeader title="里程碑" :back="true" @back="uni.navigateBack()" /><view class="filters ui-field-row"
-        ><FormField compact stretch
+        ><FormField compact stretch hide-label
           label="类型"
           kind="selector"
           v-model="typeFilter"
-          :options="['全部类型', ...labels]" /><FormField compact stretch
+          :options="['全部类型', ...labels]" /><FormField compact stretch hide-label
           label="标签"
           kind="selector"
           v-model="tagFilter"
-          :options="['全部标签', ...allTags]" /></view><view class="filters ui-field-row"><FormField compact stretch
-          label="开始日期"
+          :options="['全部标签', ...allTags]" /><MobileButton label="日期筛选" icon="ant-design:calendar-outlined" variant="quiet" @click="showDates = !showDates" /><MobileButton v-if="hasFilters" label="清空筛选" icon="ant-design:close-outlined" variant="quiet" @click="clear" /></view><view v-if="showDates || start || end" class="filters ui-field-row"><FormField compact stretch hide-label
+          label="开始日期" placeholder="开始日期"
           kind="date"
-          v-model="start" /><FormField compact stretch label="结束日期" kind="date" v-model="end" /></view
-      ><view class="ui-toolbar"
-        ><MobileButton label="清空筛选" icon="ant-design:close-outlined" variant="quiet" @click="clear" /></view
-      ><PageState :loading="loading" :error="error" :empty="!filtered.length" @retry="load()">
+          v-model="start" /><FormField compact stretch hide-label label="结束日期" placeholder="结束日期" kind="date" v-model="end" /></view
+      ><PageState skeleton="timeline" :loading="loading" :error="error" :empty="!filtered.length" @retry="load()">
+<template #loading><view v-for="n in 3" :key="n" class="timeline-entry" :class="{ 'timeline-entry-dark': isDark }"><view class="timeline-dot" :class="{ 'timeline-dot-dark': isDark }" /><view class="event-card ui-card" :class="{ 'event-card-dark': isDark }"><ContentSkeleton variant="tile" /></view></view></template>
+
         <template v-for="(item, index) in filtered" :key="item.id"
           ><text
             v-if="index === 0 || item.date.slice(0, 4) !== filtered[index - 1].date.slice(0, 4)"
             class="year-title ui-section"
             >{{ item.date.slice(0, 4) }}年</text
-          ><view class="timeline-entry">
+          ><view class="timeline-entry" :class="{ 'timeline-entry-dark': isDark }">
             <text v-if="index === 0 || item.date.slice(0, 7) !== filtered[index - 1].date.slice(0, 7)" class="month-title">{{ item.date.slice(5, 7) }}月</text>
-            <view class="timeline-dot" :class="'dot-' + item.type" />
-            <view class="event-card ui-card" :class="{ 'event-card-dark': isDark }"
+            <view class="timeline-dot" :class="['dot-' + item.type, { 'timeline-dot-dark': isDark }]" />
+            <view class="event-card ui-card" :class="{ 'event-card-dark': isDark }" role="button" :aria-label="'编辑里程碑：' + item.title" tabindex="0" @click="open(item)" @keydown.enter.self="open(item)" @keydown.space.self.prevent="open(item)"
             ><view class="toolbar ui-row"
               ><text class="event-title">{{ item.title }}</text><text class="type-badge" :class="'badge-' + item.type">{{ labels[types.indexOf(item.type)] || item.type }}</text
-              ><MobileButton
-                label="编辑里程碑"
-                icon="ant-design:edit-outlined"
-                variant="quiet"
-                @click="open(item)" /><ConfirmAction
-                label="删除里程碑"
-                :action="() => remove(item)" /></view
+              ></view
             ><text class="event-secondary"
               >{{ item.date }}{{ item.end_date ? ' → ' + item.end_date : '' }}</text
             ><text v-if="item.description" class="event-content">{{ item.description }}</text
-            ><text v-if="item.tags" class="event-secondary">{{ textTags(item.tags) }}</text></view></view
+            ><view v-if="item.tags" class="event-tags"><text v-for="tag in textTags(item.tags).split(/[,，]/).filter(Boolean)" :key="tag" class="event-tag">{{ tag }}</text></view></view></view
           ></template
         > </PageState
       ><AdaptiveModal v-if="form" label="编辑里程碑" :busy="saving" @close="form = null"
@@ -200,7 +197,7 @@ function clear() {
           class="event-error ui-section"
           >{{ formError }}</text
         ><view class="toolbar ui-row"
-          ><MobileButton
+          ><ConfirmAction v-if="form.id" label="删除里程碑" :action="() => remove(form)" @success="form = null" /><view class="footer-spacer" /><MobileButton
             label="取消"
             variant="quiet"
             :disabled="saving"
@@ -226,7 +223,7 @@ function clear() {
 }
 .filters {
   flex-direction: row;
-  flex-wrap: wrap;
+  align-items: flex-end;
 }
 .event-card {
   background-color: #ffffff;
@@ -255,7 +252,7 @@ function clear() {
 .event-error {
   color: #e05252;
 }
-.timeline-entry { position: relative; margin-left: $space-inline; padding-left: $space-modal; border-left: $space-hairline solid #dfe3e9; }
+.timeline-entry { position: relative; overflow: visible; margin-left: $space-inline; padding-left: $space-modal; border-left: $space-hairline solid #dfe3e9; }
 .month-title { color: #5986db; font-size: 12px; font-weight: 600; margin-bottom: $space-section; }
 .timeline-dot { position: absolute; top: 22px; left: -$space-detail; width: 9px; height: 9px; border-radius: 5px; background-color: #5986db; border: 2px solid #ffffff; }
 .dot-work { background-color: #77be7b; } .dot-life { background-color: #5986db; } .dot-study { background-color: #bd8ee2; }
@@ -264,4 +261,15 @@ function clear() {
 .badge-study { color: #ac7bd1; background-color: rgba(172,123,209,0.12); }
 .event-card { border-radius: 10px; }
 .event-title { min-width: 0; font-size: 15px; line-height: 22px; }
+.event-tags { flex-direction: row; flex-wrap: wrap; gap: $space-detail; }
+.event-tag { color: #8b8f99; background-color: rgba(128, 138, 153, 0.1); border-radius: 4px; padding: $space-micro $space-detail; font-size: 11px; }
+.footer-spacer { flex: 1; }
+.event-card { min-height: $space-controlMin; }
+.event-content { word-break: break-word; }
+.type-badge { flex-shrink: 0; }
+.timeline-entry-dark { border-color: #343840; }
+.timeline-dot-dark { border-color: #1c1e22; }
+/* #ifdef WEB */
+.event-card:focus-visible { outline: 2px solid #417ce8; outline-offset: 2px; }
+/* #endif */
 </style>

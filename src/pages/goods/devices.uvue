@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import ContentSkeleton from '../../components/ContentSkeleton.uvue';
 import { computed, onUnmounted, ref } from 'vue';
 import { onShow } from '@dcloudio/uni-app';
 import MobilePage from '../../components/MobilePage.uvue';
@@ -9,6 +10,7 @@ import ConfirmAction from '../../components/ConfirmAction.uvue';
 import PageState from '../../components/PageState.uvue';
 import AdaptiveModal from '../../components/AdaptiveModal.uvue';
 import MetricCard from '../../components/MetricCard.uvue';
+import AppIcon from '../../components/AppIcon.uvue';
 import AttachmentField from '../../components/AttachmentField.uvue';
 import { authFileUrl } from '../../services/attachments.ts';
 import { session } from '../../services/session.ts';
@@ -248,22 +250,24 @@ async function remove(item) {
     ><view class="goods-page ui-page-body" :class="{ 'goods-page-dark': isDark }"
       ><PageHeader title="设备" :back="true" @back="uni.navigateBack()" /><view
         class="ui-toolbar"
-        ><FormField compact stretch label="搜索设备" v-model="keyword" /><MobileButton
+        ><FormField compact stretch hide-label label="搜索设备" placeholder="搜索设备、配置…" v-model="keyword" /><MobileButton
           label="新增设备"
           icon="ant-design:plus-outlined"
           :disabled="loading || !!error"
           @click="open()" /></view
       ><FormField
         label="类型"
+        hide-label
         kind="selector"
         v-model="typeFilter"
         :options="['全部类型', ...types.map((t) => t.dictLabel || t.label)]"
         @update:model-value="load()"
       /><view class="metrics ui-row ui-section"
-        ><MetricCard label="资产数量" :value="filtered.length" /><MetricCard
+        ><MetricCard :loading="loading && !rows.length"
+          class="metric-wide"
           label="总资产"
           :value="amount"
-          unit="元" /><MetricCard label="每日成本" :value="dailyCost" unit="元" /></view
+          unit="元" /><MetricCard :loading="loading && !rows.length" label="资产数量" :value="filtered.length" /><MetricCard :loading="loading && !rows.length" label="每日成本" :value="dailyCost" unit="元" /></view
       ><view class="status-summary ui-row ui-section"
         ><text
           v-for="entry in statusCounts"
@@ -272,16 +276,18 @@ async function remove(item) {
           :class="'status-' + entry.status"
           >{{ statusName(entry.status) }} {{ entry.count }}</text
         ></view
-      ><PageState
+      ><PageState skeleton="list"
         :loading="loading"
         :error="error"
         :empty="!filtered.length"
         @retry="load()"
-        ><view class="goods-grid ui-gap-md"
+        >
+<template #loading><view class="goods-grid ui-gap-md" ><view v-for="n in 6" :key="n" class="goods-card ui-pad-card ui-gap-sm" :class="{ 'goods-card-dark': isDark }"><view class="goods-media goods-placeholder"><ContentSkeleton variant="cover" /></view><ContentSkeleton variant="tile" /></view></view></template>
+<view class="goods-grid ui-gap-md"
           ><view
             v-for="item in filtered"
             :key="item.id"
-            class="goods-card ui-card"
+            class="goods-card ui-pad-card ui-gap-sm"
             :class="{ 'goods-card-dark': isDark }"
             ><view class="goods-media"
               ><image
@@ -301,28 +307,15 @@ async function remove(item) {
               ><text class="goods-badge status-tag" :class="'status-' + item.status">{{
                 statusName(item.status)
               }}</text></view
-            ><view class="toolbar ui-row"
-              ><text class="goods-title" @click="open(item)">{{ item.name }}</text
-              ><MobileButton
-                label="编辑设备"
-                icon="ant-design:edit-outlined"
-                variant="quiet"
-                @click="open(item)" /><ConfirmAction
-                label="删除设备"
-                :action="() => remove(item)" /></view
-            ><text class="goods-secondary"
-              >购买时间 {{ item.purchaseDate || '—' }} · {{ usageDays(item) }} 天</text
-            ><text class="goods-content">{{ item.spec }}</text
-            ><text class="goods-secondary"
-              >{{ item.purchasePrice || 0 }} 元 · 日均
-              {{ (Number(item.purchasePrice || 0) / usageDays(item)).toFixed(2) }}
-              元</text
-            ><text v-if="item.purchasePlace" class="goods-secondary">{{
-              item.purchasePlace
-            }}</text
-            ><text v-if="item.remark" class="goods-content">{{ item.remark }}</text></view
+            ><button role="button" class="goods-title-button" aria-label="编辑设备" @click="open(item)"><text class="goods-title">{{ item.name }}</text></button
+            ><text v-if="item.spec" class="goods-content">{{ item.spec }}</text
+            ><text class="goods-price">¥ {{ item.purchasePrice || 0 }}</text
+            ><text class="goods-secondary">{{ item.purchaseDate || '—' }} · {{ usageDays(item) }} 天</text
+            ><text class="goods-secondary">日均 ¥ {{ (Number(item.purchasePrice || 0) / usageDays(item)).toFixed(2) }}</text
+            ><text v-if="item.purchasePlace" class="goods-secondary">{{ item.purchasePlace }}</text
+            ><text v-if="item.remark" class="goods-content">{{ item.remark }}</text
+            ><view class="goods-actions"><ConfirmAction label="删除设备" :action="() => remove(item)"><template #default="{ open: confirm, busy }"><button role="button" class="goods-icon-button" aria-label="删除设备" :disabled="busy" @click="confirm"><AppIcon name="ant-design:delete-outlined" :size="18" color="#8b8f99" /></button></template></ConfirmAction></view></view
           ></view
-        >
         ></PageState
       >
       <AdaptiveModal
@@ -400,13 +393,16 @@ async function remove(item) {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
+.metric-wide { grid-column: 1 / -1; }
 .goods-grid {
   display: flex;
   flex-direction: row;
   flex-wrap: wrap;
 }
 .goods-card {
-  width: 100%;
+  position: relative;
+  width: calc((100% - #{$space-section}) / 2);
+  min-width: 0;
   box-sizing: border-box;
   background-color: #ffffff;
   border-radius: 16px;
@@ -416,24 +412,32 @@ async function remove(item) {
 }
 .goods-title {
   flex: 1;
-  font-size: 17px;
+  font-size: 15px;
   font-weight: 600;
 }
 .goods-content {
-  font-size: 14px;
-  line-height: 22px;
+  font-size: 12px;
+  line-height: 18px;
+  color: #8b8f99;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .goods-secondary {
   color: #8b8f99;
-  font-size: 13px;
+  font-size: 11px;
+  line-height: 18px;
+  overflow-wrap: anywhere;
 }
 .goods-media {
   position: relative;
+  border-radius: 10px;
+  background-color: rgba(128, 134, 146, 0.06);
 }
 .goods-photo,
 .goods-placeholder {
   width: 100%;
-  height: 180px;
+  height: 150px;
 }
 .goods-placeholder {
   align-items: center;
@@ -443,7 +447,7 @@ async function remove(item) {
 .goods-badge {
   position: absolute;
   top: $space-detail;
-  right: $space-detail;
+  left: $space-detail;
 }
 .status-summary {
   flex-wrap: wrap;
@@ -454,37 +458,70 @@ async function remove(item) {
   font-size: 12px;
 }
 .status-1 {
-  background-color: #e8f5ed;
+  background-color: rgba(56, 147, 103, 0.14);
   color: #389367;
 }
 .status-4 {
-  background-color: #fff5da;
+  background-color: rgba(170, 128, 26, 0.14);
   color: #aa801a;
 }
 .status-2 {
-  background-color: #fbe9e9;
+  background-color: rgba(189, 80, 80, 0.14);
   color: #bd5050;
 }
 .status-3 {
-  background-color: #edf0f5;
+  background-color: rgba(104, 115, 133, 0.14);
   color: #687385;
 }
-@media (min-width: 600px) {
+@media (min-width: 700px) {
   .goods-card {
-    width: calc((100% - #{$space-section}) / 2);
+    width: calc((100% - #{$space-section} * 2) / 3);
   }
 }
 @media (min-width: 1000px) {
   .goods-card {
-    width: calc((100% - #{$space-section} * 2) / 3);
+    width: calc((100% - #{$space-section} * 3) / 4);
   }
 }
 .goods-error {
   color: #e05252;
 }
 @media (min-width: 700px) {
+  .metric-wide { grid-column: auto; }
   .metrics {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }
+.goods-title-button {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: flex-start;
+  width: 100%;
+  min-height: $space-controlMin;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  line-height: 21px;
+}
+.goods-price { font-size: 15px; font-weight: 600; }
+.goods-actions { position: absolute; top: $space-card; right: $space-card; }
+.goods-icon-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: $space-controlMin;
+  height: $space-controlMin;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 12px;
+  background: rgba(128, 134, 146, 0.10);
+}
+/* #ifdef WEB || MP-WEIXIN */
+.goods-title-button::after, .goods-icon-button::after { border: 0; }
+/* #endif */
 </style>

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import ContentSkeleton from '../../components/ContentSkeleton.uvue';
 import AppIcon from '../../components/AppIcon.uvue'
 import SecondaryUnlock from "../../components/SecondaryUnlock.uvue";
 import { themeClass } from '../../services/theme.ts'
@@ -161,7 +162,7 @@ async function signOut() {
           v-else-if="loading"
           class="state-card"
           :class="themeClass('state-card')"
-          ><text class="muted-text">加载中…</text></view
+          ><ContentSkeleton variant="profile" label="正在加载个人资料" /></view
         >
         <view
           v-if="user && (user.username || user.email)"
@@ -170,13 +171,13 @@ async function signOut() {
         >
           <view v-if="user.username" class="account-row ui-row ui-py-card"
             ><text class="muted-text">账号</text
-            ><text class="account-value ui-ml-section" :class="themeClass('account-value')">{{
+            ><text class="account-value" :class="themeClass('account-value')">{{
               user.username
             }}</text></view
           >
           <view v-if="user.email" class="account-row ui-row ui-py-card"
             ><text class="muted-text">邮箱</text
-            ><text class="account-value ui-ml-section" :class="themeClass('account-value')">{{
+            ><text class="account-value" :class="themeClass('account-value')">{{
               user.email
             }}</text></view
           >
@@ -286,7 +287,7 @@ async function signOut() {
   flex-direction: row;
   align-items: center;
   justify-content: space-between;
-  min-height: 56px;
+  min-height: 48px;
   width: 100%;
   margin: 0;
   padding: 0;
@@ -313,7 +314,7 @@ async function signOut() {
   background-color: #f0f2f5;
   padding: $space-tight;
   border-radius: 12px;
-  margin-left: $space-section;
+  margin-left: 0;
 }
 .theme-option {
   min-height: 44px;
@@ -386,7 +387,9 @@ async function signOut() {
 }
 .signout-anchor {
   position: relative;
-
+  // 提升整个锚点层级，让向上展开的确认框覆盖前一张菜单卡片。
+  z-index: 3;
+  overflow: visible;
 }
 .signout-button {
   width: 100%;
@@ -402,7 +405,8 @@ async function signOut() {
 }
 .signout-confirm {
   position: absolute;
-  top: 58px;
+  bottom: calc(100% + $space-inline);
+  z-index: 2;
   right: 0;
   width: 240px;
 
@@ -431,6 +435,18 @@ async function signOut() {
 
   color: #ffffff;
   background-color: #4e7ee3;
+}
+
+@media (min-width: 640px) {
+  .profile-menu {
+    flex-direction: row;
+    flex-wrap: wrap;
+    column-gap: $space-section;
+  }
+  .menu-row {
+    width: calc((100% - $space-section) / 2);
+  }
+  .theme-row { width: 100%; }
 }
 
 .profile-menu-dark {

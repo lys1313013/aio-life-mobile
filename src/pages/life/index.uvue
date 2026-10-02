@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import ContentSkeleton from '../../components/ContentSkeleton.uvue';
 import AppIcon from '../../components/AppIcon.uvue'
 import SecondaryUnlock from "../../components/SecondaryUnlock.uvue";
 import { computed, nextTick, ref } from "vue";
@@ -8,8 +9,10 @@ import AdaptiveModal from "../../components/AdaptiveModal.uvue";
 import LifeMenuIcon from "../../components/LifeMenuIcon.uvue";
 import { restoreSession, session } from "../../services/session.ts";
 import {
+  cacheLifeCatalog,
   loadLifeCatalog,
   loadLifeQuickLinks,
+  readCachedLifeCatalog,
   saveLifeQuickLinks,
 } from "../../services/life.ts";
 import {
@@ -41,6 +44,7 @@ const folder = computed(() => folders.value[folders.value.length - 1] || null);
 let active = false;
 let epoch = 0;
 let account = "";
+let catalogLoaded = false;
 const sections = computed(() => catalogSections(catalog.value, query.value));
 const available = computed(() => !catalogLoading.value && !catalogError.value);
 const canEdit = computed(
@@ -86,6 +90,8 @@ async function loadPart(part: string, version = epoch, token = session.token) {
     if (!current(version, token)) return;
     if (part === "catalog") {
       catalog.value = data;
+      catalogLoaded = true;
+      cacheLifeCatalog(data, token);
       folders.value = [];
     }
     else {
@@ -127,6 +133,8 @@ onShow(() => {
   }
   if (account !== session.token) {
     catalog.value = [];
+    catalogLoaded = false;
+    catalogError.value = "";
     query.value = "";
     account = session.token;
   }
@@ -137,7 +145,15 @@ onShow(() => {
   saveError.value = "";
   quickError.value = "";
   draft.value = [];
-  loadPart("catalog");
+  if (!catalogLoaded) {
+    const cached = readCachedLifeCatalog();
+    if (cached !== null) {
+      catalog.value = cached;
+      catalogLoaded = true;
+      catalogError.value = "";
+    }
+  }
+  if (!catalogLoaded) loadPart("catalog");
   if (editRequested) loadPart("quick");
 });
 onHide(() => {
@@ -207,7 +223,7 @@ async function save() {
           <LifeMenuIcon icon="lucide:search" color="#8b8f99" />
           <input
             v-model="query"
-            class="life-input ui-ml-section"
+            class="life-input"
             :class="themeClass('life-ink')"
             aria-label="搜索功能"
             placeholder="搜索功能"
@@ -223,8 +239,8 @@ async function save() {
 <AppIcon name="ant-design:close-outlined" />
 </button>
         </view>
-        <view v-if="catalogLoading" class="life-state ui-px-sm ui-py-card"
-          ><text class="life-muted">加载中</text></view
+        <view v-if="catalogLoading && !refreshing" class="life-state ui-px-sm ui-py-card"
+          ><ContentSkeleton variant="grid" label="正在加载功能目录" /></view
         >
         <view v-if="catalogError" class="life-state ui-px-sm ui-py-card"
           ><text class="life-error" role="alert">{{ catalogError }}</text
@@ -248,7 +264,7 @@ async function save() {
           :key="section.menuId"
           class="life-section ui-mt-section"
         >
-          <view v-if="section.title" class="life-heading ui-row ui-mb-section"
+          <view v-if="section.title" class="life-section-heading ui-row ui-mb-xs"
             ><text class="life-title" :class="themeClass('life-ink')">{{
               section.title
             }}</text></view
@@ -259,6 +275,7 @@ async function save() {
               v-for="item in section.items"
               :key="item.menuId"
               class="life-tile"
+              style="background-color: transparent"
               :disabled="!available"
               :aria-disabled="!available"
               :aria-label="
@@ -271,12 +288,8 @@ async function save() {
                 class="life-label ui-mt-sm"
                 :class="themeClass('life-ink')"
                 >{{ item.title }}</text
-              ><text class="life-badge">{{
-                item.children
-                  ? item.children.length + " 项"
-                  : item.native
-                    ? "移动端"
-                    : "网页版"
+              ><text v-if="item.children || !item.native" class="life-badge">{{
+                item.children ? item.children.length + " 项" : "网页版"
               }}</text>
             </button>
           </view>
@@ -287,6 +300,7 @@ async function save() {
       v-if="folder"
       :label="folder.title"
       :max-width="520"
+      :show-close="false"
       @close="folders = []"
     >
       <view class="life-modal ui-page-body" :class="themeClass('life-surface')">
@@ -331,6 +345,7 @@ async function save() {
       v-if="editing"
       label="编辑常用功能"
       :max-width="560"
+      :show-close="false"
       :busy="saving"
       @close="editing = false"
     >
@@ -360,7 +375,7 @@ async function save() {
           </button></view
         >
         <view v-if="catalogLoading || quickLoading" class="life-state ui-px-sm ui-py-card">
-          <text class="life-muted">加载中</text>
+          <ContentSkeleton variant="grid" label="正在加载功能目录" />
         </view>
         <view v-else-if="catalogError || quickError" class="life-state ui-px-sm ui-py-card">
           <text class="life-error" role="alert">{{ catalogError || quickError }}</text>
@@ -427,7 +442,7 @@ async function save() {
             :class="themeClass('life-page')"
             ><LifeMenuIcon icon="lucide:search" color="#8b8f99" /><input
               v-model="editQuery"
-              class="life-input ui-ml-section"
+              class="life-input"
               :class="themeClass('life-ink')"
               aria-label="搜索可添加功能"
               placeholder="搜索可添加功能"
@@ -469,12 +484,6 @@ async function save() {
 .life-page {
   background-color: #f0f2f5;
 }
-.life-content {
-
-
-
-
-}
 .life-search {
   flex-direction: row;
   align-items: center;
@@ -491,8 +500,9 @@ async function save() {
   font-size: 15px;
   color: #27272a;
 }
-.life-section {
-
+.life-section-heading {
+  align-items: center;
+  min-height: 32px;
 }
 .life-heading {
   flex-direction: row;
@@ -530,8 +540,8 @@ async function save() {
   display: flex;
   flex-direction: column;
   width: 25%;
-  min-height: 96px;
-  padding: $space-card $space-micro $space-inline;
+  min-height: 80px;
+  padding: $space-inline $space-micro;
   margin: 0;
   border: 0;
   background-color: transparent;
@@ -611,6 +621,9 @@ async function save() {
 
 
   background-color: #f0f2f5;
+}
+@media (min-width: 640px) {
+  .life-tile { width: 16.6667%; }
 }
 .life-page-dark {
   background-color: #111215;

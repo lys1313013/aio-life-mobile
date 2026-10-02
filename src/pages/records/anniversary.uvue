@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import ContentSkeleton from '../../components/ContentSkeleton.uvue';
 import { computed, onUnmounted, ref } from 'vue';
 import { onShow } from '@dcloudio/uni-app';
 import MobilePage from '../../components/MobilePage.uvue';
@@ -131,7 +132,9 @@ async function remove(item) {
     <MobilePage :refreshing="refreshing" @refresh="load(true)">
       <view class="event-page ui-page-body" :class="{ 'event-page-dark': isDark }">
         <view v-if="activeMenu" class="menu-dismiss" @click="activeMenu = ''" />
-        <PageState :loading="loading" :error="error" :empty="!rows.length" @retry="load()">
+        <PageState skeleton="list" :loading="loading" :error="error" :empty="!rows.length" @retry="load()">
+<template #loading><view class="event-grid ui-gap-md" ><view v-for="n in 6" :key="n" class="event-card ui-pad-card ui-gap-sm" :style="cardStyle('')"><ContentSkeleton variant="date-tile" /></view></view></template>
+
           <view class="event-grid ui-gap-md">
             <view v-for="item in sortedRows" :key="item.id" class="event-card ui-pad-card ui-gap-sm"
               :class="{ 'event-card-active': activeMenu === item.id }" :style="cardStyle(item.color)">
@@ -216,6 +219,7 @@ async function remove(item) {
 .toolbar { flex-direction: row; align-items: center; }
 .event-grid { flex-direction: row; flex-wrap: wrap; }
 .event-card {
+  box-sizing: border-box;
   position: relative;
   width: calc((100% - #{$space-section}) / 2);
   min-width: 0;
@@ -270,10 +274,10 @@ async function remove(item) {
 .event-count { align-items: center; }
 .event-label { font-size: 12px; opacity: 0.9; }
 .count-row { flex-direction: row; align-items: baseline; justify-content: center; }
-.day-count { font-size: 36px; font-weight: 800; line-height: 46px; }
+.day-count { font-variant-numeric: tabular-nums; letter-spacing: -1px; font-size: 36px; font-weight: 800; line-height: 46px; }
 .event-unit { font-size: 13px; opacity: 0.8; }
-.event-title { font-size: 16px; font-weight: 600; line-height: 22px; }
-.event-date { font-size: 12px; opacity: 0.8; }
+.event-title { word-break: break-word; font-size: 16px; font-weight: 600; line-height: 22px; }
+.event-date { align-self: flex-start; border-radius: 4px; padding: $space-micro $space-detail; background-color: rgba(255,255,255,0.12); font-size: 12px; opacity: 0.9; }
 .event-note { font-size: 12px; line-height: 18px; opacity: 0.8; }
 .event-error { color: #e05252; }
 /* #ifdef WEB || MP-WEIXIN */
@@ -282,7 +286,7 @@ async function remove(item) {
 @media (min-width: 600px) {
   .event-grid { }
   .event-card { width: calc((100% - #{$space-section * 2}) / 3); }
-  .day-count { font-size: 40px; line-height: 52px; }
+  .day-count { font-variant-numeric: tabular-nums; letter-spacing: -1px; font-size: 40px; line-height: 52px; }
 }
 .anniversary-preview { height: 96px; align-items: center; justify-content: center; border-radius: 12px; }
 .preview-emoji { font-size: 44px; }
@@ -295,4 +299,5 @@ async function remove(item) {
 /* #ifdef WEB || MP-WEIXIN */
 .emoji-choice::after, .color-choice::after { border: 0; }
 /* #endif */
+@media (min-width: 1000px) { .event-card { width: calc((100% - #{$space-section * 3}) / 4); } }
 </style>

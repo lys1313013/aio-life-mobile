@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import ContentSkeleton from '../../components/ContentSkeleton.uvue';
 import { computed, onUnmounted, ref } from 'vue';
 import { onShow } from '@dcloudio/uni-app';
 import MobilePage from '../../components/MobilePage.uvue';
@@ -8,7 +9,7 @@ import FormField from '../../components/FormField.uvue';
 import ConfirmAction from '../../components/ConfirmAction.uvue';
 import PageState from '../../components/PageState.uvue';
 import AdaptiveModal from '../../components/AdaptiveModal.uvue';
-import MetricCard from '../../components/MetricCard.uvue';
+import AppIcon from '../../components/AppIcon.uvue';
 import { createRecordScope } from '../../services/records/page-scope.ts';
 import { isDark } from '../../services/theme.ts';
 import { memberPayload, addMonthsClamped } from '../../services/records/contracts.ts';
@@ -53,14 +54,30 @@ const filtered = computed(() =>
     (item) =>
       (!keyword.value ||
         [item.name, item.provider, item.note].some((text) =>
-          (text || '').includes(keyword.value),
+          (text || '').toLowerCase().includes(keyword.value.trim().toLowerCase()),
         )) &&
       (categoryFilter.value === '全部分类' ||
         item.category === categories[categoryLabels.indexOf(categoryFilter.value)]) &&
       (statusFilter.value === '全部状态' ||
         item.status === statusCodes[statusLabels.indexOf(statusFilter.value)]),
-  ),
+  ).sort((a, b) => {
+    const expiredRank = Number(a.status === 'expired') - Number(b.status === 'expired');
+    return expiredRank || Number(a.remainingDays || 0) - Number(b.remainingDays || 0);
+  }),
 );
+const hasFilters = computed(() => !!keyword.value || categoryFilter.value !== '全部分类' || statusFilter.value !== '全部状态');
+const metrics = computed(() => [
+  { label: '生效中', value: stats.value.activeCount || 0, icon: 'ant-design:check-circle-outlined', tone: 'green' },
+  { label: '本月到期', value: stats.value.expiringThisMonthCount || 0, icon: 'ant-design:calendar-outlined', tone: 'orange' },
+  { label: '即将到期', value: stats.value.expiringCount || 0, icon: 'ant-design:clock-circle-outlined', tone: 'amber' },
+  { label: '当前月均', value: '¥' + Number(stats.value.monthlyAmount || 0).toFixed(2), icon: 'ant-design:account-book-outlined', tone: 'blue' },
+]);
+const categoryIcons = ['ant-design:video-camera-outlined', 'ant-design:customer-service-outlined', 'ant-design:shopping-outlined', 'ant-design:cloud-outlined', 'ant-design:read-outlined', 'ant-design:trophy-outlined', 'ant-design:appstore-outlined'];
+function resetFilters() {
+  keyword.value = '';
+  categoryFilter.value = '全部分类';
+  statusFilter.value = '全部状态';
+}
 const scope = createRecordScope((clearData) => {
   form.value = null;
   if (clearData) {
@@ -164,93 +181,64 @@ async function save() {
 async function remove(item) {
   await scope.wait(deleteMember(item.id));
   rows.value = rows.value.filter((r) => r.id !== item.id);
+  if (form.value?.id === item.id) form.value = null;
   loadStats();
 }
 </script>
 <template>
-  <MobilePage :refreshing="refreshing" @refresh="load(true)"
-    ><view class="member-page ui-page-body" :class="{ 'member-page-dark': isDark }"
-      ><PageHeader title="订阅" :back="true" @back="uni.navigateBack()" /><view
-        class="ui-toolbar"
-        ><FormField compact stretch label="搜索订阅" v-model="keyword" /><MobileButton
-          label="新增订阅"
-          icon="ant-design:plus-outlined"
-          @click="open()" /></view
-      ><view class="filters ui-field-row"
-        ><FormField
-          compact
-          stretch
-          label="分类"
-          kind="selector"
-          v-model="categoryFilter"
-          :options="['全部分类', ...categoryLabels]" /><FormField
-          compact
-          stretch
-          label="状态"
-          kind="selector"
-          v-model="statusFilter"
-          :options="['全部状态', ...statusLabels]"
-      /></view>
-      <PageState :loading="statsLoading" :error="statsError" @retry="loadStats"
-        ><view class="metrics ui-row ui-section"
-          ><MetricCard label="生效中" :value="stats.activeCount || 0" /><MetricCard
-            label="即将到期"
-            :value="stats.expiringCount || 0" /><MetricCard
-            label="本月到期"
-            :value="stats.expiringThisMonthCount || 0" /><MetricCard
-            label="当前月均"
-            :value="stats.monthlyAmount || 0"
-            unit="元" /></view
-      ></PageState>
-      <PageState
-        :loading="loading"
-        :error="error"
-        :empty="!filtered.length"
-        @retry="load()"
-        ><view class="member-grid ui-gap-md"
-          ><view
-            v-for="item in filtered"
-            :key="item.id"
-            class="member-card ui-card"
-            :class="{ 'member-card-dark': isDark }"
-            ><view class="toolbar ui-row"
-              ><text class="member-title">{{ item.name }}</text
-              ><MobileButton
-                label="编辑订阅"
-                icon="ant-design:edit-outlined"
-                variant="quiet"
-                @click="open(item)" /><ConfirmAction
-                label="删除订阅"
-                :action="() => remove(item)" /></view
-            ><text class="member-secondary"
-              ><text class="member-status" :class="'member-status-' + item.status">{{
-                statusLabels[statusCodes.indexOf(item.status)]
-              }}</text>
-              ·
-              {{ categoryLabels[categories.indexOf(item.category)] || item.category
-              }}{{ item.provider ? ' · ' + item.provider : '' }}</text
-            ><text class="member-secondary"
-              >{{ item.expiryDate }} ·
-              {{
-                item.remainingDays >= 0
-                  ? '剩余 ' + item.remainingDays + ' 天'
-                  : '已过期 ' + Math.abs(item.remainingDays) + ' 天'
-              }}</text
-            ><view class="member-price ui-row"
-              ><text class="member-secondary"
-                >{{ item.price || 0 }} 元 /
-                {{
-                  cycleLabels[cycles.indexOf(item.billingCycle)] || item.billingCycle
-                }}</text
-              ><text class="monthly-price"
-                >月均 ¥{{ Number(item.monthlyAmount || 0).toFixed(2) }}</text
-              ></view
-            ><text v-if="item.autoRenew === 1" class="member-secondary">自动续费</text
-            ><text v-if="item.note" class="member-content">{{ item.note }}</text></view
-          ></view
-        ></PageState
-      >
-      <AdaptiveModal v-if="form" label="编辑订阅" :busy="saving" @close="form = null"
+  <MobilePage :refreshing="refreshing" @refresh="load(true)">
+    <view class="member-page ui-page-body" :class="{ 'member-page-dark': isDark }">
+      <PageHeader title="订阅" :back="true" @back="uni.navigateBack()" />
+      <PageState skeleton="metrics" :loading="statsLoading" :error="statsError" @retry="loadStats">
+        <view class="metrics ui-section">
+          <view v-for="metric in metrics" :key="metric.label" class="member-metric" :class="{ 'surface-dark': isDark }">
+            <view class="metric-icon" :class="'tone-' + metric.tone">
+              <AppIcon :name="metric.icon" :size="20" :color="metric.tone === 'green' ? '#35a879' : metric.tone === 'orange' ? '#ed8936' : metric.tone === 'amber' ? '#d9a126' : '#4285ed'" />
+            </view>
+            <view class="metric-copy">
+              <text class="metric-label">{{ metric.label }}</text>
+              <text class="metric-value" :class="{ 'metric-money': metric.tone === 'blue', 'metric-alert': metric.tone === 'orange' }">{{ metric.value }}</text>
+            </view>
+          </view>
+        </view>
+      </PageState>
+      <view class="member-filters ui-section" :class="{ 'surface-dark': isDark }">
+        <view class="search-row">
+          <FormField compact stretch hide-label label="搜索订阅" placeholder="搜索名称、平台…" v-model="keyword" />
+          <MobileButton label="新增订阅" icon="ant-design:plus-outlined" @click="open()" />
+        </view>
+        <view class="filter-row">
+          <FormField compact stretch hide-label label="分类" kind="selector" v-model="categoryFilter" :options="['全部分类', ...categoryLabels]" />
+          <FormField compact stretch hide-label label="状态" kind="selector" v-model="statusFilter" :options="['全部状态', ...statusLabels]" />
+          <MobileButton v-if="hasFilters" label="重置筛选" icon="ant-design:clear-outlined" variant="quiet" @click="resetFilters" />
+        </view>
+      </view>
+      <PageState skeleton="list" :loading="loading" :error="error" :empty="!filtered.length" @retry="load()">
+<template #loading><view class="member-grid" ><view v-for="n in 6" :key="n" class="member-card" :class="{ 'surface-dark': isDark, 'text-dark': isDark }"><ContentSkeleton variant="tile" /></view></view></template>
+
+        <view class="member-grid">
+          <button role="button" tabindex="0" v-for="item in filtered" :key="item.id" class="member-card" :class="{ 'surface-dark': isDark, 'text-dark': isDark }" :aria-label="'编辑订阅：' + item.name" @click="open(item)" @keydown.enter.prevent="open(item)" @keydown.space.prevent="open(item)">
+            <view class="card-heading">
+              <text class="member-title">{{ item.name }}</text>
+              <AppIcon v-if="item.autoRenew === 1" name="ant-design:sync-outlined" :size="14" color="#4285ed" />
+            </view>
+            <text v-if="item.provider" class="member-provider">{{ item.provider }}</text>
+            <view class="member-tags">
+              <text class="member-status" :class="'member-status-' + item.status">{{ statusLabels[statusCodes.indexOf(item.status)] || item.status }}</text>
+              <view class="category-tag" :class="{ 'category-tag-dark': isDark }"><AppIcon :name="categoryIcons[categories.indexOf(item.category)] || categoryIcons[6]" :size="12" /><text class="category-label">{{ categoryLabels[categories.indexOf(item.category)] || '其他' }}</text></view>
+            </view>
+            <view class="expiry-row">
+              <view class="expiry-date"><AppIcon name="ant-design:calendar-outlined" :size="12" /><text class="expiry-date-text">{{ item.expiryDate }}</text></view>
+              <text class="remaining-days" :class="'member-status-' + item.status">{{ item.status === 'expired' ? '已过期' : '剩 ' + item.remainingDays + ' 天' }}</text>
+            </view>
+            <view class="member-price" :class="{ 'member-price-dark': isDark }">
+              <text class="member-secondary">{{ cycleLabels[cycles.indexOf(item.billingCycle)] || '月' }} ¥{{ Number(item.price || 0).toFixed(2) }}</text>
+              <text class="monthly-price">月均 ¥{{ Number(item.monthlyAmount || 0).toFixed(2) }}</text>
+            </view>
+          </button>
+        </view>
+      </PageState>
+      <AdaptiveModal v-if="form" :label="form.id ? '编辑订阅' : '新增订阅'" :busy="saving" @close="form = null"
         ><FormField label="名称" v-model="form.name" /><FormField
           label="平台"
           v-model="form.provider" /><FormField
@@ -305,8 +293,8 @@ async function remove(item) {
           v-if="formError"
           class="member-error ui-section"
           >{{ formError }}</text
-        ><view class="toolbar ui-row"
-          ><MobileButton
+        ><view class="toolbar modal-actions ui-row"
+          ><ConfirmAction v-if="form.id && !saving" label="删除订阅" :action="() => remove(form)" /><view class="action-spacer" /><MobileButton
             label="取消"
             variant="quiet"
             :disabled="saving"
@@ -320,91 +308,62 @@ async function remove(item) {
 <style scoped lang="scss">
 @use '../../styles/spacing.scss';
 @use '../../styles/spacing-tokens' as *;
-.member-page {
-  color: #27272a;
-}
-.member-page-dark {
-  color: #eeeeef;
-}
-.toolbar {
-  flex-direction: row;
-  align-items: center;
-}
-.filters {
-  flex-direction: row;
-  flex-wrap: wrap;
-}
-.metrics {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-}
-.member-grid {
-  display: flex;
-  flex-direction: row;
-  flex-wrap: wrap;
-}
-.member-price {
-  justify-content: space-between;
-  align-items: center;
-}
-.monthly-price {
-  font-size: 17px;
-  font-weight: 600;
-}
-.member-status {
-  font-size: 12px;
-}
-.member-status-active {
-  color: #389367;
-}
-.member-status-expiring {
-  color: #b78124;
-}
-.member-status-expired {
-  color: #8b8f99;
-}
-.member-card {
-  width: 100%;
-  box-sizing: border-box;
-  background-color: #ffffff;
-  border-radius: 16px;
-}
-.member-card-dark {
-  background-color: #1c1e22;
-}
-.member-title {
-  flex: 1;
-  font-size: 17px;
-  font-weight: 600;
-}
-.member-content {
-  font-size: 14px;
-  line-height: 22px;
-}
-.member-secondary {
-  color: #8b8f99;
-  font-size: 13px;
-}
-.member-error {
-  color: #e05252;
-}
-@media (min-width: 600px) {
-  .member-card {
-    width: calc((100% - #{$space-section}) / 2);
-  }
-}
-@media (min-width: 1000px) {
-  .member-card {
-    width: calc((100% - #{$space-section} * 2) / 3);
-  }
-}
-.quick-dates {
-  flex-direction: row;
-  flex-wrap: wrap;
-}
+.member-page { color: #27272a; }
+.member-page-dark { color: #eeeeef; }
+.toolbar { flex-direction: row; align-items: center; }
+.metrics { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: $space-inline; }
+.member-metric { display: flex; flex-direction: row; align-items: center; gap: $space-inline; padding: $space-card; min-width: 0; background-color: #ffffff; border: 1px solid #e4e7ec; border-radius: 16px; }
+.metric-icon { width: 36px; height: 36px; flex-shrink: 0; border-radius: 12px; align-items: center; justify-content: center; }
+.tone-green { background-color: rgba(53, 168, 121, 0.10); }
+.tone-orange { background-color: rgba(237, 137, 54, 0.10); }
+.tone-amber { background-color: rgba(217, 161, 38, 0.10); }
+.tone-blue { background-color: rgba(66, 133, 237, 0.10); }
+.metric-copy { min-width: 0; gap: $space-detail; }
+.metric-label { color: #838995; font-size: 12px; line-height: 16px; }
+.metric-value { font-size: 24px; line-height: 24px; font-weight: 700; }
+.metric-money { color: #4285ed; font-size: 16px; overflow-wrap: anywhere; }
+.metric-alert { color: #ed8936; }
+.member-filters { padding: $space-card; background-color: #ffffff; border: 1px solid #e4e7ec; border-radius: 16px; gap: $space-inline; }
+.search-row { flex-direction: row; align-items: center; gap: $space-inline; }
+.filter-row { flex-direction: row; gap: $space-inline; }
+.member-grid { display: flex; flex-direction: row; flex-wrap: wrap; gap: $space-section; }
+.member-card { display: flex; flex-direction: column; width: calc((100% - #{$space-section}) / 2); min-width: 0; box-sizing: border-box; margin: 0; padding: $space-card; gap: $space-section; color: #27272a; text-align: left; line-height: normal; background-color: #ffffff; border: 1px solid #e4e7ec; border-radius: 16px; }
+.card-heading { flex-direction: row; align-items: center; gap: $space-detail; min-height: 22px; }
+.member-title { flex: 1; min-width: 0; font-size: 16px; font-weight: 700; line-height: 22px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.member-provider { color: #858c98; font-size: 12px; margin-top: -$space-inline; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.member-tags { flex-direction: row; flex-wrap: wrap; align-items: center; gap: $space-detail; }
+.member-status { font-size: 11px; font-weight: 600; padding: $space-detail; line-height: 14px; border-radius: 6px; }
+.member-status-active { color: #35a879; background-color: rgba(53, 168, 121, 0.10); }
+.member-status-expiring { color: #ce9424; background-color: rgba(217, 161, 38, 0.10); }
+.member-status-expired { color: #9097a2; background-color: rgba(139, 143, 153, 0.10); }
+.category-tag { flex-direction: row; align-items: center; gap: $space-detail; padding: $space-detail; font-size: 11px; line-height: 14px; background-color: #f1f3f6; border-radius: 6px; color: #667080; }
+.category-label { font-size: 11px; line-height: 14px; }
+.expiry-date-text { font-size: 11px; line-height: 18px; color: #858c98; }
+.category-tag-dark { background-color: #292c32; color: #c0c4cd; }
+.expiry-row { flex-direction: row; flex-wrap: wrap; align-items: center; gap: $space-detail; margin-top: auto; }
+.expiry-date { flex-direction: row; align-items: center; gap: $space-detail; font-size: 11px; color: #858c98; line-height: 18px; }
+.remaining-days { margin-left: auto; padding: 0 $space-detail; border-radius: 8px; font-size: 11px; font-weight: 600; line-height: 20px; }
+.member-price { flex-direction: row; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: $space-detail; padding-top: $space-inline; border-top: 1px dashed #e4e7ec; }
+.member-price-dark { border-color: #30343b; }
+.member-secondary { color: #858c98; font-size: 11px; line-height: 18px; }
+.monthly-price { margin-left: auto; font-size: 12px; line-height: 18px; font-weight: 700; }
+.surface-dark { background-color: #1c1e22; border-color: #33363b; }
+.text-dark { color: #eeeeef; }
+.member-error { color: #e05252; }
+.quick-dates { flex-direction: row; flex-wrap: wrap; }
+.modal-actions { margin-top: $space-section; }
+.action-spacer { flex: 1; }
+/* #ifdef WEB || MP-WEIXIN */
+.member-card::after { border: 0; }
+/* #endif */
+/* #ifdef WEB */
+.member-card:focus-visible { outline: 2px solid #4285ed; outline-offset: 2px; }
+/* #endif */
 @media (min-width: 700px) {
-  .metrics {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-  }
+  .metrics { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .member-card { width: calc((100% - #{$space-section} * 2) / 3); }
+}
+@media (min-width: 1100px) {
+  .member-card { width: calc((100% - #{$space-section} * 3) / 4); }
 }
 </style>

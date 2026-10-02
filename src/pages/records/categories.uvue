@@ -2,7 +2,7 @@
 import { computed, ref } from 'vue';
 import { onShow } from '@dcloudio/uni-app';
 import CategoryIcon from '../../components/CategoryIcon.uvue';
-import iconCatalog from '../../services/icons/category-icons.json';
+import iconCatalog, { exerciseIconPresets } from '../../services/icons/catalog.ts';
 import MobilePage from '../../components/MobilePage.uvue';
 import PageHeader from '../../components/PageHeader.uvue';
 import MobileButton from '../../components/MobileButton.uvue';
@@ -29,7 +29,9 @@ const rows = ref<any[]>([]),
   busyId = ref(''),
   saved = ref(false);
 const statusFilter = ref('全部');
-const iconOptions = Object.keys(iconCatalog.icons);
+const iconOptions = computed(() => type.value === 'exercise_type'
+  ? [...exerciseIconPresets, ...Object.keys(iconCatalog.icons).filter(icon => !exerciseIconPresets.includes(icon))]
+  : Object.keys(iconCatalog.icons));
 const visibleRows = computed(() => rows.value.map((item, index) => ({item, index})).filter(({item}) => statusFilter.value === '全部' || (statusFilter.value === '已启用' ? item.status !== '1' : item.status === '1')));
 let generation = 0;
 const scope = createRecordScope((clear) => {
@@ -161,7 +163,7 @@ async function move(index, offset) {
           icon="ant-design:plus-outlined"
           :disabled="loading || !!error"
           @click="open()" /></view
-      ><FormField label="状态" kind="selector" :options="['全部', '已启用', '已禁用']" v-model="statusFilter" /><PageState :loading="loading" :error="error" :empty="!rows.length" @retry="load"
+      ><FormField label="状态" kind="selector" :options="['全部', '已启用', '已禁用']" v-model="statusFilter" /><PageState skeleton="list" :loading="loading" :error="error" :empty="!rows.length" @retry="load"
         ><view
           v-for="{item, index} in visibleRows"
           :key="item.id"

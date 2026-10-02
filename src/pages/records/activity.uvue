@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import ContentSkeleton from '../../components/ContentSkeleton.uvue';
 import { computed, ref } from 'vue';
 import { onShow } from '@dcloudio/uni-app';
 import MobilePage from '../../components/MobilePage.uvue';
@@ -161,13 +162,15 @@ async function remove(item) {
   <MobilePage :refreshing="loading" @refresh="load"
     ><view class="activity-page ui-page-body" :class="{ 'activity-page-dark': isDark }"
       ><PageHeader title="活动" :back="true" @back="uni.navigateBack()" />
-      <PageState :loading="loading" :error="error" :empty="!filtered.length" @retry="load">
+      <PageState skeleton="list" :loading="loading" :error="error" :empty="!filtered.length" @retry="load">
+<template #loading><view class="activity-grid"><view v-for="n in 6" :key="n" class="activity-card" :class="{ 'card-dark': isDark }"><view class="activity-cover"><ContentSkeleton variant="cover" /></view><view class="activity-meta"><ContentSkeleton variant="tile" /></view></view></view></template>
+
         <view class="activity-grid">
           <view v-for="item in filtered" :key="item.id" class="activity-card" :class="{ 'card-dark': isDark }"
-            role="button" :aria-label="'编辑活动：' + item.performanceName" tabindex="0" @click="open(item)" @keydown.enter="open(item)">
+            role="button" :aria-label="'编辑活动：' + item.performanceName" tabindex="0" @click="open(item)" @keydown.enter.self="open(item)" @keydown.space.self.prevent="open(item)">
             <view class="activity-cover">
               <RecordCover :file-id="item.files?.[0]?.id || ''" placeholder="🎵" />
-              <text class="activity-type">{{ typeName(item.performanceType) }}</text>
+              <text class="activity-type" :class="String(item.performanceType) === '1' ? 'activity-concert' : 'activity-other'">{{ typeName(item.performanceType) }}</text>
               <view class="activity-caption"><text class="activity-title">{{ item.performanceName }}</text></view>
             </view>
             <view class="activity-meta">
@@ -256,13 +259,22 @@ async function remove(item) {
 }
 .activity-grid { flex-direction: row; flex-wrap: wrap; gap: $space-section; }
 .activity-card { width: calc((100% - #{$space-section}) / 2); min-width: 0; overflow: hidden; border-radius: 12px; background-color: #ffffff; }
-.activity-cover { position: relative; height: 150px; }
+.activity-cover { position: relative; aspect-ratio: 1.6; }
 .activity-type { position: absolute; top: $space-inline; left: $space-inline; padding: $space-micro $space-detail; border-radius: 4px; color: #ffffff; background-color: #5986db; font-size: 11px; }
 .activity-caption { position: absolute; bottom: 0; left: 0; right: 0; padding: $space-card; background-image: linear-gradient(transparent, rgba(0,0,0,0.65)); }
-.activity-title { color: #ffffff; font-size: 14px; line-height: 20px; }
+.activity-title { color: #ffffff; font-size: 14px; line-height: 20px; font-weight: 600; overflow-wrap: anywhere; }
 .activity-meta { padding: $space-card; gap: $space-detail; }
-.meta-row { flex-direction: row; align-items: center; gap: $space-detail; }
-@media (min-width: 600px) { .activity-card { width: calc((100% - #{$space-section * 2}) / 3); } .activity-cover { height: 190px; } }
+.meta-row { flex-direction: row; align-items: flex-start; gap: $space-detail; min-width: 0; }
+@media (min-width: 600px) { .activity-card { width: calc((100% - #{$space-section * 2}) / 3); } }
 .footer-spacer { flex: 1; }
 .card-dark { background-color: #1c1e22; }
+
+.activity-card { border: 1px solid rgba(128,138,156,.12); }
+.activity-concert { background-color: #5986db; }
+.activity-other { background-color: #cd8d55; }
+.secondary { flex: 1; min-width: 0; white-space: normal; overflow-wrap: anywhere; font-size: 12px; line-height: 18px; }
+@media (min-width: 1000px) { .activity-card { width: calc((100% - #{$space-section * 3}) / 4); } }
+/* #ifdef WEB */
+.activity-card:focus-visible { outline: 2px solid #5986db; outline-offset: 2px; }
+/* #endif */
 </style>

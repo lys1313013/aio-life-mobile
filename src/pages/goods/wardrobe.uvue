@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import ContentSkeleton from '../../components/ContentSkeleton.uvue';
 import { computed, ref, onUnmounted, watch } from 'vue';
 import { onShow, onHide } from '@dcloudio/uni-app';
 import MobilePage from '../../components/MobilePage.uvue';
@@ -9,6 +10,7 @@ import ConfirmAction from '../../components/ConfirmAction.uvue';
 import FormField from '../../components/FormField.uvue';
 import AdaptiveModal from '../../components/AdaptiveModal.uvue';
 import MetricCard from '../../components/MetricCard.uvue';
+import AppIcon from '../../components/AppIcon.uvue';
 import {
   loadWardrobe,
   itemDetail,
@@ -287,40 +289,45 @@ function chooseCategory(value) {
     ><PageHeader title="衣柜" back @back="uni.navigateBack()" /><view
       class="wardrobe ui-page-body"
       :class="themeClass('wardrobe')"
-      ><view class="tabs ui-row ui-section"
+      ><view class="section-tabs ui-row ui-section"
         ><MobileButton
           v-for="tab in ['衣物', '分类']"
           :key="tab"
           :label="tab"
           :variant="section === tab ? 'primary' : 'quiet'"
-          @click="section = tab" /><MobileButton
+          @click="section = tab" /><view class="toolbar-space" /><MobileButton
           :label="section === '衣物' ? '新增衣物' : '新增衣柜分类'"
           icon="ant-design:plus-outlined"
           @click="section === '衣物' ? openItem() : openCategory()" /></view
       ><view class="metrics ui-row ui-section"
-        ><MetricCard label="衣物" :value="String(stats.totalCount || 0)" /><MetricCard
+        ><MetricCard :loading="loading && !items.length"
+          class="metric-wide"
           label="总价值"
           :value="String(stats.totalValue || 0)"
-          unit="元" /><MetricCard
+          unit="元" /><MetricCard :loading="loading && !items.length" label="衣物" :value="String(stats.totalCount || 0)" /><MetricCard :loading="loading && !items.length"
           label="均价"
           :value="String(stats.avgPrice || 0)"
           unit="元" /></view
       ><view class="tabs ui-row ui-section"
-        ><text class="muted">季节分布</text
+        ><text class="muted">季节</text
         ><text v-for="name in seasonLabels" :key="name" class="season-count"
-          >{{ name }} {{ stats.seasonCount[name] }}</text
+          >{{ name }} <text v-if="!loading || items.length">{{ stats.seasonCount[name] }}</text></text
         ></view
-      ><PageState
+      ><PageState skeleton="media"
         :loading="loading"
         :error="error"
         :empty="!loading && !items.length && section === '衣物'"
         @retry="load"
-        ><template v-if="section === '衣物'"
+        >
+<template #loading><template v-if="section === '衣物'"><ContentSkeleton variant="form" :rows="2" /><view class="item-grid ui-gap-md ui-section" ><view v-for="n in 6" :key="n" class="item-card ui-pad-card ui-gap-sm" :class="themeClass('item-card')"><view class="item-photo loading-photo"><ContentSkeleton variant="cover" /></view><ContentSkeleton variant="tile" /></view></view></template><ContentSkeleton v-else variant="list" /></template>
+<template v-if="section === '衣物'"
           ><FormField
             label="搜索衣物"
+            hide-label
             v-model="keyword"
             placeholder="名称、颜色、品牌" /><FormField
             label="筛选分类"
+            hide-label
             kind="selector"
             :model-value="filterName"
             :options="categoryNames"
@@ -346,25 +353,17 @@ function chooseCategory(value) {
                 :src="photos[row.fileId] || ''"
                 mode="aspectFill"
                 :aria-label="row.name + '照片'"
-                @click="preview(row.fileId)" /><MobileButton
+                @click="preview(row.fileId)" /><view v-else class="item-photo item-placeholder"><AppIcon name="ant-design:skin-outlined" :size="36" color="#8b8f99" /></view><MobileButton
                 v-if="row.fileId && (photoBusy[row.fileId] || photoErrors[row.fileId])"
                 :label="photoErrors[row.fileId] ? '重试衣物照片' : '加载衣物照片'"
                 :loading="photoBusy[row.fileId]"
-                @click="photo(row.fileId)" /><text class="item-title">{{ row.name }}</text
+                @click="photo(row.fileId)" /><button role="button" class="item-title-button" :aria-label="'编辑衣物' + row.name" :disabled="detailBusy === row.id" :aria-busy="detailBusy === row.id" @click="edit(row)"><text class="item-title">{{ row.name }}</text></button
               ><text class="muted">{{
                 [row.categoryName, row.color, row.brand, row.size, row.season]
                   .filter(Boolean)
                   .join(' · ')
               }}</text
-              ><text>{{ row.price == null ? '' : row.price + '元' }}</text
-              ><view class="tools ui-row"
-                ><MobileButton
-                  :label="'编辑衣物' + row.name"
-                  icon="ant-design:edit-outlined"
-                  :loading="detailBusy === row.id"
-                  @click="edit(row)" /><ConfirmAction
-                  :label="'删除衣物' + row.name"
-                  :action="() => removeItem(row)" /></view></view></view></template
+              ><view class="item-footer ui-row"><text class="item-price">{{ row.price == null ? '—' : '¥ ' + row.price }}</text><ConfirmAction :label="'删除衣物' + row.name" :action="() => removeItem(row)"><template #default="{ open: confirm, busy: removing }"><button role="button" class="item-icon-button" :aria-label="'删除衣物' + row.name" :disabled="removing" @click="confirm"><AppIcon name="ant-design:delete-outlined" :size="18" color="#8b8f99" /></button></template></ConfirmAction></view></view></view></template
         ><template v-else
           ><view
             v-for="row in categories"
@@ -493,11 +492,13 @@ function chooseCategory(value) {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
+.metric-wide { grid-column: 1 / -1; }
 .item-grid {
   flex-direction: row;
   flex-wrap: wrap;
 }
 .item-card {
+  min-width: 0;
   width: calc((100% - #{$space-section}) / 2);
   box-sizing: border-box;
   border-radius: 16px;
@@ -506,6 +507,7 @@ function chooseCategory(value) {
 .item-card-dark {
   background-color: #1c1e22;
 }
+.loading-photo { position: relative; }
 .item-photo {
   height: 160px;
   width: 100%;
@@ -516,11 +518,15 @@ function chooseCategory(value) {
   color: #808692;
   padding: $space-detail $space-inline;
   border-radius: 8px;
-  background-color: #eef0f3;
+  background-color: rgba(128, 134, 146, 0.12);
 }
 .item-title {
   font-weight: 600;
-  font-size: 16px;
+  font-size: 15px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
 }
 .muted {
   color: #808692;
@@ -548,12 +554,55 @@ function chooseCategory(value) {
 }
 @media (min-width: 700px) {
   .item-card {
+  min-width: 0;
     width: calc((100% - #{$space-section} * 2) / 3);
   }
 }
 @media (min-width: 700px) {
+  .metric-wide { grid-column: auto; }
   .metrics {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
+}
+.section-tabs { align-items: center; }
+.toolbar-space { flex: 1; }
+.item-placeholder {
+  align-items: center;
+  justify-content: center;
+  background: rgba(128, 134, 146, 0.06);
+}
+.item-title-button {
+  display: flex;
+  flex-direction: row;
+  justify-content: flex-start;
+  align-items: center;
+  width: 100%;
+  min-height: $space-controlMin;
+  padding: 0;
+  margin: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  line-height: 22px;
+}
+.item-footer { align-items: center; justify-content: space-between; }
+.item-price { font-size: 14px; font-weight: 600; }
+.item-icon-button {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  width: $space-controlMin;
+  height: $space-controlMin;
+  padding: 0;
+  margin: 0;
+  border: 0;
+  background: transparent;
+}
+/* #ifdef WEB || MP-WEIXIN */
+.item-title-button::after, .item-icon-button::after { border: 0; }
+/* #endif */
+@media (min-width: 1000px) {
+  .item-card { width: calc((100% - #{$space-section} * 3) / 4); }
 }
 </style>

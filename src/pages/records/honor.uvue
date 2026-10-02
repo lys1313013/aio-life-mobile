@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import ContentSkeleton from '../../components/ContentSkeleton.uvue';
 import { computed, onUnmounted, ref } from 'vue';
 import { onShow } from '@dcloudio/uni-app';
 import MobilePage from '../../components/MobilePage.uvue';
@@ -167,25 +168,27 @@ function categoryName(item) {
   <MobilePage :refreshing="refreshing" @refresh="load(true)"
     ><view class="honor-page ui-page-body" :class="{ 'honor-page-dark': isDark }"
       ><PageHeader title="荣誉" :back="true" @back="uni.navigateBack()" /><view class="ui-toolbar"
-        ><FormField compact stretch label="搜索" v-model="keyword" /><MobileButton
+        ><FormField compact stretch hide-label label="搜索" placeholder="搜索标题、描述、机构…" v-model="keyword" /><MobileButton
           label="重置筛选"
           icon="ant-design:reload-outlined" variant="quiet"
           @click="keyword = ''; categoryFilter = '全部分类'; levelFilter = '全部级别'" /></view
       ><view class="filters ui-field-row"
-        ><FormField compact stretch
+        ><FormField compact stretch hide-label
           label="分类"
           kind="selector"
           v-model="categoryFilter"
-          :options="['全部分类', ...categories.map((c) => c.name)]" /><FormField compact stretch
+          :options="['全部分类', ...categories.map((c) => c.name)]" /><FormField compact stretch hide-label
           label="级别"
           kind="selector"
           v-model="levelFilter"
           :options="['全部级别', ...levelLabels]" /></view
       >
-      <PageState :loading="loading" :error="error" :empty="!filtered.length" @retry="load()">
+      <PageState skeleton="list" :loading="loading" :error="error" :empty="!filtered.length" @retry="load()">
+<template #loading><view class="honor-grid" ><view v-for="n in 6" :key="n" class="honor-card ui-pad-card" :class="{ 'honor-card-dark': isDark }"><ContentSkeleton variant="tile" /></view></view></template>
+
         <view class="honor-grid">
           <view v-for="item in filtered" :key="item.id" class="honor-card ui-pad-card" :class="{ 'honor-card-dark': isDark }"
-            role="button" :aria-label="'编辑荣誉：' + item.title" tabindex="0" @click="open(item)" @keydown.enter="open(item)">
+            role="button" :aria-label="'编辑荣誉：' + item.title" tabindex="0" @click="open(item)" @keydown.enter.self="open(item)" @keydown.space.self.prevent="open(item)">
             <view class="honor-badges ui-row">
               <text v-if="item.level" class="honor-badge level-badge">{{ levelLabels[levels.indexOf(item.level)] || item.level }}</text>
               <text v-if="categoryName(item)" class="honor-badge">{{ categoryName(item) }}</text>
@@ -193,9 +196,9 @@ function categoryName(item) {
             </view>
             <text class="honor-title">{{ item.title }}</text>
             <text v-if="item.issuer" class="honor-secondary">{{ item.issuer }}</text>
-            <text v-if="item.description" class="honor-content">{{ item.description }}</text>
-            <text v-if="item.tags" class="honor-secondary">{{ textTags(item.tags) }}</text>
-            <view class="honor-date ui-row"><AppIcon name="ant-design:calendar-outlined" :size="13" color="#8b8f99" /><text class="honor-secondary">{{ item.honorDate?.slice(0, 10) }}</text></view>
+            <text v-if="item.description" class="honor-content" :class="{ 'honor-content-dark': isDark }">{{ item.description }}</text>
+            <view v-if="item.tags" class="honor-tags"><text v-for="tag in textTags(item.tags).split(/[,，]/).filter(Boolean)" :key="tag" class="honor-tag">{{ tag }}</text></view>
+            <view class="honor-date ui-row"><AppIcon name="ant-design:calendar-outlined" :size="13" color="#8b8f99" /><text class="honor-secondary">{{ item.honorDate?.slice(0, 10) }}</text><view class="footer-spacer" /><AppIcon v-if="item.isPublic !== 1" name="ant-design:lock-outlined" :size="13" color="#b77927" aria-label="私密" /></view>
           </view>
         </view>
       </PageState
@@ -290,12 +293,20 @@ function categoryName(item) {
   color: #e05252;
 }
 .honor-grid { flex-direction: row; flex-wrap: wrap; gap: $space-section; }
-.honor-card { width: calc((100% - #{$space-section}) / 2); min-width: 0; gap: $space-inline; }
+.honor-card { box-sizing: border-box; width: calc((100% - #{$space-section}) / 2); min-width: 0; gap: $space-inline; }
 .honor-badges { flex-wrap: wrap; align-items: center; }
 .honor-badge { font-size: 11px; line-height: 18px; color: #4177c1; background-color: rgba(74,144,226,0.12); border-radius: 4px; padding: 0 $space-detail; }
 .level-badge { color: #b77927; background-color: rgba(229,173,66,0.12); }
-.honor-title { flex: none; line-height: 24px; }
-.honor-date { align-items: center; margin-top: $space-inline; }
-@media (min-width: 600px) { .honor-card { width: calc((100% - #{$space-section * 2}) / 3); } }
+.honor-title { flex: none; line-height: 24px; word-break: break-word; }
+.honor-date { align-items: center; margin-top: auto; padding-top: $space-inline; }
+@media (min-width: 600px) { .honor-card { box-sizing: border-box; width: calc((100% - #{$space-section * 2}) / 3); } }
 .footer-spacer { flex: 1; }
+.honor-tags { flex-direction: row; flex-wrap: wrap; gap: $space-detail; }
+.honor-tag { font-size: 11px; line-height: 18px; color: #8b8f99; border-radius: 4px; padding: 0 $space-detail; background-color: rgba(128,138,153,0.1); }
+.honor-content { color: #717782; word-break: break-word; max-height: 66px; overflow: hidden; }
+.honor-content-dark { color: #a9aeb7; }
+@media (min-width: 1000px) { .honor-card { width: calc((100% - #{$space-section * 3}) / 4); } }
+/* #ifdef WEB */
+.honor-card:focus-visible { outline: 2px solid #417ce8; outline-offset: 2px; }
+/* #endif */
 </style>

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import ContentSkeleton from '../../components/ContentSkeleton.uvue';
 import AppIcon from '../../components/AppIcon.uvue'
 import SecondaryUnlock from "../../components/SecondaryUnlock.uvue";
 import { isDark, themeClass } from '../../services/theme.ts'
@@ -7,7 +8,7 @@ const refreshTheme = useRefreshTheme()
 import { nextTick, computed, reactive, ref } from 'vue'
 import { onShow, onHide, onUnload, onResize } from '@dcloudio/uni-app'
 import DashboardAction from '../../components/DashboardAction.uvue'
-import iconCatalog from '../../services/icons/category-icons.json'
+import iconCatalog from '../../services/icons/catalog.ts'
 import DashboardSection from '../../components/DashboardSection.uvue'
 // #ifndef WEB
 import PageHeader from '../../components/PageHeader.uvue'
@@ -64,30 +65,15 @@ const exercise = ref<ExercisePage>({ days: [] })
 const commits = ref<Commit[]>([])
 const time = ref(timeSummary([], []))
 const timeDonutLabels = computed(() => summaryDonutLabels(time.value.groups))
-// 与 Web 的卡片高度上限一致；手机列表按内容收紧，超出后在卡片内滚动。
+// 卡片高度只由视口决定，加载、失败和内容状态共用，避免请求完成时页面跳动。
 function sectionInset(section: string) {
   return spacing.controlMin + (section === 'exercise' ? 0 : spacing.fieldLabel) + spacing.card + spacing.hairline * 2
 }
 function sectionHeight(section: string) {
   const limit = viewportWidth.value >= 1024 ? 280 : viewportWidth.value >= 640 ? 250 : 240
-  if (viewportWidth.value >= 768) return limit
-  if (states[section].error || (states[section].loading && !refreshing.value)) return 196
-  const inset = sectionInset(section)
   // 窄屏图表与记录分两行，记录区域最多显示两行，保持 44px 点击区。
-  if (section === 'time') return viewportWidth.value < 375 ? inset + 164 + spacing.controlMin * 2 : limit
-  if (section === 'links') {
-    if (links.value.length === 0) return 196
-    let contentHeight = 0
-    for (let index = 0; index < links.value.length; index += 5) {
-      const hasWebLink = links.value.slice(index, index + 5).some(link => !nativeDestination(link.path))
-      contentHeight += quickIconSize.value + 18 + spacing.detail + spacing.inline * 2 + (hasWebLink ? 16 + spacing.micro : 0)
-    }
-    return Math.min(limit, inset + contentHeight)
-  }
-  if (section === 'watched') return Math.min(limit, inset + Math.max(1, watched.value.length) * 56)
-  if (section === 'thoughts') return thoughts.value.length === 0 ? 120 : Math.min(limit, inset + thoughts.value.length * 32)
-  if (section === 'exercise') return Math.min(limit, inset + Math.max(1, exercise.value.days.reduce((count, day) => count + day.items.length, 0)) * 40)
-  return Math.min(limit, inset + Math.max(1, commits.value.length) * 68)
+  if (section === 'time' && viewportWidth.value < 375) return sectionInset(section) + 164 + spacing.controlMin * 2
+  return limit
 }
 const timeDate = ref('')
 const nowMinutes = ref(0)
@@ -446,7 +432,7 @@ function trendLines(points) {
             :key="n"
             class="overview-cell ui-pad-xs"
             ><view class="overview-card placeholder-card ui-pad-card"
-               :class="themeClass('overview-card')"><text class="subtle">加载中…</text></view
+               :class="themeClass('overview-card')"><ContentSkeleton variant="summary" label="正在加载概览" /></view
             ></view
           >
           <view
@@ -481,7 +467,7 @@ function trendLines(points) {
                 ><text class="stat-caption" :class="themeClass('stat-caption')">{{
                   item.error
                     ? '加载失败，点击重试'
-                    : item.totalTitle || (item.loading ? '加载中…' : '')
+                    : item.totalTitle || ''
                 }}</text
                 ><text class="stat-total" :class="themeClass('stat-total')">{{
                   item.totalValue == null ? '—' : item.totalValue
@@ -494,7 +480,7 @@ function trendLines(points) {
         <view class="section-grid ui-mt-xs">
           <view class="section-cell ui-pad-xs"
             ><DashboardSection
-              title="时迹"
+              title="时迹" skeleton="timeline"
               :height="sectionHeight('time')"
               :loading="states.time.loading && !refreshing"
               :error="states.time.error"
@@ -557,7 +543,7 @@ function trendLines(points) {
           >
           <view class="section-cell ui-pad-xs"
             ><DashboardSection
-              title="快捷导航"
+              title="快捷导航" skeleton="grid"
               :height="sectionHeight('links')"
               :loading="states.links.loading && !refreshing"
               :error="states.links.error"

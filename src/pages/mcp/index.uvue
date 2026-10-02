@@ -102,15 +102,35 @@ async function run() {
     ><PageHeader title="MCP 工具" back @back="uni.navigateBack()" /><view
       class="body ui-page-body"
       :class="themeClass('body')"
-      ><view class="guide ui-card" :class="themeClass('guide')"><view class="ui-row guide-heading"><text class="title">配置指南</text><MobileButton label="配置指南" icon="ant-design:question-circle-outlined" variant="quiet" @click="guideOpen = !guideOpen" /></view><view v-if="guideOpen" class="guide-body ui-gap-sm"><text class="description">服务地址</text><text selectable>{{ serviceAddress }}</text><text class="description">传输类型</text><text>Streamable HTTP</text><text class="description">认证方式</text><text selectable>Authorization: Bearer &lt;API Key&gt;</text><MobileButton label="管理 API Key" icon="ant-design:key-outlined" variant="quiet" @click="uni.navigateTo({url:'/pages/profile/preferences?section=keys'})" /><text class="description">客户端配置</text><text class="config-code" selectable>{{ clientConfig }}</text></view></view><text class="description ui-section">共 {{ tools.length }} 个工具</text><FormField label="搜索工具名称或描述" v-model="keyword" /><PageState
-        :loading="loading"
-        :error="error"
-        :empty="!loading && !filtered.length"
-        @retry="load"
-        ><view v-for="tool in filtered" :key="tool.name" class="tool ui-card" :class="themeClass('tool')"
-          ><text class="title">{{ tool.name }}</text
-          ><text class="description">{{ Object.keys(tool.inputSchema?.properties || {}).length }} 参数</text><text>{{ tool.description }}</text
-          ><MobileButton label="输入参数并调用" icon="ant-design:play-circle-outlined" @click="open(tool)" /></view></PageState></view
+      ><view class="tool-toolbar ui-toolbar">
+        <FormField compact stretch hide-label label="搜索工具名称或描述" placeholder="搜索工具名称或描述" v-model="keyword" />
+        <MobileButton label="配置指南" icon="ant-design:question-circle-outlined" variant="quiet" @click="guideOpen = !guideOpen" />
+      </view>
+      <view v-if="guideOpen" class="guide ui-card" :class="themeClass('guide')">
+        <view class="guide-body ui-gap-sm">
+          <text class="title">配置指南</text>
+          <text class="description">服务地址</text><text class="config-code" selectable>{{ serviceAddress }}</text>
+          <text class="description">传输类型</text><text>Streamable HTTP</text>
+          <text class="description">认证方式</text><text selectable>Authorization: Bearer &lt;API Key&gt;</text>
+          <MobileButton label="管理 API Key" icon="ant-design:key-outlined" variant="quiet" @click="uni.navigateTo({url:'/pages/profile/preferences?section=keys'})" />
+          <text class="description">客户端配置</text><text class="config-code" selectable>{{ clientConfig }}</text>
+        </view>
+      </view>
+      <text class="description ui-section">{{ keyword ? filtered.length + ' / ' : '' }}{{ tools.length }} 个工具</text>
+      <PageState skeleton="list" :loading="loading" :error="error" :empty="!loading && !filtered.length" @retry="load">
+        <view class="tool-grid">
+          <view v-for="tool in filtered" :key="tool.name" class="tool ui-card" :class="themeClass('tool')">
+            <view class="tool-heading ui-row">
+              <view class="tool-identity">
+                <text class="tool-name" :class="themeClass('tool-name')">{{ tool.name }}</text>
+                <text class="parameter-count" :class="themeClass('parameter-count')">{{ Object.keys(tool.inputSchema?.properties || {}).length }} 参数</text>
+              </view>
+              <MobileButton :label="'输入参数并调用 ' + tool.name" icon="ant-design:play-circle-outlined" variant="quiet" @click="open(tool)" />
+            </view>
+            <text class="tool-description" :class="themeClass('tool-description')">{{ tool.description }}</text>
+          </view>
+        </view>
+      </PageState></view
     ><AdaptiveModal v-if="current" :label="current.name" :busy="busy" @close="current = null"
       ><text class="title">{{ current.name }}</text
       ><text>{{ current.description }}</text><text v-if="!fields.length" class="description ui-section">该工具无需输入参数</text
@@ -150,7 +170,24 @@ async function run() {
 .body-dark {
   color: #e7e9ee;
 }
+.tool-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: $space-section;
+}
+.tool-heading { align-items: flex-start; }
+.tool-identity { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: $space-detail; }
+.tool-name { font-family: monospace; font-size: 14px; font-weight: 600; line-height: 20px; color: #2563b8; overflow-wrap: anywhere; }
+.tool-name-dark { color: #8cb4fb; }
+.parameter-count { padding: $space-micro $space-detail; border-radius: 4px; font-size: 11px; color: #547092; background-color: #edf3fc; }
+.parameter-count-dark { color: #a8bfdf; background-color: #263448; }
+.tool-description { color: #647084; font-size: 13px; line-height: 20px; overflow-wrap: anywhere; }
+.tool-description-dark { color: #a7b0bf; }
+@media (min-width: 768px) { .tool-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 .tool {
+  min-width: 0;
+  margin-bottom: 0;
+  gap: $space-inline;
   background-color: #ffffff;
   border-radius: 14px;
   display: flex;
