@@ -1,6 +1,7 @@
 const { test, expect } = require('@playwright/test');
 const { dashboardFixture } = require('./fixtures');
 const { pullDown } = require('./gestures');
+const pendingRequests = new WeakMap();
 
 function gate() {
   let release;
@@ -10,6 +11,7 @@ function gate() {
 
 async function setup(page) {
   const state = { pending: gate(), failLinks: false, empty: false, profiles: 0, watched: [{ id: '1', content: '模拟待办：整理本周记录', taskName: '生活计划', isCompleted: 0 }] };
+  pendingRequests.set(page, state);
   await page.addInitScript(() => localStorage.setItem('aio-life-mobile.access-token.v1', 'height-fixture'));
   await page.route('http://127.0.0.1:5180/api/**', async route => {
     const path = new URL(route.request().url()).pathname;
@@ -54,7 +56,10 @@ async function heights(page) {
   ])));
 }
 
-test.afterEach(async ({ page }) => { await page.unrouteAll({ behavior: 'ignoreErrors' }); });
+test.afterEach(async ({ page }) => {
+  pendingRequests.get(page)?.pending.release();
+  await page.unrouteAll({ behavior: 'wait' });
+});
 
 for (const width of [360, 390, 700, 768, 1440]) for (const theme of ['light', 'dark']) {
   test(`home cards size to content and stay stable on refresh ${width} ${theme}`, async ({ page }, info) => {
@@ -62,11 +67,11 @@ for (const width of [360, 390, 700, 768, 1440]) for (const theme of ['light', 'd
     await page.emulateMedia({ colorScheme: theme });
     const state = await setup(page);
     await page.goto('/#/pages/home/index');
-    await expect(page.locator('.section-loading')).toHaveCount(6);
+    await expect(page.locator('.dashboard-section').getByRole('status', { name: /^正在加载/ })).toHaveCount(6);
     const before = await heights(page);
     await page.screenshot({ path: info.outputPath('loading.png'), fullPage: true });
     state.pending.release();
-    await expect(page.locator('.section-loading')).toHaveCount(0);
+    await expect(page.locator('.dashboard-section').getByRole('status', { name: /^正在加载/ })).toHaveCount(0);
     await expect(page.locator('.task-row')).toHaveCount(1);
     const loaded = await heights(page);
     expectLoadedHeights(before, loaded, width);
@@ -89,7 +94,7 @@ test('home card height survives error, retry and empty content', async ({ page }
   state.failLinks = true;
   state.empty = true;
   await page.goto('/#/pages/home/index');
-  await expect(page.locator('.section-loading')).toHaveCount(6);
+  await expect(page.locator('.dashboard-section').getByRole('status', { name: /^正在加载/ })).toHaveCount(6);
   const before = await heights(page);
   state.pending.release();
   await expect(page.getByRole('button', { name: '重试快捷导航' })).toBeVisible();

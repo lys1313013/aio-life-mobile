@@ -36,7 +36,7 @@ test('统计卡和内容卡独立失败、重试恢复，隐藏闪念不暴露�
   await expect(page.getByText('1h30m')).toBeVisible();
   await expect(page.getByRole('button', { name: '重试GitHub', exact: true })).toBeVisible();
   await page.getByRole('button', { name: '重试GitHub', exact: true }).click();
-  await expect(page.getByRole('button', { name: 'GitHub', exact: true })).toBeEnabled();
+  await expect(page.getByRole('button', { name: '刷新GitHub', exact: true })).toBeEnabled();
   await page.getByRole('button', { name: '重试闪念' }).click();
   await expect(page.getByText('记录想法，让行动更清晰。')).toBeVisible();
   await expect(page.getByText('内容已隐藏')).toBeVisible();
