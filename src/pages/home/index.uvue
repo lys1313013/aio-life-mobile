@@ -358,6 +358,9 @@ function cardIcon(item: OverviewCard) {
   }
   return icons[item.type] || item.icon || 'lucide:layout-dashboard'
 }
+function openFeatureSearch() {
+  uni.switchTab({ url: '/pages/life/index' })
+}
 function linkIcon(link: QuickLink) {
   if (iconCatalog.icons[link.icon || ''] || link.icon?.startsWith('svg:')) return link.icon
   const icons = [
@@ -409,7 +412,12 @@ function trendLines(points) {
 <template>
   <view class="dashboard-page" :class="themeClass('dashboard-page')">
     <!-- #ifndef WEB -->
-    <PageHeader title="" />
+    <PageHeader title="">
+      <button role="button" class="home-search ui-row ui-px-card" :class="themeClass('home-search')" aria-label="查找功能" @click="openFeatureSearch">
+        <AppIcon name="lucide:search" :size="20" color="#8b8f99" />
+        <text class="home-search-label">搜索功能</text>
+      </button>
+    </PageHeader>
     <!-- #endif -->
     <scroll-view scroll-y :show-scrollbar="false" class="dashboard-scroll" :refresher-enabled="true" :refresher-triggered="refreshing" refresher-background="transparent" :refresher-default-style="refreshTheme" @refresherrefresh="pullRefresh"
       ><view class="dashboard-content ui-page-inset ui-tab-page-inset">
@@ -738,6 +746,23 @@ function trendLines(points) {
 /* H5 的实际滚动节点在内置组件内部，避免滚到底后把手势传给整页。 */
 .exercise-scroll :deep(.uni-scroll-view),
 .commits-scroll :deep(.uni-scroll-view) { overscroll-behavior-y: contain; }
+/* #endif */
+.home-search {
+  display: flex;
+  width: 100%;
+  max-width: 360px;
+  height: $space-controlMin;
+  align-items: center;
+  margin: 0;
+  border: 0;
+  border-radius: 14px;
+  background-color: #ffffff;
+  box-sizing: border-box;
+}
+.home-search-label { font-size: 15px; color: #8b8f99; }
+.home-search-dark { background-color: #1c1e22; }
+/* #ifdef MP-WEIXIN */
+.home-search::after { border: 0; }
 /* #endif */
 .dashboard-page {
   flex: 1;

@@ -249,7 +249,13 @@ function goToday() {
 
 <template>
   <view class="tab-page" :class="themeClass('tab-page')">
-    <PageHeader title="时迹" />
+    <PageHeader title="时迹">
+      <view class="date-switch" :class="themeClass('date-switch')">
+        <button role="button" class="date-step" :aria-label="mode === 'day' ? '前一天' : '上一周期'" @click="moveDate(-1)"><AppIcon name="ant-design:left-outlined" /></button>
+        <picker mode="date" :value="date" @change="selectDate"><view class="date-picker"><text class="date-value" :class="themeClass('date-value')">{{ date }}</text></view></picker>
+        <button role="button" class="date-step" :aria-label="mode === 'day' ? '后一天' : '下一周期'" @click="moveDate(1)"><AppIcon name="ant-design:right-outlined" /></button>
+      </view>
+    </PageHeader>
     <scroll-view
       scroll-y
       class="tab-scroll"
@@ -267,11 +273,6 @@ function goToday() {
               <AppIcon name="ant-design:filter-outlined" :color="selectedCategories.length ? '#5b8ff9' : '#8b8f99'" />
               <view v-if="selectedCategories.length" class="filter-dot" />
             </button>
-            <view class="date-switch" :class="themeClass('date-switch')">
-              <button role="button" class="date-step" :aria-label="mode === 'day' ? '前一天' : '上一周期'" @click="moveDate(-1)"><AppIcon name="ant-design:left-outlined" /></button>
-              <picker mode="date" :value="date" @change="selectDate"><view class="date-picker"><text class="date-value" :class="themeClass('date-value')">{{ date }}</text></view></picker>
-              <button role="button" class="date-step" :aria-label="mode === 'day' ? '后一天' : '下一周期'" @click="moveDate(1)"><AppIcon name="ant-design:right-outlined" /></button>
-            </view>
           </view>
           <view class="toolbar-view-group ui-row">
             <view class="period-tabs" :class="themeClass('period-tabs')">
@@ -425,9 +426,9 @@ function goToday() {
 @use '../../styles/spacing-tokens' as *;
 .time-content { max-width: $space-contentMax; }
 .time-toolbar-scroll { width: 100%; }
-// Eight 44px controls plus the date field; scrolling keeps every touch target reachable.
-.time-toolbar { width: 100%; min-width: 8 * $space-controlMin + 80px + 3 * $space-inline; flex-direction: row; flex-wrap: nowrap; align-items: center; justify-content: flex-end; margin-bottom: 0; }
-.time-toolbar-with-today { min-width: 9 * $space-controlMin + 80px + 4 * $space-inline; }
+// 日期上移到导航栏后，正文仅保留分类和视图切换。窄屏仍可横向滚动。
+.time-toolbar { width: 100%; min-width: 6 * $space-controlMin + 2 * $space-inline; flex-direction: row; flex-wrap: nowrap; align-items: center; justify-content: space-between; margin-bottom: 0; }
+.time-toolbar-with-today { min-width: 7 * $space-controlMin + 3 * $space-inline; }
 .toolbar-date-group, .toolbar-view-group { flex-direction: row; flex-wrap: nowrap; flex-shrink: 0; align-items: center; }
 .date-switch, .period-tabs, .view-tabs { flex-direction: row; flex-shrink: 0; align-items: center; background-color: #ffffff; border-radius: 6px; }
 .date-step, .period-tab, .view-tab, .filter-trigger, .today-button { display: flex; flex-direction: row; align-items: center; justify-content: center; flex-shrink: 0; width: 44px; height: 44px; line-height: 44px; margin: 0; padding: 0; border: 0; border-radius: 6px; background-color: transparent; color: #8b8f99; font-size: 14px; }

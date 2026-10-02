@@ -1,6 +1,8 @@
 <script setup lang="ts">
-import { onMounted } from 'vue'
+import { onMounted, onUnmounted, ref } from 'vue'
 import AppIcon from './AppIcon.uvue'
+import spacing from '../styles/spacing.json'
+import { navigationLayout } from '../services/navigation-layout.ts'
 import { refreshNativeTheme, themeClass } from '../services/theme.ts'
 onMounted(refreshNativeTheme)
 defineProps({
@@ -8,25 +10,37 @@ defineProps({
   back: { type: Boolean, default: false },
 })
 defineEmits(['back'])
-let statusBarHeight = 0
-let navigationHeight = 48
-// #ifdef APP
-statusBarHeight = uni.getWindowInfo().statusBarHeight || 0
-// #endif
-// #ifdef MP-WEIXIN
-const capsule = uni.getMenuButtonBoundingClientRect()
-statusBarHeight = uni.getWindowInfo().statusBarHeight || 0
-navigationHeight =
-  capsule.height + Math.max(capsule.top - statusBarHeight, 4) * 2
-// #endif
+const statusBarHeight = ref(0)
+const navigationHeight = ref(48)
+const rightInset = ref(spacing.page)
+function updateLayout() {
+  let windowInfo = { statusBarHeight: 0, windowWidth: 375 }
+  let capsule = null
+  // #ifdef APP
+  windowInfo = uni.getWindowInfo()
+  // #endif
+  // #ifdef MP-WEIXIN
+  windowInfo = uni.getWindowInfo()
+  capsule = uni.getMenuButtonBoundingClientRect()
+  // #endif
+  const layout = navigationLayout(windowInfo, capsule, spacing)
+  statusBarHeight.value = layout.statusBarHeight
+  navigationHeight.value = layout.navigationHeight
+  rightInset.value = layout.rightInset
+}
+updateLayout()
+onMounted(() => {
+  updateLayout()
+  uni.onWindowResize(updateLayout)
+})
+onUnmounted(() => uni.offWindowResize(updateLayout))
 </script>
 
 <template>
   <!-- 保留导航高度，固定定位后不遮住首屏内容。 -->
   <view class="navigation-placeholder" :style="{ height: statusBarHeight + navigationHeight + 'px' }">
   <view class="page-navigation" :style="{ paddingTop: statusBarHeight + 'px' }" :class="themeClass('page-navigation')">
-    <view class="navigation-row ui-header-inset" :style="{ height: navigationHeight + 'px' }">
-      <text class="navigation-title" :class="themeClass('navigation-title')">{{ title }}</text>
+    <view class="navigation-row ui-header-inset" :style="{ height: navigationHeight + 'px', paddingRight: rightInset + 'px' }">
       <button
         v-if="back"
         role="button"
@@ -37,6 +51,9 @@ navigationHeight =
       >
         <AppIcon name="ant-design:left-outlined" :size="20" />
       </button>
+      <view class="navigation-content" :class="{ 'navigation-content-wide': !back }">
+        <slot><text class="navigation-title" :class="themeClass('navigation-title')">{{ title }}</text></slot>
+      </view>
     </view>
   </view>
   </view>
@@ -57,22 +74,39 @@ navigationHeight =
   background-color: #f0f2f5;
 }
 .navigation-row {
+  display: flex;
   flex-direction: row;
   align-items: center;
   position: relative;
-
+  box-sizing: border-box;
+  gap: $space-detail;
+}
+.navigation-content {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  flex-direction: row;
+  align-items: center;
+  overflow: hidden;
+}
+.navigation-content-wide {
+  max-width: $space-contentMax - 2 * $space-page;
+  margin-left: auto;
+  margin-right: auto;
 }
 .navigation-title {
-  position: absolute;
-  left: 96px;
-  right: 96px;
-  text-align: center;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
   color: #242428;
   font-size: 17px;
   font-weight: 600;
   line-height: 32px;
 }
 .navigation-button {
+  flex-shrink: 0;
   display: flex;
   flex-direction: row;
   width: 44px;

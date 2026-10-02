@@ -208,7 +208,28 @@ async function save() {
 
 <template>
   <view class="tab-page life-page" :class="themeClass('life-page')">
-    <PageHeader title="生活" />
+    <PageHeader title="生活">
+      <view class="life-search life-header-search ui-row ui-px-card" :class="themeClass('life-surface')">
+        <LifeMenuIcon icon="lucide:search" color="#8b8f99" />
+        <input
+          v-model="query"
+          class="life-input"
+          :class="themeClass('life-ink')"
+          aria-label="搜索功能"
+          placeholder="搜索功能"
+          confirm-type="search"
+        />
+        <button
+          role="button"
+          v-if="query"
+          class="life-action"
+          aria-label="清空搜索"
+          @click="query = ''"
+        >
+          <AppIcon name="ant-design:close-outlined" />
+        </button>
+      </view>
+    </PageHeader>
     <scroll-view
       scroll-y
       class="tab-scroll"
@@ -219,26 +240,6 @@ async function save() {
       @refresherrefresh="refresh"
     >
       <view class="life-content ui-page-inset ui-tab-page-inset">
-        <view class="life-search ui-row ui-px-card ui-py-xs" :class="themeClass('life-surface')">
-          <LifeMenuIcon icon="lucide:search" color="#8b8f99" />
-          <input
-            v-model="query"
-            class="life-input"
-            :class="themeClass('life-ink')"
-            aria-label="搜索功能"
-            placeholder="搜索功能"
-            confirm-type="search"
-          />
-          <button
-            role="button"
-            v-if="query"
-            class="life-action"
-            aria-label="清空搜索"
-            @click="query = ''"
-          >
-<AppIcon name="ant-design:close-outlined" />
-</button>
-        </view>
         <view v-if="catalogLoading && !refreshing" class="life-state ui-px-sm ui-py-card"
           ><ContentSkeleton variant="grid" label="正在加载功能目录" /></view
         >
@@ -491,6 +492,13 @@ async function save() {
   border-radius: 14px;
 
   min-height: 48px;
+}
+.life-header-search {
+  width: 100%;
+  max-width: 360px;
+  min-height: $space-controlMin;
+  height: $space-controlMin;
+  box-sizing: border-box;
 }
 .life-input {
   flex: 1;
