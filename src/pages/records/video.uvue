@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import FormActions from '../../components/FormActions.uvue';
+import { isRequired, missingRequired } from '../../services/form-required.ts';
 import ContentSkeleton from '../../components/ContentSkeleton.uvue';
 import AppIcon from '../../components/AppIcon.uvue';
 import { computed, ref } from 'vue';
@@ -182,7 +184,7 @@ function updateEpisode(value) {
 }
 async function save() {
   if (saving.value || parsing.value) return;
-  if (!form.value.title.trim() || !form.value.url.trim()) {
+  if (missingRequired('video', form.value)) {
     formError.value = '请输入标题和视频链接';
     return;
   }
@@ -268,13 +270,13 @@ function play(url) {
           form = null;
         "
         ><view class="toolbar ui-row"
-          ><FormField compact stretch label="视频链接" v-model="form.url" /><MobileButton
+          ><FormField :required="isRequired('video', 'url')" compact stretch label="视频链接" v-model="form.url" /><MobileButton
             label="解析视频"
             icon="ant-design:reload-outlined"
             :loading="parsing"
             :disabled="saving"
             @click="parse" /></view
-        ><FormField label="标题" v-model="form.title" /><FormField
+        ><FormField :required="isRequired('video', 'title')" label="标题" v-model="form.title" /><FormField
           label="封面链接"
           v-model="form.cover" />
         <view class="ui-field-row">
@@ -303,8 +305,9 @@ function play(url) {
           label="视频简介"
           kind="textarea"
           v-model="form.description" /><text v-if="formError" class="error ui-section ui-type-body">{{ formError }}</text
-        ><view class="toolbar ui-row"
-          ><ConfirmAction v-if="form.id" label="删除视频" :action="() => remove(form)" /><MobileButton label="播放视频" icon="ant-design:play-circle-outlined" variant="quiet" @click="play(form.url)" /><MobileButton
+        ><FormActions>
+          <template #secondary><ConfirmAction v-if="form.id" label="删除视频" :action="() => remove(form)" /><MobileButton label="播放视频" icon="ant-design:play-circle-outlined" variant="quiet" @click="play(form.url)" /></template>
+          <MobileButton
             label="取消"
             variant="quiet"
             :disabled="saving || parsing"
@@ -315,7 +318,8 @@ function play(url) {
             :label="saved ? '重新读取' : '保存'"
             :loading="saving"
             :disabled="parsing"
-            @click="save" /></view></AdaptiveModal></view>
+            @click="save" />
+        </FormActions></AdaptiveModal></view>
     <template #fixed><FloatingActionButton label="新增视频" :disabled="loading || !!error" @click="open()" /></template>
   </MobilePage>
 </template>

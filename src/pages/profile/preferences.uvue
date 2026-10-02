@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { isRequired, missingRequired } from '../../services/form-required.ts';
 import { computed, ref, watch } from 'vue';
 import { onLoad, onHide, onShow } from '@dcloudio/uni-app';
 import PageHeader from '../../components/PageHeader.uvue';
@@ -163,7 +164,7 @@ async function save() {
     if (mode.value === 'password')
       await request('/auth/change-password', 'POST', passwordPayload(form.value));
     else if (mode.value === 'keys') {
-      if (!form.value.remark.trim()) throw new Error('请输入备注');
+      if (missingRequired('apiKey', form.value)) throw new Error('请输入备注');
       const data: any = await request('/api-key/generate', 'POST', {
         remark: form.value.remark.trim(),
         expireDays: [0, 1, 7, 30][expiry.indexOf(form.value.expiry)],
@@ -358,16 +359,16 @@ function back() {
       @close="editing = false"
     >
       <view v-if="mode === 'password'"
-        ><FormField label="旧密码" kind="password" v-model="form.oldPassword" /><FormField
+        ><FormField :required="isRequired('password', 'oldPassword')" label="旧密码" kind="password" v-model="form.oldPassword" /><FormField :required="isRequired('password', 'password')"
           label="新密码"
           kind="password"
-          v-model="form.password" /><FormField
+          v-model="form.password" /><FormField :required="isRequired('password', 'confirm')"
           label="确认密码"
           kind="password"
           v-model="form.confirm"
       /></view>
       <view v-if="mode === 'keys'"
-        ><FormField label="备注" v-model="form.remark" /><FormField
+        ><FormField :required="isRequired('apiKey', 'remark')" label="备注" v-model="form.remark" /><FormField
           label="有效期"
           kind="selector"
           :options="expiry"
@@ -379,9 +380,9 @@ function back() {
           kind="selector"
           :options="presetNames"
           :model-value="form.preset"
-          @update:model-value="usePreset" /><FormField
+          @update:model-value="usePreset" /><FormField :required="isRequired('llm', 'modelName', form)"
           label="模型名称"
-          v-model="form.modelName" /><FormField label="接口地址" v-model="form.baseUrl" /><FormField
+          v-model="form.modelName" /><FormField :required="isRequired('llm', 'baseUrl', form)" label="接口地址" v-model="form.baseUrl" /><FormField :required="isRequired('llm', 'apiKey', form)"
           label="API Key"
           kind="password"
           v-model="form.apiKey"

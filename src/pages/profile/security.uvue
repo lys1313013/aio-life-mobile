@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { isRequired, missingRequired } from '../../services/form-required.ts';
 import { computed, ref, watch } from 'vue';
 import { onShow, onHide } from '@dcloudio/uni-app';
 import PageHeader from '../../components/PageHeader.uvue';
@@ -135,7 +136,7 @@ async function save() {
   const token = session.token,
     v = revision;
   try {
-    if (!password.value) throw new Error('请输入密码');
+    if (missingRequired('security', { password: password.value }, 'password')) throw new Error('请输入密码');
     if (mode.value !== 'menus' && password.value !== confirmation.value)
       throw new Error('两次输入的密码不一致');
     if (mode.value === 'menus')
@@ -144,13 +145,13 @@ async function save() {
         secondaryPassword: password.value,
       });
     else if (mode.value === 'recovery') {
-      if (!code.value) throw new Error('请输入验证码');
+      if (missingRequired('security', { mode: mode.value, code: code.value }, 'code')) throw new Error('请输入验证码');
       await request('/auth/reset-secondary-password', 'POST', {
         code: code.value,
         password: password.value,
       });
     } else {
-      if (hasPassword.value && !oldPassword.value) throw new Error('请输入旧密码');
+      if (missingRequired('security', { mode: mode.value, hasPassword: hasPassword.value, oldPassword: oldPassword.value }, 'oldPassword')) throw new Error('请输入旧密码');
       await request('/auth/secondary-password', 'PUT', {
         password: password.value,
         ...(hasPassword.value ? { oldPassword: oldPassword.value } : {}),
@@ -262,19 +263,19 @@ function back() {
         v-if="mode === 'password' && hasPassword"
         label="旧密码"
         kind="password"
-        v-model="oldPassword" /><view v-if="mode === 'recovery'"
-        ><FormField label="邮箱验证码" v-model="code" /><MobileButton
+        :required="isRequired('security', 'oldPassword', { mode, hasPassword })" v-model="oldPassword" /><view v-if="mode === 'recovery'"
+        ><FormField label="邮箱验证码" :required="isRequired('security', 'code', { mode, hasPassword })" v-model="code" /><MobileButton
           label="发送验证码"
           :loading="sending"
           @click="sendCode" /></view
       ><FormField
         :label="mode === 'menus' ? '二级密码' : '新密码'"
         kind="password"
-        v-model="password" /><FormField
+        :required="isRequired('security', 'password', { mode, hasPassword })" v-model="password" /><FormField
         v-if="mode !== 'menus'"
         label="确认密码"
         kind="password"
-        v-model="confirmation" /><text v-if="formError" role="alert" class="error-text">{{
+        :required="isRequired('security', 'confirmation', { mode, hasPassword })" v-model="confirmation" /><text v-if="formError" role="alert" class="error-text">{{
         formError
       }}</text
       ><MobileButton label="保存" :loading="saving" @click="save" /></AdaptiveModal

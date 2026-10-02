@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { isRequired } from '../../services/form-required.ts';
 import { computed, ref } from 'vue';
 import { onShow, onUnload } from '@dcloudio/uni-app';
 import PageHeader from '../../components/PageHeader.uvue';
@@ -535,6 +536,7 @@ function preview(url) {
         v-for="field in formFields"
         :key="field.key"
         :label="field.label"
+        :required="isRequired('personality', field.key)"
         :kind="field.kind || 'text'"
         v-model="form[field.key]"
         :disabled="saving" /><FormField label="特殊人格"
@@ -551,13 +553,14 @@ function preview(url) {
           @change="(event) => (vectorJsonMode = event.detail.value)" /></FormField
       ><FormField
         v-if="vectorJsonMode"
-        label="15 项向量（0低/1中/2高）"
+        label="15 项向量（0低/1中/2高）" :required="isRequired('personality', 'vector')"
         kind="textarea"
         v-model="vectorJson"
         :disabled="saving" /><template v-else
         ><FormField
           v-for="(dimension, i) in data.dimensionDefs"
           :key="dimension.code"
+          :required="isRequired('personality', 'vector')"
           :label="dimension.modelName + ' · ' + dimension.name"
           kind="selector"
           :model-value="levels[form.vector[i]]"

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { isRequired } from '../../services/form-required.ts';
 import MenuManager from '../../components/MenuManager.uvue';
 import { menuMoveChanges } from '../../services/admin/menu-tree.ts';
 import { computed, ref } from 'vue';
@@ -124,13 +125,19 @@ function filters() {
   if (endDate.value) result.endDate = endDate.value;
   return result;
 }
+const moreError = ref(''), pageEnded = ref(false);
+function loadMore() {
+  if (loading.value || error.value || moreError.value || spec.value.tree || spec.value.array || !authorized.value) return;
+  load(true);
+}
 async function load(more = false, refresh = false) {
-  if (more && loading.value) return;
+  if (more && (loading.value || !rows.value.length || rows.value.length >= total.value || pageEnded.value)) return;
   const generation = task.begin(),
     token = session.token;
   loading.value = true;
   refreshing.value = refresh;
   error.value = '';
+  moreError.value = '';
   const nextPage = more ? page.value + 1 : 1;
   try {
     if (!session.user) await fetchUser();
@@ -141,6 +148,7 @@ async function load(more = false, refresh = false) {
     ]);
     if (active && task.isCurrent(generation) && token === session.token) {
       rows.value = more ? [...rows.value, ...result.items] : result.items;
+      pageEnded.value = !result.items.length;
       total.value = result.total;
       page.value = nextPage;
       options.value = loadedOptions;
@@ -151,7 +159,7 @@ async function load(more = false, refresh = false) {
     }
   } catch (reason) {
     if (active && task.isCurrent(generation) && token === session.token)
-      error.value = reason.message || '加载失败';
+      (more ? moreError : error).value = reason.message || '加载失败';
   } finally {
     if (active && task.isCurrent(generation)) {
       loading.value = false;
@@ -450,6 +458,7 @@ async function download() {
     ><PageHeader :title="spec.title" back @back="uni.navigateBack()" /><MobilePage
       :refreshing="refreshing"
       @refresh="load(false, true)"
+      @reachbottom="loadMore"
     >
       <MenuManager v-if="kind === 'menus'" :rows="rows" :loading="loading" :error="error" :busy-id="busyId" :remove="remove" @edit="edit" @create-child="(id) => edit(null, id)" @status="(row) => mutate(row, () => setMenuStatus(row))" @move="move" @retry="load()" />
       <template v-else>
@@ -605,10 +614,10 @@ async function download() {
                 @click="toggleSelected(row.id)"
             /></template>
           </view> </view></PageState
-      ><LoadMore
+      ><LoadMore :error="moreError"
         v-if="!spec.tree && !spec.array"
         :loading="loading"
-        :has-more="rows.length < total"
+        :has-more="!pageEnded && rows.length < total"
         @load="load(true)"
       />
       </template>
@@ -629,6 +638,7 @@ async function download() {
         v-for="field in editorFields"
         :key="field.key"
         :label="field.label"
+        :required="field.required"
         :kind="field.kind === 'number' ? 'text' : field.kind"
         :input-type="field.kind === 'number' ? 'number' : 'text'"
         :model-value="fieldValue(field)"
@@ -694,7 +704,7 @@ async function download() {
         :disabled="detailLoading || !!detailError"
         @click="changeStatus"
       /><FormField
-        label="回复"
+        label="回复" :required="isRequired('reply', 'content')"
         kind="textarea"
         v-model="reply"
         :disabled="saving || detailLoading || !!detailError"
@@ -713,7 +723,7 @@ async function download() {
           variant="quiet"
           :disabled="saving"
           @click="replyFiles = replyFiles.filter((item) => item.id !== file.id)" /><MobileButton
-          label="回复"
+          label="回复" :required="isRequired('reply', 'content')"
           :loading="saving"
           :disabled="uploading || detailLoading || !!detailError"
           @click="submitReply" /></view

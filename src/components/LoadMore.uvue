@@ -1,23 +1,28 @@
 <script setup lang="ts">
 import LoadingIndicator from './LoadingIndicator.uvue';
 import MobileButton from './MobileButton.uvue';
-withDefaults(defineProps<{ loading?: boolean; hasMore?: boolean }>(), { hasMore: true });
+import { themeClass } from '../services/theme.ts';
+withDefaults(defineProps<{ loading?: boolean; hasMore?: boolean; error?: string }>(), { hasMore: true, error: '' });
 const emit = defineEmits(['load']);
 </script>
 <template>
-  <view v-if="hasMore" class="load-more"
-    ><LoadingIndicator v-if="loading" compact label="正在加载更多" /><MobileButton
-      v-else
-      label="继续加载"
-      variant="quiet"
-      :loading="loading"
-      @click="emit('load')"
-  /></view>
+  <view v-if="hasMore && (loading || error)" class="load-more">
+    <LoadingIndicator v-if="loading" compact label="正在加载更多" />
+    <view v-else-if="error" class="load-more-error" role="alert">
+      <text class="load-more-message" :class="themeClass('load-more-message')">{{ error }}</text>
+      <MobileButton label="重试加载" icon="ant-design:reload-outlined" variant="ghost" @click="emit('load')" />
+    </view>
+  </view>
 </template>
 <style scoped lang="scss">
 @use '../styles/spacing-tokens' as *;
+@use '../styles/typography' as *;
+@use '../styles/text-colors' as *;
 .load-more {
   align-items: center;
   padding: $space-card;
 }
+.load-more-error { flex-direction: row; align-items: center; gap: $space-inline; }
+.load-more-message { @include type-style('caption'); color: $text-secondary-light; }
+.load-more-message-dark { color: $text-secondary-dark; }
 </style>

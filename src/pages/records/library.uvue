@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import FormActions from '../../components/FormActions.uvue';
+import { isRequired, missingRequired } from '../../services/form-required.ts';
 import ContentSkeleton from '../../components/ContentSkeleton.uvue';
 import LoadingIndicator from '../../components/LoadingIndicator.uvue';
 import AppIcon from '../../components/AppIcon.uvue'
@@ -93,13 +95,19 @@ onUnmounted(() => {
   alive = false;
   generation++;
 });
+const moreError = ref(''), pageEnded = ref(false);
+function loadMore() {
+  if (loading.value || error.value || moreError.value) return;
+  load(false, true);
+}
 async function load(refresh = false, more = false) {
-  if (more && loading.value) return;
+  if (more && (loading.value || !rows.value.length || rows.value.length >= total.value || pageEnded.value)) return;
   const current = ++generation,
     next = more ? page.value + 1 : 1;
   loading.value = true;
   refreshing.value = refresh;
   error.value = '';
+  moreError.value = '';
   try {
     const type = typeLabels.value.indexOf(typeFilter.value);
     const status = statusLabels.value.indexOf(statusFilter.value);
@@ -115,11 +123,12 @@ async function load(refresh = false, more = false) {
     if (alive && current === generation) {
       rows.value = more ? [...rows.value, ...data.items] : data.items;
       page.value = next;
+      pageEnded.value = !data.items.length;
       total.value = data.total;
     }
   } catch (e) {
     if (e.name === 'PageInactiveError') return;
-    if (current === generation) error.value = e.message;
+    if (current === generation) (more ? moreError : error).value = e.message;
   } finally {
     if (current === generation) {
       loading.value = false;
@@ -180,7 +189,14 @@ async function parse() {
       parseDouban(kind.value, form.value.url.trim()),
     );
     if (form.value?.id === id)
-      Object.assign(form.value, result, { id, files: form.value.files });
+      Object.assign(form.value, result, {
+        id,
+        coverImgUrl: result.coverImgUrl || '',
+        fileId: result.fileId || '',
+        files: result.fileId
+          ? [{ id: result.fileId, fileName: (result.title || form.value.title) + ' 封面' }]
+          : [],
+      });
   } catch (e) {
     if (e.name === 'PageInactiveError') return;
     formError.value = e.message;
@@ -190,7 +206,7 @@ async function parse() {
 }
 async function save() {
   if (saving.value || parsing.value || attachmentBusy.value) return;
-  if (!form.value.title.trim()) {
+  if (missingRequired('library', form.value)) {
     formError.value = '请输入名称';
     return;
   }
@@ -355,7 +371,7 @@ async function submitImport() {
 }
 </script>
 <template>
-  <MobilePage :refreshing="refreshing" @refresh="load(true)"
+  <MobilePage :refreshing="refreshing" @refresh="load(true)" @reachbottom="loadMore"
     ><view class="library-page ui-page-body" :class="{ 'library-page-dark': isDark }"
       ><PageHeader :title="title" :back="true" @back="uni.navigateBack()" />
       <view class="library-search-row ui-toolbar">
@@ -480,9 +496,9 @@ async function submitImport() {
           </view>
         </view>
       </PageState>
-      <LoadMore
+      <LoadMore :error="moreError"
         :loading="loading"
-        :has-more="rows.length < total"
+        :has-more="!pageEnded && rows.length < total"
         @load="load(false, true)"
       />
       <AdaptiveModal
@@ -498,9 +514,7 @@ async function submitImport() {
             icon="ant-design:import-outlined"
             :loading="parsing"
             @click="parse" /></view
-        ><FormField label="名称" v-model="form.title" /><FormField
-          label="封面链接"
-          v-model="form.coverImgUrl" /><FormField
+        ><FormField :required="isRequired('library', 'title')" label="名称" v-model="form.title" /><FormField
           label="类型"
           kind="selector"
           :model-value="typeLabels[form.type - 1]"
@@ -547,27 +561,25 @@ async function submitImport() {
           kind="textarea"
           v-model="form.remark" /><AttachmentField
           :files="form.files"
+          images-only
           upload-path="/file/upload"
           :form-data="{ bizType: kind === 'movie' ? 'movie' : 'read' }"
           :disabled="saving || parsing"
           @update:files="
             form.files = $event.slice(-1);
-            if (!$event.length) {
-              form.fileId = '';
-              form.coverImgUrl = '';
-            }
+            form.fileId = form.files.at(-1)?.id || '';
+            form.coverImgUrl = '';
           "
           @busy-change="attachmentBusy = $event" /><text
           v-if="formError"
           class="library-error ui-section ui-type-body"
           >{{ formError }}</text
-        ><view class="library-form-actions ui-row">
-          <ConfirmAction
+        ><FormActions>
+          <template #secondary><ConfirmAction
             v-if="form.id && !saving && !parsing && !attachmentBusy"
             label="删除记录"
             :message="'确定删除“' + form.title + '”？'"
-            :action="() => remove(form)" />
-          <view class="library-action-spacer" />
+            :action="() => remove(form)" /></template>
           <MobileButton
             label="取消"
             variant="quiet"
@@ -576,8 +588,8 @@ async function submitImport() {
             :label="created ? '重新读取' : '保存'"
             :loading="saving"
             :disabled="parsing || attachmentBusy"
-            @click="save" /></view
-      ></AdaptiveModal>
+            @click="save" />
+        </FormActions></AdaptiveModal>
       <AdaptiveModal
         v-if="importingOpen"
         label="豆瓣观影导入"
@@ -825,13 +837,6 @@ async function submitImport() {
 .library-link-field {
   flex: 1;
   min-width: 0;
-}
-.library-form-actions {
-  flex-direction: row;
-  align-items: center;
-}
-.library-action-spacer {
-  flex: 1;
 }
 /* #ifdef WEB || MP-WEIXIN */
 .library-search-button::after {

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { isRequired, missingRequired } from '../../services/form-required.ts';
 import { computed, ref, watch } from 'vue';
 import { onShow, onHide, onUnload } from '@dcloudio/uni-app';
 import PageHeader from '../../components/PageHeader.uvue';
@@ -179,7 +180,7 @@ async function unlock() {
   const v = version,
     token = session.token;
   try {
-    if (!password.value) throw new Error('请输入主密码');
+    if (missingRequired('vaultUnlock', { password: password.value }, 'password')) throw new Error('请输入主密码');
     if (!rows.value.length && (password.value.length < 6 || password.value !== confirm.value))
       throw new Error('主密码至少6位，且两次输入一致');
     if (rows.value.length)
@@ -253,7 +254,7 @@ async function save() {
     key = master.value;
   try {
     if (!key) throw new Error('请先解锁');
-    if (!form.value.title.trim() || !form.value.password) throw new Error('请填写标题和密码');
+    if (missingRequired('vault', form.value)) throw new Error('请填写标题和密码');
     const salt = form.value.salt || (await newSalt());
     const payload = {
       title: form.value.title.trim(),
@@ -438,7 +439,7 @@ function back() {
       :busy="saving"
       :max-width="440"
       @close="unlocking = false"
-      ><FormField label="主密码" kind="password" v-model="password" /><FormField
+      ><FormField :required="isRequired('vaultUnlock', 'password')" label="主密码" kind="password" v-model="password" /><FormField :required="isRequired('vaultUnlock', 'confirm', { initialized: rows.length > 0 })"
         v-if="!rows.length"
         label="确认主密码"
         kind="password"
@@ -452,11 +453,11 @@ function back() {
       :busy="saving"
       :max-width="520"
       @close="editing = false"
-      ><FormField label="标题" v-model="form.title" /><FormField
+      ><FormField :required="isRequired('vault', 'title')" label="标题" v-model="form.title" /><FormField
         label="网站"
         v-model="form.website" /><FormField label="分类" v-model="form.category" /><FormField
         label="账号"
-        v-model="form.username" /><FormField
+        v-model="form.username" /><FormField :required="isRequired('vault', 'password')"
         label="密码"
         kind="password"
         v-model="form.password" /><MobileButton

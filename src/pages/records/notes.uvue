@@ -1,6 +1,8 @@
 <script setup lang="ts">
+import FormActions from '../../components/FormActions.uvue';
+import { isRequired, missingRequired } from '../../services/form-required.ts';
 import ContentSkeleton from '../../components/ContentSkeleton.uvue';
-import { computed, onUnmounted, ref } from 'vue';
+import { computed, onMounted, onUnmounted, ref } from 'vue';
 import { onLoad, onShow } from '@dcloudio/uni-app';
 import MobilePage from '../../components/MobilePage.uvue';
 import PageHeader from '../../components/PageHeader.uvue';
@@ -25,6 +27,19 @@ const rows = ref<any[]>([]),
   refreshing = ref(false),
   error = ref(''),
   busy = ref('');
+const windowWidth = ref(uni.getWindowInfo().windowWidth);
+const noteColumnCount = computed(() => kind.value === 'memo' ? (windowWidth.value >= 1000 ? 3 : 2) : 1);
+const noteColumns = computed(() => {
+  // 与 Web 一样按顺序分列；追加分页不会移动已有卡片。
+  const count = noteColumnCount.value;
+  const columns: any[][] = Array.from({ length: count }, () => []);
+  rows.value.forEach((item, index) => columns[index % count].push(item));
+  return columns;
+});
+function resizeNotes() {
+  windowWidth.value = uni.getWindowInfo().windowWidth;
+}
+onMounted(() => uni.onWindowResize(resizeNotes));
 const created = ref(false);
 const form = ref<any>(null),
   saving = ref(false),
@@ -48,19 +63,28 @@ onLoad((options) => {
 });
 onShow(() => load());
 onUnmounted(() => {
+  uni.offWindowResize(resizeNotes);
   alive = false;
   generation++;
 });
+const moreError = ref(''), pageEnded = ref(false);
+function loadMore() {
+  if (loading.value || error.value || moreError.value) return;
+  load(false, true);
+}
 async function load(refresh = false, more = false) {
+  if (more && (loading.value || !rows.value.length || rows.value.length >= total.value || pageEnded.value)) return;
   const current = ++generation,
     nextPage = more ? page.value + 1 : 1;
   loading.value = true;
   refreshing.value = refresh;
   error.value = '';
+  moreError.value = '';
   try {
     const data = await scope.wait(fetchNotes(kind.value, nextPage, keyword.value.trim()));
     if (alive && current === generation) {
       rows.value = more ? [...rows.value, ...data.items] : data.items;
+      pageEnded.value = !data.items.length;
       total.value = data.total;
       page.value = nextPage;
       if (requestedEdit && kind.value === 'think') {
@@ -74,7 +98,7 @@ async function load(refresh = false, more = false) {
     }
   } catch (e) {
     if (e.name === 'PageInactiveError') return;
-    if (alive && current === generation) error.value = e.message;
+    if (alive && current === generation) (more ? moreError : error).value = e.message;
   } finally {
     if (current === generation) {
       loading.value = false;
@@ -91,7 +115,7 @@ function open(item = null) {
 }
 async function save() {
   if (saving.value) return;
-  if (!form.value.content.trim() || (kind.value === 'memo' && !form.value.title.trim())) {
+  if (missingRequired(kind.value === 'memo' ? 'memo' : 'thought', form.value)) {
     formError.value = kind.value === 'memo' ? '请输入标题和内容' : '请输入内容';
     return;
   }
@@ -157,7 +181,7 @@ function displayDate(value) {
 }
 </script>
 <template>
-  <MobilePage :refreshing="refreshing" @refresh="load(true)"
+  <MobilePage :refreshing="refreshing" @refresh="load(true)" @reachbottom="loadMore"
     ><view class="notes-page ui-page-body" :class="{ 'notes-page-dark': isDark }">
       <PageHeader :title="title" :back="true" @back="uni.navigateBack()" /><view class="ui-toolbar"
         ><FormField compact stretch hide-label label="搜索内容" placeholder="搜索内容…" v-model="keyword" /><MobileButton
@@ -172,18 +196,37 @@ function displayDate(value) {
         :empty="!rows.length"
         @retry="load()"
       >
-<template #loading><view class="notes-grid" :class="{ 'notes-grid-memo': kind === 'memo' }"><view v-for="n in 6" :key="n" class="note-card ui-card" :class="{ 'note-card-dark': isDark, 'note-card-memo': kind === 'memo' }"><ContentSkeleton variant="tile" /></view></view></template>
+<template #loading>
+          <view class="notes-grid">
+            <view v-for="column in noteColumnCount" :key="column" :class="kind === 'memo' ? 'notes-column' : 'notes-thoughts'">
+              <view v-for="n in 3" :key="n" class="note-card ui-card" :class="{ 'note-card-dark': isDark, 'note-card-memo': kind === 'memo' }"><ContentSkeleton variant="tile" /></view>
+            </view>
+          </view>
+        </template>
 
-        <view class="notes-grid" :class="{ 'notes-grid-memo': kind === 'memo' }"><view
-          v-for="item in rows"
+        <view class="notes-grid"><view
+          v-for="(column, columnIndex) in noteColumns"
+          :key="columnIndex"
+          :class="kind === 'memo' ? 'notes-column' : 'notes-thoughts'"
+        ><view
+          v-for="item in column"
           :key="item.id"
           class="note-card ui-card"
           :class="{ 'note-card-dark': isDark, 'note-card-memo': kind === 'memo' }"
-          role="button" :aria-label="'编辑' + title + (item.title ? '：' + item.title : '')" tabindex="0" @click="open(item)" @keydown.enter.self="open(item)" @keydown.space.self.prevent="open(item)"
+          role="button" :aria-label="'编辑' + title + (!item.hiddenContent && item.title ? '：' + item.title : '')" tabindex="0" @click="open(item)" @keydown.enter.self="open(item)" @keydown.space.self.prevent="open(item)"
         >
-          <view v-if="kind === 'memo'" class="toolbar ui-row"><text class="note-title">{{ item.title }}</text></view>
-          <text v-if="!item.hiddenContent" class="note-content" :class="{ 'note-content-memo': kind === 'memo' }">{{ item.content }}</text
-          ><text v-else class="note-secondary" :class="{ 'secondary-text-dark': isDark }">••••••</text>
+          <view
+            class="note-preview"
+            :class="{ 'note-preview-hidden': kind === 'memo' && item.hiddenContent }"
+            :aria-hidden="item.hiddenContent ? 'true' : 'false'"
+          >
+            <view class="note-preview-text" :class="{ 'note-preview-blurred': kind === 'memo' && item.hiddenContent }">
+              <text v-if="kind === 'memo' && item.title" class="note-title">{{ item.title }}</text>
+              <text v-if="kind === 'memo' || !item.hiddenContent" class="note-content" :class="{ 'note-content-memo': kind === 'memo' }">{{ item.content }}</text>
+              <text v-else class="note-secondary" :class="{ 'secondary-text-dark': isDark }">••••••</text>
+            </view>
+            <view v-if="kind === 'memo' && item.hiddenContent" class="note-frost" :class="{ 'note-frost-dark': isDark }" />
+          </view>
           <view class="note-footer ui-row">
             <AppIcon v-if="kind === 'think' && item.isPinned === 1" name="ant-design:pushpin-filled" :size="13" color="#6989bc" aria-label="已展示到看板" /><text class="note-date" :class="{ 'secondary-text-dark': isDark }">{{ displayDate(item.updateTime || item.createTime) }}</text>
             <view v-if="kind === 'think' && (item.events || []).length" class="note-event-count"><AppIcon name="ant-design:link-outlined" :size="12" color="#8b8f99" /><text class="note-event-value ui-type-badge" :class="{ 'secondary-text-dark': isDark }">{{ item.events.length }}</text></view>
@@ -191,10 +234,10 @@ function displayDate(value) {
               <AppIcon v-if="busy !== item.id + 'hiddenContent'" :name="item.hiddenContent ? 'ant-design:eye-outlined' : 'ant-design:eye-invisible-outlined'" :size="16" color="#8b8f99" />
             </button>
           </view>
-        </view></view> </PageState
-      ><LoadMore :loading="loading" :has-more="rows.length < total" @load="load(false, true)" />
+        </view></view></view> </PageState
+      ><LoadMore :error="moreError" :loading="loading" :has-more="!pageEnded && rows.length < total" @load="load(false, true)" />
       <AdaptiveModal v-if="form" :label="'编辑' + title" :busy="saving" @close="form = null">
-        <FormField v-if="kind === 'memo'" label="标题" v-model="form.title" /><FormField
+        <FormField :required="isRequired(kind === 'memo' ? 'memo' : 'thought', 'title')" v-if="kind === 'memo'" label="标题" v-model="form.title" /><FormField :required="isRequired(kind === 'memo' ? 'memo' : 'thought', 'content')"
           label="内容"
           kind="textarea"
           v-model="form.content"
@@ -212,7 +255,7 @@ function displayDate(value) {
           ><MobileButton
             label="新增关联事件"
             icon="ant-design:plus-outlined"
-            variant="quiet"
+            variant="ghost"
             @click="form.events.push({ content: '' })"
         /></template>
         <view class="toolbar ui-row"
@@ -225,12 +268,13 @@ function displayDate(value) {
             v-if="kind === 'think'"
             :label="form.isPinned === 1 ? '取消看板展示' : '展示到看板'"
             :icon="form.isPinned === 1 ? 'ant-design:star-filled' : 'ant-design:star-outlined'"
-            variant="quiet"
+            variant="ghost"
             @click="form.isPinned = form.isPinned === 1 ? 0 : 1"
         /></view>
         <text v-if="formError" class="note-error ui-section ui-type-body">{{ formError }}</text
-        ><view class="toolbar ui-row"
-          ><ConfirmAction v-if="form.id" :label="'删除' + title" :action="() => remove(form)" /><MobileButton
+        ><FormActions>
+          <template #secondary><ConfirmAction v-if="form.id" :label="'删除' + title" :action="() => remove(form)" /></template>
+          <MobileButton
             label="取消"
             variant="quiet"
             :disabled="saving"
@@ -238,7 +282,8 @@ function displayDate(value) {
             :label="created ? '重新读取' : '保存'"
             :loading="saving"
             @click="save"
-        /></view>
+        />
+        </FormActions>
       </AdaptiveModal> </view>
     <template #fixed><FloatingActionButton :label="'新增' + title" @click="open()" /></template>
   </MobilePage>
@@ -263,7 +308,36 @@ function displayDate(value) {
 }
 .notes-grid { display: flex; flex-direction: row; flex-wrap: wrap; gap: $space-section; align-items: flex-start; }
 .note-card { width: 100%; min-width: 0; box-sizing: border-box; }
-.note-card-memo { width: calc((100% - #{$space-section}) / 2); }
+.notes-column { display: flex; flex: 1; flex-direction: column; min-width: 0; gap: $space-section; }
+.notes-thoughts { display: flex; width: 100%; flex-direction: row; flex-wrap: wrap; gap: $space-section; align-items: flex-start; }
+.note-preview { position: relative; overflow: hidden; border-radius: 6px; }
+.note-preview-text { display: flex; flex-direction: column; gap: $space-inline; }
+.note-preview-hidden { user-select: none; }
+.note-preview-blurred { opacity: 0; }
+.note-frost {
+  position: absolute;
+  inset: 0;
+  background-color: rgba(255, 255, 255, 0.2);
+  pointer-events: none;
+}
+.note-frost-dark { background-color: rgba(28, 30, 34, 0.2); }
+/* #ifdef WEB || MP-WEIXIN */
+.note-preview-blurred {
+  opacity: 0.45;
+  filter: blur(7px);
+  pointer-events: none;
+  user-select: none;
+  // 柔化文字轮廓的边缘，避免出现一块被裁切的矩形磨砂贴片。
+  -webkit-mask-image: radial-gradient(ellipse at center, #000 35%, rgba(0, 0, 0, 0.7) 70%, transparent 100%);
+  mask-image: radial-gradient(ellipse at center, #000 35%, rgba(0, 0, 0, 0.7) 70%, transparent 100%);
+}
+.note-frost {
+  background: radial-gradient(ellipse at 35% 25%, rgba(255, 255, 255, 0.35), rgba(255, 255, 255, 0.08) 75%);
+}
+.note-frost-dark {
+  background: radial-gradient(ellipse at 35% 25%, rgba(28, 30, 34, 0.35), rgba(28, 30, 34, 0.08) 75%);
+}
+/* #endif */
 @media (min-width: 600px) { .note-card { width: calc((100% - #{$space-section}) / 2); } }
 @media (min-width: 1000px) { .note-card { width: calc((100% - #{$space-section} * 2) / 3); } }
 .note-footer { align-items: center; justify-content: space-between; gap: $space-detail; margin-top: $space-inline; }
@@ -293,7 +367,7 @@ function displayDate(value) {
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
-.note-content-memo { -webkit-line-clamp: 6; }
+.note-content-memo { -webkit-line-clamp: 10; }
 .note-event-value { @include type-style('badge'); color: $text-secondary-light; }
 .note-secondary {
   color: $text-secondary-light;
@@ -311,7 +385,7 @@ function displayDate(value) {
 .note-visibility::after { border: 0; }
 .note-card:focus-visible { outline: 2px solid #417ce8; outline-offset: 2px; }
 /* #endif */
-@media (min-width: 1000px) { .note-card-memo { width: calc((100% - #{$space-section * 2}) / 3); } }
+.note-card-memo { width: 100%; }
 
 .secondary-text-dark { color: $text-secondary-dark; }
 </style>

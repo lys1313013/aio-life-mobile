@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import FormActions from '../../components/FormActions.uvue';
+import { isRequired } from '../../services/form-required.ts';
 import ContentSkeleton from '../../components/ContentSkeleton.uvue';
 import { computed, onUnmounted, ref } from 'vue';
 import { onShow } from '@dcloudio/uni-app';
@@ -218,7 +220,7 @@ async function remove(item) {
         :content-key="String(showDetails) + formError"
         @close="form = null"
       >
-        <FormField appearance="soft" required label="名称" placeholder="请输入订阅名称" v-model="form.name" />
+        <FormField :required="isRequired('member', 'name')" appearance="soft" label="名称" placeholder="请输入订阅名称" v-model="form.name" />
         <view class="ui-field-row">
           <FormField appearance="soft" compact stretch label="平台" v-model="form.provider" />
           <FormField appearance="soft"
@@ -230,7 +232,7 @@ async function remove(item) {
         </view>
         <view class="ui-field-row">
           <FormField appearance="soft" compact stretch label="开通日期" kind="date" v-model="form.startDate" />
-          <FormField appearance="soft" required compact stretch label="到期日期" kind="date" v-model="form.expiryDate" />
+          <FormField :required="isRequired('member', 'expiryDate')" appearance="soft" compact stretch label="到期日期" kind="date" v-model="form.expiryDate" />
         </view>
         <view class="quick-dates ui-row ui-section">
           <MobileButton compact label="1月" variant="quiet" @click="quickDate(1)" />
@@ -276,12 +278,11 @@ async function remove(item) {
           <FormField appearance="soft" compact label="备注" kind="textarea" v-model="form.note" />
         </view>
         <text v-if="formError" class="member-error ui-mt-section ui-type-body" role="alert">{{ formError }}</text>
-        <view class="toolbar modal-actions ui-row">
-          <ConfirmAction v-if="form.id && !saving" label="删除订阅" :action="() => remove(form)" />
-          <view class="action-spacer" />
+        <FormActions>
+          <template #secondary><ConfirmAction v-if="form.id && !saving" label="删除订阅" :action="() => remove(form)" /></template>
           <MobileButton label="取消" variant="quiet" :disabled="saving" @click="form = null" />
           <MobileButton label="保存" :loading="saving" @click="save" />
-        </view>
+        </FormActions>
       </AdaptiveModal>
     </view>
     <template #fixed>
@@ -333,7 +334,6 @@ async function remove(item) {
 .member-error { color: #e05252; }
 .quick-dates { flex-direction: row; flex-wrap: wrap; }
 .details-toggle { display: flex; flex-direction: row; align-items: center; gap: $space-inline; width: 100%; min-height: $space-controlMin; margin: 0; padding: 0; border: 0; background-color: transparent; color: inherit; @include type-style('body'); text-align: left; }
-.modal-actions { margin-top: $space-section; }
 .action-spacer { flex: 1; }
 /* #ifdef WEB || MP-WEIXIN */
 .member-card::after { border: 0; }

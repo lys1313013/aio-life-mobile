@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import FormActions from '../../components/FormActions.uvue';
+import { isRequired, missingRequired } from '../../services/form-required.ts';
 import ContentSkeleton from '../../components/ContentSkeleton.uvue';
 import { computed, ref } from 'vue';
 import { onShow } from '@dcloudio/uni-app';
@@ -112,9 +114,7 @@ function open(item = null) {
 async function save() {
   if (saving.value || attachmentBusy.value) return;
   if (
-    !form.value.performanceName.trim() ||
-    !form.value.performer.trim() ||
-    !form.value.venue.trim()
+    missingRequired('activity', form.value)
   ) {
     formError.value = '请输入活动名称、参与人和地点';
     return;
@@ -187,13 +187,13 @@ async function remove(item) {
         :busy="saving || attachmentBusy"
         @close="form = null"
         >
-        <FormField label="活动名称" v-model="form.performanceName" />
+        <FormField :required="isRequired('activity', 'performanceName')" label="活动名称" v-model="form.performanceName" />
         <view class="ui-field-row">
           <FormField compact stretch label="类型" kind="selector" :model-value="typeName(form.performanceType)" :options="['未分类', ...types.map((item) => item.label)]" @update:model-value="form.performanceType = types.find((item) => item.label === $event)?.value || ''" />
-          <FormField compact stretch label="参与人" v-model="form.performer" />
+          <FormField :required="isRequired('activity', 'performer')" compact stretch label="参与人" v-model="form.performer" />
         </view>
         <view class="ui-field-row"><FormField compact stretch label="日期" kind="date" v-model="form.performanceDate" /><FormField compact stretch label="票价" input-type="digit" v-model="form.ticketPrice" /></view>
-        <view class="ui-field-row"><FormField compact stretch label="城市" v-model="form.city" /><FormField compact stretch label="地点" v-model="form.venue" /></view>
+        <view class="ui-field-row"><FormField compact stretch label="城市" v-model="form.city" /><FormField :required="isRequired('activity', 'venue')" compact stretch label="地点" v-model="form.venue" /></view>
         <MobileButton :label="showMore ? '收起更多信息' : '更多信息'" variant="quiet" @click="showMore = !showMore" />
         <view v-if="showMore" class="ui-mt-section">
           <FormField label="座位" v-model="form.seatInfo" />
@@ -210,8 +210,9 @@ async function remove(item) {
           @busy-change="attachmentBusy = $event" /><text v-if="formError" class="error ui-section ui-type-body">{{
           formError
         }}</text
-        ><view class="toolbar ui-row"
-          ><ConfirmAction v-if="form.id" label="删除活动" :action="() => remove(form)" @success="form = null" /><view class="footer-spacer" /><MobileButton
+        ><FormActions>
+          <template #secondary><ConfirmAction v-if="form.id" label="删除活动" :action="() => remove(form)" @success="form = null" /></template>
+          <MobileButton
             label="取消"
             variant="quiet"
             :disabled="saving || attachmentBusy"
@@ -219,7 +220,8 @@ async function remove(item) {
             label="保存"
             :loading="saving"
             :disabled="attachmentBusy"
-            @click="save" /></view></AdaptiveModal></view
+            @click="save" />
+        </FormActions></AdaptiveModal></view
   ><template #fixed><FloatingActionButton label="新增活动" :disabled="loading || !!error" @click="open()" /></template></MobilePage>
 </template>
 <style scoped lang="scss">
@@ -270,7 +272,6 @@ async function remove(item) {
 .activity-meta { padding: $space-card; gap: $space-detail; }
 .meta-row { flex-direction: row; align-items: flex-start; gap: $space-detail; min-width: 0; }
 @media (min-width: 600px) { .activity-card { width: calc((100% - #{$space-section * 2}) / 3); } }
-.footer-spacer { flex: 1; }
 .card-dark { background-color: #1c1e22; }
 
 .activity-card { border: 1px solid rgba(128,138,156,.12); }

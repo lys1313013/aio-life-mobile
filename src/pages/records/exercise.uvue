@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import FormActions from '../../components/FormActions.uvue';
+import { isRequired, missingRequired } from '../../services/form-required.ts';
 import ContentSkeleton from '../../components/ContentSkeleton.uvue';
 import { computed, ref } from 'vue';
 import { onLoad, onShow } from '@dcloudio/uni-app';
@@ -172,7 +174,7 @@ function open(item = null) {
 }
 async function save() {
   if (saving.value) return;
-  if (!form.value.exerciseTypeId || !form.value.exerciseDate) {
+  if (missingRequired('exercise', form.value)) {
     formError.value = '请选择运动类型和日期';
     return;
   }
@@ -293,29 +295,30 @@ function toggle(id) {
           ><text v-if="item.description" class="record-description" :class="{ 'record-secondary-dark': isDark }">{{ item.description }}</text></view
         ></PageState
       ><AdaptiveModal v-if="form" label="编辑运动记录" :busy="saving" @close="form = null"
-        ><FormField
+        ><FormField :required="isRequired('exercise', 'exerciseTypeId')"
           label="运动类型"
           kind="selector"
           :model-value="name(form.exerciseTypeId)"
           :options="types.map((t) => t.dictLabel || t.label)"
           @update:model-value="
             form.exerciseTypeId = types.find((t) => (t.dictLabel || t.label) === $event)?.id || ''
-          " /><FormField label="运动日期" kind="date" v-model="form.exerciseDate" /><FormField
+          " /><FormField :required="isRequired('exercise', 'exerciseDate')" label="运动日期" kind="date" v-model="form.exerciseDate" /><FormField
           label="运动数量"
           input-type="number"
           v-model="form.exerciseCount" /><FormField
           label="备注"
           kind="textarea"
           v-model="form.description" /><text v-if="formError" class="error ui-section ui-type-body">{{ formError }}</text
-        ><view class="toolbar ui-row"
-          ><MobileButton
+        ><FormActions>
+          <MobileButton
             label="取消"
             variant="quiet"
             :disabled="saving"
             @click="form = null" /><MobileButton
             :label="saved ? '重新读取' : '保存'"
             :loading="saving"
-            @click="save" /></view></AdaptiveModal></view>
+            @click="save" />
+        </FormActions></AdaptiveModal></view>
     <template #fixed><FloatingActionButton label="新增运动" :disabled="loading || !!error" @click="open()" /></template>
   </MobilePage>
 </template>

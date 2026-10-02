@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import FormActions from '../../components/FormActions.uvue';
+import { isRequired } from '../../services/form-required.ts';
 import ContentSkeleton from '../../components/ContentSkeleton.uvue';
 import { onUnmounted, ref } from 'vue';
 import { onShow } from '@dcloudio/uni-app';
@@ -185,10 +187,10 @@ async function remove(item) {
         </view>
       </PageState>
       <AdaptiveModal v-if="form" label="编辑目标" :show-close="false" :busy="saving" @close="form = null">
-        <view class="goal-title-row ui-field-row"><FormField appearance="soft" compact stretch label="标题" v-model="form.title" /><MobileButton label="关闭" icon="ant-design:close-outlined" variant="quiet" :disabled="saving" @click="form = null" /></view>
+        <view class="goal-title-row ui-field-row"><FormField :required="isRequired('goal', 'title')" appearance="soft" compact stretch label="标题" v-model="form.title" /><MobileButton label="关闭" icon="ant-design:close-outlined" variant="quiet" :disabled="saving" @click="form = null" /></view>
         <view class="filters ui-field-row">
-          <FormField appearance="soft" compact stretch label="类型" kind="selector" :model-value="goalTypes[form.type - 1]" :options="goalTypes" @update:model-value="setType($event)" />
-          <FormField appearance="soft" compact stretch label="状态" kind="selector" :model-value="statusLabels[statuses.indexOf(form.status)]" :options="statusLabels" @update:model-value="form.status = statuses[statusLabels.indexOf($event)]" />
+          <FormField :required="isRequired('goal', 'type')" appearance="soft" compact stretch label="类型" kind="selector" :model-value="goalTypes[form.type - 1]" :options="goalTypes" @update:model-value="setType($event)" />
+          <FormField :required="isRequired('goal', 'status')" appearance="soft" compact stretch label="状态" kind="selector" :model-value="statusLabels[statuses.indexOf(form.status)]" :options="statusLabels" @update:model-value="form.status = statuses[statusLabels.indexOf($event)]" />
         </view>
         <view class="filters ui-field-row">
           <FormField appearance="soft" compact stretch label="当前值" input-type="number" v-model="form.currentValue" />
@@ -222,13 +224,15 @@ async function remove(item) {
           v-model="form.content"
         /><FormField appearance="soft" label="标签" v-model="form.tags" />
         <text v-if="formError" class="record-error ui-section ui-type-body">{{ formError }}</text
-        ><view class="toolbar ui-row"
-          ><ConfirmAction v-if="form.id" label="删除目标" :action="() => remove(form)" /><MobileButton
+        ><FormActions>
+          <template #secondary><ConfirmAction v-if="form.id" label="删除目标" :action="() => remove(form)" /></template>
+          <MobileButton
             label="取消"
             variant="quiet"
             :disabled="saving"
             @click="form = null" /><MobileButton label="保存" :loading="saving" @click="save"
-        /></view>
+        />
+        </FormActions>
       </AdaptiveModal>
     </view>
     <template #fixed><FloatingActionButton label="新增目标" @click="open()" /></template>

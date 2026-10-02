@@ -24,11 +24,12 @@ import {
   takeQuickNavEditorRequest,
 } from "../../services/navigation.ts";
 import { useRefreshTheme } from "../../services/refresh-theme.ts";
-import { themeClass } from "../../services/theme.ts";
+import { isDark, themeClass } from "../../services/theme.ts";
 
 const refreshTheme = useRefreshTheme();
 const catalog = ref<any[]>([]);
 const query = ref("");
+const searchSecondaryColor = computed(() => isDark.value ? '#a0a6b1' : '#626e82');
 const catalogLoading = ref(false);
 const quickLoading = ref(false);
 const catalogError = ref("");
@@ -209,14 +210,15 @@ async function save() {
 <template>
   <view class="tab-page life-page" :class="themeClass('life-page')">
     <PageHeader title="全部">
-      <view class="life-search life-header-search ui-row ui-px-card" :class="themeClass('life-surface')">
-        <LifeMenuIcon icon="lucide:search" color="#8b8f99" />
+      <view class="life-search life-header-search ui-row ui-px-card" :class="themeClass('life-header-search')">
+        <LifeMenuIcon icon="lucide:search" :color="searchSecondaryColor" />
         <input
           v-model="query"
-          class="life-input"
+          class="life-input life-header-input"
           :class="themeClass('life-ink')"
           aria-label="搜索功能"
           placeholder="搜索功能"
+          :placeholder-style="'color: ' + searchSecondaryColor"
           confirm-type="search"
         />
         <button
@@ -226,7 +228,7 @@ async function save() {
           aria-label="清空搜索"
           @click="query = ''"
         >
-          <AppIcon name="ant-design:close-outlined" />
+          <AppIcon name="ant-design:close-outlined" :color="searchSecondaryColor" />
         </button>
       </view>
     </PageHeader>
@@ -497,11 +499,19 @@ async function save() {
   min-height: 48px;
 }
 .life-header-search {
+  background-color: transparent;
+  border: $space-hairline solid #d8dde4;
   width: 100%;
   max-width: 360px;
   min-height: $space-controlMin;
   height: $space-controlMin;
   box-sizing: border-box;
+}
+.life-header-search-dark {
+  border-color: #363940;
+}
+.life-header-input {
+  background-color: transparent;
 }
 .life-input {
   flex: 1;

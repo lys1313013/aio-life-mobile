@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { isRequired, missingRequired } from '../../services/form-required.ts';
 import AppIcon from '../../components/AppIcon.uvue';
 import { computed, ref } from 'vue';
 import { onShow } from '@dcloudio/uni-app';
@@ -257,7 +258,7 @@ async function changeMode() {
 }
 async function saveConnection() {
   if (saving.value || disconnecting.value) return;
-  if (!/^wrk-[\w-]+$/.test(keyInput.value.trim())) {
+  if (missingRequired('weread', { keyInput: keyInput.value }) || !/^wrk-[\w-]+$/.test(keyInput.value.trim())) {
     settingsError.value = '请输入有效的微信读书 Key';
     return;
   }
@@ -499,7 +500,7 @@ function openLink(url) {
           settings = false;
           keyInput = '';
         "
-        ><FormField
+        ><FormField :required="isRequired('weread', 'keyInput')"
           label="微信读书 Key"
           v-model="keyInput"
           :password="true"

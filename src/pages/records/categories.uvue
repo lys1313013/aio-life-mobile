@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import FormActions from '../../components/FormActions.uvue';
+import { isRequired, missingRequired } from '../../services/form-required.ts';
 import { computed, ref } from 'vue';
 import { onShow } from '@dcloudio/uni-app';
 import CategoryIcon from '../../components/CategoryIcon.uvue';
@@ -83,7 +85,7 @@ function open(item = null) {
 }
 async function save() {
   if (saving.value) return;
-  if (!form.value.dictLabel.trim()) {
+  if (missingRequired('recordCategory', form.value)) {
     formError.value = '请输入分类名称';
     return;
   }
@@ -214,7 +216,7 @@ async function move(index, offset) {
               "
               @click="move(index, 1)" /></view></view></PageState
       ><AdaptiveModal v-if="form" label="编辑分类" :busy="saving" @close="form = null"
-        ><FormField label="名称" v-model="form.dictLabel" /><FormField
+        ><FormField :required="isRequired('recordCategory', 'dictLabel')" label="名称" v-model="form.dictLabel" /><FormField
           label="分类标识"
           v-model="form.dictValue" />
         <view class="ui-field-row">
@@ -236,15 +238,16 @@ async function move(index, offset) {
           label="备注"
           kind="textarea"
           v-model="form.remark" /><text v-if="formError" class="error ui-section ui-type-body">{{ formError }}</text
-        ><view class="toolbar ui-row"
-          ><MobileButton
+        ><FormActions>
+          <MobileButton
             label="取消"
             variant="quiet"
             :disabled="saving"
             @click="form = null" /><MobileButton
             :label="saved ? '重新读取' : '保存'"
             :loading="saving"
-            @click="save" /></view></AdaptiveModal></view
+            @click="save" />
+        </FormActions></AdaptiveModal></view
   ></MobilePage>
 </template>
 <style scoped lang="scss">

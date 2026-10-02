@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import FormActions from '../../components/FormActions.uvue';
+import { isRequired, missingRequired } from '../../services/form-required.ts';
 import ContentSkeleton from '../../components/ContentSkeleton.uvue';
 import { computed, onUnmounted, ref } from 'vue';
 import { onShow } from '@dcloudio/uni-app';
@@ -90,7 +92,7 @@ function open(item = null) {
 }
 async function save() {
   if (saving.value) return;
-  if (!form.value.title.trim() || !form.value.date) {
+  if (missingRequired('milestone', form.value)) {
     formError.value = '请输入标题和日期';
     return;
   }
@@ -148,7 +150,7 @@ function clear() {
           kind="selector"
           v-model="tagFilter"
           :options="['全部标签', ...allTags]" /><MobileButton label="日期筛选" icon="ant-design:calendar-outlined" variant="quiet" @click="showDates = !showDates" /><MobileButton v-if="hasFilters" label="清空筛选" icon="ant-design:close-outlined" variant="quiet" @click="clear" /></view><view v-if="showDates || start || end" class="filters ui-field-row"><FormField compact stretch hide-label
-          label="开始日期" placeholder="开始日期"
+          label="开始日期" :required="isRequired('milestone', 'date')" placeholder="开始日期"
           kind="date"
           v-model="start" /><FormField compact stretch hide-label label="结束日期" placeholder="结束日期" kind="date" v-model="end" /></view
       ><PageState skeleton="timeline" :loading="loading" :error="error" :empty="!filtered.length" @retry="load()">
@@ -173,8 +175,8 @@ function clear() {
           ></template
         > </PageState
       ><AdaptiveModal v-if="form" label="编辑里程碑" :busy="saving" @close="form = null"
-        ><FormField label="标题" v-model="form.title" /><FormField
-          label="开始日期"
+        ><FormField :required="isRequired('milestone', 'title')" label="标题" v-model="form.title" /><FormField
+          label="开始日期" :required="isRequired('milestone', 'date')"
           kind="date"
           v-model="form.date" /><FormField
           label="结束日期"
@@ -196,15 +198,17 @@ function clear() {
           v-if="formError"
           class="event-error ui-section ui-type-body"
           >{{ formError }}</text
-        ><view class="toolbar ui-row"
-          ><ConfirmAction v-if="form.id" label="删除里程碑" :action="() => remove(form)" @success="form = null" /><view class="footer-spacer" /><MobileButton
+        ><FormActions>
+          <template #secondary><ConfirmAction v-if="form.id" label="删除里程碑" :action="() => remove(form)" @success="form = null" /></template>
+          <MobileButton
             label="取消"
             variant="quiet"
             :disabled="saving"
             @click="form = null" /><MobileButton
             label="保存"
             :loading="saving"
-            @click="save" /></view></AdaptiveModal></view
+            @click="save" />
+        </FormActions></AdaptiveModal></view
   ><template #fixed><FloatingActionButton label="新增里程碑" :disabled="loading || !!error" @click="open()" /></template></MobilePage>
 </template>
 <style scoped lang="scss">
@@ -267,7 +271,6 @@ function clear() {
 .event-title { min-width: 0; @include type-style('title');  }
 .event-tags { flex-direction: row; flex-wrap: wrap; gap: $space-detail; }
 .event-tag { color: $text-secondary-light; background-color: rgba(128, 138, 153, 0.1); border-radius: 4px; padding: $space-micro $space-detail; @include type-style('badge'); }
-.footer-spacer { flex: 1; }
 .event-card { min-height: $space-controlMin; }
 .event-content { word-break: break-word; }
 .type-badge { flex-shrink: 0; }

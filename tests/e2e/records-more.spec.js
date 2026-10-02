@@ -43,3 +43,62 @@ test('微信读书下拉同步与失败重试保留数据', async ({ page }) => 
   await expect(metric).toContainText('4小时');
   await expect(page.getByRole('alert')).toHaveCount(0);
 });
+
+for (const kind of ['movie', 'read']) {
+  test(`${kind} 豆瓣封面回填替换旧附件并使用新 fileId 保存`, async ({ page }) => {
+    const state = await setup(page);
+    const base = kind === 'movie' ? '/movie' : '/read-record';
+    state.movies[0].fileId = 'old-cover-id';
+    await page.route(`**/api${base}/parse-douban?**`, route => route.fulfill({
+      json: { rscode: '0', data: { title: '新豆瓣条目', fileId: 'parsed-cover-id', coverImgUrl: 'https://img1.doubanio.com/cover.jpg' } },
+    }));
+    await page.goto(`/#/pages/records/library?kind=${kind}`);
+    await page.getByRole('button', { name: '编辑记录', exact: true }).click();
+    const dialog = page.getByRole('dialog');
+    await expect(dialog.locator('[aria-label="封面链接"]')).toHaveCount(0);
+    await expect(dialog.getByRole('button', { name: '添加文件', exact: true })).toHaveCount(0);
+    await dialog.locator('[aria-label="豆瓣链接"] input').fill('https://movie.douban.com/subject/123/');
+    await dialog.getByRole('button', { name: '解析豆瓣链接', exact: true }).click();
+    await expect(dialog.locator('.attachment-name')).toHaveText('新豆瓣条目 封面');
+    await dialog.getByRole('button', { name: '保存', exact: true }).click();
+    await expect(dialog).toHaveCount(0);
+    expect(state.writes.filter(write => write.path === `/api${base}`).at(-1).body.fileId).toBe('parsed-cover-id');
+  });
+
+  test(`${kind} 自定义封面上传保存 fileId，移除后不重新抓取URL`, async ({ page }) => {
+    const state = await setup(page);
+    const base = kind === 'movie' ? '/movie' : '/read-record';
+    state.movies[0].fileId = 'old-cover-id';
+    state.movies[0].coverImgUrl = 'https://img1.doubanio.com/old-cover.jpg';
+    let uploaded = false;
+    await page.route('**/api/file/upload', async route => {
+      expect(route.request().method()).toBe('POST');
+      expect(route.request().postDataBuffer().toString()).toContain(kind === 'movie' ? 'movie' : 'read');
+      uploaded = true;
+      await route.fulfill({ json: { rscode: '0', data: { id: 'uploaded-cover-id', fileName: 'custom-cover.png' } } });
+    });
+    await page.goto(`/#/pages/records/library?kind=${kind}`);
+    await page.getByRole('button', { name: '编辑记录', exact: true }).click();
+    const dialog = page.getByRole('dialog');
+    const chooser = page.waitForEvent('filechooser');
+    await dialog.getByRole('button', { name: '添加图片', exact: true }).click();
+    await (await chooser).setFiles({
+      name: 'custom-cover.png', mimeType: 'image/png',
+      buffer: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=', 'base64'),
+    });
+    await expect(dialog.locator('.attachment-name')).toHaveText('custom-cover.png');
+    await dialog.getByRole('button', { name: '保存', exact: true }).click();
+    await expect(dialog).toHaveCount(0);
+    expect(uploaded).toBe(true);
+    let body = state.writes.filter(write => write.path === `/api${base}`).at(-1).body;
+    expect(body.fileId).toBe('uploaded-cover-id');
+    expect(body.coverImgUrl).toBe('');
+    await page.getByRole('button', { name: '编辑记录', exact: true }).click();
+    await dialog.getByRole('button', { name: '移除附件', exact: true }).click();
+    await dialog.getByRole('button', { name: '保存', exact: true }).click();
+    await expect(dialog).toHaveCount(0);
+    body = state.writes.filter(write => write.path === `/api${base}`).at(-1).body;
+    expect(body.fileId).toBe('');
+    expect(body.coverImgUrl).toBe('');
+  });
+}

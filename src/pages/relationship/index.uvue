@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { isRequired, missingRequired } from '../../services/form-required.ts';
 import LoadingIndicator from '../../components/LoadingIndicator.uvue';
 import { computed, onUnmounted, ref, watch } from 'vue';
 import AppIcon from '../../components/AppIcon.uvue';
@@ -211,7 +212,7 @@ function edit(value: any = null) {
 async function save() {
   const mutationStamp = stamp;
   if (busy.value) return;
-  if (!draft.value.name.trim()) {
+  if (missingRequired('person', draft.value)) {
     formError.value = '请输入姓名';
     return;
   }
@@ -273,7 +274,7 @@ async function saveRel() {
   const mutationStamp = stamp;
   if (busy.value) return;
   if (
-    !relation.value.targetPersonId ||
+    missingRequired('relation', relation.value) ||
     relation.value.sourcePersonId === relation.value.targetPersonId
   ) {
     formError.value = '请选择其他人物';
@@ -411,7 +412,7 @@ function nodeName(id: string) {
             label="删除关系"
             :action="() => removeRel(item)" /></view></view></AdaptiveModal
     ><AdaptiveModal v-if="draft" label="人物" :busy="busy" @close="draft = null"
-      ><FormField label="姓名" v-model="draft.name" /><FormField
+      ><FormField :required="isRequired('person', 'name')" label="姓名" v-model="draft.name" /><FormField
         label="分类"
         kind="selector"
         :options="['亲属', '社会', '情感', '其他']"
@@ -433,7 +434,7 @@ function nodeName(id: string) {
       ><MobileButton label="保存" :loading="busy" @click="save" /></AdaptiveModal
     ><AdaptiveModal v-if="relation" label="关系" :busy="busy" @close="relation = null"
       ><FormField
-        label="关联人物"
+        :required="isRequired('relation', 'targetPersonId')" label="关联人物"
         kind="selector"
         :options="
           graph.nodes.filter((item) => item.id !== person.id).map((item) => targetLabel(item))

@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import FormActions from '../../components/FormActions.uvue';
+import { isRequired, missingRequired } from '../../services/form-required.ts';
 import ContentSkeleton from '../../components/ContentSkeleton.uvue';
 import { computed, onUnmounted, ref } from 'vue';
 import { onShow } from '@dcloudio/uni-app';
@@ -96,7 +98,7 @@ function open(item = null) {
 }
 async function save() {
   if (saving.value) return;
-  if (!form.value.title.trim() || !form.value.targetDate) {
+  if (missingRequired('anniversary', form.value)) {
     formError.value = '请输入标题和日期';
     return;
   }
@@ -173,8 +175,8 @@ async function remove(item) {
         </PageState>
         <AdaptiveModal v-if="form" label="编辑纪念日" :busy="saving" @close="form = null"
           ><view class="anniversary-preview ui-section" :style="cardStyle(form.color)"><text class="preview-emoji">{{ form.icon }}</text></view>
-          <FormField label="标题" v-model="form.title" />
-          <FormField label="日期" kind="date" v-model="form.targetDate" />
+          <FormField :required="isRequired('anniversary', 'title')" label="标题" v-model="form.title" />
+          <FormField :required="isRequired('anniversary', 'targetDate')" label="日期" kind="date" v-model="form.targetDate" />
           <text class="choice-label">选择图标</text>
           <view class="emoji-options ui-section">
             <button v-for="icon in emoji" :key="icon" role="button" class="emoji-choice" :class="{ 'choice-active': form.icon === icon }" :aria-label="'图标 ' + icon" :aria-pressed="form.icon === icon" @click="form.icon = icon">{{ icon }}</button>
@@ -189,15 +191,16 @@ async function remove(item) {
             v-if="formError"
             class="event-error ui-section ui-type-body"
             >{{ formError }}</text
-          ><view class="ui-toolbar"
-            ><MobileButton
+          ><FormActions>
+          <MobileButton
               label="取消"
               variant="quiet"
               :disabled="saving"
               @click="form = null" /><MobileButton
               label="保存"
               :loading="saving"
-              @click="save" /></view></AdaptiveModal>
+              @click="save" />
+        </FormActions></AdaptiveModal>
       </view>
       <template #fixed><FloatingActionButton label="新增纪念日" @click="open()" /></template>
     </MobilePage>

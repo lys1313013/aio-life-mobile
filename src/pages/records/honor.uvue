@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import FormActions from '../../components/FormActions.uvue';
+import { isRequired, missingRequired } from '../../services/form-required.ts';
 import ContentSkeleton from '../../components/ContentSkeleton.uvue';
 import { computed, onUnmounted, ref } from 'vue';
 import { onShow } from '@dcloudio/uni-app';
@@ -110,7 +112,7 @@ function open(item = null) {
 }
 async function save() {
   if (saving.value || attachmentBusy.value) return;
-  if (!form.value.title.trim() || !form.value.honorDate) {
+  if (missingRequired('honor', form.value)) {
     formError.value = '请输入标题和获得日期';
     return;
   }
@@ -208,9 +210,9 @@ function categoryName(item) {
         :busy="saving || attachmentBusy"
         @close="form = null"
         >
-        <FormField appearance="soft" label="标题" v-model="form.title" />
+        <FormField :required="isRequired('honor', 'title')" appearance="soft" label="标题" v-model="form.title" />
         <view class="ui-field-row">
-          <FormField appearance="soft" compact stretch label="获得日期" kind="date" v-model="form.honorDate" />
+          <FormField :required="isRequired('honor', 'honorDate')" appearance="soft" compact stretch label="获得日期" kind="date" v-model="form.honorDate" />
           <FormField appearance="soft" compact stretch label="级别" kind="selector" :model-value="levelLabels[levels.indexOf(form.level)] || '未设置'" :options="['未设置', ...levelLabels]" @update:model-value="form.level = levels[levelLabels.indexOf($event)] || ''" />
         </view>
         <view class="ui-field-row">
@@ -236,8 +238,9 @@ function categoryName(item) {
           @busy-change="attachmentBusy = $event" /><text v-if="formError" class="honor-error ui-section ui-type-body">{{
           formError
         }}</text
-        ><view class="toolbar ui-row"
-          ><ConfirmAction v-if="form.id" label="删除荣誉" :action="() => remove(form)" @success="form = null" /><MobileButton v-if="form.id" :label="form.isTop === 1 ? '取消置顶' : '置顶荣誉'" :icon="form.isTop === 1 ? 'ant-design:star-filled' : 'ant-design:star-outlined'" variant="quiet" :loading="!!busy" @click="top(form)" /><view class="footer-spacer" /><MobileButton
+        ><FormActions>
+          <template #secondary><ConfirmAction v-if="form.id" label="删除荣誉" :action="() => remove(form)" @success="form = null" /><MobileButton v-if="form.id" :label="form.isTop === 1 ? '取消置顶' : '置顶荣誉'" :icon="form.isTop === 1 ? 'ant-design:star-filled' : 'ant-design:star-outlined'" variant="quiet" :loading="!!busy" @click="top(form)" /></template>
+          <MobileButton
             label="取消"
             variant="quiet"
             :disabled="saving || attachmentBusy"
@@ -245,7 +248,8 @@ function categoryName(item) {
             label="保存"
             :loading="saving"
             :disabled="attachmentBusy"
-            @click="save" /></view></AdaptiveModal></view
+            @click="save" />
+        </FormActions></AdaptiveModal></view
   ><template #fixed><FloatingActionButton label="新增荣誉" :disabled="loading || !!error" @click="open()" /></template></MobilePage>
 </template>
 <style scoped lang="scss">

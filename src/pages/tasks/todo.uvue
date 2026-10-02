@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import FormActions from '../../components/FormActions.uvue';
+import { isRequired } from '../../services/form-required.ts';
 import ContentSkeleton from '../../components/ContentSkeleton.uvue';
 import { computed, onUnmounted, ref } from 'vue';
 import { onLoad, onShow } from '@dcloudio/uni-app';
@@ -420,7 +422,7 @@ async function moveColumn(task, columnTitle) {
       </AdaptiveModal>
       <AdaptiveModal v-if="form" label="编辑待办" :busy="saving" @close="form = null">
         <template v-if="kind === 'column'"
-          ><FormField label="列名称" v-model="form.title" /><FormField
+          ><FormField :required="isRequired('column', 'title')" label="列名称" v-model="form.title" /><FormField
             label="背景"
             kind="selector"
             :model-value="colorLabels[colors.indexOf(form.bgColor)] || '默认'"
@@ -428,12 +430,12 @@ async function moveColumn(task, columnTitle) {
             @update:model-value="form.bgColor = colors[colorLabels.indexOf($event)]"
         /></template>
         <template v-else
-          ><FormField label="内容" v-model="form.content" /><FormField
+          ><FormField :required="isRequired(kind, 'content')" label="内容" v-model="form.content" /><FormField
             v-if="kind === 'task'"
             label="说明"
             kind="textarea"
             v-model="form.detail"
-          /><FormField
+          /><FormField :required="isRequired(kind, 'priority')"
             v-if="kind === 'detail'"
             label="优先级"
             kind="selector"
@@ -475,13 +477,15 @@ async function moveColumn(task, columnTitle) {
               @update:model-value="setTime('dueDate', $event)"
           /></view> </template
         ><text v-if="formError" class="task-error ui-section ui-type-body">{{ formError }}</text
-        ><view class="toolbar ui-row"
-          ><ConfirmAction v-if="form.id" :label="kind === 'column' ? '删除列' : kind === 'task' ? '删除任务' : '删除明细'" :action="() => remove(kind, form)" /><MobileButton v-if="form.id" label="向前移动" icon="ant-design:arrow-up-outlined" variant="quiet" :disabled="!!busy" @click="move(kind, form, -1)" /><MobileButton v-if="form.id" label="向后移动" icon="ant-design:arrow-down-outlined" variant="quiet" :disabled="!!busy" @click="move(kind, form, 1)" /><MobileButton
+        ><FormActions>
+          <template #secondary><ConfirmAction v-if="form.id" :label="kind === 'column' ? '删除列' : kind === 'task' ? '删除任务' : '删除明细'" :action="() => remove(kind, form)" /><MobileButton v-if="form.id" label="向前移动" icon="ant-design:arrow-up-outlined" variant="quiet" :disabled="!!busy" @click="move(kind, form, -1)" /><MobileButton v-if="form.id" label="向后移动" icon="ant-design:arrow-down-outlined" variant="quiet" :disabled="!!busy" @click="move(kind, form, 1)" /></template>
+          <MobileButton
             label="取消"
             variant="quiet"
             :disabled="saving"
             @click="form = null" /><MobileButton label="保存" :loading="saving" @click="save"
-        /></view>
+        />
+        </FormActions>
       </AdaptiveModal> </view
   ></MobilePage>
 </template>

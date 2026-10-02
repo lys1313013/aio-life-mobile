@@ -1,10 +1,12 @@
 <script setup lang="ts">
+import { isRequired, missingRequired } from '../../services/form-required.ts';
 import { computed, onMounted, onUnmounted, ref, watch, nextTick } from 'vue';
 import MobilePage from '../../components/MobilePage.uvue';
 import PageHeader from '../../components/PageHeader.uvue';
 import MobileButton from '../../components/MobileButton.uvue';
 import ConfirmAction from '../../components/ConfirmAction.uvue';
 import PageState from '../../components/PageState.uvue';
+import LoadMore from '../../components/LoadMore.uvue';
 import FormField from '../../components/FormField.uvue';
 import AdaptiveModal from '../../components/AdaptiveModal.uvue';
 import {
@@ -80,10 +82,18 @@ const filtered = computed(() =>
         String(item.senderId) === receiver.value),
   ),
 );
-async function load() {
+const moreError = ref(''), adminEnded = ref(false);
+function loadMore() {
+  if (mode.value !== '管理' || !admin.value || error.value || moreError.value) return;
+  load(true);
+}
+async function load(more = false) {
+  if (more && (loading.value || mode.value !== '管理' || !adminRows.value.length || adminEnded.value || adminRows.value.length >= adminTotal.value)) return;
+  const nextPage = more ? adminPage.value + 1 : 1;
   const current = ++stamp;
   loading.value = true;
   error.value = '';
+  moreError.value = '';
   try {
     if (mode.value === 'AI') {
       const rows = await fetchSessions();
@@ -91,12 +101,14 @@ async function load() {
       if (activeSession.value) await selectSession(activeSession.value);
     } else if (mode.value === '管理') {
       const data = await fetchAdminMessages({
-        current: adminPage.value,
+        current: nextPage,
         size: 30,
         userId: adminUser.value,
       });
       if (alive && current === stamp) {
-        adminRows.value = data.items || [];
+        adminRows.value = more ? [...adminRows.value, ...(data.items || [])] : data.items || [];
+        adminPage.value = nextPage;
+        adminEnded.value = !(data.items || []).length;
         adminTotal.value = data.total || 0;
       }
     } else {
@@ -105,7 +117,7 @@ async function load() {
       await loadUserInfo(rows, current);
     }
   } catch (e) {
-    if (alive && current === stamp) error.value = e.message;
+    if (alive && current === stamp) (more ? moreError : error).value = e.message;
   } finally {
     if (alive && current === stamp) {
       loading.value = false;
@@ -212,7 +224,7 @@ async function removeConversation() {
 }
 async function send() {
   const mutationStamp = stamp;
-  if (sending.value || !content.value.trim() || !receiver.value.trim()) return;
+  if (sending.value || missingRequired('message', { content: content.value, receiver: receiver.value })) return;
   sending.value = true;
   error.value = '';
   try {
@@ -356,6 +368,7 @@ async function adminRemove(row: any) {
 </script>
 <template>
   <MobilePage
+    @reachbottom="loadMore"
     :refreshing="refreshing"
     @refresh="
       refreshing = true;
@@ -369,7 +382,7 @@ async function adminRemove(row: any) {
         kind="selector"
         :options="modes"
         v-model="mode"
-        @update:modelValue="load" /><PageState skeleton="list" :loading="loading" :error="error" @retry="load"
+        @update:modelValue="load()" /><PageState skeleton="list" :loading="loading" :error="error" @retry="load()"
         ><view v-if="mode === '消息' || mode === '私聊'"
           ><view class="actions ui-toolbar"
             ><FormField compact stretch
@@ -512,25 +525,11 @@ async function adminRemove(row: any) {
             ><text class="ui-type-body message-content" selectable>{{ item.content }}</text
             ><text class="message-meta" :class="themeClass('message-meta')">{{ item.receiverId }} · {{ item.createTime }}</text
             ><ConfirmAction label="管理员删除" :action="() => adminRemove(item)" /></view
-          ><view class="actions ui-toolbar"
-            ><MobileButton
-              label="上一页"
-              :disabled="adminPage === 1 || loading"
-              @click="
-                adminPage--;
-                load();
-              " /><text class="message-meta" :class="themeClass('message-meta')">{{ adminPage }} · {{ adminTotal }}</text
-            ><MobileButton
-              label="下一页"
-              :disabled="adminPage * 30 >= adminTotal || loading"
-              @click="
-                adminPage++;
-                load();
-              " /></view></view></PageState></view
+          ><LoadMore :loading="loading" :error="moreError" :has-more="!adminEnded && adminRows.length < adminTotal" @load="load(true)" /></view></PageState></view
     ><AdaptiveModal v-if="modal" label="发送消息" :busy="sending" @close="modal = false"
-      ><FormField label="接收用户 ID" v-model="receiver" /><FormField
+      ><FormField label="接收用户 ID" :required="isRequired('message', 'receiver')" v-model="receiver" /><FormField
         label="标题"
-        v-model="title" /><FormField label="内容" kind="textarea" v-model="content" /><MobileButton
+        v-model="title" /><FormField label="内容" :required="isRequired('message', 'content')" kind="textarea" v-model="content" /><MobileButton
         label="发送"
         :loading="sending"
         @click="send" /></AdaptiveModal

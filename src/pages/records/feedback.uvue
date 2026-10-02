@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import FormActions from '../../components/FormActions.uvue';
+import { isRequired, missingRequired } from '../../services/form-required.ts';
 import { computed, onUnmounted, ref } from 'vue';
 import { onShow } from '@dcloudio/uni-app';
 import MobilePage from '../../components/MobilePage.uvue';
@@ -68,11 +70,18 @@ onUnmounted(() => {
   detailGeneration++;
 });
 onShow(() => load());
+const moreError = ref(''), pageEnded = ref(false);
+function loadMore() {
+  if (loading.value || error.value || moreError.value) return;
+  load(false, true);
+}
 async function load(refresh = false, more = false) {
+  if (more && (loading.value || !rows.value.length || rows.value.length >= total.value || pageEnded.value)) return;
   const current = ++generation;
   loading.value = true;
   refreshing.value = refresh;
   error.value = '';
+  moreError.value = '';
   try {
     const nextPage = more ? page.value + 1 : 1;
     const data = await scope.wait(
@@ -81,11 +90,12 @@ async function load(refresh = false, more = false) {
     if (alive && current === generation) {
       rows.value = more ? [...rows.value, ...data.items] : data.items;
       page.value = nextPage;
+      pageEnded.value = !data.items.length;
       total.value = data.total;
     }
   } catch (e) {
     if (e.name === 'PageInactiveError') return;
-    if (current === generation) error.value = e.message;
+    if (current === generation) (more ? moreError : error).value = e.message;
   } finally {
     if (current === generation) {
       loading.value = false;
@@ -99,7 +109,7 @@ function open() {
 }
 async function save() {
   if (saving.value || attachmentBusy.value) return;
-  if (!form.value.title.trim() || !form.value.content.trim()) {
+  if (missingRequired('feedback', form.value)) {
     formError.value = '请输入标题和内容';
     return;
   }
@@ -152,7 +162,7 @@ function closeDetail() {
 }
 async function addComment() {
   if (commenting.value || commentAttachmentBusy.value || !detail.value) return;
-  if (!comment.value.trim()) {
+  if (missingRequired('comment', { comment: comment.value })) {
     commentError.value = '请输入评论内容';
     return;
   }
@@ -187,7 +197,7 @@ async function cancel(item) {
 }
 </script>
 <template>
-  <MobilePage :refreshing="refreshing" @refresh="load(true)"
+  <MobilePage :refreshing="refreshing" @refresh="load(true)" @reachbottom="loadMore"
     ><view class="feedback-page ui-page-body" :class="{ 'feedback-page-dark': isDark }"
       ><PageHeader title="反馈中心" :back="true" @back="uni.navigateBack()" /><view class="ui-toolbar"
         ><FormField compact stretch hide-label
@@ -220,18 +230,18 @@ async function cancel(item) {
             </view>
           </view>
         </view></PageState
-      ><LoadMore :loading="loading" :has-more="rows.length < total" @load="load(false, true)" />
+      ><LoadMore :error="moreError" :loading="loading" :has-more="!pageEnded && rows.length < total" @load="load(false, true)" />
       <AdaptiveModal
         v-if="form"
         label="提交反馈"
         :busy="saving || attachmentBusy"
         @close="form = null"
-        ><FormField label="标题" v-model="form.title" /><FormField
+        ><FormField :required="isRequired('feedback', 'title')" label="标题" v-model="form.title" /><FormField
           label="类型"
           kind="selector"
           :model-value="typeLabels[types.indexOf(form.feedbackType)]"
           :options="typeLabels"
-          @update:model-value="form.feedbackType = types[typeLabels.indexOf($event)]" /><FormField
+          @update:model-value="form.feedbackType = types[typeLabels.indexOf($event)]" /><FormField :required="isRequired('feedback', 'content')"
           label="内容"
           kind="textarea"
           v-model="form.content" /><AttachmentField
@@ -243,8 +253,8 @@ async function cancel(item) {
           @busy-change="attachmentBusy = $event" /><text v-if="formError" class="feedback-error ui-section ui-type-body">{{
           formError
         }}</text
-        ><view class="toolbar ui-row"
-          ><MobileButton
+        ><FormActions>
+          <MobileButton
             label="取消"
             variant="quiet"
             :disabled="saving || attachmentBusy"
@@ -252,8 +262,8 @@ async function cancel(item) {
             label="提交"
             :loading="saving"
             :disabled="attachmentBusy"
-            @click="save" /></view
-      ></AdaptiveModal>
+            @click="save" />
+        </FormActions></AdaptiveModal>
       <AdaptiveModal
         v-if="detailId"
         label="反馈详情"
@@ -283,7 +293,7 @@ async function cancel(item) {
                 :files="item.files || []"
                 upload-path="/file/upload"
                 :readonly="true" /></view
-            ><FormField label="评论" kind="textarea" v-model="comment" /><AttachmentField
+            ><FormField label="评论" :required="isRequired('comment', 'comment')" kind="textarea" v-model="comment" /><AttachmentField
               :files="commentFiles"
               upload-path="/file/upload"
               :form-data="{ bizType: 'feedback_comment' }"

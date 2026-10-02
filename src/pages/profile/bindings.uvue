@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import RequiredMark from '../../components/RequiredMark.uvue';
+import { isRequired } from '../../services/form-required.ts';
 import ContentSkeleton from '../../components/ContentSkeleton.uvue';
 import LoadingIndicator from '../../components/LoadingIndicator.uvue';
 import AppIcon from '../../components/AppIcon.uvue'
@@ -375,12 +377,13 @@ function back() {
       @close="closeEditor()"
     >
       <text class="binding-label ui-mb-section ui-mt-section" :class="themeClass('binding-label')"
-        >平台</text
+        ><RequiredMark v-if="isRequired('binding', 'platform', form)" /> 平台</text
       >
       <picker
         :range="platforms"
         range-key="label"
         :value="platformIndex"
+        :aria-required="isRequired('binding', 'platform', form)"
         :disabled="!!form.id || saving"
         :aria-disabled="!!form.id || saving"
         @change="selectPlatform"
@@ -392,7 +395,7 @@ function back() {
         ></picker
       >
       <view class="binding-label-row ui-mt-sm"
-        ><text class="binding-label ui-mb-section ui-mt-section" :class="themeClass('binding-label')">{{
+        ><text class="binding-label ui-mb-section ui-mt-section" :class="themeClass('binding-label')"><RequiredMark v-if="isRequired('binding', form.platform === 'weread' ? 'accessToken' : 'platformUsername', form)" /> {{
           form.platform === 'weread'
             ? 'API Key'
             : form.platform === 'douban'
@@ -414,6 +417,7 @@ function back() {
       <input
         v-if="form.platform !== 'weread'"
         v-model="form.platformUsername"
+        :aria-required="isRequired('binding', 'platformUsername', form)"
         class="binding-field ui-px-card"
         aria-label="账号或用户名"
         :disabled="saving"
@@ -449,6 +453,7 @@ function back() {
       <input
         v-if="form.platform === 'github' || form.platform === 'weread'"
         v-model="form.accessToken"
+        :aria-required="isRequired('binding', 'accessToken', form)"
         class="binding-field ui-px-card"
         :password="true"
         :aria-label="form.platform === 'weread' ? 'API Key' : 'Access Token'"
