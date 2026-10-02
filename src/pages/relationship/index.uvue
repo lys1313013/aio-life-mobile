@@ -1,5 +1,9 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from 'vue';
+import LoadingIndicator from '../../components/LoadingIndicator.uvue';
+import { computed, onUnmounted, ref, watch } from 'vue';
+import AppIcon from '../../components/AppIcon.uvue';
+import spacing from '../../styles/spacing.json';
+import { layoutGraph, layoutEdges, categoryColors, relationColor as getRelationColor } from '../../services/domains/relationship-layout.ts';
 import MobilePage from '../../components/MobilePage.uvue';
 import PageHeader from '../../components/PageHeader.uvue';
 import MobileButton from '../../components/MobileButton.uvue';
@@ -17,7 +21,7 @@ import {
   deleteRelationship,
 } from '../../services/domains/social.ts';
 import { useDomainPage } from '../../services/domains/page-session.ts';
-import { themeClass } from '../../services/theme.ts';
+import { isDark, themeClass } from '../../services/theme.ts';
 const graph = ref<any>({ nodes: [], edges: [] }),
   keyword = ref(''),
   category = ref('全部'),
@@ -44,52 +48,46 @@ onUnmounted(() => {
 const zoom = ref(1),
   panX = ref(0),
   panY = ref(0),
-  dragged = ref(false);
+  dragged = ref(false),
+  showLabels = ref(true),
+  showRelations = ref(false),
+  viewport = ref(uni.getWindowInfo());
+function relationColor(type: string) { return getRelationColor(type, isDark.value); }
+const categories = ['全部', '亲属', '社会', '情感', '其他'];
 let touchX = 0,
   touchY = 0;
-const categoryColors = { '亲属': '#e74968', '社会': '#5683e8', '情感': '#ab78d4', '其他': '#8392a5' };
-const relationColors = ['#e7ab53', '#a877bd', '#5985de', '#d9618a', '#6ea397'];
-const relationTypes = computed(() => [...new Set(graph.value.edges.map(edge => edge.relationType).filter(Boolean))]);
-function relationColor(type) { return relationColors[Math.max(0, relationTypes.value.indexOf(type)) % relationColors.length]; }
-const graphSize = computed(() => Math.max(320, graph.value.nodes.length * 24));
-const graphNodes = computed(() => {
-  const nodes = graph.value.nodes.filter(
-    (item) => category.value === '全部' || item.category === category.value,
-  );
-  const center = graphSize.value / 2,
-    radius = Math.max(90, center - 60);
-  return nodes.map((item, index) => ({
-    ...item,
-    x: center + Math.cos((index / Math.max(1, nodes.length)) * Math.PI * 2) * radius,
-    y: center + Math.sin((index / Math.max(1, nodes.length)) * Math.PI * 2) * radius,
-  }));
+// 与 MobilePage 内容宽度一致；数值留给节点、触控区和画布几何约束。
+const canvasWidth = computed(() => Math.min(viewport.value.windowWidth, spacing.contentMax) - spacing.page * 2);
+const canvasHeight = computed(() => Math.max(440, Math.min(560, viewport.value.windowHeight - 260)));
+const filteredNodes = computed(() => graph.value.nodes.filter(
+  item => category.value === '全部' || item.category === category.value,
+));
+const filteredEdges = computed(() => {
+  const ids = new Set(filteredNodes.value.map(item => item.id));
+  return graph.value.edges.filter(edge => ids.has(edge.source) && ids.has(edge.target));
 });
-const graphEdges = computed(() =>
-  graph.value.edges
-    .map((edge) => {
-      const source = graphNodes.value.find((node) => node.id === edge.source),
-        target = graphNodes.value.find((node) => node.id === edge.target);
-      if (!source || !target) return null;
-      const dx = target.x - source.x,
-        dy = target.y - source.y;
-      return {
-        ...edge,
-        x: source.x,
-        y: source.y,
-        labelX: (source.x + target.x) / 2,
-        labelY: (source.y + target.y) / 2,
-        length: Math.sqrt(dx * dx + dy * dy),
-        angle: (Math.atan2(dy, dx) * 180) / Math.PI,
-      };
-    })
-    .filter(Boolean),
-);
+const layout = computed(() => layoutGraph(filteredNodes.value, filteredEdges.value, canvasWidth.value, canvasHeight.value));
+const graphNodes = computed(() => layout.value.nodes);
+const graphEdges = computed(() => layoutEdges(graphNodes.value, filteredEdges.value));
 function resetGraph() {
-  const width = Math.min(uni.getWindowInfo().windowWidth - 64, 900);
-  zoom.value = Math.min(1, width / graphSize.value);
-  panX.value = (width - graphSize.value * zoom.value) / 2;
-  panY.value = (360 - graphSize.value * zoom.value) / 2;
+  zoom.value = 1;
+  panX.value = (canvasWidth.value - layout.value.width) / 2;
+  panY.value = (canvasHeight.value - layout.value.height) / 2;
 }
+function changeZoom(factor: number) {
+  const next = Math.max(0.5, Math.min(2, zoom.value * factor));
+  const ratio = next / zoom.value;
+  panX.value = canvasWidth.value / 2 - (canvasWidth.value / 2 - panX.value) * ratio;
+  panY.value = canvasHeight.value / 2 - (canvasHeight.value / 2 - panY.value) * ratio;
+  zoom.value = next;
+}
+function resizeGraph() {
+  viewport.value = uni.getWindowInfo();
+  resetGraph();
+}
+uni.onWindowResize(resizeGraph);
+onUnmounted(() => uni.offWindowResize(resizeGraph));
+watch([category, canvasWidth, canvasHeight], resetGraph);
 function graphStart(event: any) {
   const touch = event.touches?.[0];
   if (!touch) return;
@@ -153,9 +151,17 @@ const people = computed(() =>
     (item) => category.value === '全部' || item.category === category.value,
   ),
 );
+function clearSearch() {
+  stamp++;
+  keyword.value = '';
+  results.value = null;
+  error.value = '';
+  loading.value = false;
+  refreshing.value = false;
+}
 async function search() {
   if (!keyword.value.trim()) {
-    await load();
+    clearSearch();
     return;
   }
   const current = ++stamp;
@@ -181,7 +187,7 @@ async function detail(id: string) {
   } catch (e) {
     if (alive && stamp === mutationStamp && current === detailStamp) error.value = e.message;
   } finally {
-    if (alive && stamp === mutationStamp && current === detailStamp) busy.value = false;
+    if (alive && current === detailStamp) busy.value = false;
   }
 }
 function edit(value: any = null) {
@@ -312,90 +318,68 @@ function nodeName(id: string) {
     ><PageHeader title="关系图谱" back @back="uni.navigateBack()" /><view
       class="body ui-page-body"
       :class="themeClass('body')"
-      ><view class="actions ui-toolbar"><text class="graph-summary">{{ graph.nodes.length }} 人 · {{ graph.edges.length }} 条关系</text><MobileButton label="新增人物" icon="ant-design:plus-outlined" @click="edit()" /></view
-      ><view class="search-row ui-toolbar"
-        ><view class="search-field"><FormField compact stretch label="搜索人物" v-model="keyword" /></view
-        ><view class="search-submit"
-          ><MobileButton label="搜索" :loading="loading" @click="search" /></view></view
-      ><view class="category-field"
-        ><FormField
-          label="分类"
-          kind="selector"
-          :options="['全部', '亲属', '社会', '情感', '其他']"
-          v-model="category" /></view
-      ><view class="graph-legend ui-row ui-section"><text v-for="type in relationTypes" :key="type" class="legend-tag" :style="{ color: relationColor(type) }">{{ type }}</text></view
-      ><PageState
-        :loading="loading"
-        :error="error"
-        :empty="!loading && !people.length"
-        @retry="load"
-        ><view class="actions ui-toolbar"
-          ><MobileButton
-            label="放大图谱"
-            icon="ant-design:zoom-in-outlined"
-            variant="quiet"
-            @click="zoom = Math.min(2, zoom * 1.25)" /><MobileButton
-            label="缩小图谱"
-            icon="ant-design:zoom-out-outlined"
-            variant="quiet"
-            @click="zoom = Math.max(0.2, zoom / 1.25)" /><MobileButton
-            label="复位图谱"
-            icon="ant-design:fullscreen-outlined"
-            variant="quiet"
-            @click="resetGraph" /></view
-        ><view
-          class="topology ui-mt-section"
-          :class="themeClass('topology')"
-          aria-label="关系拓扑图，可触屏拖动和缩放"
-          @touchstart="graphStart"
-          @touchmove.stop.prevent="graphMove"
-          ><view
-            class="graph-world"
-            :style="{
-              width: graphSize + 'px',
-              height: graphSize + 'px',
-              transform: 'translate(' + panX + 'px,' + panY + 'px) scale(' + zoom + ')',
-            }"
-            ><view
-              v-for="(edge, index) in graphEdges"
-              :key="index"
-              class="graph-link"
-              :style="{
-                left: edge.x + 'px',
-                top: edge.y + 'px',
-                width: edge.length + 'px',
-                backgroundColor: relationColor(edge.relationType),
-                transform: 'rotate(' + edge.angle + 'deg)',
-              }"
-            >
-              <view class="graph-arrow" :style="{ borderLeftColor: relationColor(edge.relationType) }" />
-              <view v-if="edge.direction === '双向'" class="graph-arrow graph-arrow-start" :style="{ borderLeftColor: relationColor(edge.relationType) }" />
+      >
+      <view class="search-row ui-row ui-section">
+        <view class="search-box" :class="themeClass('search-box')">
+          <input class="search-input" :class="themeClass('search-input')" aria-label="搜索人物" placeholder="搜索人物" v-model="keyword" confirm-type="search" @confirm="search" />
+          <MobileButton v-if="keyword || results" label="清空搜索" icon="ant-design:close-outlined" variant="quiet" @click="clearSearch" />
+        </view>
+        <MobileButton label="搜索" icon="ant-design:search-outlined" variant="quiet" :loading="loading" @click="search" />
+        <MobileButton label="新增人物" icon="ant-design:plus-outlined" @click="edit()" />
+      </view>
+      <view class="category-tabs ui-row ui-section">
+        <button v-for="item in categories" :key="item" role="button" :aria-label="'分类：' + item" :aria-pressed="category === item" class="category-tab" :class="[themeClass('category-tab'), { 'category-tab-active': category === item }]" @click="category = item">
+          <view v-if="item !== '全部'" class="category-dot" :style="{ backgroundColor: categoryColors[item] }" />
+          <text>{{ item }}</text>
+        </button>
+      </view>
+      <PageState skeleton="graph" :loading="loading || busy" :error="error" :empty="!loading && !filteredNodes.length" empty-text="暂无人物" @retry="load">
+<template #loading><view class="graph-panel" :class="themeClass('graph-panel')"><view class="topology" :style="{ height: canvasHeight + 'px' }"><LoadingIndicator label="正在加载关系图谱" /></view></view></template>
+        <view v-if="results !== null" class="search-results ui-section" :class="themeClass('search-results')">
+          <text class="graph-summary">{{ people.length ? '搜索结果 · ' + people.length : '未找到匹配人物' }}</text>
+          <view class="people ui-row">
+            <MobileButton v-for="item in people" :key="item.id" :label="item.name" variant="quiet" :loading="busy" @click="detail(item.id)" />
+          </view>
+        </view>
+        <view v-if="filteredNodes.length" class="graph-panel" :class="themeClass('graph-panel')">
+          <view class="graph-toolbar ui-row">
+            <text class="graph-summary">{{ filteredNodes.length }} 人 · {{ filteredEdges.length }} 条关系</text>
+            <MobileButton label="放大图谱" icon="ant-design:zoom-in-outlined" variant="quiet" @click="changeZoom(1.25)" />
+            <MobileButton label="缩小图谱" icon="ant-design:zoom-out-outlined" variant="quiet" @click="changeZoom(0.8)" />
+            <MobileButton label="复位图谱" icon="ant-design:fullscreen-outlined" variant="quiet" @click="resetGraph" />
+            <MobileButton :label="showLabels ? '隐藏关系名称' : '显示关系名称'" :icon="showLabels ? 'ant-design:eye-outlined' : 'ant-design:eye-invisible-outlined'" variant="quiet" @click="showLabels = !showLabels" />
+          </view>
+          <view class="topology" :style="{ height: canvasHeight + 'px' }" aria-label="关系拓扑图，可触屏拖动，使用按钮缩放" @touchstart.stop="graphStart" @touchmove.stop.prevent="graphMove">
+            <view class="graph-world" :style="{ width: layout.width + 'px', height: layout.height + 'px', transform: 'translate(' + panX + 'px,' + panY + 'px) scale(' + zoom + ')' }">
+              <view v-for="(edge, index) in graphEdges" :key="index" class="graph-link" :style="{ left: edge.x + 'px', top: edge.y + 'px', width: edge.length + 'px', backgroundColor: relationColor(edge.relationType), transform: 'rotate(' + edge.angle + 'deg)' }">
+                <view class="graph-arrow" :style="{ borderLeftColor: relationColor(edge.relationType) }" />
+                <view v-if="edge.direction === '双向'" class="graph-arrow graph-arrow-start" :style="{ borderLeftColor: relationColor(edge.relationType) }" />
+              </view>
+              <template v-if="showLabels">
+                <text v-for="(edge, index) in graphEdges.filter(item => item.showLabel)" :key="'label-' + index" class="graph-edge-label" :class="themeClass('graph-edge-label')" :style="{ left: edge.labelX + 'px', top: edge.labelY + 'px', color: relationColor(edge.relationType) }">{{ edge.relationType }}</text>
+              </template>
+              <button v-for="node in graphNodes" :key="node.id" role="button" class="graph-node-button" :class="themeClass('graph-node-button')" :aria-label="node.name" :disabled="busy" :style="{ left: node.x - 34 + 'px', top: node.y - 22 + 'px', borderColor: categoryColors[node.category] || '#8392a5' }" @click="graphClick(node.id)">
+                <text class="node-name">{{ node.name }}</text>
+              </button>
             </view>
-            <text v-for="(edge, index) in graphEdges" :key="'label-' + index" class="graph-edge-label" :style="{ left: edge.labelX + 'px', top: edge.labelY + 'px', color: relationColor(edge.relationType) }">{{ edge.relationType }}</text>
-            <view
-              v-for="node in graphNodes"
-              :key="node.id"
-              class="graph-node"
-              :style="{ left: node.x - 22 + 'px', top: node.y - 22 + 'px' }"
-              ><button role="button" class="graph-node-button" :aria-label="node.name" :style="{ backgroundColor: categoryColors[node.category] || '#8392a5' }" @click="graphClick(node.id)"></button><text class="node-name" :class="themeClass('node-name')">{{ node.name }}</text>
-              ></view
-            ></view
-          ></view
-        ><view class="people ui-row ui-py-section"
-          ><MobileButton
-            v-for="item in people"
-            :key="item.id"
-            :label="item.name"
-            variant="quiet"
-            :loading="busy"
-            @click="detail(item.id)" /></view
-        ><view v-for="(edge, index) in graph.edges" :key="index" class="edge ui-card"
-          ><text
-            >{{ nodeName(edge.source) }} {{ edge.direction === '双向' ? '↔' : '→' }}
-            {{ nodeName(edge.target) }} · {{ edge.relationType }}</text
-          ><text v-if="edge.description">{{ edge.description }}</text></view
-        ></PageState
-      ></view
+          </view>
+        </view>
+        <view v-if="filteredEdges.length" class="relations-section">
+          <button role="button" aria-label="关系明细" :aria-expanded="showRelations" class="relations-toggle" :class="themeClass('relations-toggle')" @click="showRelations = !showRelations">
+            <text>关系明细 · {{ filteredEdges.length }}</text>
+            <AppIcon :name="showRelations ? 'ant-design:up-outlined' : 'ant-design:down-outlined'" :size="14" color="#8b8f99" />
+          </button>
+          <view v-if="showRelations" class="relation-list">
+            <view v-for="(edge, index) in filteredEdges" :key="index" class="relation-row" :class="themeClass('relation-row')">
+              <text class="relation-person">{{ nodeName(edge.source) }}</text>
+              <view class="relation-kind"><text :style="{ color: relationColor(edge.relationType) }">{{ edge.relationType }}</text><text class="relation-direction">{{ edge.direction === '双向' ? '↔' : '→' }}</text></view>
+              <text class="relation-person relation-target">{{ nodeName(edge.target) }}</text>
+              <text v-if="edge.description" class="relation-description">{{ edge.description }}</text>
+            </view>
+          </view>
+        </view>
+      </PageState>
+      </view
     ><AdaptiveModal
       v-if="person && !draft && !relation"
       :label="person.name"
@@ -499,57 +483,49 @@ function nodeName(id: string) {
 .body-dark {
   color: #e7e9ee;
 }
-.search-row {
-}
-.search-field {
-  flex: 1;
-  min-width: 0;
-}
-.category-field {
-  width: 160px;
-}
-.actions {
-  flex-wrap: wrap;
-}
-.topology {
-  height: 360px;
-  width: 100%;
-  position: relative;
-  overflow: hidden;
-  border-radius: 14px;
-  background-color: #ffffff;
-}
-.topology-dark {
-  background-color: #1c1e22;
-}
-.graph-world {
-  position: absolute;
-  transform-origin: 0 0;
-}
-.graph-link {
-  position: absolute;
-  height: 2px;
-  background-color: #7e92af;
-  transform-origin: 0 50%;
-  pointer-events: none;
-  overflow: visible;
-}
-.node-name { position: absolute; top: 46px; left: -20px; width: 84px; font-size: 12px; color: #545b66; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.graph-node { position: absolute; width: 44px; height: 44px; overflow: visible; }
-.node-name-dark { color: #c8ccd4; }
-.graph-node-button { width: 44px; height: 44px; margin: 0; padding: 0; border: 0; border-radius: 22px; overflow: visible; }
-.graph-arrow { position: absolute; right: 22px; top: -3px; width: 0; height: 0; border-top: 4px solid transparent; border-bottom: 4px solid transparent; border-left: 6px solid #7e92af; }
-.graph-arrow-start { right: auto; left: 22px; transform: rotate(180deg); }
-.graph-edge-label { position: absolute; font-size: 11px; transform: translate(-50%, -100%); }
-.graph-summary { flex: 1; color: #8b8f99; font-size: 13px; }
-.graph-legend { flex-wrap: wrap; }
-.legend-tag { font-size: 11px; border-radius: 4px; background-color: rgba(148,163,184,0.08); padding: $space-micro $space-detail; }
+.search-row { align-items: center; }
+.search-box { flex: 1; min-width: 0; display: flex; flex-direction: row; align-items: center; gap: $space-inline; padding-left: $space-card; background-color: #ffffff; border-radius: 12px; }
+.search-box-dark { background-color: #1c1e22; }
+.search-input { flex: 1; min-width: 0; height: 44px; font-size: 14px; color: #263248; }
+.search-input-dark { color: #e7e9ee; }
+.category-tabs { gap: $space-detail; max-width: 440px; }
+.category-tab { flex: 1; min-width: 44px; min-height: 44px; margin: 0; padding: 0; display: flex; flex-direction: row; align-items: center; justify-content: center; gap: $space-detail; background-color: transparent; color: #707785; border-radius: 12px; font-size: 13px; }
+.category-tab-dark { color: #a7aeba; }
+.category-tab-active { background-color: #427bea; color: #ffffff; }
+.category-dot { width: 6px; height: 6px; border-radius: 3px; }
+.actions { flex-wrap: wrap; }
+.graph-panel { overflow: hidden; border-radius: 16px; background-color: #ffffff; }
+.graph-panel-dark { background-color: #1c1e22; }
+.graph-toolbar { align-items: center; gap: $space-detail; padding: $space-detail $space-inline; }
+.topology { width: 100%; position: relative; overflow: hidden; }
+.graph-world { position: absolute; transform-origin: 0 0; }
+.graph-link { position: absolute; height: 1px; transform-origin: 0 50%; pointer-events: none; overflow: visible; opacity: 0.7; }
+/* 节点尺寸属于画布几何约束，与布局函数共享 68 × 44 的碰撞边界。 */
+.graph-node-button { position: absolute; width: 68px; height: 44px; margin: 0; padding: 0 $space-detail; display: flex; flex-direction: row; align-items: center; justify-content: center; gap: $space-detail; border: 1px solid; border-radius: 22px; background-color: #ffffff; color: #263248; }
+.graph-node-button-dark { background-color: #252830; color: #e7e9ee; }
+.node-name { flex: 1; width: 100%; display: block; min-width: 0; text-align: center; font-size: 12px; line-height: 20px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.graph-arrow { position: absolute; right: 0; top: -3px; width: 0; height: 0; border-top: 3px solid transparent; border-bottom: 3px solid transparent; border-left: 5px solid; }
+.graph-arrow-start { right: auto; left: 0; transform: rotate(180deg); }
+.graph-edge-label { position: absolute; font-size: 11px; line-height: 18px; white-space: nowrap; transform: translate(-50%, -50%); padding: 0 $space-detail; border-radius: 4px; background-color: #ffffff; pointer-events: none; }
+.graph-edge-label-dark { background-color: #1c1e22; }
+.graph-summary { flex: 1; color: #8b8f99; font-size: 12px; }
+.search-results { padding: $space-card; border-radius: 12px; background-color: #ffffff; gap: $space-inline; }
+.search-results-dark { background-color: #1c1e22; }
+.people { flex-wrap: wrap; }
+.relations-section { margin-top: $space-section; }
+.relations-toggle { width: 100%; min-height: 44px; margin: 0; padding: 0 $space-detail; display: flex; flex-direction: row; justify-content: space-between; align-items: center; background-color: transparent; color: #707785; font-size: 13px; }
+.relations-toggle-dark { color: #a7aeba; }
+.relation-list { gap: $space-detail; }
+.relation-row { display: flex; flex-direction: row; flex-wrap: wrap; align-items: center; gap: $space-inline; padding: $space-inline $space-card; border-radius: 10px; background-color: #ffffff; }
+.relation-row-dark { background-color: #1c1e22; }
+.relation-person { flex: 1; min-width: 0; font-size: 13px; }
+.relation-target { text-align: right; }
+.relation-kind { align-items: center; font-size: 11px; }
+.relation-direction { color: #8b8f99; }
+.relation-description { width: 100%; color: #8b8f99; font-size: 12px; }
 /* #ifdef WEB || MP-WEIXIN */
-.graph-node-button::after { border: 0; }
+.graph-node-button::after, .category-tab::after, .relations-toggle::after { border: 0; }
 /* #endif */
-.people {
-  flex-wrap: wrap;
-}
 .edge {
   display: flex;
   flex-direction: column;
