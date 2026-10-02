@@ -16,6 +16,10 @@ function applyNativeTheme() {
   document.documentElement.style.setProperty('--aio-tab-background', dark ? '#1c1e22' : '#ffffff')
   document.documentElement.style.setProperty('--aio-tab-border', dark ? '#1c1e22' : '#ffffff')
   document.documentElement.style.setProperty('--aio-native-text', dark ? '#eeeeef' : '#27272a')
+  document.documentElement.style.setProperty('--aio-native-surface-rgb', dark ? '28, 30, 34' : '255, 255, 255')
+  document.documentElement.style.setProperty('--aio-native-border', dark ? '#45474d' : '#d4d4d8')
+  document.documentElement.style.setProperty('--aio-native-accent', dark ? '#9bbcff' : '#1d4ed8')
+  document.documentElement.style.setProperty('--aio-native-active', dark ? '#303846' : '#edf3ff')
   // #endif
   uni.setTabBarStyle({
     color: '#8b8f99',
@@ -50,6 +54,7 @@ export function initializeTheme() {
   } catch (_) {
     /* 存储不可读时仍可跟随系统 */
   }
+  applyNativeTheme()
   uni.onThemeChange((event) => {
     theme.system = event.theme
     applyNativeTheme()

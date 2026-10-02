@@ -104,8 +104,30 @@ page { min-height: 100%; }
 :global(.uni-tabbar-border) { background-color: var(--aio-tab-border, #ffffff) !important; }
 /* 原生 Web picker 的默认层级低于编辑弹窗。 */
 :global(.uni-picker-container) { z-index: 1200 !important; }
-:global(.uni-picker-select), :global(.uni-picker-custom) { background-color: var(--aio-tab-background, #ffffff) !important; color: var(--aio-native-text, #27272a) !important; }
-:global(.uni-picker-item) { color: var(--aio-native-text, #27272a) !important; }
+/* 弹层挂载到 body，滚轮、遮罩和操作栏必须统一跟随应用主题，不能混入系统配色。 */
+:global(.uni-picker-container) { --uni-picker-arrow-color: var(--aio-tab-background, #ffffff); }
+:global(.uni-picker-select), :global(.uni-picker-custom),
+:global(.uni-picker-content), :global(.uni-picker-header) {
+  background-color: var(--aio-tab-background, #ffffff) !important;
+  color: var(--aio-native-text, #27272a) !important;
+}
+:global(.uni-picker-item), :global(.uni-picker-action-cancel) { color: var(--aio-native-text, #27272a) !important; }
+:global(.uni-picker-action-confirm), :global(.uni-picker-select .uni-picker-item.selected) {
+  color: var(--aio-native-accent, #1d4ed8) !important;
+}
+:global(.uni-picker-select .uni-picker-item:hover), :global(.uni-picker-select .uni-picker-item.selected) {
+  background-color: var(--aio-native-active, #edf3ff) !important;
+}
+:global(.uni-picker-content .uni-picker-item:hover) { background-color: transparent !important; }
+:global(.uni-picker-container .uni-picker-view-mask) {
+  background-image: linear-gradient(180deg, rgba(var(--aio-native-surface-rgb, 255, 255, 255), 0.95), rgba(var(--aio-native-surface-rgb, 255, 255, 255), 0.6)),
+    linear-gradient(0deg, rgba(var(--aio-native-surface-rgb, 255, 255, 255), 0.95), rgba(var(--aio-native-surface-rgb, 255, 255, 255), 0.6)) !important;
+}
+:global(.uni-picker-header::after),
+:global(.uni-picker-container .uni-picker-view-indicator::before),
+:global(.uni-picker-container .uni-picker-view-indicator::after) {
+  border-color: var(--aio-native-border, #d4d4d8) !important;
+}
 /* Web 的页面容器已扣除 tabBar 高度，移除框架重复的底部占位。 */
 uni-app.uni-app--showtabbar uni-page-body::after { display: none; }
 /* #endif */
