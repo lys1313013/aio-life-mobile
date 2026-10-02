@@ -2,7 +2,10 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 import { transform } from 'esbuild'
-async function load(path) { const source=await readFile(new URL(path,import.meta.url),'utf8');const {code}=await transform(source.replace(/^import .*session-guard.ts'\n/m,'const request = (...args) => args\n'),{loader:'ts',format:'esm'});return import('data:text/javascript;base64,'+Buffer.from(code).toString('base64')) }
+async function load(path) { const source=await readFile(new URL(path,import.meta.url),'utf8');const {code}=await transform(source.replace(/^import .*session-guard.ts'\n/m,'const request = (...args) => args\n').replace("'../api-payload.ts'", JSON.stringify(payloadUrl)),{loader:'ts',format:'esm'});return import('data:text/javascript;base64,'+Buffer.from(code).toString('base64')) }
+const payloadSource = await readFile(new URL('../src/services/api-payload.ts', import.meta.url), 'utf8')
+const payloadCode = (await transform(payloadSource, {loader:'ts',format:'esm'})).code
+const payloadUrl = 'data:text/javascript;base64,' + Buffer.from(payloadCode).toString('base64')
 const finance=await load('../src/services/domains/finance.ts')
 test('财务 GET 条件平铺且保留字符串大 ID',()=>{const id='9223372036854775807';assert.equal(finance.ledgerId({id}),id);assert.equal(finance.ledgerId({incomeId:id}),id);assert.equal(finance.queryPath('/income/query',{page:1,pageSize:50,incTypeId:id,year:'',startTime:'2026-10-01'}),'/income/query?page=1&pageSize=50&incTypeId='+id+'&startTime=2026-10-01')})
 test('收入更新使用真实 id，保留税与关联数据',async()=>{const id='9223372036854775807',draft={id,amt:'100',incDate:'2026-10-01',tax:3,remark:'fixture'};const result=await finance.saveLedger('income',draft);assert.equal(result[0],'/income/'+id);assert.equal(result[1],'PUT');assert.equal(result[2].tax,3);assert.equal(result[2].id,id)})

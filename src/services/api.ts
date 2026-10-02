@@ -1,6 +1,8 @@
+import { minimalRequestPayload } from './api-payload.ts'
 import { readResponse, readUser } from './contract.ts'
 import { clearSession, saveToken, session } from './session.ts'
 import { requestUnlock, unlockNavigationRevision } from './secondary-lock.ts'
+import { invalidateMenuAccessAfterWrite, invalidateMenuAccessCache } from './menu-access-cache.ts'
 
 let baseURL = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:45678/api'
 // #ifdef WEB
@@ -22,7 +24,7 @@ export function request<T>(path: string, method: 'GET' | 'POST' | 'PUT' | 'DELET
     uni.request({
       url: apiUrl(path),
       method,
-      data,
+      data: minimalRequestPayload(path, method, data),
       header,
       timeout: timeoutMs,
       success: (response) => {
@@ -30,8 +32,11 @@ export function request<T>(path: string, method: 'GET' | 'POST' | 'PUT' | 'DELET
           const stale = new Error('登录状态已变化，请重试'); stale.name = 'StaleSessionError'; reject(stale); return
         }
         try {
-          resolve(readResponse(response.statusCode, response.data))
+          const result = readResponse(response.statusCode, response.data)
+          if (token && token === session.token) invalidateMenuAccessAfterWrite(path, method)
+          resolve(result)
         } catch (error) {
+          if (error.name === 'SecondaryLockRequiredError' && token && session.token === token) invalidateMenuAccessCache()
           if (error.name === 'SecondaryLockRequiredError' && !unlockAttempt && token && session.token === token) {
             if (navigationRevision !== unlockNavigationRevision()) { reject(new Error('页面已变化，请重新操作')); return }
             // 2001 是服务端在执行操作前拒绝的请求，解锁后仅重发一次。

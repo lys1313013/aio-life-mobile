@@ -57,6 +57,7 @@ async function unlock() {
     v-if="secondaryLock.visible"
     label="解锁菜单"
     :busy="saving"
+    :show-close="false"
     :max-width="420"
     @close="cancelUnlock"
   >
@@ -64,10 +65,32 @@ async function unlock() {
       label="二级密码"
       v-model="password"
       kind="password"
+      revealable
+      placeholder="请输入二级密码"
       :error="error"
       :disabled="saving"
     />
-    <MobileButton label="解锁" :loading="saving" @click="unlock" />
-    <MobileButton label="取消" variant="quiet" :disabled="saving" @click="cancelUnlock" />
+    <view class="unlock-actions">
+      <view class="unlock-action">
+        <MobileButton label="取消" variant="quiet" :disabled="saving" @click="cancelUnlock" />
+      </view>
+      <view class="unlock-action">
+        <MobileButton label="解锁" :loading="saving" @click="unlock" />
+      </view>
+    </view>
   </AdaptiveModal>
 </template>
+<style scoped lang="scss">
+@use '../styles/spacing-tokens' as *;
+
+.unlock-actions {
+  display: flex;
+  flex-direction: row;
+  gap: $space-inline;
+}
+
+.unlock-action {
+  flex: 1;
+  min-width: 0;
+}
+</style>

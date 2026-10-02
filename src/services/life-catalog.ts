@@ -78,6 +78,38 @@ export function nativeDestination(path) {
   return "";
 }
 
+// 编辑/详情参数不改变所属菜单；kind、admin 等页面模式仍需精确匹配。
+export function matchesNativeMenu(url, path) {
+  const destination = nativeDestination(path);
+  if (!destination) return false;
+  const [page, query = ''] = url.split('?');
+  const [target, required = ''] = destination.split('?');
+  if (page !== target) return false;
+  const values = query.split('&');
+  return !required || required.split('&').every((value) => values.includes(value));
+}
+
+export function isBusinessDestination(url) {
+  return [...Object.keys(nativePages), '/time/time-tracker']
+    .some((path) => matchesNativeMenu(url, path));
+}
+
+export function lockedMenuPaths(url, menus, lockedIds) {
+  if (!Array.isArray(menus) || !Array.isArray(lockedIds) || lockedIds.some((id) => typeof id !== 'string'))
+    throw new Error('菜单锁数据异常，请重试');
+  const ids = new Set(lockedIds);
+  const paths = new Set();
+  function visit(nodes, inherited = false) {
+    for (const node of nodes) {
+      const locked = inherited || ids.has(node.meta?.menuId);
+      if (locked && matchesNativeMenu(url, node.path)) paths.add(node.path);
+      if (node.children?.length) visit(node.children, locked);
+    }
+  }
+  visit(menus);
+  return [...paths];
+}
+
 // 叶子入口由候选接口补充路由，名称、父子关系和顺序均以菜单树为准。
 export function buildCatalog(candidates, preferences) {
   const invalid = () => { throw new Error("功能目录数据异常，请重试"); };
@@ -117,7 +149,7 @@ export function buildCatalog(candidates, preferences) {
         ancestors,
         parentTitle: ancestors.map((parent) => parent.title).join(" / "),
         icon: item.icon || "lucide:layout-dashboard",
-        color: item.color || "#8584bb",
+        color: item.color || "",
         native: !!destination,
       });
     }
@@ -139,7 +171,7 @@ export function catalogSections(catalog, query = "") {
     for (const parent of ancestors) {
       let group = groups.get(parent.menuId);
       if (!group) {
-        group = { ...parent, icon: "lucide:folder", color: "#8584bb", children: [] };
+        group = { ...parent, icon: "lucide:folder", color: "", children: [] };
         groups.set(parent.menuId, group);
         siblings.push(group);
       }

@@ -1,6 +1,7 @@
+import { pickQuery } from '../api-payload.ts'
 import { request } from './session-guard.ts'
 export function queryPath(path: string, params: Record<string, any> = {}) {
-  const entries = Object.entries(params).filter(([, value]) => value != null && value !== '')
+  const entries = Object.entries(pickQuery(path, params)).filter(([, value]) => value != null && value !== '')
   return path + (entries.length ? '?' + entries.map(([key, value]) => encodeURIComponent(key) + '=' + encodeURIComponent(String(value))).join('&') : '')
 }
 export function ledgerId(row: Record<string, any>): string { return String(row.id ?? row.incomeId ?? '') }

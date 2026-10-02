@@ -61,3 +61,9 @@ test('管理员CRUD与个人/公共分类接口分离，不将长ID转number',as
  assert.deepEqual(calls.at(-1),['/timeTrackerCategory/admin/'+id,'DELETE'])
  delete globalThis.__adminMock
 })
+
+test('菜单可保存主页负数排序，字典仍禁止负数', () => {
+ const form={title:'主页',name:'Home',path:'/',parentId:'0',status:'1',sort:'-1',metaText:'{}'}
+ assert.equal(adminPayload('menus',form).sort,-1)
+ assert.throws(()=>adminPayload('dict-data',{dictId:'1',dictValue:'v',dictLabel:'名称',dictSort:'-1'}),/非负/)
+})

@@ -22,7 +22,7 @@ export function adminPayload(kind, form, original = null) {
     const value = form[item.key]
     if (item.required && (value == null || String(value).trim() === '')) throw Error('请输入' + item.label)
     if (item.kind === 'number' && value != null && String(value) !== '') {
-      if (!Number.isFinite(Number(value)) || Number(value) < 0) throw Error(item.label + '必须为非负数字')
+      if (!Number.isFinite(Number(value)) || (kind !== 'menus' && Number(value) < 0)) throw Error(item.label + (kind === 'menus' ? '必须为数字' : '必须为非负数字'))
       result[item.key] = Number(value)
     } else if (value != null) result[item.key] = String(value).trim()
   }
