@@ -34,6 +34,7 @@ import type {
   Commit,
 } from '../../services/dashboard.ts'
 import TimeRecordEditor from '../../components/TimeRecordEditor.uvue'
+import RecordCreateModal from './RecordCreateModal.uvue'
 import { takeRecordChange } from '../../services/time-changes.ts'
 import { elapsedSinceRecord } from '../../services/time-format.ts'
 import { todayDate } from '../../services/dashboard.ts'
@@ -89,6 +90,7 @@ const timeElapsed = computed(() => {
   return minutes == null ? '' : durationLabel(minutes)
 })
 const timeEditor = ref<{ recordId: string } | null>(null)
+const recordCreateKind = ref<'think' | 'exercise' | null>(null)
 function openTimeRecord(id = '') { timeEditor.value = { recordId: id } }
 function closeTimeEditor() {
   timeEditor.value = null
@@ -177,7 +179,7 @@ onShow(() => {
   }
   refresh()
 })
-onHide(() => { active = false; timeEditor.value = null; if (minuteTimer) clearInterval(minuteTimer); minuteTimer = null })
+onHide(() => { active = false; timeEditor.value = null; recordCreateKind.value = null; if (minuteTimer) clearInterval(minuteTimer); minuteTimer = null })
 onUnload(() => {
   active = false
   if (minuteTimer) clearInterval(minuteTimer)
@@ -339,8 +341,18 @@ function openOverviewLink(item: OverviewCard, destination?: string) {
 const taskBusy = ref('')
 function openWatched(task) {uni.navigateTo({url:'/pages/tasks/todo?detailId='+encodeURIComponent(task.id)+(task.taskId?'&taskId='+encodeURIComponent(task.taskId):'')})}
 function openThought(thought) {uni.navigateTo({url:'/pages/records/notes?kind=think&editId='+encodeURIComponent(thought.id)})}
-function addThought() { uni.navigateTo({ url: '/pages/records/notes?kind=think&create=1' }) }
-function addExercise(){uni.navigateTo({url:'/pages/records/exercise?create=1'})}
+function addThought() { recordCreateKind.value = 'think' }
+function addExercise() { recordCreateKind.value = 'exercise' }
+function handleRecordCreated() {
+  const kind = recordCreateKind.value
+  recordCreateKind.value = null
+  if (kind === 'think') loadSection('thoughts')
+  if (kind === 'exercise') {
+    loadSection('exercise')
+    const card = cards.value.find(item => item.type === 'EXERCISE')
+    if (card) loadCard(card)
+  }
+}
 async function completeWatched(task) {
   if(taskBusy.value) return
   taskBusy.value=task.id;states.watched.error='';const token=session.token
@@ -464,7 +476,7 @@ function trendLines(points) {
               ></view>
               <view class="stat-top"
                 ><view class="stat-name"
-                  ><button role="button" class="stat-icon stat-link ui-type-body" :aria-label="item.title + '图标'" @click.stop="openOverviewLink(item, item.iconClickUrl)"><LifeMenuIcon :icon="cardIcon(item)" :size="18" :color="isDark ? '#d4d4d8' : '#52525b'" /></button><button role="button" class="stat-title stat-link" :class="themeClass('stat-title')" :aria-label="item.title + '标题'" @click.stop="openOverviewLink(item, item.titleClickUrl)">{{ item.title }}</button></view
+                  ><button role="button" class="stat-icon stat-link ui-type-body" :aria-label="item.title + '图标'" @click.stop="openOverviewLink(item, item.iconClickUrl)"><LifeMenuIcon :icon="cardIcon(item)" :size="18" :color="isDark ? '#d4d4d8' : '#52525b'" /></button><button role="button" class="stat-title stat-link" :aria-label="item.title + '标题'" @click.stop="openOverviewLink(item, item.titleClickUrl)"><text class="stat-title-text" :class="themeClass('stat-title-text')">{{ item.title }}</text></button></view
                 ><text
                   class="stat-value"
                   :style="{ color: item.valueColor || '' }"
@@ -757,6 +769,7 @@ function trendLines(points) {
       </view></scroll-view
     >
     <TimeRecordEditor v-if="timeEditor" :record-id="timeEditor.recordId" @close="closeTimeEditor" />
+    <RecordCreateModal v-if="recordCreateKind" :kind="recordCreateKind" @close="recordCreateKind = null" @saved="handleRecordCreated" />
   </view>
 </template>
 
@@ -877,6 +890,12 @@ function trendLines(points) {
 .stat-bottom {
   justify-content: space-between;
 }
+/* 整行扩展点击区，避免子按钮负边距压扁 stat-name 后被微信 view 裁切。 */
+.stat-top {
+  min-height: 44px;
+  margin-top: -$space-card;
+  margin-bottom: -$space-card;
+}
 .stat-name {
   flex-shrink: 1;
   min-width: 0;
@@ -886,17 +905,18 @@ function trendLines(points) {
   flex-shrink: 0;
   margin-left: -$space-card;
 }
-/* 扩大触控区但保留卡片原有高度；图标与标题的点击区域互不重叠。 */
+/* 图标与标题各保留 44px 点击区，文字在按钮内独立排版。 */
 .stat-link {
   display: flex;
+  flex-direction: row;
   align-items: center;
   justify-content: center;
   min-width: 44px;
   height: 44px;
   line-height: type-line('label');
   padding: 0;
-  margin-top: -$space-card;
-  margin-bottom: -$space-card;
+  margin-top: 0;
+  margin-bottom: 0;
   margin-right: 0;
   background: transparent;
   border: 0;
@@ -906,6 +926,9 @@ function trendLines(points) {
   margin-left: 0;
   flex-shrink: 1;
   justify-content: flex-start;
+}
+.stat-title-text {
+  min-width: 0;
   color: #3f3f46;
   @include type-style('label-strong');
 
@@ -1263,7 +1286,7 @@ function trendLines(points) {
 
     height: 82px;
   }
-  .stat-title {
+  .stat-title-text {
     @include type-style('label-strong');
   }
 }
@@ -1310,7 +1333,7 @@ function trendLines(points) {
     background-color: #1c1e22;
     border-color: #303238;
   }
-  .stat-title-dark,
+  .stat-title-text-dark,
   .stat-value-dark,
   .donut-total-dark {
     color: #eeeeef;

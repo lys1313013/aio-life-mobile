@@ -1,0 +1,129 @@
+<script setup lang="ts">
+import { computed, onMounted, onUnmounted, ref } from 'vue';
+import AdaptiveModal from '../../components/AdaptiveModal.uvue';
+import AppIcon from '../../components/AppIcon.uvue';
+import FormField from '../../components/FormField.uvue';
+import LoadingIndicator from '../../components/LoadingIndicator.uvue';
+import MobileButton from '../../components/MobileButton.uvue';
+import { request } from '../../services/api.ts';
+import { todayDate } from '../../services/dashboard.ts';
+import { session } from '../../services/session.ts';
+
+const props = defineProps<{ kind: 'think' | 'exercise' }>();
+const emit = defineEmits(['close', 'saved']);
+const saving = ref(false), loading = ref(false), error = ref('');
+const types = ref<any[]>([]);
+const thought = ref({ content: '', isPinned: 0, events: [] as { content: string }[] });
+const exercise = ref({ exerciseTypeId: '', exerciseDate: todayDate(), exerciseCount: '', description: '' });
+const exerciseFields = [
+  { key: 'exerciseTypeId', label: '运动类型', kind: 'selector', inputType: 'text' },
+  { key: 'exerciseDate', label: '运动日期', kind: 'date', inputType: 'text' },
+  { key: 'exerciseCount', label: '运动数量', kind: 'text', inputType: 'number' },
+  { key: 'description', label: '备注', kind: 'textarea', inputType: 'text' },
+];
+function updateExercise(key: string, value: string) {
+  exercise.value[key] = key === 'exerciseTypeId'
+    ? types.value.find(type => type.dictLabel === value)?.id || '' : value;
+}
+// 首页离开时卸载弹窗；晚到的响应不能更新已关闭的表单或其他账号。
+const owner = session.token;
+let active = true;
+onUnmounted(() => { active = false; });
+function isCurrent() { return active && owner === session.token; }
+const typeName = computed(() => types.value.find(type => type.id === exercise.value.exerciseTypeId)?.dictLabel || '');
+const contentKey = computed(() => JSON.stringify([loading.value, error.value, thought.value.events.length]));
+
+async function loadTypes() {
+  if (loading.value) return;
+  loading.value = true;
+  error.value = '';
+  try {
+    // 首页仅引入新增所需接口，避免将记录分包的整组服务带入微信主包。
+    const data = await request<any>('/userDictType/getByDictType', 'GET', { dictType: 'exercise_type' });
+    if (!isCurrent()) return;
+    types.value = (data.dictDetailList || []).map(type => ({ ...type, dictLabel: type.dictLabel || type.label }));
+    exercise.value.exerciseTypeId = types.value[0]?.id || '';
+    if (!types.value.length) error.value = '暂无运动类型，请先在运动页配置';
+  } catch (e) {
+    if (isCurrent()) error.value = e.message;
+  } finally {
+    loading.value = false;
+  }
+}
+onMounted(() => { if (props.kind === 'exercise') loadTypes(); });
+
+async function save() {
+  if (saving.value || loading.value) return;
+  error.value = '';
+  let payload;
+  if (props.kind === 'think') {
+    if (!thought.value.content.trim()) { error.value = '请输入内容'; return; }
+    payload = {
+      ...thought.value,
+      content: thought.value.content.trim(),
+      events: thought.value.events.filter(event => event.content.trim()).map(event => ({ content: event.content.trim() })),
+    };
+  } else {
+    if (!exercise.value.exerciseTypeId || !exercise.value.exerciseDate) {
+      error.value = '请选择运动类型和日期'; return;
+    }
+    const count = exercise.value.exerciseCount === '' ? null : Number(exercise.value.exerciseCount);
+    if (count != null && (!Number.isInteger(count) || count < 0)) { error.value = '运动数量必须为非负整数'; return; }
+    payload = { ...exercise.value, exerciseCount: count };
+  }
+  saving.value = true;
+  try {
+    const result = await request(props.kind === 'think' ? '/thought' : '/exerciseRecord', 'POST', payload);
+    if (!isCurrent()) return;
+    if (props.kind === 'exercise' && !result) throw new Error('保存失败');
+    emit('saved');
+  } catch (e) {
+    if (isCurrent()) error.value = e.message;
+  } finally {
+    saving.value = false;
+  }
+}
+</script>
+
+<template>
+  <AdaptiveModal :label="kind === 'think' ? '新增闪念' : '新增运动记录'" :show-close="false" :busy="saving" :content-key="contentKey" @close="emit('close')">
+    <template v-if="kind === 'think'">
+      <FormField label="内容" kind="textarea" placeholder="记录此刻的想法…" v-model="thought.content" :disabled="saving" />
+      <view v-for="(event, index) in thought.events" :key="index" class="event-fields">
+        <FormField :label="'关联事件 ' + (index + 1)" kind="textarea" v-model="event.content" :disabled="saving" />
+        <button class="remove-event" role="button" aria-label="移除此事件" :disabled="saving" @click="thought.events.splice(index, 1)">
+          <AppIcon name="ant-design:close-outlined" :size="20" />
+        </button>
+      </view>
+    </template>
+    <template v-else>
+      <LoadingIndicator v-if="loading" label="正在加载运动类型" />
+      <FormField v-for="field in exerciseFields" :key="field.key" :label="field.label" :kind="field.kind" :input-type="field.inputType" :model-value="field.key === 'exerciseTypeId' ? typeName : exercise[field.key]" :options="field.key === 'exerciseTypeId' ? types.map(type => type.dictLabel) : []" :disabled="saving || (field.key === 'exerciseTypeId' && !types.length)" @update:model-value="updateExercise(field.key, $event)" />
+    </template>
+    <text v-if="error" class="form-error" role="alert">{{ error }}</text>
+    <view class="actions">
+      <view v-if="kind === 'think'" class="actions">
+        <MobileButton label="新增关联事件" icon="ant-design:plus-outlined" variant="quiet" :disabled="saving" @click="thought.events.push({ content: '' })" />
+        <MobileButton :label="thought.isPinned === 1 ? '取消看板展示' : '展示到看板'" :icon="thought.isPinned === 1 ? 'ant-design:star-filled' : 'ant-design:star-outlined'" variant="quiet" :disabled="saving" @click="thought.isPinned = thought.isPinned === 1 ? 0 : 1" />
+      </view>
+      <MobileButton v-if="kind === 'exercise' && !types.length" label="重试运动类型" icon="ant-design:reload-outlined" :loading="loading" @click="loadTypes" />
+      <view class="actions form-actions">
+        <MobileButton label="取消" variant="quiet" :disabled="saving" @click="emit('close')" />
+        <MobileButton label="保存" :loading="saving" :disabled="loading || (kind === 'exercise' && !types.length)" @click="save" />
+      </view>
+    </view>
+  </AdaptiveModal>
+</template>
+
+<style scoped lang="scss">
+@use '../../styles/spacing-tokens' as *;
+@use '../../styles/typography' as *;
+.actions { display: flex; flex-direction: row; align-items: center; flex-wrap: wrap; gap: $space-inline; }
+.event-fields { gap: $space-inline; margin-bottom: $space-section; }
+.form-actions { margin-left: auto; flex-shrink: 0; }
+.form-error { @include type-style('body'); color: #e05252; margin-bottom: $space-section; }
+.remove-event { display: flex; align-items: center; justify-content: center; width: $space-controlMin; height: $space-controlMin; padding: 0; margin: 0; border: 0; background-color: transparent; }
+/* #ifdef WEB || MP-WEIXIN */
+.remove-event::after { border: 0; }
+/* #endif */
+</style>
