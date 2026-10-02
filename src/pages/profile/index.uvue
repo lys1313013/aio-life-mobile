@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import ContentSkeleton from '../../components/ContentSkeleton.uvue';
 import AppIcon from '../../components/AppIcon.uvue'
+import MobileButton from '../../components/MobileButton.uvue'
 import SecondaryUnlock from "../../components/SecondaryUnlock.uvue";
 import { themeClass } from '../../services/theme.ts'
 import { useRefreshTheme } from '../../services/refresh-theme.ts'
@@ -233,33 +234,32 @@ async function signOut() {
         <view class="signout-anchor ui-mt-section">
           <view
             v-if="confirmLogout"
-            class="signout-confirm ui-pad-card"
+            class="signout-confirm"
             :class="themeClass('signout-confirm')"
-            ><text class="empty-title" :class="themeClass('empty-title')"
+            role="alertdialog"
+            aria-label="退出当前账号？"
+            ><text class="signout-message"
               >退出当前账号？</text
-            ><view class="signout-actions ui-mt-section"
-              ><button
-                role="button"
-                class="cancel-button ui-px-card ui-py-xs"
-                :disabled="leaving" :aria-disabled="leaving"
+            ><view class="signout-actions"
+              ><MobileButton
+                label="取消"
+                compact
+                variant="quiet"
+                :disabled="leaving"
                 @click="confirmLogout = false"
-                :class="themeClass('cancel-button')"
-              >
-                取消</button
-              ><button
-                role="button"
-                class="confirm-button ui-ml-section ui-px-card ui-py-xs"
-                :disabled="leaving" :aria-disabled="leaving"
+              /><MobileButton
+                label="退出"
+                compact
+                :danger="true"
                 :loading="leaving"
                 @click="signOut"
-              >
-                退出
-              </button></view
-            ></view
+              /></view
+            ><view class="signout-arrow" :class="themeClass('signout-arrow')" /></view
           >
           <button
             role="button"
             class="signout-button"
+            :aria-expanded="confirmLogout"
             :disabled="leaving" :aria-disabled="leaving"
             @click="confirmLogout = !confirmLogout"
             :class="themeClass('signout-button')"
@@ -407,34 +407,42 @@ async function signOut() {
   position: absolute;
   bottom: calc(100% + $space-inline);
   z-index: 2;
-  right: 0;
-  width: 240px;
-
-  border-radius: 14px;
+  left: 50%;
+  transform: translateX(-50%);
+  // 限制浮层宽度，手机与宽屏都保持紧凑，并避免窄屏溢出。
+  width: 264px;
+  max-width: 100%;
+  box-sizing: border-box;
+  overflow: visible;
+  padding: $space-modal;
+  // 按钮自带透明触摸边缘，底部只留细节间距，避免留白叠加。
+  padding-bottom: $space-detail;
+  border-radius: 16px;
   background-color: #ffffff;
-  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.1);
+  color: #27272a;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.16);
+}
+.signout-message {
+  font-size: 14px;
+  line-height: 22px;
+  font-weight: 500;
 }
 .signout-actions {
+  display: flex;
   flex-direction: row;
   justify-content: flex-end;
-
+  gap: $space-inline;
+  margin-top: $space-section;
 }
-.cancel-button,
-.confirm-button {
-  margin: 0;
-
-  border: 0;
-  border-radius: 8px;
-  font-size: 13px;
-}
-.cancel-button {
-  color: #71717a;
-  background-color: #f4f4f5;
-}
-.confirm-button {
-
-  color: #ffffff;
-  background-color: #4e7ee3;
+.signout-arrow {
+  // 小箭头是定位几何，指向下方退出入口。
+  position: absolute;
+  bottom: -5px;
+  left: 50%;
+  width: 10px;
+  height: 10px;
+  transform: translateX(-50%) rotate(45deg);
+  background-color: #ffffff;
 }
 
 @media (min-width: 640px) {
@@ -479,15 +487,18 @@ async function signOut() {
   color: #9c9ca6;
 }
 .account-card-dark,
-.signout-button-dark,
-.signout-confirm-dark {
+.signout-button-dark {
   background-color: #1c1e22;
 }
 .signout-button-dark {
   color: #ed9191;
 }
-.cancel-button-dark {
-  color: #b4b4bd;
+.signout-confirm-dark {
+  color: #eeeeef;
+  background-color: #303238;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.32);
+}
+.signout-arrow-dark {
   background-color: #303238;
 }
 </style>
