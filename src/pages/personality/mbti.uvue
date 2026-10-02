@@ -230,7 +230,7 @@ function formatted(value) {
       :refreshing="refreshing"
       @refresh="load(true)"
       ><PageState skeleton="form" :loading="loading" :error="error" @retry="load()"
-        ><view v-if="!testId && !result" class="test-intro ui-card" :class="themeClass('test-intro')"><text class="mbti-title">MBTI人格测试</text><text class="mbti-muted">了解你的性格类型，发现真实的自我</text></view><view class="mbti-actions ui-toolbar"
+        ><view v-if="!testId && !result" class="test-intro ui-card" :class="themeClass('test-intro')"><text class="mbti-title">MBTI人格测试</text><text class="mbti-muted" :class="themeClass('mbti-muted')">了解你的性格类型，发现真实的自我</text></view><view class="mbti-actions ui-toolbar"
           ><MobileButton
             v-if="!testId"
             label="开始测试"
@@ -254,11 +254,11 @@ function formatted(value) {
         ><view v-if="result" class="mbti-card ui-card" :class="themeClass('mbti-card')"
           ><text class="mbti-title">{{ result.mbtiType }}</text
           ><view v-for="row in resultRows" :key="row.key" class="mbti-result ui-gap-sm"
-            ><text>{{ row.label }}</text
+            ><text class="ui-type-body">{{ row.label }}</text
             ><text class="mbti-content">{{ formatted(row.value) }}</text></view
           ><MobileButton v-if="!saved" label="保存结果" :loading="saving" @click="save" /><text
             v-else
-            class="mbti-muted"
+            class="mbti-muted" :class="themeClass('mbti-muted')"
             >已保存</text
           ><MobileButton
             v-if="result.resultsPage"
@@ -272,7 +272,7 @@ function formatted(value) {
             :key="row.id"
             class="mbti-card ui-card"
             :class="themeClass('mbti-card')"
-            ><text>{{ row.mbtiType }} · {{ row.createTime }}</text
+            ><text class="mbti-record-title">{{ row.mbtiType }}</text><text class="mbti-muted" :class="themeClass('mbti-muted')">{{ row.createTime }}</text
             ><view class="mbti-actions ui-row"
               ><MobileButton
                 label="历史详情"
@@ -301,8 +301,12 @@ function formatted(value) {
   ></view>
 </template>
 <style scoped lang="scss">
+@use '../../styles/typography' as *;
+@use '../../styles/text-colors' as *;
 @use '../../styles/spacing.scss';
 @use '../../styles/spacing-tokens' as *;
+@include type-utilities('body');
+
 .mbti-page {
   height: 100%;
   flex: 1;
@@ -324,28 +328,28 @@ function formatted(value) {
   flex-direction: row;
   flex-wrap: wrap;
 
-
   overflow: visible;
 }
 .mbti-title {
-  font-size: 28px;
-  font-weight: 600;
+  @include type-style('hero');
 
 }
 .mbti-result {
 
-
 }
 .mbti-content {
-  font-size: 14px;
+  @include type-style('body');
   white-space: pre-wrap;
   overflow-wrap: break-word;
 
 }
 .mbti-muted {
-  color: #808692;
-  font-size: 13px;
+  color: $text-secondary-light;
+  @include type-style('label');
 }
+.mbti-muted-dark { color: $text-secondary-dark; }
+.mbti-record-title { @include type-style('body-strong'); }
 .test-intro { background-color: #ffffff; border-radius: 14px; align-items: center; gap: $space-inline; }
 .test-intro-dark { background-color: #1c1e22; }
+
 </style>

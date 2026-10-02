@@ -526,7 +526,7 @@ async function download() {
         >
           <CategoryIcon v-if="kind === 'user-dict'" :icon="row.icon" :color="row.color" />
           <view v-for="key in spec.display" :key="key" class="admin-value ui-row ui-py-xs"
-            ><text class="admin-label">{{ label(key) }}</text
+            ><text class="admin-label" :class="themeClass('admin-label')">{{ label(key) }}</text
             ><text class="admin-text">{{ display(row, key) }}</text></view
           >
           <view v-if="kind === 'config'">
@@ -548,7 +548,7 @@ async function download() {
                 ><checkbox
                   :checked="recipients(row).includes(user.id)"
                   :aria-label="user.nickname || user.username"
-                /><text>{{ user.nickname || user.username }}</text></view
+                /><text class="ui-type-body">{{ user.nickname || user.username }}</text></view
               ></view
             >
             <FormField
@@ -636,9 +636,9 @@ async function download() {
         :disabled="saving || (kind === 'menus' && protectedMenu(original || form) && ['path', 'status'].includes(field.key))"
         @update:model-value="(value) => setField(field, value)" /><text
         v-if="kind === 'menus' && menuAdvanced && options.length"
-        class="admin-muted ui-mb-section"
+        class="admin-muted ui-mb-section" :class="themeClass('admin-muted')"
         >{{ '可用角色：' + options.join('、') }}</text
-      ><text v-if="editorError" class="admin-error ui-mb-section ui-mt-section" role="alert">{{ editorError }}</text
+      ><text v-if="editorError" class="admin-error ui-mb-section ui-mt-section ui-type-body" role="alert">{{ editorError }}</text
       ><view :class="{ 'ui-field-row': kind === 'menus' }"><MobileButton v-if="kind === 'menus'" :label="menuAdvanced ? '收起高级设置' : '高级设置'" variant="quiet" :disabled="saving" @click="menuAdvanced = !menuAdvanced" /><MobileButton label="保存" :loading="saving" @click="save"
     /></view></AdaptiveModal>
     <AdaptiveModal
@@ -667,7 +667,7 @@ async function download() {
           v-for="comment in detail.comments || []"
           :key="comment.id"
           class="admin-comment ui-py-card"
-          ><text>{{ comment.userName }} · {{ comment.createTime }}</text
+          ><view class="admin-comment-meta ui-row"><text class="admin-comment-author">{{ comment.userName }}</text><text class="admin-muted" :class="themeClass('admin-muted')">{{ comment.createTime }}</text></view
           ><text class="admin-content ui-mb-section ui-mt-section">{{ comment.content }}</text
           ><MobileButton
             v-for="file in comment.files || []"
@@ -717,13 +717,17 @@ async function download() {
           :loading="saving"
           :disabled="uploading || detailLoading || !!detailError"
           @click="submitReply" /></view
-      ><text v-if="editorError" class="admin-error ui-mb-section ui-mt-section" role="alert">{{ editorError }}</text>
+      ><text v-if="editorError" class="admin-error ui-mb-section ui-mt-section ui-type-body" role="alert">{{ editorError }}</text>
     </AdaptiveModal></view
   >
 </template>
 <style scoped lang="scss">
+@use '../../styles/typography' as *;
 @use '../../styles/spacing.scss';
 @use '../../styles/spacing-tokens' as *;
+@use '../../styles/text-colors' as *;
+@include type-utilities('body');
+
 .admin-page {
   flex: 1;
   height: 100%;
@@ -744,25 +748,23 @@ async function download() {
 .admin-value {
   flex-direction: row;
 
-
 }
 .admin-label {
   width: 80px;
   flex-shrink: 0;
-  font-size: 13px;
-  color: #808692;
+  @include type-style('label');
+  color: $text-secondary-light;
 }
 .admin-text {
   flex: 1;
-  font-size: 14px;
+  min-width: 0;
+  @include type-style('body');
   overflow-wrap: break-word;
 }
 .admin-actions {
   flex-direction: row;
   flex-wrap: wrap;
   align-items: center;
-
-
 
   overflow: visible;
 }
@@ -772,21 +774,23 @@ async function download() {
 
 }
 .admin-error {
+  @include type-style('label');
   color: #e05260;
 
 }
 .admin-muted {
-  font-size: 13px;
-  color: #808692;
+  @include type-style('label');
+  color: $text-secondary-light;
 
 }
 .admin-title {
-  font-size: 18px;
-  font-weight: 600;
+  @include type-style('title');
+  overflow-wrap: anywhere;
 
 }
 .admin-content {
-  font-size: 15px;
+  @include type-style('prose');
+  overflow-wrap: anywhere;
 
   white-space: pre-wrap;
 }
@@ -805,4 +809,8 @@ async function download() {
 
 }
 .admin-filters { flex-wrap: wrap; }
+
+.admin-label-dark, .admin-muted-dark { color: $text-secondary-dark; }
+.admin-comment-meta { flex-wrap: wrap; }
+.admin-comment-author { @include type-style('body-strong'); overflow-wrap: anywhere; }
 </style>

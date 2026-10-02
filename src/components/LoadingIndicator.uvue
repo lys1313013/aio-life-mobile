@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import { themeClass } from '../services/theme.ts';
-withDefaults(defineProps<{ label?: string; compact?: boolean }>(), { label: '正在加载', compact: false });
+withDefaults(defineProps<{ label?: string; compact?: boolean; floating?: boolean }>(), { label: '正在加载', compact: false, floating: false });
 </script>
 <template>
-  <view class="loading-indicator" :class="{ 'loading-indicator-compact': compact }" role="status" :aria-label="label" aria-live="polite">
-    <view class="loading-track" :class="themeClass('loading-track')"><view class="loading-runner" :class="themeClass('loading-runner')" /></view>
+  <view class="loading-indicator" :class="[{ 'loading-indicator-compact': compact, 'loading-indicator-floating': floating }, themeClass({ 'loading-indicator-floating': floating })]" role="status" :aria-label="label" aria-live="polite">
+    <view v-if="floating" class="loading-spinner" :class="themeClass('loading-spinner')" />
+    <view v-else class="loading-track" :class="themeClass('loading-track')"><view class="loading-runner" :class="themeClass('loading-runner')" /></view>
   </view>
 </template>
 <style scoped lang="scss">
@@ -15,8 +16,15 @@ withDefaults(defineProps<{ label?: string; compact?: boolean }>(), { label: '正
 .loading-runner { height: 3px; width: 35%; border-radius: 3px; background-color: #7198df; animation: loading-slide 1.35s ease-in-out infinite; }
 .loading-track-dark { background-color: #2a303a; }
 .loading-runner-dark { background-color: #7395ce; }
+// 脱离文档流，显示和收起时不改变内容高度；父容器需 position: relative。
+.loading-indicator-floating { position: absolute; top: $space-inline; right: $space-inline; z-index: 2; width: 32px; height: 32px; padding: 0; align-items: center; justify-content: center; border-radius: 16px; background-color: #ffffff; pointer-events: none; }
+.loading-indicator-floating-dark { background-color: #1c1e22; }
+.loading-spinner { width: 18px; height: 18px; box-sizing: border-box; border: 2px solid #e8edf5; border-top-color: #7198df; border-radius: 50%; animation: loading-spin 0.8s linear infinite; }
+.loading-spinner-dark { border-color: #2a303a; border-top-color: #91b4ff; }
+@keyframes loading-spin { to { transform: rotate(360deg); } }
 @keyframes loading-slide { from { transform: translateX(-100%); } to { transform: translateX(386%); } }
 /* #ifdef WEB */
 @media (prefers-reduced-motion: reduce) { .loading-runner { animation: none; transform: translateX(90%); } }
+@media (prefers-reduced-motion: reduce) { .loading-spinner { animation: none; } }
 /* #endif */
 </style>

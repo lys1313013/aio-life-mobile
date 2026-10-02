@@ -10,6 +10,7 @@ const props = defineProps<{
   url: string;
   title: string;
   kind: string;
+  compact?: boolean;
 }>();
 const source = ref(''),
   loading = ref(false),
@@ -64,9 +65,9 @@ onUnmounted(() => {
       @load="loading = false"
       @error="imageError"
     />
-    <view v-if="!source || failed || loading" class="library-cover-fallback">
+    <view v-if="!source || failed || loading" class="library-cover-fallback" :class="{ 'library-cover-compact': compact }">
       <AppIcon :name="kind === 'movie' ? 'lucide:clapperboard' : 'lucide:book-open'" :size="28" color="#8b8f99" />
-      <text class="library-cover-title">{{ title }}</text>
+      <text v-if="!compact" class="library-cover-title">{{ title }}</text>
       <LoadingIndicator v-if="loading" compact label="正在加载封面" />
       <button
         role="button"
@@ -82,6 +83,7 @@ onUnmounted(() => {
   </view>
 </template>
 <style scoped lang="scss">
+@use '../styles/typography' as *;
 @use '../styles/spacing-tokens' as *;
 .library-cover {
   position: absolute;
@@ -112,11 +114,12 @@ onUnmounted(() => {
   gap: $space-inline;
 }
 .library-cover-symbol {
-  font-size: 24px;
+  @include type-style('glyph-large');
 }
+.library-cover-compact { padding: 0; gap: 0; }
 .library-cover-title {
-  font-size: 11px;
-  line-height: 16px;
+  @include type-style('badge');
+
   text-align: center;
   max-height: 48px;
   overflow: hidden;
@@ -130,8 +133,8 @@ onUnmounted(() => {
   flex-shrink: 0;
   margin: 0;
   padding: 0;
-  font-size: 22px;
-  line-height: 44px;
+  @include type-style('glyph-medium');
+  line-height: $space-controlMin;
   background-color: transparent;
   color: inherit;
 }

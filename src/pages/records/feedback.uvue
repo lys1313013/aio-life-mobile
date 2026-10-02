@@ -213,8 +213,8 @@ async function cancel(item) {
             <text v-if="item.summary" class="feedback-content feedback-summary">{{ item.summary }}</text>
             <view class="feedback-footer ui-row">
               <view class="feedback-meta">
-                <view class="feedback-meta-item ui-row"><AppIcon name="ant-design:clock-circle-outlined" :size="13" :color="isDark ? '#9ca5b4' : '#748094'" /><text class="feedback-secondary">{{ item.createTime }}</text></view>
-                <view class="feedback-meta-item ui-row"><AppIcon name="ant-design:message-outlined" :size="13" :color="isDark ? '#9ca5b4' : '#748094'" /><text class="feedback-secondary">{{ item.commentCount || 0 }} 条评论</text></view>
+                <view class="feedback-meta-item ui-row"><AppIcon name="ant-design:clock-circle-outlined" :size="13" :color="isDark ? '#9ca5b4' : '#748094'" /><text class="feedback-secondary" :class="{ 'record-secondary-dark': isDark }">{{ item.createTime }}</text></view>
+                <view class="feedback-meta-item ui-row"><AppIcon name="ant-design:message-outlined" :size="13" :color="isDark ? '#9ca5b4' : '#748094'" /><text class="feedback-secondary" :class="{ 'record-secondary-dark': isDark }">{{ item.commentCount || 0 }} 条评论</text></view>
               </view>
               <ConfirmAction v-if="item.status === 'PENDING'" label="撤销反馈" message="撤销此反馈？" :action="() => cancel(item)" />
             </view>
@@ -240,7 +240,7 @@ async function cancel(item) {
           :form-data="{ bizType: 'feedback' }"
           :disabled="saving"
           @update:files="form.files = $event"
-          @busy-change="attachmentBusy = $event" /><text v-if="formError" class="feedback-error ui-section">{{
+          @busy-change="attachmentBusy = $event" /><text v-if="formError" class="feedback-error ui-section ui-type-body">{{
           formError
         }}</text
         ><view class="toolbar ui-row"
@@ -264,7 +264,7 @@ async function cancel(item) {
         ><PageState skeleton="form" :retain-content="false" :loading="detailLoading" :error="detailError" @retry="loadDetail"
           ><template v-if="detail"
             ><text class="feedback-title">{{ detail.title }}</text
-            ><text class="feedback-secondary">{{
+            ><text class="feedback-secondary" :class="{ 'record-secondary-dark': isDark }">{{
               statusLabels[statuses.indexOf(detail.status)]
             }}</text
             ><text class="feedback-content ui-section">{{ detail.content }}</text
@@ -276,7 +276,7 @@ async function cancel(item) {
               :key="item.id"
               class="comment-item ui-section ui-gap-sm"
               ><text class="feedback-secondary"
-                >{{ item.roleType === 'ADMIN' ? '管理员' : item.userName }} ·
+                 :class="{ 'record-secondary-dark': isDark }">{{ item.roleType === 'ADMIN' ? '管理员' : item.userName }} ·
                 {{ item.createTime }}</text
               ><text class="feedback-content ui-section">{{ item.content }}</text
               ><AttachmentField
@@ -291,7 +291,7 @@ async function cancel(item) {
               @update:files="commentFiles = $event"
               @busy-change="commentAttachmentBusy = $event" /><text
               v-if="commentError"
-              class="feedback-error ui-section"
+              class="feedback-error ui-section ui-type-body"
               >{{ commentError }}</text
             ><MobileButton
               label="发送评论"
@@ -307,8 +307,12 @@ async function cancel(item) {
   ></MobilePage>
 </template>
 <style scoped lang="scss">
+@use '../../styles/typography' as *;
+@use '../../styles/text-colors' as *;
 @use '../../styles/spacing.scss';
 @use '../../styles/spacing-tokens' as *;
+@include type-utilities('body');
+
 .feedback-page {
   color: #27272a;
 }
@@ -322,7 +326,7 @@ async function cancel(item) {
 .feedback-list { display: flex; flex-direction: column; gap: $space-section; }
 .feedback-heading { align-items: flex-start; }
 .feedback-tags { flex-wrap: wrap; }
-.feedback-tag { font-size: 11px; line-height: 18px; border-radius: 4px; padding: $space-micro $space-detail; background-color: #eef1f5; color: #647084; }
+.feedback-tag { @include type-style('badge');  border-radius: 4px; padding: $space-micro $space-detail; background-color: #eef1f5; color: #647084; }
 .feedback-type-BUG, .feedback-status-REJECTED { color: #bb4141; background-color: #faeaea; }
 .feedback-type-SUGGESTION, .feedback-status-PROCESSING { color: #2866b0; background-color: #eaf1fc; }
 .feedback-type-QUESTION { color: #7952b4; background-color: #f1eafb; }
@@ -353,20 +357,22 @@ async function cancel(item) {
   flex: 1;
   min-width: 0;
   overflow-wrap: anywhere;
-  line-height: 24px;
-  font-size: 16px;
-  font-weight: 600;
+
+  @include type-style('title');
+
 }
 .feedback-content {
-  font-size: 14px;
-  line-height: 22px;
+  @include type-style('body');
+
   white-space: pre-wrap;
 }
 .feedback-secondary {
-  color: #8b8f99;
-  font-size: 13px;
+  color: $text-secondary-light;
+  @include type-style('label');
 }
 .feedback-error {
   color: #e05252;
 }
+
+.record-secondary-dark { color: $text-secondary-dark; }
 </style>

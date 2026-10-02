@@ -167,9 +167,9 @@ function clear() {
               ><text class="event-title">{{ item.title }}</text><text class="type-badge" :class="'badge-' + item.type">{{ labels[types.indexOf(item.type)] || item.type }}</text
               ></view
             ><text class="event-secondary"
-              >{{ item.date }}{{ item.end_date ? ' → ' + item.end_date : '' }}</text
+              :class="{ 'secondary-text-dark': isDark }">{{ item.date }}{{ item.end_date ? ' → ' + item.end_date : '' }}</text
             ><text v-if="item.description" class="event-content">{{ item.description }}</text
-            ><view v-if="item.tags" class="event-tags"><text v-for="tag in textTags(item.tags).split(/[,，]/).filter(Boolean)" :key="tag" class="event-tag">{{ tag }}</text></view></view></view
+            ><view v-if="item.tags" class="event-tags"><text v-for="tag in textTags(item.tags).split(/[,，]/).filter(Boolean)" :key="tag" class="event-tag" :class="{ 'secondary-text-dark': isDark }">{{ tag }}</text></view></view></view
           ></template
         > </PageState
       ><AdaptiveModal v-if="form" label="编辑里程碑" :busy="saving" @close="form = null"
@@ -194,7 +194,7 @@ function clear() {
           kind="textarea"
           v-model="form.description" /><FormField label="标签" v-model="form.tags" /><text
           v-if="formError"
-          class="event-error ui-section"
+          class="event-error ui-section ui-type-body"
           >{{ formError }}</text
         ><view class="toolbar ui-row"
           ><ConfirmAction v-if="form.id" label="删除里程碑" :action="() => remove(form)" @success="form = null" /><view class="footer-spacer" /><MobileButton
@@ -208,8 +208,12 @@ function clear() {
   ><template #fixed><FloatingActionButton label="新增里程碑" :disabled="loading || !!error" @click="open()" /></template></MobilePage>
 </template>
 <style scoped lang="scss">
+@use '../../styles/typography' as *;
+@use '../../styles/text-colors' as *;
 @use '../../styles/spacing.scss';
 @use '../../styles/spacing-tokens' as *;
+@include type-utilities('body');
+
 .event-page {
   padding-bottom: 80px; /* 浮动新增按钮避让 */
   color: #27272a;
@@ -234,35 +238,35 @@ function clear() {
 }
 .event-title {
   flex: 1;
-  font-size: 17px;
-  font-weight: 600;
+  @include type-style('title');
+
 }
 .year-title {
-  font-size: 22px;
-  font-weight: 600;
+  @include type-style('heading');
+
 }
 .event-content {
-  font-size: 14px;
-  line-height: 22px;
+  @include type-style('body');
+
 }
 .event-secondary {
-  color: #8b8f99;
-  font-size: 13px;
+  color: $text-secondary-light;
+  @include type-style('label');
 }
 .event-error {
   color: #e05252;
 }
 .timeline-entry { position: relative; overflow: visible; margin-left: $space-inline; padding-left: $space-modal; border-left: $space-hairline solid #dfe3e9; }
-.month-title { color: #5986db; font-size: 12px; font-weight: 600; margin-bottom: $space-section; }
+.month-title { color: #5986db; @include type-style('caption-strong');  margin-bottom: $space-section; }
 .timeline-dot { position: absolute; top: 22px; left: -$space-detail; width: 9px; height: 9px; border-radius: 5px; background-color: #5986db; border: 2px solid #ffffff; }
 .dot-work { background-color: #77be7b; } .dot-life { background-color: #5986db; } .dot-study { background-color: #bd8ee2; }
-.type-badge { font-size: 11px; color: #5986db; background-color: rgba(89,134,219,0.12); padding: $space-micro $space-detail; border-radius: 4px; }
+.type-badge { @include type-style('badge'); color: #5986db; background-color: rgba(89,134,219,0.12); padding: $space-micro $space-detail; border-radius: 4px; }
 .badge-work { color: #72a851; background-color: rgba(114,168,81,0.12); }
 .badge-study { color: #ac7bd1; background-color: rgba(172,123,209,0.12); }
 .event-card { border-radius: 10px; }
-.event-title { min-width: 0; font-size: 15px; line-height: 22px; }
+.event-title { min-width: 0; @include type-style('title');  }
 .event-tags { flex-direction: row; flex-wrap: wrap; gap: $space-detail; }
-.event-tag { color: #8b8f99; background-color: rgba(128, 138, 153, 0.1); border-radius: 4px; padding: $space-micro $space-detail; font-size: 11px; }
+.event-tag { color: $text-secondary-light; background-color: rgba(128, 138, 153, 0.1); border-radius: 4px; padding: $space-micro $space-detail; @include type-style('badge'); }
 .footer-spacer { flex: 1; }
 .event-card { min-height: $space-controlMin; }
 .event-content { word-break: break-word; }
@@ -272,4 +276,6 @@ function clear() {
 /* #ifdef WEB */
 .event-card:focus-visible { outline: 2px solid #417ce8; outline-offset: 2px; }
 /* #endif */
+
+.secondary-text-dark { color: $text-secondary-dark; }
 </style>

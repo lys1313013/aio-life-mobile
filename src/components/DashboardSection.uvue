@@ -24,11 +24,12 @@ defineEmits<{ refresh: [] }>()
         重试
       </button>
     </view>
-    <view v-else-if="loading" class="section-loading"><ContentSkeleton compact :variant="skeleton || 'list'" :rows="2" :label="'正在加载' + title" /></view>
+    <slot v-else-if="loading" name="loading"><view class="section-loading"><ContentSkeleton compact :variant="skeleton || 'list'" :rows="2" :label="'正在加载' + title" /></view></slot>
     <view v-else class="section-content" :class="{ 'section-content-flush-top': flushTop, 'section-content-auto': autoHeight }"><slot /></view>
   </view>
 </template>
 <style scoped lang="scss">
+@use '../styles/typography' as *;
 @use '../styles/spacing.scss';
 @use '../styles/spacing-tokens' as *;
 .dashboard-section {
@@ -48,8 +49,8 @@ defineEmits<{ refresh: [] }>()
 }
 .section-title {
   color: #18181b;
-  font-size: 16px;
-  font-weight: 600;
+  @include type-style('title');
+
 }
 .section-heading-compact { height: $space-controlMin; padding-top: 0; padding-bottom: 0; }
 .section-label { flex-direction: row; align-items: center; }
@@ -73,14 +74,14 @@ defineEmits<{ refresh: [] }>()
 }
 .section-error-text {
   color: #bc4949;
-  font-size: 12px;
+  @include type-style('caption');
   text-align: center;
 }
 .section-retry {
   margin: $space-section 0 0;
   padding: $space-detail $space-card;
   min-height: $space-controlMin;
-  font-size: 12px;
+  @include type-style('caption');
   color: #3662da;
   background-color: #eef2ff;
   border-radius: 8px;

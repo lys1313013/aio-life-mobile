@@ -140,7 +140,7 @@ async function remove(item) {
               :class="{ 'event-card-active': activeMenu === item.id }" :style="cardStyle(item.color)">
               <view class="event-card-header">
                 <text class="event-emoji">{{ item.icon || '🎉' }}</text>
-                <button class="event-more" role="button" :aria-label="'更多操作：' + item.title"
+                <button class="event-more ui-type-body" role="button" :aria-label="'更多操作：' + item.title"
                   :aria-expanded="activeMenu === item.id" aria-haspopup="true"
                   @click="activeMenu = activeMenu === item.id ? '' : item.id">
                   <view class="more-dot" /><view class="more-dot" /><view class="more-dot" />
@@ -187,7 +187,7 @@ async function remove(item) {
           </view>
           <FormField label="备注" kind="textarea" v-model="form.note" /><text
             v-if="formError"
-            class="event-error ui-section"
+            class="event-error ui-section ui-type-body"
             >{{ formError }}</text
           ><view class="ui-toolbar"
             ><MobileButton
@@ -204,8 +204,11 @@ async function remove(item) {
   </view>
 </template>
 <style scoped lang="scss">
+@use '../../styles/typography' as *;
 @use '../../styles/spacing.scss';
 @use '../../styles/spacing-tokens' as *;
+@include type-utilities('body');
+
 .anniversary-shell {
   flex: 1;
   height: 100%;
@@ -228,7 +231,7 @@ async function remove(item) {
 }
 .event-card-active { z-index: 101; }
 .event-card-header { flex-direction: row; justify-content: space-between; align-items: center; }
-.event-emoji { font-size: 30px; line-height: 44px; }
+.event-emoji { @include type-style('emoji'); line-height: $space-controlMin; }
 .event-more {
   display: flex;
   flex-direction: column;
@@ -266,19 +269,19 @@ async function remove(item) {
   border-radius: 8px;
   background-color: transparent;
   color: inherit;
-  font-size: 14px;
-  line-height: 44px;
+  @include type-style('body');
+  line-height: $space-controlMin;
   text-align: left;
 }
 .event-menu-delete { color: #e05260; }
 .event-count { align-items: center; }
-.event-label { font-size: 12px; opacity: 0.9; }
+.event-label { @include type-style('caption'); opacity: 0.9; }
 .count-row { flex-direction: row; align-items: baseline; justify-content: center; }
-.day-count { font-variant-numeric: tabular-nums; letter-spacing: -1px; font-size: 36px; font-weight: 800; line-height: 46px; }
-.event-unit { font-size: 13px; opacity: 0.8; }
-.event-title { word-break: break-word; font-size: 16px; font-weight: 600; line-height: 22px; }
-.event-date { align-self: flex-start; border-radius: 4px; padding: $space-micro $space-detail; background-color: rgba(255,255,255,0.12); font-size: 12px; opacity: 0.9; }
-.event-note { font-size: 12px; line-height: 18px; opacity: 0.8; }
+.day-count { font-variant-numeric: tabular-nums; letter-spacing: type-tracking('display'); @include type-style('display');   }
+.event-unit { @include type-style('label'); opacity: 0.8; }
+.event-title { word-break: break-word; @include type-style('title');   }
+.event-date { align-self: flex-start; border-radius: 4px; padding: $space-micro $space-detail; background-color: rgba(255,255,255,0.12); @include type-style('caption'); opacity: 0.9; }
+.event-note { @include type-style('caption');  opacity: 0.8; }
 .event-error { color: #e05252; }
 /* #ifdef WEB || MP-WEIXIN */
 .event-more::after, .event-menu-item::after { border: 0; }
@@ -286,13 +289,13 @@ async function remove(item) {
 @media (min-width: 600px) {
   .event-grid { }
   .event-card { width: calc((100% - #{$space-section * 2}) / 3); }
-  .day-count { font-variant-numeric: tabular-nums; letter-spacing: -1px; font-size: 40px; line-height: 52px; }
+  .day-count { font-variant-numeric: tabular-nums; letter-spacing: type-tracking('display'); @include type-style('display-wide');  }
 }
 .anniversary-preview { height: 96px; align-items: center; justify-content: center; border-radius: 12px; }
-.preview-emoji { font-size: 44px; }
-.choice-label { font-size: 14px; margin-bottom: $space-fieldLabel; }
+.preview-emoji { @include type-style('emoji-preview'); }
+.choice-label { @include type-style('label'); margin-bottom: $space-fieldLabel; }
 .emoji-options, .color-options { flex-direction: row; flex-wrap: wrap; gap: $space-detail; }
-.emoji-choice, .color-choice { display: flex; align-items: center; justify-content: center; width: $space-controlMin; height: $space-controlMin; margin: 0; padding: 0; border: 0; border-radius: 8px; background-color: transparent; font-size: 24px; }
+.emoji-choice, .color-choice { display: flex; align-items: center; justify-content: center; width: $space-controlMin; height: $space-controlMin; margin: 0; padding: 0; border: 0; border-radius: 8px; background-color: transparent; @include type-style('glyph-large'); }
 .choice-active { background-color: rgba(65,124,232,0.13); }
 .color-swatch { width: 32px; height: 32px; border-radius: 16px; }
 .swatch-active { border: 2px solid #ffffff; outline: 2px solid #417ce8; }
@@ -300,4 +303,5 @@ async function remove(item) {
 .emoji-choice::after, .color-choice::after { border: 0; }
 /* #endif */
 @media (min-width: 1000px) { .event-card { width: calc((100% - #{$space-section * 3}) / 4); } }
+
 </style>

@@ -171,7 +171,7 @@ async function move(index, offset) {
           :class="{ 'card-dark': isDark }"
           ><view class="toolbar ui-row"
             ><CategoryIcon :icon="item.icon" :color="item.color" /><text
-              class="title"
+              class="title ui-type-body"
               >{{ item.dictLabel }}</text
             ><MobileButton
               :label="item.status === '1' ? '启用分类' : '停用分类'"
@@ -189,7 +189,7 @@ async function move(index, offset) {
               :message="item.userId === '0' ? '公共分类会在你的分类列表中停用' : '确认删除分类？'"
               :action="() => remove(item)" /></view
           ><text class="secondary"
-            >{{ item.status === '1' ? '已停用' : '已启用'
+             :class="{ 'record-secondary-dark': isDark }">{{ item.status === '1' ? '已停用' : '已启用'
             }}{{ item.isReadonly === 'Y' ? ' · 只读分类' : '' }}</text
           ><view class="toolbar ui-row"
             ><MobileButton
@@ -216,20 +216,26 @@ async function move(index, offset) {
       ><AdaptiveModal v-if="form" label="编辑分类" :busy="saving" @close="form = null"
         ><FormField label="名称" v-model="form.dictLabel" /><FormField
           label="分类标识"
-          v-model="form.dictValue" /><FormField label="颜色" v-model="form.color" /><FormField
-          label="图标"
-          v-model="form.icon" /><FormField label="选择图标" kind="selector" :options="iconOptions" v-model="form.icon" /><CategoryIcon :icon="form.icon" :color="form.color" /><FormField
-          label="排序"
-          input-type="number"
-          v-model="form.dictSort" /><FormField
-          label="状态"
-          kind="selector"
-          :model-value="form.status === '1' ? '停用' : '启用'"
-          :options="['启用', '停用']"
-          @update:model-value="form.status = $event === '停用' ? '1' : '0'" /><FormField
+          v-model="form.dictValue" />
+        <view class="ui-field-row">
+          <FormField compact stretch label="颜色" v-model="form.color" />
+          <FormField compact stretch label="排序" input-type="number" v-model="form.dictSort" />
+        </view>
+        <view class="ui-field-row">
+          <FormField compact stretch label="图标" v-model="form.icon" />
+          <FormField compact stretch label="选择图标" kind="selector" :options="iconOptions" v-model="form.icon" />
+        </view>
+        <view class="ui-field-row category-status-row">
+          <FormField compact stretch label="状态" kind="selector"
+            :model-value="form.status === '1' ? '停用' : '启用'"
+            :options="['启用', '停用']"
+            @update:model-value="form.status = $event === '停用' ? '1' : '0'" />
+          <view class="category-icon-preview"><CategoryIcon :icon="form.icon" :color="form.color" /></view>
+        </view>
+        <FormField
           label="备注"
           kind="textarea"
-          v-model="form.remark" /><text v-if="formError" class="error ui-section">{{ formError }}</text
+          v-model="form.remark" /><text v-if="formError" class="error ui-section ui-type-body">{{ formError }}</text
         ><view class="toolbar ui-row"
           ><MobileButton
             label="取消"
@@ -242,8 +248,12 @@ async function move(index, offset) {
   ></MobilePage>
 </template>
 <style scoped lang="scss">
+@use '../../styles/typography' as *;
+@use '../../styles/text-colors' as *;
 @use '../../styles/spacing.scss';
 @use '../../styles/spacing-tokens' as *;
+@include type-utilities('body');
+
 .categories-page {
   color: #27272a;
 }
@@ -264,18 +274,24 @@ async function move(index, offset) {
 }
 .title {
   flex: 1;
-  font-weight: 600;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  @include type-style('body-strong');
 }
+.category-status-row { align-items: flex-end; }
+.category-icon-preview { min-height: $space-controlMin; width: $space-controlMin; align-items: center; justify-content: center; }
 .swatch {
   width: 14px;
   height: 14px;
   border-radius: 7px;
 }
 .secondary {
-  color: #8b8f99;
-  font-size: 13px;
+  color: $text-secondary-light;
+  @include type-style('label');
 }
 .error {
   color: #e05252;
 }
+
+.record-secondary-dark { color: $text-secondary-dark; }
 </style>

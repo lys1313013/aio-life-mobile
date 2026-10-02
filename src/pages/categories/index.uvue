@@ -207,7 +207,7 @@ function privateCategory(row) {
           :class="themeClass('category-card')"
         >
           <view class="category-heading ui-row"
-            ><CategoryIcon :icon="row.icon" :color="row.color" /><AppIcon v-if="row.parentId && row.parentId !== '0'" name="lucide:corner-down-right" :size="16" /><text class="category-name" :style="{ color: row.color }">{{ row.name }}</text><text class="category-type">{{ types[(row.timeType || 1) - 1] }}</text><switch :checked="row.isTrackTime === 1" :disabled="!!busyId || loading" aria-label="卡片统计" @change="change(row, { isTrackTime: $event.detail.value ? 1 : 0 })" /><MobileButton
+            ><CategoryIcon :icon="row.icon" :color="row.color" /><AppIcon v-if="row.parentId && row.parentId !== '0'" name="lucide:corner-down-right" :size="16" /><text class="category-name" :class="themeClass('category-name')">{{ row.name }}</text><text class="category-type">{{ types[(row.timeType || 1) - 1] }}</text><switch :checked="row.isTrackTime === 1" :disabled="!!busyId || loading" aria-label="卡片统计" @change="change(row, { isTrackTime: $event.detail.value ? 1 : 0 })" /><MobileButton
               v-if="hasChildren(row)"
               :label="collapsed.includes(row.id) ? '展开子分类' : '收起子分类'"
               :icon="collapsed.includes(row.id) ? 'ant-design:right-outlined' : 'ant-design:down-outlined'"
@@ -306,13 +306,16 @@ function privateCategory(row) {
         input-type="number"
         :disabled="saving"
         @update:model-value="(value) => (form.sort = Number(value))"
-      /><text v-if="editorError" class="category-error ui-mb-section" role="alert">{{ editorError }}</text
+      /><text v-if="editorError" class="category-error ui-mb-section ui-type-body" role="alert">{{ editorError }}</text
       ><view class="category-actions ui-row ui-mb-section"><MobileButton v-if="original" label="上移分类" icon="ant-design:arrow-up-outlined" variant="quiet" :disabled="!!busyId || saving" @click="move(original, -1)" /><MobileButton v-if="original" label="下移分类" icon="ant-design:arrow-down-outlined" variant="quiet" :disabled="!!busyId || saving" @click="move(original, 1)" /></view><MobileButton label="保存" :loading="saving" @click="save" /> </AdaptiveModal
   ></view>
 </template>
 <style scoped lang="scss">
+@use '../../styles/typography' as *;
 @use '../../styles/spacing.scss';
 @use '../../styles/spacing-tokens' as *;
+@include type-utilities('body');
+
 .category-page {
   flex: 1;
   height: 100%;
@@ -328,7 +331,6 @@ function privateCategory(row) {
   flex-wrap: wrap;
   gap: $space-inline;
 
-
   overflow: visible;
 }
 .category-card-dark {
@@ -342,20 +344,22 @@ function privateCategory(row) {
 
   align-items: center;
 }
-.category-type { font-size: 12px; color: #fff; background-color: #5b8ff9; padding: $space-detail; border-radius: 4px; }
+.category-type { @include type-style('caption'); color: #fff; background-color: #5b8ff9; padding: $space-detail; border-radius: 4px; }
 .category-name {
+  color: #27272a;
+  min-width: 0;
   flex: 1;
-  font-size: 16px;
+  @include type-style('title');
 }
+.category-name-dark { color: #eeeeef; }
 .category-meta {
   color: #808692;
-  font-size: 13px;
+  @include type-style('label');
 
 }
 .category-actions {
   flex-direction: row;
   flex-wrap: wrap;
-
 
   overflow: visible;
 }
@@ -363,4 +367,5 @@ function privateCategory(row) {
   color: #e05260;
 
 }
+
 </style>

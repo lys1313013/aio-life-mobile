@@ -2,6 +2,7 @@
 import { getCurrentInstance, nextTick, onUnmounted, ref } from 'vue';
 import { drawPosterQr, posterSiteUrl } from '../services/personality/poster-qr.ts';
 import MobileButton from './MobileButton.uvue';
+import { posterFont, posterLineHeight } from '../services/typography.ts';
 const props = defineProps<{ result: any; site?: string }>();
 const busy = ref(false),
   error = ref(''),
@@ -18,7 +19,7 @@ function wrap(ctx, text, x, y, maxWidth) {
     if (ctx.measureText(line + char).width > maxWidth && line) {
       ctx.fillText(line, x, row);
       line = char;
-      row += 24;
+      row += posterLineHeight('body');
     } else line += char;
   }
   if (line) ctx.fillText(line, x, row);
@@ -46,11 +47,11 @@ async function generate() {
         ctx.fillStyle = /^#[\da-f]{3,6}$/i.test(p.color || '') ? p.color : '#427bea';
         ctx.fillRect(24, 24, 552, 12);
         ctx.fillStyle = '#27272a';
-        ctx.font = 'bold 32px sans-serif';
+        ctx.font = posterFont('title');
         ctx.fillText('CBTI 程序员人格', 48, 84);
-        ctx.font = 'bold 40px sans-serif';
+        ctx.font = posterFont('hero');
         ctx.fillText(p.code + ' · ' + p.name, 48, 146);
-        ctx.font = '18px sans-serif';
+        ctx.font = posterFont('motto');
         let y = wrap(ctx, p.motto, 48, 184, 504);
         ctx.fillText('匹配度 ' + props.result.similarity + '%', 48, y + 8);
         y += 54;
@@ -64,7 +65,7 @@ async function generate() {
           ctx.drawImage(illustration, 180, y, 240, 200);
           y += 220;
         }
-        ctx.font = '16px sans-serif';
+        ctx.font = posterFont('body');
         for (const dimension of props.result.dimensions || []) {
           ctx.fillStyle = '#27272a';
           ctx.fillText(dimension.name, 48, y);
@@ -85,13 +86,13 @@ async function generate() {
           props.site || import.meta.env.VITE_WEB_SITE_URL || 'https://aiolife.top',
         );
         drawPosterQr(ctx, shareUrl, 48, 1070, 144);
-        ctx.font = 'bold 20px sans-serif';
+        ctx.font = posterFont('heading');
         ctx.fillStyle = '#27272a';
         wrap(ctx, '你是什么类型的程序员？', 216, 1110, 330);
-        ctx.font = '16px sans-serif';
+        ctx.font = posterFont('body');
         ctx.fillStyle = '#f97316';
         ctx.fillText('扫码或访问', 216, 1150);
-        ctx.font = '14px sans-serif';
+        ctx.font = posterFont('caption');
         wrap(ctx, shareUrl, 216, 1180, 330);
         const url = context.toDataURL();
         if (!url.startsWith('data:image/')) throw Error('海报生成失败');
@@ -169,6 +170,7 @@ function save() {
   >
 </template>
 <style scoped lang="scss">
+@use '../styles/typography' as *;
 @use '../styles/spacing-tokens' as *;
 .poster-container {
   gap: $space-section;
@@ -192,6 +194,6 @@ function save() {
 }
 .poster-error {
   color: #e05260;
-  font-size: 13px;
+  @include type-style('label');
 }
 </style>

@@ -1,0 +1,39 @@
+// 页面按语义引用完整排版组合，禁止分别复制字号、字重与行高。
+@use 'sass:map';
+@use 'sass:string';
+@use './typography-tokens' as tokens;
+
+@function type-role($role) {
+  @if not map.has-key(tokens.$type-roles, $role) { @error 'Unknown typography role: #{$role}'; }
+  @return map.get(tokens.$type-roles, $role);
+}
+@function type-line($role) { @return map.get(type-role($role), line-height); }
+@function type-weight($name) {
+  @if not map.has-key(tokens.$type-weights, $name) { @error 'Unknown typography weight: #{$name}'; }
+  @return map.get(tokens.$type-weights, $name);
+}
+@function type-family($name) {
+  @if not map.has-key(tokens.$type-families, $name) { @error 'Unknown typography family: #{$name}'; }
+  @return string.unquote(map.get(tokens.$type-families, $name));
+}
+@function type-leading($name) {
+  @if not map.has-key(tokens.$type-leading, $name) { @error 'Unknown typography leading: #{$name}'; }
+  @return map.get(tokens.$type-leading, $name);
+}
+@function type-tracking($name) {
+  @if not map.has-key(tokens.$type-tracking, $name) { @error 'Unknown typography tracking: #{$name}'; }
+  @return map.get(tokens.$type-tracking, $name);
+}
+@mixin type-style($role) {
+  $style: type-role($role);
+  font-size: map.get($style, size);
+  font-weight: map.get($style, weight);
+  line-height: map.get($style, line-height);
+}
+
+// 在本组件规则之前生成基础文字类，允许后续语义/状态规则正常覆盖。
+@mixin type-utilities($roles...) {
+  @each $role in $roles {
+    .ui-type-#{$role} { @include type-style($role); }
+  }
+}

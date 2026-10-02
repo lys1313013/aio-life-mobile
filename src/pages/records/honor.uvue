@@ -195,10 +195,10 @@ function categoryName(item) {
               <AppIcon v-if="item.isTop === 1" name="ant-design:star-filled" :size="14" color="#e5ad42" />
             </view>
             <text class="honor-title">{{ item.title }}</text>
-            <text v-if="item.issuer" class="honor-secondary">{{ item.issuer }}</text>
-            <text v-if="item.description" class="honor-content" :class="{ 'honor-content-dark': isDark }">{{ item.description }}</text>
-            <view v-if="item.tags" class="honor-tags"><text v-for="tag in textTags(item.tags).split(/[,，]/).filter(Boolean)" :key="tag" class="honor-tag">{{ tag }}</text></view>
-            <view class="honor-date ui-row"><AppIcon name="ant-design:calendar-outlined" :size="13" color="#8b8f99" /><text class="honor-secondary">{{ item.honorDate?.slice(0, 10) }}</text><view class="footer-spacer" /><AppIcon v-if="item.isPublic !== 1" name="ant-design:lock-outlined" :size="13" color="#b77927" aria-label="私密" /></view>
+            <text v-if="item.issuer" class="honor-secondary" :class="{ 'secondary-text-dark': isDark }">{{ item.issuer }}</text>
+            <text v-if="item.description" class="honor-content" :class="[{ 'honor-content-dark': isDark }, { 'secondary-text-dark': isDark }]">{{ item.description }}</text>
+            <view v-if="item.tags" class="honor-tags"><text v-for="tag in textTags(item.tags).split(/[,，]/).filter(Boolean)" :key="tag" class="honor-tag" :class="{ 'secondary-text-dark': isDark }">{{ tag }}</text></view>
+            <view class="honor-date ui-row"><AppIcon name="ant-design:calendar-outlined" :size="13" color="#8b8f99" /><text class="honor-secondary" :class="{ 'secondary-text-dark': isDark }">{{ item.honorDate?.slice(0, 10) }}</text><view class="footer-spacer" /><AppIcon v-if="item.isPublic !== 1" name="ant-design:lock-outlined" :size="13" color="#b77927" aria-label="私密" /></view>
           </view>
         </view>
       </PageState
@@ -208,32 +208,32 @@ function categoryName(item) {
         :busy="saving || attachmentBusy"
         @close="form = null"
         >
-        <FormField label="标题" v-model="form.title" />
+        <FormField appearance="soft" label="标题" v-model="form.title" />
         <view class="ui-field-row">
-          <FormField compact stretch label="获得日期" kind="date" v-model="form.honorDate" />
-          <FormField compact stretch label="级别" kind="selector" :model-value="levelLabels[levels.indexOf(form.level)] || '未设置'" :options="['未设置', ...levelLabels]" @update:model-value="form.level = levels[levelLabels.indexOf($event)] || ''" />
+          <FormField appearance="soft" compact stretch label="获得日期" kind="date" v-model="form.honorDate" />
+          <FormField appearance="soft" compact stretch label="级别" kind="selector" :model-value="levelLabels[levels.indexOf(form.level)] || '未设置'" :options="['未设置', ...levelLabels]" @update:model-value="form.level = levels[levelLabels.indexOf($event)] || ''" />
         </view>
         <view class="ui-field-row">
-          <FormField compact stretch label="颁发机构" v-model="form.issuer" />
-          <FormField compact stretch label="分类" kind="selector" :model-value="categories.find((c) => c.id === form.categoryId)?.name || '自定义'" :options="['自定义', ...categories.map((c) => c.name)]" @update:model-value="form.categoryId = categories.find((c) => c.name === $event)?.id || null" />
+          <FormField appearance="soft" compact stretch label="颁发机构" v-model="form.issuer" />
+          <FormField appearance="soft" compact stretch label="分类" kind="selector" :model-value="categories.find((c) => c.id === form.categoryId)?.name || '自定义'" :options="['自定义', ...categories.map((c) => c.name)]" @update:model-value="form.categoryId = categories.find((c) => c.name === $event)?.id || null" />
         </view>
-        <FormField
+        <FormField appearance="soft"
           v-if="!form.categoryId"
           label="自定义分类"
-          v-model="form.customCategory" /><FormField
+          v-model="form.customCategory" /><FormField appearance="soft"
           label="描述"
           kind="textarea"
-          v-model="form.description" /><FormField label="标签" v-model="form.tags" /><FormField
+          v-model="form.description" /><view class="ui-field-row"><FormField appearance="soft" compact stretch label="标签" v-model="form.tags" /><FormField appearance="soft" compact stretch
           label="公开"
           kind="selector"
           :model-value="form.isPublic === 1 ? '公开' : '私密'"
           :options="['公开', '私密']"
-          @update:model-value="form.isPublic = $event === '公开' ? 1 : 0" /><AttachmentField
+          @update:model-value="form.isPublic = $event === '公开' ? 1 : 0" /></view><AttachmentField
           :files="form.files"
           upload-path="/file/upload"
           :form-data="{ bizType: 'honor_record' }"
           @update:files="form.files = $event"
-          @busy-change="attachmentBusy = $event" /><text v-if="formError" class="honor-error ui-section">{{
+          @busy-change="attachmentBusy = $event" /><text v-if="formError" class="honor-error ui-section ui-type-body">{{
           formError
         }}</text
         ><view class="toolbar ui-row"
@@ -249,8 +249,12 @@ function categoryName(item) {
   ><template #fixed><FloatingActionButton label="新增荣誉" :disabled="loading || !!error" @click="open()" /></template></MobilePage>
 </template>
 <style scoped lang="scss">
+@use '../../styles/typography' as *;
+@use '../../styles/text-colors' as *;
 @use '../../styles/spacing.scss';
 @use '../../styles/spacing-tokens' as *;
+@include type-utilities('body');
+
 .honor-page {
   padding-bottom: 80px; /* 浮动新增按钮避让 */
   color: #27272a;
@@ -278,16 +282,16 @@ function categoryName(item) {
 }
 .honor-title {
   flex: 1;
-  font-size: 17px;
-  font-weight: 600;
+  @include type-style('title');
+
 }
 .honor-content {
-  font-size: 14px;
-  line-height: 22px;
+  @include type-style('body');
+
 }
 .honor-secondary {
-  color: #8b8f99;
-  font-size: 13px;
+  color: $text-secondary-light;
+  @include type-style('label');
 }
 .honor-error {
   color: #e05252;
@@ -295,18 +299,20 @@ function categoryName(item) {
 .honor-grid { flex-direction: row; flex-wrap: wrap; gap: $space-section; }
 .honor-card { box-sizing: border-box; width: calc((100% - #{$space-section}) / 2); min-width: 0; gap: $space-inline; }
 .honor-badges { flex-wrap: wrap; align-items: center; }
-.honor-badge { font-size: 11px; line-height: 18px; color: #4177c1; background-color: rgba(74,144,226,0.12); border-radius: 4px; padding: 0 $space-detail; }
+.honor-badge { @include type-style('badge');  color: #4177c1; background-color: rgba(74,144,226,0.12); border-radius: 4px; padding: 0 $space-detail; }
 .level-badge { color: #b77927; background-color: rgba(229,173,66,0.12); }
-.honor-title { flex: none; line-height: 24px; word-break: break-word; }
+.honor-title { flex: none; line-height: type-line('title'); word-break: break-word; }
 .honor-date { align-items: center; margin-top: auto; padding-top: $space-inline; }
 @media (min-width: 600px) { .honor-card { box-sizing: border-box; width: calc((100% - #{$space-section * 2}) / 3); } }
 .footer-spacer { flex: 1; }
 .honor-tags { flex-direction: row; flex-wrap: wrap; gap: $space-detail; }
-.honor-tag { font-size: 11px; line-height: 18px; color: #8b8f99; border-radius: 4px; padding: 0 $space-detail; background-color: rgba(128,138,153,0.1); }
-.honor-content { color: #717782; word-break: break-word; max-height: 66px; overflow: hidden; }
-.honor-content-dark { color: #a9aeb7; }
+.honor-tag { @include type-style('badge');  color: $text-secondary-light; border-radius: 4px; padding: 0 $space-detail; background-color: rgba(128,138,153,0.1); }
+.honor-content { color: $text-secondary-light; word-break: break-word; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.honor-content-dark { color: $text-secondary-dark; }
 @media (min-width: 1000px) { .honor-card { width: calc((100% - #{$space-section * 3}) / 4); } }
 /* #ifdef WEB */
 .honor-card:focus-visible { outline: 2px solid #417ce8; outline-offset: 2px; }
 /* #endif */
+
+.secondary-text-dark { color: $text-secondary-dark; }
 </style>

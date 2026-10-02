@@ -40,6 +40,7 @@ test('原生 picker 输出字符串；键盘与安全区扣减滚动高度', () 
   assert.equal(pickerValue('date', '2026-10-01'), '2026-10-01')
   assert.equal(pickerValue('selector', 99, ['全部']), '')
   assert.equal(modalAvailableHeight(800, 300, 44, 34), 374)
+  assert.equal(modalAvailableHeight(800, 300, 44, 34, 40), 342)
   assert.equal(modalAvailableHeight(200, 180, 44, 34), 80)
 })
 

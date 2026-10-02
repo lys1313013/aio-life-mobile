@@ -309,9 +309,9 @@ function chooseCategory(value) {
           :value="String(stats.avgPrice || 0)"
           unit="元" /></view
       ><view class="tabs ui-row ui-section"
-        ><text class="muted">季节</text
-        ><text v-for="name in seasonLabels" :key="name" class="season-count"
-          >{{ name }} <text v-if="!loading || items.length">{{ stats.seasonCount[name] }}</text></text
+        ><text class="muted" :class="themeClass('secondary-text')">季节</text
+        ><text v-for="name in seasonLabels" :key="name" class="season-count" :class="themeClass('secondary-text')"
+          >{{ name }} <text class="ui-type-caption" v-if="!loading || items.length">{{ stats.seasonCount[name] }}</text></text
         ></view
       ><PageState skeleton="media"
         :loading="loading"
@@ -357,21 +357,21 @@ function chooseCategory(value) {
                 v-if="row.fileId && (photoBusy[row.fileId] || photoErrors[row.fileId])"
                 :label="photoErrors[row.fileId] ? '重试衣物照片' : '加载衣物照片'"
                 :loading="photoBusy[row.fileId]"
-                @click="photo(row.fileId)" /><button role="button" class="item-title-button" :aria-label="'编辑衣物' + row.name" :disabled="detailBusy === row.id" :aria-busy="detailBusy === row.id" @click="edit(row)"><text class="item-title">{{ row.name }}</text></button
-              ><text class="muted">{{
+                @click="photo(row.fileId)" /><button role="button" class="item-title-button ui-type-body" :aria-label="'编辑衣物' + row.name" :disabled="detailBusy === row.id" :aria-busy="detailBusy === row.id" @click="edit(row)"><text class="item-title">{{ row.name }}</text></button
+              ><text class="muted" :class="themeClass('secondary-text')">{{
                 [row.categoryName, row.color, row.brand, row.size, row.season]
                   .filter(Boolean)
                   .join(' · ')
               }}</text
-              ><view class="item-footer ui-row"><text class="item-price">{{ row.price == null ? '—' : '¥ ' + row.price }}</text><ConfirmAction :label="'删除衣物' + row.name" :action="() => removeItem(row)"><template #default="{ open: confirm, busy: removing }"><button role="button" class="item-icon-button" :aria-label="'删除衣物' + row.name" :disabled="removing" @click="confirm"><AppIcon name="ant-design:delete-outlined" :size="18" color="#8b8f99" /></button></template></ConfirmAction></view></view></view></template
+              ><view class="item-footer ui-row"><text class="item-price">{{ row.price == null ? '—' : '¥ ' + row.price }}</text><ConfirmAction :label="'删除衣物' + row.name" :action="() => removeItem(row)"><template #default="{ open: confirm, busy: removing }"><button role="button" class="item-icon-button ui-type-body" :aria-label="'删除衣物' + row.name" :disabled="removing" @click="confirm"><AppIcon name="ant-design:delete-outlined" :size="18" color="#8b8f99" /></button></template></ConfirmAction></view></view></view></template
         ><template v-else
           ><view
             v-for="row in categories"
             :key="row.id"
             class="category-row ui-row ui-section"
             :style="{ marginLeft: row.depth * 16 + 'px' }"
-            ><text>{{ row.name }}</text
-            ><text v-if="row.categoryType === 0" class="muted">预设</text
+            ><text class="ui-type-body">{{ row.name }}</text
+            ><text v-if="row.categoryType === 0" class="muted" :class="themeClass('secondary-text')">预设</text
             ><view v-else class="tools ui-row"
               ><MobileButton
                 :label="'编辑分类' + row.name"
@@ -476,8 +476,12 @@ function chooseCategory(value) {
   ></MobilePage>
 </template>
 <style scoped lang="scss">
+@use '../../styles/typography' as *;
+@use '../../styles/text-colors' as *;
 @use '../../styles/spacing.scss';
 @use '../../styles/spacing-tokens' as *;
+@include type-utilities('caption', 'body');
+
 .wardrobe {
   color: #27272a;
 }
@@ -514,23 +518,23 @@ function chooseCategory(value) {
   border-radius: 12px;
 }
 .season-count {
-  font-size: 12px;
-  color: #808692;
+  @include type-style('caption');
+  color: $text-secondary-light;
   padding: $space-detail $space-inline;
   border-radius: 8px;
   background-color: rgba(128, 134, 146, 0.12);
 }
 .item-title {
-  font-weight: 600;
-  font-size: 15px;
+
+  @include type-style('body-strong');
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   max-width: 100%;
 }
 .muted {
-  color: #808692;
-  font-size: 12px;
+  color: $text-secondary-light;
+  @include type-style('caption');
 }
 .tools {
   flex-direction: row;
@@ -550,7 +554,7 @@ function chooseCategory(value) {
 }
 .error {
   color: #e05260;
-  font-size: 14px;
+  @include type-style('body');
 }
 @media (min-width: 700px) {
   .item-card {
@@ -584,10 +588,10 @@ function chooseCategory(value) {
   background: transparent;
   color: inherit;
   text-align: left;
-  line-height: 22px;
+  line-height: type-line('body');
 }
 .item-footer { align-items: center; justify-content: space-between; }
-.item-price { font-size: 14px; font-weight: 600; }
+.item-price { @include type-style('body-strong');  }
 .item-icon-button {
   display: flex;
   justify-content: center;
@@ -605,4 +609,6 @@ function chooseCategory(value) {
 @media (min-width: 1000px) {
   .item-card { width: calc((100% - #{$space-section} * 3) / 4); }
 }
+
+.secondary-text-dark { color: $text-secondary-dark; }
 </style>

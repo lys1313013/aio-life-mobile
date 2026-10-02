@@ -392,7 +392,7 @@ function back() {
           class="vault-card ui-card"
           :class="themeClass('vault-card')"
           ><text class="vault-title">{{ row.title }}</text
-          ><text class="vault-muted">{{ row.category }} · {{ row.website }}</text
+          ><text class="vault-muted" :class="themeClass('vault-muted')">{{ row.category }} · {{ row.website }}</text
           ><view class="vault-row ui-row"
             ><text class="vault-value" selectable>{{ master ? row.plainUsername : '••••••' }}</text
             ><MobileButton
@@ -416,7 +416,7 @@ function back() {
               @click="copy(row.plainPassword)" /></view
           ><text v-if="master && row.decryptError" class="error-text"
             >该记录无法解密，请核对主密码或在原端检查记录</text
-          ><text v-if="master && row.plainRemark" class="vault-muted">{{ row.plainRemark }}</text
+          ><text v-if="master && row.plainRemark" class="vault-muted" :class="themeClass('vault-muted')">{{ row.plainRemark }}</text
           ><view class="vault-actions ui-row ui-mt-sm"
             ><MobileButton
               label="收藏"
@@ -484,8 +484,10 @@ function back() {
   ></view>
 </template>
 <style scoped lang="scss">
+@use '../../styles/typography' as *;
 @use '../../styles/spacing.scss';
 @use '../../styles/spacing-tokens' as *;
+@use '../../styles/text-colors' as *;
 .vault-tools {
 }
 .vault-grid { display: grid; grid-template-columns: minmax(0, 1fr); }
@@ -501,22 +503,25 @@ function back() {
   color: #eeeeef;
 }
 .vault-title {
-  font-size: 17px;
-  font-weight: 600;
+  @include type-style('title');
+  overflow-wrap: anywhere;
+
 }
 .vault-muted {
-  font-size: 13px;
-  color: #8b8f99;
-  line-height: 22px;
+  @include type-style('label');
+  color: $text-secondary-light;
+  overflow-wrap: anywhere;
+
 }
 .vault-row {
   min-height: 48px;
 }
 .vault-value {
   flex: 1;
-  font-size: 14px;
+  @include type-style('body');
   word-break: break-all;
 }
 .vault-actions {
 }
+.vault-muted-dark { color: $text-secondary-dark; }
 </style>

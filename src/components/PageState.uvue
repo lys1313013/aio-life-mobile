@@ -20,7 +20,7 @@ const emit = defineEmits(['retry']);
     <template v-if="loading && !(retainContent && (settled || hasContent))"><slot name="loading"><ContentSkeleton :variant="skeleton" /></slot></template>
     <LoadingIndicator v-else-if="loading" label="正在更新内容" />
     <view v-if="error" class="page-state-notice ui-pad-card ui-gap-md" role="alert"
-      ><text>{{ error }}</text
+      ><text class="ui-type-body page-state-message" :class="themeClass('page-state-message')">{{ error }}</text
       ><MobileButton
         label="重试"
         icon="ant-design:reload-outlined"
@@ -29,14 +29,18 @@ const emit = defineEmits(['retry']);
         @click="emit('retry')"
     /></view>
     <view v-if="empty && !loading && !error" class="page-state-notice ui-pad-card ui-gap-md"
-      ><text>{{ emptyText }}</text></view
+      ><text class="ui-type-body page-state-message" :class="themeClass('page-state-message')">{{ emptyText }}</text></view
     >
     <slot v-if="(!loading && !error) || (retainContent && (settled || hasContent))" />
   </view>
 </template>
 <style scoped lang="scss">
+@use '../styles/typography' as *;
+@use '../styles/text-colors' as *;
 @use '../styles/spacing.scss';
 @use '../styles/spacing-tokens' as *;
+@include type-utilities('body');
+
 .page-state {
   width: 100%;
   color: #27272a;
@@ -48,7 +52,9 @@ const emit = defineEmits(['retry']);
 
   align-items: center;
 
-  color: #808692;
-  font-size: 14px;
+  @include type-style('body');
 }
+
+.page-state-message { color: $text-secondary-light; text-align: center; }
+.page-state-message-dark { color: $text-secondary-dark; }
 </style>

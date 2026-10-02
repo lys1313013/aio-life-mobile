@@ -330,20 +330,20 @@ function nodeName(id: string) {
       <view class="category-tabs ui-row ui-section">
         <button v-for="item in categories" :key="item" role="button" :aria-label="'分类：' + item" :aria-pressed="category === item" class="category-tab" :class="[themeClass('category-tab'), { 'category-tab-active': category === item }]" @click="category = item">
           <view v-if="item !== '全部'" class="category-dot" :style="{ backgroundColor: categoryColors[item] }" />
-          <text>{{ item }}</text>
+          <text class="ui-type-label">{{ item }}</text>
         </button>
       </view>
       <PageState skeleton="graph" :loading="loading || busy" :error="error" :empty="!loading && !filteredNodes.length" empty-text="暂无人物" @retry="load">
 <template #loading><view class="graph-panel" :class="themeClass('graph-panel')"><view class="topology" :style="{ height: canvasHeight + 'px' }"><LoadingIndicator label="正在加载关系图谱" /></view></view></template>
         <view v-if="results !== null" class="search-results ui-section" :class="themeClass('search-results')">
-          <text class="graph-summary">{{ people.length ? '搜索结果 · ' + people.length : '未找到匹配人物' }}</text>
+          <text class="graph-summary" :class="themeClass('graph-summary')">{{ people.length ? '搜索结果 · ' + people.length : '未找到匹配人物' }}</text>
           <view class="people ui-row">
             <MobileButton v-for="item in people" :key="item.id" :label="item.name" variant="quiet" :loading="busy" @click="detail(item.id)" />
           </view>
         </view>
         <view v-if="filteredNodes.length" class="graph-panel" :class="themeClass('graph-panel')">
           <view class="graph-toolbar ui-row">
-            <text class="graph-summary">{{ filteredNodes.length }} 人 · {{ filteredEdges.length }} 条关系</text>
+            <text class="graph-summary" :class="themeClass('graph-summary')">{{ filteredNodes.length }} 人 · {{ filteredEdges.length }} 条关系</text>
             <MobileButton label="放大图谱" icon="ant-design:zoom-in-outlined" variant="quiet" @click="changeZoom(1.25)" />
             <MobileButton label="缩小图谱" icon="ant-design:zoom-out-outlined" variant="quiet" @click="changeZoom(0.8)" />
             <MobileButton label="复位图谱" icon="ant-design:fullscreen-outlined" variant="quiet" @click="resetGraph" />
@@ -358,7 +358,7 @@ function nodeName(id: string) {
               <template v-if="showLabels">
                 <text v-for="(edge, index) in graphEdges.filter(item => item.showLabel)" :key="'label-' + index" class="graph-edge-label" :class="themeClass('graph-edge-label')" :style="{ left: edge.labelX + 'px', top: edge.labelY + 'px', color: relationColor(edge.relationType) }">{{ edge.relationType }}</text>
               </template>
-              <button v-for="node in graphNodes" :key="node.id" role="button" class="graph-node-button" :class="themeClass('graph-node-button')" :aria-label="node.name" :disabled="busy" :style="{ left: node.x - 34 + 'px', top: node.y - 22 + 'px', borderColor: categoryColors[node.category] || '#8392a5' }" @click="graphClick(node.id)">
+              <button v-for="node in graphNodes" :key="node.id" role="button" class="graph-node-button ui-type-body" :class="themeClass('graph-node-button')" :aria-label="node.name" :disabled="busy" :style="{ left: node.x - 34 + 'px', top: node.y - 22 + 'px', borderColor: categoryColors[node.category] || '#8392a5' }" @click="graphClick(node.id)">
                 <text class="node-name">{{ node.name }}</text>
               </button>
             </view>
@@ -366,15 +366,15 @@ function nodeName(id: string) {
         </view>
         <view v-if="filteredEdges.length" class="relations-section">
           <button role="button" aria-label="关系明细" :aria-expanded="showRelations" class="relations-toggle" :class="themeClass('relations-toggle')" @click="showRelations = !showRelations">
-            <text>关系明细 · {{ filteredEdges.length }}</text>
+            <text class="ui-type-label">关系明细 · {{ filteredEdges.length }}</text>
             <AppIcon :name="showRelations ? 'ant-design:up-outlined' : 'ant-design:down-outlined'" :size="14" color="#8b8f99" />
           </button>
           <view v-if="showRelations" class="relation-list">
             <view v-for="(edge, index) in filteredEdges" :key="index" class="relation-row" :class="themeClass('relation-row')">
               <text class="relation-person">{{ nodeName(edge.source) }}</text>
-              <view class="relation-kind"><text :style="{ color: relationColor(edge.relationType) }">{{ edge.relationType }}</text><text class="relation-direction">{{ edge.direction === '双向' ? '↔' : '→' }}</text></view>
+              <view class="relation-kind"><text class="ui-type-badge" :style="{ color: relationColor(edge.relationType) }">{{ edge.relationType }}</text><text class="relation-direction ui-type-badge" :class="themeClass('relation-direction')">{{ edge.direction === '双向' ? '↔' : '→' }}</text></view>
               <text class="relation-person relation-target">{{ nodeName(edge.target) }}</text>
-              <text v-if="edge.description" class="relation-description">{{ edge.description }}</text>
+              <text v-if="edge.description" class="relation-description" :class="themeClass('relation-description')">{{ edge.description }}</text>
             </view>
           </view>
         </view>
@@ -385,11 +385,11 @@ function nodeName(id: string) {
       :label="person.name"
       :busy="busy"
       @close="person = null"
-      ><text class="title">{{ person.name }} · {{ person.category }}</text
+      ><text class="title">{{ person.name }}</text><text class="detail-caption ui-type-label" :class="themeClass('detail-caption')">{{ person.category }}</text
       ><text
         v-for="key in personDetailFields"
         :key="key"
-        class="detail ui-py-xs"
+        class="detail ui-py-xs ui-type-body"
         selectable
         >{{ person[key] }}</text
       ><view class="actions ui-toolbar"
@@ -400,8 +400,8 @@ function nodeName(id: string) {
           icon="ant-design:plus-outlined"
           @click="editRelation()" /></view
       ><view v-for="item in person.relationships" :key="item.id" class="edge ui-card"
-        ><text>{{ item.target.name }} · {{ item.relationType }} · {{ item.direction }}</text
-        ><text>{{ item.description }} {{ item.tags }}</text
+        ><text class="edge-title ui-type-body-strong">{{ item.target.name }} · {{ item.relationType }} · {{ item.direction }}</text
+        ><text class="detail-caption ui-type-label" :class="themeClass('detail-caption')">{{ item.description }} {{ item.tags }}</text
         ><view class="actions ui-row"
           ><MobileButton
             label="编辑关系"
@@ -429,7 +429,7 @@ function nodeName(id: string) {
         v-model="draft.socialLinks" /><FormField
         label="备注"
         kind="textarea"
-        v-model="draft.notes" /><text v-if="formError" class="error ui-py-section">{{ formError }}</text
+        v-model="draft.notes" /><text v-if="formError" class="error ui-py-section ui-type-body">{{ formError }}</text
       ><MobileButton label="保存" :loading="busy" @click="save" /></AdaptiveModal
     ><AdaptiveModal v-if="relation" label="关系" :busy="busy" @close="relation = null"
       ><FormField
@@ -469,14 +469,18 @@ function nodeName(id: string) {
         kind="textarea"
         v-model="relation.description" /><FormField label="标签" v-model="relation.tags" /><text
         v-if="formError"
-        class="error ui-py-section"
+        class="error ui-py-section ui-type-body"
         >{{ formError }}</text
       ><MobileButton label="保存关系" :loading="busy" @click="saveRel" /></AdaptiveModal
   ></MobilePage>
 </template>
 <style scoped lang="scss">
+@use '../../styles/typography' as *;
+@use '../../styles/text-colors' as *;
 @use '../../styles/spacing.scss';
 @use '../../styles/spacing-tokens' as *;
+@include type-utilities('label', 'body', 'badge');
+
 .body {
   color: #263248;
 }
@@ -486,11 +490,11 @@ function nodeName(id: string) {
 .search-row { align-items: center; }
 .search-box { flex: 1; min-width: 0; display: flex; flex-direction: row; align-items: center; gap: $space-inline; padding-left: $space-card; background-color: #ffffff; border-radius: 12px; }
 .search-box-dark { background-color: #1c1e22; }
-.search-input { flex: 1; min-width: 0; height: 44px; font-size: 14px; color: #263248; }
+.search-input { flex: 1; min-width: 0; height: 44px; @include type-style('body'); color: #263248; }
 .search-input-dark { color: #e7e9ee; }
 .category-tabs { gap: $space-detail; max-width: 440px; }
-.category-tab { flex: 1; min-width: 44px; min-height: 44px; margin: 0; padding: 0; display: flex; flex-direction: row; align-items: center; justify-content: center; gap: $space-detail; background-color: transparent; color: #707785; border-radius: 12px; font-size: 13px; }
-.category-tab-dark { color: #a7aeba; }
+.category-tab { flex: 1; min-width: 44px; min-height: 44px; margin: 0; padding: 0; display: flex; flex-direction: row; align-items: center; justify-content: center; gap: $space-detail; background-color: transparent; color: $text-secondary-light; border-radius: 12px; @include type-style('label'); }
+.category-tab-dark { color: $text-secondary-dark; }
 .category-tab-active { background-color: #427bea; color: #ffffff; }
 .category-dot { width: 6px; height: 6px; border-radius: 3px; }
 .actions { flex-wrap: wrap; }
@@ -503,26 +507,26 @@ function nodeName(id: string) {
 /* 节点尺寸属于画布几何约束，与布局函数共享 68 × 44 的碰撞边界。 */
 .graph-node-button { position: absolute; width: 68px; height: 44px; margin: 0; padding: 0 $space-detail; display: flex; flex-direction: row; align-items: center; justify-content: center; gap: $space-detail; border: 1px solid; border-radius: 22px; background-color: #ffffff; color: #263248; }
 .graph-node-button-dark { background-color: #252830; color: #e7e9ee; }
-.node-name { flex: 1; width: 100%; display: block; min-width: 0; text-align: center; font-size: 12px; line-height: 20px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.node-name { flex: 1; width: 100%; display: block; min-width: 0; text-align: center; @include type-style('caption');  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .graph-arrow { position: absolute; right: 0; top: -3px; width: 0; height: 0; border-top: 3px solid transparent; border-bottom: 3px solid transparent; border-left: 5px solid; }
 .graph-arrow-start { right: auto; left: 0; transform: rotate(180deg); }
-.graph-edge-label { position: absolute; font-size: 11px; line-height: 18px; white-space: nowrap; transform: translate(-50%, -50%); padding: 0 $space-detail; border-radius: 4px; background-color: #ffffff; pointer-events: none; }
+.graph-edge-label { position: absolute; @include type-style('badge');  white-space: nowrap; transform: translate(-50%, -50%); padding: 0 $space-detail; border-radius: 4px; background-color: #ffffff; pointer-events: none; }
 .graph-edge-label-dark { background-color: #1c1e22; }
-.graph-summary { flex: 1; color: #8b8f99; font-size: 12px; }
+.graph-summary { flex: 1; color: $text-secondary-light; @include type-style('caption'); }
 .search-results { padding: $space-card; border-radius: 12px; background-color: #ffffff; gap: $space-inline; }
 .search-results-dark { background-color: #1c1e22; }
 .people { flex-wrap: wrap; }
 .relations-section { margin-top: $space-section; }
-.relations-toggle { width: 100%; min-height: 44px; margin: 0; padding: 0 $space-detail; display: flex; flex-direction: row; justify-content: space-between; align-items: center; background-color: transparent; color: #707785; font-size: 13px; }
-.relations-toggle-dark { color: #a7aeba; }
+.relations-toggle { width: 100%; min-height: 44px; margin: 0; padding: 0 $space-detail; display: flex; flex-direction: row; justify-content: space-between; align-items: center; background-color: transparent; color: $text-secondary-light; @include type-style('label'); }
+.relations-toggle-dark { color: $text-secondary-dark; }
 .relation-list { gap: $space-detail; }
 .relation-row { display: flex; flex-direction: row; flex-wrap: wrap; align-items: center; gap: $space-inline; padding: $space-inline $space-card; border-radius: 10px; background-color: #ffffff; }
 .relation-row-dark { background-color: #1c1e22; }
-.relation-person { flex: 1; min-width: 0; font-size: 13px; }
+.relation-person { flex: 1; min-width: 0; @include type-style('label'); }
 .relation-target { text-align: right; }
-.relation-kind { align-items: center; font-size: 11px; }
-.relation-direction { color: #8b8f99; }
-.relation-description { width: 100%; color: #8b8f99; font-size: 12px; }
+.relation-kind { align-items: center; @include type-style('badge'); }
+.relation-direction { color: $text-secondary-light; }
+.relation-description { width: 100%; color: $text-secondary-light; @include type-style('caption'); }
 /* #ifdef WEB || MP-WEIXIN */
 .graph-node-button::after, .category-tab::after, .relations-toggle::after { border: 0; }
 /* #endif */
@@ -531,14 +535,20 @@ function nodeName(id: string) {
   flex-direction: column;
 }
 .title {
-  font-size: 20px;
-  font-weight: 600;
+  @include type-style('title');
+
 }
 .detail {
   display: block;
+  @include type-style('body');
+  overflow-wrap: anywhere;
 }
+.edge-title { overflow-wrap: anywhere; }
+.detail-caption { @include type-style('label'); color: $text-secondary-light; overflow-wrap: anywhere; }
+.detail-caption-dark, .graph-summary-dark, .relation-description-dark, .relation-direction-dark { color: $text-secondary-dark; }
 .error {
   color: #dc5454;
   display: block;
 }
+
 </style>

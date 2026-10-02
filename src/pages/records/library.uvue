@@ -376,7 +376,7 @@ async function submitImport() {
           />
           <button
             role="button"
-            class="library-search-button"
+            class="library-search-button ui-type-body"
             :class="{ 'library-text-dark': isDark }"
             aria-label="搜索"
             :loading="loading"
@@ -410,7 +410,7 @@ async function submitImport() {
           "
         >
           <view class="library-filter ui-row" :class="{ 'library-filter-dark': isDark }"
-            ><text>{{ typeFilter }}</text
+            ><text class="ui-type-label">{{ typeFilter }}</text
             ><AppIcon name="ant-design:down-outlined" /></view
           >
         </picker>
@@ -429,11 +429,11 @@ async function submitImport() {
           "
         >
           <view class="library-filter ui-row" :class="{ 'library-filter-dark': isDark }"
-            ><text>{{ statusFilter }}</text
+            ><text class="ui-type-label">{{ statusFilter }}</text
             ><AppIcon name="ant-design:down-outlined" /></view
           >
         </picker>
-        <text v-if="!loading || rows.length" class="library-count">{{ total }} 条</text>
+        <text v-if="!loading || rows.length" class="library-count" :class="{ 'record-secondary-dark': isDark }">{{ total }} 条</text>
       </view>
       <PageState skeleton="media"
         :loading="loading && !rows.length"
@@ -474,7 +474,7 @@ async function submitImport() {
                 ><LoadingIndicator compact label="正在加载记录详情" /></view
               >
             </view>
-            <text v-if="item.finishTime" class="library-date">{{
+            <text v-if="item.finishTime" class="library-date" :class="{ 'record-secondary-dark': isDark }">{{
               item.finishTime.slice(0, 10)
             }}</text>
           </view>
@@ -559,7 +559,7 @@ async function submitImport() {
           "
           @busy-change="attachmentBusy = $event" /><text
           v-if="formError"
-          class="library-error ui-section"
+          class="library-error ui-section ui-type-body"
           >{{ formError }}</text
         ><view class="library-form-actions ui-row">
           <ConfirmAction
@@ -589,7 +589,7 @@ async function submitImport() {
           @click="chooseWorkbook" /><text
           v-if="importName"
           class="library-secondary"
-          >{{ importName }}</text
+           :class="{ 'record-secondary-dark': isDark }">{{ importName }}</text
         ><FormField
           label="导入内容"
           kind="textarea"
@@ -622,7 +622,7 @@ async function submitImport() {
             ><text class="library-content"
               >{{ record.rowNumber }} · {{ record.title }}</text
             ><text class="library-secondary"
-              >{{
+               :class="{ 'record-secondary-dark': isDark }">{{
                 preview.duplicates.some(
                   (item) => item.rowNumber === record.rowNumber,
                 )
@@ -635,9 +635,9 @@ async function submitImport() {
         ><text
           v-for="issue in issues"
           :key="issue.rowNumber + issue.message"
-          class="library-error ui-section"
+          class="library-error ui-section ui-type-body"
           >第{{ issue.rowNumber }}行：{{ issue.message }}</text
-        ><text v-if="importError" class="library-error ui-section">{{ importError }}</text
+        ><text v-if="importError" class="library-error ui-section ui-type-body">{{ importError }}</text
         ><text v-if="importResult" class="library-content"
           >新增 {{ importResult.createdCount }} · 覆盖
           {{ importResult.updatedCount }} · 跳过
@@ -660,8 +660,12 @@ async function submitImport() {
   ></MobilePage>
 </template>
 <style scoped lang="scss">
+@use '../../styles/typography' as *;
+@use '../../styles/text-colors' as *;
 @use '../../styles/spacing.scss';
 @use '../../styles/spacing-tokens' as *;
+@include type-utilities('body', 'label');
+
 .library-page {
   padding-bottom: 64px;
   color: #27272a;
@@ -698,7 +702,7 @@ async function submitImport() {
   flex: 1;
   min-width: 0;
   height: 44px;
-  font-size: 14px;
+  @include type-style('body');
   color: #27272a;
 }
 .library-search-button {
@@ -746,16 +750,16 @@ async function submitImport() {
   flex-direction: row;
   align-items: center;
   min-height: 44px;
-  font-size: 13px;
+  @include type-style('label');
 }
 .library-filter-dark { background-color: #1c1e22; color: #eeeeef; }
 .filter-chevron {
-  color: #8b8f99;
+  color: $text-secondary-light;
 }
 .library-count {
   margin-left: auto;
-  font-size: 12px;
-  color: #8b8f99;
+  @include type-style('caption');
+  color: $text-secondary-light;
 }
 .library-grid {
   flex-direction: row;
@@ -764,7 +768,6 @@ async function submitImport() {
 }
 .library-card {
   width: calc((100% - #{$space-section * 2}) / 3);
-
 
   box-sizing: border-box;
   min-width: 0;
@@ -785,8 +788,8 @@ async function submitImport() {
   border-bottom-left-radius: 6px;
   color: #ffffff;
   background-color: #737e90;
-  font-size: 10px;
-  line-height: 15px;
+  @include type-style('chart-label');
+
 }
 .library-status-in_progress {
   background-color: #3b82f6;
@@ -798,10 +801,10 @@ async function submitImport() {
   background-color: #c77d18;
 }
 .library-date {
-  font-size: 11px;
-  line-height: 16px;
+  @include type-style('badge');
+
   text-align: center;
-  color: #8b8f99;
+  color: $text-secondary-light;
 }
 .library-opening {
   position: absolute;
@@ -813,7 +816,7 @@ async function submitImport() {
   justify-content: center;
   color: #ffffff;
   background-color: rgba(0, 0, 0, 0.45);
-  font-size: 12px;
+  @include type-style('caption');
 }
 .library-link-row {
   flex-direction: row;
@@ -854,14 +857,16 @@ async function submitImport() {
   }
 }
 .library-content {
-  font-size: 14px;
-  line-height: 22px;
+  @include type-style('body');
+
 }
 .library-secondary {
-  color: #8b8f99;
-  font-size: 13px;
+  color: $text-secondary-light;
+  @include type-style('label');
 }
 .library-error {
   color: #e05252;
 }
+
+.record-secondary-dark { color: $text-secondary-dark; }
 </style>

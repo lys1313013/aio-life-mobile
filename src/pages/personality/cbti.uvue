@@ -329,7 +329,7 @@ function preview(url) {
         :error="error"
         @retry="phase === 'hidden1' || phase === 'hidden2' ? calculate() : load()"
       >
-        <view v-if="phase === 'home'" class="test-intro ui-card" :class="themeClass('test-intro')"><text class="cbti-muted">PROGRAMMER BEHAVIOR TEST</text><text class="cbti-title">CBTI</text><text class="cbti-title">程序员行为类型测试</text><text class="cbti-muted">你是 SUDO 还是 NULL？是 996 还是 404？</text><text class="cbti-muted">30 道题，测出你的编程人格</text></view>
+        <view v-if="phase === 'home'" class="test-intro ui-card" :class="themeClass('test-intro')"><text class="cbti-muted" :class="themeClass('cbti-muted')">PROGRAMMER BEHAVIOR TEST</text><text class="cbti-title">CBTI</text><text class="cbti-title">程序员行为类型测试</text><text class="cbti-muted" :class="themeClass('cbti-muted')">你是 SUDO 还是 NULL？是 996 还是 404？</text><text class="cbti-muted" :class="themeClass('cbti-muted')">30 道题，测出你的编程人格</text></view>
         <view class="cbti-actions ui-toolbar"
           ><MobileButton
             v-if="phase === 'home'"
@@ -354,17 +354,17 @@ function preview(url) {
           v-if="phase === 'questions' && current"
           class="cbti-card ui-card"
           :class="themeClass('cbti-card')"
-          ><text class="cbti-muted"
+          ><text class="cbti-muted" :class="themeClass('cbti-muted')"
             >{{ index + 1 }} / {{ questions.length }} · 已答
             {{ Object.keys(answers).length }} 题</text
-          ><text class="cbti-title">{{ current.text }}</text
+          ><text class="cbti-section-title">{{ current.text }}</text
           ><view class="cbti-options ui-gap-sm"
             ><MobileButton
               v-for="option in current.options"
               :key="option.value"
               :label="option.label"
               :variant="answers[current.id] === option.value ? 'primary' : 'quiet'"
-              @click="choose(option.value)" /></view
+              @click="choose(option.value)"><text class="cbti-option-label">{{ option.label }}</text></MobileButton></view
           ><view class="cbti-actions ui-row"
             ><MobileButton
               label="上一题"
@@ -408,8 +408,8 @@ function preview(url) {
             mode="aspectFit"
             @click="preview(result.personality.imageUrl)" /><text class="cbti-title"
             >{{ result.personality.code }} · {{ result.personality.name }}</text
-          ><text>{{ result.personality.motto }}</text
-          ><text>匹配度 {{ result.similarity }}%</text
+          ><text class="ui-type-body">{{ result.personality.motto }}</text
+          ><text class="ui-type-body">匹配度 {{ result.similarity }}%</text
           ><text class="cbti-content">{{ result.personality.description }}</text
           ><text class="cbti-content">{{
             '优势：' + (result.personality.strengths || []).join('、')
@@ -420,14 +420,14 @@ function preview(url) {
           ><text class="cbti-content">{{ result.personality.techStack }}</text
           ><text class="cbti-content">{{ result.personality.spirit }}</text
           ><view v-for="dimension in result.dimensions" :key="dimension.code" class="cbti-dimension ui-gap-sm"
-            ><text
+            ><text class="ui-type-body"
               >{{ dimension.modelName }} · {{ dimension.name }} · {{ dimension.percentage }}%</text
             ><view class="cbti-bar"
               ><view
                 class="cbti-bar-value"
                 :style="{ width: Math.min(100, Math.max(0, dimension.percentage)) + '%' }" /></view
-            ><text class="cbti-muted">{{ dimension.levelDesc || dimension.level }}</text></view
-          ><text v-for="match in result.matchDetails || []" :key="match.code"
+            ><text class="cbti-muted" :class="themeClass('cbti-muted')">{{ dimension.levelDesc || dimension.level }}</text></view
+          ><text class="ui-type-body" v-for="match in result.matchDetails || []" :key="match.code"
             >{{ match.name }} · {{ match.similarity }}%</text
           ><view class="cbti-actions ui-row"
             ><MobileButton label="复制分享" icon="ant-design:export-outlined" variant="quiet" @click="copy" /><MobileButton
@@ -438,7 +438,7 @@ function preview(url) {
         /></view>
         <template v-if="phase === 'home'"
           ><view class="cbti-card ui-card" :class="themeClass('cbti-card')"
-            ><text class="cbti-title">人格类型</text
+            ><text class="cbti-section-title">人格类型</text
             ><view class="cbti-actions ui-row"
               ><MobileButton
                 v-for="personality in personalities"
@@ -452,7 +452,7 @@ function preview(url) {
               :key="row.id"
               class="cbti-card ui-card"
               :class="themeClass('cbti-card')"
-              ><text>{{ row.personalityCode }} · {{ row.name }} · {{ row.createTime }}</text
+              ><text class="cbti-record-title">{{ row.personalityCode }} · {{ row.name }}</text><text class="cbti-muted" :class="themeClass('cbti-muted')">{{ row.createTime }}</text
               ><view class="cbti-actions ui-row"
                 ><MobileButton
                   label="查看历史"
@@ -474,21 +474,21 @@ function preview(url) {
         class="cbti-image"
         mode="aspectFit"
         @click="preview(selectedType.imageUrl)"
-      /><text class="cbti-title ui-mb-section ui-mt-section">{{ selectedType.code }} · {{ selectedType.name }}</text
-      ><text>{{ selectedType.motto }}</text
+      /><text class="cbti-section-title ui-mb-section ui-mt-section">{{ selectedType.code }} · {{ selectedType.name }}</text
+      ><text class="ui-type-body">{{ selectedType.motto }}</text
       ><text class="cbti-content ui-mb-section ui-mt-section">{{ selectedType.description }}</text
-      ><text>{{ '优势：' + (selectedType.strengths || []).join('、') }}</text
-      ><text>{{ '弱点：' + (selectedType.weaknesses || []).join('、') }}</text
-      ><text>{{ selectedType.techStack }}</text
-      ><text>{{ selectedType.spirit }}</text
+      ><text class="ui-type-body">{{ '优势：' + (selectedType.strengths || []).join('、') }}</text
+      ><text class="ui-type-body">{{ '弱点：' + (selectedType.weaknesses || []).join('、') }}</text
+      ><text class="ui-type-body">{{ selectedType.techStack }}</text
+      ><text class="ui-type-body">{{ selectedType.spirit }}</text
       ><view
         v-for="(dimension, i) in data.dimensionDefs"
         :key="dimension.code"
         class="cbti-dimension ui-section ui-gap-sm"
-        ><text
+        ><text class="ui-type-body"
           >{{ dimension.modelName }} · {{ dimension.name }} ·
           {{ levels[selectedType.vector?.[i] || 0] }}</text
-        ><text class="cbti-muted">{{
+        ><text class="cbti-muted" :class="themeClass('cbti-muted')">{{
           dimension.levels[['L', 'M', 'H'][selectedType.vector?.[i] || 0]]
         }}</text></view
       ></AdaptiveModal
@@ -502,9 +502,9 @@ function preview(url) {
       ><FormField label="搜索人格" v-model="adminSearch" /><MobileButton
         label="新增人格"
         icon="ant-design:plus-outlined"
-        @click="edit()" /><text v-if="editorError" class="cbti-error ui-mb-section ui-mt-section">{{ editorError }}</text
+        @click="edit()" /><text v-if="editorError" class="cbti-error ui-mb-section ui-mt-section ui-type-body">{{ editorError }}</text
       ><view v-for="row in adminShown" :key="row.id" class="cbti-admin-row ui-py-card"
-        ><text>{{ row.code }} · {{ row.name }}</text
+        ><text class="ui-type-body">{{ row.code }} · {{ row.name }}</text
         ><view class="cbti-actions ui-toolbar"
           ><MobileButton
             label="编辑人格"
@@ -564,14 +564,18 @@ function preview(url) {
           :options="levels"
           :disabled="saving"
           @update:model-value="(value) => vectorChange(i, value)" /></template
-      ><text v-if="editorError" class="cbti-error ui-mb-section ui-mt-section" role="alert">{{ editorError }}</text
+      ><text v-if="editorError" class="cbti-error ui-mb-section ui-mt-section ui-type-body" role="alert">{{ editorError }}</text
       ><MobileButton label="保存人格" :loading="saving" @click="save"
     /></AdaptiveModal>
   </view>
 </template>
 <style scoped lang="scss">
+@use '../../styles/typography' as *;
+@use '../../styles/text-colors' as *;
 @use '../../styles/spacing.scss';
 @use '../../styles/spacing-tokens' as *;
+@include type-utilities('body');
+
 .cbti-page {
   height: 100%;
   flex: 1;
@@ -591,27 +595,30 @@ function preview(url) {
   color: #eeeeef;
 }
 .cbti-title {
-  font-size: 20px;
-  font-weight: 600;
+  @include type-style('heading');
 
 }
 .cbti-actions {
   flex-direction: row;
   flex-wrap: wrap;
 
-
   overflow: visible;
 }
+.cbti-option-label { @include type-style('body'); padding: $space-inline 0; width: 100%; text-align: left; overflow-wrap: anywhere; }
 .cbti-options {
 
 }
 .cbti-muted {
-  font-size: 13px;
-  color: #808692;
+  @include type-style('label');
+  color: $text-secondary-light;
 }
+.cbti-muted-dark { color: $text-secondary-dark; }
+.cbti-section-title { @include type-style('title'); overflow-wrap: anywhere; }
+.cbti-record-title { @include type-style('body-strong'); overflow-wrap: anywhere; }
 .cbti-content {
-  font-size: 14px;
+  @include type-style('body');
   white-space: pre-wrap;
+  overflow-wrap: anywhere;
 
 }
 .cbti-image {
@@ -619,7 +626,6 @@ function preview(url) {
   height: 240px;
 }
 .cbti-dimension {
-
 
 }
 .cbti-bar {
@@ -642,4 +648,5 @@ function preview(url) {
 }
 .test-intro { background-color: #ffffff; border-radius: 14px; align-items: center; gap: $space-inline; }
 .test-intro-dark { background-color: #1c1e22; }
+
 </style>

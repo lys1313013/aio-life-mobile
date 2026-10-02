@@ -174,54 +174,54 @@ async function remove(item) {
           <view v-for="item in goals" :key="item.id" class="record-card ui-card" :class="{ 'record-card-dark': isDark }" role="button" tabindex="0" :aria-label="'编辑目标：' + item.title" @click="open(item)" @keydown.enter.prevent="open(item)" @keydown.space.prevent="open(item)">
             <view class="goal-meta ui-row">
               <text class="goal-type" :class="['goal-type-' + item.type, { 'goal-type-dark': isDark }]">{{ goalTypes[item.type - 1] }}</text>
-              <view class="goal-status ui-row"><view class="status-dot" :class="'status-' + item.status" /><text>{{ statusLabels[statuses.indexOf(item.status)] }}</text></view>
+              <view class="goal-status ui-row"><view class="status-dot" :class="'status-' + item.status" /><text class="goal-status-text ui-type-caption" :class="{ 'secondary-text-dark': isDark }">{{ statusLabels[statuses.indexOf(item.status)] }}</text></view>
             </view>
             <text class="record-title">{{ item.title }}</text>
             <view v-if="goalTags(item.tags).length" class="goal-tags"><text v-for="tag in goalTags(item.tags)" :key="tag" class="goal-tag" :class="{ 'goal-tag-dark': isDark }">{{ tag }}</text></view>
-            <text v-if="item.description" class="record-content">{{ item.description }}</text>
-            <view class="goal-progress"><view class="goal-footer ui-row"><text class="record-secondary">{{ item.startDate || item.endDate ? (shortDate(item.startDate) || '—') + ' ~ ' + (shortDate(item.endDate) || '—') : '无期限' }}</text><text class="record-secondary">{{ progress(item) }}%</text></view>
+            <text v-if="item.description" class="record-content" :class="{ 'secondary-text-dark': isDark }">{{ item.description }}</text>
+            <view class="goal-progress"><view class="goal-footer ui-row"><text class="record-secondary" :class="{ 'secondary-text-dark': isDark }">{{ item.startDate || item.endDate ? (shortDate(item.startDate) || '—') + ' ~ ' + (shortDate(item.endDate) || '—') : '无期限' }}</text><text class="record-secondary" :class="{ 'secondary-text-dark': isDark }">{{ progress(item) }}%</text></view>
             <view class="progress-track" :class="{ 'progress-track-dark': isDark }"><view class="progress-fill" :class="{ 'progress-completed': item.status === 'completed' }" :style="{ width: progress(item) + '%' }" /></view></view>
           </view>
         </view>
       </PageState>
-      <AdaptiveModal v-if="form" label="编辑目标" :busy="saving" @close="form = null">
-        <FormField label="标题" v-model="form.title" />
+      <AdaptiveModal v-if="form" label="编辑目标" :show-close="false" :busy="saving" @close="form = null">
+        <view class="goal-title-row ui-field-row"><FormField appearance="soft" compact stretch label="标题" v-model="form.title" /><MobileButton label="关闭" icon="ant-design:close-outlined" variant="quiet" :disabled="saving" @click="form = null" /></view>
         <view class="filters ui-field-row">
-          <FormField compact stretch label="类型" kind="selector" :model-value="goalTypes[form.type - 1]" :options="goalTypes" @update:model-value="setType($event)" />
-          <FormField compact stretch label="状态" kind="selector" :model-value="statusLabels[statuses.indexOf(form.status)]" :options="statusLabels" @update:model-value="form.status = statuses[statusLabels.indexOf($event)]" />
+          <FormField appearance="soft" compact stretch label="类型" kind="selector" :model-value="goalTypes[form.type - 1]" :options="goalTypes" @update:model-value="setType($event)" />
+          <FormField appearance="soft" compact stretch label="状态" kind="selector" :model-value="statusLabels[statuses.indexOf(form.status)]" :options="statusLabels" @update:model-value="form.status = statuses[statusLabels.indexOf($event)]" />
         </view>
         <view class="filters ui-field-row">
-          <FormField compact stretch label="当前值" input-type="number" v-model="form.currentValue" />
-          <FormField compact stretch label="目标值" input-type="number" v-model="form.targetValue" />
+          <FormField appearance="soft" compact stretch label="当前值" input-type="number" v-model="form.currentValue" />
+          <FormField appearance="soft" compact stretch label="目标值" input-type="number" v-model="form.targetValue" />
         </view>
         <view class="filters ui-field-row"
-          ><FormField compact stretch
+          ><FormField appearance="soft" compact stretch
             label="开始日期"
             kind="date"
             :model-value="form.startDate?.slice(0, 10) || ''"
-            @update:model-value="setDate('startDate', $event)" /><FormField compact stretch
+            @update:model-value="setDate('startDate', $event)" /><FormField appearance="soft" compact stretch
             label="开始时间"
             kind="time"
             :model-value="form.startDate?.slice(11, 16) || ''"
             @update:model-value="setTime('startDate', $event)"
         /></view>
         <view class="filters ui-field-row"
-          ><FormField compact stretch
+          ><FormField appearance="soft" compact stretch
             label="结束日期"
             kind="date"
             :model-value="form.endDate?.slice(0, 10) || ''"
-            @update:model-value="setDate('endDate', $event)" /><FormField compact stretch
+            @update:model-value="setDate('endDate', $event)" /><FormField appearance="soft" compact stretch
             label="结束时间"
             kind="time"
             :model-value="form.endDate?.slice(11, 16) || ''"
             @update:model-value="setTime('endDate', $event)"
         /></view>
-        <FormField label="描述" kind="textarea" v-model="form.description" /><FormField
+        <FormField appearance="soft" label="描述" kind="textarea" v-model="form.description" /><FormField appearance="soft"
           label="行动计划"
           kind="textarea"
           v-model="form.content"
-        /><FormField label="标签" v-model="form.tags" />
-        <text v-if="formError" class="record-error ui-section">{{ formError }}</text
+        /><FormField appearance="soft" label="标签" v-model="form.tags" />
+        <text v-if="formError" class="record-error ui-section ui-type-body">{{ formError }}</text
         ><view class="toolbar ui-row"
           ><ConfirmAction v-if="form.id" label="删除目标" :action="() => remove(form)" /><MobileButton
             label="取消"
@@ -235,8 +235,12 @@ async function remove(item) {
   </MobilePage>
 </template>
 <style scoped lang="scss">
+@use '../../styles/typography' as *;
+@use '../../styles/text-colors' as *;
 @use '../../styles/spacing.scss';
 @use '../../styles/spacing-tokens' as *;
+@include type-utilities('caption', 'body');
+
 .records-page {
   color: #27272a;
 }
@@ -251,12 +255,14 @@ async function remove(item) {
   flex-direction: row;
   flex-wrap: wrap;
 }
+.goal-title-row { align-items: flex-end; }
 .goal-grid { display: flex; flex-direction: row; flex-wrap: wrap; gap: $space-section; align-items: stretch; }
 .record-card { box-sizing: border-box; min-width: 0; width: calc((100% - #{$space-section}) / 2); }
 .goal-meta, .goal-footer { justify-content: space-between; align-items: center; flex-wrap: wrap; gap: $space-detail; }
-.goal-status { align-items: center; gap: $space-detail; color: #8b8f99; font-size: 12px; }
-.goal-type { color: #6366a5; background-color: #f0effa; border-radius: 4px; padding: $space-detail; font-size: 12px; }
-.status-dot { width: 7px; height: 7px; border-radius: 50%; background-color: #8b8f99; }
+.goal-status { align-items: center; gap: $space-detail; color: $text-secondary-light; @include type-style('caption'); }
+.goal-status-text { @include type-style('caption'); color: $text-secondary-light; }
+.goal-type { color: #6366a5; background-color: #f0effa; border-radius: 4px; padding: $space-detail; @include type-style('caption'); }
+.status-dot { width: 7px; height: 7px; border-radius: 50%; background-color: $text-secondary-light; }
 .status-in_progress { background-color: #5285ed; }
 .status-completed { background-color: #76c995; }
 .status-on_hold { background-color: #e3b251; }
@@ -289,14 +295,13 @@ async function remove(item) {
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
-  font-size: 17px;
-  font-weight: 600;
-  line-height: 24px;
+  @include type-style('title');
+
   overflow-wrap: anywhere;
 }
 .record-secondary {
-  color: #8b8f99;
-  font-size: 13px;
+  color: $text-secondary-light;
+  @include type-style('label');
 }
 .record-content {
   display: -webkit-box;
@@ -304,15 +309,15 @@ async function remove(item) {
   -webkit-box-orient: vertical;
   overflow: hidden;
   overflow-wrap: anywhere;
-  color: #858b96;
-  font-size: 14px;
-  line-height: 22px;
+  color: $text-secondary-light;
+  @include type-style('body');
+
 }
 .record-error {
   color: #e05252;
 }
 .goal-tags { display: flex; flex-direction: row; flex-wrap: wrap; gap: $space-detail; }
-.goal-tag { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; color: #646c79; background-color: #f0f2f5; border-radius: 4px; padding: $space-micro $space-detail; }
+.goal-tag { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; @include type-style('badge'); color: #646c79; background-color: #f0f2f5; border-radius: 4px; padding: $space-micro $space-detail; }
 .goal-tag-dark { color: #b0b6c1; background-color: #2b2f36; }
 .goal-type-1 { color: #3f9462; background-color: #edf7ef; }
 .goal-type-2 { color: #2e889a; background-color: #edf8fa; }
@@ -324,4 +329,6 @@ async function remove(item) {
 /* #ifdef WEB */
 .record-card:focus-visible { outline: 2px solid #427bea; outline-offset: 2px; }
 /* #endif */
+
+.secondary-text-dark { color: $text-secondary-dark; }
 </style>

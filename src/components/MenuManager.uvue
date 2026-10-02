@@ -99,7 +99,7 @@ async function removeSelected(row) {
       <button
         role="button"
         v-if="keyword"
-        class="menu-button"
+        class="menu-button ui-type-body"
         aria-label="清空搜索"
         @click="keyword = ''"
       >
@@ -107,7 +107,7 @@ async function removeSelected(row) {
       </button>
       <button
         role="button"
-        class="menu-button"
+        class="menu-button ui-type-body"
         :aria-label="allExpanded ? '全部折叠' : '全部展开'"
         :aria-disabled="!!keyword.trim() || !parents.length"
         :disabled="!!keyword.trim() || !parents.length"
@@ -123,7 +123,7 @@ async function removeSelected(row) {
       </button>
       <button
         role="button"
-        class="menu-button"
+        class="menu-button ui-type-body"
         :class="[
           { 'menu-button-active': sorting },
           themeClass({ 'menu-button-active': sorting }),
@@ -163,7 +163,7 @@ async function removeSelected(row) {
           <button
             role="button"
             v-if="hasChildren(row)"
-            class="menu-button menu-expand"
+            class="menu-button menu-expand ui-type-body"
             :aria-label="
               (expanded.includes(row.id) || keyword.trim() ? '收起' : '展开') +
               row.title
@@ -189,7 +189,7 @@ async function removeSelected(row) {
           /></view>
           <button
             role="button"
-            class="menu-main"
+            class="menu-main ui-type-body"
             :aria-label="'编辑' + row.title"
             :aria-disabled="busy"
             :disabled="busy"
@@ -213,7 +213,7 @@ async function removeSelected(row) {
           <view v-if="sorting && !keyword.trim()" class="menu-sort">
             <button
               role="button"
-              class="menu-button"
+              class="menu-button ui-type-body"
               :aria-label="'上移' + row.title"
               :aria-disabled="busy || !menuMoveChanges(rows, row, -1).length"
               :disabled="busy || !menuMoveChanges(rows, row, -1).length"
@@ -224,7 +224,7 @@ async function removeSelected(row) {
             </button>
             <button
               role="button"
-              class="menu-button"
+              class="menu-button ui-type-body"
               :aria-label="'下移' + row.title"
               :aria-disabled="busy || !menuMoveChanges(rows, row, 1).length"
               :disabled="busy || !menuMoveChanges(rows, row, 1).length"
@@ -236,7 +236,7 @@ async function removeSelected(row) {
           <button
             role="button"
             v-else
-            class="menu-button"
+            class="menu-button ui-type-body"
             :aria-label="row.title + '更多操作'"
             :aria-disabled="busy"
             :disabled="busy"
@@ -313,8 +313,11 @@ async function removeSelected(row) {
   </view>
 </template>
 <style scoped lang="scss">
+@use '../styles/typography' as *;
 @use "../styles/spacing.scss";
 @use "../styles/spacing-tokens" as *;
+@include type-utilities('body');
+
 .menu-manager {
   color: #27272a;
   padding-bottom: $space-controlMin + $space-section;
@@ -355,7 +358,7 @@ async function removeSelected(row) {
   border: 0;
   border-radius: 10px;
   background: transparent;
-  line-height: normal;
+  line-height: type-leading('normal');
 }
 .menu-button-active {
   background: #dfeaff;
@@ -385,7 +388,7 @@ async function removeSelected(row) {
   text-align: left;
   background: transparent;
   color: inherit;
-  line-height: normal;
+  line-height: type-leading('normal');
 }
 .menu-heading {
   min-width: 0;
@@ -401,21 +404,21 @@ async function removeSelected(row) {
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
-  font-size: 15px;
-  font-weight: 600;
+  @include type-style('body-strong');
+
 }
 .menu-title-child {
-  font-weight: 400;
+  font-weight: type-weight('regular');
 }
 .menu-count {
-  font-size: 12px;
+  @include type-style('caption');
   color: #858b96;
   flex-shrink: 0;
 }
 .menu-path {
   margin-top: $space-detail;
   color: #858b96;
-  font-size: 12px;
+  @include type-style('caption');
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
@@ -425,8 +428,8 @@ async function removeSelected(row) {
   flex-shrink: 0;
 }
 .menu-detail-title {
-  font-size: 18px;
-  font-weight: 600;
+  @include type-style('title');
+
   margin-bottom: $space-section;
 }
 .menu-detail-row {
@@ -438,13 +441,13 @@ async function removeSelected(row) {
   width: 72px;
   flex-shrink: 0;
   color: #858b96;
-  font-size: 13px;
+  @include type-style('label');
 }
 .menu-detail-value {
   flex: 1;
   min-width: 0;
   overflow-wrap: anywhere;
-  font-size: 14px;
+  @include type-style('body');
 }
 .menu-detail-actions {
   flex-direction: row;
@@ -454,7 +457,7 @@ async function removeSelected(row) {
 }
 .menu-error {
   color: #e05260;
-  font-size: 13px;
+  @include type-style('label');
   margin-top: $space-inline;
 }
 /* #ifdef WEB || MP-WEIXIN */
@@ -468,4 +471,5 @@ async function removeSelected(row) {
   opacity: 0.4;
 }
 /* #endif */
+
 </style>

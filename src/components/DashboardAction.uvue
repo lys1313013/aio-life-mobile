@@ -6,7 +6,7 @@ defineProps<{ label: string; icon?: string; text?: string; loading?: boolean; di
 defineEmits<{ click: [] }>()
 </script>
 <template>
-  <button role="button" class="dashboard-action" :class="{ 'dashboard-action-pill': !!text, 'dashboard-action-disabled': loading || disabled }" :aria-label="label" :aria-busy="loading" :loading="loading" :disabled="loading || disabled" :hover-class="isDark ? 'dashboard-action-pressed-dark' : 'dashboard-action-pressed'" @click="$emit('click')">
+  <button role="button" class="dashboard-action ui-type-body" :class="{ 'dashboard-action-pill': !!text, 'dashboard-action-disabled': loading || disabled }" :aria-label="label" :aria-busy="loading" :loading="loading" :disabled="loading || disabled" :hover-class="isDark ? 'dashboard-action-pressed-dark' : 'dashboard-action-pressed'" @click="$emit('click')">
     <view v-if="!loading" class="action-content" :class="[{ 'action-pill': !!text }, text ? themeClass('action-pill') : '']">
       <text v-if="text" class="action-text" :class="themeClass('action-text')">{{ text }}</text>
       <view v-if="!icon || icon === 'lucide:plus'" class="action-plus" :class="{ 'action-plus-small': !!text }">
@@ -17,8 +17,11 @@ defineEmits<{ click: [] }>()
   </button>
 </template>
 <style scoped lang="scss">
+@use '../styles/typography' as *;
 @use '../styles/spacing-tokens' as *;
-.dashboard-action { display: flex; flex-direction: row; align-items: center; justify-content: center; flex-shrink: 0; min-width: 44px; height: 44px; line-height: 20px; padding: 0; margin: 0 (-$space-inline) 0 0; border: 0; border-radius: 22px; background-color: transparent; }
+@include type-utilities('body');
+
+.dashboard-action { display: flex; flex-direction: row; align-items: center; justify-content: center; flex-shrink: 0; min-width: 44px; height: 44px; line-height: type-line('label'); padding: 0; margin: 0 (-$space-inline) 0 0; border: 0; border-radius: 22px; background-color: transparent; }
 .dashboard-action-pill { margin-right: 0; }
 /* 保持透明底，覆盖平台默认的 disabled 按钮背景。 */
 .dashboard-action-disabled { background-color: transparent !important; }
@@ -27,11 +30,12 @@ defineEmits<{ click: [] }>()
 .action-content { flex-direction: row; align-items: center; justify-content: center; }
 .action-pill { min-width: 44px; height: 22px; padding: 0 $space-inline; border-radius: 11px; background-color: #f8f8f9; }
 .action-pill-dark { background-color: #27292f; }
-.action-text { color: #3f3f46; font-family: monospace; font-size: 12px; line-height: 12px; margin-right: $space-detail; }
+.action-text { color: #3f3f46; font-family: type-family('mono'); @include type-style('caption');  margin-right: $space-detail; }
 .action-text-dark { color: #e4e4e7; }
 .action-plus { width: 24px; height: 24px; align-items: center; justify-content: center; flex-shrink: 0; }
 .action-plus-small { width: 14px; height: 14px; }
 /* #ifdef WEB || MP-WEIXIN */
 .dashboard-action::after { border: 0; }
 /* #endif */
+
 </style>

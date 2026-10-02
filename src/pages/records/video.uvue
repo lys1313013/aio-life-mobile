@@ -254,11 +254,11 @@ function play(url) {
     ><view class="video-page ui-page-body" :class="{ 'video-page-dark': isDark }"
       ><PageHeader title="视频观看" :back="true" @back="uni.navigateBack()" /><view class="ui-toolbar"
         ><FormField compact stretch hide-label label="搜索视频" placeholder="搜索视频、UP主或笔记" v-model="keyword" /></view
-      ><view class="video-summary ui-row ui-section"><view class="summary-panel ui-card" :class="{ 'summary-panel-dark': isDark }"><ContentSkeleton v-if="loading && !rows.length" variant="summary" /><template v-else><text class="secondary">学习总数</text><text class="summary-number">{{ Object.values(counts).reduce((sum, count) => sum + Number(count), 0) }}</text><text class="secondary">{{ counts.completed || 0 }} 已完成 · {{ counts.in_progress || 0 }} 进行中 · {{ counts.not_started || 0 }} 未开始</text></template></view><view class="summary-panel ui-card" :class="{ 'summary-panel-dark': isDark }"><ContentSkeleton v-if="loading && !rows.length" variant="summary" /><template v-else><text class="secondary">已学时长</text><text class="summary-number summary-duration">{{ formatSeconds(statistics.studiedSeconds) }}</text><text class="secondary">剩余预估 {{ formatSeconds(statistics.unstudiedSeconds) }}</text></template></view></view><scroll-view :scroll-x="true" direction="horizontal" class="status-scroll ui-section"><view class="status-tabs ui-row"><button v-for="label in ['未开始', '进行中', '已暂停', '已完成', '全部状态']" :key="label" role="button" class="status-tab" :class="{ 'status-active': status === label }" :aria-pressed="status === label" @click="status = label; load()">{{ label === '全部状态' ? '全部' : label }} <text v-if="!loading || rows.length">{{ label === '全部状态' ? Object.values(counts).reduce((sum, count) => sum + Number(count), 0) : counts[statuses.find((code) => statusLabels[code] === label)] || 0 }}</text></button></view></scroll-view>
+      ><view class="video-summary ui-row ui-section"><view class="summary-panel ui-card" :class="{ 'summary-panel-dark': isDark }"><ContentSkeleton v-if="loading && !rows.length" variant="summary" /><template v-else><text class="secondary" :class="{ 'record-secondary-dark': isDark }">学习总数</text><text class="summary-number">{{ Object.values(counts).reduce((sum, count) => sum + Number(count), 0) }}</text><text class="secondary" :class="{ 'record-secondary-dark': isDark }">{{ counts.completed || 0 }} 已完成 · {{ counts.in_progress || 0 }} 进行中 · {{ counts.not_started || 0 }} 未开始</text></template></view><view class="summary-panel ui-card" :class="{ 'summary-panel-dark': isDark }"><ContentSkeleton v-if="loading && !rows.length" variant="summary" /><template v-else><text class="secondary" :class="{ 'record-secondary-dark': isDark }">已学时长</text><text class="summary-number summary-duration">{{ formatSeconds(statistics.studiedSeconds) }}</text><text class="secondary" :class="{ 'record-secondary-dark': isDark }">剩余预估 {{ formatSeconds(statistics.unstudiedSeconds) }}</text></template></view></view><scroll-view :scroll-x="true" direction="horizontal" class="status-scroll ui-section"><view class="status-tabs ui-row"><button v-for="label in ['未开始', '进行中', '已暂停', '已完成', '全部状态']" :key="label" role="button" class="status-tab" :class="{ 'status-tab-dark': isDark, 'status-active': status === label }" :aria-pressed="status === label" @click="status = label; load()"><text class="status-label">{{ label === '全部状态' ? '全部' : label }}</text><text class="status-count" v-if="!loading || rows.length">{{ label === '全部状态' ? Object.values(counts).reduce((sum, count) => sum + Number(count), 0) : counts[statuses.find((code) => statusLabels[code] === label)] || 0 }}</text></button></view></scroll-view>
       <PageState skeleton="media" :loading="loading" :error="error" :empty="!filtered.length" @retry="load"
         >
 <template #loading><view class="video-grid"><view v-for="n in 6" :key="n" class="video-card" :class="{ 'video-card-dark': isDark }"><view class="video-poster"><ContentSkeleton variant="cover" /></view><view class="video-body"><ContentSkeleton variant="goal-tile" /></view></view></view></template>
-<view class="video-grid"><view v-for="item in filtered" :key="item.id" class="video-card" :class="{ 'video-card-dark': isDark }" role="button" tabindex="0" :aria-label="'编辑视频：' + item.title" @click="open(item)" @keydown.enter="open(item)" @keydown.space.prevent="open(item)"><view class="video-poster" :class="{ 'video-poster-dark': isDark }"><image v-if="item.cover" class="cover" :src="item.cover" mode="aspectFill" /><view v-else class="video-cover-empty"><AppIcon name="ant-design:play-circle-outlined" :size="28" color="#8b8f99" /></view><text class="video-status" :class="'video-status-' + item.status">{{ statusLabels[item.status] }}</text><text class="video-duration">{{ clockDuration(item.duration) }}</text></view><view class="video-body"><text class="video-title">{{ item.title }}</text><view class="video-meta ui-row"><text class="video-meta-text">{{ item.ownerName || '' }}</text><text class="episode">{{ item.currentEpisode || 1 }}/{{ item.episodes || 1 }}</text></view><view class="video-meta ui-row"><text class="video-meta-text">{{ clockDuration(item.watchedDuration) }} / {{ clockDuration(item.duration) }}</text><text class="episode">{{ videoProgress(item) }}%</text></view><view class="progress-track" :class="{ 'progress-track-dark': isDark }"><view class="progress-fill" :style="{ width: (videoProgress(item)) + '%' }" /></view></view></view></view></PageState
+<view class="video-grid"><view v-for="item in filtered" :key="item.id" class="video-card" :class="{ 'video-card-dark': isDark }" role="button" tabindex="0" :aria-label="'编辑视频：' + item.title" @click="open(item)" @keydown.enter="open(item)" @keydown.space.prevent="open(item)"><view class="video-poster" :class="{ 'video-poster-dark': isDark }"><image v-if="item.cover" class="cover" :src="item.cover" mode="aspectFill" /><view v-else class="video-cover-empty"><AppIcon name="ant-design:play-circle-outlined" :size="28" color="#8b8f99" /></view><text class="video-status" :class="'video-status-' + item.status">{{ statusLabels[item.status] }}</text><text class="video-duration">{{ clockDuration(item.duration) }}</text></view><view class="video-body"><text class="video-title">{{ item.title }}</text><view class="video-meta ui-row"><text class="video-meta-text" :class="{ 'record-secondary-dark': isDark }">{{ item.ownerName || '' }}</text><text class="episode">{{ item.currentEpisode || 1 }}/{{ item.episodes || 1 }}</text></view><view class="video-meta ui-row"><text class="video-meta-text" :class="{ 'record-secondary-dark': isDark }">{{ clockDuration(item.watchedDuration) }} / {{ clockDuration(item.duration) }}</text><text class="episode">{{ videoProgress(item) }}%</text></view><view class="progress-track" :class="{ 'progress-track-dark': isDark }"><view class="progress-fill" :style="{ width: (videoProgress(item)) + '%' }" /></view></view></view></view></PageState
       ><AdaptiveModal
         v-if="form"
         label="编辑学习视频"
@@ -276,36 +276,33 @@ function play(url) {
             @click="parse" /></view
         ><FormField label="标题" v-model="form.title" /><FormField
           label="封面链接"
-          v-model="form.cover" /><FormField label="UP主" v-model="form.ownerName" /><FormField
-          label="状态"
-          kind="selector"
-          :model-value="statusLabels[form.status]"
-          :options="statuses.map((code) => statusLabels[code])"
-          @update:model-value="
-            form.status = statuses.find((code) => statusLabels[code] === $event) || 'not_started'
-          " /><FormField label="总集数" input-type="number" v-model="form.episodes" /><FormField
-          label="当前集数"
-          input-type="number"
-          :model-value="form.currentEpisode"
-          @update:model-value="updateEpisode" /><FormField
-          label="总时长（秒）"
-          input-type="number"
-          v-model="form.duration" /><FormField
-          label="已学习时长（秒）"
-          input-type="number"
-          v-model="form.watchedDuration" /><FormField
-          label="最近观看日期"
-          kind="date"
-          v-model="form.date" /><FormField
-          label="最近观看时间"
-          kind="time"
-          v-model="form.time" /><FormField
+          v-model="form.cover" />
+        <view class="ui-field-row">
+          <FormField compact stretch label="UP主" v-model="form.ownerName" />
+          <FormField compact stretch label="状态" kind="selector"
+            :model-value="statusLabels[form.status]"
+            :options="statuses.map((code) => statusLabels[code])"
+            @update:model-value="form.status = statuses.find((code) => statusLabels[code] === $event) || 'not_started'" />
+        </view>
+        <view class="ui-field-row">
+          <FormField compact stretch label="总集数" input-type="number" v-model="form.episodes" />
+          <FormField compact stretch label="当前集数" input-type="number" :model-value="form.currentEpisode" @update:model-value="updateEpisode" />
+        </view>
+        <view class="ui-field-row">
+          <FormField compact stretch label="总时长（秒）" input-type="number" v-model="form.duration" />
+          <FormField compact stretch label="已学习时长（秒）" input-type="number" v-model="form.watchedDuration" />
+        </view>
+        <view class="ui-field-row">
+          <FormField compact stretch label="最近观看日期" kind="date" v-model="form.date" />
+          <FormField compact stretch label="最近观看时间" kind="time" v-model="form.time" />
+        </view>
+        <FormField
           label="学习笔记"
           kind="textarea"
           v-model="form.notes" /><FormField
           label="视频简介"
           kind="textarea"
-          v-model="form.description" /><text v-if="formError" class="error ui-section">{{ formError }}</text
+          v-model="form.description" /><text v-if="formError" class="error ui-section ui-type-body">{{ formError }}</text
         ><view class="toolbar ui-row"
           ><ConfirmAction v-if="form.id" label="删除视频" :action="() => remove(form)" /><MobileButton label="播放视频" icon="ant-design:play-circle-outlined" variant="quiet" @click="play(form.url)" /><MobileButton
             label="取消"
@@ -323,6 +320,8 @@ function play(url) {
   </MobilePage>
 </template>
 <style scoped lang="scss">
+@use '../../styles/typography' as *;
+@use '../../styles/text-colors' as *;
 @use '../../styles/spacing.scss';
 @use '../../styles/spacing-tokens' as *;
 .video-page {
@@ -346,12 +345,12 @@ function play(url) {
 }
 .title {
   flex: 1;
-  font-size: 16px;
-  font-weight: 600;
+  @include type-style('title');
+
 }
 .secondary {
-  font-size: 13px;
-  color: #8b8f99;
+  @include type-style('label');
+  color: $text-secondary-light;
 }
 .cover {
   width: 100%;
@@ -364,28 +363,35 @@ function play(url) {
 </style>
 
 <style scoped lang="scss">
+@use '../../styles/typography' as *;
+@use '../../styles/text-colors' as *;
 @use '../../styles/spacing-tokens' as *;
+@include type-utilities('label', 'body');
+
 .video-summary { align-items: stretch; flex-wrap: wrap; }
 .summary-panel { flex: 1; min-width: 140px; margin: 0; gap: $space-inline; background-color: #fff; border-radius: 12px; }
 .summary-panel-dark { background-color: #1c1e22; }
-.summary-number { font-size: 23px; font-weight: 600; }
+.summary-number { @include type-style('metric');  }
 .status-scroll { width: 100%; }
 .status-tabs { flex-direction: row; width: max-content; }
 .status-tab::after { border: 0; }
-.status-tab { margin: 0; padding: 0 $space-inline; background-color: transparent; font-size: 13px; min-height: $space-controlMin; flex-shrink: 0; color: #8b8f99; border-radius: 0; }
+.status-tab { display: flex; flex-direction: row; align-items: center; justify-content: center; gap: $space-detail; margin: 0; padding: 0 $space-inline; background-color: transparent; @include type-style('label'); min-height: $space-controlMin; flex-shrink: 0; color: $text-secondary-light; border-radius: 0; }
+.status-label { @include type-style('label'); color: inherit; }
+.status-count { @include type-style('caption'); color: inherit; }
+.status-tab-dark { color: $text-secondary-dark; }
 .status-active { color: #427bea; border-bottom: 2px solid #427bea; }
 .video-grid { display: flex; flex-direction: row; flex-wrap: wrap; gap: $space-section; }
 .video-card { box-sizing: border-box; width: calc((100% - #{$space-section}) / 2); background-color: #fff; border-radius: 8px; overflow: hidden; }
 .video-card-dark { background-color: #1c1e22; }
 .video-poster { position: relative; height: 0; padding-top: 62.5%; background-color: #eef0f3; }
-.video-status, .video-duration { position: absolute; background-color: #427bea; color: white; padding: $space-detail; font-size: 11px; }
+.video-status, .video-duration { position: absolute; background-color: #427bea; color: white; padding: $space-detail; @include type-style('badge'); }
 .video-status { top: $space-detail; left: $space-detail; border-radius: 4px; }
 .video-duration { bottom: $space-detail; right: $space-detail; background-color: #0008; }
 .video-body { padding: $space-card; display: flex; flex-direction: column; gap: $space-inline; }
-.video-title { font-weight: 600; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; font-size: 14px; min-height: 42px; }
+.video-title {  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; @include type-style('body-strong'); min-height: 42px; }
 .video-meta { justify-content: space-between; gap: $space-detail; }
-.video-meta-text { color: #8b8f99; font-size: 11px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.episode { flex-shrink: 0; color: #427bea; font-size: 11px; }
+.video-meta-text { color: $text-secondary-light; @include type-style('caption'); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.episode { flex-shrink: 0; color: #427bea; @include type-style('badge'); }
 .progress-track { height: 5px; background-color: #eef0f3; border-radius: 5px; overflow: hidden; }
 .progress-fill { height: 5px; background-color: #427bea; }
 /* #ifdef WEB */
@@ -393,11 +399,13 @@ function play(url) {
 /* #endif */
 @media (min-width: 600px) { .video-card { width: calc((100% - #{$space-section} * 2) / 3); } }
 @media (min-width: 1000px) { .video-card { width: calc((100% - #{$space-section} * 3) / 4); } }
-.summary-duration { font-size: 20px; }
+.summary-duration { @include type-style('metric-compact'); }
 .cover { position: absolute; left: 0; top: 0; width: 100%; height: 100%; }
 .video-cover-empty { position: absolute; left: 0; right: 0; top: 0; bottom: 0; align-items: center; justify-content: center; }
 .video-poster-dark, .progress-track-dark { background-color: #292d35; }
 .video-status-completed { background-color: #22a06b; }
 .video-status-on_hold { background-color: #b87925; }
 .video-status-not_started { background-color: #737e90; }
+
+.record-secondary-dark { color: $text-secondary-dark; }
 </style>

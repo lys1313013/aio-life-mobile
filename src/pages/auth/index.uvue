@@ -165,7 +165,7 @@ async function submit() {
             :disabled="sending"
             @click="submit" /></template
         ><template v-else
-          ><text>{{ mode === 'register' ? '注册成功' : '密码已重置' }}</text
+          ><text class="ui-type-body">{{ mode === 'register' ? '注册成功' : '密码已重置' }}</text
           ><MobileButton
             label="返回登录"
             @click="uni.reLaunch({ url: '/pages/login/index' })" /></template></view></MobilePage
@@ -174,15 +174,18 @@ async function submit() {
       :label="policy === 'privacy' ? '隐私政策' : '服务条款'"
       @close="policy = ''"
       ><view v-for="item in policies[policy]" :key="item[0]" class="auth-policy-section ui-section ui-gap-sm"
-        ><text>{{ item[0] }}</text
-        ><text>{{ item[1] }}</text></view
+        ><text class="auth-policy-title">{{ item[0] }}</text
+        ><text class="auth-policy-body">{{ item[1] }}</text></view
       ></AdaptiveModal
     ></view
   >
 </template>
 <style scoped lang="scss">
+@use '../../styles/typography' as *;
 @use '../../styles/spacing.scss';
 @use '../../styles/spacing-tokens' as *;
+@include type-utilities('body');
+
 .auth-page {
   flex: 1;
   height: 100%;
@@ -194,9 +197,6 @@ async function submit() {
   background-color: #ffffff;
   color: #27272a;
 
-
-
-
 }
 .auth-card-dark {
   background-color: #1c1e22;
@@ -204,7 +204,7 @@ async function submit() {
 }
 .auth-error {
   color: #e05260;
-  font-size: 14px;
+  @include type-style('body');
 
 }
 .auth-policy {
@@ -212,10 +212,12 @@ async function submit() {
   flex-wrap: wrap;
   align-items: center;
 
-
 }
-.auth-policy-section {
-
-
+.auth-policy-title {
+  @include type-style('body-strong');
 }
+.auth-policy-body {
+  @include type-style('prose');
+}
+
 </style>

@@ -109,14 +109,14 @@ async function run() {
       <view v-if="guideOpen" class="guide ui-card" :class="themeClass('guide')">
         <view class="guide-body ui-gap-sm">
           <text class="title">配置指南</text>
-          <text class="description">服务地址</text><text class="config-code" selectable>{{ serviceAddress }}</text>
-          <text class="description">传输类型</text><text>Streamable HTTP</text>
-          <text class="description">认证方式</text><text selectable>Authorization: Bearer &lt;API Key&gt;</text>
+          <text class="description" :class="themeClass('description')">服务地址</text><text class="config-code" selectable>{{ serviceAddress }}</text>
+          <text class="description" :class="themeClass('description')">传输类型</text><text class="ui-type-body">Streamable HTTP</text>
+          <text class="description" :class="themeClass('description')">认证方式</text><text class="config-code" selectable>Authorization: Bearer &lt;API Key&gt;</text>
           <MobileButton label="管理 API Key" icon="ant-design:key-outlined" variant="quiet" @click="uni.navigateTo({url:'/pages/profile/preferences?section=keys'})" />
-          <text class="description">客户端配置</text><text class="config-code" selectable>{{ clientConfig }}</text>
+          <text class="description" :class="themeClass('description')">客户端配置</text><text class="config-code" selectable>{{ clientConfig }}</text>
         </view>
       </view>
-      <text class="description ui-section">{{ keyword ? filtered.length + ' / ' : '' }}{{ tools.length }} 个工具</text>
+      <text class="description ui-section" :class="themeClass('description')">{{ keyword ? filtered.length + ' / ' : '' }}{{ tools.length }} 个工具</text>
       <PageState skeleton="list" :loading="loading" :error="error" :empty="!loading && !filtered.length" @retry="load">
         <view class="tool-grid">
           <view v-for="tool in filtered" :key="tool.name" class="tool ui-card" :class="themeClass('tool')">
@@ -132,8 +132,8 @@ async function run() {
         </view>
       </PageState></view
     ><AdaptiveModal v-if="current" :label="current.name" :busy="busy" @close="current = null"
-      ><text class="title">{{ current.name }}</text
-      ><text>{{ current.description }}</text><text v-if="!fields.length" class="description ui-section">该工具无需输入参数</text
+      ><text class="tool-modal-name">{{ current.name }}</text
+      ><text class="ui-type-body tool-content">{{ current.description }}</text><text v-if="!fields.length" class="description ui-section" :class="themeClass('description')">该工具无需输入参数</text
       ><view v-for="field in fields" :key="field.name"
         ><FormField
           :label="
@@ -148,13 +148,13 @@ async function run() {
           "
           :options="field.enum?.map((value) => String(value)) || ['true', 'false']"
           v-model="args[field.name]"
-        /><text v-if="field.description" class="description ui-section">{{ field.description }}</text></view
-      ><text v-if="callError" class="error ui-py-section">{{ callError }}</text
+        /><text v-if="field.description" class="description ui-section" :class="themeClass('description')">{{ field.description }}</text></view
+      ><text v-if="callError" class="error ui-py-section ui-type-body">{{ callError }}</text
       ><MobileButton label="执行工具" :loading="busy" @click="run" /><view
         v-if="result"
         class="result ui-gap-md ui-mt-section"
-        ><text v-if="result.isError" class="error ui-py-section">工具返回错误</text
-        ><text v-for="(item, index) in result.content" :key="index" selectable>{{
+        ><text v-if="result.isError" class="error ui-py-section ui-type-body">工具返回错误</text
+        ><text class="ui-type-body tool-content" v-for="(item, index) in result.content" :key="index" selectable>{{
           item.text || JSON.stringify(item)
         }}</text></view
       ></AdaptiveModal
@@ -162,8 +162,12 @@ async function run() {
   >
 </template>
 <style scoped lang="scss">
+@use '../../styles/typography' as *;
 @use '../../styles/spacing.scss';
 @use '../../styles/spacing-tokens' as *;
+@use '../../styles/text-colors' as *;
+@include type-utilities('body');
+
 .body {
   color: #263248;
 }
@@ -177,12 +181,12 @@ async function run() {
 }
 .tool-heading { align-items: flex-start; }
 .tool-identity { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: $space-detail; }
-.tool-name { font-family: monospace; font-size: 14px; font-weight: 600; line-height: 20px; color: #2563b8; overflow-wrap: anywhere; }
+.tool-name { font-family: type-family('mono'); @include type-style('body-strong');   color: #2563b8; overflow-wrap: anywhere; }
 .tool-name-dark { color: #8cb4fb; }
-.parameter-count { padding: $space-micro $space-detail; border-radius: 4px; font-size: 11px; color: #547092; background-color: #edf3fc; }
+.parameter-count { padding: $space-micro $space-detail; border-radius: 4px; @include type-style('badge'); color: #547092; background-color: #edf3fc; }
 .parameter-count-dark { color: #a8bfdf; background-color: #263448; }
-.tool-description { color: #647084; font-size: 13px; line-height: 20px; overflow-wrap: anywhere; }
-.tool-description-dark { color: #a7b0bf; }
+.tool-description { color: $text-secondary-light; @include type-style('label');  overflow-wrap: anywhere; }
+.tool-description-dark { color: $text-secondary-dark; }
 @media (min-width: 768px) { .tool-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 .tool {
   min-width: 0;
@@ -194,13 +198,13 @@ async function run() {
   flex-direction: column;
 }
 .title {
-  font-weight: 600;
-  font-size: 18px;
+
+  @include type-style('title');
   display: block;
 }
 .description {
-  color: #718096;
-  font-size: 13px;
+  color: $text-secondary-light;
+  @include type-style('label');
   display: block;
 }
 .error {
@@ -215,5 +219,10 @@ async function run() {
 .guide-heading { align-items: center; justify-content: space-between; }
 .guide-body { display: flex; flex-direction: column; }
 .guide-dark, .tool-dark { background-color: #1c1e22; }
-.config-code { font-family: monospace; font-size: 12px; overflow-wrap: anywhere; white-space: pre-wrap; }
+.config-code { font-family: type-family('mono'); @include type-style('caption'); overflow-wrap: anywhere; white-space: pre-wrap; }
+
+.description-dark { color: $text-secondary-dark; }
+.description { overflow-wrap: anywhere; }
+.tool-modal-name { @include type-style('title'); font-family: type-family('mono'); display: block; overflow-wrap: anywhere; }
+.tool-content { @include type-style('prose'); white-space: pre-wrap; overflow-wrap: anywhere; }
 </style>

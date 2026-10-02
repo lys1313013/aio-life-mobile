@@ -244,7 +244,7 @@ function toggle(id) {
             startDate = '';
             endDate = '';
           " /></view
-      ><text v-if="startDate && endDate && startDate > endDate" class="error ui-section"
+      ><text v-if="startDate && endDate && startDate > endDate" class="error ui-section ui-type-body"
         >开始日期不能晚于结束日期</text
       ><view class="metrics ui-row ui-section"
         ><MetricCard :loading="loading && !rows.length" label="运动次数" :value="counts" /><MetricCard :loading="loading && !rows.length"
@@ -282,7 +282,7 @@ function toggle(id) {
               :label="selected.includes(item.id) ? '取消选择记录' : '选择记录'"
               :icon="selected.includes(item.id) ? 'ant-design:check-square-outlined' : 'ant-design:border-outlined'"
               variant="quiet"
-              @click="toggle(item.id)" /><view class="record-copy"><view class="record-type"><CategoryIcon :icon="exerciseType(item.exerciseTypeId)?.icon || 'mdi:run'" :color="exerciseType(item.exerciseTypeId)?.color || '#5b8ff9'" :size="20" /><text class="title">{{ name(item.exerciseTypeId) }}</text></view><text class="secondary">{{ item.exerciseDate }}</text></view><text class="record-quantity">{{ item.exerciseCount ?? '—' }}</text
+              @click="toggle(item.id)" /><view class="record-copy"><view class="record-type"><CategoryIcon :icon="exerciseType(item.exerciseTypeId)?.icon || 'mdi:run'" :color="exerciseType(item.exerciseTypeId)?.color || '#5b8ff9'" :size="20" /><text class="title">{{ name(item.exerciseTypeId) }}</text></view><text class="secondary" :class="{ 'record-secondary-dark': isDark }">{{ item.exerciseDate }}</text></view><text class="record-quantity">{{ item.exerciseCount ?? '—' }}</text
             ><MobileButton
               label="编辑运动"
               icon="ant-design:edit-outlined"
@@ -290,7 +290,7 @@ function toggle(id) {
               @click="open(item)" /><ConfirmAction
               label="删除运动"
               :action="() => remove([item.id])" /></view
-          ><text v-if="item.description" class="record-description">{{ item.description }}</text></view
+          ><text v-if="item.description" class="record-description" :class="{ 'record-secondary-dark': isDark }">{{ item.description }}</text></view
         ></PageState
       ><AdaptiveModal v-if="form" label="编辑运动记录" :busy="saving" @close="form = null"
         ><FormField
@@ -306,7 +306,7 @@ function toggle(id) {
           v-model="form.exerciseCount" /><FormField
           label="备注"
           kind="textarea"
-          v-model="form.description" /><text v-if="formError" class="error ui-section">{{ formError }}</text
+          v-model="form.description" /><text v-if="formError" class="error ui-section ui-type-body">{{ formError }}</text
         ><view class="toolbar ui-row"
           ><MobileButton
             label="取消"
@@ -320,8 +320,12 @@ function toggle(id) {
   </MobilePage>
 </template>
 <style scoped lang="scss">
+@use '../../styles/typography' as *;
+@use '../../styles/text-colors' as *;
 @use '../../styles/spacing.scss';
 @use '../../styles/spacing-tokens' as *;
+@include type-utilities('body');
+
 .exercise-page {
   color: #27272a;
   padding-bottom: 80px; /* 浮动新增按钮避让 */
@@ -344,13 +348,13 @@ function toggle(id) {
   background-color: #1c1e22;
 }
 .title {
-  font-weight: 600;
-  font-size: 16px;
+
+  @include type-style('title');
   flex: 1;
 }
 .secondary {
-  color: #8b8f99;
-  font-size: 13px;
+  color: $text-secondary-light;
+  @include type-style('label');
 }
 .error {
   color: #e05252;
@@ -358,7 +362,7 @@ function toggle(id) {
 .bar-row {
   flex-direction: row;
   align-items: center;
-  font-size: 12px;
+  @include type-style('caption');
 }
 .bar {
   height: 10px;
@@ -376,7 +380,7 @@ function toggle(id) {
 .daily-column {
   align-items: center;
   width: 44px;
-  font-size: 11px;
+  @include type-style('badge');
   flex-shrink: 0;
 }
 .daily-bar {
@@ -388,9 +392,11 @@ function toggle(id) {
 .record-header { display: flex; flex-direction: row; align-items: center; gap: $space-detail; }
 .record-copy { flex: 1; min-width: 0; gap: $space-detail; }
 .record-type { flex-direction: row; align-items: center; gap: $space-detail; }
-.record-quantity { font-size: 21px; font-weight: 600; color: #469d95; }
-.record-description { font-size: 13px; line-height: 20px; color: #8b8f99; overflow-wrap: anywhere; }
+.record-quantity { @include type-style('metric-compact');  color: #469d95; }
+.record-description { @include type-style('label');  color: $text-secondary-light; overflow-wrap: anywhere; }
 .date-filters { align-items: flex-end; }
 .metrics { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: $space-inline; }
 @media (min-width: 600px) { .metrics { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+
+.record-secondary-dark { color: $text-secondary-dark; }
 </style>

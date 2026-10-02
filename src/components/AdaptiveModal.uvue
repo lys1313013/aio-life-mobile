@@ -15,6 +15,7 @@ import {
 } from 'vue'
 const props = withDefaults(defineProps<{
   maxWidth?: number
+  verticalInset?: number
   label: string
   busy?: boolean
   showClose?: boolean
@@ -27,10 +28,11 @@ const windowHeight = ref(uni.getWindowInfo().windowHeight)
 const keyboardHeight = ref(0)
 const safeTop = ref(uni.getWindowInfo().safeAreaInsets?.top || 0)
 const safeBottom = ref(uni.getWindowInfo().safeAreaInsets?.bottom || 0)
+const verticalInset = computed(() => props.verticalInset ?? spacing.overlayBlock)
 const height = computed(() =>
   Math.min(
     contentHeight.value,
-    modalAvailableHeight(windowHeight.value, keyboardHeight.value, safeTop.value, safeBottom.value),
+    modalAvailableHeight(windowHeight.value, keyboardHeight.value, safeTop.value, safeBottom.value, verticalInset.value),
   ),
 )
 let active = true
@@ -106,7 +108,11 @@ onUnmounted(() => {
 })
 </script>
 <template>
-  <view class="modal-mask ui-modal-mask" :style="{ paddingTop: (spacing.overlayBlock + safeTop) + 'px', paddingBottom: (spacing.overlayBlock + safeBottom + keyboardHeight) + 'px' }" @click="!busy && emit('close')">
+  <view class="modal-mask ui-modal-mask" :class="themeClass('modal-mask')" :style="{ paddingTop: (verticalInset + safeTop) + 'px', paddingBottom: (verticalInset + safeBottom + keyboardHeight) + 'px' }" @click="!busy && emit('close')">
+    <!-- 模糊层独立于内容，避免改变内嵌确认框 / picker 的 fixed 定位参照。 -->
+    <!-- #ifdef WEB || MP-WEIXIN -->
+    <view class="modal-backdrop" aria-hidden="true" />
+    <!-- #endif -->
     <view
       class="modal-panel"
       :style="{ maxWidth: (maxWidth || 600) + 'px' }"
@@ -114,7 +120,10 @@ onUnmounted(() => {
       :aria-label="label"
       aria-modal="true"
       @click.stop
-     :class="themeClass('modal-panel')">
+      :class="themeClass('modal-panel')">
+      <!-- #ifdef WEB || MP-WEIXIN -->
+      <view class="modal-surface" :class="themeClass('modal-surface')" aria-hidden="true" />
+      <!-- #endif -->
       <scroll-view
         direction="vertical"
         :scroll-y="true"
@@ -139,25 +148,68 @@ onUnmounted(() => {
 
   align-items: center;
   justify-content: center;
-  background-color: rgba(0, 0, 0, 0.4);
+  background-color: rgba(18, 24, 38, 0.28);
 }
 .modal-panel {
+  position: relative;
   width: 100%;
   max-width: 600px;
-  border-radius: 18px;
+  border-radius: 20px;
   background-color: #ffffff;
+  box-shadow: 0 24px 80px -16px rgba(15, 23, 42, 0.3), 0 4px 16px -4px rgba(15, 23, 42, 0.14);
   overflow: hidden;
 }
 .modal-scroll {
+  position: relative;
   width: 100%;
 }
 .modal-close { align-items: flex-end;  }
-.modal-content {
-
+.modal-mask-dark {
+  background-color: rgba(0, 0, 0, 0.48);
 }
-
-  .modal-panel-dark {
-    background-color: #1c1e22;
+.modal-panel-dark {
+  background-color: #1c1e22;
+  box-shadow: 0 24px 80px -16px rgba(0, 0, 0, 0.6), 0 4px 16px -4px rgba(0, 0, 0, 0.32);
+}
+/* 原生 App 使用上面的实色面板；H5 / 微信按渲染器能力增强。 */
+/* #ifdef WEB || MP-WEIXIN */
+.modal-backdrop,
+.modal-surface {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  pointer-events: none;
+}
+.modal-surface {
+  border-radius: 20px;
+}
+.modal-panel {
+  /* 内描边不占布局尺寸，保持内容测高和滚动区域不变。 */
+  outline: 1px solid rgba(255, 255, 255, 0.72);
+  outline-offset: -1px;
+}
+.modal-panel-dark {
+  outline-color: rgba(255, 255, 255, 0.12);
+}
+@supports (backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px)) {
+  .modal-backdrop {
+    -webkit-backdrop-filter: blur(6px);
+    backdrop-filter: blur(6px);
   }
-
+  .modal-panel,
+  .modal-panel-dark {
+    background-color: transparent;
+  }
+  .modal-surface {
+    background-color: rgba(255, 255, 255, 0.9);
+    -webkit-backdrop-filter: blur(20px) saturate(140%);
+    backdrop-filter: blur(20px) saturate(140%);
+  }
+  .modal-surface-dark {
+    background-color: rgba(28, 30, 34, 0.92);
+  }
+}
+/* #endif */
 </style>

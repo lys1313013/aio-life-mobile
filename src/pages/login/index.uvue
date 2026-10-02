@@ -206,13 +206,13 @@ async function setPassword() {
             <text class="account-note muted ui-mb-section" :selectable="true" :class="themeClass('muted')">登录账号：{{ accountUsername }}</text>
             <view class="password-field">
               <input v-model="newPassword" class="field-input password-input ui-px-card" placeholder="设置密码，至少 8 位" :password="!newPasswordVisible" :disabled="busy" :maxlength="128" aria-label="设置密码" :class="themeClass('field-input')" />
-              <button role="button" class="password-toggle" :disabled="busy" :aria-label="newPasswordVisible ? '隐藏设置密码' : '显示设置密码'" :aria-pressed="newPasswordVisible" @click="newPasswordVisible = !newPasswordVisible">
+              <button role="button" class="password-toggle ui-type-body" :disabled="busy" :aria-label="newPasswordVisible ? '隐藏设置密码' : '显示设置密码'" :aria-pressed="newPasswordVisible" @click="newPasswordVisible = !newPasswordVisible">
                 <AppIcon :name="newPasswordVisible ? 'ant-design:eye-outlined' : 'ant-design:eye-invisible-outlined'" color="#8b8f99" />
               </button>
             </view>
             <view class="password-field password-label ui-mt-section">
               <input v-model="confirmPassword" class="field-input password-input ui-px-card" placeholder="再次输入密码" :password="!confirmPasswordVisible" :disabled="busy" :maxlength="128" aria-label="确认密码" @confirm="setPassword" :class="themeClass('field-input')" />
-              <button role="button" class="password-toggle" :disabled="busy" :aria-label="confirmPasswordVisible ? '隐藏确认密码' : '显示确认密码'" :aria-pressed="confirmPasswordVisible" @click="confirmPasswordVisible = !confirmPasswordVisible">
+              <button role="button" class="password-toggle ui-type-body" :disabled="busy" :aria-label="confirmPasswordVisible ? '隐藏确认密码' : '显示确认密码'" :aria-pressed="confirmPasswordVisible" @click="confirmPasswordVisible = !confirmPasswordVisible">
                 <AppIcon :name="confirmPasswordVisible ? 'ant-design:eye-outlined' : 'ant-design:eye-invisible-outlined'" color="#8b8f99" />
               </button>
             </view>
@@ -227,7 +227,7 @@ async function setPassword() {
             <FormField label="密码" hide-label compact>
               <view class="password-field">
                 <input v-model="password" class="field-input password-input ui-px-card" placeholder="请输入密码" :password="!passwordVisible" :disabled="busy" :maxlength="200" confirm-type="go" aria-label="密码" @confirm="submit" :class="themeClass('field-input')" />
-                <button role="button" class="password-toggle" :disabled="busy" :aria-label="passwordVisible ? '隐藏密码' : '显示密码'" :aria-pressed="passwordVisible" @click="passwordVisible = !passwordVisible">
+                <button role="button" class="password-toggle ui-type-body" :disabled="busy" :aria-label="passwordVisible ? '隐藏密码' : '显示密码'" :aria-pressed="passwordVisible" @click="passwordVisible = !passwordVisible">
                   <AppIcon :name="passwordVisible ? 'ant-design:eye-outlined' : 'ant-design:eye-invisible-outlined'" color="#8b8f99" />
                 </button>
               </view>
@@ -235,7 +235,7 @@ async function setPassword() {
             <view class="recovery-row">
               <button role="button" class="text-button auth-link" :class="themeClass('auth-link')" :disabled="busy" @click="openAuth('reset')">忘记密码</button>
             </view>
-            <button role="button" :class="['primary-button', busy ? 'primary-disabled' : '']" :loading="busy" :disabled="busy" :aria-disabled="busy" @click="submit">{{ busy ? '正在登录' : (mode === 'bind' ? '登录并绑定微信' : '登录') }}</button>
+            <button class="ui-type-body" role="button" :class="['primary-button', busy ? 'primary-disabled' : '']" :loading="busy" :disabled="busy" :aria-disabled="busy" @click="submit">{{ busy ? '正在登录' : (mode === 'bind' ? '登录并绑定微信' : '登录') }}</button>
             <view class="register-row">
               <text class="register-note muted" :class="themeClass('muted')">还没有账号？</text>
               <button role="button" class="text-button auth-link" :class="themeClass('auth-link')" :disabled="busy" @click="openAuth('register')">注册账号</button>
@@ -257,14 +257,17 @@ async function setPassword() {
 </template>
 
 <style scoped lang="scss">
+@use '../../styles/typography' as *;
 @use '../../styles/spacing.scss';
 @use '../../styles/spacing-tokens' as *;
+@include type-utilities('body');
+
 .login-page { display: flex; flex-direction: column; min-height: 100vh; box-sizing: border-box; background-color: #fafafa; }
 .login-page-dark { background-color: #111215; }
 .login-header { padding: $space-modal $space-page; padding-top: calc($space-modal + env(safe-area-inset-top)); }
 .login-brand { display: flex; flex-direction: row; align-items: center; gap: $space-inline; }
 .login-logo { width: 34px; height: 34px; border-radius: 9px; }
-.login-brand-name { font-size: 18px; font-weight: 600; color: #27272a; }
+.login-brand-name { @include type-style('brand');  color: #27272a; }
 .login-brand-name-dark { color: #eeeeef; }
 .login-main { display: flex; flex: 1; justify-content: center; padding: $space-overlayBlock $space-page; }
 // 登录表单限制行宽，避免平板和桌面输入框横向拉伸；页面边距只由 login-main 提供。
@@ -273,29 +276,30 @@ async function setPassword() {
 .ink-dark { color: #eeeeef; }
 .muted { color: #71717a; }
 .muted-dark { color: #a1a1aa; }
-.login-title { font-size: 28px; line-height: 40px; font-weight: 600; }
-.login-subtitle { margin-top: $space-inline; font-size: 14px; line-height: 22px; }
+.login-title { @include type-style('hero');   }
+.login-subtitle { margin-top: $space-inline; @include type-style('body');  }
 .login-form { margin-top: $space-overlayBlock; }
-.field-label { font-size: 13px; margin-bottom: $space-inline; }
-.field-input { box-sizing: border-box; height: 48px; border: 1px solid #dedee3; border-radius: 8px; background-color: #fafafa; color: #27272a; font-size: 15px; }
+.field-label { @include type-style('label'); margin-bottom: $space-inline; }
+.field-input { box-sizing: border-box; height: 48px; border: 1px solid #dedee3; border-radius: 8px; background-color: #fafafa; color: #27272a; @include type-style('body'); }
 .field-input-dark { background-color: #18191d; border-color: #36383f; color: #eeeeef; }
 .password-field { position: relative; }
 .password-input { padding-right: ($space-controlMin + $space-detail); }
 .password-toggle { display: flex; flex-direction: row; position: absolute; right: $space-micro; top: $space-micro; width: $space-controlMin; height: $space-controlMin; padding: 0; margin: 0; border: 0; border-radius: 8px; background-color: transparent; align-items: center; justify-content: center; }
-.primary-button { display: flex; flex-direction: row; height: 48px; border-radius: 8px; background-color: #427bea; font-size: 15px; line-height: 48px; }
+.primary-button { display: flex; flex-direction: row; height: 48px; border-radius: 8px; background-color: #427bea; @include type-style('body'); line-height: type-leading('tallControl'); }
 .recovery-row { display: flex; flex-direction: row; justify-content: flex-end; margin-bottom: $space-inline; }
 .register-row { display: flex; flex-direction: row; align-items: center; justify-content: center; gap: $space-detail; margin-top: $space-inline; }
-.register-note { font-size: 14px; line-height: 22px; }
+.register-note { @include type-style('body');  }
 .auth-link { color: #356bd4; }
 .auth-link-dark { color: #80aaff; }
 .form-message { padding-top: $space-inline; }
-.login-footer { padding: $space-modal $space-page; padding-bottom: calc($space-overlayBlock + env(safe-area-inset-bottom)); text-align: center; font-size: 12px; line-height: 20px; }
-.text-button { display: flex; flex-direction: row; align-items: center; justify-content: center; min-height: $space-controlMin; margin: 0; padding: 0; border: 0; border-radius: 8px; background-color: transparent; font-size: 14px; line-height: 24px; }
-.phone-note { font-size: 12px; line-height: 20px; text-align: center; }
-.account-note { font-size: 13px; line-height: 22px; }
+.login-footer { padding: $space-modal $space-page; padding-bottom: calc($space-overlayBlock + env(safe-area-inset-bottom)); text-align: center; @include type-style('caption');  }
+.text-button { display: flex; flex-direction: row; align-items: center; justify-content: center; min-height: $space-controlMin; margin: 0; padding: 0; border: 0; border-radius: 8px; background-color: transparent; @include type-style('body');  }
+.phone-note { @include type-style('caption');  text-align: center; }
+.account-note { @include type-style('label');  }
 /* #ifdef WEB || MP-WEIXIN */
 .text-button::after, .password-toggle::after { border: 0; }
 .field-input:focus-within { border-color: #427bea; }
 .text-button:focus-visible, .password-toggle:focus-visible, .primary-button:focus-visible { outline: 2px solid #427bea; outline-offset: 2px; }
 /* #endif */
+
 </style>

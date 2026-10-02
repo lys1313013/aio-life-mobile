@@ -35,8 +35,8 @@ export function pickerValue(kind, value, options = []) {
   return String(value == null ? '' : value)
 }
 
-export function modalAvailableHeight(windowHeight, keyboardHeight, safeTop = 0, safeBottom = 0) {
-  return Math.max(80, windowHeight - keyboardHeight - safeTop - safeBottom - spacing.overlayBlock * 2)
+export function modalAvailableHeight(windowHeight, keyboardHeight, safeTop = 0, safeBottom = 0, verticalInset = spacing.overlayBlock) {
+  return Math.max(80, windowHeight - keyboardHeight - safeTop - safeBottom - verticalInset * 2)
 }
 
 export function chartGeometry(labels, series, width, height = 180) {

@@ -174,9 +174,9 @@ async function remove(item) {
               <view class="activity-caption"><text class="activity-title">{{ item.performanceName }}</text></view>
             </view>
             <view class="activity-meta">
-              <view v-if="item.performer" class="meta-row"><AppIcon name="lucide:user" :size="13" color="#8b8f99" /><text class="secondary">{{ item.performer }}</text></view>
-              <view class="meta-row"><AppIcon name="ant-design:calendar-outlined" :size="13" color="#8b8f99" /><text class="secondary">{{ (item.performanceDate || '—').slice(0, 10) }}</text></view>
-              <view v-if="item.city || item.venue" class="meta-row"><AppIcon name="lucide:map-pin" :size="13" color="#8b8f99" /><text class="secondary">{{ [item.city, item.venue].filter(Boolean).join(' · ') }}</text></view>
+              <view v-if="item.performer" class="meta-row"><AppIcon name="lucide:user" :size="13" color="#8b8f99" /><text class="secondary" :class="{ 'record-secondary-dark': isDark }">{{ item.performer }}</text></view>
+              <view class="meta-row"><AppIcon name="ant-design:calendar-outlined" :size="13" color="#8b8f99" /><text class="secondary" :class="{ 'record-secondary-dark': isDark }">{{ (item.performanceDate || '—').slice(0, 10) }}</text></view>
+              <view v-if="item.city || item.venue" class="meta-row"><AppIcon name="lucide:map-pin" :size="13" color="#8b8f99" /><text class="secondary" :class="{ 'record-secondary-dark': isDark }">{{ [item.city, item.venue].filter(Boolean).join(' · ') }}</text></view>
             </view>
           </view>
         </view>
@@ -207,7 +207,7 @@ async function remove(item) {
           :form-data="{ bizType: 'performance' }"
           :disabled="saving"
           @update:files="form.files = $event"
-          @busy-change="attachmentBusy = $event" /><text v-if="formError" class="error ui-section">{{
+          @busy-change="attachmentBusy = $event" /><text v-if="formError" class="error ui-section ui-type-body">{{
           formError
         }}</text
         ><view class="toolbar ui-row"
@@ -223,8 +223,12 @@ async function remove(item) {
   ><template #fixed><FloatingActionButton label="新增活动" :disabled="loading || !!error" @click="open()" /></template></MobilePage>
 </template>
 <style scoped lang="scss">
+@use '../../styles/typography' as *;
+@use '../../styles/text-colors' as *;
 @use '../../styles/spacing.scss';
 @use '../../styles/spacing-tokens' as *;
+@include type-utilities('body');
+
 .activity-page {
   padding-bottom: 80px; /* 浮动新增按钮避让 */
   color: #27272a;
@@ -247,12 +251,12 @@ async function remove(item) {
 }
 .title {
   flex: 1;
-  font-size: 17px;
-  font-weight: 600;
+  @include type-style('title');
+
 }
 .secondary {
-  color: #8b8f99;
-  font-size: 13px;
+  color: $text-secondary-light;
+  @include type-style('label');
 }
 .error {
   color: #e05252;
@@ -260,9 +264,9 @@ async function remove(item) {
 .activity-grid { flex-direction: row; flex-wrap: wrap; gap: $space-section; }
 .activity-card { width: calc((100% - #{$space-section}) / 2); min-width: 0; overflow: hidden; border-radius: 12px; background-color: #ffffff; }
 .activity-cover { position: relative; aspect-ratio: 1.6; }
-.activity-type { position: absolute; top: $space-inline; left: $space-inline; padding: $space-micro $space-detail; border-radius: 4px; color: #ffffff; background-color: #5986db; font-size: 11px; }
+.activity-type { position: absolute; top: $space-inline; left: $space-inline; padding: $space-micro $space-detail; border-radius: 4px; color: #ffffff; background-color: #5986db; @include type-style('badge'); }
 .activity-caption { position: absolute; bottom: 0; left: 0; right: 0; padding: $space-card; background-image: linear-gradient(transparent, rgba(0,0,0,0.65)); }
-.activity-title { color: #ffffff; font-size: 14px; line-height: 20px; font-weight: 600; overflow-wrap: anywhere; }
+.activity-title { color: #ffffff; @include type-style('body-strong');   overflow-wrap: anywhere; }
 .activity-meta { padding: $space-card; gap: $space-detail; }
 .meta-row { flex-direction: row; align-items: flex-start; gap: $space-detail; min-width: 0; }
 @media (min-width: 600px) { .activity-card { width: calc((100% - #{$space-section * 2}) / 3); } }
@@ -272,9 +276,11 @@ async function remove(item) {
 .activity-card { border: 1px solid rgba(128,138,156,.12); }
 .activity-concert { background-color: #5986db; }
 .activity-other { background-color: #cd8d55; }
-.secondary { flex: 1; min-width: 0; white-space: normal; overflow-wrap: anywhere; font-size: 12px; line-height: 18px; }
+.secondary { flex: 1; min-width: 0; white-space: normal; overflow-wrap: anywhere; @include type-style('caption');  }
 @media (min-width: 1000px) { .activity-card { width: calc((100% - #{$space-section * 3}) / 4); } }
 /* #ifdef WEB */
 .activity-card:focus-visible { outline: 2px solid #5986db; outline-offset: 2px; }
 /* #endif */
+
+.record-secondary-dark { color: $text-secondary-dark; }
 </style>

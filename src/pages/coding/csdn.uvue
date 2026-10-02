@@ -103,13 +103,15 @@ useDomainPage(
             :value="String(stats.likeCount)" /><MetricCard
             label="评论"
             :value="String(stats.commentCount || 0)" /></view
-        ><text class="heading ui-section">近期文章</text><view v-if="!articles.length" class="article empty ui-card" :class="themeClass('article')"><text class="muted">暂无近期文章</text></view><view v-for="item in articles" :key="item.id" class="article ui-card" :class="themeClass('article')"
+        ><text class="heading ui-section">近期文章</text><view v-if="!articles.length" class="article empty ui-card" :class="themeClass('article')"><text class="muted" :class="themeClass('muted')">暂无近期文章</text></view><view v-for="item in articles" :key="item.id" class="article ui-card" :class="themeClass('article')"
           ><view class="record-head"><text class="record-title record-copy">{{ item.title }}</text><MobileButton label="打开文章" icon="ant-design:export-outlined" variant="quiet" @click="openExternal(item.url)" /></view>
           <text v-if="item.description" class="record-description" :class="themeClass('description')">{{ item.description }}</text>
-          <view class="meta-list"><text class="meta-item">{{ item.postTime }}</text><view class="meta-item" :aria-label="'浏览 ' + item.viewCount"><AppIcon name="ant-design:eye-outlined" :size="13" /><text class="meta-value">{{ item.viewCount }}</text></view><view class="meta-item" :aria-label="'评论 ' + item.commentCount"><AppIcon name="ant-design:message-outlined" :size="13" /><text class="meta-value">{{ item.commentCount }}</text></view><view class="meta-item" :aria-label="'点赞 ' + (item.likeCount || 0)"><AppIcon name="ant-design:like-outlined" :size="13" /><text class="meta-value">{{ item.likeCount || 0 }}</text></view><view class="meta-item" :aria-label="'收藏 ' + (item.collectCount || 0)"><AppIcon name="ant-design:star-outlined" :size="13" /><text class="meta-value">{{ item.collectCount || 0 }}</text></view></view></view></PageState></view
+          <view class="meta-list"><text class="meta-item" :class="themeClass('meta-item')">{{ item.postTime }}</text><view class="meta-item" :class="themeClass('meta-item')" :aria-label="'浏览 ' + item.viewCount"><AppIcon name="ant-design:eye-outlined" :size="13" /><text class="meta-value">{{ item.viewCount }}</text></view><view class="meta-item" :class="themeClass('meta-item')" :aria-label="'评论 ' + item.commentCount"><AppIcon name="ant-design:message-outlined" :size="13" /><text class="meta-value">{{ item.commentCount }}</text></view><view class="meta-item" :class="themeClass('meta-item')" :aria-label="'点赞 ' + (item.likeCount || 0)"><AppIcon name="ant-design:like-outlined" :size="13" /><text class="meta-value">{{ item.likeCount || 0 }}</text></view><view class="meta-item" :class="themeClass('meta-item')" :aria-label="'收藏 ' + (item.collectCount || 0)"><AppIcon name="ant-design:star-outlined" :size="13" /><text class="meta-value">{{ item.collectCount || 0 }}</text></view></view></view></PageState></view
   ></MobilePage>
 </template>
 <style scoped lang="scss">
+@use '../../styles/typography' as *;
+@use '../../styles/text-colors' as *;
 @use '../../styles/spacing.scss';
 @use '../../styles/spacing-tokens' as *;
 .body {
@@ -135,27 +137,26 @@ useDomainPage(
   flex-direction: column;
 }
 .title {
-  font-size: 18px;
-  font-weight: 600;
+  @include type-style('title');
+
 }
 .muted {
-  font-size: 13px;
-  color: #718096;
+  @include type-style('label');
+  color: $text-secondary-light;
 }
 .record-dark, .article-dark { background-color: #1c1e22; }
-.heading { display: block; font-size: 18px; font-weight: 600; }
+.heading { display: block; @include type-style('title');  }
 .empty { min-height: 88px; align-items: center; justify-content: center; }
 
 .actions { align-items: center; justify-content: space-between; }
-.account-name { font-size: 14px; font-weight: 600; overflow-wrap: anywhere; }
+.account-name { @include type-style('body-strong');  overflow-wrap: anywhere; }
 .record-head { display: flex; flex-direction: row; align-items: center; gap: $space-inline; }
 .record-copy { flex: 1; min-width: 0; gap: $space-detail; }
-.record-title { font-size: 15px; line-height: 22px; font-weight: 600; overflow-wrap: anywhere; }
-.record-description { font-size: 13px; line-height: 20px; color: #687386; overflow-wrap: anywhere; }
+.record-title { @include type-style('body-strong');   overflow-wrap: anywhere; }
+.record-description { @include type-style('label');  color: $text-secondary-light; overflow-wrap: anywhere; }
 .meta-list { display: flex; flex-direction: row; flex-wrap: wrap; align-items: center; gap: $space-inline; }
-.meta-item { display: flex; flex-direction: row; align-items: center; gap: $space-detail; font-size: 12px; color: #788394; }
-.description-dark { color: #a6aab4; }
+.meta-item { display: flex; flex-direction: row; align-items: center; gap: $space-detail; @include type-style('caption'); color: $text-secondary-light; }
+.description-dark, .muted-dark, .meta-item-dark, .repo-label-dark { color: $text-secondary-dark; }
 
-
-.meta-value { font-size: 12px; }
+.meta-value { @include type-style('caption'); }
 </style>

@@ -390,9 +390,9 @@ async function adminRemove(row: any) {
               :key="item.id"
               class="conversation ui-row ui-py-section"
               @click="selectConversation(item.id)"
-              ><image v-if="item.avatar" :src="item.avatar" mode="aspectFill" class="avatar" /><text
+              ><image v-if="item.avatar" :src="item.avatar" mode="aspectFill" class="avatar" /><text class="ui-type-body conversation-title"
                 >{{ item.name }} {{ item.unread ? ' · ' + item.unread : '' }}</text
-              ><text class="muted">{{ item.last }}</text></view
+              ><text class="message-meta" :class="themeClass('message-meta')">{{ item.last }}</text></view
             ></view
           ><FormField compact stretch v-if="mode === '私聊'" label="会话用户 ID" v-model="receiver" /><ConfirmAction
             v-if="mode === '私聊' && receiver"
@@ -402,8 +402,8 @@ async function adminRemove(row: any) {
             :key="item.id"
             class="message ui-card"
             ><text class="title">{{ item.title }} {{ item.isRead ? '' : '•' }}</text
-            ><text selectable>{{ item.content }}</text
-            ><text class="muted"
+            ><text class="ui-type-body message-content" selectable>{{ item.content }}</text
+            ><text class="message-meta" :class="themeClass('message-meta')"
               >{{ item.createTime }} · {{ username(item.senderId) }} →
               {{ username(item.receiverId) }}</text
             ><view class="actions ui-row"
@@ -438,10 +438,10 @@ async function adminRemove(row: any) {
             :scroll-y="true"
             :scroll-into-view="chatScrollTarget"
             ><view v-for="item in history" :key="item.id" class="message ui-card"
-              ><text class="muted"
+              ><text class="message-meta" :class="themeClass('message-meta')"
                 >{{ item.role === 'user' ? '我' : 'AI' }} · {{ item.modelName }}</text
               ><view v-for="(block, blockIndex) in markdownBlocks(item.content)" :key="blockIndex"
-                ><rich-text
+                ><rich-text class="markdown-content"
                   v-if="block.kind === 'text'"
                   :nodes="block.html"
                   selectable /><scroll-view
@@ -460,7 +460,7 @@ async function adminRemove(row: any) {
                         :key="column"
                         class="markdown-table-cell ui-pad-card"
                         :style="{ textAlign: block.align[column] }"
-                        ><rich-text :nodes="cell" selectable /></view></view
+                        ><rich-text class="markdown-cell-head" :nodes="cell" selectable /></view></view
                     ><view
                       v-for="(row, rowIndex) in block.rows"
                       :key="rowIndex"
@@ -470,7 +470,7 @@ async function adminRemove(row: any) {
                         :key="column"
                         class="markdown-table-cell ui-pad-card"
                         :style="{ textAlign: block.align[column] }"
-                        ><rich-text
+                        ><rich-text class="markdown-cell-content"
                           :nodes="cell"
                           selectable /></view></view></view></scroll-view></view
               ><view class="actions ui-row"
@@ -509,8 +509,8 @@ async function adminRemove(row: any) {
               " /><MobileButton label="发送通知" icon="ant-design:plus-outlined" @click="modal = true" /></view
           ><view v-for="item in adminRows" :key="item.id" class="message ui-card"
             ><text class="title">{{ item.title }}</text
-            ><text selectable>{{ item.content }}</text
-            ><text>{{ item.receiverId }} · {{ item.createTime }}</text
+            ><text class="ui-type-body message-content" selectable>{{ item.content }}</text
+            ><text class="message-meta" :class="themeClass('message-meta')">{{ item.receiverId }} · {{ item.createTime }}</text
             ><ConfirmAction label="管理员删除" :action="() => adminRemove(item)" /></view
           ><view class="actions ui-toolbar"
             ><MobileButton
@@ -519,7 +519,7 @@ async function adminRemove(row: any) {
               @click="
                 adminPage--;
                 load();
-              " /><text>{{ adminPage }} · {{ adminTotal }}</text
+              " /><text class="message-meta" :class="themeClass('message-meta')">{{ adminPage }} · {{ adminTotal }}</text
             ><MobileButton
               label="下一页"
               :disabled="adminPage * 30 >= adminTotal || loading"
@@ -542,8 +542,12 @@ async function adminRemove(row: any) {
   ></MobilePage>
 </template>
 <style scoped lang="scss">
+@use '../../styles/typography' as *;
 @use '../../styles/spacing.scss';
 @use '../../styles/spacing-tokens' as *;
+@use '../../styles/text-colors' as *;
+@include type-utilities('body');
+
 .markdown-table-scroll {
   width: 100%;
 }
@@ -556,7 +560,7 @@ async function adminRemove(row: any) {
   flex-direction: row;
 }
 .markdown-table-head {
-  font-weight: 600;
+  font-weight: type-weight('medium');
   background-color: #8b93a222;
 }
 .markdown-table-cell {
@@ -594,11 +598,20 @@ async function adminRemove(row: any) {
   flex-direction: column;
 }
 .title {
-  font-size: 18px;
-  font-weight: 600;
+  @include type-style('title');
+  overflow-wrap: anywhere;
+
 }
-.muted {
-  font-size: 13px;
-  color: #718096;
+.message-meta {
+  @include type-style('label');
+  color: $text-secondary-light;
+  overflow-wrap: anywhere;
 }
+
+.message-meta-dark { color: $text-secondary-dark; }
+.message-content { @include type-style('prose'); white-space: pre-wrap; overflow-wrap: anywhere; }
+.conversation-title { @include type-style('body-strong'); overflow-wrap: anywhere; }
+.markdown-content { @include type-style('prose'); overflow-wrap: anywhere; }
+.markdown-cell-head { @include type-style('body-strong'); }
+.markdown-cell-content { @include type-style('body'); }
 </style>

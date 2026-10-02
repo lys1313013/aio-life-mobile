@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { getCurrentInstance, nextTick, onMounted, onUpdated, ref } from 'vue';
+import { computed, getCurrentInstance, nextTick, onMounted, onUpdated, ref } from 'vue';
 import { themeClass } from '../services/theme.ts';
 import { pickerValue } from '../services/mobile-ui.ts';
 import AppIcon from './AppIcon.uvue';
@@ -18,9 +18,18 @@ const props = withDefaults(
     password?: boolean;
     revealable?: boolean;
     inputType?: string;
+    appearance?: 'soft';
   }>(),
   { modelValue: '', kind: 'text', options: () => [], hideLabel: false },
 );
+const inputClasses = computed(() => [
+  themeClass('form-field-input'),
+  {
+    'form-field-input-soft': props.appearance === 'soft',
+    'form-field-textarea-soft': props.appearance === 'soft' && props.kind === 'textarea',
+  },
+  themeClass({ 'form-field-input-soft': props.appearance === 'soft' }),
+]);
 const instance = getCurrentInstance();
 const passwordVisible = ref(false);
 function syncWebLabel() {
@@ -41,7 +50,7 @@ function change(event) {
 </script>
 <template>
   <view class="form-field ui-form-field" :class="[themeClass('form-field'), { 'ui-field-compact': compact, 'ui-field-stretch': stretch }]">
-    <text v-if="!hideLabel" class="form-field-label ui-field-label">{{ label }}</text>
+    <text v-if="!hideLabel" class="form-field-label ui-field-label" :class="[{ 'form-field-label-soft': appearance === 'soft' }, themeClass({ 'form-field-label-soft': appearance === 'soft' })]">{{ label }}</text>
     <slot>
       <picker
         v-if="kind === 'date' || kind === 'time' || kind === 'selector'"
@@ -52,15 +61,15 @@ function change(event) {
         :disabled="disabled"
         :aria-label="label"
         @change="change"
-        ><view class="form-field-input form-field-picker-input ui-input-inset" :class="themeClass('form-field-input')"
-          ><text class="form-field-picker-value">{{ modelValue || placeholder || '请选择' }}</text
+        ><view class="form-field-input form-field-picker-input ui-input-inset" :class="inputClasses"
+          ><text class="form-field-picker-value" :class="[{ 'form-field-placeholder': !modelValue }, themeClass({ 'form-field-placeholder': !modelValue })]">{{ modelValue || placeholder || '请选择' }}</text
           ><view v-if="kind === 'selector'" class="form-field-picker-arrow"><AppIcon name="ant-design:down-outlined" :size="12" /></view></view
         ></picker
       >
       <textarea
         v-else-if="kind === 'textarea'"
         class="form-field-input ui-input-inset form-field-textarea ui-pad-card"
-        :class="themeClass('form-field-input')"
+        :class="inputClasses"
         :value="modelValue"
         :placeholder="placeholder"
         :disabled="disabled"
@@ -72,7 +81,7 @@ function change(event) {
       <view
         v-else-if="kind === 'password' && revealable"
         class="form-field-input form-field-password"
-        :class="themeClass('form-field-input')"
+        :class="inputClasses"
       >
         <input
           class="form-field-password-value ui-input-inset"
@@ -85,7 +94,7 @@ function change(event) {
           @blur="change"
         />
         <button
-          class="form-field-password-toggle"
+          class="form-field-password-toggle ui-type-body"
           role="button"
           :aria-label="passwordVisible ? '隐藏密码' : '显示密码'"
           :aria-pressed="passwordVisible"
@@ -98,7 +107,7 @@ function change(event) {
       <input
         v-else
         class="form-field-input ui-input-inset"
-        :class="themeClass('form-field-input')"
+        :class="inputClasses"
         :value="modelValue"
         :type="inputType || 'text'"
         :password="password || kind === 'password'"
@@ -113,8 +122,12 @@ function change(event) {
   </view>
 </template>
 <style scoped lang="scss">
+@use '../styles/typography' as *;
+@use '../styles/text-colors' as *;
 @use '../styles/spacing.scss';
 @use '../styles/spacing-tokens' as *;
+@include type-utilities('body');
+
 .form-field {
   min-width: 0;
   color: #27272a;
@@ -123,7 +136,7 @@ function change(event) {
   color: #eeeeef;
 }
 .form-field-label {
-  font-size: 14px;
+  @include type-style('label');
 
 }
 .form-field-input {
@@ -133,7 +146,7 @@ function change(event) {
   background-color: #ffffff;
   border: 1px solid #d8dde4;
   justify-content: center;
-  font-size: 15px;
+  @include type-style('body');
   color: #27272a;
 }
 .form-field-input-dark {
@@ -155,7 +168,7 @@ function change(event) {
   min-width: 0;
   min-height: $space-controlMin;
   color: inherit;
-  font-size: 15px;
+  @include type-style('body');
 }
 .form-field-password-toggle {
   display: flex;
@@ -181,6 +194,7 @@ function change(event) {
   min-width: 0;
 }
 .form-field-picker-value {
+  @include type-style('body');
   flex: 1;
   min-width: 0;
   overflow: hidden;
@@ -197,7 +211,24 @@ function change(event) {
 }
 .form-field-error {
   color: #e05260;
-  font-size: 13px;
+  @include type-style('label');
   margin-top: $space-fieldLabel;
 }
+.form-field-label-soft { color: #707784; }
+.form-field-label-soft-dark { color: #a0a6b1; }
+.form-field-input-soft {
+  border-color: transparent;
+  background-color: #f2f4f7;
+}
+.form-field-input-soft-dark {
+  background-color: #272a30;
+  color: #dce0e7;
+}
+.form-field-placeholder { color: $text-secondary-light; }
+.form-field-placeholder-dark { color: $text-secondary-dark; }
+.form-field-textarea-soft {
+  // 两行短备注；长内容仍可在输入框内滚动。
+  height: 64px;
+}
+
 </style>

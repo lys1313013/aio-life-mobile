@@ -247,18 +247,18 @@ useDomainPage(
           </view>
           <view class="meta-list">
             <text v-if="repo.language" class="language">{{ repo.language }}</text>
-            <view class="meta-item" :aria-label="repo.stargazers_count + ' Stars'"><AppIcon name="ant-design:star-outlined" :size="13" /><text class="meta-value">{{ repo.stargazers_count }}</text></view>
-            <view class="meta-item" :aria-label="repo.forks_count + ' Forks'"><AppIcon name="ant-design:fork-outlined" :size="13" /><text class="meta-value">{{ repo.forks_count }}</text></view>
-            <view class="meta-item"><text>我的提交</text><LoadingIndicator v-if="repo.statsBusy" compact label="正在加载仓库提交数" /><text v-else>{{ repo.myCommits ?? '—' }}</text></view>
-            <text v-if="repo.sourceStars != null" class="meta-item">来源 Star {{ repo.sourceStars }}</text>
+            <view class="meta-item" :class="themeClass('meta-item')" :aria-label="repo.stargazers_count + ' Stars'"><AppIcon name="ant-design:star-outlined" :size="13" /><text class="meta-value">{{ repo.stargazers_count }}</text></view>
+            <view class="meta-item" :class="themeClass('meta-item')" :aria-label="repo.forks_count + ' Forks'"><AppIcon name="ant-design:fork-outlined" :size="13" /><text class="meta-value">{{ repo.forks_count }}</text></view>
+            <view class="meta-item" :class="themeClass('meta-item')"><text class="ui-type-caption">我的提交</text><LoadingIndicator v-if="repo.statsBusy" compact label="正在加载仓库提交数" /><text class="ui-type-caption" v-else>{{ repo.myCommits ?? '—' }}</text></view>
+            <text v-if="repo.sourceStars != null" class="meta-item" :class="themeClass('meta-item')">来源 Star {{ repo.sourceStars }}</text>
           </view>
-          <text v-if="repo.statsError" class="error">{{ repo.statsError }}</text>
+          <text v-if="repo.statsError" class="error ui-type-body">{{ repo.statsError }}</text>
         </view>
         </PageState><text class="heading ui-section">最近提交</text>
         <PageState skeleton="timeline" :loading="sections.commits.loading" :error="sections.commits.error" :empty="!commits.length" empty-text="暂无提交" @retry="load('commits')">
         <view v-for="(item, index) in commits" :key="item.id || index" class="record ui-card" :class="themeClass('record')">
-          <view class="record-head"><view class="record-copy"><text class="repo-label">{{ item.repo }}</text><text class="record-title">{{ item.message }}</text></view><MobileButton label="打开提交" icon="ant-design:export-outlined" variant="quiet" @click="openExternal(item.commitUrl || item.repoUrl)" /></view>
-          <text class="muted">{{ item.date }} · {{ item.actor }}</text>
+          <view class="record-head"><view class="record-copy"><text class="repo-label" :class="themeClass('repo-label')">{{ item.repo }}</text><text class="record-title">{{ item.message }}</text></view><MobileButton label="打开提交" icon="ant-design:export-outlined" variant="quiet" @click="openExternal(item.commitUrl || item.repoUrl)" /></view>
+          <text class="muted" :class="themeClass('muted')">{{ item.date }} · {{ item.actor }}</text>
         </view>
         <LoadingIndicator v-if="moreBusy" compact label="正在加载更多" />
         <PageState v-else-if="moreError" :error="moreError" @retry="more()" />
@@ -266,8 +266,12 @@ useDomainPage(
   ></MobilePage>
 </template>
 <style scoped lang="scss">
+@use '../../styles/typography' as *;
+@use '../../styles/text-colors' as *;
 @use '../../styles/spacing.scss';
 @use '../../styles/spacing-tokens' as *;
+@include type-utilities('caption', 'body');
+
 .body {
   color: #263248;
 }
@@ -295,16 +299,16 @@ useDomainPage(
   flex-direction: column;
 }
 .title {
-  font-size: 18px;
-  font-weight: 600;
+  @include type-style('title');
+
 }
 .muted {
-  font-size: 13px;
-  color: #718096;
+  @include type-style('label');
+  color: $text-secondary-light;
 }
 .heading {
-  font-size: 17px;
-  font-weight: 600;
+  @include type-style('title');
+
   display: block;
 }
 .calendar-scroll {
@@ -332,20 +336,20 @@ useDomainPage(
 .record-dark, .article-dark { background-color: #1c1e22; }
 
 .actions { align-items: center; justify-content: space-between; }
-.account-name { font-size: 14px; font-weight: 600; overflow-wrap: anywhere; }
+.account-name { @include type-style('body-strong');  overflow-wrap: anywhere; }
 .record-head { display: flex; flex-direction: row; align-items: center; gap: $space-inline; }
 .record-copy { flex: 1; min-width: 0; gap: $space-detail; }
-.record-title { font-size: 15px; line-height: 22px; font-weight: 600; overflow-wrap: anywhere; }
-.record-description { font-size: 13px; line-height: 20px; color: #687386; overflow-wrap: anywhere; }
+.record-title { @include type-style('body-strong');   overflow-wrap: anywhere; }
+.record-description { @include type-style('label');  color: $text-secondary-light; overflow-wrap: anywhere; }
 .meta-list { display: flex; flex-direction: row; flex-wrap: wrap; align-items: center; gap: $space-inline; }
-.meta-item { display: flex; flex-direction: row; align-items: center; gap: $space-detail; font-size: 12px; color: #788394; }
-.description-dark { color: #a6aab4; }
+.meta-item { display: flex; flex-direction: row; align-items: center; gap: $space-detail; @include type-style('caption'); color: $text-secondary-light; }
+.description-dark, .muted-dark, .meta-item-dark, .repo-label-dark { color: $text-secondary-dark; }
 
-
-.language { color: #537cac; background-color: rgba(83,124,172,.1); border-radius: 5px; padding: $space-micro $space-detail; font-size: 12px; }
-.repo-label { font-size: 12px; color: #638fcb; }
+.language { color: #537cac; background-color: rgba(83,124,172,.1); border-radius: 5px; padding: $space-micro $space-detail; @include type-style('caption'); }
+.repo-label { @include type-style('caption'); color: $text-secondary-light; }
 .calendar-scroll { box-sizing: border-box; border-radius: 14px; background-color: #ffffff; }
 .calendar-scroll-dark { background-color: #1c1e22; }
-.meta-value { font-size: 12px; }
+.meta-value { @include type-style('caption'); }
 .day-dark { background-color: #2d3433; }
+
 </style>
