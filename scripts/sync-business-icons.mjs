@@ -26,7 +26,9 @@ const config = readFileSync(resolve(web, 'apps/web-antd/src/views/my-hub/exercis
 const exercisePresets = [...new Set([...config.matchAll(/\{ icon: '([^']+)' \}/g)].map(match => match[1]))]
 const availableCollections = requireWeb('@iconify/json/collections.json')
 const names = new Set(exercisePresets)
-const legacy = JSON.parse(readFileSync(resolve(root, 'src/services/icons/category-icons.json'), 'utf8')).icons
+const categories = JSON.parse(readFileSync(resolve(root, 'src/services/icons/category-icons.json'), 'utf8'))
+const actions = JSON.parse(readFileSync(resolve(root, 'src/services/icons/action-icons.json'), 'utf8'))
+const legacy = categories.icons
 function scan(directory) {
   for (const entry of readdirSync(directory, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name, 'en'))) {
     const path = resolve(directory, entry.name)
@@ -60,9 +62,20 @@ for (const name of [...names].sort()) {
 }
 if (!exercisePresets.length) throw new Error('未找到 Web 运动预设')
 const sources = [...collections.values()].map(({ prefix, info }) => ({ prefix, author: info.author, license: info.license }))
-const output = JSON.stringify({ sources, exercisePresets, icons }, null, 2) + '\n'
-const target = resolve(root, 'src/services/icons/business-icons.json')
-if (process.argv.includes('--check')) {
-  if (readFileSync(target, 'utf8') !== output) throw new Error('业务图标已变化，请执行 npm run icons:sync')
-} else writeFileSync(target, output)
+// 在生成阶段按原覆盖顺序合并，避免小程序同时打包三份重复 SVG。
+const outputs = {
+  'business-icons.json': { sources, exercisePresets, icons },
+  'catalog.generated.json': {
+    sources: [...categories.sources, ...actions.sources, ...sources],
+    exercisePresets,
+    icons: { ...categories.icons, ...actions.icons, ...icons },
+  },
+}
+for (const [filename, data] of Object.entries(outputs)) {
+  const output = JSON.stringify(data, null, 2) + '\n'
+  const target = resolve(root, 'src/services/icons', filename)
+  if (process.argv.includes('--check')) {
+    if (readFileSync(target, 'utf8') !== output) throw new Error('业务图标已变化，请执行 npm run icons:sync')
+  } else writeFileSync(target, output)
+}
 console.log(`业务图标 ${Object.keys(icons).length} 个，覆盖 ${collections.size} 个 Iconify 集合，运动预设 ${exercisePresets.length} 个`)

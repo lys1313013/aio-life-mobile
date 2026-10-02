@@ -1,6 +1,4 @@
-import categories from './category-icons.json'
-import business from './business-icons.json'
-import actions from './action-icons.json'
+import catalog from './catalog.generated.json'
 
 interface LocalIcon {
   body: string;
@@ -10,6 +8,6 @@ interface LocalIcon {
   top?: number;
 }
 
-export const exerciseIconPresets = business.exercisePresets
-const icons: Record<string, LocalIcon> = { ...categories.icons, ...actions.icons, ...business.icons }
+export const exerciseIconPresets = catalog.exercisePresets
+const icons: Record<string, LocalIcon> = catalog.icons
 export default { icons }

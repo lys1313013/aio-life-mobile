@@ -72,7 +72,7 @@ node tests/wechat-ui/run.mjs # 独立测试副本模拟小程序登录分支，�
 
 `src/services/icons/catalog.ts` 统一合并通用、操作与 Web 同款业务图标，供菜单、首页、运动记录和分类编辑使用。`business-icons.json` 按实际引用同步 Web 路由菜单、字典分类预设、Web 显式图标清单、mobile 源码图标和完整运动预设，并包含 Web 自定义 SVG（含 9 个运动图标）。同步覆盖 Lucide、Ant Design、MDI 等引用到的集合，保留原始名称、比例和颜色，不全量打包所有图标库；运行时不访问外部图标服务。服务端自定义的任意图标若未在上述来源中声明，仍需先加入 Web 显式图标清单再同步。
 
-Web 更新图标后执行 `npm run icons:sync`，用 `npm run icons:check` 检查同步结果。这两个维护命令需要相邻 `aio-life-front` 源码及其已安装的 `@iconify/json`；生成的 JSON 随 mobile 提交，正常构建无需 Web 仓库。
+Web 更新图标后执行 `npm run icons:sync`，用 `npm run icons:check` 检查同步结果。同步时生成 `catalog.generated.json`，按通用、操作、业务的顺序合并去重，运行时只打包这一份目录，保留所有图形和运动预设。这两个维护命令需要相邻 `aio-life-front` 源码及其已安装的 `@iconify/json`；生成的 JSON 随 mobile 提交，正常构建无需 Web 仓库。
 
 此前首页验证（2026-09-30，早于微信登录接入）：真实本地后端账号登录、首页统计与各模块读取、刷新恢复登录已通过；6 项纯逻辑测试、15 项 Web E2E（包含 390 / 768 / 1440px 深浅色、卡片独立重试、并发 401、空账号、分页恢复、三栏切换与退出后重新登录）已通过。微信开发者工具已验证真实接口登录、首页、三栏导航与资料读取；微信真机仍需扫码验证。iOS / Android 未构建安装包、未做 Vapor 真机测试。
 
@@ -89,6 +89,8 @@ npm run build:weixin
 ```
 
 `src/project.config.json` 已加入 Git 忽略，由微信编译器复制为产物的 `project.config.json`，不回写源码 manifest。真实 AppID 不提交；`src/manifest.json` 中的 AppID 保持空值。未提供本地配置时，CI 仍可验证构建，但产物不能直接用于正式上传。
+
+发布配置启用 `minified`、`minifyWXSS`、`minifyWXML`，并关闭 `uploadWithSourceMap`。已有本地 `src/project.config.json` 也需同步这些 `setting` 字段，否则会覆盖默认配置。主包大小以微信开发者工具上传检查为准，超过 2 MB 会被拒绝；源码构建成功不能替代上传检查。
 
 后端先执行用户表迁移，再配置 `AIO_LIFE_WECHAT_MINI_ENABLED=true`、`AIO_LIFE_WECHAT_MINI_APP_ID` 和服务端 `AIO_LIFE_WECHAT_MINI_APP_SECRET`。AppID 应与本地 `src/project.config.json` 的 `appid` 一致。AppSecret 不得放入客户端或 `VITE_*` 变量。能力未启用时自动保留账号密码登录。
 
