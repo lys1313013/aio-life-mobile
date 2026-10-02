@@ -10,6 +10,7 @@ import {
   onMounted,
   onUnmounted,
   onUpdated,
+  provide,
   ref,
   watch,
 } from 'vue'
@@ -20,8 +21,9 @@ const props = withDefaults(defineProps<{
   busy?: boolean
   showClose?: boolean
   contentKey?: string
-}>(), { showClose: true })
+}>(), { showClose: false })
 const emit = defineEmits(['close'])
+provide('mobile-modal', true)
 const instance = getCurrentInstance()
 const contentHeight = ref(160)
 const windowHeight = ref(uni.getWindowInfo().windowHeight)
@@ -130,7 +132,7 @@ onUnmounted(() => {
         class="modal-scroll"
         :style="{ height: height + 'px' }"
       >
-        <view class="modal-content ui-modal-content"><view v-if="showClose !== false" class="modal-close ui-mb-sm"><MobileButton label="关闭" icon="ant-design:close-outlined" variant="quiet" :disabled="busy" @click="emit('close')" /></view><slot /></view>
+        <view class="modal-content ui-modal-content"><view v-if="showClose !== false" class="modal-close ui-mb-sm"><MobileButton label="关闭" icon="ant-design:close-outlined" variant="ghost" :disabled="busy" @click="emit('close')" /></view><slot /></view>
       </scroll-view>
     </view>
   </view>
@@ -162,6 +164,10 @@ onUnmounted(() => {
 .modal-scroll {
   position: relative;
   width: 100%;
+}
+.modal-content {
+  // 首行内容与弹窗圆角之间保留更充足的留白。
+  padding-top: $space-modalTop;
 }
 .modal-close { align-items: flex-end;  }
 .modal-mask-dark {
@@ -195,20 +201,20 @@ onUnmounted(() => {
 }
 @supports (backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px)) {
   .modal-backdrop {
-    -webkit-backdrop-filter: blur(6px);
-    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(2px);
+    backdrop-filter: blur(2px);
   }
   .modal-panel,
   .modal-panel-dark {
     background-color: transparent;
   }
   .modal-surface {
-    background-color: rgba(255, 255, 255, 0.9);
-    -webkit-backdrop-filter: blur(20px) saturate(140%);
-    backdrop-filter: blur(20px) saturate(140%);
+    background-color: rgba(255, 255, 255, 0.97);
+    -webkit-backdrop-filter: blur(8px) saturate(120%);
+    backdrop-filter: blur(8px) saturate(120%);
   }
   .modal-surface-dark {
-    background-color: rgba(28, 30, 34, 0.92);
+    background-color: rgba(28, 30, 34, 0.97);
   }
 }
 /* #endif */

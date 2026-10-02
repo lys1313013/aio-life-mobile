@@ -6,6 +6,7 @@ import AppIcon from './AppIcon.uvue';
 const props = withDefaults(
   defineProps<{
     label: string;
+    required?: boolean;
     hideLabel?: boolean;
     compact?: boolean;
     stretch?: boolean;
@@ -37,7 +38,10 @@ function syncWebLabel() {
   nextTick(() => {
     const root = instance?.proxy?.$el;
     const input = root?.querySelector?.('input, textarea');
-    if (input) input.setAttribute('aria-label', props.label);
+    if (input) {
+      input.setAttribute('aria-label', props.label);
+      input.setAttribute('aria-required', String(!!props.required));
+    }
   });
   // #endif
 }
@@ -50,7 +54,10 @@ function change(event) {
 </script>
 <template>
   <view class="form-field ui-form-field" :class="[themeClass('form-field'), { 'ui-field-compact': compact, 'ui-field-stretch': stretch }]">
-    <text v-if="!hideLabel" class="form-field-label ui-field-label" :class="[{ 'form-field-label-soft': appearance === 'soft' }, themeClass({ 'form-field-label-soft': appearance === 'soft' })]">{{ label }}</text>
+    <view v-if="!hideLabel" class="form-field-heading ui-field-label">
+      <text v-if="required" class="form-field-required" aria-hidden="true">*</text>
+      <text class="form-field-label" :class="[{ 'form-field-label-soft': appearance === 'soft' }, themeClass({ 'form-field-label-soft': appearance === 'soft' })]">{{ label }}</text>
+    </view>
     <slot>
       <picker
         v-if="kind === 'date' || kind === 'time' || kind === 'selector'"
@@ -60,6 +67,7 @@ function change(event) {
         :range="options"
         :disabled="disabled"
         :aria-label="label"
+        :aria-required="!!required"
         @change="change"
         ><view class="form-field-input form-field-picker-input ui-input-inset" :class="inputClasses"
           ><text class="form-field-picker-value" :class="[{ 'form-field-placeholder': !modelValue }, themeClass({ 'form-field-placeholder': !modelValue })]">{{ modelValue || placeholder || '请选择' }}</text
@@ -138,6 +146,15 @@ function change(event) {
 .form-field-label {
   @include type-style('label');
 
+}
+.form-field-heading {
+  flex-direction: row;
+  align-items: center;
+  gap: $space-detail;
+}
+.form-field-required {
+  color: #e05260;
+  @include type-style('label');
 }
 .form-field-input {
   min-height: $space-controlMin;

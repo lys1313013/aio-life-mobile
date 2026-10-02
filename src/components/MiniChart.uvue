@@ -40,7 +40,9 @@ const coloredSeries = computed(() =>
   })),
 );
 const visible = computed(() =>
-  coloredSeries.value.filter((item) => !hidden.value.includes(item.name)),
+  coloredSeries.value.filter(
+    (item) => props.series.length <= 1 || !hidden.value.includes(item.name),
+  ),
 );
 const geometry = computed(() => {
   try {
@@ -129,7 +131,7 @@ function barStyle(point, index, seriesIndex) {
       ><text class="mini-chart-title">{{ label }}</text
       ><slot name="actions" /></view
     ><text v-else class="mini-chart-title">{{ label }}</text
-    ><view v-if="compact" class="chart-legend-compact">
+    ><view v-if="compact && series.length > 1" class="chart-legend-compact">
       <button
         v-for="item in coloredSeries"
         :key="item.name"
@@ -145,7 +147,7 @@ function barStyle(point, index, seriesIndex) {
           :style="{ backgroundColor: item.color }"
         /><text class="ui-type-caption">{{ item.name }}</text>
       </button> </view
-    ><view v-else class="mini-chart-legend"
+    ><view v-else-if="!compact && series.length > 1" class="mini-chart-legend"
       ><MobileButton
         v-for="item in series"
         :key="item.name"
