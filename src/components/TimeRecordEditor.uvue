@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import ContentSkeleton from './ContentSkeleton.uvue';
+import LoadingIndicator from './LoadingIndicator.uvue';
 import AppIcon from './AppIcon.uvue'
 import { themeClass } from '../services/theme.ts'
 import { recordChanged } from '../services/time-changes.ts'
@@ -188,7 +190,7 @@ async function initialize() {
       }
       result = result || (await recommendNext(date.value))
       if (!active || serial !== generation || token !== session.token) return
-      existing.value = result.records
+      existing.value = result.items
       if (!result.recommend) {
         full.value = true
         return
@@ -364,9 +366,14 @@ function exerciseName(typeId: string) {
   )
 }
 function addExercise() {
+  const exercises = form.value.exercises || []
+  const lastExercise = exercises[exercises.length - 1]
   form.value.exercises = [
-    ...(form.value.exercises || []),
-    { exerciseTypeId: '', exerciseCount: undefined },
+    ...exercises,
+    {
+      exerciseTypeId: lastExercise?.exerciseTypeId || '',
+      exerciseCount: lastExercise?.exerciseCount,
+    },
   ]
   if (exerciseTypes.value.length === 0) loadExercises()
 }
@@ -393,11 +400,11 @@ async function searchRelated(more = false) {
     relatedItems.value = more
       ? [
           ...relatedItems.value,
-          ...result.records.filter(
+          ...result.items.filter(
             (r) => !relatedItems.value.some((i) => i.id === r.id),
           ),
         ]
-      : result.records
+      : result.items
     relatedPage.value = page
     relatedTotal.value = Number(result.total)
   } catch (error) {
@@ -442,7 +449,7 @@ function changeRelatedScope(event) {
   >
     <view class="editor-content">
       <view v-if="loading" class="state-card"
-         :class="themeClass('state-card')"><text class="muted-text">加载中…</text></view
+         :class="themeClass('state-card')"><ContentSkeleton variant="form" label="正在加载时迹详情" /></view
       >
       <view v-if="full" class="state-card"
          :class="themeClass('state-card')"><text class="empty-title" :class="themeClass('empty-title')">该天已录入完毕</text
@@ -467,7 +474,7 @@ function changeRelatedScope(event) {
             :disabled="!!id || saving || deleting"
             @change="changeDate"
             ><view class="field-row"
-              ><text class="field-label">日期</text
+              ><text class="field-label"><text class="required-mark">*</text>日期</text
               ><text class="field-value" :class="themeClass('field-value')">{{ date }}</text></view
             ></picker
           >
@@ -476,7 +483,7 @@ function changeRelatedScope(event) {
             ><input
               v-model="form.title"
               class="title-input"
-              placeholder="标题（选填）"
+              placeholder="标题"
               aria-label="记录标题"
               :maxlength="50"
               :disabled="saving || deleting"
@@ -490,7 +497,7 @@ function changeRelatedScope(event) {
             :aria-disabled="saving || deleting"
             @click="choosingCategory = true"
           >
-            <text class="field-label">分类</text
+            <text class="field-label"><text class="required-mark">*</text>分类</text
             ><view class="category-value"
               ><CategoryIcon
                 v-if="selectedCategory"
@@ -510,28 +517,42 @@ function changeRelatedScope(event) {
               :key="field"
               class="time-column"
             >
-              <picker
-                class="time-picker"
-                mode="time"
-                :value="clockLabel(form[field])"
-                :disabled="saving || deleting"
-                @change="
-                  field === 'startTime'
-                    ? changeStart($event)
-                    : changeEnd($event)
-                "
-                ><view class="time-field"
-                  ><text class="muted-text">{{
-                    field === 'startTime' ? '开始时间' : '结束时间'
-                  }}</text
-                  ><text class="time-number" :class="themeClass('time-number')">{{
-                    clockLabel(form[field])
-                  }}</text></view
-                ></picker
-              >
+              <text class="field-label"><text class="required-mark">*</text>{{ field === 'startTime' ? '开始时间' : '结束时间' }}</text>
+              <view class="time-control" :class="themeClass('time-control')">
+                <button
+                  role="button"
+                  class="time-step-button"
+                  hover-class="step-pressed"
+                  :aria-label="(field === 'startTime' ? '开始时间 ' : '结束时间 ') + '-1 分钟'"
+                  :disabled="saving || deleting"
+                  @click="tapAdjust(field, -1)"
+                  @longpress="startAdjust(field, -1)"
+                  @touchend="stopAdjust"
+                  @touchcancel="stopAdjust"
+                ><AppIcon name="ant-design:minus-outlined" :size="18" /></button>
+                <picker
+                  class="time-picker"
+                  mode="time"
+                  :aria-label="field === 'startTime' ? '开始时间' : '结束时间'"
+                  :value="clockLabel(form[field])"
+                  :disabled="saving || deleting"
+                  @change="field === 'startTime' ? changeStart($event) : changeEnd($event)"
+                ><view class="time-field"><text class="time-number" :class="themeClass('time-number')">{{ clockLabel(form[field]) }}</text></view></picker>
+                <button
+                  role="button"
+                  class="time-step-button"
+                  hover-class="step-pressed"
+                  :aria-label="(field === 'startTime' ? '开始时间 ' : '结束时间 ') + '+1 分钟'"
+                  :disabled="saving || deleting"
+                  @click="tapAdjust(field, 1)"
+                  @longpress="startAdjust(field, 1)"
+                  @touchend="stopAdjust"
+                  @touchcancel="stopAdjust"
+                ><AppIcon name="ant-design:plus-outlined" :size="18" /></button>
+              </view>
               <view class="quick-row"
                 ><button
-                  v-for="delta in [-1, 1, -30, 30]"
+                  v-for="delta in [-30, 30]"
                   :key="delta"
                   role="button"
                   class="duration-step"
@@ -564,7 +585,7 @@ function changeRelatedScope(event) {
               class="duration-input"
               aria-label="时长小时"
               @input="changeDuration($event, 'hours')"
-            :class="themeClass('duration-input')" /><text class="muted-text">时</text
+            :class="themeClass('duration-input')" /><text class="duration-unit">时</text
             ><input
               type="number"
               :value="String(duration % 60)"
@@ -572,7 +593,7 @@ function changeRelatedScope(event) {
               class="duration-input"
               aria-label="时长分钟"
               @input="changeDuration($event, 'minutes')"
-            :class="themeClass('duration-input')" /><text class="muted-text">分</text></view
+            :class="themeClass('duration-input')" /><text class="duration-unit">分</text></view
           >
         </view>
         <view class="form-card"
@@ -622,8 +643,8 @@ function changeRelatedScope(event) {
         >
         <view v-if="isExercise" class="form-card"
           ><text class="section-label" :class="themeClass('section-label')">运动明细</text
-          ><text v-if="exerciseLoading" class="muted-text">加载中…</text
-          ><view v-if="exerciseError"
+          ><LoadingIndicator v-if="exerciseLoading" label="正在加载运动项目" />
+          <view v-if="exerciseError"
             ><text class="error-text" :class="themeClass('error-text')">{{ exerciseError }}</text
             ><button role="button" class="small-action" @click="loadExercises" :class="themeClass('small-action')">
               重试运动类型
@@ -810,8 +831,8 @@ function changeRelatedScope(event) {
             @click="selectRelated(item)"
           >
             <text class="field-value" :class="themeClass('field-value')">{{ item.title }}</text></button
-          ><text v-if="relatedLoading" class="muted-text">加载中…</text
-          ><text
+          ><LoadingIndicator v-if="relatedLoading" label="正在加载关联记录" />
+          <text
             v-else-if="!relatedItems.length && !relatedError"
             class="muted-text"
             >暂无匹配记录</text
@@ -859,9 +880,22 @@ function changeRelatedScope(event) {
   text-align: left;
 }
 .field-label {
-  font-size: 14px;
+  font-size: 13px;
+  line-height: 20px;
+  font-weight: 400;
   color: #8b8f99;
   margin-right: $space-inline;
+  flex-shrink: 0;
+}
+.required-mark {
+  margin-right: $space-detail;
+  font-size: 13px;
+  color: #df5661;
+}
+.duration-unit {
+  font-size: 13px;
+  line-height: 20px;
+  color: #8b8f99;
   flex-shrink: 0;
 }
 .category-value {
@@ -885,8 +919,29 @@ function changeRelatedScope(event) {
   width: 50%;
   min-width: 0;
 }
+.time-control {
+  flex-direction: row;
+  align-items: center;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  margin-top: $space-inline;
+}
+.time-step-button {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: $space-controlMin;
+  height: $space-controlMin;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background-color: transparent;
+}
 .time-picker {
-  width: 100%;
+  flex: 1;
+  min-width: 0;
 }
 .duration-fields {
   flex-direction: row;
@@ -902,19 +957,15 @@ function changeRelatedScope(event) {
 .time-field {
   width: 100%;
   padding: 0;
-  align-items: flex-start;
+  align-items: center;
 }
 .time-number {
   width: 100%;
-  text-align: left;
+  text-align: center;
   font-size: 16px;
-  line-height: 38px;
+  line-height: $space-controlMin;
   color: #27272a;
   font-weight: 400;
-  border: 1px solid #e5e7eb;
-  border-radius: 8px;
-  padding: 0 $space-inline;
-  margin-top: $space-inline;
 }
 .time-divider {
   font-size: 20px;
@@ -950,7 +1001,7 @@ function changeRelatedScope(event) {
 }
 .duration-step {
   display: flex;
-  width: 25%;
+  width: 50%;
   height: $space-controlMin;
   align-items: center;
   justify-content: center;
@@ -974,7 +1025,7 @@ function changeRelatedScope(event) {
   opacity: 0.55;
 }
 .title-input {
-  font-size: 15px;
+  font-size: 14px;
   height: $space-controlMin;
   margin-top: $space-inline;
   padding: 0 $space-section;
@@ -1050,7 +1101,7 @@ function changeRelatedScope(event) {
   border-radius: 8px;
   background-color: #f0f2f5;
   color: #71717a;
-  font-size: 15px;
+  font-size: 14px;
 }
 .save-button {
   width: 76px;
@@ -1062,7 +1113,7 @@ function changeRelatedScope(event) {
   border-radius: 8px;
   background-color: #4e7ee3;
   color: #ffffff;
-  font-size: 16px;
+  font-size: 14px;
 }
 .delete-anchor {
   overflow: visible;
@@ -1175,7 +1226,7 @@ function changeRelatedScope(event) {
   text-align: left;
 }
 
-  .time-number-dark,
+  .time-control-dark,
   .title-input-dark,
   .description-input-dark,
   .duration-input-dark,
@@ -1225,11 +1276,22 @@ function changeRelatedScope(event) {
     color: #ed9191;
   }
 
+@media (max-width: 359px) {
+  .time-fields {
+    flex-direction: column;
+    gap: $space-section;
+  }
+  .time-column {
+    width: 100%;
+  }
+}
+
 /* #ifdef WEB || MP-WEIXIN */
 .cancel-action::after,
 .field-button::after,
 .small-action::after,
 .duration-step::after,
+.time-step-button::after,
 .remove-exercise::after,
 .save-button::after,
 .delete-button::after,

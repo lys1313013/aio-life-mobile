@@ -43,13 +43,13 @@ export function getRelated(
   page: number,
   all: boolean,
 ) {
-  return request<{ records: { id: string; title: string }[]; total: number }>(
+  return request<{ items: { id: string; title: string }[]; total: number }>(
     (type === 1 ? '/read-record/page' : '/movie/page') +
       '?current=' +
       page +
       '&size=24&activeOnly=' +
       !all +
-      '&inProgressFirst=true&title=' +
+      (type === 1 ? '&inProgressFirst=true&title=' : '&title=') +
       encodeURIComponent(keyword),
   )
 }

@@ -44,7 +44,7 @@ async function setup(page, options = {}) {
       if (state.failDelete) return route.abort();
       state.records = state.records.filter(r => r.id !== match[1]); data = null;
     }
-    if (path === '/api/read-record/page') data = { records: [{ id: '9223372036854775803', title: '时间之书' }], total: 1 };
+    if (path === '/api/read-record/page') data = { items: [{ id: '9223372036854775803', title: '时间之书' }], total: 1 };
     await route.fulfill({ json: { rscode: '0', data } });
   });
   await page.goto('/');
@@ -82,7 +82,9 @@ test('时迹新增、失败保留、重复提交、编辑保留附属字段、�
   await page.getByRole('button', { name: '保存', exact: true }).click();
   await expect(page.getByRole('button', { name: '编辑记录 晨间运动' })).toBeVisible();
   await expect(page.getByRole('dialog', { name: '编辑时迹', exact: true })).toHaveCount(0);
-  expect(state.updates[0]).toMatchObject({ id: '9223372036854775807', endTime: 598, relateId: '9223372036854775805', relateType: 1, description: '保留原有备注', exercises: [{ exerciseTypeId: '9223372036854775806', exerciseCount: 20, description: '三组' }] });
+  expect(state.updates[0]).toMatchObject({ endTime: 598, relateId: '9223372036854775805', relateType: 1, description: '保留原有备注', exercises: [{ exerciseTypeId: '9223372036854775806', exerciseCount: 20, description: '三组' }] });
+  expect(state.updates[0]).not.toHaveProperty('id');
+  expect(state.updates[0]).not.toHaveProperty('duration');
   await page.getByRole('button', { name: '编辑记录 专注学习' }).click();
   await page.getByRole('button', { name: '删除记录', exact: true }).click();
   await page.locator('.delete-confirm').getByRole('button', { name: '取消', exact: true }).click();
@@ -334,7 +336,7 @@ for (const width of [390, 768, 1440]) for (const colorScheme of ['light', 'dark'
     await dialog.getByRole('button', { name: '选择分类', exact: true }).click();
     await category.getByRole('button', { name: '运动', exact: true }).click();
     await expect.poll(async () => (await dialog.boundingBox()).height).toBeGreaterThan(simple.height);
-    for (let i = 0; i < 10; i++) await dialog.getByRole('button', { name: '＋ 添加运动', exact: true }).click();
+    for (let i = 0; i < 10; i++) await dialog.getByRole('button', { name: '添加运动', exact: true }).click();
     const large = await dialog.boundingBox();
     expect(large.height).toBeLessThanOrEqual(852);
     const scroller = dialog.locator('.modal-scroll .uni-scroll-view').last();

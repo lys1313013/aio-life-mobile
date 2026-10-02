@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import ContentSkeleton from '../../components/ContentSkeleton.uvue';
+import LoadingIndicator from '../../components/LoadingIndicator.uvue';
 import AppIcon from '../../components/AppIcon.uvue'
 import SecondaryUnlock from "../../components/SecondaryUnlock.uvue";
 import { themeClass } from '../../services/theme.ts'
@@ -296,13 +298,12 @@ function goToday() {
             重试时迹记录
           </button></view
         >
-        <view v-if="loading && !refreshing" class="loading-strip ui-pad-card"
-          ><text class="muted-text">加载中…</text></view
+        <view v-if="loading && !refreshing && records.length" class="loading-strip"
+          ><LoadingIndicator label="正在更新时迹" /></view
         >
         <template
           v-if="
-            (!loading || records.length > 0) &&
-            (!errorText || records.length > 0)
+            !errorText || records.length > 0
           "
         >
           <view class="time-layout ui-gap-md">
@@ -310,6 +311,7 @@ function goToday() {
           <TimeTimeline
             v-if="viewMode === 'timeline'"
             :key="mode + date"
+            :loading="loading && !records.length"
             :records="records"
             :selected="selectedCategories"
             :categories="categories"
@@ -319,6 +321,7 @@ function goToday() {
           />
           <TimeRecordCards
             v-else
+            :loading="loading && !records.length"
             :records="filtered"
             :show-date="mode !== 'day'"
             :categories="categories"
@@ -326,7 +329,12 @@ function goToday() {
           />
           </view>
           <view class="time-stats-panel">
-            <view class="summary-grid ui-row ui-mb-section">
+            <view v-if="loading && !records.length" class="time-pending-stats">
+              <ContentSkeleton variant="metrics" :metrics="2" label="正在加载时间统计" />
+              <ContentSkeleton variant="chart" />
+              <ContentSkeleton variant="distribution" :rows="2" />
+            </view>
+            <template v-else><view class="summary-grid ui-row ui-mb-section">
               <view class="summary-card ui-pad-card" :class="themeClass('summary-card')"><text class="summary-label">时长</text><text class="summary-value" :class="themeClass('summary-value')">{{ durationLabel(total) }}</text></view>
               <view v-if="!selectedCategories.length" class="summary-card ui-pad-card" :class="themeClass('summary-card')"><text class="summary-label">空闲</text><text class="summary-value" :class="themeClass('summary-value')">{{ durationLabel(unrecorded) }}</text></view>
               <view v-else-if="mode !== 'day'" class="summary-card ui-pad-card" :class="themeClass('summary-card')"><text class="summary-label">平均</text><text class="summary-value" :class="themeClass('summary-value')">{{ durationLabel(average) }}</text></view>
@@ -335,11 +343,11 @@ function goToday() {
                 <text class="summary-value" :class="themeClass('summary-value')">{{ durationLabel(item.minutes) }}</text>
               </view>
             </view>
-            <TimeStatistics :records="records" :categories="categories" :selected="selectedCategories" :date="date" :mode="mode" :revision="revision" />
+            <TimeStatistics :records="records" :categories="categories" :selected="selectedCategories" :date="date" :mode="mode" :revision="revision" /></template>
           </view>
           </view>
           <view
-            v-if="filtered.length === 0 && !errorText"
+            v-if="!loading && filtered.length === 0 && !errorText"
             class="state-card"
             :class="themeClass('state-card')"
             ><text class="empty-title" :class="themeClass('empty-title')">{{
@@ -429,7 +437,7 @@ function goToday() {
 .filter-active { background-color: #edf3ff; }
 .filter-dot { position: absolute; top: 8px; right: 8px; width: 5px; height: 5px; border-radius: 3px; background-color: #5b8ff9; }
 .period-active, .view-active { color: #427bea; background-color: #edf3ff; box-shadow: inset 0 0 0 1px #91b4ff; }
-.time-layout {  }
+.time-pending-stats { gap: $space-section; }
 .time-main-panel, .time-stats-panel { min-width: 0; }
 .summary-grid { flex-direction: row; flex-wrap: wrap;   }
 .summary-card { flex: 1; min-width: 100px; height: 86px;  background-color: #ffffff; border-radius: 8px; justify-content: space-between; }

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import ContentSkeleton from './ContentSkeleton.uvue'
 import { themeClass } from '../services/theme.ts'
 import { computed } from 'vue'
 import CategoryIcon from './CategoryIcon.uvue'
@@ -9,7 +10,7 @@ import {
   recordMinutes,
 } from '../services/time-format.ts'
 import { clockLabel, durationLabel } from '../services/dashboard-format.ts'
-const props = defineProps<{ records: TimeRecord[]; categories: Category[]; showDate?: boolean }>()
+const props = defineProps<{ records: TimeRecord[]; categories: Category[]; showDate?: boolean; loading?: boolean }>()
 const emit = defineEmits(['edit'])
 const groups = computed(() => {
   const dates = [...new Set(props.records.map((r) => r.date || ''))].sort()
@@ -29,6 +30,7 @@ const groups = computed(() => {
 </script>
 <template>
   <view class="record-groups">
+    <view v-if="loading" class="record-card-grid"><view v-for="n in 6" :key="n" class="record-card-cell"><view class="record-card" :class="themeClass('record-card')"><ContentSkeleton variant="tile" compact label="正在加载时迹卡片" /></view></view></view>
     <view v-for="group in groups" :key="group.date" class="record-group">
       <text v-if="showDate" class="record-group-date"
         >{{ group.date.slice(5) }} · {{ group.weekday }}</text

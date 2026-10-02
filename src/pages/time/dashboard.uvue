@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import ContentSkeleton from '../../components/ContentSkeleton.uvue';
 import { computed, ref } from 'vue';
 import { onShow, onUnload } from '@dcloudio/uni-app';
 import PageHeader from '../../components/PageHeader.uvue';
@@ -160,8 +161,8 @@ function toggle(id) {
           :label="categoryPath(category.id, categories)"
           :variant="selected.includes(category.id) ? 'primary' : 'quiet'"
           @click="toggle(category.id)" /></view
-      ><PageState :loading="loading" :error="error" :empty="!records.length" @retry="load()"
-        ><view class="time-dashboard-cards ui-row"
+      ><PageState skeleton="dashboard" :loading="loading" :error="error" :empty="!records.length" @retry="load()"
+        ><template #loading><view class="time-dashboard-cards ui-row"><view v-for="n in 2" :key="n" class="time-dashboard-card ui-card" :class="themeClass('time-dashboard-card')"><ContentSkeleton variant="summary" /></view></view><ContentSkeleton variant="chart" /><ContentSkeleton variant="distribution" :rows="2" /></template><view class="time-dashboard-cards ui-row"
           ><view
             v-for="card in cards"
             :key="card.id"

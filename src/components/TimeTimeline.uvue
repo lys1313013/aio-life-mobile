@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import LoadingIndicator from './LoadingIndicator.uvue'
 import AppIcon from './AppIcon.uvue'
 import { themeClass } from '../services/theme.ts'
 import { computed, ref, onMounted, onUnmounted } from 'vue'
@@ -21,6 +22,7 @@ const props = defineProps<{
   startDate: string
   days: number
   selected?: string[]
+  loading?: boolean
 }>()
 const emit = defineEmits(['edit'])
 const selectedDay = ref('')
@@ -105,7 +107,8 @@ function edit(record: TimeRecord) {
 </script>
 
 <template>
-  <view class="timeline" :class="[themeClass('timeline'), { 'timeline-multiple': days > 1 }]">
+  <view class="timeline" :aria-busy="loading" :class="[themeClass('timeline'), { 'timeline-multiple': days > 1 }]">
+    <view v-if="loading" class="timeline-loading"><LoadingIndicator label="正在加载时迹" /></view>
     <view class="timeline-axis" :class="themeClass('timeline-axis')">
       <view class="axis-heading" :class="themeClass('axis-heading')" />
       <view class="axis-hours" :style="{ height: trackHeight + 'px' }">
@@ -136,9 +139,11 @@ function edit(record: TimeRecord) {
           <button
             role="button"
             class="column-heading"
+            :disabled="loading"
+            :aria-disabled="!!loading"
             :class="themeClass('column-heading')"
             :aria-label="'查看 ' + column.date + ' 记录列表'"
-            @click="selectedDay = column.date"
+            @click="!loading && (selectedDay = column.date)"
           >
             <text class="column-weekday" :class="themeClass('column-weekday')">{{ column.weekday }}</text>
             <text class="column-date" :class="themeClass('column-date')">{{ column.date.slice(5) }}</text>
@@ -234,7 +239,8 @@ function edit(record: TimeRecord) {
 <style scoped lang="scss">
 @use '../styles/spacing.scss';
 @use '../styles/spacing-tokens' as *;
-.timeline { flex-direction: row; background-color: #ffffff; border-radius: 6px; overflow: hidden; }
+.timeline { position: relative; flex-direction: row; background-color: #ffffff; border-radius: 6px; overflow: hidden; }
+.timeline-loading { position: absolute; left: 28px; right: 0; top: $space-controlMin; z-index: 1; }
 .timeline-axis { width: 28px; flex-shrink: 0; border-right: 1px solid #eef0f3; }
 .axis-heading { height: $space-controlMin; border-bottom: 1px solid #eef0f3; }
 .axis-hours { position: relative; }

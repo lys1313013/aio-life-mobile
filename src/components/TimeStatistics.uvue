@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import PageState from './PageState.uvue';
 import { themeClass } from '../services/theme.ts'
 import { computed, ref, watch, onUnmounted } from 'vue'
 import MiniChart from './MiniChart.uvue'
@@ -70,13 +71,10 @@ onUnmounted(() => generation++)
 </script>
 <template>
   <view class="time-statistics">
-    <view v-if="loading || error" class="stats-card" :class="themeClass('stats-card')">
-      <text class="stats-caption" :class="themeClass('stats-caption')">{{ trendTitle }}</text>
-      <text v-if="loading" class="stats-empty">加载中…</text>
-      <view v-else class="stats-error"><text class="error-text" role="alert" :class="themeClass('error-text')">{{ error }}</text><button role="button" class="text-action" @click="loadTrend">重试趋势统计</button></view>
-    </view>
-    <MiniChart v-else-if="trendSeries.length" :label="trendTitle" :labels="trendLabels" :series="trendSeries" unit="h" />
-    <view v-else class="stats-card" :class="themeClass('stats-card')"><text class="stats-caption" :class="themeClass('stats-caption')">{{ trendTitle }}</text><text class="stats-empty">暂无记录</text></view>
+    <PageState skeleton="chart" :loading="loading" :error="error" :has-content="trend.length > 0" @retry="loadTrend">
+      <MiniChart v-if="trendSeries.length" :label="trendTitle" :labels="trendLabels" :series="trendSeries" unit="h" />
+      <view v-else class="stats-card" :class="themeClass('stats-card')"><text class="stats-caption" :class="themeClass('stats-caption')">{{ trendTitle }}</text><text class="stats-empty">暂无记录</text></view>
+    </PageState>
     <view v-for="panel in panels" :key="panel.id" class="stats-card" :class="themeClass('stats-card')" role="figure" :aria-label="panel.title">
       <text class="stats-caption" :class="themeClass('stats-caption')">{{ panel.title }}</text>
       <text v-if="!panel.rows.length" class="stats-empty">暂无记录</text>
