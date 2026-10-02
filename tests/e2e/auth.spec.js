@@ -110,7 +110,7 @@ for (const width of [390, 768, 1440]) {
       await mockApi(page);
       await page.goto('/');
       await expect(page.getByText('欢迎回来', { exact: true })).toBeVisible();
-      await expect(page.locator('.page').last()).toHaveCSS('background-color', colorScheme === 'dark' ? 'rgb(21, 29, 25)' : 'rgb(246, 247, 243)');
+      await expect(page.locator('.login-page')).toHaveCSS('background-color', colorScheme === 'dark' ? 'rgb(17, 18, 21)' : 'rgb(250, 250, 250)');
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
       await page.screenshot({ path: `test-results/login-${width}-${colorScheme}.png`, fullPage: true });
       await signIn(page);
