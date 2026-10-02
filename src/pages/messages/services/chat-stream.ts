@@ -1,6 +1,6 @@
-import { apiUrl } from '../api.ts'
-import { session } from '../session.ts'
-import { readResponse } from '../contract.ts'
+import { apiUrl } from '../../../services/api.ts'
+import { session } from '../../../services/session.ts'
+import { readResponse } from '../../../services/contract.ts'
 export function sseTokens(buffer:string, onToken:(value:string)=>void): string {
   const blocks=buffer.replace(/\r\n/g,'\n').split('\n\n')
   const tail=blocks.pop() || ''

@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { transform } from 'esbuild';
-const source = await readFile(new URL('../src/services/domains/relationship-layout.ts', import.meta.url), 'utf8');
+const source = await readFile(new URL('../src/pages/relationship/services/relationship-layout.ts', import.meta.url), 'utf8');
 const { code } = await transform(source, { loader: 'ts', format: 'esm' });
 const { layoutGraph, layoutEdges } = await import('data:text/javascript;base64,' + Buffer.from(code).toString('base64'));
 

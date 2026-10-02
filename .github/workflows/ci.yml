@@ -25,7 +25,15 @@ jobs:
       - run: npm ci
       - run: npm test
       - run: npm run build
-      - run: npm run build:weixin
+      - name: Build Weixin and enforce package size
+        run: npm run check:weixin-size
+      - uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        with:
+          name: weixin-package-size
+          path: artifacts/weixin-size/
+          if-no-files-found: ignore
+          retention-days: 7
 
   e2e:
     name: Browser regression (${{ matrix.shard }}/4)

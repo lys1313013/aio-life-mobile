@@ -64,8 +64,13 @@ npm run build          # dist/build/h5
 npm run build:weixin   # dist/build/mp-weixin
 npm test              # 真实响应格式、业务错误、401、长 ID 等纯逻辑测试
 npm run test:e2e       # 使用模拟 API 验证 Web 登录流程、断网恢复和六组布局
+npm run test:commit    # 提交前统一验证：单元/规范 → H5 E2E（含构建）→ 微信构建/包体
 node tests/wechat-ui/run.mjs # 独立测试副本模拟小程序登录分支，不调用真实微信
 ```
+
+日常修改不自动执行全量测试或双端构建，排查问题时按需运行相关用例；准备 Git 提交时，对最终代码统一执行一次 `npm run test:commit`。纯文档、注释修改只检查差异。该命令是手动入口，不是自动 Git hook，不会提交代码。涉及微信授权分支时还需执行上面的独立模拟脚本，视觉改动仍需查看受影响页面的多尺寸、深浅主题截图。
+
+统一验证遇到失败立即停止，终端仅显示阶段耗时、结果、日志路径及失败日志末尾；完整日志保存在 `artifacts/commit-validation/` 的独立运行目录中。E2E 已构建 H5，不必再单独运行 `npm run build`。失败后根据对应日志定位，修复后只重跑受影响的阶段或用例；代码、依赖、配置和相关环境未变时不重复已通过检查，影响不明确时重新运行完整命令。此命令检查当前工作区，提交前需核对最终提交内容及构建生成物差异。
 
 本机 E2E 使用已安装的 Google Chrome。CI 使用 `npx playwright install --with-deps chromium` 安装浏览器。测试截图、报告和 trace 均在 Git 忽略目录中。
 
@@ -96,6 +101,30 @@ npm run build:weixin
 `src/project.config.json` 已加入 Git 忽略，由微信编译器复制为产物的 `project.config.json`，不回写源码 manifest。真实 AppID 不提交；`src/manifest.json` 中的 AppID 保持空值。未提供本地配置时，CI 仍可验证构建，但产物不能直接用于正式上传。
 
 发布配置启用 `minified`、`minifyWXSS`、`minifyWXML`，并关闭 `uploadWithSourceMap`。已有本地 `src/project.config.json` 也需同步这些 `setting` 字段，否则会覆盖默认配置。主包大小以微信开发者工具上传检查为准，超过 2 MB 会被拒绝；源码构建成功不能替代上传检查。
+
+#### 本地包体检查与 CI
+
+```bash
+npm run check:weixin-size       # 重新构建微信目标并检查包体
+npm run build:weixin            # 同样自动执行 postbuild:weixin 包体检查
+npm run check:weixin-size:only  # 只检查已有 dist/build/mp-weixin，适合诊断；不会重建源码
+```
+
+检查使用固定版本 `miniprogram-ci@2.1.31` 的 `getCompiledResult`，读取产物的发布压缩设置，再按编译后的 `app.json` 分包根目录统计 UTF-8 / 二进制文件字节数。主包及每个分包独立按 **1900 KB 预警、2048 KB 硬上限** 检查（1 KB = 1024 字节）；超限、缺失产物、编译失败或发布配置漂移均返回非零退出码。预览的 `bigPackageSizeSupport` 不会放宽本地阈值。
+
+终端列出各包大小、剩余额度、主包最大的 10 个文件；`artifacts/weixin-size/report.json` 保留各包全部文件清单，`report.txt` 为简短报告。每次包体检查开始前会清除旧报告，避免把上次通过结果当成本次结果；若前面的 uni 构建已失败，则不会进入检查，不能引用旧报告作为这次构建的证明。CI 的构建任务运行同一命令，并保存报告 7 天，超限会使任务失败。
+
+检查在临时副本上运行，不改开发者工具项目，也不调用 `preview` / `upload`、不更新体验版。离线适配使用编译器默认项目属性和 `touristappid`，无需真实 AppID、上传私钥、IP 白名单或 CI Secrets；内部非密钥占位值只满足官方 Project 构造器参数要求，不用于鉴权。涉及插件或账号特定能力时不能据此声称已验证，当前检查会拒绝插件项目。此适配固定编译器版本，升级时必须重新验证；它统计编译后的文件字节数，不是 ZIP 大小，也未包含服务端最终封装开销，上传端仍保留最终校验。[微信官方编译接口](https://github.com/wechat-miniprogram/miniprogram-ci-dist#获取本地编译后的代码包)
+
+工具会忽略开发者工具的私有运行配置，但若其覆盖了发布编译选项则直接报错，避免两套压缩配置产生误判。Node 25 的 Web Storage 与官方编译器存在兼容问题，检查进程及其子进程会单独关闭该实验特性；CI 继续使用 Node 22。
+
+2026-10-02 本地验证：当前主包为 2037.26 KB，触发 1900 KB 预警但未超过硬上限；将优化前的 `90608e5` 在独立忽略目录重新构建后测得 2069.64 KB，Node 25 / Node 22 均返回退出码 1，与此前微信上传约 2070 KB 超限一致。该复现未上传代码。以上为本次测量记录，后续以重新构建的报告为准；CI 工作流已配置，未据此声称远端运行通过。
+
+业务专属模块随分包存放：CBTI 海报组件及二维码在 `pages/personality`，聊天流与 Markdown 在 `pages/messages`，图谱布局在 `pages/relationship`，MCP 参数校验在 `pages/mcp`。公共目录中的源码会进入主包，不能仅因调用方是分包就假定它会自动迁移。
+
+2026-10-02 上传版本 `1.0.20261002`（基于 `90608e5` 加本次分包调整）：首次上传主包 2070 KB，超过 2048 KB；移动上述专属模块后重新构建，微信开发者工具明确显示“代码上传成功”，并按上传前提示覆盖既有体验版。API 为 `https://aiolife.top/api`；未提交审核、未正式发布、未做真机验证。工具仍提示主包超过建议的 1.5 MB、部分主包 JS 未被主包直接使用，后续新增功能仍需实际上传检查。
+
+本次 130 项单元测试、H5 / 微信构建通过，产物相对 JS 依赖无缺失；15 项相关 Web 模拟回归通过（六组领域页面加载、MCP 失败重试、两组 Markdown 表格、六组 CBTI 海报生成）。5180 已有开发服务，本次在忽略目录复制测试并将固定 API 拦截地址改为 5187，独立启动生产预览；初次仅改预览端口时因旧拦截地址未匹配而失败，不能算产品失败。原综合用例的海报流程通过，但后续时迹兼容编辑的旧关闭按钮定位超时，未将该综合用例记为通过。部署测试副本与日志保存在本机忽略目录 `artifacts/weixin-deploy/`。
 
 后端先执行用户表迁移，再配置 `AIO_LIFE_WECHAT_MINI_ENABLED=true`、`AIO_LIFE_WECHAT_MINI_APP_ID` 和服务端 `AIO_LIFE_WECHAT_MINI_APP_SECRET`。AppID 应与本地 `src/project.config.json` 的 `appid` 一致。AppSecret 不得放入客户端或 `VITE_*` 变量。能力未启用时自动保留账号密码登录。
 
