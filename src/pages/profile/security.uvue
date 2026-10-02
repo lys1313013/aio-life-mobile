@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue';
+import { computed, ref, watch } from 'vue';
 import { onShow, onHide } from '@dcloudio/uni-app';
 import PageHeader from '../../components/PageHeader.uvue';
 import MobilePage from '../../components/MobilePage.uvue';
@@ -7,9 +7,10 @@ import MobileButton from '../../components/MobileButton.uvue';
 import FormField from '../../components/FormField.uvue';
 import PageState from '../../components/PageState.uvue';
 import AdaptiveModal from '../../components/AdaptiveModal.uvue';
+import AppIcon from '../../components/AppIcon.uvue';
 import { request } from '../../services/api.ts';
 import { session, restoreSession } from '../../services/session.ts';
-import { themeClass } from '../../services/theme.ts';
+import { isDark, themeClass } from '../../services/theme.ts';
 const loading = ref(false),
   saving = ref(false),
   sending = ref(false),
@@ -19,6 +20,7 @@ const loading = ref(false),
   formError = ref(''),
   mode = ref('');
 const menus = ref<any[]>([]),
+  collapsed = ref<string[]>([]),
   locked = ref<string[]>([]),
   password = ref(''),
   oldPassword = ref(''),
@@ -26,18 +28,37 @@ const menus = ref<any[]>([]),
   code = ref('');
 let revision = 0,
   active = true;
-function flatten(nodes, parents = []) {
-  return nodes.flatMap((node) => {
-    const title = [...parents, node.meta?.title || node.name].join(' / ');
-    const self = node.meta?.menuId != null ? [{ id: String(node.meta.menuId), title }] : [];
-    return [...self, ...flatten(node.children || [], [...parents, node.meta?.title || node.name])];
+function flatten(nodes, parents = [], ancestors = []) {
+  return nodes.flatMap((node, index) => {
+    const title = node.meta?.title || node.name || '未命名菜单';
+    const path = [...parents, title];
+    const id = node.meta?.menuId != null ? String(node.meta.menuId) : '';
+    const key = [...ancestors, String(index)].join('/');
+    const children = flatten(node.children || [], path, [...ancestors, key]);
+    if (!id && !children.length) return [];
+    return [{ id, key, title, path: path.join(' / '), ancestors, hasChildren: children.length > 0 }, ...children];
   });
+}
+const visibleMenus = computed(() =>
+  menus.value.filter((item) => !item.ancestors.some((key) => collapsed.value.includes(key))),
+);
+const menuGroups = computed(() =>
+  menus.value.filter((item) => !item.ancestors.length).map((root) => ({
+    key: root.key,
+    items: visibleMenus.value.filter((item) => item.key === root.key || item.ancestors[0] === root.key),
+  })),
+);
+function toggleExpanded(key: string) {
+  collapsed.value = collapsed.value.includes(key)
+    ? collapsed.value.filter((value) => value !== key)
+    : [...collapsed.value, key];
 }
 watch(
   () => session.token,
   () => {
     revision++;
     menus.value = [];
+    collapsed.value = [];
     locked.value = [];
     mode.value = '';
     password.value = '';
@@ -94,7 +115,7 @@ async function load() {
   }
 }
 function toggle(id) {
-  if (saving.value) return;
+  if (saving.value || !hasPassword.value) return;
   locked.value = locked.value.includes(id)
     ? locked.value.filter((x) => x !== id)
     : [...locked.value, id];
@@ -169,28 +190,68 @@ function back() {
 }
 </script>
 <template>
-  <view class="tab-page" :class="themeClass('tab-page')"
-    ><PageHeader title="菜单锁" back @back="back" /><MobilePage
-      :refreshing="loading"
-      @refresh="load"
-      ><PageState skeleton="form" :loading="loading" :error="error" @retry="load"
-        ><view v-if="ready" class="security-surface ui-card" :class="themeClass('security-surface')"
-          ><view v-for="item in menus" :key="item.id" class="security-row ui-row"
-            ><text class="security-name">{{ item.title }}</text
-            ><switch
-              :checked="locked.includes(item.id)"
-              :disabled="saving || !hasPassword"
-              :aria-label="'锁定' + item.title"
-              @change="toggle(item.id)" /></view
-          ><MobileButton label="保存菜单锁" :disabled="!hasPassword" @click="open('menus')" /><view
-            class="security-actions ui-row ui-mt-section"
-            ><MobileButton
-              :label="hasPassword ? '修改二级密码' : '设置二级密码'"
-              variant="quiet"
-              @click="open('password')" /><MobileButton
-              label="忘记密码"
-              variant="quiet"
-              @click="open('recovery')" /></view></view></PageState></MobilePage
+  <view class="tab-page" :class="themeClass('tab-page')">
+    <PageHeader title="菜单锁" back @back="back">
+      <text class="security-title" :class="themeClass('security-title')">菜单锁</text>
+      <button
+        role="button"
+        class="security-save ui-type-body"
+        :class="{ 'security-disabled': !ready || !hasPassword || saving }"
+        aria-label="保存菜单锁"
+        :disabled="!ready || !hasPassword || saving"
+        :aria-disabled="!ready || !hasPassword || saving"
+        @click="open('menus')"
+      ><AppIcon name="ant-design:check-outlined" :size="22" :color="isDark ? '#409cff' : '#007aff'" /></button>
+    </PageHeader>
+    <MobilePage :refreshing="loading" @refresh="load">
+      <PageState skeleton="form" :loading="loading" :error="error" @retry="load">
+        <view v-if="ready" class="ui-page-body security-body">
+          <view v-for="group in menuGroups" :key="group.key" class="security-group" :class="themeClass('security-group')">
+            <view v-for="item in group.items" :key="item.key" class="security-row">
+              <view v-for="ancestor in item.ancestors" :key="ancestor" class="security-indent" />
+              <button
+                v-if="item.hasChildren"
+                role="button"
+                class="security-expand ui-type-body"
+                :aria-label="(collapsed.includes(item.key) ? '展开' : '收起') + item.path"
+                :aria-expanded="!collapsed.includes(item.key)"
+                @click="toggleExpanded(item.key)"
+              >
+                <AppIcon :name="collapsed.includes(item.key) ? 'ant-design:right-outlined' : 'ant-design:down-outlined'" :size="12" :color="isDark ? '#8e8e93' : '#98989d'" />
+                <text class="security-name security-branch" :class="themeClass('security-name')">{{ item.title }}</text>
+              </button>
+              <view v-else class="security-leaf">
+                <view class="security-chevron-space" />
+                <text class="security-name" :class="themeClass('security-name')">{{ item.title }}</text>
+              </view>
+              <button
+                v-if="item.id"
+                role="switch"
+                class="security-check ui-type-body"
+                :class="{ 'security-disabled': saving || !hasPassword }"
+                :disabled="saving || !hasPassword"
+                :aria-checked="locked.includes(item.id)"
+                :aria-disabled="saving || !hasPassword"
+                :aria-label="'锁定' + item.path"
+                @click="toggle(item.id)"
+              >
+                <view class="security-check-ring" :class="[{ 'security-check-selected': locked.includes(item.id) }, themeClass('security-check-ring')]">
+                  <AppIcon v-if="locked.includes(item.id)" name="ant-design:check-outlined" :size="13" color="#ffffff" />
+                </view>
+              </button>
+            </view>
+          </view>
+          <view class="security-group" :class="themeClass('security-group')">
+            <button role="button" class="security-password ui-type-body" :aria-label="hasPassword ? '修改二级密码' : '设置二级密码'" @click="open('password')">
+              <AppIcon name="ant-design:lock-outlined" :size="18" color="#8e8e93" />
+              <text class="security-name" :class="themeClass('security-name')">{{ hasPassword ? '修改二级密码' : '设置二级密码' }}</text>
+              <AppIcon name="ant-design:right-outlined" :size="12" color="#98989d" />
+            </button>
+          </view>
+          <button role="button" class="security-recovery" aria-label="忘记密码" @click="open('recovery')">忘记密码？</button>
+        </view>
+      </PageState>
+    </MobilePage
     ><AdaptiveModal
       v-if="mode"
       :label="mode === 'menus' ? '确认菜单锁' : '二级密码'"
@@ -220,32 +281,138 @@ function back() {
   ></view>
 </template>
 <style scoped lang="scss">
+@use '../../styles/typography' as *;
 @use '../../styles/spacing.scss';
 @use '../../styles/spacing-tokens' as *;
-.security-surface {
-  background-color: #fff;
-  color: #27272a;
-  border-radius: 14px;
+@include type-utilities('body');
+
+.security-title {
+  flex: 1;
+  color: #1c1c1e;
+  @include type-style('title');
 
 }
-.security-surface-dark {
-  background-color: #1c1e22;
-  color: #eeeeef;
+.security-title-dark {
+  color: #f2f2f7;
+}
+.security-body {
+  display: flex;
+  flex-direction: column;
+  gap: $space-section;
+}
+.security-group {
+  overflow: hidden;
+  background-color: #fff;
+  border-radius: 16px;
+  padding: $space-detail $space-card;
+}
+.security-group-dark {
+  background-color: #1c1c1e;
 }
 .security-row {
+  display: flex;
   flex-direction: row;
   align-items: center;
-  min-height: 52px;
-
+  min-height: $space-controlMin + $space-detail;
+}
+.security-indent {
+  width: $space-inline * 2;
+  flex-shrink: 0;
+}
+.security-expand,
+.security-leaf {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  flex-direction: row;
+  align-items: center;
+  gap: $space-inline;
+  min-height: $space-controlMin;
+}
+.security-expand,
+.security-save,
+.security-check,
+.security-password,
+.security-recovery {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background-color: transparent;
+  line-height: type-line('body');
+  text-align: left;
+}
+.security-expand::after,
+.security-save::after,
+.security-check::after,
+.security-password::after,
+.security-recovery::after {
+  border: 0;
+}
+.security-chevron-space {
+  // 与折叠箭头对齐，属于图标几何尺寸。
+  width: 12px;
+  flex-shrink: 0;
 }
 .security-name {
   flex: 1;
-  font-size: 14px;
+  min-width: 0;
+  padding-block: $space-detail;
+  color: #1c1c1e;
+  @include type-style('body');
+
+  overflow-wrap: anywhere;
 }
-.security-actions {
+.security-name-dark {
+  color: #f2f2f7;
+}
+.security-branch {
+  font-weight: type-weight('medium');
+}
+.security-save,
+.security-check {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: $space-controlMin;
+  height: $space-controlMin;
+  flex-shrink: 0;
+}
+.security-check-ring {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  width: 22px;
+  height: 22px;
+  border: $space-hairline solid #c7c7cc;
+  border-radius: 50%;
+}
+.security-check-ring-dark {
+  border-color: #636366;
+}
+.security-check-selected {
+  background-color: #007aff;
+  border-color: #007aff;
+}
+.security-disabled {
+  opacity: 0.35;
+}
+.security-password {
+  display: flex;
   flex-direction: row;
-  flex-wrap: wrap;
-
-
+  align-items: center;
+  gap: $space-inline;
+  min-height: $space-controlMin;
+  width: 100%;
 }
+.security-recovery {
+  align-self: flex-end;
+  min-height: $space-controlMin;
+  padding: 0 $space-card;
+  color: #8e8e93;
+  @include type-style('label');
+  line-height: $space-controlMin;
+}
+
 </style>
