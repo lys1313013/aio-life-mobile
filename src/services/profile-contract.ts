@@ -1,3 +1,4 @@
+import { missingRequired } from './form-required.ts';
 export const platforms = [
   { value: 'github', label: 'GitHub', mark: 'G', hint: '填写 GitHub 用户名。' },
   {
@@ -66,9 +67,9 @@ export function bindingPayload(form) {
     throw new Error('请选择支持的平台')
   const username = form.platformUsername.trim()
   const credential = form.accessToken.trim()
-  if (form.platform !== 'weread' && !username)
+  if (missingRequired('binding', form, 'platformUsername'))
     throw new Error('请输入账号或用户名')
-  if (form.platform === 'weread' && !form.id && !credential)
+  if (missingRequired('binding', form, 'accessToken'))
     throw new Error('请输入微信读书 API Key')
   if (form.id && typeof form.id !== 'string') throw new Error('绑定 ID 异常')
   return {

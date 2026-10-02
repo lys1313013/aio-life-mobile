@@ -1,3 +1,4 @@
+import { missingRequired } from '../form-required.ts';
 export function entityId(value) { if(typeof value !== 'string' || !/^\d+$/.test(value)) throw Error('记录ID异常，请重试'); return value }
 export function safeExternalUrl(value) {if(typeof value !== 'string' || !/^https:\/\/[^\s\\]+$/i.test(value)) throw Error('外部地址无效'); return value}
 export function objectValue(value) {if(typeof value === 'string') {try{return JSON.parse(value)}catch{return value}}; return value}
@@ -22,7 +23,7 @@ export function vectorValue(value) {
   return [...vector]
 }
 export function personalityPayload(form) {
-  if(!form.code?.trim() || !form.name?.trim()) throw Error('请输入人格代码和名称')
+  if(missingRequired('personality', form, 'code') || missingRequired('personality', form, 'name')) throw Error('请输入人格代码和名称')
   if(form.color && !/^#([\da-fA-F]{3}|[\da-fA-F]{6})$/.test(form.color)) throw Error('颜色必须为十六进制格式')
   const result={code:form.code.trim(),name:form.name.trim(),vector:vectorValue(form.vector),isSpecial:!!form.isSpecial}
   for(const key of ['motto','color','description','techStack','spirit','imageObject']) if(form[key] != null) result[key]=form[key]

@@ -1,3 +1,4 @@
+import { missingRequired } from '../form-required.ts';
 export function stringId(value) {
   if (typeof value !== 'string' || !/^\d+$/.test(value)) throw new Error('记录 ID 异常，请重新加载')
   return value
@@ -7,9 +8,11 @@ export function queryPath(path, params = {}) {
   return path + (pairs.length ? '?' + pairs.join('&') : '')
 }
 export function readPage(data, idField = 'id') {
-  if (!data || !Array.isArray(data.items) || typeof data.total !== 'number') throw new Error('列表数据异常，请重试')
+  // 后端 PageResp.total 是 Long，JSON 序列化后为十进制字符串。
+  const total = typeof data?.total === 'string' && /^\d+$/.test(data.total) ? Number(data.total) : data?.total
+  if (!data || !Array.isArray(data.items) || !Number.isSafeInteger(total) || total < 0) throw new Error('列表数据异常，请重试')
   for (const item of data.items) stringId(item[idField])
-  return data
+  return { ...data, total }
 }
 export function readCategoryList(data) {
   if (!Array.isArray(data)) throw new Error('分类数据异常，请重试')
@@ -21,7 +24,7 @@ export function readCategoryList(data) {
   return data
 }
 export function categoryPayload(form, original, admin = false) {
-  if (!String(form.name || '').trim()) throw new Error('请输入分类名称')
+  if (missingRequired('category', form, 'name')) throw new Error('请输入分类名称')
   if (!/^#[\da-fA-F]{6}$/.test(form.color || '')) throw new Error('请输入六位颜色值，如 #427bea')
   const data = {}
   for (const key of ['id', 'parentId', 'templateId', 'name', 'color', 'icon', 'description', 'isTrackTime', 'isEnabled', 'sort', 'timeType']) if (form[key] !== undefined) data[key] = form[key]

@@ -3,6 +3,7 @@ import { computed, getCurrentInstance, nextTick, onMounted, onUpdated, ref } fro
 import { themeClass } from '../services/theme.ts';
 import { pickerValue } from '../services/mobile-ui.ts';
 import AppIcon from './AppIcon.uvue';
+import RequiredMark from './RequiredMark.uvue';
 const props = withDefaults(
   defineProps<{
     label: string;
@@ -55,7 +56,7 @@ function change(event) {
 <template>
   <view class="form-field ui-form-field" :class="[themeClass('form-field'), { 'ui-field-compact': compact, 'ui-field-stretch': stretch }]">
     <view v-if="!hideLabel" class="form-field-heading ui-field-label">
-      <text v-if="required" class="form-field-required" aria-hidden="true">*</text>
+      <RequiredMark v-if="required" />
       <text class="form-field-label" :class="[{ 'form-field-label-soft': appearance === 'soft' }, themeClass({ 'form-field-label-soft': appearance === 'soft' })]">{{ label }}</text>
     </view>
     <slot>
@@ -82,6 +83,7 @@ function change(event) {
         :placeholder="placeholder"
         :disabled="disabled"
         :aria-label="label"
+        :aria-required="!!required"
         :maxlength="-1"
         @input="change"
         @blur="change"
@@ -98,6 +100,7 @@ function change(event) {
           :placeholder="placeholder"
           :disabled="disabled"
           :aria-label="label"
+        :aria-required="!!required"
           @input="change"
           @blur="change"
         />
@@ -122,6 +125,7 @@ function change(event) {
         :placeholder="placeholder"
         :disabled="disabled"
         :aria-label="label"
+        :aria-required="!!required"
         @input="change"
         @blur="change"
       />
@@ -151,10 +155,6 @@ function change(event) {
   flex-direction: row;
   align-items: center;
   gap: $space-detail;
-}
-.form-field-required {
-  color: #e05260;
-  @include type-style('label');
 }
 .form-field-input {
   min-height: $space-controlMin;

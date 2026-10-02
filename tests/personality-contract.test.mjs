@@ -1,7 +1,8 @@
+import { withFormRequired } from './helpers/form-required-source.mjs';
 import {readFile} from 'node:fs/promises'
 import assert from 'node:assert/strict'
 import test from 'node:test'
-const asModule=value=>`data:text/javascript;base64,${Buffer.from(value).toString('base64')}`
+const asModule=value=>`data:text/javascript;base64,${Buffer.from(withFormRequired(value)).toString('base64')}`
 const source=await readFile(new URL('../src/services/personality/contract.ts',import.meta.url),'utf8')
 const {entityId,safeExternalUrl,mbtiPayload,cbtiPayload,vectorValue,personalityPayload,authPayload,shareText}=await import(asModule(source))
 const id='9223372036854775807'

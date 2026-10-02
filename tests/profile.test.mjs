@@ -1,8 +1,9 @@
+import { withFormRequired } from './helpers/form-required-source.mjs';
 import { readFile } from 'node:fs/promises';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 const source = await readFile(new URL('../src/services/profile-contract.ts', import.meta.url), 'utf8');
-const { bindingPayload, readBindings, platforms } = await import(`data:text/javascript;base64,${Buffer.from(source).toString('base64')}`);
+const { bindingPayload, readBindings, platforms } = await import(`data:text/javascript;base64,${Buffer.from(withFormRequired(source)).toString('base64')}`);
 
 test('绑定保留长 ID，拒绝数字 ID，丢弃凭证和服务端元数据', () => {
   const id = '9223372036854775807';

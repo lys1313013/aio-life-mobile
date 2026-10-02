@@ -1,3 +1,4 @@
+import { missingRequired } from '../form-required.ts';
 // 纯业务契约，可直接用于模拟测试；所有 ID 保留服务端字符串。
 export const goalTypes = ['日', '周', '月', '季度', '半年', '年度', '三年', '五年', '十年', '终生']
 export const statuses = ['not_started', 'in_progress', 'completed', 'on_hold']
@@ -12,7 +13,7 @@ export function textTags(value) {
 }
 export function dateTime(date, time = '00:00') { return date ? date.slice(0, 10) + ' ' + time.slice(0, 5) + ':00' : null }
 export function goalPayload(form) {
-  if (!form.title.trim()) throw new Error('请输入目标标题')
+  if (missingRequired('goal', form, 'title')) throw new Error('请输入目标标题')
   if (!Number.isInteger(Number(form.type)) || form.type < 1 || form.type > 10) throw new Error('请选择目标类型')
   if (!statuses.includes(form.status)) throw new Error('请选择目标状态')
   const payload = { ...form, title: form.title.trim(), type: Number(form.type), tags: JSON.stringify(textTags(form.tags).split(/[,，]/).map(t => t.trim()).filter(Boolean)) }
@@ -26,7 +27,7 @@ export function goalPayload(form) {
 }
 export function taskPayload(form, kind) {
   const field = kind === 'column' ? 'title' : 'content'
-  if (!form[field]?.trim()) throw new Error(kind === 'column' ? '请输入列名称' : '请输入任务内容')
+  if (missingRequired(kind, form, field)) throw new Error(kind === 'column' ? '请输入列名称' : '请输入任务内容')
   const payload = { ...form, [field]: form[field].trim() }
   if (form.id) payload.id = recordId(form.id)
   if (form.columnId) payload.columnId = recordId(form.columnId)
@@ -54,7 +55,7 @@ export function goalDateRange(type, now = new Date()) {
   return { startDate: format(start) + ' 00:00:00', endDate: format(end) + ' 23:59:59' }
 }
 export function memberPayload(form) {
-  if (!form.name?.trim() || !form.expiryDate) throw new Error('请输入会员名称和到期日期')
+  if (missingRequired('member', form)) throw new Error('请输入会员名称和到期日期')
   if (form.startDate && form.expiryDate < form.startDate) throw new Error('到期日期不能早于开通日期')
   const payload = { ...form, name: form.name.trim(), autoRenew: Number(form.autoRenew || 0) }
   if (form.id) payload.id = recordId(form.id)

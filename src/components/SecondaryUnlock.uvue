@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { isRequired, missingRequired } from '../services/form-required.ts';
 import { onUnmounted, ref, watch } from 'vue';
 import { onHide } from '@dcloudio/uni-app';
 import AdaptiveModal from './AdaptiveModal.uvue';
@@ -25,7 +26,7 @@ onHide(() => {
 });
 async function unlock() {
   if (saving.value) return;
-  if (!password.value) {
+  if (missingRequired('security', { password: password.value }, 'password')) {
     error.value = '请输入二级密码';
     return;
   }
@@ -63,6 +64,7 @@ async function unlock() {
   >
     <FormField
       label="二级密码"
+      :required="isRequired('security', 'password')"
       v-model="password"
       kind="password"
       revealable
