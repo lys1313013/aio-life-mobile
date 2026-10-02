@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import ContentSkeleton from '../../components/ContentSkeleton.uvue';
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import PageHeader from '../../components/PageHeader.uvue';
 import MobilePage from '../../components/MobilePage.uvue';
@@ -131,7 +132,12 @@ const filters = ref<Record<string, any>>({
   expTypeId: '',
   payTypeId: '',
 });
-const typeFilter = ref('全部'),
+const showFilters = ref(false);
+const activeFilterCount = computed(() =>
+  ['year', 'startTime', 'endTime', 'remark', 'counterparty', 'expDesc', 'payTypeId']
+    .filter((key) => String(filters.value[key] || '').trim()).length,
+);
+const typeFilter = ref('全部类型'),
   payFilter = ref('全部'),
   sort = ref('日期降序');
 let version = 0,
@@ -184,6 +190,10 @@ async function load(reset = true) {
   }
 }
 async function initialize() {
+  loading.value = true;
+  statisticsBusy.value = true;
+  error.value = '';
+  statisticsError.value = '';
   const mutationStamp = version;
   try {
     const results = await Promise.all([
@@ -195,7 +205,9 @@ async function initialize() {
     payments.value = results[1]?.dictDetailList || [];
     await Promise.all([load(), loadStatistics()]);
   } catch (e) {
-    error.value = e.message;
+    if (alive) { error.value = e.message; statisticsError.value = e.message; }
+  } finally {
+    if (alive) { loading.value = false; statisticsBusy.value = false; }
   }
 }
 onMounted(initialize);
@@ -315,29 +327,32 @@ async function removeSelected() {
   <MobilePage :refreshing="refreshing" @refresh="refresh">
     <PageHeader :title="expense ? '支出' : '收入'" back @back="uni.navigateBack()" />
     <view class="body ui-page-body" :class="themeClass('body')"
-      ><PageState
-        :loading="statisticsBusy && !overviewRows.length"
+      ><PageState skeleton="overview"
+        :loading="statisticsBusy" :has-content="overviewRows.length > 0"
         :error="statisticsError"
-        @retry="loadStatistics"
-        ><view class="finance-summary ui-pad-card ui-gap-sm"
+        @retry="types.length ? loadStatistics() : initialize()"
+        >
+<template #loading><view class="finance-summary ui-gap-sm ui-section"><FormField compact stretch hide-label label="选择年份" kind="selector" :options="overviewYears" v-model="overviewYear" /><view class="metrics ui-row"><view class="summary-total"><MetricCard :label="expense ? '总支出' : '总收入'" value="" loading /></view><MetricCard :label="overviewYear + (expense ? '年总支出' : '年总收入')" value="" loading /><MetricCard :label="expense ? '月均支出' : '月均收入'" value="" loading /></view></view><view class="chart-grid ui-gap-md"><ContentSkeleton v-for="n in 2" :key="n" variant="chart" /></view></template>
+<view class="finance-summary ui-gap-sm ui-section"
           ><FormField
             compact
             stretch
+            hide-label
             label="选择年份"
             kind="selector"
             :options="overviewYears"
             v-model="overviewYear" /><view class="metrics ui-row"
-            ><MetricCard
+            ><view class="summary-total"><MetricCard
               :label="expense ? '总支出' : '总收入'"
               :value="statisticsTotal(overviewRows).toFixed(2)"
-              unit="元" /><MetricCard
+              unit="元" /></view><MetricCard
               :label="overviewYear + (expense ? '年总支出' : '年总收入')"
               :value="yearAmount.toFixed(2)"
               unit="元" /><MetricCard
               :label="expense ? '月均支出' : '月均收入'"
               :value="monthlyAverage.toFixed(2)"
               unit="元" /></view></view
-        ><MiniChart
+        ><view class="chart-grid ui-gap-md"><MiniChart
           :label="expense ? '月度支出趋势' : '月度收入趋势'"
           kind="bar"
           :labels="yearRows.map((row) => String(row.month) + '月')"
@@ -358,9 +373,9 @@ async function removeSelected() {
             },
           ]"
           unit="元"
-      /></PageState>
-      <view class="tools ui-toolbar"
-        ><MobileButton
+      /></view></PageState>
+      <view class="tools ledger-toolbar ui-toolbar"
+        ><text class="section-title">{{ expense ? '支出明细' : '收入明细' }}</text><view class="filter-trigger"><MobileButton :label="activeFilterCount ? '更多筛选，已启用 ' + activeFilterCount + ' 项条件' : '更多筛选'" icon="ant-design:filter-outlined" variant="quiet" @click="showFilters = !showFilters" /><text v-if="activeFilterCount" class="filter-count">{{ activeFilterCount }}</text></view><MobileButton
           label="统计"
           icon="ant-design:bar-chart-outlined"
           variant="quiet"
@@ -380,14 +395,15 @@ async function removeSelected() {
           kind="selector"
           :options="['月度', '年度']"
           v-model="statisticsPeriod"
-          @update:modelValue="loadStatistics" /><PageState
+          @update:modelValue="loadStatistics" /><PageState skeleton="chart"
           :loading="statisticsBusy"
           :error="statisticsError"
-          @retry="loadStatistics"
+          @retry="types.length ? loadStatistics() : initialize()"
           ><view
             v-for="group in statistics"
             :key="group.year + '-' + group.month"
             class="record ui-card"
+            :class="themeClass('record')"
             ><text
               >{{ group.year
               }}{{ group.month ? '-' + String(group.month).padStart(2, '0') : '' }} · ¥{{
@@ -407,19 +423,20 @@ async function removeSelected() {
                 variant="quiet"
                 @click="filterStatistics(group, item)" /></view></view></PageState></view
       ><view class="filters ui-field-row">
-        <FormField compact stretch label="年份" v-model="filters.year" />
+        <FormField v-if="showFilters" compact stretch label="年份" v-model="filters.year" />
         <FormField
           compact
           stretch
+          hide-label
           label="类型"
           kind="selector"
-          :options="['全部', ...types.map((item) => item.dictLabel)]"
+          :options="['全部类型', ...types.map((item) => item.dictLabel)]"
           v-model="typeFilter"
         />
         <FormField
           compact
           stretch
-          v-if="expense"
+          v-if="expense && showFilters"
           label="支付方式"
           kind="selector"
           :options="['全部', ...payments.map((item) => item.dictLabel)]"
@@ -428,12 +445,14 @@ async function removeSelected() {
         <FormField
           compact
           stretch
+          v-if="showFilters"
           label="起始日期"
           kind="date"
           v-model="filters.startTime"
         /><FormField
           compact
           stretch
+          v-if="showFilters"
           label="结束日期"
           kind="date"
           v-model="filters.endTime"
@@ -441,62 +460,60 @@ async function removeSelected() {
         <FormField
           compact
           stretch
-          v-if="expense"
+          v-if="expense && showFilters"
           label="备注"
           v-model="filters.remark"
         /><FormField
           compact
           stretch
-          v-if="expense"
+          v-if="expense && showFilters"
           label="交易对方"
           v-model="filters.counterparty"
         /><FormField
           compact
           stretch
-          v-if="expense"
+          v-if="expense && showFilters"
           label="交易描述"
           v-model="filters.expDesc"
         />
         <FormField
           compact
           stretch
+          hide-label
           label="排序"
           kind="selector"
           :options="['日期降序', '金额降序', '金额升序']"
           v-model="sort"
         />
       </view>
-      <MobileButton label="筛选" :loading="loading" @click="load()" />
-      <text class="summary ui-py-section"
-        >{{ total }} 笔 · 已加载合计 ¥{{ amount.toFixed(2) }}</text
-      >
+      <view class="filter-footer ui-row" :class="{ 'filter-footer-loading': loading && !rows.length }"><text v-if="!loading || rows.length" class="summary">{{ total }} 笔 · 已加载合计 ¥{{ amount.toFixed(2) }}</text><MobileButton label="筛选" icon="ant-design:search-outlined" :loading="loading" @click="load()" /></view>
       <ConfirmAction
         v-if="expense && selected.length"
         :label="'删除选中 ' + selected.length + ' 笔'"
         :action="removeSelected"
       />
-      <PageState
+      <PageState skeleton="list"
         :loading="loading && rows.length === 0"
         :error="error"
         :empty="!loading && rows.length === 0"
         @retry="initialize"
       >
-        <view v-for="row in sorted" :key="ledgerId(row)" class="record ui-card">
-          <view class="record-main ui-gap-sm" @click="edit(row)"
-            ><text class="money">¥{{ Number(row.amt).toFixed(2) }}</text
-            ><text
+        <view v-for="row in sorted" :key="ledgerId(row)" class="record ui-card" :class="themeClass('record')">
+          <view class="record-main ui-gap-xs" @click="edit(row)"
+            ><text class="money" :class="expense ? 'money-expense' : 'money-income'">¥{{ Number(row.amt).toFixed(2) }}</text
+            ><text class="record-meta"
               >{{ name(types, row[expense ? 'expTypeId' : 'incTypeId']) }} ·
               {{ row.expTime || row.incDate }}</text
-            ><text v-if="expense"
+            ><text v-if="expense" class="record-meta"
               >交易金额 ¥{{ row.transactionAmt }} ·
               {{ name(payments, row.payTypeId) }}</text
-            ><text>{{ row.remark || row.expDesc }}</text
-            ><text v-if="row.counterparty">{{ row.counterparty }}</text
-            ><text v-if="row.transactionId"
+            ><text v-if="row.remark || row.expDesc" class="record-description">{{ row.remark || row.expDesc }}</text
+            ><text v-if="row.counterparty" class="record-meta">{{ row.counterparty }}</text
+            ><text v-if="row.transactionId" class="record-reference"
               >{{ row.transactionId }} · {{ row.transactionStatus }}</text
             ></view
           >
-          <view class="tools ui-toolbar"
+          <view class="record-actions ui-row"
             ><MobileButton
               v-if="expense"
               :label="selected.includes(ledgerId(row)) ? '取消选择' : '选择'"
@@ -579,9 +596,10 @@ async function removeSelected() {
   color: #e7e9ee;
 }
 .finance-summary {
-  border-radius: 16px;
-  background: linear-gradient(135deg, #7381e8, #7353a5);
+  display: flex;
+  flex-direction: column;
 }
+.summary-total { grid-column: 1 / -1; }
 .metrics {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -598,6 +616,9 @@ async function removeSelected() {
   color: #718096;
 }
 .record {
+  background-color: #ffffff;
+  border-radius: 14px;
+  gap: $space-inline;
   display: flex;
   flex-direction: row;
   align-items: center;
@@ -608,19 +629,38 @@ async function removeSelected() {
   display: flex;
   flex-direction: column;
   flex: 1;
-  min-width: 200px;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 .money {
-  font-size: 22px;
+  font-size: 20px;
   font-weight: 600;
 }
+.record-dark { background-color: #1c1e22; }
+.ledger-toolbar { align-items: center; margin-top: $space-section; }
+.section-title { flex: 1; font-size: 16px; font-weight: 600; }
+.filter-trigger { position: relative; flex-shrink: 0; }
+.filter-count { position: absolute; top: 0; right: 0; min-width: 16px; height: 16px; border-radius: 8px; background-color: #427bea; color: #fff; font-size: 10px; text-align: center; line-height: 16px; pointer-events: none; }
+.filter-footer { align-items: center; justify-content: space-between; margin-bottom: $space-section; }
+.summary { font-size: 12px; }
+.record-meta { font-size: 12px; color: #7b8493; line-height: 1.5; }
+.record-description { font-size: 14px; line-height: 1.5; }
+.record-reference { font-size: 11px; color: #7b8493; overflow-wrap: anywhere; }
+.record-actions { flex-shrink: 0; align-items: center; }
+.money-income { color: #2f9e75; }
+.money-expense { color: #d67842; }
+.chart-grid { display: grid; grid-template-columns: minmax(0, 1fr); }
 .error {
   color: #dc5454;
   display: block;
 }
 @media (min-width: 700px) {
+  .summary-total { grid-column: auto; }
+  .filters { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .chart-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .metrics {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }
+.filter-footer-loading { justify-content: flex-end; }
 </style>

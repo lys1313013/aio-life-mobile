@@ -1,5 +1,8 @@
 <script setup lang="ts">
+import ContentSkeleton from '../../components/ContentSkeleton.uvue';
 import { computed, onMounted, onUnmounted, ref } from 'vue';
+import spacing from '../../styles/spacing.json';
+import AppIcon from '../../components/AppIcon.uvue';
 import MobilePage from '../../components/MobilePage.uvue';
 import PageHeader from '../../components/PageHeader.uvue';
 import PageState from '../../components/PageState.uvue';
@@ -44,7 +47,22 @@ const loading = ref(false),
   draft = ref<Record<string, any>>({}),
   tagDraft = ref<Record<string, any>>({}),
   revealed = ref<Record<string, string>>({}),
-  revealBusy = ref('');
+  revealBusy = ref(''),
+  menuCardId = ref('');
+const menuLeft = ref(0), menuTop = ref(0);
+function toggleMenu(card: any) {
+  if (menuCardId.value === card.id) { menuCardId.value = ''; return; }
+  uni.createSelectorQuery().select('#card-more-' + card.id).boundingClientRect((rect) => {
+    if (!alive || !rect || Array.isArray(rect)) return;
+    const viewport = uni.getWindowInfo();
+    const menuWidth = 168;
+    const menuHeight = spacing.controlMin * 4 + spacing.detail * 3 + spacing.inline * 2;
+    menuLeft.value = Math.max(spacing.overlayInline, Math.min(rect.right - menuWidth, viewport.windowWidth - spacing.overlayInline - menuWidth));
+    const below = rect.bottom + spacing.detail;
+    menuTop.value = Math.max(spacing.overlayInline, below + menuHeight <= viewport.windowHeight - spacing.overlayInline ? below : rect.top - menuHeight - spacing.detail);
+    menuCardId.value = card.id;
+  }).exec();
+}
 let alive = true,
   stamp = 0;
 onUnmounted(() => {
@@ -102,6 +120,7 @@ useDomainPage(
     alive = false;
     stamp++;
     cards.value = [];
+    menuCardId.value = "";
     revealed.value = {};
     coverUrls.value = {};
     coverErrors.value = {};
@@ -163,6 +182,7 @@ async function uploadCover() {
   }
 }
 function edit(card: any = null) {
+  menuCardId.value = "";
   moreInfo.value = false;
   coverPreview.value = card ? coverUrls.value[card.id] || '' : '';
   draft.value = card
@@ -289,28 +309,33 @@ async function remove(card: any) {
   cards.value = cards.value.filter((item) => item.id !== card.id);
   delete revealed.value[card.id];
 }
-async function reveal(card: any) {
-  const mutationStamp = stamp;
+function cardNumber(card: any) {
+  return revealed.value[card.id]
+    ? revealed.value[card.id].replace(/(.{4})/g, '$1 ').trim()
+    : [card.cardNoFirst4, '••••', card.cardNoLast4].filter(Boolean).join(' ');
+}
+async function reveal(card: any, copy = false) {
+  menuCardId.value = '';
   if (revealBusy.value) return;
-  if (revealed.value[card.id]) {
+  if (!copy && revealed.value[card.id]) {
     delete revealed.value[card.id];
     return;
   }
   revealBusy.value = card.id;
+  const current = stamp;
   try {
-    const current = stamp;
-    const value = await revealCard(String(card.id));
-    if (alive && stamp === current)
+    const value = revealed.value[card.id] || await revealCard(String(card.id));
+    if (!alive || stamp !== current) return;
+    if (copy) {
+      uni.setClipboardData({ data: value });
+    } else {
       revealed.value = { ...revealed.value, [card.id]: value };
+    }
   } catch (e) {
-    error.value = e.message;
+    if (alive && stamp === current) uni.showToast({ title: e.message || '卡号读取失败', icon: 'none' });
   } finally {
     revealBusy.value = '';
   }
-}
-function copy(card: any) {
-  const value = revealed.value[card.id];
-  if (value) uni.setClipboardData({ data: value });
 }
 function editTag(value: any = null) {
   tagDraft.value = value ? { ...value } : { name: '', color: '#419878', status: '0' };
@@ -356,11 +381,11 @@ async function removeTag(value: any) {
       refreshing = true;
       load();
     "
-    ><PageHeader title="银行卡" back @back="uni.navigateBack()" /><view
+    ><PageHeader title="" back @back="uni.navigateBack()" /><view
       class="body ui-page-body"
       :class="themeClass('body')"
-      ><view class="actions ui-toolbar"
-        ><MobileButton
+      ><view class="actions search-toolbar ui-toolbar"
+        ><FormField compact stretch hide-label label="搜索银行卡" placeholder="银行、卡名或尾号" v-model="keyword" /><MobileButton
           label="新增银行卡"
           icon="ant-design:plus-outlined"
           @click="edit()" /><MobileButton
@@ -368,7 +393,7 @@ async function removeTag(value: any) {
           icon="ant-design:tags-outlined"
           variant="quiet"
           @click="editTag()" /></view
-      ><FormField compact stretch label="搜索" v-model="keyword" /><view
+      ><view
         class="filters ui-field-row"
         ><FormField
           compact
@@ -395,19 +420,22 @@ async function removeTag(value: any) {
           kind="selector"
           :options="['全部', ...tags.map((item) => item.name)]"
           v-model="tag" /></view
-      ><PageState
+      ><PageState skeleton="list"
         :loading="loading"
         :error="error"
         :empty="!loading && !filtered.length"
         @retry="load"
-        ><view class="card-grid ui-gap-md"
+        >
+<template #loading><view class="card-grid ui-gap-md"><view v-for="n in 4" :key="n" class="card ui-gap-sm" :class="themeClass('card')"><view class="card-face ui-pad-card ui-gap-sm"><ContentSkeleton variant="cover" /></view><ContentSkeleton variant="caption" /></view></view></template>
+<view class="card-grid ui-gap-md"
           ><view
             v-for="card in filtered"
             :key="card.id"
-            class="card ui-card"
+            class="card ui-gap-sm"
             :class="themeClass('card')"
             ><view
               class="card-face ui-pad-card ui-gap-sm"
+              :class="{ 'card-face-image': !!coverUrls[card.id] }"
               :style="{ backgroundColor: card.coverColor || '#334766' }"
               ><image
                 v-if="coverUrls[card.id]"
@@ -421,48 +449,46 @@ async function removeTag(value: any) {
                   variant="quiet"
                   :loading="coverLoading[card.id]"
                   @click="loadCover(card)" /></view
-              ><text class="title">{{ card.bankName }}</text
-              ><view class="card-chip" /><view class="face-bottom ui-row"
-                ><text>{{ card.bankCode || 'BANK CARD' }}</text
+              ><view v-if="!coverUrls[card.id]" class="face-heading ui-row">
+                <AppIcon name="ant-design:bank-outlined" :size="22" color="#f1f4f9" />
+                <text class="title face-title">{{ card.bankName }}</text>
+              </view>
+              <view class="face-middle ui-row">
+                <view v-if="!coverUrls[card.id]" class="card-chip" />
+                <text class="number" :class="{ 'number-on-image': !!coverUrls[card.id] }">{{ cardNumber(card) }}</text>
+              </view><view v-if="!coverUrls[card.id]" class="face-bottom ui-row"
+                ><text>{{ card.cardName || card.bankCode || 'BANK CARD' }}</text
                 ><text>{{ card.cardType === 'credit' ? '信用卡' : '储蓄卡' }}</text></view
               ></view
-            ><view class="card-caption ui-row"
-              ><text class="number">{{
-                revealed[card.id] || '•••• ' + card.cardNoLast4
-              }}</text
-              ><text v-if="card.alias || card.cardName">{{
-                card.alias || card.cardName
-              }}</text
-              ><text v-if="card.status !== 'normal'">{{
+            ><view
+              class="card-menu-anchor"
+              :class="{ 'card-menu-active': menuCardId === card.id }"
+            >
+              <ConfirmAction label="删除银行卡" :message="'删除尾号 ' + card.cardNoLast4 + ' 的银行卡？'" :action="() => remove(card)">
+                <template #default="{ open, busy }">
+                  <button class="card-more" :id="'card-more-' + card.id" role="button" aria-label="银行卡更多操作" aria-haspopup="menu" :aria-expanded="menuCardId === card.id" :loading="revealBusy === card.id || busy" :disabled="revealBusy === card.id || busy" @click="toggleMenu(card)">
+                    <AppIcon v-if="revealBusy !== card.id && !busy" name="lucide:ellipsis" :size="24" color="#f1f4f9" />
+                  </button>
+                  <view v-if="menuCardId === card.id" class="card-menu ui-pad-sm ui-gap-xs" :style="{ left: menuLeft + 'px', top: menuTop + 'px' }" :class="themeClass('card-menu')" role="menu">
+                    <button class="card-menu-item ui-row" role="menuitem" @click="reveal(card)"><AppIcon :name="revealed[card.id] ? 'ant-design:eye-invisible-outlined' : 'ant-design:eye-outlined'" :size="18" /><text>{{ revealed[card.id] ? '隐藏卡号' : '查看卡号' }}</text></button>
+                    <button class="card-menu-item ui-row" role="menuitem" @click="reveal(card, true)"><AppIcon name="ant-design:copy-outlined" :size="18" /><text>复制卡号</text></button>
+                    <button class="card-menu-item ui-row" role="menuitem" @click="edit(card)"><AppIcon name="ant-design:edit-outlined" :size="18" /><text>编辑银行卡</text></button>
+                    <button class="card-menu-item card-menu-danger ui-row" role="menuitem" @click="menuCardId = ''; open()"><AppIcon name="ant-design:delete-outlined" :size="18" color="#dc5454" /><text>删除银行卡</text></button>
+                  </view>
+                </template>
+              </ConfirmAction>
+            </view>
+            <view v-if="card.alias || coverUrls[card.id] || card.status !== 'normal'" class="card-caption ui-row"
+              ><text class="card-name">{{ card.alias || (coverUrls[card.id] ? card.bankName : '') }}</text
+              ><text v-if="card.status !== 'normal'" class="card-status">{{
                 statusMap[card.status]
               }}</text></view
-            ><text v-if="card.cardType === 'credit'"
+            ><text v-if="card.cardType === 'credit'" class="card-meta"
               >额度 {{ card.creditLimit || '—' }} · 账单日
               {{ card.statementDay || '—' }} · 还款日 {{ card.repaymentDay || '—' }}</text
-            ><text>{{ card.tags?.map((item) => item.name).join(' · ') }}</text
-            ><text>{{ card.remark }}</text
-            ><view class="actions ui-toolbar"
-              ><MobileButton
-                label="显示或隐藏卡号"
-                :icon="
-                  revealed[card.id]
-                    ? 'ant-design:eye-invisible-outlined'
-                    : 'ant-design:eye-outlined'
-                "
-                variant="quiet"
-                :loading="revealBusy === card.id"
-                @click="reveal(card)" /><MobileButton
-                v-if="revealed[card.id]"
-                label="复制卡号"
-                icon="ant-design:copy-outlined"
-                variant="quiet"
-                @click="copy(card)" /><MobileButton
-                label="编辑"
-                icon="ant-design:edit-outlined"
-                variant="quiet"
-                @click="edit(card)" /><ConfirmAction
-                label="删除银行卡"
-                :action="() => remove(card)" /></view></view></view></PageState
+            ><view v-if="card.tags?.length" class="card-tags ui-row"><text v-for="item in card.tags" :key="item.id" class="card-tag">{{ item.name }}</text></view
+            ><text v-if="card.remark" class="card-meta">{{ card.remark }}</text
+            ></view></view></PageState
       ><view class="tags ui-mt-section"
         ><view v-for="item in tags" :key="item.id" class="actions ui-toolbar"
           ><text>{{ item.name }}</text
@@ -473,19 +499,21 @@ async function removeTag(value: any) {
             @click="editTag(item)" /><ConfirmAction
             label="删除标签"
             :action="() => removeTag(item)" /></view></view></view
-    ><AdaptiveModal v-if="modal" label="银行卡" :busy="saving" @close="modal = false"
+    ><view v-if="menuCardId" class="menu-backdrop" @click="menuCardId = ''" />
+    <AdaptiveModal v-if="modal" label="银行卡" :busy="saving" @close="modal = false"
       ><view
         class="draft-face ui-pad-card ui-gap-sm"
+        :class="{ 'card-face-image': !!coverPreview }"
         :style="{ backgroundColor: draft.coverColor || '#334766' }"
         ><image
           v-if="coverPreview"
           :src="coverPreview"
           mode="aspectFill"
           class="draft-cover"
-        /><text class="title">{{
+        /><text v-if="!coverPreview" class="title">{{
           draftBank === '自定义' ? draft.customBankName || '选择银行' : draftBank
         }}</text
-        ><view class="card-chip" /><text>{{ draftType }}</text></view
+        ><view v-if="!coverPreview" class="card-chip" /><text v-if="!coverPreview">{{ draftType }}</text></view
       ><view class="actions ui-toolbar"
         ><MobileButton
           label="上传卡面"
@@ -618,26 +646,30 @@ async function removeTag(value: any) {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 .card-grid {
-  display: flex;
-  flex-direction: row;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: start;
 }
 .card {
   width: 100%;
   box-sizing: border-box;
   border-radius: 18px;
   color: #263248;
-  background-color: #ffffff;
+  position: relative;
+  min-width: 0;
   display: flex;
   flex-direction: column;
 }
 .card-dark {
   color: #e7e9ee;
-  background-color: #1c1e22;
 }
 .card-face,
 .draft-face {
-  min-height: 180px;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  box-sizing: border-box;
+  aspect-ratio: 1.586;
   border-radius: 14px;
   color: #f1f4f9;
   position: relative;
@@ -660,6 +692,93 @@ async function removeTag(value: any) {
 .face-bottom {
   font-size: 12px;
 }
+.face-heading {
+  width: 100%;
+  box-sizing: border-box;
+  padding-right: calc(#{$space-controlMin} + #{$space-inline});
+  min-height: $space-controlMin;
+  align-items: center;
+}
+.face-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.face-middle {
+  position: absolute;
+  top: 47%;
+  left: $space-card;
+  right: $space-card;
+  min-height: 25px;
+  align-items: center;
+  justify-content: flex-end;
+}
+.card-chip { flex-shrink: 0; }
+.number-on-image {
+  flex: none;
+  max-width: 100%;
+  padding: $space-detail $space-inline;
+  border-radius: 6px;
+  background-color: rgba(0, 0, 0, 0.65);
+}
+.face-bottom {
+  position: absolute;
+  left: $space-card;
+  right: $space-card;
+  bottom: $space-card;
+  flex-wrap: nowrap;
+}
+.card-menu-anchor {
+  position: absolute;
+  top: $space-card;
+  right: $space-card;
+  overflow: visible;
+}
+.card-menu-active { z-index: 1200; }
+.card-more {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: $space-controlMin;
+  height: $space-controlMin;
+  margin: 0;
+  padding: 0;
+  color: #f1f4f9;
+  background-color: rgba(0, 0, 0, 0.18);
+  border-radius: 12px;
+}
+.menu-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1100;
+}
+.card-menu {
+  position: fixed;
+  box-sizing: border-box;
+  width: 168px;
+  border-radius: 12px;
+  background-color: #ffffff;
+  color: #263248;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.18);
+}
+.card-menu-dark { background-color: #292c32; color: #eeeeef; }
+.card-menu-item {
+  min-height: $space-controlMin;
+  width: 100%;
+  margin: 0;
+  padding: 0 $space-inline;
+  align-items: center;
+  text-align: left;
+  color: inherit;
+  background-color: transparent;
+  font-size: 14px;
+}
+.card-menu-danger { color: #dc5454; }
+/* #ifdef WEB || MP-WEIXIN */
+.card-more::after, .card-menu-item::after { border: 0; }
+/* #endif */
 .palette {
   flex-wrap: wrap;
 }
@@ -678,27 +797,35 @@ async function removeTag(value: any) {
   outline: 2px solid #8b8f99;
   outline-offset: 2px;
 }
-.draft-cover {
-  width: 100%;
-  height: 120px;
-}
-.cover {
-  width: 100%;
-  height: 120px;
-  border-radius: 12px;
-}
+.draft-cover { position: absolute; inset: 0; width: 100%; height: 100%; }
+.cover { position: absolute; inset: 0; width: 100%; height: 100%; border-radius: 14px; }
+.card-face-image { padding: 0; }
+.card-meta { color: #7b8493; font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; }
+.card-name { font-size: 13px; }
+.card-status { color: #c87942; font-size: 12px; }
+.card-tags { flex-wrap: wrap; }
+.card-tag { font-size: 11px; color: #7b8493; border-radius: 5px; padding: $space-detail $space-inline; background-color: #80808012; }
+.card-caption { min-width: 0; overflow-wrap: anywhere; }
+.search-toolbar { flex-wrap: nowrap; }
+
 .title {
-  font-size: 19px;
+  font-size: 17px;
   font-weight: 600;
 }
 .number {
-  font-size: 22px;
-  letter-spacing: 2px;
+  flex: 1;
+  min-width: 0;
+  font-size: 14px;
+  line-height: 20px;
+  letter-spacing: 1px;
+  text-align: right;
+  overflow-wrap: anywhere;
 }
 @media (min-width: 600px) {
-  .card {
-    width: calc((100% - #{$space-section}) / 2);
+  .card-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+  .filters { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 }
 .tags {
 }

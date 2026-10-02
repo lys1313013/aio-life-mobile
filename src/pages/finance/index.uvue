@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import ContentSkeleton from '../../components/ContentSkeleton.uvue';
 import { computed, onMounted, onUnmounted, ref } from 'vue';
 import MobilePage from '../../components/MobilePage.uvue';
 import PageHeader from '../../components/PageHeader.uvue';
@@ -148,7 +149,7 @@ function width(amount: number, rows: any[]) {
     ><PageHeader title="财务概览" back @back="uni.navigateBack()" /><view
       class="body ui-page-body"
       :class="themeClass('body')"
-      ><view class="actions ui-toolbar"
+      ><view class="actions overview-tools ui-toolbar"
         ><MobileButton
           label="收入"
           variant="quiet"
@@ -160,16 +161,19 @@ function width(amount: number, rows: any[]) {
           variant="quiet"
           @click="uni.navigateTo({ url: '/pages/finance/cards' })" /></view
       ><FormField
+        compact stretch hide-label
         label="年份"
         kind="selector"
         :options="years"
         v-model="year"
-      /><PageState
+      /><PageState skeleton="overview"
         :loading="loading"
         :error="error"
         :empty="!loading && !income.length && !expense.length"
         @retry="load"
-        ><view class="metrics ui-row ui-section"
+        >
+<template #loading><view class="ui-gap-md"><view class="metrics ui-row ui-section"><MetricCard v-for="label in ['总收入', '总支出', '总结余', '结余率']" :key="label" :label="label" value="" loading /></view><ContentSkeleton v-for="n in 2" :key="n" variant="chart" /></view></template>
+<view class="metrics ui-row ui-section"
           ><MetricCard
             label="总收入"
             :value="totalIncome.toFixed(2)"
@@ -203,7 +207,7 @@ function width(amount: number, rows: any[]) {
           :series="[{ name: '累计结余', values: months.map((row) => row.deposit) }]"
           unit="元"
         /><text class="heading ui-mt-section ui-section">月度收支与累计结余</text
-        ><view v-for="row in months" :key="row.key" class="line ui-gap-sm ui-section"
+        ><view v-for="row in months" :key="row.key" class="line ui-pad-card ui-gap-sm ui-section" :class="themeClass('line')"
           ><text>{{ row.key }}</text
           ><text
             >收入 {{ row.income.toFixed(2) }} · 支出 {{ row.expense.toFixed(2) }}</text
@@ -220,7 +224,7 @@ function width(amount: number, rows: any[]) {
         ><view
           v-for="row in incCategories"
           :key="row.name"
-          class="line ui-gap-sm ui-section"
+          class="line ui-pad-card ui-gap-sm ui-section" :class="themeClass('line')"
           ><text
             >{{ row.name }} · {{ row.amount.toFixed(2) }} ·
             {{ ((row.amount / Math.max(1, totalIncome)) * 100).toFixed(1) }}%</text
@@ -235,7 +239,7 @@ function width(amount: number, rows: any[]) {
         ><view
           v-for="row in expCategories"
           :key="row.name"
-          class="line ui-gap-sm ui-section"
+          class="line ui-pad-card ui-gap-sm ui-section" :class="themeClass('line')"
           ><text
             >{{ row.name }} · {{ row.amount.toFixed(2) }} ·
             {{ ((row.amount / Math.max(1, totalExpense)) * 100).toFixed(1) }}%</text
@@ -266,7 +270,7 @@ function width(amount: number, rows: any[]) {
           ]"
           unit="%"
         /><text class="heading ui-mt-section ui-section">年度结余明细</text
-        ><view v-for="row in annual" :key="row.key" class="line ui-gap-sm ui-section"
+        ><view v-for="row in annual" :key="row.key" class="line ui-pad-card ui-gap-sm ui-section" :class="themeClass('line')"
           ><text
             >{{ row.key }} · 收入 {{ row.income.toFixed(2) }} · 支出
             {{ row.expense.toFixed(2) }} · 结余 {{ row.balance.toFixed(2) }}</text
@@ -299,7 +303,14 @@ function width(amount: number, rows: any[]) {
 .line {
   display: flex;
   flex-direction: column;
+  border-radius: 12px;
+  background-color: #ffffff;
+  font-size: 13px;
+  line-height: 1.6;
 }
+.line-dark { background-color: #1c1e22; }
+.overview-tools { margin-bottom: $space-inline; }
+.metrics { margin-top: $space-section; }
 .bar {
   height: 8px;
   border-radius: 4px;
