@@ -2,11 +2,11 @@
 import ContentSkeleton from './ContentSkeleton.uvue';
 import CategoryIcon from './CategoryIcon.uvue'
 import { isDark, themeClass } from '../services/theme.ts'
-defineProps<{ title: string; icon?: string; height?: number; loading?: boolean; error?: string; compact?: boolean; flushTop?: boolean; skeleton?: string }>()
+defineProps<{ title: string; icon?: string; height?: number; autoHeight?: boolean; loading?: boolean; error?: string; compact?: boolean; flushTop?: boolean; skeleton?: string }>()
 defineEmits<{ refresh: [] }>()
 </script>
 <template>
-  <view class="dashboard-section" :class="themeClass('dashboard-section')" :style="height ? { height: height + 'px' } : {}">
+  <view class="dashboard-section" :class="themeClass('dashboard-section')" :style="autoHeight ? { height: 'auto' } : height ? { height: height + 'px' } : {}">
     <view class="section-heading" :class="{ 'section-heading-compact': compact }">
       <view class="section-label"><CategoryIcon v-if="icon" :icon="icon" :size="16" :color="isDark ? '#d4d4d8' : '#52525b'" /><text class="section-title" :class="[{ 'section-title-with-icon': !!icon }, themeClass('section-title')]">{{ title }}</text></view>
       <slot name="actions" />
@@ -25,7 +25,7 @@ defineEmits<{ refresh: [] }>()
       </button>
     </view>
     <view v-else-if="loading" class="section-loading"><ContentSkeleton compact :variant="skeleton || 'list'" :rows="2" :label="'正在加载' + title" /></view>
-    <view v-else class="section-content" :class="{ 'section-content-flush-top': flushTop }"><slot /></view>
+    <view v-else class="section-content" :class="{ 'section-content-flush-top': flushTop, 'section-content-auto': autoHeight }"><slot /></view>
   </view>
 </template>
 <style scoped lang="scss">
@@ -60,6 +60,7 @@ defineEmits<{ refresh: [] }>()
   padding: $space-fieldLabel $space-card $space-card;
 }
 .section-content-flush-top { padding-top: 0; }
+.section-content-auto { flex: none; }
 
 .section-error,
 .section-loading {

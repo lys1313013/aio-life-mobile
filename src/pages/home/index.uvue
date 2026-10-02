@@ -65,7 +65,7 @@ const exercise = ref<ExercisePage>({ days: [] })
 const commits = ref<Commit[]>([])
 const time = ref(timeSummary([], []))
 const timeDonutLabels = computed(() => summaryDonutLabels(time.value.groups))
-// 卡片高度只由视口决定，加载、失败和内容状态共用，避免请求完成时页面跳动。
+// 常规卡片高度由视口决定；单列待办加载后按内容收缩，以此高度作为滚动上限。
 function sectionInset(section: string) {
   return spacing.controlMin + (section === 'exercise' ? 0 : spacing.fieldLabel) + spacing.card + spacing.hairline * 2
 }
@@ -106,6 +106,7 @@ const states = reactive({
   exercise: { loading: false, error: '' },
   commits: { loading: false, error: '' },
 })
+const watchedAutoHeight = computed(() => viewportWidth.value < 768 && !(states.watched.loading && !refreshing.value) && !states.watched.error)
 const githubBound = computed(() =>
   cards.value.some((item) => item.type === 'GITHUB'),
 )
@@ -591,10 +592,11 @@ function trendLines(points) {
             ><DashboardSection
               title="待办"
               :height="sectionHeight('watched')"
+              :auto-height="watchedAutoHeight"
               :loading="states.watched.loading && !refreshing"
               :error="states.watched.error"
               @refresh="loadSection('watched')"
-              ><scroll-view scroll-y :show-scrollbar="false" class="list-scroll"
+              ><scroll-view scroll-y :show-scrollbar="false" class="list-scroll" :class="{ 'list-scroll-auto': watchedAutoHeight }" :style="watchedAutoHeight ? { maxHeight: (sectionHeight('watched') - sectionInset('watched')) + 'px' } : {}"
                 ><view
                   v-for="task in watched"
                   :key="task.id"
@@ -1102,6 +1104,7 @@ function trendLines(points) {
   height: 100%;
 }
 .list-row {  min-height: 56px; }
+.list-scroll-auto { flex: none; height: auto; }
 .thought-row, .task-row { flex-direction: row; align-items: center; }
 .thought-row { padding: $space-detail $space-inline; min-height: 32px; }
 .task-row { padding: $space-detail $space-inline; }
