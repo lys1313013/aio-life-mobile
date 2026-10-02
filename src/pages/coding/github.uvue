@@ -1,13 +1,13 @@
 <script setup lang="ts">
+import LoadingIndicator from '../../components/LoadingIndicator.uvue';
 import AppIcon from '../../components/AppIcon.uvue'
-import { computed, onMounted, onUnmounted, ref } from 'vue';
+import { computed, onUnmounted, reactive, ref } from 'vue';
 import MobilePage from '../../components/MobilePage.uvue';
 import PageHeader from '../../components/PageHeader.uvue';
 import PageState from '../../components/PageState.uvue';
 import FormField from '../../components/FormField.uvue';
 import MobileButton from '../../components/MobileButton.uvue';
 import MetricCard from '../../components/MetricCard.uvue';
-import LoadMore from '../../components/LoadMore.uvue';
 import {
   fetchCodingBindings,
   fetchCommits,
@@ -32,8 +32,14 @@ const username = ref(''),
   kind = ref('全部'),
   sort = ref('最近推送'),
   page = ref(1),
-  hasMore = ref(true),
-  moreBusy = ref(false);
+  hasMore = ref(false),
+  moreBusy = ref(false),
+  moreError = ref('');
+const sections = reactive({
+  calendar: { loading: true, error: '' },
+  repos: { loading: true, error: '' },
+  commits: { loading: true, error: '' },
+});
 let alive = true,
   stamp = 0,
   token = '';
@@ -67,10 +73,15 @@ const todayKey =
   '-' +
   String(today.getDate()).padStart(2, '0');
 const summary = computed(() => calendarSummary(days.value, todayKey));
-async function load() {
-  const current = ++stamp;
+async function load(section = '') {
+  if (section ? sections[section].loading : loading.value) return;
+  const current = section ? stamp : ++stamp;
+  if (!section) repos.value.forEach(repo => { repo.statsBusy = false; });
+  const keys = section ? [section] : ['calendar', 'repos', 'commits'];
+  if (keys.includes('commits')) moreError.value = '';
   loading.value = true;
   error.value = '';
+  keys.forEach(key => { sections[key].loading = true; sections[key].error = ''; });
   try {
     const bindings = await fetchCodingBindings(true);
     if (!alive || stamp !== current) return;
@@ -78,38 +89,41 @@ async function load() {
     if (!account?.platformUsername) throw new Error('请先绑定 GitHub 账号');
     username.value = account.platformUsername;
     token = account.accessToken || '';
-    const data = await Promise.allSettled([
-      fetchGithubCalendar(username.value, token),
-      fetchRepos(username.value, token),
-      fetchCommits(),
-    ]);
-    if (!alive || stamp !== current) return;
-    data.forEach((item, index) => {
-      if (item.status === 'fulfilled') {
-        if (index === 0) {
-          const calendar = item.value.data.user.contributionsCollection.contributionCalendar;
+    await Promise.all(keys.map(async key => {
+      try {
+        if (key === 'calendar') {
+          const result = await fetchGithubCalendar(username.value, token);
+          if (!alive || stamp !== current) return;
+          const calendar = result.data.user.contributionsCollection.contributionCalendar;
           total.value = calendar.totalContributions;
-          days.value = calendar.weeks.flatMap((week) =>
-            week.contributionDays.map((day) => ({ date: day.date, count: day.contributionCount })),
-          );
-        }
-        if (index === 1) {
-          repos.value = item.value.map((repo) => ({ ...repo, myCommits: null, statsBusy: true }));
+          days.value = calendar.weeks.flatMap(week => week.contributionDays.map(day => ({ date: day.date, count: day.contributionCount })));
+        } else if (key === 'repos') {
+          const result = await fetchRepos(username.value, token);
+          if (!alive || stamp !== current) return;
+          repos.value = result.map(repo => ({ ...repo, myCommits: null, statsBusy: true }));
           repoStats(current);
-        }
-        if (index === 2) {
-          commits.value = item.value;
+        } else {
+          const result = await fetchCommits();
+          if (!alive || stamp !== current) return;
+          commits.value = result;
           page.value = 1;
-          hasMore.value = item.value.length === 20;
+          hasMore.value = result.length === 20;
         }
-      } else error.value += (error.value ? '；' : '') + item.reason.message;
-    });
-  } catch (e) {
-    if (alive && stamp === current) error.value = e.message;
+      } catch (reason) {
+        if (alive && stamp === current) sections[key].error = reason.message || '加载失败';
+      } finally {
+        if (alive && stamp === current) sections[key].loading = false;
+      }
+    }));
+  } catch (reason) {
+    if (alive && stamp === current) {
+      error.value = reason.message;
+      keys.forEach(key => { sections[key].loading = false; });
+    }
   } finally {
     if (alive && stamp === current) {
-      loading.value = false;
-      refreshing.value = false;
+      loading.value = Object.values(sections).some(state => state.loading);
+      if (!loading.value) refreshing.value = false;
     }
   }
 }
@@ -140,17 +154,19 @@ async function repoStats(current: number) {
     });
 }
 async function more() {
-  if (moreBusy.value) return;
+  if (!alive || moreBusy.value || loading.value || error.value || sections.commits.error || !hasMore.value) return;
+  const current = stamp;
   moreBusy.value = true;
+  moreError.value = '';
   try {
     const rows = await fetchCommits(page.value + 1);
-    if (alive) {
+    if (alive && current === stamp) {
       commits.value = [...commits.value, ...rows];
       page.value++;
       hasMore.value = rows.length === 20;
     }
   } catch (e) {
-    error.value = e.message;
+    if (alive && current === stamp) moreError.value = e.message || '加载失败，请重试';
   } finally {
     moreBusy.value = false;
   }
@@ -167,6 +183,9 @@ useDomainPage(
     repos.value = [];
     commits.value = [];
     days.value = [];
+    hasMore.value = false;
+    moreError.value = '';
+    Object.values(sections).forEach(section => { section.loading = false; section.error = ''; });
     loading.value = false;
     refreshing.value = false;
   },
@@ -175,6 +194,7 @@ useDomainPage(
 <template>
   <MobilePage
     :refreshing="refreshing"
+    @reachbottom="more()"
     @refresh="
       refreshing = true;
       load();
@@ -183,13 +203,14 @@ useDomainPage(
       class="body ui-page-body"
       :class="themeClass('body')"
       ><view class="actions ui-toolbar"
-        ><text>{{ username }}</text
+        ><text class="account-name">{{ username }}</text
         ><MobileButton
           label="账号绑定"
           icon="ant-design:setting-outlined"
           variant="quiet"
           @click="uni.navigateTo({ url: '/pages/profile/bindings' })" /></view
-      ><PageState :loading="loading" :error="error" @retry="load"
+      ><PageState v-if="error" :error="error" @retry="load()" />
+      <template v-if="!error || username"><PageState skeleton="calendar" :loading="sections.calendar.loading" :error="sections.calendar.error" @retry="load('calendar')"
         ><view class="metrics ui-row ui-section"
           ><MetricCard label="过去一年提交" :value="String(total)" /><MetricCard
             label="今日提交次数"
@@ -197,18 +218,18 @@ useDomainPage(
             label="连续提交"
             :value="String(summary.streak)"
             unit="天" /><MetricCard label="活跃天数" :value="String(summary.active)" unit="天" /></view
-        ><scroll-view scroll-x class="calendar-scroll ui-mt-section"
+        ><scroll-view scroll-x class="calendar-scroll ui-card" :class="themeClass('calendar-scroll')"
           ><view class="calendar ui-gap-xs"
             ><view
               v-for="day in days"
               :key="day.date"
               class="day"
-              :class="day.count > 0 ? 'active-day' : ''"
+              :class="day.count > 0 ? 'active-day' : themeClass('day')"
               :aria-label="day.date + ' ' + day.count + ' 次贡献'"
               @click="
                 uni.showToast({ title: day.date + ' · ' + day.count, icon: 'none' })
               " /></view></scroll-view
-        ><text class="heading ui-mt-section ui-section">仓库</text><FormField label="搜索仓库" v-model="keyword" /><view
+        ></PageState><text class="heading ui-section">仓库</text><FormField label="搜索仓库" placeholder="仓库名称或简介" v-model="keyword" /><view
           class="filters ui-field-row"
           ><FormField
             label="类型"
@@ -219,30 +240,29 @@ useDomainPage(
             kind="selector"
             compact stretch :options="['最近推送', 'Star', '我的提交']"
             v-model="sort" /></view
-        ><view v-for="repo in filtered" :key="repo.id" class="record ui-card" :class="themeClass('record')"
-          ><text class="title">{{ repo.name }}</text
-          ><AppIcon v-if="repo.fork" name="ant-design:fork-outlined" :size="16" /><text>{{ repo.description }}</text
-          ><text class="muted"
-            >{{ repo.language }} · Star {{ repo.stargazers_count }} · Fork {{ repo.forks_count }} ·
-            我的提交 {{ repo.statsBusy ? '…' : (repo.myCommits ?? '—')
-            }}<text v-if="repo.sourceStars != null"> · 来源 Star {{ repo.sourceStars }}</text></text
-          ><text v-if="repo.statsError" class="error ui-py-section">{{ repo.statsError }}</text
-          ><MobileButton
-            label="打开仓库"
-            icon="ant-design:export-outlined"
-            variant="quiet"
-            @click="openExternal(repo.html_url)" /></view
-        ><text class="heading ui-mt-section ui-section">最近提交</text
-        ><view v-for="(item, index) in commits" :key="item.id || index" class="record ui-card" :class="themeClass('record')"
-          ><text class="title">{{ item.repo }}</text
-          ><text>{{ item.message }}</text
-          ><text class="muted">{{ item.date }} · {{ item.actor }}</text
-          ><MobileButton
-            label="打开提交"
-            icon="ant-design:export-outlined"
-            variant="quiet"
-            @click="openExternal(item.commitUrl || item.repoUrl)" /></view
-        ><LoadMore :hasMore="hasMore" :loading="moreBusy" @load="more" /></PageState></view
+        ><PageState skeleton="list" :loading="sections.repos.loading" :error="sections.repos.error" :empty="!filtered.length" empty-text="暂无仓库" @retry="load('repos')"><view v-for="repo in filtered" :key="repo.id" class="record ui-card" :class="themeClass('record')">
+          <view class="record-head">
+            <view class="record-copy"><view class="meta-list"><text class="record-title">{{ repo.name }}</text><AppIcon v-if="repo.fork" name="ant-design:fork-outlined" :size="14" /></view><text v-if="repo.description" class="record-description" :class="themeClass('description')">{{ repo.description }}</text></view>
+            <MobileButton label="打开仓库" icon="ant-design:export-outlined" variant="quiet" @click="openExternal(repo.html_url)" />
+          </view>
+          <view class="meta-list">
+            <text v-if="repo.language" class="language">{{ repo.language }}</text>
+            <view class="meta-item" :aria-label="repo.stargazers_count + ' Stars'"><AppIcon name="ant-design:star-outlined" :size="13" /><text class="meta-value">{{ repo.stargazers_count }}</text></view>
+            <view class="meta-item" :aria-label="repo.forks_count + ' Forks'"><AppIcon name="ant-design:fork-outlined" :size="13" /><text class="meta-value">{{ repo.forks_count }}</text></view>
+            <view class="meta-item"><text>我的提交</text><LoadingIndicator v-if="repo.statsBusy" compact label="正在加载仓库提交数" /><text v-else>{{ repo.myCommits ?? '—' }}</text></view>
+            <text v-if="repo.sourceStars != null" class="meta-item">来源 Star {{ repo.sourceStars }}</text>
+          </view>
+          <text v-if="repo.statsError" class="error">{{ repo.statsError }}</text>
+        </view>
+        </PageState><text class="heading ui-section">最近提交</text>
+        <PageState skeleton="timeline" :loading="sections.commits.loading" :error="sections.commits.error" :empty="!commits.length" empty-text="暂无提交" @retry="load('commits')">
+        <view v-for="(item, index) in commits" :key="item.id || index" class="record ui-card" :class="themeClass('record')">
+          <view class="record-head"><view class="record-copy"><text class="repo-label">{{ item.repo }}</text><text class="record-title">{{ item.message }}</text></view><MobileButton label="打开提交" icon="ant-design:export-outlined" variant="quiet" @click="openExternal(item.commitUrl || item.repoUrl)" /></view>
+          <text class="muted">{{ item.date }} · {{ item.actor }}</text>
+        </view>
+        <LoadingIndicator v-if="moreBusy" compact label="正在加载更多" />
+        <PageState v-else-if="moreError" :error="moreError" @retry="more()" />
+        </PageState></template></view
   ></MobilePage>
 </template>
 <style scoped lang="scss">
@@ -283,7 +303,7 @@ useDomainPage(
   color: #718096;
 }
 .heading {
-  font-size: 20px;
+  font-size: 17px;
   font-weight: 600;
   display: block;
 }
@@ -310,4 +330,22 @@ useDomainPage(
   color: #dc5454;
 }
 .record-dark, .article-dark { background-color: #1c1e22; }
+
+.actions { align-items: center; justify-content: space-between; }
+.account-name { font-size: 14px; font-weight: 600; overflow-wrap: anywhere; }
+.record-head { display: flex; flex-direction: row; align-items: center; gap: $space-inline; }
+.record-copy { flex: 1; min-width: 0; gap: $space-detail; }
+.record-title { font-size: 15px; line-height: 22px; font-weight: 600; overflow-wrap: anywhere; }
+.record-description { font-size: 13px; line-height: 20px; color: #687386; overflow-wrap: anywhere; }
+.meta-list { display: flex; flex-direction: row; flex-wrap: wrap; align-items: center; gap: $space-inline; }
+.meta-item { display: flex; flex-direction: row; align-items: center; gap: $space-detail; font-size: 12px; color: #788394; }
+.description-dark { color: #a6aab4; }
+
+
+.language { color: #537cac; background-color: rgba(83,124,172,.1); border-radius: 5px; padding: $space-micro $space-detail; font-size: 12px; }
+.repo-label { font-size: 12px; color: #638fcb; }
+.calendar-scroll { box-sizing: border-box; border-radius: 14px; background-color: #ffffff; }
+.calendar-scroll-dark { background-color: #1c1e22; }
+.meta-value { font-size: 12px; }
+.day-dark { background-color: #2d3433; }
 </style>

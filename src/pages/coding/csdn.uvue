@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import ContentSkeleton from '../../components/ContentSkeleton.uvue';
+import AppIcon from '../../components/AppIcon.uvue';
 import { onMounted, onUnmounted, ref } from 'vue';
 import MobilePage from '../../components/MobilePage.uvue';
 import PageHeader from '../../components/PageHeader.uvue';
@@ -80,14 +82,16 @@ useDomainPage(
       class="body ui-page-body"
       :class="themeClass('body')"
       ><view class="actions ui-toolbar"
-        ><text>{{ username }}</text
+        ><text class="account-name">{{ username }}</text
         ><MobileButton
           label="账号绑定"
           icon="ant-design:setting-outlined"
           variant="quiet"
           @click="uni.navigateTo({ url: '/pages/profile/bindings' })" /></view
-      ><PageState :loading="loading" :error="error" @retry="load"
-        ><view v-if="stats" class="metrics ui-row ui-section"
+      ><PageState :has-content="!!stats || articles.length > 0" skeleton="articles" :loading="loading" :error="error" @retry="load"
+        >
+<template #loading><view class="metrics ui-row ui-section"><MetricCard v-for="label in ['总访问量', '原创数', '全站排名', '粉丝数', '获赞数', '评论']" :key="label" :label="label" value="" loading /></view><text class="heading ui-section">近期文章</text><view v-for="n in 3" :key="n" class="article ui-card" :class="themeClass('article')"><ContentSkeleton variant="tile" /></view></template>
+<view v-if="stats" class="metrics ui-row ui-section"
           ><MetricCard label="总访问量" :value="String(stats.viewCount)" /><MetricCard
             label="原创数"
             :value="String(stats.originalCount)" /><MetricCard
@@ -100,16 +104,9 @@ useDomainPage(
             label="评论"
             :value="String(stats.commentCount || 0)" /></view
         ><text class="heading ui-section">近期文章</text><view v-if="!articles.length" class="article empty ui-card" :class="themeClass('article')"><text class="muted">暂无近期文章</text></view><view v-for="item in articles" :key="item.id" class="article ui-card" :class="themeClass('article')"
-          ><text class="title">{{ item.title }}</text
-          ><text>{{ item.description }}</text
-          ><text class="muted"
-            >{{ item.postTime }} · 浏览 {{ item.viewCount }} · 评论 {{ item.commentCount }} · 点赞
-            {{ item.likeCount || 0 }} · 收藏 {{ item.collectCount || 0 }}</text
-          ><MobileButton
-            label="打开文章"
-            icon="ant-design:export-outlined"
-            variant="quiet"
-            @click="openExternal(item.url)" /></view></PageState></view
+          ><view class="record-head"><text class="record-title record-copy">{{ item.title }}</text><MobileButton label="打开文章" icon="ant-design:export-outlined" variant="quiet" @click="openExternal(item.url)" /></view>
+          <text v-if="item.description" class="record-description" :class="themeClass('description')">{{ item.description }}</text>
+          <view class="meta-list"><text class="meta-item">{{ item.postTime }}</text><view class="meta-item" :aria-label="'浏览 ' + item.viewCount"><AppIcon name="ant-design:eye-outlined" :size="13" /><text class="meta-value">{{ item.viewCount }}</text></view><view class="meta-item" :aria-label="'评论 ' + item.commentCount"><AppIcon name="ant-design:message-outlined" :size="13" /><text class="meta-value">{{ item.commentCount }}</text></view><view class="meta-item" :aria-label="'点赞 ' + (item.likeCount || 0)"><AppIcon name="ant-design:like-outlined" :size="13" /><text class="meta-value">{{ item.likeCount || 0 }}</text></view><view class="meta-item" :aria-label="'收藏 ' + (item.collectCount || 0)"><AppIcon name="ant-design:star-outlined" :size="13" /><text class="meta-value">{{ item.collectCount || 0 }}</text></view></view></view></PageState></view
   ></MobilePage>
 </template>
 <style scoped lang="scss">
@@ -129,7 +126,7 @@ useDomainPage(
   gap: $space-inline;
 }
 @media (min-width: 768px) {
-  .metrics { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .metrics { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
 .article {
   background-color: #ffffff;
@@ -148,4 +145,17 @@ useDomainPage(
 .record-dark, .article-dark { background-color: #1c1e22; }
 .heading { display: block; font-size: 18px; font-weight: 600; }
 .empty { min-height: 88px; align-items: center; justify-content: center; }
+
+.actions { align-items: center; justify-content: space-between; }
+.account-name { font-size: 14px; font-weight: 600; overflow-wrap: anywhere; }
+.record-head { display: flex; flex-direction: row; align-items: center; gap: $space-inline; }
+.record-copy { flex: 1; min-width: 0; gap: $space-detail; }
+.record-title { font-size: 15px; line-height: 22px; font-weight: 600; overflow-wrap: anywhere; }
+.record-description { font-size: 13px; line-height: 20px; color: #687386; overflow-wrap: anywhere; }
+.meta-list { display: flex; flex-direction: row; flex-wrap: wrap; align-items: center; gap: $space-inline; }
+.meta-item { display: flex; flex-direction: row; align-items: center; gap: $space-detail; font-size: 12px; color: #788394; }
+.description-dark { color: #a6aab4; }
+
+
+.meta-value { font-size: 12px; }
 </style>
