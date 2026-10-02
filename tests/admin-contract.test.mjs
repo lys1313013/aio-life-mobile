@@ -1,9 +1,10 @@
+import { withFormRequired } from './helpers/form-required-source.mjs';
 import { readFile } from 'node:fs/promises'
 import assert from 'node:assert/strict'
 import test from 'node:test'
-const asModule = text => `data:text/javascript;base64,${Buffer.from(text).toString('base64')}`
+const asModule = text => `data:text/javascript;base64,${Buffer.from(withFormRequired(text)).toString('base64')}`
 const source = await readFile(new URL('../src/services/admin/contract.ts',import.meta.url),'utf8')
-const specsSource = await readFile(new URL('../src/services/admin/specs.ts',import.meta.url),'utf8')
+const specsSource = await readFile(new URL('../src/pages/admin/services/specs.ts',import.meta.url),'utf8')
 const { stringId, queryPath, readPage, categoryPayload, siblingSort, flattenMenus, protectedMenu, validateConfig, orderCategories } = await import(asModule(source))
 const { adminPayload } = await import(asModule(specsSource))
 const id = '9223372036854775807'
@@ -12,6 +13,16 @@ test('管理员所有分页和路径保留长ID，数字ID拒绝；条件平铺�
  assert.deepEqual(readPage({items:[{dictCode:id}],total:1},'dictCode'),{items:[{dictCode:id}],total:1})
  assert.throws(()=>readPage({items:[{id:123}],total:1}),/ID/)
  assert.equal(queryPath('/query',{keyword:'a&b',page:1,empty:''}),'/query?keyword=a%26b&page=1')
+})
+test('管理分页兼容后端Long字符串总数，空页有效且长ID保持原样', () => {
+ const page = {items:[{id}],total:'21'}
+ assert.deepEqual(readPage(page), {items:[{id}],total:21})
+ assert.equal(page.total, '21')
+ assert.deepEqual(readPage({items:[],total:'0'}), {items:[],total:0})
+ assert.deepEqual(readPage({items:[{dictCode:id}],total:'1'}, 'dictCode'), {items:[{dictCode:id}],total:1})
+ for (const total of [null, undefined, '', ' ', 'abc', '-1', '1.5', '1e2', true, {}, [], -1, 1.5, NaN, Infinity, '9007199254740992', 9007199254740992]) {
+  assert.throws(() => readPage({items:[],total}), /列表数据异常/)
+ }
 })
 test('公共分类覆盖使用模板ID且未改父级不发送，未知和用户字段不泄露',() => {
  const original={id:'3',templateId:id,parentId:null,userId:'7'}
@@ -45,16 +56,16 @@ test('基础字典禁止改用户私有值，配置严格JSON与数字',() => {
 test('管理员CRUD与个人/公共分类接口分离，不将长ID转number',async()=>{
  const calls=[]
  globalThis.__adminMock=(...args)=>{calls.push(args); return Promise.resolve(true)}
- const serviceSource=await readFile(new URL('../src/services/admin/index.ts',import.meta.url),'utf8')
- const service=await import(asModule(serviceSource.replace("import { request } from '../api.ts'","const request = globalThis.__adminMock").replace("from './specs.ts'","from '"+asModule(specsSource)+"'").replace("from './contract.ts'","from '"+asModule(source)+"'")))
+ const serviceSource=await readFile(new URL('../src/pages/admin/services/index.ts',import.meta.url),'utf8')
+ const service=await import(asModule(serviceSource.replace("import { request } from '../../../services/api.ts'","const request = globalThis.__adminMock").replace("from './specs.ts'","from '"+asModule(specsSource)+"'").replace("from '../../../services/admin/contract.ts'","from '"+asModule(source)+"'")))
  await service.saveAdmin('users',{username:'demo',nickname:'演示',role:'user'},{id})
  assert.equal(calls.at(-1)[0],'/user-center'); assert.equal(calls.at(-1)[1],'PUT'); assert.equal(calls.at(-1)[2].id,id)
  await service.deleteAdmin('dict-types',{dictId:id})
  assert.deepEqual(calls.at(-1),['/sysDictType/'+id,'DELETE'])
  await service.batchCloseFeedback([id])
  assert.deepEqual(calls.at(-1),['/feedback/admin/batch','POST',{idList:[id],action:'CLOSE'}])
- const categoriesSource=await readFile(new URL('../src/services/admin/categories.ts',import.meta.url),'utf8')
- const categories=await import(asModule(categoriesSource.replace("import { request } from '../api.ts'","const request = globalThis.__adminMock").replace("from './contract.ts'","from '"+asModule(source)+"'")))
+ const categoriesSource=await readFile(new URL('../src/pages/categories/services/categories.ts',import.meta.url),'utf8')
+ const categories=await import(asModule(categoriesSource.replace("import { request } from '../../../services/api.ts'","const request = globalThis.__adminMock").replace("from '../../../services/admin/contract.ts'","from '"+asModule(source)+"'")))
  await categories.changeCategory({id,templateId:'9',userId:'4'},{isEnabled:0},false)
  assert.deepEqual(calls.at(-1),['/timeTrackerCategory','PUT',{id:'9',templateId:'9',isEnabled:0}])
  await categories.deleteCategory({id},true)

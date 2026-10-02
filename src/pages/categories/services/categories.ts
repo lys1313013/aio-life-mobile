@@ -1,5 +1,5 @@
-import { request } from '../api.ts'
-import { categoryPayload, readCategoryList, stringId } from './contract.ts'
+import { request } from '../../../services/api.ts'
+import { categoryPayload, readCategoryList, stringId } from '../../../services/admin/contract.ts'
 export async function listCategories(admin = false) {
   if (admin) return readCategoryList(await request('/timeTrackerCategory/admin/list'))
   const [visible, hidden] = await Promise.all([request('/timeTrackerCategory/list'), request('/timeTrackerCategory/hidden')])

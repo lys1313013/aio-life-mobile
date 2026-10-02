@@ -1,10 +1,11 @@
 import { defineConfig, loadEnv } from 'vite';
 import uni from '@dcloudio/vite-plugin-uni';
+import { weixinSubpackageVendors } from './scripts/weixin-subpackage-vendors.mjs';
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '');
   return {
-    plugins: [uni()],
+    plugins: [weixinSubpackageVendors(), uni()],
     // Compile object rest/spread before DevTools Babel; its helper modules are
     // otherwise missing from lazy-loaded subpackages. Keep other targets intact.
     ...(process.env.UNI_PLATFORM === 'mp-weixin' ? {

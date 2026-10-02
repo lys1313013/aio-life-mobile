@@ -3,6 +3,7 @@ const os = require('node:os');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 const { checkSettings, createReport, renderReport } = require('./weixin-size-report.cjs');
+const { mainBudgetKB } = require('./weixin-package-policy.json');
 
 const root = path.resolve(__dirname, '..');
 const args = process.argv.slice(2);
@@ -43,7 +44,10 @@ async function compile(projectPath, reportPath) {
       attr: async () => structuredClone(DefaultProjectAttr),
     });
     const compiled = await ci.getCompiledResult({ project, setting: { useProjectConfig: true }, threads: 2 });
-    const report = createReport(compiled, { compilerVersion, generatedAt: new Date().toISOString(), settings: config.setting });
+    const report = createReport(compiled, {
+      compilerVersion, generatedAt: new Date().toISOString(), settings: config.setting,
+      mainBudgetBytes: mainBudgetKB * 1024,
+    });
     fs.mkdirSync(path.dirname(reportPath), { recursive: true });
     fs.writeFileSync(reportPath, JSON.stringify(report, null, 2) + '\n');
     ci.cleanCache();

@@ -1,7 +1,8 @@
+import { withFormRequired } from './helpers/form-required-source.mjs';
 import { readFile } from 'node:fs/promises'
 import assert from 'node:assert/strict'
 import test from 'node:test'
-const importSource = source => import(`data:text/javascript;base64,${Buffer.from(source).toString('base64')}`)
+const importSource = source => import(`data:text/javascript;base64,${Buffer.from(withFormRequired(source)).toString('base64')}`)
 const contractSource = await readFile(new URL('../src/services/records/contracts.ts', import.meta.url), 'utf8')
 const { recordId, goalPayload, taskPayload, reordered, goalDateRange } = await importSource(contractSource)
 const id = '9223372036854775807'
@@ -28,8 +29,8 @@ test('待办排序只提交字符串 ID 和排序字段，越界不请求；明�
 })
 test('待办 API 使用真实 get 分页、PUT路径、数组排序、星标和批删契约', async () => {
   const calls = []; globalThis.__recordsRequest = async (...args) => { calls.push(args); return {} }
-  let source = await readFile(new URL('../src/services/records/tasks.ts', import.meta.url), 'utf8')
-  source = source.replace("import { request } from '../api.ts'", 'const request = globalThis.__recordsRequest').replace("import { recordId } from './contracts.ts'", `const recordId = ${recordId.toString()}`).replace(/request<any(?:\[\])?>/g, 'request')
+  let source = await readFile(new URL('../src/pages/tasks/services/tasks.ts', import.meta.url), 'utf8')
+  source = source.replace("import { request } from '../../../services/api.ts'", 'const request = globalThis.__recordsRequest').replace("import { recordId } from '../../../services/records/contracts.ts'", `const recordId = ${recordId.toString()}`).replace(/request<any(?:\[\])?>/g, 'request')
   const api = await importSource(source)
   await api.fetchTasks(2); await api.saveTaskRecord('task', { id, columnId: '8', content: '模拟' }); await api.saveTaskRecord('detail', { id }); await api.sortTaskRecords('detail', [{ id, sort: 1 }]); await api.starDetail(id, false); await api.deleteGoal(id)
   assert.deepEqual(calls, [['/tasks', 'GET', { get: 2, pageSize: 100 }], ['/tasks/' + id, 'PUT', { id, columnId: '8', content: '模拟' }], ['/taskDetails', 'PUT', { id }], ['/taskDetails/reSort', 'POST', [{ id, sort: 1 }]], ['/taskDetails/unstar/' + id, 'POST'], ['/goals/batchDelete', 'POST', { idList: [id] }]])

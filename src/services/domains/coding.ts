@@ -1,5 +1,5 @@
 import { request } from './session-guard.ts'
-import { queryPath } from './finance.ts'
+import { queryPath } from '../query-path.ts'
 export const fetchCodingBindings = (tokens=false) => request<any[]>(queryPath('/userbinds/list',{includeToken:tokens}))
 export const fetchCommits = (page=1) => request<any[]>(queryPath('/github/recent-commits',{page,perPage:20}))
 export const fetchCsdnStats = (username:string) => request<any>(queryPath('/csdn/stats',{username}))

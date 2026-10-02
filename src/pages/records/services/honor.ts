@@ -1,5 +1,5 @@
-import { request } from '../api.ts'
-import { recordId } from './contracts.ts'
+import { request } from '../../../services/api.ts'
+import { recordId } from '../../../services/records/contracts.ts'
 export function fetchHonors() { return request<any[]>('/honorRecords') }
 export function fetchHonorCategories() { return request<any[]>('/honorCategories') }
 export function saveHonor(payload) { return request<any>('/honorRecords', payload.id ? 'PUT' : 'POST', payload) }

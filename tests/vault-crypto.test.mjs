@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 import { pbkdf2Sync } from 'node:crypto'
 import { SM4 } from 'gm-crypto'
-let source=await readFile(new URL('../src/services/vault-crypto.ts',import.meta.url),'utf8')
+let source=await readFile(new URL('../src/pages/vault/services/vault-crypto.ts',import.meta.url),'utf8')
 source=source.replace(/\/\/ #ifdef (?:MP-WEIXIN|APP-ANDROID \|\| APP-IOS)[\s\S]*?\/\/ #endif/g,'')
 for(const pkg of ['gm-crypto','@noble/hashes/pbkdf2','@noble/hashes/sha256','@noble/hashes/utils'])source=source.replace(`from '${pkg}'`,`from '${import.meta.resolve(pkg)}'`)
 const {utf8Bytes,vaultKey,encryptSecret,decryptSecret,randomPassword}=await import(`data:text/javascript;base64,${Buffer.from(source).toString('base64')}`)

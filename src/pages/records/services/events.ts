@@ -1,5 +1,5 @@
-import { request } from '../api.ts'
-import { recordId } from './contracts.ts'
+import { request } from '../../../services/api.ts'
+import { recordId } from '../../../services/records/contracts.ts'
 export function fetchEvents(kind) { return request<any[]>(kind === 'anniversary' ? '/anniversaryRecords' : '/milestones') }
 export function saveEvent(kind, payload) { return request<any>(kind === 'anniversary' ? '/anniversaryRecords' : '/milestones', payload.id ? 'PUT' : 'POST', payload) }
 export function deleteEvent(kind, id) { return request((kind === 'anniversary' ? '/anniversaryRecords' : '/milestones') + '/batchDelete', 'POST', { idList: [recordId(id)] }) }

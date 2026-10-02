@@ -1,4 +1,4 @@
-import { chooseDocument, readDocument, releaseDocument, IMPORT_FILE_LIMIT } from '../native-files.ts'
+import { chooseDocument, readDocument, releaseDocument, IMPORT_FILE_LIMIT } from '../../../services/native-files.ts'
 import JSZip from 'jszip'
 import { parseCSV, parseMobileCSV, parseWechatExcel } from './import-parser.ts'
 import type { ParseContext } from './import-parser.ts'

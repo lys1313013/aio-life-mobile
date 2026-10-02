@@ -1,5 +1,5 @@
-import { request } from '../api.ts'
-import { recordId } from './contracts.ts'
+import { request } from '../../../services/api.ts'
+import { recordId } from '../../../services/records/contracts.ts'
 export function fetchGoals(filters = {}) { return request<any[]>('/goals', 'GET', filters) }
 export function saveGoal(payload) { return request<any>('/goals', payload.id ? 'PUT' : 'POST', payload) }
 export function deleteGoal(id) { return request('/goals/batchDelete', 'POST', { idList: [recordId(id)] }) }

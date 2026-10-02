@@ -1,6 +1,6 @@
-import { apiUrl } from '../api.ts'
-import { session } from '../session.ts'
-import { queryPath } from './contract.ts'
+import { apiUrl } from '../../../services/api.ts'
+import { session } from '../../../services/session.ts'
+import { queryPath } from '../../../services/admin/contract.ts'
 export function exportLogs(kind, filters) {
   if (!['operation','access'].includes(kind)) return Promise.reject(Error('日志类型无效'))
   const token = session.token

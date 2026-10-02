@@ -1,4 +1,4 @@
-import {request} from '../api.ts'
+import {request} from '../../../../services/api.ts'
 import {categoryPayload,flattenCategories,id,itemPayload,readItems} from './contract.ts'
 export async function loadWardrobe(){const [items,categories,stats]=await Promise.all([request('/wardrobe/items'),request('/wardrobe/categories'),request('/wardrobe/stats')]);return {items:readItems(items),categories:flattenCategories(categories),stats}}
 export async function itemDetail(value){const row=await request('/wardrobe/items/'+id(value));id(row.id);return row}

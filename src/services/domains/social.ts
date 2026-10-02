@@ -1,5 +1,5 @@
 import { request } from './session-guard.ts'
-import { queryPath } from './finance.ts'
+import { queryPath } from '../query-path.ts'
 export const fetchMessages = (isRead: boolean | null = null) => request<any[]>(queryPath('/message/list',{isRead}))
 export const markRead = (id:string) => request('/message/read/'+encodeURIComponent(id),'PUT')
 export const markAllRead = () => request('/message/read-all','PUT')

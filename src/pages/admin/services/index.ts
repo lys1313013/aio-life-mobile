@@ -1,6 +1,7 @@
-import { request } from '../api.ts'
+import { missingRequired } from '../../../services/form-required.ts';
+import { request } from '../../../services/api.ts'
 import { specs, adminPayload } from './specs.ts'
-import { flattenMenus, queryPath, readPage, stringId, protectedMenu, validateConfig } from './contract.ts'
+import { flattenMenus, queryPath, readPage, stringId, protectedMenu, validateConfig } from '../../../services/admin/contract.ts'
 export async function queryAdmin(kind, params) {
   const spec = specs[kind]
   if (!spec) throw Error('未知管理页面')
@@ -36,7 +37,7 @@ export function sortUserDict(row, target, delta) {
 export function saveConfig(row, value) { return request('/system-config/' + encodeURIComponent(row.configKey),'PUT',{ configValue: validateConfig(row, value) }) }
 export function feedbackDetail(row) { return request('/feedback/admin/' + stringId(row.id)) }
 export function replyFeedback(row, content, fileIds) {
-  if (!content.trim()) throw Error('请输入回复内容')
+  if (missingRequired('reply', { content })) throw Error('请输入回复内容')
   return request('/feedback/admin/' + stringId(row.id) + '/reply','POST',{ content: content.trim(), fileIds: fileIds.map(stringId) })
 }
 export function feedbackStatus(row, status) { return request('/feedback/admin/' + stringId(row.id) + '/status','PUT',{ status }) }

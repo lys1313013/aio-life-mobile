@@ -27,6 +27,10 @@ function checkSettings(config, privateConfig = {}) {
 }
 
 function createReport(compiled, metadata = {}) {
+  const mainBudgetBytes = metadata.mainBudgetBytes ?? LIMIT_BYTES;
+  if (!Number.isInteger(mainBudgetBytes) || mainBudgetBytes <= 0 || mainBudgetBytes > LIMIT_BYTES) {
+    throw new Error('主包工程预算必须是正整数且不能超过微信硬上限');
+  }
   const files = new Map();
   for (const [name, content] of Object.entries(compiled)) {
     const file = normalizeFile(name);
@@ -64,7 +68,9 @@ function createReport(compiled, metadata = {}) {
     pkg.bytes = pkg.files.reduce((sum, file) => sum + file.bytes, 0);
     pkg.limitBytes = LIMIT_BYTES;
     pkg.remainingBytes = LIMIT_BYTES - pkg.bytes;
-    pkg.status = pkg.bytes > LIMIT_BYTES ? 'error' : pkg.bytes > WARNING_BYTES ? 'warning' : 'ok';
+    pkg.budgetBytes = pkg.root ? LIMIT_BYTES : mainBudgetBytes;
+    pkg.budgetRemainingBytes = pkg.budgetBytes - pkg.bytes;
+    pkg.status = pkg.bytes > pkg.budgetBytes ? 'error' : pkg.bytes > WARNING_BYTES ? 'warning' : 'ok';
   }
   return {
     schemaVersion: 1,
@@ -84,10 +90,14 @@ function renderReport(report) {
   const lines = [`微信本地包体检查（miniprogram-ci ${report.compilerVersion || 'fixture'}）`, '口径：微信编译后的文件字节数，1 KB = 1024 字节；不是 ZIP 大小。'];
   for (const pkg of report.packages) {
     lines.push(`${pkg.status.toUpperCase().padEnd(7)} ${pkg.name === '__APP__' ? '主包' : pkg.name}: ${kb(pkg.bytes)} / ${kb(pkg.limitBytes)} KB，剩余 ${kb(pkg.remainingBytes)} KB`);
+    if (pkg.budgetBytes && pkg.budgetBytes < pkg.limitBytes) {
+      lines.push(`        工程预算 ${kb(pkg.budgetBytes)} KB，预算剩余 ${kb(pkg.budgetRemainingBytes)} KB`);
+    }
   }
   lines.push(`全包合计：${kb(report.totalBytes)} KB`, '', '主包占用最大的 10 个文件：');
   for (const file of report.packages[0].files.slice(0, 10)) lines.push(`  ${kb(file.bytes).padStart(9)} KB  ${file.path}`);
-  if (report.status === 'error') lines.push('\n失败：至少一个包超过 2048 KB，禁止进入上传步骤。');
+  if (report.packages.some(pkg => pkg.bytes > pkg.limitBytes)) lines.push('\n失败：至少一个包超过 2048 KB，禁止进入上传步骤。');
+  else if (report.status === 'error') lines.push('\n失败：主包超过工程预算，请拆分依赖后重新构建，不能以尚未达到微信硬上限为由放行。');
   else if (report.status === 'warning') lines.push('\n预警：包体超过 1900 KB，请预留增长空间；上传端仍会执行最终检查。');
   else lines.push('\n本地检查通过；不代表已上传、真机验证或正式发布。');
   return lines.join('\n');

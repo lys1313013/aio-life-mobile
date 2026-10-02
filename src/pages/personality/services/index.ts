@@ -1,7 +1,7 @@
-import { request, apiUrl } from '../api.ts'
-import { session } from '../session.ts'
-import { readResponse } from '../contract.ts'
-import { entityId, mbtiPayload, cbtiPayload, personalityPayload, cbtiResult } from './contract.ts'
+import { request, apiUrl } from '../../../services/api.ts'
+import { session } from '../../../services/session.ts'
+import { readResponse } from '../../../services/contract.ts'
+import { entityId, mbtiPayload, cbtiPayload, personalityPayload, cbtiResult } from '../../../services/personality/contract.ts'
 export function createMbti() {return request('/mbti/test','POST')}
 export function checkMbti(testId) {return request('/mbti/test/'+encodeURIComponent(testId))}
 export function saveMbti(testId,result) {return request('/mbti/result','POST',mbtiPayload(testId,result))}

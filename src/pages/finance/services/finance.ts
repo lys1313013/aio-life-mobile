@@ -1,19 +1,17 @@
-import { pickQuery } from '../api-payload.ts'
-import { request } from './session-guard.ts'
-export function queryPath(path: string, params: Record<string, any> = {}) {
-  const entries = Object.entries(pickQuery(path, params)).filter(([, value]) => value != null && value !== '')
-  return path + (entries.length ? '?' + entries.map(([key, value]) => encodeURIComponent(key) + '=' + encodeURIComponent(String(value))).join('&') : '')
-}
+import { missingRequired } from '../../../services/form-required.ts';
+import { queryPath } from '../../../services/query-path.ts'
+export { queryPath } from '../../../services/query-path.ts'
+import { request } from '../../../services/domains/session-guard.ts'
 export function ledgerId(row: Record<string, any>): string { return String(row.id ?? row.incomeId ?? '') }
 export function ledgerPayload(kind: string, draft: Record<string, any>) {
   const data = { ...draft, amt: Number(draft.amt) }
-  if (!Number.isFinite(data.amt) || draft.amt === '') throw new Error('请输入有效金额')
+  if (!Number.isFinite(data.amt) || missingRequired(kind, draft, 'amt')) throw new Error('请输入有效金额')
   if (kind === 'income') {
-    if (!draft.incDate) throw new Error('请选择收入日期')
+    if (missingRequired(kind, draft, 'incDate')) throw new Error('请选择收入日期')
   } else {
     data.transactionAmt = Number(draft.transactionAmt)
-    if (!Number.isFinite(data.transactionAmt) || draft.transactionAmt === '') throw new Error('请输入交易金额')
-    if (!draft.expTypeId || !draft.payTypeId || !draft.expTime) throw new Error('请选择支出类型、支付方式和日期')
+    if (!Number.isFinite(data.transactionAmt) || missingRequired(kind, draft, 'transactionAmt')) throw new Error('请输入交易金额')
+    if (missingRequired(kind, draft, 'expTypeId') || missingRequired(kind, draft, 'payTypeId') || missingRequired(kind, draft, 'expTime')) throw new Error('请选择支出类型、支付方式和日期')
   }
   return data
 }

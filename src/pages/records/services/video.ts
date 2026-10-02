@@ -1,5 +1,5 @@
-import { request } from '../api.ts'
-import { recordId } from './contracts.ts'
+import { request } from '../../../services/api.ts'
+import { recordId } from '../../../services/records/contracts.ts'
 export function fetchVideoPage(page=1,status=''){return request<any>('/b-video/query','GET',{page,pageSize:100,status})}
 export function saveVideo(payload){return request<boolean>('/b-video'+(payload.id?'/'+recordId(payload.id):''),payload.id?'PUT':'POST',payload)}
 export function deleteVideo(id){return request<boolean>('/b-video/'+recordId(id),'DELETE')}

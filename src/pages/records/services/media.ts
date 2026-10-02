@@ -1,5 +1,5 @@
-import { request } from '../api.ts'
-import { recordId } from './contracts.ts'
+import { request } from '../../../services/api.ts'
+import { recordId } from '../../../services/records/contracts.ts'
 function base(kind) { return kind === 'movie' ? '/movie' : '/read-record' }
 export function fetchLibrary(kind, filters) { return request<any>(base(kind) + '/page', 'GET', filters) }
 export function fetchLibraryDetail(kind, id) { return request<any>(base(kind) + '/' + recordId(id)) }
