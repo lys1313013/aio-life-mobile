@@ -10,7 +10,6 @@ import ConfirmAction from '../../components/ConfirmAction.uvue';
 import PageState from '../../components/PageState.uvue';
 import AdaptiveModal from '../../components/AdaptiveModal.uvue';
 import MetricCard from '../../components/MetricCard.uvue';
-import AppIcon from '../../components/AppIcon.uvue';
 import AttachmentField from '../../components/AttachmentField.uvue';
 import { authFileUrl } from '../../services/attachments.ts';
 import { session } from '../../services/session.ts';
@@ -35,6 +34,7 @@ const photos = ref<Record<string, string>>({}),
   photoErrors = ref<Record<string, string>>({});
 const form = ref<any>(null),
   saving = ref(false),
+  deleting = ref(false),
   formError = ref(''),
   attachmentBusy = ref(false),
   created = ref(false);
@@ -183,7 +183,7 @@ function open(item = null) {
       };
 }
 async function save() {
-  if (saving.value || attachmentBusy.value) return;
+  if (saving.value || deleting.value || attachmentBusy.value) return;
   if (!form.value.name.trim()) {
     formError.value = '请输入设备名称';
     return;
@@ -241,8 +241,15 @@ async function save() {
   }
 }
 async function remove(item) {
-  await scope.wait(deleteDevice(item.id));
-  rows.value = rows.value.filter((r) => r.id !== item.id);
+  if (saving.value || deleting.value || attachmentBusy.value) return;
+  deleting.value = true;
+  try {
+    await scope.wait(deleteDevice(item.id));
+    rows.value = rows.value.filter((r) => r.id !== item.id);
+    if (form.value?.id === item.id) form.value = null;
+  } finally {
+    deleting.value = false;
+  }
 }
 </script>
 <template>
@@ -255,14 +262,22 @@ async function remove(item) {
           icon="ant-design:plus-outlined"
           :disabled="loading || !!error"
           @click="open()" /></view
-      ><FormField
-        label="类型"
-        hide-label
-        kind="selector"
-        v-model="typeFilter"
-        :options="['全部类型', ...types.map((t) => t.dictLabel || t.label)]"
-        @update:model-value="load()"
-      /><view class="metrics ui-row ui-section"
+      ><scroll-view
+        direction="horizontal"
+        :scroll-x="true"
+        :show-scrollbar="false"
+        class="device-type-scroll ui-section"
+      ><view class="device-type-tabs" aria-label="设备类型筛选"
+        ><button
+          v-for="label in ['全部类型', ...types.map((t) => t.dictLabel || t.label)]"
+          :key="label"
+          role="button"
+          class="device-type-tab"
+          :class="{ 'device-type-tab-active': typeFilter === label, 'device-type-tab-active-dark': typeFilter === label && isDark }"
+          :aria-pressed="typeFilter === label"
+          @click="typeFilter !== label && (typeFilter = label, load())"
+        >{{ label === '全部类型' ? '全部' : label }}</button
+      ></view></scroll-view><view class="metrics ui-row ui-section"
         ><MetricCard :loading="loading && !rows.length"
           class="metric-wide"
           label="总资产"
@@ -297,8 +312,8 @@ async function remove(item) {
                 mode="aspectFit"
                 :aria-label="item.name + '图片'"
                 @click="open(item)"
-              /><view v-else class="goods-placeholder"
-                ><text>{{ photoBusy[item.id] ? '加载图片…' : '设备' }}</text
+              /><view v-else class="goods-placeholder" :class="{ 'secondary-text-dark': isDark }"
+                ><text class="ui-type-body">{{ photoBusy[item.id] ? '加载图片…' : '设备' }}</text
                 ><MobileButton
                   v-if="photoErrors[item.id]"
                   label="重试设备图片"
@@ -307,78 +322,93 @@ async function remove(item) {
               ><text class="goods-badge status-tag" :class="'status-' + item.status">{{
                 statusName(item.status)
               }}</text></view
-            ><button role="button" class="goods-title-button" aria-label="编辑设备" @click="open(item)"><text class="goods-title">{{ item.name }}</text></button
-            ><text v-if="item.spec" class="goods-content">{{ item.spec }}</text
+            ><button role="button" class="goods-title-button ui-type-body" aria-label="编辑设备" @click="open(item)"><text class="goods-title">{{ item.name }}</text></button
+            ><text v-if="item.spec" class="goods-content" :class="{ 'secondary-text-dark': isDark }">{{ item.spec }}</text
             ><text class="goods-price">¥ {{ item.purchasePrice || 0 }}</text
-            ><text class="goods-secondary">{{ item.purchaseDate || '—' }} · {{ usageDays(item) }} 天</text
-            ><text class="goods-secondary">日均 ¥ {{ (Number(item.purchasePrice || 0) / usageDays(item)).toFixed(2) }}</text
-            ><text v-if="item.purchasePlace" class="goods-secondary">{{ item.purchasePlace }}</text
-            ><text v-if="item.remark" class="goods-content">{{ item.remark }}</text
-            ><view class="goods-actions"><ConfirmAction label="删除设备" :action="() => remove(item)"><template #default="{ open: confirm, busy }"><button role="button" class="goods-icon-button" aria-label="删除设备" :disabled="busy" @click="confirm"><AppIcon name="ant-design:delete-outlined" :size="18" color="#8b8f99" /></button></template></ConfirmAction></view></view
+            ><text class="goods-secondary" :class="{ 'secondary-text-dark': isDark }">{{ item.purchaseDate || '—' }} · {{ usageDays(item) }} 天</text
+            ><text class="goods-secondary" :class="{ 'secondary-text-dark': isDark }">日均 ¥ {{ (Number(item.purchasePrice || 0) / usageDays(item)).toFixed(2) }}</text
+            ><text v-if="item.purchasePlace" class="goods-secondary" :class="{ 'secondary-text-dark': isDark }">{{ item.purchasePlace }}</text
+            ><text v-if="item.remark" class="goods-content" :class="{ 'secondary-text-dark': isDark }">{{ item.remark }}</text
+            ></view
           ></view
         ></PageState
       >
       <AdaptiveModal
         v-if="form"
         label="编辑设备"
-        :busy="saving || attachmentBusy"
+        :max-width="520"
+        :show-close="false"
+        :busy="saving || deleting || attachmentBusy"
         @close="form = null"
-        ><FormField label="名称" v-model="form.name" /><FormField
-          label="配置"
-          v-model="form.spec" /><FormField
-          label="类型"
-          kind="selector"
-          :model-value="types.find((t) => t.id === form.type)?.dictLabel || ''"
-          :options="types.map((t) => t.dictLabel || t.label)"
-          @update:model-value="
-            form.type = types.find((t) => (t.dictLabel || t.label) === $event)?.id || ''
-          " /><FormField
-          label="状态"
-          kind="selector"
-          :model-value="statusName(form.status)"
-          :options="statuses.map((t) => t.label)"
-          @update:model-value="
-            form.status = String(statuses.find((t) => t.label === $event)?.value || '1')
-          " /><FormField
-          label="购买日期"
-          kind="date"
-          v-model="form.purchaseDate" /><FormField
-          label="退役日期"
-          kind="date"
-          v-model="form.endDate" /><FormField
-          label="购买价格"
-          input-type="digit"
-          v-model="form.purchasePrice" /><FormField
-          label="购买平台"
-          v-model="form.purchasePlace" /><FormField
-          label="备注"
-          kind="textarea"
-          v-model="form.remark" /><AttachmentField
+      >
+        <view class="device-editor-header ui-row ui-section">
+          <text class="device-editor-title">{{ form.id ? '编辑设备' : '新增设备' }}</text>
+          <MobileButton label="关闭" icon="ant-design:close-outlined" variant="quiet" compact
+            :disabled="saving || deleting || attachmentBusy" @click="form = null" />
+        </view>
+        <FormField appearance="soft" label="名称" placeholder="设备名称" v-model="form.name" />
+        <FormField appearance="soft" label="配置" placeholder="型号、容量等" v-model="form.spec" />
+        <view class="ui-field-row">
+          <FormField appearance="soft" compact stretch label="类型" kind="selector"
+            :model-value="types.find((t) => t.id === form.type)?.dictLabel || types.find((t) => t.id === form.type)?.label || ''"
+            :options="types.map((t) => t.dictLabel || t.label)"
+            @update:model-value="form.type = types.find((t) => (t.dictLabel || t.label) === $event)?.id || ''" />
+          <FormField appearance="soft" compact stretch label="状态" kind="selector"
+            :model-value="statusName(form.status)"
+            :options="statuses.map((t) => t.label)"
+            @update:model-value="form.status = String(statuses.find((t) => t.label === $event)?.value || '1')" />
+        </view>
+        <view class="ui-field-row">
+          <FormField appearance="soft" compact stretch label="购买价格" placeholder="¥ 0.00" input-type="digit" v-model="form.purchasePrice" />
+          <FormField appearance="soft" compact stretch label="购买平台" placeholder="选填" v-model="form.purchasePlace" />
+        </view>
+        <view class="ui-field-row">
+          <FormField appearance="soft" compact stretch label="购买日期" kind="date" v-model="form.purchaseDate" />
+          <FormField appearance="soft" compact stretch label="退役日期" kind="date" placeholder="未退役" v-model="form.endDate" />
+        </view>
+        <FormField appearance="soft" label="备注" kind="textarea" placeholder="选填" v-model="form.remark" />
+        <AttachmentField
           :files="form.files"
           upload-path="/file/upload"
           :form-data="{ bizType: 'device' }"
-          :disabled="saving"
+          :disabled="saving || deleting"
           @update:files="form.files = $event.slice(-1)"
           @busy-change="attachmentBusy = $event" /><text
           v-if="formError"
-          class="goods-error ui-section"
+          class="goods-error ui-section ui-type-body"
           >{{ formError }}</text
         ><view class="toolbar ui-row"
-          ><MobileButton
+          ><ConfirmAction
+            v-if="form.id"
+            label="删除设备"
+            :message="'确定删除设备「' + form.name + '」？'"
+            :action="() => remove(form)"
+          ><template #default="{ open: confirm, busy }"><MobileButton
+            label="删除设备"
+            icon="ant-design:delete-outlined"
+            variant="quiet"
+            :loading="busy"
+            :disabled="saving || attachmentBusy"
+            @click="confirm"
+          /></template></ConfirmAction><view class="action-spacer" /><MobileButton
             label="取消"
             variant="quiet"
-            :disabled="saving || attachmentBusy"
-            @click="form = null" /><MobileButton
+            :disabled="saving || deleting || attachmentBusy"
+            @click="form = null"><text class="device-editor-action">取消</text></MobileButton><MobileButton
             :label="created ? '重新读取' : '保存'"
             :loading="saving"
-            :disabled="attachmentBusy"
-            @click="save" /></view
+            :disabled="deleting || attachmentBusy"
+            @click="save"><text class="device-editor-action">{{ created ? '重新读取' : '保存' }}</text></MobileButton></view
       ></AdaptiveModal> </view
   ></MobilePage>
 </template>
 <style scoped lang="scss">
+@use '../../styles/typography' as *;
+@use '../../styles/text-colors' as *;
 @use '../../styles/spacing.scss';
 @use '../../styles/spacing-tokens' as *;
+@include type-utilities('body');
+
 .goods-page {
   color: #27272a;
 }
@@ -388,6 +418,48 @@ async function remove(item) {
 .toolbar {
   flex-direction: row;
   align-items: center;
+}
+.action-spacer { flex: 1; }
+.device-editor-header { align-items: center; justify-content: space-between; }
+.device-editor-title { @include type-style('title');   }
+.device-editor-action { @include type-style('body');   }
+.device-type-scroll {
+  width: 100%;
+  white-space: nowrap;
+}
+.device-type-tabs {
+  display: flex;
+  // 内容按全部标签撑开，避免 view 将超出视口的标签裁掉。
+  width: max-content;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  gap: $space-inline;
+}
+.device-type-tab {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: $space-controlMin;
+  min-height: $space-controlMin;
+  margin: 0;
+  padding: 0 $space-detail;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  background: transparent;
+  color: inherit;
+  @include type-style('body');
+
+  white-space: nowrap;
+}
+.device-type-tab-active {
+  color: #2563eb;
+  border-bottom-color: #2563eb;
+}
+.device-type-tab-active-dark {
+  color: #6c9cff;
+  border-bottom-color: #6c9cff;
 }
 .metrics {
   display: grid;
@@ -412,21 +484,21 @@ async function remove(item) {
 }
 .goods-title {
   flex: 1;
-  font-size: 15px;
-  font-weight: 600;
+  @include type-style('body-strong');
+
 }
 .goods-content {
-  font-size: 12px;
-  line-height: 18px;
-  color: #8b8f99;
+  @include type-style('caption');
+
+  color: $text-secondary-light;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 .goods-secondary {
-  color: #8b8f99;
-  font-size: 11px;
-  line-height: 18px;
+  color: $text-secondary-light;
+  @include type-style('badge');
+
   overflow-wrap: anywhere;
 }
 .goods-media {
@@ -442,7 +514,7 @@ async function remove(item) {
 .goods-placeholder {
   align-items: center;
   justify-content: center;
-  color: #8b8f99;
+  color: $text-secondary-light;
 }
 .goods-badge {
   position: absolute;
@@ -455,7 +527,7 @@ async function remove(item) {
 .status-tag {
   padding: $space-detail $space-inline;
   border-radius: 12px;
-  font-size: 12px;
+  @include type-style('caption');
 }
 .status-1 {
   background-color: rgba(56, 147, 103, 0.14);
@@ -505,23 +577,12 @@ async function remove(item) {
   background: transparent;
   color: inherit;
   text-align: left;
-  line-height: 21px;
+  line-height: type-line('body');
 }
-.goods-price { font-size: 15px; font-weight: 600; }
-.goods-actions { position: absolute; top: $space-card; right: $space-card; }
-.goods-icon-button {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: $space-controlMin;
-  height: $space-controlMin;
-  margin: 0;
-  padding: 0;
-  border: 0;
-  border-radius: 12px;
-  background: rgba(128, 134, 146, 0.10);
-}
+.goods-price { @include type-style('body-strong');  }
 /* #ifdef WEB || MP-WEIXIN */
-.goods-title-button::after, .goods-icon-button::after { border: 0; }
+.goods-title-button::after, .device-type-tab::after { border: 0; }
 /* #endif */
+
+.secondary-text-dark { color: $text-secondary-dark; }
 </style>
