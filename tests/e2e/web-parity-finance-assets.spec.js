@@ -80,7 +80,7 @@ for (const width of [390, 768, 1440])
       for (const [route, ready, edit] of [
         ['goods/devices', '模拟设备 1', '编辑设备'],
         ['goods/wardrobe', '模拟衣物 1', '编辑衣物模拟衣物 1'],
-        ['member/index', '模拟订阅 1', '编辑订阅'],
+        ['member/index', '模拟订阅 1', /^编辑订阅：/],
         ['finance/cards', '模拟银行', '编辑'],
         ['finance/import', '选择账单文件', null],
         ['finance/index', '结余率', null],
@@ -100,7 +100,10 @@ for (const width of [390, 768, 1440])
           true,
         );
         if (edit) {
-          await p.getByRole('button', { name: edit, exact: true }).first().click();
+          if (route === 'finance/cards') {
+            await p.getByRole('button', { name: '银行卡更多操作', exact: true }).first().click();
+            await p.getByRole('menuitem', { name: '编辑银行卡', exact: true }).click();
+          } else await p.getByRole('button', { name: edit, exact: true }).first().click();
           await expect(p.getByRole('dialog')).toBeVisible();
           if (route === 'finance/cards') {
             await expect(p.getByRole('textbox', { name: '开户支行', exact: true })).toHaveCount(0);

@@ -3,7 +3,7 @@ const {setup}=require('./qa-records-fixtures');
 const fs=require('fs');
 const dir='artifacts/web-parity/records';fs.mkdirSync(dir,{recursive:true});
 const entries=[['activity','/record/performance','活动'],['honor','/record/honor','荣誉'],['anniversary','/record/anniversary','纪念日'],['milestones','/record/milestone','里程碑']].map(([menuId,path,title])=>({menuId,path,title}));
-for(const width of [390,768])for(const dark of [false,true])for(const entry of entries)test(`${entry.menuId} ${width} ${dark?'dark':'light'}`,async({page})=>{
+for(const width of [390,768,1440])for(const dark of [false,true])for(const entry of entries)test(`${entry.menuId} ${width} ${dark?'dark':'light'}`,async({page})=>{
   test.setTimeout(60000);await page.setViewportSize({width,height:844});await page.emulateMedia({colorScheme:dark?'dark':'light'});
   const state=await setup(page);
   for(const key of ['activity','honors','anniversaries','milestones'])state[key]=Array.from({length:4},(_,i)=>({...state[key][0],id:String(100+i)}));
@@ -19,7 +19,7 @@ for(const width of [390,768])for(const dark of [false,true])for(const entry of e
   await page.screenshot({path:prefix+'-page.png'});
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
   if(entry.menuId==='anniversary') {await page.getByRole('button',{name:/更多操作/}).first().click();await page.getByRole('button',{name:'编辑纪念日',exact:true}).click();}
-  else if(entry.menuId==='milestones') await page.getByRole('button',{name:'编辑里程碑',exact:true}).first().click();
+  else if(entry.menuId==='milestones') await page.getByRole('button',{name:/^编辑里程碑：/}).first().click();
   else await page.getByRole('button',{name:new RegExp('^编辑'+entry.title+'：')}).first().click();
   const dialog=page.locator('[role=dialog]:visible');await expect(dialog).toBeVisible();
   await page.screenshot({path:prefix+'-dialog.png'});

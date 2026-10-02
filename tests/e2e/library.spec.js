@@ -28,7 +28,7 @@ async function library(page, kind) {
       route.fulfill({
         json: {
           rscode: '0',
-          data: { records: state.movies, total: state.movies.length },
+          data: { items: state.movies, total: state.movies.length },
         },
       }),
   );
@@ -130,9 +130,8 @@ for (const kind of ['movie', 'read'])
     await page.getByRole('button', { name: '保存', exact: true }).click();
     await expect(page.getByRole('dialog')).toHaveCount(0);
     expect(state.writes.at(-1).body.fileId).toBe('cover-0');
-    expect(state.writes.at(-1).body.doubanSubjectId).toBe(
-      '9223372036854775806',
-    );
+    expect(state.writes.at(-1).body).not.toHaveProperty('doubanSubjectId');
+    expect(state.movies[0].doubanSubjectId).toBe('9223372036854775806');
     expect(state.writes.at(-1).body.id).toBe(id);
     await page
       .getByRole('button', { name: '编辑记录', exact: true })

@@ -16,7 +16,7 @@ const entries = [
   ["leetcode", "/coding/leetcode", "LeetCode", "devicon:leetcode"],
   ["income", "/finance/income", "收入", "mdi:cash-plus"],
   ["expense", "/finance/expense", "支出", "mdi:cash-minus"],
-  ["cards", "/finance/bank-cards", "银行卡", "ant-design:key-outlined"],
+  ["cards", "/finance/bank-cards", "银行卡", "lucide:credit-card"],
   ["membership", "/membership", "会员", "lucide:copyright"],
   ["wardrobe", "/wardrobe", "衣柜", "lucide:package"],
   ["device", "/my-hub/device", "设备墙", "lucide:monitor"],
@@ -154,7 +154,7 @@ test("配置的菜单树支持嵌套返回、搜索直达与原生业务路由",
   await setup(page);
   await expect(page.locator(".life-tile").filter({ hasText: "主页" })).toHaveCount(0);
   await expect(page.locator(".life-tile").filter({ hasText: "关于" })).toHaveCount(0);
-  await expect(page.locator(".life-section > .life-heading .life-title")).toHaveText(["日常安排", "我的记录", "资产", "开发记录"]);
+  await expect(page.locator(".life-section > .life-section-heading .life-title")).toHaveText(["日常安排", "我的记录", "资产", "开发记录"]);
   await expect(page.getByText("时间与任务", { exact: true })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "银行卡", exact: true })).toHaveCount(0);
   await page.getByRole("button", { name: "我的账本功能组" }).click();
@@ -276,6 +276,44 @@ test("空目录不补默认项；未登录直接访问生活会跳转登录", as
   await setup(page, { empty: true });
   await expect(page.getByText("暂无可用功能")).toBeVisible();
   await expect(page.locator(".life-tile")).toHaveCount(0);
+});
+
+for (const empty of [false, true]) {
+  test(`生活目录在页面重建后复用缓存，空目录=${empty}`, async ({ page }) => {
+    const state = await setup(page, { empty });
+    const content = empty
+      ? page.getByText("暂无可用功能", { exact: true })
+      : page.getByRole("button", { name: "运动", exact: true });
+    await expect(content).toBeVisible();
+    expect(state.catalogCalls).toBe(1);
+    await page.evaluate(() => uni.reLaunch({ url: '/pages/home/index' }));
+    await expect(page.locator('.dashboard-scroll')).toBeVisible();
+    await page.locator('uni-tabbar').getByText('生活', { exact: true }).click();
+    await expect(content).toBeVisible();
+    await expect(page.locator('.life-page .content-skeleton')).toHaveCount(0);
+    expect(state.catalogCalls).toBe(1);
+    await pullDown(page, '.tab-scroll');
+    await expect.poll(() => state.catalogCalls).toBe(2);
+    await expect(content).toBeVisible();
+  });
+}
+
+test("退出再登录清除目录缓存，即使服务端返回相同 Token", async ({ page }) => {
+  const options = { empty: false };
+  const state = await setup(page, options);
+  await expect(page.getByRole('button', { name: '运动', exact: true })).toBeVisible();
+  await page.locator('uni-tabbar').getByText('我的', { exact: true }).click();
+  await page.getByRole('button', { name: '退出登录', exact: true }).click();
+  await page.getByRole('button', { name: '退出', exact: true }).click();
+  await expect(page.getByRole('button', { name: '登录', exact: true })).toBeVisible();
+  options.empty = true;
+  await page.locator('[aria-label="账号"] input').fill('fixture');
+  await page.locator('[aria-label="密码"] input').fill('fixture-password');
+  await page.getByRole('button', { name: '登录', exact: true }).click();
+  await page.locator('uni-tabbar').getByText('生活', { exact: true }).click();
+  await expect(page.getByText('暂无可用功能', { exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: '运动', exact: true })).toHaveCount(0);
+  expect(state.catalogCalls).toBe(2);
 });
 
 test("目录 401 在请求层清理 Token 后仍返回登录页", async ({ page }) => {

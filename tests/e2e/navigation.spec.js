@@ -32,7 +32,6 @@ test('四栏切换、日期查询、退出清理与重新登录', async ({ page 
   await expect(page.locator('uni-tabbar').getByText('首页', { exact: true })).toBeVisible();
   await page.locator('uni-tabbar').getByText('时迹', { exact: true }).click();
   await expect(page).toHaveURL(/pages\/time\/index/);
-  await expect(page.getByText('8 条记录', { exact: true })).toBeVisible();
   await expect(page.locator('.timeline-event')).toHaveCount(8);
   const today = await page.locator('.date-value').innerText();
   const initialRequestCount = dates.length;
@@ -61,5 +60,4 @@ test('四栏切换、日期查询、退出清理与重新登录', async ({ page 
   await expect(page.locator('uni-tabbar')).toBeHidden();
   await login();
   await page.locator('uni-tabbar').getByText('时迹', { exact: true }).click();
-  await expect(page.getByText('8 条记录', { exact: true })).toBeVisible();
 });

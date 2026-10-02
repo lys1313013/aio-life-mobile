@@ -18,7 +18,7 @@ async function setup(page) {
   }
   if(path==='/api/auth/secondary-verify') {state.unlock=true;data={menuPath:'/profile'};}
   if(path==='/api/menu/preferences')data={menus:[{id:'root',title:'记录',children:[{id:'9223372036854775807',title:'笔记',children:[]}]}],hiddenMenuIds:[]};
-  if(path==='/api/llm/key/list')data=[{id:'9223372036854775807',modelName:'fixture-model',apiKey:'hidden-credential',baseUrl:'https://example.test/v1',isDefault:1}];
+  if(path==='/api/llm/key/list')data=[{id:'9223372036854775807',modelName:'fixture-model',hasApiKey:true,baseUrl:'https://example.test/v1',isDefault:1}];
   if(path==='/api/llm/key'||path==='/api/auth/change-password'){
    state.writes.push({path,body:route.request().postDataJSON()});
    if(state.fail)return route.fulfill({json:{rscode:'1',result:'保存失败，请重试'}});

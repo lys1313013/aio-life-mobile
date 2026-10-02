@@ -13,7 +13,7 @@ for(const route of routes)for(const [width,theme]of [[390,'light'],[390,'dark'],
  await shot('page');
  if(route==='relationship/index'){await modal('新增人物');await page.getByRole('button',{name:'模拟人物',exact:true}).first().click();await shot('人物详情');await modal('编辑人物');await modal('新增关系');await modal('编辑关系');await close(page);}
  if(route==='messages/index'){for(const mode of ['消息','私聊','管理']){if(mode!=='消息')await picker(page,'频道',mode);await shot(mode);await modal(mode==='管理'?'发送通知':'发送消息');}await picker(page,'频道','AI');await page.getByRole('button',{name:'模拟会话',exact:true}).click();await expect(page.getByText('模拟AI内容',{exact:true})).toBeVisible();await shot('AI');await modal('修改标题');}
- if(route==='mcp/index')await modal('查看并调用');
+ if(route==='mcp/index')await modal('输入参数并调用 fixture_tool');
  if(route==='vault/index'){await page.getByRole('button',{name:'解锁',exact:true}).click();await shot('unlock');const dialog=page.locator('[role=dialog]:visible');await dialog.locator('[aria-label="主密码"] input').fill('qa-master');await dialog.getByRole('button',{name:'解锁',exact:true}).click();await expect(page.getByText('fixture-user',{exact:true})).toBeVisible();await shot('unlocked');await modal('新增密码');await modal('编辑密码');}
  for(const g of geometries)for(const c of g.cards)expect(c.padding).toBe('12px');expect(errors).toEqual([]);expect(state.calls).toEqual([]);fs.writeFileSync(prefix+'.json',JSON.stringify({route,width,theme,evidence,geometries,errors,scope:'Mock API, real login and life menu navigation; no writes'},null,2));
 });

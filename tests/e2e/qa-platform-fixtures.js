@@ -36,8 +36,8 @@ if(['/api/user-center/list','/api/sysDictType/query','/api/sysDictData/query','/
 if(p==='/api/menu/admin/tree')data=[{...row,status:1}];
 if(p==='/api/system-config/list')data=[{configKey:'fixture.config',configType:'JSON',configValue:'{"enabled":true}',description:'模拟配置'}];
 if(p==='/api/userbinds/list')data=[{id,platform:'github',platformUsername:'fixture-github'}];
-if(p==='/api/api-key/list')data=[{id,remark:'模拟Key',apiKey:'masked-fixture',createTime:'2026-10-01'}];
-if(p==='/api/llm/key/list')data=[{id,modelName:'模拟模型',baseUrl:'https://example.test/v1',apiKey:'masked-fixture',isDefault:0}];
+if(p==='/api/api-key/list')data=[{id,remark:'模拟Key',hasApiKey:true,createTime:'2026-10-01'}];
+if(p==='/api/llm/key/list')data=[{id,modelName:'模拟模型',baseUrl:'https://example.test/v1',hasApiKey:true,isDefault:0}];
 if(p==='/api/feedback/admin/'+id)data={...row,comments:[],attachments:[]};
 const personality={id,code:'QA',name:'模拟人格',motto:'模拟格言',description:'模拟详情',color:'#427bea',vector:Array(15).fill(1),strengths:['模拟优势'],weaknesses:['模拟弱点']};
 if(p==='/api/cbti/personalities'||p==='/api/cbti/admin/personalities')data=[personality];
