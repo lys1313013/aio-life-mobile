@@ -13,7 +13,7 @@ if(p==='/api/timeRecord/relateTypes')data=[];
 if(p==='/api/userDictType/getByDictType')data={dictDetailList:[]};
 if(p==='/api/api-key/generate')data={apiKey:'synthetic-generated-fixture'};
 if(p==='/api/timeRecord/9223372036854775807')data={id:'9223372036854775807',categoryId:'1',date:'2026-10-01',startTime:540,endTime:599};
-if(p==='/api/menu/preferences')data={menus:[{id:'9223372036854775807',title:'模拟菜单',children:[]}],hiddenMenuIds:[]};
+if(p==='/api/menu/preferences')data={menus:[{id:'9223372036854775807',title:'模拟菜单',children:[]},...['category','categoryadmin','dashboard'].map((id,i)=>({id,title:['个人分类','管理分类','时间看板'][i],children:[]}))],hiddenMenuIds:[]};
 if(p==='/api/auth/secondary-password/status')data={hasPassword:true};
 if(p==='/api/auth/secondary-lock/menus')data=[];
 if(p==='/api/userbinds/list'||p==='/api/api-key/list'||p==='/api/llm/key/list')data=[];

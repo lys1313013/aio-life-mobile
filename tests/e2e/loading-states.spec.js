@@ -215,12 +215,46 @@ test('all asynchronous business pages expose loading placeholders', async ({ pag
     });
     try {
       await page.goto('/#/pages/' + route); await page.reload();
-      await expect(page.locator(route === 'relationship/index' ? '.topology .loading-indicator' : '.content-skeleton').first(), route).toBeVisible();
+      const loadingSelector = route === 'relationship/index' ? '.topology .loading-indicator' : route === 'time/edit' ? '.editor-loading .loading-indicator' : '.content-skeleton';
+      await expect(page.locator(loadingSelector).first(), route).toBeVisible();
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), route).toBe(true);
       await page.screenshot({ path: info.outputPath(route.replace('/', '-') + '.png') });
     } finally { pending.release();  }
   }
 });
+
+for (const width of [390, 768, 1440]) for (const theme of ['light', 'dark']) {
+  test(`time refresh keeps content stationary ${width} ${theme}`, async ({ page }, info) => {
+    await page.setViewportSize({ width, height: 900 });
+    await page.emulateMedia({ colorScheme: theme });
+    const firstLoad = gate();
+    const hold = { '/api/timeRecord/query': firstLoad };
+    await fixture(page, hold);
+    await page.goto('/#/pages/time/index');
+    await expect(page.getByRole('status', { name: '正在加载时迹', exact: true })).toBeVisible();
+    const initial = await page.locator('.timeline').boundingBox();
+    firstLoad.release();
+    await expect(page.locator('.timeline-event')).toHaveCount(2);
+    expect(await page.locator('.timeline').boundingBox()).toEqual(initial);
+
+    for (const view of ['时间轴视图', '卡片视图']) {
+      await page.getByRole('button', { name: view, exact: true }).click();
+      const panel = page.locator('.time-main-panel');
+      const before = await panel.boundingBox();
+      const pending = gate();
+      hold['/api/timeRecord/query'] = pending;
+      await page.locator('uni-tabbar').getByText('首页', { exact: true }).click();
+      await page.locator('uni-tabbar').getByText('时迹', { exact: true }).click();
+      await expect(page.getByRole('status', { name: '正在更新时迹', exact: true })).toBeVisible();
+      expect(await panel.boundingBox()).toEqual(before);
+      await expect(page.locator(view === '时间轴视图' ? '.timeline-event' : '.record-card')).toHaveCount(2);
+      await page.screenshot({ path: info.outputPath(view === '时间轴视图' ? 'timeline-refresh.png' : 'cards-refresh.png') });
+      pending.release();
+      await expect(page.getByRole('status', { name: '正在更新时迹', exact: true })).toHaveCount(0);
+      expect(await panel.boundingBox()).toEqual(before);
+    }
+  });
+}
 
 for (const width of [390, 768, 1440]) test(`time loading preserves real day week month and card layout ${width}`, async ({ page }, info) => {
   await page.setViewportSize({ width, height: 900 });

@@ -25,7 +25,7 @@ async function start(page,routeName,options={}){
  if(data!==undefined)return route.fulfill({json:{rscode:'0',data}});
  return route.fallback();});
  await page.goto('/');await page.locator('[aria-label="账号"] input').fill('qa-domain');await page.locator('[aria-label="密码"] input').fill('mock-password');await page.getByRole('button',{name:'登录',exact:true}).click();await expect(page.locator('uni-tabbar')).toBeVisible();
- await page.locator('uni-tabbar').getByText('生活',{exact:true}).click();await expect(page.locator('[role=button][aria-label="财务总览"]')).toBeVisible();
+ await page.locator('uni-tabbar').getByText('全部',{exact:true}).click();await expect(page.locator('[role=button][aria-label="财务总览"]')).toBeVisible();
  await page.locator('[role=button][aria-label="'+entries.find(e=>e[0]===routeName)[2]+'"]').last().click();await expect(page).toHaveURL(new RegExp('pages/'+routeName));await expect(page.locator('.mobile-button-busy')).toHaveCount(0);await page.waitForLoadState('networkidle');return state;
 }
 async function shot(page,route,variant,name){const dir=path.resolve('test-results/page-audit/domains');fs.mkdirSync(dir,{recursive:true});const key=route+'-'+variant+'-'+name;page._qaShots=page._qaShots||{};const count=page._qaShots[key]=(page._qaShots[key]||0)+1;const file=path.join(dir,route.replaceAll('/','-')+'-'+variant+'-'+name+(count>1?'-'+count:'')+'.png');await page.screenshot({path:file,fullPage:true});fs.mkdirSync('/tmp/qa-domains-evidence',{recursive:true});fs.copyFileSync(file,path.join('/tmp/qa-domains-evidence',path.basename(file)));return file;}
