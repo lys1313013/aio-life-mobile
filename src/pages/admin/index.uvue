@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import AppIcon from '../../components/AppIcon.uvue'
+import MenuManager from '../../components/MenuManager.uvue';
+import { menuMoveChanges } from '../../services/admin/menu-tree.ts';
 import { computed, ref } from 'vue';
 import { onLoad, onShow, onUnload } from '@dcloudio/uni-app';
 import PageHeader from '../../components/PageHeader.uvue';
@@ -65,8 +66,11 @@ const opened = ref(false),
 const reply = ref(''),
   replyFiles = ref<any[]>([]),
   newStatus = ref(''),
-  selected = ref<string[]>([]),
-  collapsed = ref<string[]>([]);
+  selected = ref<string[]>([]);
+const menuAdvanced = ref(false);
+const editorFields = computed(() => kind.value === 'menus' && !menuAdvanced.value
+  ? spec.value.fields.filter(field => !['redirect', 'icon', 'roles', 'metaText'].includes(field.key))
+  : spec.value.fields);
 const configValues = ref<any>({});
 const task = createLatestTask(),
   detailTask = createLatestTask();
@@ -74,17 +78,7 @@ let active = true;
 const authorized = computed(() => session.user?.roles?.includes('admin'));
 const isLog = computed(() => ['operation', 'access'].includes(kind.value));
 const shown = computed(() => {
-  const result =
-    kind.value === 'menus'
-      ? rows.value.filter(
-          (row) =>
-            (!keyword.value ||
-              [row.title, row.name, row.path].some((value) =>
-                String(value).includes(keyword.value),
-              )) &&
-            !hiddenByParent(row),
-        )
-      : [...rows.value];
+  const result = [...rows.value];
   if (sortable.value && sortKey.value)
     result.sort((a, b) => {
       const key = sortKey.value;
@@ -173,7 +167,7 @@ function fieldOptions(field) {
       { label: '无（根菜单）', value: '0' },
       ...rows.value
         .filter((row) => row.id !== form.value.id && !descendant(row, form.value.id))
-        .map((row) => ({ label: row.title + ' (' + row.id + ')', value: row.id })),
+        .map((row) => ({ label: '　'.repeat(row.depth || 0) + row.title + ' · ' + row.path, value: row.id })),
     ];
   return [];
 }
@@ -192,6 +186,7 @@ function setField(field, value) {
 function edit(row = null, parentId = '0') {
   if (loading.value || busyId.value || !authorized.value) return;
   original.value = row;
+  menuAdvanced.value = false;
   form.value = row
     ? { ...row }
     : {
@@ -256,7 +251,11 @@ async function move(row, delta) {
   if (!target) return;
   await mutate(row, async () => {
     if (kind.value === 'menus') {
-      await setMenuSort(row, (target.sort || 0) + (delta < 0 ? -1 : 1));
+      const results = await Promise.allSettled(menuMoveChanges(rows.value, row, delta).map(change => setMenuSort(change.row, change.sort)));
+      if (results.some(result => result.status === 'rejected')) {
+        await load();
+        throw Error('部分顺序未保存，已重新加载，请重试');
+      }
     } else await sortUserDict(row, target, delta);
   });
 }
@@ -269,14 +268,6 @@ function descendant(row, id) {
     parent = rows.value.find((row) => row.id === parent)?.parentId;
   }
   return false;
-}
-function hiddenByParent(row) {
-  return collapsed.value.some((id) => descendant(row, id));
-}
-function toggleMenu(row) {
-  collapsed.value = collapsed.value.includes(row.id)
-    ? collapsed.value.filter((id) => id !== row.id)
-    : [...collapsed.value, row.id];
 }
 function label(key) {
   return (
@@ -460,6 +451,8 @@ async function download() {
       :refreshing="refreshing"
       @refresh="load(false, true)"
     >
+      <MenuManager v-if="kind === 'menus'" :rows="rows" :loading="loading" :error="error" :busy-id="busyId" :remove="remove" @edit="edit" @create-child="(id) => edit(null, id)" @status="(row) => mutate(row, () => setMenuStatus(row))" @move="move" @retry="load()" />
+      <template v-else>
       <FormField :label="kind === 'dict-types' ? '字典名称' : kind === 'dict-data' ? '展示值' : kind === 'users' ? '用户名 / 昵称' : '关键词'" v-model="keyword" :disabled="loading" />
       <view class="admin-filters ui-field-row">
       <FormField
@@ -524,22 +517,13 @@ async function download() {
           message="关闭选中的反馈？"
           :action="batchClose"
       /></view>
-      <PageState :loading="loading" :error="error" :empty="!shown.length" @retry="load()"
+      <PageState skeleton="list" :loading="loading" :error="error" :empty="!shown.length" @retry="load()"
         ><view
           v-for="row in shown"
           :key="row[spec.id]"
           class="admin-card ui-card"
           :class="themeClass('admin-card')"
         >
-          <view v-if="kind === 'menus'" class="admin-actions ui-toolbar ui-mt-sm"
-            ><MobileButton
-              v-if="rows.some((item) => item.parentId === row.id)"
-              :label="collapsed.includes(row.id) ? '展开子菜单' : '收起子菜单'"
-              :icon="collapsed.includes(row.id) ? 'ant-design:right-outlined' : 'ant-design:down-outlined'"
-              variant="quiet"
-              @click="toggleMenu(row)"
-            /><view :style="{ marginLeft: (row.depth || 0) * 16 + 'px' }"><AppIcon v-if="row.depth" name="lucide:corner-down-right" :size="16" /></view><text>{{ row.title }}</text></view
-          >
           <CategoryIcon v-if="kind === 'user-dict'" :icon="row.icon" :color="row.color" />
           <view v-for="key in spec.display" :key="key" class="admin-value ui-row ui-py-xs"
             ><text class="admin-label">{{ label(key) }}</text
@@ -596,21 +580,7 @@ async function download() {
                 :message="kind === 'users' ? '确定删除此用户？' : '确定删除此记录？'"
                 :action="() => remove(row)"
             /></template>
-            <template v-if="kind === 'menus'"
-              ><MobileButton
-                label="新增子菜单"
-                icon="ant-design:plus-outlined"
-                variant="quiet"
-                :disabled="loading"
-                @click="edit(null, row.id)" /><MobileButton
-                :label="row.status === 1 ? '停用菜单' : '启用菜单'"
-                icon="ant-design:stop-outlined"
-                variant="quiet"
-                :loading="busyId === row.id"
-                :disabled="protectedMenu(row) || !!busyId"
-                @click="mutate(row, () => setMenuStatus(row))"
-            /></template>
-            <template v-if="kind === 'menus' || kind === 'user-dict'"
+            <template v-if="kind === 'user-dict'"
               ><MobileButton
                 label="上移"
                 icon="ant-design:arrow-up-outlined"
@@ -641,6 +611,7 @@ async function download() {
         :has-more="rows.length < total"
         @load="load(true)"
       />
+      </template>
       <template #fixed
         ><FloatingActionButton
           v-if="!spec.readOnly && kind !== 'config' && authorized"
@@ -652,24 +623,24 @@ async function download() {
       v-if="opened"
       :label="spec.title"
       :busy="saving"
-      :content-key="editorError"
+      :content-key="editorError + ':' + menuAdvanced"
       @close="opened = false"
       ><FormField
-        v-for="field in spec.fields"
+        v-for="field in editorFields"
         :key="field.key"
         :label="field.label"
         :kind="field.kind === 'number' ? 'text' : field.kind"
         :input-type="field.kind === 'number' ? 'number' : 'text'"
         :model-value="fieldValue(field)"
         :options="fieldOptions(field).map((item) => item.label)"
-        :disabled="saving"
+        :disabled="saving || (kind === 'menus' && protectedMenu(original || form) && ['path', 'status'].includes(field.key))"
         @update:model-value="(value) => setField(field, value)" /><text
-        v-if="kind === 'menus' && options.length"
+        v-if="kind === 'menus' && menuAdvanced && options.length"
         class="admin-muted ui-mb-section"
         >{{ '可用角色：' + options.join('、') }}</text
       ><text v-if="editorError" class="admin-error ui-mb-section ui-mt-section" role="alert">{{ editorError }}</text
-      ><MobileButton label="保存" :loading="saving" @click="save"
-    /></AdaptiveModal>
+      ><view :class="{ 'ui-field-row': kind === 'menus' }"><MobileButton v-if="kind === 'menus'" :label="menuAdvanced ? '收起高级设置' : '高级设置'" variant="quiet" :disabled="saving" @click="menuAdvanced = !menuAdvanced" /><MobileButton label="保存" :loading="saving" @click="save"
+    /></view></AdaptiveModal>
     <AdaptiveModal
       v-if="detail"
       label="反馈详情"
@@ -682,7 +653,7 @@ async function download() {
         editorError = '';
         detailTask.invalidate();
       "
-      ><PageState :loading="detailLoading" :error="detailError" @retry="openDetail(detail)"
+      ><PageState skeleton="form" :retain-content="false" :loading="detailLoading" :error="detailError" @retry="openDetail(detail)"
         ><text class="admin-title ui-mb-section">{{ detail.title }}</text
         ><text class="admin-content ui-mb-section ui-mt-section">{{ detail.content }}</text
         ><MobileButton

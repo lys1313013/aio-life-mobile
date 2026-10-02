@@ -1,0 +1,471 @@
+<script setup lang="ts">
+import { computed, ref } from "vue";
+import AppIcon from "./AppIcon.uvue";
+import FormField from "./FormField.uvue";
+import MobileButton from "./MobileButton.uvue";
+import PageState from "./PageState.uvue";
+import AdaptiveModal from "./AdaptiveModal.uvue";
+import ConfirmAction from "./ConfirmAction.uvue";
+import spacing from "../styles/spacing.json";
+import { themeClass } from "../services/theme.ts";
+import { protectedMenu } from "../services/admin/contract.ts";
+import { visibleMenus, menuMoveChanges } from "../services/admin/menu-tree.ts";
+const props = defineProps<{
+  rows: any[];
+  loading: boolean;
+  error: string;
+  busyId: string;
+  remove: (row: any) => Promise<unknown>;
+}>();
+const emit = defineEmits(["edit", "create-child", "status", "move", "retry"]);
+const keyword = ref("");
+const expanded = ref<string[]>([]);
+const sorting = ref(false);
+const selectedId = ref("");
+const removing = ref(false);
+const busy = computed(() => props.loading || !!props.busyId || removing.value);
+const parents = computed(() =>
+  props.rows.filter((row) =>
+    props.rows.some((child) => child.parentId === row.id),
+  ),
+);
+const allExpanded = computed(
+  () =>
+    parents.value.length > 0 &&
+    parents.value.every((row) => expanded.value.includes(row.id)),
+);
+const shown = computed(() =>
+  visibleMenus(props.rows, expanded.value, keyword.value),
+);
+const selected = computed(() =>
+  props.rows.find((row) => row.id === selectedId.value),
+);
+const details = computed(() =>
+  selected.value
+    ? [
+        ["路由名称", selected.value.name],
+        ["路由", selected.value.path],
+        ["组件", selected.value.component || "—"],
+        [
+          "父菜单",
+          props.rows.find((row) => row.id === selected.value.parentId)?.title ||
+            "根菜单",
+        ],
+        ["角色", selected.value.roles || "不限"],
+        ["排序", String(selected.value.sort ?? 0)],
+        ["状态", selected.value.status === 1 ? "启用" : "停用"],
+      ]
+    : [],
+);
+function hasChildren(row) {
+  return parents.value.some((item) => item.id === row.id);
+}
+function toggle(row) {
+  expanded.value = expanded.value.includes(row.id)
+    ? expanded.value.filter((id) => id !== row.id)
+    : [...expanded.value, row.id];
+}
+function edit(row) {
+  selectedId.value = "";
+  emit("edit", row);
+}
+function createChild(row) {
+  if (!expanded.value.includes(row.id)) expanded.value.push(row.id);
+  selectedId.value = "";
+  emit("create-child", row.id);
+}
+async function removeSelected(row) {
+  if (busy.value) return;
+  removing.value = true;
+  try {
+    await props.remove(row);
+    selectedId.value = "";
+  } finally {
+    removing.value = false;
+  }
+}
+</script>
+<template>
+  <view class="menu-manager ui-page-body" :class="themeClass('menu-manager')">
+    <view class="menu-toolbar">
+      <FormField
+        label="搜索菜单"
+        placeholder="搜索名称或路由"
+        hide-label
+        compact
+        stretch
+        v-model="keyword"
+      />
+      <button
+        role="button"
+        v-if="keyword"
+        class="menu-button"
+        aria-label="清空搜索"
+        @click="keyword = ''"
+      >
+        <AppIcon name="ant-design:close-outlined" />
+      </button>
+      <button
+        role="button"
+        class="menu-button"
+        :aria-label="allExpanded ? '全部折叠' : '全部展开'"
+        :aria-disabled="!!keyword.trim() || !parents.length"
+        :disabled="!!keyword.trim() || !parents.length"
+        @click="expanded = allExpanded ? [] : parents.map((row) => row.id)"
+      >
+        <AppIcon
+          :name="
+            allExpanded
+              ? 'ant-design:arrow-up-outlined'
+              : 'ant-design:down-outlined'
+          "
+        />
+      </button>
+      <button
+        role="button"
+        class="menu-button"
+        :class="[
+          { 'menu-button-active': sorting },
+          themeClass({ 'menu-button-active': sorting }),
+        ]"
+        :aria-label="sorting ? '完成排序' : '调整顺序'"
+        :aria-pressed="sorting"
+        :aria-disabled="busy || !!keyword.trim()"
+        :disabled="busy || !!keyword.trim()"
+        @click="sorting = !sorting"
+      >
+        <AppIcon v-if="sorting" name="ant-design:check-outlined" /><view
+          v-else
+          class="menu-sort"
+          ><AppIcon name="ant-design:arrow-up-outlined" :size="14" /><AppIcon
+            name="ant-design:arrow-down-outlined"
+            :size="14"
+        /></view>
+      </button>
+    </view>
+    <PageState
+      :loading="loading"
+      :error="error"
+      :empty="!shown.length"
+      :empty-text="keyword.trim() ? '没有匹配的菜单' : '暂无菜单'"
+      @retry="emit('retry')"
+    >
+      <view class="menu-list" :class="themeClass('menu-list')">
+        <view
+          v-for="row in shown"
+          :key="row.id"
+          class="menu-row"
+          :class="{ 'menu-row-child': row.depth > 0 }"
+          :style="{
+            paddingLeft: Math.min(row.depth || 0, 3) * spacing.modal + 'px',
+          }"
+        >
+          <button
+            role="button"
+            v-if="hasChildren(row)"
+            class="menu-button menu-expand"
+            :aria-label="
+              (expanded.includes(row.id) || keyword.trim() ? '收起' : '展开') +
+              row.title
+            "
+            :aria-expanded="!!keyword.trim() || expanded.includes(row.id)"
+            :aria-disabled="!!keyword.trim()"
+            :disabled="!!keyword.trim()"
+            @click="toggle(row)"
+          >
+            <AppIcon
+              :name="
+                expanded.includes(row.id) || keyword.trim()
+                  ? 'ant-design:down-outlined'
+                  : 'ant-design:right-outlined'
+              "
+              :size="16"
+            />
+          </button>
+          <view v-else class="menu-leaf"
+            ><AppIcon
+              :name="row.meta?.icon || 'ant-design:file-text-outlined'"
+              :size="20"
+          /></view>
+          <button
+            role="button"
+            class="menu-main"
+            :aria-label="'编辑' + row.title"
+            :aria-disabled="busy"
+            :disabled="busy"
+            @click="edit(row)"
+          >
+            <view class="menu-heading"
+              ><text
+                class="menu-title"
+                :class="{ 'menu-title-child': row.depth > 0 }"
+                >{{ row.title }}</text
+              ><text v-if="hasChildren(row)" class="menu-count">{{
+                rows.filter((child) => child.parentId === row.id).length
+              }}</text
+              ><AppIcon
+                v-if="row.status !== 1"
+                name="ant-design:stop-outlined"
+                :size="14"
+            /></view>
+            <text class="menu-path">{{ row.path }}</text>
+          </button>
+          <view v-if="sorting && !keyword.trim()" class="menu-sort">
+            <button
+              role="button"
+              class="menu-button"
+              :aria-label="'上移' + row.title"
+              :aria-disabled="busy || !menuMoveChanges(rows, row, -1).length"
+              :disabled="busy || !menuMoveChanges(rows, row, -1).length"
+              :loading="busyId === row.id"
+              @click="emit('move', row, -1)"
+            >
+              <AppIcon name="ant-design:arrow-up-outlined" :size="18" />
+            </button>
+            <button
+              role="button"
+              class="menu-button"
+              :aria-label="'下移' + row.title"
+              :aria-disabled="busy || !menuMoveChanges(rows, row, 1).length"
+              :disabled="busy || !menuMoveChanges(rows, row, 1).length"
+              @click="emit('move', row, 1)"
+            >
+              <AppIcon name="ant-design:arrow-down-outlined" :size="18" />
+            </button>
+          </view>
+          <button
+            role="button"
+            v-else
+            class="menu-button"
+            :aria-label="row.title + '更多操作'"
+            :aria-disabled="busy"
+            :disabled="busy"
+            :loading="busyId === row.id"
+            @click="selectedId = row.id"
+          >
+            <AppIcon name="ant-design:more-outlined" />
+          </button>
+        </view>
+      </view>
+    </PageState>
+    <AdaptiveModal
+      v-if="selected"
+      label="菜单详情"
+      :busy="busy"
+      :content-key="selectedId + ':' + error"
+      @close="selectedId = ''"
+    >
+      <text class="menu-detail-title">{{ selected.title }}</text>
+      <view v-for="item in details" :key="item[0]" class="menu-detail-row"
+        ><text class="menu-detail-label">{{ item[0] }}</text
+        ><text class="menu-detail-value">{{ item[1] }}</text></view
+      >
+      <text v-if="error" class="menu-error" role="alert">{{ error }}</text>
+      <view class="menu-detail-actions">
+        <MobileButton
+          label="编辑菜单"
+          icon="ant-design:edit-outlined"
+          variant="quiet"
+          :disabled="busy"
+          @click="edit(selected)"
+        />
+        <MobileButton
+          label="新增子菜单"
+          icon="ant-design:plus-outlined"
+          variant="quiet"
+          :disabled="busy"
+          @click="createChild(selected)"
+        />
+        <MobileButton
+          :label="selected.status === 1 ? '停用菜单' : '启用菜单'"
+          :icon="
+            selected.status === 1
+              ? 'ant-design:stop-outlined'
+              : 'ant-design:check-outlined'
+          "
+          variant="quiet"
+          :loading="busyId === selected.id"
+          :disabled="busy || protectedMenu(selected)"
+          @click="emit('status', selected)"
+        />
+        <ConfirmAction
+          v-if="!protectedMenu(selected)"
+          label="删除菜单"
+          :message="
+            hasChildren(selected)
+              ? '请先删除或移走子菜单，再删除「' + selected.title + '」。'
+              : '确定删除「' + selected.title + '」？'
+          "
+          :action="() => removeSelected(selected)"
+        >
+          <template #default="{ open, busy: deleting }"
+            ><MobileButton
+              label="删除菜单"
+              icon="ant-design:delete-outlined"
+              variant="quiet"
+              :disabled="busy"
+              :loading="deleting"
+              @click="open"
+          /></template>
+        </ConfirmAction>
+      </view>
+    </AdaptiveModal>
+  </view>
+</template>
+<style scoped lang="scss">
+@use "../styles/spacing.scss";
+@use "../styles/spacing-tokens" as *;
+.menu-manager {
+  color: #27272a;
+  padding-bottom: $space-controlMin + $space-section;
+}
+.menu-manager-dark {
+  color: #eeeeef;
+}
+.menu-toolbar {
+  flex-direction: row;
+  align-items: center;
+  gap: $space-detail;
+  margin-bottom: $space-section;
+}
+.menu-list {
+  background: #fff;
+  border-radius: 16px;
+  padding: $space-detail;
+}
+.menu-list-dark {
+  background: #1c1e22;
+}
+.menu-row {
+  flex-direction: row;
+  align-items: center;
+  min-width: 0;
+  min-height: 64px;
+}
+.menu-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: $space-controlMin;
+  min-width: $space-controlMin;
+  height: $space-controlMin;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  line-height: normal;
+}
+.menu-button-active {
+  background: #dfeaff;
+}
+.menu-button-active-dark {
+  background: #315b9c;
+}
+.menu-leaf {
+  width: $space-controlMin;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+}
+.menu-main {
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: stretch;
+  flex: 1;
+  min-width: 0;
+  min-height: 64px;
+  padding: $space-inline 0;
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  text-align: left;
+  background: transparent;
+  color: inherit;
+  line-height: normal;
+}
+.menu-heading {
+  min-width: 0;
+  width: 100%;
+  flex-direction: row;
+  align-items: center;
+  gap: $space-inline;
+}
+.menu-title {
+  flex: 1;
+  width: 0;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 15px;
+  font-weight: 600;
+}
+.menu-title-child {
+  font-weight: 400;
+}
+.menu-count {
+  font-size: 12px;
+  color: #858b96;
+  flex-shrink: 0;
+}
+.menu-path {
+  margin-top: $space-detail;
+  color: #858b96;
+  font-size: 12px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.menu-sort {
+  flex-direction: row;
+  flex-shrink: 0;
+}
+.menu-detail-title {
+  font-size: 18px;
+  font-weight: 600;
+  margin-bottom: $space-section;
+}
+.menu-detail-row {
+  flex-direction: row;
+  gap: $space-inline;
+  padding: $space-inline 0;
+}
+.menu-detail-label {
+  width: 72px;
+  flex-shrink: 0;
+  color: #858b96;
+  font-size: 13px;
+}
+.menu-detail-value {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-size: 14px;
+}
+.menu-detail-actions {
+  flex-direction: row;
+  justify-content: flex-end;
+  gap: $space-inline;
+  margin-top: $space-section;
+}
+.menu-error {
+  color: #e05260;
+  font-size: 13px;
+  margin-top: $space-inline;
+}
+/* #ifdef WEB || MP-WEIXIN */
+.menu-button::after,
+.menu-main::after {
+  border: 0;
+}
+.menu-button[disabled="true"],
+.menu-button:disabled {
+  background-color: transparent !important;
+  opacity: 0.4;
+}
+/* #endif */
+</style>
