@@ -1,13 +1,12 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import catalog from '../services/icons/category-icons.json'
-import actionIcons from '../services/icons/action-icons.json'
+import catalog from '../services/icons/catalog.ts'
 const props = defineProps<{ icon?: string; color?: string; size?: number }>()
 const color = computed(() =>
   /^#[\da-f]{3,8}$/i.test(props.color || '') ? props.color : '#94a3b8',
 )
 const source = computed(() => {
-  const item = actionIcons.icons[props.icon || ''] || catalog.icons[props.icon || '']
+  const item = catalog.icons[props.icon || '']
   if (!item) return ''
   const body = item.body.replace(/currentColor/g, color.value || '#94a3b8')
   const svg =
@@ -15,7 +14,7 @@ const source = computed(() => {
     item.width +
     '" height="' +
     item.height +
-    '" viewBox="0 0 ' +
+    '" viewBox="' + (item.left || 0) + ' ' + (item.top || 0) + ' ' +
     item.width +
     ' ' +
     item.height +
