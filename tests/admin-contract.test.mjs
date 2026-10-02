@@ -67,3 +67,13 @@ test('菜单可保存主页负数排序，字典仍禁止负数', () => {
  assert.equal(adminPayload('menus',form).sort,-1)
  assert.throws(()=>adminPayload('dict-data',{dictId:'1',dictValue:'v',dictLabel:'名称',dictSort:'-1'}),/非负/)
 })
+
+
+test('菜单图标颜色作为独立字段保存、清空并校验，不写入meta', () => {
+ const form = {title:'菜单',name:'Menu',path:'/sample',parentId:'0',status:'1',metaText:'{"keepAlive":true}',iconColor:' #427bea '}
+ const saved = adminPayload('menus', form)
+ assert.equal(saved.iconColor, '#427bea')
+ assert.equal(saved.meta.iconColor, undefined)
+ assert.equal(adminPayload('menus', {...form,iconColor:''}).iconColor, '')
+ assert.throws(() => adminPayload('menus', {...form,iconColor:'red'}), /六位颜色/)
+})
