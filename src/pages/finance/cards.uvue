@@ -134,7 +134,7 @@ function toggleMenu(card: any) {
     if (!alive || !rect || Array.isArray(rect)) return;
     const viewport = uni.getWindowInfo();
     const menuWidth = 168;
-    const menuItems = (card.cardNoLast4 ? 3 : 1) + (viewMode.value === 'stack' ? 1 : 0);
+    const menuItems = card.cardNoLast4 ? 4 : 2;
     const menuHeight = spacing.controlMin * menuItems + spacing.detail * (menuItems - 1) + spacing.inline * 2;
     menuLeft.value = Math.max(spacing.overlayInline, Math.min(rect.right - menuWidth, viewport.windowWidth - spacing.overlayInline - menuWidth));
     const below = rect.bottom + spacing.detail;
@@ -263,10 +263,11 @@ try {
 const viewMode = ref(savedView), expandedCardId = ref('');
 // 正常区间松手停留，仅越过两端边界时产生阻尼和回弹。
 const stackSpread = ref(0), stackHolding = ref(false);
+const stackTracking = ref(false);
 const stackElastic = ref(0), stackRebounding = ref(false);
 let stackReboundTimer: ReturnType<typeof setTimeout> | undefined;
 let stackDragPosition = 0;
-// 从卡包起手的整段触摸禁用刷新；短划取消长按后仍允许正常滚动。
+// 卡包内起手交给卡片拖动，卡包外仍可滚动和下拉刷新。
 const cardTouchActive = ref(false);
 function finishCardTouch(event: any) {
   if (!event.touches?.length) cardTouchActive.value = false;
@@ -297,7 +298,6 @@ function reboundStack() {
   }
   stackReboundTimer = setTimeout(frame, 16);
 }
-let stackHoldTimer: ReturnType<typeof setTimeout> | undefined;
 let stackTouchId: number | null = null;
 let stackStartX = 0, stackStartY = 0, stackLastY = 0;
 let suppressStackClickUntil = 0;
@@ -316,11 +316,10 @@ function stackCardStyle(card: any, index: number) {
   if (viewMode.value !== 'stack' || cardExpanded(card) || index === sortedCards.value.length - 1) return {};
   return { height: (stackPeek + stackRange.value * stackSpread.value + stackElastic.value) + 'px' };
 }
-function finishStackDrag() {
-  if (stackHoldTimer !== undefined) clearTimeout(stackHoldTimer);
-  stackHoldTimer = undefined;
-  if (stackHolding.value) suppressStackClickUntil = Date.now() + 450;
+function finishStackDrag(event: any = null) {
+  if (stackHolding.value || event?.type === 'touchcancel') suppressStackClickUntil = Date.now() + 450;
   stackHolding.value = false;
+  stackTracking.value = false;
   stackTouchId = null;
   if (stackTouchInput) ignoreStackMouseUntil = Date.now() + 750;
   stackTouchInput = false;
@@ -349,14 +348,11 @@ function startStackDrag(event: any) {
   stackTouchInput = event.type === 'touchstart';
   const point = event.touches ? event.touches[0] : event;
   stackTouchId = point.identifier ?? 0;
+  stackTracking.value = true;
   stackStartX = point.clientX;
   stackStartY = stackLastY = point.clientY;
   suppressStackClickUntil = 0;
   measureStackFace();
-  stackHoldTimer = setTimeout(() => {
-    stackHoldTimer = undefined;
-    if (stackTouchId !== null && alive) stackHolding.value = true;
-  }, 220);
   // #ifdef WEB
   if (event.type === 'mousedown') {
     window.addEventListener('mousemove', moveStackDrag);
@@ -371,11 +367,17 @@ function moveStackDrag(event: any) {
   const point = event.touches ? event.touches[0] : event;
   if (event.touches && point.identifier !== stackTouchId) { finishStackDrag(); return; }
   if (!stackHolding.value) {
-    if (Math.abs(point.clientX - stackStartX) + Math.abs(point.clientY - stackStartY) > spacing.inline) {
-      finishStackDrag(); // 长按前移动交给页面滚动，不接管短划。
+    const dx = Math.abs(point.clientX - stackStartX), dy = Math.abs(point.clientY - stackStartY);
+    // 只用小幅位移区分轻点和拖动，不要求停留；横划也不能误开编辑。
+    if (Math.max(dx, dy) <= spacing.inline) return;
+    if (dx > dy) {
+      finishStackDrag();
       suppressStackClickUntil = Date.now() + 450;
+      return;
     }
-    return;
+    stackHolding.value = true;
+    expandedCardId.value = '';
+    revealed.value = {};
   }
   event.preventDefault?.();
   event.stopPropagation?.();
@@ -402,14 +404,15 @@ function cardExpanded(card: any) {
   return viewMode.value === 'grid' || expandedCardId.value === card.id;
 }
 function activateCard(card: any) {
-  if (Date.now() < suppressStackClickUntil) return;
-  if (viewMode.value === 'grid') { edit(card); return; }
+  if (viewMode.value !== 'stack' || Date.now() < suppressStackClickUntil) return;
+  finishStackDrag();
+  stopStackRebound();
   menuCardId.value = '';
   revealed.value = {};
-  expandedCardId.value = expandedCardId.value === card.id ? '' : card.id;
+  expandedCardId.value = cardExpanded(card) ? '' : card.id;
 }
 function cardActionLabel(card: any) {
-  const action = viewMode.value === 'grid' ? '编辑' : cardExpanded(card) ? '收起' : '展开';
+  const action = viewMode.value === 'grid' ? '' : cardExpanded(card) ? '收起' : '展开';
   return action + '银行卡：' + (card.alias || card.cardName || card.bankName) +
     (card.cardNoLast4 ? ' 尾号 ' + card.cardNoLast4 : '');
 }
@@ -645,7 +648,7 @@ async function removeTag(value: any) {
 <template>
   <MobilePage
     :refreshing="refreshing"
-    :scroll-locked="stackHolding"
+    :scroll-locked="stackTracking"
     :refresh-disabled="cardTouchActive"
     @refresh="
       refreshing = true;
@@ -688,8 +691,8 @@ async function removeTag(value: any) {
               :class="[themeClass('card-face'), { 'card-face-image': !!coverFile(card), 'card-face-draggable': viewMode === 'stack', 'card-face-dragging': stackHolding }]"
               :style="coverFile(card) ? {} : { backgroundColor: cardColor(card) }"
               :aria-busy="!!coverLoading[card.id]"
-              role="button"
-              tabindex="0"
+              :role="viewMode === 'stack' ? 'button' : undefined"
+              :tabindex="viewMode === 'stack' ? 0 : undefined"
               :aria-label="cardActionLabel(card)"
               :aria-expanded="viewMode === 'stack' ? cardExpanded(card) : undefined"
               @touchstart="startStackDrag"
@@ -749,7 +752,7 @@ async function removeTag(value: any) {
                     <AppIcon v-if="revealBusy !== card.id && !busy" name="lucide:ellipsis" :size="20" :color="coverFile(card) ? undefined : '#f1f4f9'" />
                   </button>
                   <view v-if="menuCardId === card.id" class="card-menu ui-pad-sm ui-gap-xs" :style="{ left: menuLeft + 'px', top: menuTop + 'px' }" :class="themeClass('card-menu')" role="menu">
-                    <button v-if="viewMode === 'stack'" class="card-menu-item ui-row" role="menuitem" @click="edit(card)"><AppIcon name="ant-design:edit-outlined" :size="18" /><text class="ui-type-body">编辑银行卡</text></button>
+                    <button class="card-menu-item ui-row" role="menuitem" @click="edit(card)"><AppIcon name="ant-design:edit-outlined" :size="18" /><text class="ui-type-body">编辑银行卡</text></button>
                     <button v-if="card.cardNoLast4" class="card-menu-item ui-row" role="menuitem" @click="reveal(card)"><AppIcon :name="revealed[card.id] ? 'ant-design:eye-invisible-outlined' : 'ant-design:eye-outlined'" :size="18" /><text class="ui-type-body">{{ revealed[card.id] ? '隐藏卡号' : '查看卡号' }}</text></button>
                     <button v-if="card.cardNoLast4" class="card-menu-item ui-row" role="menuitem" @click="reveal(card, true)"><AppIcon name="ant-design:copy-outlined" :size="18" /><text class="ui-type-body">复制卡号</text></button>
                     <button class="card-menu-item card-menu-danger ui-row" role="menuitem" @click="menuCardId = ''; open()"><AppIcon name="ant-design:delete-outlined" :size="18" color="#dc5454" /><text class="ui-type-body">删除银行卡</text></button>
@@ -1249,6 +1252,7 @@ async function removeTag(value: any) {
 }
 /* #ifdef WEB */
 .card-face-draggable {
+  touch-action: none;
   user-select: none;
   -webkit-user-select: none;
   -webkit-touch-callout: none;

@@ -20,10 +20,9 @@ async function gap(page) {
 async function touch(cdp, type, x = 0, y = 0) {
   await cdp.send('Input.dispatchTouchEvent', { type, touchPoints: type === 'touchEnd' || type === 'touchCancel' ? [] : [{ x, y, id: 1 }] });
 }
-async function startHeld(page, cdp, x, y) {
+async function startGesture(page, cdp, x, y) {
   await touch(cdp, 'touchStart', x, y);
-  await page.waitForTimeout(280); // 真实按住，超过页面接管拖动的等待时间。
-  await expect(page.locator('.card-face-dragging').first()).toBeVisible();
+  // 不停留，后续第一段位移必须直接开始拖动。
 }
 async function settled(page) {
   await expect(page.locator('.card-stack-rebounding')).toHaveCount(0);
@@ -45,7 +44,8 @@ async function sampleRebound(page) {
 for (const width of [390, 768, 1440]) for (const theme of ['light', 'dark']) {
   test(`卡片起手下拉不刷新，结束或取消后卡片外可刷新 ${width} ${theme}`, async ({ page, baseURL }) => {
     await prepare(page, baseURL, width, theme);
-    await page.setViewportSize({ width, height: 1200 });
+    // 直接下拉现在会展开整组，留出可见的卡包外区域验证刷新。
+    await page.setViewportSize({ width, height: 2400 });
     const cdp = await page.context().newCDPSession(page);
     let cardRequests = 0;
     page.on('request', r => { if (new URL(r.url()).pathname === '/api/bank-cards') cardRequests++; });
@@ -54,24 +54,39 @@ for (const width of [390, 768, 1440]) for (const theme of ['light', 'dark']) {
     const initial = await gap(page);
     for (const ending of ['touchEnd', 'touchCancel']) {
       const before = cardRequests;
-      // 不长按，超过短划阈值后继续下拉，不能把手势移交给刷新。
+      // 直接下拉应展开卡包，不能把手势移交给刷新，也不能误开编辑。
       await touch(cdp, 'touchStart', x, y);
       for (const dy of [20, 60, 110, 170]) await touch(cdp, 'touchMove', x, y + dy);
       expect((await page.locator('.card-face').first().boundingBox()).y).toBeCloseTo(face.y, 0);
       await touch(cdp, ending);
       await expect(page.locator('.card-face-dragging')).toHaveCount(0);
-      expect(await gap(page)).toBeCloseTo(initial, 0);
+      await settled(page);
+      expect(await gap(page)).toBeGreaterThan(initial);
+      await expect(page.getByRole('dialog', { name: '银行卡', exact: true })).toHaveCount(0);
       expect(cardRequests).toBe(before);
 
       // 卡包下方留白属于滚动容器，确认禁用状态没有遗留到下一次手势。
       const last = await page.locator('.card').last().boundingBox();
       const outsideY = last.y + last.height + 40;
+      expect(outsideY + 170).toBeLessThan(2400);
       await touch(cdp, 'touchStart', width / 2, outsideY);
       for (const dy of [20, 60, 110, 170]) await touch(cdp, 'touchMove', width / 2, outsideY + dy);
       await touch(cdp, 'touchEnd');
       await expect.poll(() => cardRequests).toBe(before + 1);
       await expect.poll(async () => (await page.locator('.card-face').first().boundingBox()).y).toBeCloseTo(face.y, 0);
     }
+    // 拖动后的下一次真实轻点先展开；微小手抖不应被判为拖动。
+    await touch(cdp, 'touchStart', x, y);
+    await touch(cdp, 'touchMove', x + 2, y + 2);
+    await touch(cdp, 'touchEnd');
+    const editor = page.getByRole('dialog', { name: '银行卡', exact: true });
+    await expect(editor).toHaveCount(0);
+    await expect(page.locator('.card-face').first()).toHaveAttribute('aria-expanded', 'true');
+    // 展开后再次轻点收起，不打开编辑。
+    await touch(cdp, 'touchStart', x, y);
+    await touch(cdp, 'touchEnd');
+    await expect(editor).toHaveCount(0);
+    await expect(page.locator('.card-face').first()).toHaveAttribute('aria-expanded', 'false');
   });
 
   test(`卡包原生触摸连续展开与收拢 ${width} ${theme}`, async ({ page, baseURL }) => {
@@ -84,7 +99,7 @@ for (const width of [390, 768, 1440]) for (const theme of ['light', 'dark']) {
     const face = await page.locator('.card-face').first().boundingBox();
     const x = face.x + 80, y = face.y + 28;
     const initial = await gap(page);
-    await startHeld(page, cdp, x, y);
+    await startGesture(page, cdp, x, y);
     const samples = [];
     for (const dy of [30, 65, 100]) {
       await touch(cdp, 'touchMove', x, y + dy);
@@ -99,7 +114,7 @@ for (const width of [390, 768, 1440]) for (const theme of ['light', 'dark']) {
     expect(await gap(page)).toBeCloseTo(samples[2], 0); // 松手停留，不吸附也不误点展开。
     await expect(page.locator('.card-stack-expanded')).toHaveCount(0);
     await page.screenshot({ path: `${out}/${width}-${theme}-partial.png`, fullPage: true });
-    await startHeld(page, cdp, x, y);
+    await startGesture(page, cdp, x, y);
     await touch(cdp, 'touchMove', x, y + 320);
     const stretched = await gap(page);
     expect(stretched).toBeGreaterThan(face.height + 12 + 3);
@@ -115,7 +130,7 @@ for (const width of [390, 768, 1440]) for (const theme of ['light', 'dark']) {
     expect(separate).toBe(true);
     await page.screenshot({ path: `${out}/${width}-${theme}-separated.png`, fullPage: true });
     // 分段上推逐步收拢；越过边界后反向拖动立即响应。
-    await startHeld(page, cdp, x, y + 160);
+    await startGesture(page, cdp, x, y + 160);
     await touch(cdp, 'touchMove', x, y + 80);
     expect(await gap(page)).toBeCloseTo(full - 80, 0);
     await touch(cdp, 'touchMove', x, y - 20);
@@ -127,7 +142,7 @@ for (const width of [390, 768, 1440]) for (const theme of ['light', 'dark']) {
     await settled(page);
 
     // 收拢端同样有阻尼，拉得更远时增量变小，且保留可点选区域。
-    await startHeld(page, cdp, x, y + 160);
+    await startGesture(page, cdp, x, y + 160);
     await touch(cdp, 'touchMove', x, y + 110);
     const compressed = await gap(page);
     await touch(cdp, 'touchMove', x, y + 60);
@@ -144,26 +159,26 @@ for (const width of [390, 768, 1440]) for (const theme of ['light', 'dark']) {
     expect(await gap(page)).toBeCloseTo(initial, 0);
     expect(Math.max(...lowerRebound)).toBeGreaterThan(initial + 0.2);
     await page.getByRole('button', { name: '切换为平铺视图' }).click();
-    await expect(page.getByRole('button', { name: /^编辑银行卡/ })).toHaveCount(7);
+    await expect(page.getByRole('button', { name: '银行卡更多操作', exact: true })).toHaveCount(7);
     expect(cardRequests).toBe(0); // 卡包拖动未误触下拉刷新。
     expect(state.calls).toEqual([]);
     expect(errors).toEqual([]);
   });
 }
 
-test('卡包短划正常滚动、触摸取消恢复、鼠标拖动', async ({ page, baseURL }) => {
-  await prepare(page, baseURL, 390, 'light');
+test('卡包外正常滚动、触摸取消恢复、鼠标直接拖动', async ({ page, baseURL }) => {
+  await prepare(page, baseURL, 768, 'light');
   const cdp = await page.context().newCDPSession(page);
   const face = await page.locator('.card-face').first().boundingBox();
   const x = face.x + 80, y = face.y + 28;
-  await startHeld(page, cdp, x, y);
+  await startGesture(page, cdp, x, y);
   await touch(cdp, 'touchMove', x, y + 300);
   await touch(cdp, 'touchEnd');
   await settled(page);
   const full = await gap(page);
   const scroller = page.locator('.mobile-page-scroll .uni-scroll-view');
-  await touch(cdp, 'touchStart', x, 620);
-  for (const top of [580, 520, 460, 400, 340]) await touch(cdp, 'touchMove', x, top);
+  await touch(cdp, 'touchStart', 60, 620);
+  for (const top of [580, 520, 460, 400, 340]) await touch(cdp, 'touchMove', 60, top);
   await touch(cdp, 'touchEnd');
   await expect.poll(() => scroller.evaluateAll(nodes => Math.max(...nodes.map(n => n.scrollTop)))).toBeGreaterThan(50);
   expect(await gap(page)).toBeCloseTo(full, 0);
@@ -174,9 +189,8 @@ test('卡包短划正常滚动、触摸取消恢复、鼠标拖动', async ({ pa
   const first = await page.locator('.card-face').first().boundingBox();
   await page.mouse.move(first.x + 80, first.y + 120);
   await page.mouse.down();
-  await page.waitForTimeout(280);
-  await expect(page.locator('.card-face-dragging').first()).toBeVisible();
   await page.mouse.move(first.x + 80, first.y + 40, { steps: 8 });
+  await expect(page.locator('.card-face-dragging').first()).toBeVisible();
   await page.mouse.up();
   expect(await gap(page)).toBeLessThan(full - 60);
   await expect(page.locator('.card-stack-expanded')).toHaveCount(0);
@@ -188,7 +202,7 @@ test('回弹中可重新接住，触摸取消与切换视图不残留动画', as
   const cdp = await page.context().newCDPSession(page);
   const face = await page.locator('.card-face').first().boundingBox();
   const x = face.x + 80, y = face.y + 28;
-  await startHeld(page, cdp, x, y);
+  await startGesture(page, cdp, x, y);
   await touch(cdp, 'touchMove', x, y + 300);
   await touch(cdp, 'touchEnd');
   await expect(page.locator('.card-stack-rebounding')).toHaveCount(1);

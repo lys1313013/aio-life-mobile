@@ -101,7 +101,7 @@ for (const width of [390, 768, 1440])
         );
         if (edit) {
           if (route === 'finance/cards') {
-            await p.getByRole('button', { name: /^编辑银行卡：/ }).first().click();
+            await p.getByRole('button', { name: '银行卡更多操作', exact: true }).first().click();await p.getByRole('menuitem', { name: '编辑银行卡', exact: true }).click();
           } else await p.getByRole('button', { name: edit, exact: true }).first().click();
           await expect(p.getByRole('dialog')).toBeVisible();
           if (route === 'finance/cards') {
@@ -142,7 +142,7 @@ for (const width of [390, 768, 1440])
                 )
                 .forEach((x) => (x.scrollTop = 0)),
             );
-          await p.getByRole('dialog').getByRole('button', { name: '关闭', exact: true }).click();
+          await p.getByRole('dialog').getByRole('button', { name: route === 'finance/cards' ? '取消' : '关闭', exact: true }).click();
         } else if (route === 'finance/import') {
           await expect(
             p.getByRole('textbox', { name: '支付宝 CSV 内容', exact: true }),

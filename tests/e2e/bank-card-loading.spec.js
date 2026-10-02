@@ -67,8 +67,10 @@ for (const failure of ['download', 'decode']) {
     });
     await page.goto('/#/pages/finance/cards');
     await expect(page.locator('.cover-error')).toHaveCount(1);
-    // 折叠卡片失败后仍可通过顶部露出区域展开，访问居中的重试入口。
+    // 轻点先展开卡片，直接显示局部重试入口。
     await page.locator('.card-face').first().click({ position: { x: 40, y: 20 } });
+    const editor = page.getByRole('dialog', { name: '银行卡', exact: true });
+    await expect(editor).toHaveCount(0);
     await expect(page.getByRole('button', { name: '重试封面', exact: true })).toBeVisible();
     await expect(page.locator('.card').first().locator('.face-heading')).toHaveCount(0);
     await page.getByRole('button', { name: '重试封面', exact: true }).click();

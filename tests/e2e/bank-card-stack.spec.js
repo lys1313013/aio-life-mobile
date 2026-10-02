@@ -4,7 +4,7 @@ const path = require('node:path');
 const out = path.resolve('artifacts/bank-card-stack');
 
 for (const width of [320, 390, 768, 1440]) for (const theme of ['light', 'dark']) {
-  test(`银行卡堆叠展开、操作与视图记忆 ${width} ${theme}`, async ({ page, baseURL }) => {
+  test(`银行卡堆叠点击展开收起、菜单编辑与视图记忆 ${width} ${theme}`, async ({ page, baseURL }) => {
     await page.setViewportSize({ width, height: 900 });
     await page.emulateMedia({ colorScheme: theme });
     const errors = [];
@@ -37,6 +37,8 @@ for (const width of [320, 390, 768, 1440]) for (const theme of ['light', 'dark']
     await page.screenshot({ path: `${out}/${width}-${theme}-stack.png`, fullPage: true });
     // 点顶部露出区域，确认命中对应卡片，而非被后面的卡面截获。
     await faces.nth(0).click({ position: { x: 40, y: 30 } });
+    const editor = page.getByRole('dialog', { name: '银行卡', exact: true });
+    await expect(editor).toHaveCount(0);
     await expect(faces.nth(0)).toHaveAttribute('aria-expanded', 'true');
     const first = page.locator('.card').first();
     await expect(first.locator('.card-image-footer')).toBeVisible();
@@ -50,8 +52,9 @@ for (const width of [320, 390, 768, 1440]) for (const theme of ['light', 'dark']
     await page.getByRole('menuitem', { name: '编辑银行卡', exact: true }).click();
     await expect(page.getByRole('dialog', { name: '银行卡', exact: true })).toBeVisible();
     await page.getByRole('dialog', { name: '银行卡', exact: true }).getByRole('button', { name: '取消', exact: true }).click();
-    // 键盘选择另一张默认卡，前一张收起，菜单仍在视口内。
+    // 键盘同样先展开另一张卡，前一张收起，不直接进入编辑。
     await faces.nth(1).press('Enter');
+    await expect(editor).toHaveCount(0);
     await expect(faces.nth(0)).toHaveAttribute('aria-expanded', 'false');
     await expect(faces.nth(1)).toHaveAttribute('aria-expanded', 'true');
     await page.getByRole('button', { name: '银行卡更多操作' }).click();
@@ -64,9 +67,15 @@ for (const width of [320, 390, 768, 1440]) for (const theme of ['light', 'dark']
     await page.getByRole('button', { name: '取消', exact: true }).click();
     await page.screenshot({ path: `${out}/${width}-${theme}-expanded.png`, fullPage: true });
     await faces.nth(1).press('Space');
+    await expect(editor).toHaveCount(0);
     await expect(faces.nth(1)).toHaveAttribute('aria-expanded', 'false');
     await page.getByRole('button', { name: '切换为平铺视图' }).click();
-    await expect(page.getByRole('button', { name: /^编辑银行卡：/ })).toHaveCount(7);
+    await faces.first().click();
+    await expect(editor).toHaveCount(0);
+    await page.getByRole('button', { name: '银行卡更多操作', exact: true }).first().click();
+    await page.getByRole('menuitem', { name: '编辑银行卡', exact: true }).click();
+    await expect(editor).toBeVisible();
+    await editor.getByRole('button', { name: '取消', exact: true }).click();
     await page.reload();
     await expect(page.getByRole('button', { name: '切换为堆叠视图' })).toBeVisible();
     await page.getByRole('button', { name: '切换为堆叠视图' }).click();

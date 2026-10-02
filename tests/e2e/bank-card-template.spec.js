@@ -21,7 +21,7 @@ for (const width of [390, 768, 1440]) {
       });
       await page.route(`**/api/file/preview/${fileId}`, route => route.fulfill({contentType:'image/svg+xml',body:image}));
       await page.goto('/#/pages/finance/cards');
-      await page.getByRole('button', { name: /^编辑银行卡：/ }).first().click();
+      await page.getByRole('button', { name: '银行卡更多操作', exact: true }).first().click();await page.getByRole('menuitem', { name: '编辑银行卡', exact: true }).click();
       await page.getByRole('button', {name:'选择公共卡面',exact:true}).click();
       await expect(page.getByText('模拟卡面读取失败')).toBeVisible();
       failList = false;
@@ -41,7 +41,7 @@ for (const width of [390, 768, 1440]) {
       state.cards[0].coverTemplateFileId = fileId;
       await page.getByRole('button', {name:'保存',exact:true}).click();
       await expect(page.getByRole('dialog', {name:'银行卡',exact:true})).toHaveCount(0);
-      await page.getByRole('button', { name: /^编辑银行卡：/ }).first().click();
+      await page.getByRole('button', { name: '银行卡更多操作', exact: true }).first().click();await page.getByRole('menuitem', { name: '编辑银行卡', exact: true }).click();
       await page.getByRole('button', {name:'移除卡面',exact:true}).click();
       await page.getByRole('button', {name:'保存',exact:true}).click();
       expect(state.calls.at(-1).body.coverTemplateId).toBeNull();

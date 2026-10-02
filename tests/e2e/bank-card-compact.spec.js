@@ -88,12 +88,12 @@ for (const width of [320, 390, 600, 768, 1440]) {
       await more.click();
       await page.getByRole('menuitem', { name: '隐藏卡号', exact: true }).click();
       await expect(page.locator('.number').first()).toHaveText('6222 •••• 1234');
-      await page.getByRole('button', { name: /^编辑银行卡：/ }).first().click();
+      await page.getByRole('button', { name: '银行卡更多操作', exact: true }).first().click();await page.getByRole('menuitem', { name: '编辑银行卡', exact: true }).click();
       await expect(page.getByRole('dialog', { name: '银行卡', exact: true })).toBeVisible();
       await page.getByRole('button', { name: '更多信息', exact: true }).click();
       await expect(page.getByRole('textbox', { name: '开户支行', exact: true })).toBeVisible();
       await page.screenshot({ path: `${out}/${width}-${theme}-editor.png`, fullPage: true });
-      await page.getByRole('button', { name: '关闭', exact: true }).click();
+      await page.getByRole('dialog', { name: '银行卡', exact: true }).getByRole('button', { name: '取消', exact: true }).click();
       await more.click();
       await page.getByRole('menuitem', { name: '删除银行卡', exact: true }).click();
       await expect(page.getByRole('dialog', { name: '删除银行卡', exact: true })).toBeVisible();
