@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import ContentSkeleton from '../../components/ContentSkeleton.uvue';
 import { onUnmounted, ref } from 'vue';
 import { onShow } from '@dcloudio/uni-app';
 import MobilePage from '../../components/MobilePage.uvue';
@@ -68,6 +69,7 @@ async function load(refresh = false) {
   }
 }
 onShow(() => load());
+function goalTags(value) { return textTags(value).split(/[,，]/).map((tag) => tag.trim()).filter(Boolean); }
 function shortDate(value) { return value ? String(value).slice(5, 10) : ''; }
 function resetFilters() { keyword.value = ''; typeFilter.value = '全部类型'; statusFilter.value = '全部状态'; load(); }
 function open(item = null) {
@@ -146,7 +148,7 @@ async function remove(item) {
     <view class="records-page ui-page-body" :class="{ 'records-page-dark': isDark }">
       <PageHeader title="目标" :back="true" @back="uni.navigateBack()" />
       <view class="ui-toolbar"
-        ><FormField compact stretch label="搜索" v-model="keyword" /><MobileButton
+        ><FormField compact stretch hide-label placeholder="搜索目标、描述、标签" label="搜索" v-model="keyword" /><MobileButton
           label="搜索目标"
           icon="ant-design:search-outlined"
           :loading="loading"
@@ -154,53 +156,44 @@ async function remove(item) {
       /></view>
       <view class="filters ui-field-row"
         ><FormField compact stretch
-          label="类型"
+          hide-label label="类型"
           kind="selector"
           v-model="typeFilter"
           :options="['全部类型', ...goalTypes]"
           @update:model-value="load()" /><FormField compact stretch
-          label="状态"
+          hide-label label="状态"
           kind="selector"
           v-model="statusFilter"
           :options="['全部状态', ...statusLabels]"
           @update:model-value="load()"
       /></view>
-      <PageState :loading="loading" :error="error" :empty="!goals.length" @retry="load()">
+      <PageState skeleton="list" :loading="loading" :error="error" :empty="!goals.length" @retry="load()">
+<template #loading><view class="goal-grid" ><view v-for="n in 6" :key="n" class="record-card ui-card" :class="{ 'record-card-dark': isDark }"><ContentSkeleton variant="goal-tile" /></view></view></template>
+
         <view class="goal-grid">
-          <view v-for="item in goals" :key="item.id" class="record-card ui-card" :class="{ 'record-card-dark': isDark }" role="button" :aria-label="'编辑目标：' + item.title" @click="open(item)">
+          <view v-for="item in goals" :key="item.id" class="record-card ui-card" :class="{ 'record-card-dark': isDark }" role="button" tabindex="0" :aria-label="'编辑目标：' + item.title" @click="open(item)" @keydown.enter.prevent="open(item)" @keydown.space.prevent="open(item)">
             <view class="goal-meta ui-row">
-              <text class="goal-type">{{ goalTypes[item.type - 1] }}</text>
+              <text class="goal-type" :class="['goal-type-' + item.type, { 'goal-type-dark': isDark }]">{{ goalTypes[item.type - 1] }}</text>
               <view class="goal-status ui-row"><view class="status-dot" :class="'status-' + item.status" /><text>{{ statusLabels[statuses.indexOf(item.status)] }}</text></view>
             </view>
             <text class="record-title">{{ item.title }}</text>
-            <text v-if="item.tags" class="record-secondary">{{ textTags(item.tags) }}</text>
+            <view v-if="goalTags(item.tags).length" class="goal-tags"><text v-for="tag in goalTags(item.tags)" :key="tag" class="goal-tag" :class="{ 'goal-tag-dark': isDark }">{{ tag }}</text></view>
             <text v-if="item.description" class="record-content">{{ item.description }}</text>
-            <view class="goal-footer ui-row"><text class="record-secondary">{{ item.startDate || item.endDate ? (shortDate(item.startDate) || '—') + ' ~ ' + (shortDate(item.endDate) || '—') : '无期限' }}</text><text class="record-secondary">{{ progress(item) }}%</text></view>
-            <view class="progress-track"><view class="progress-fill" :class="{ 'progress-completed': item.status === 'completed' }" :style="{ width: progress(item) + '%' }" /></view>
+            <view class="goal-progress"><view class="goal-footer ui-row"><text class="record-secondary">{{ item.startDate || item.endDate ? (shortDate(item.startDate) || '—') + ' ~ ' + (shortDate(item.endDate) || '—') : '无期限' }}</text><text class="record-secondary">{{ progress(item) }}%</text></view>
+            <view class="progress-track" :class="{ 'progress-track-dark': isDark }"><view class="progress-fill" :class="{ 'progress-completed': item.status === 'completed' }" :style="{ width: progress(item) + '%' }" /></view></view>
           </view>
         </view>
       </PageState>
       <AdaptiveModal v-if="form" label="编辑目标" :busy="saving" @close="form = null">
         <FormField label="标题" v-model="form.title" />
-        <FormField
-          label="类型"
-          kind="selector"
-          :model-value="goalTypes[form.type - 1]"
-          :options="goalTypes"
-          @update:model-value="setType($event)"
-        />
-        <FormField
-          label="状态"
-          kind="selector"
-          :model-value="statusLabels[statuses.indexOf(form.status)]"
-          :options="statusLabels"
-          @update:model-value="form.status = statuses[statusLabels.indexOf($event)]"
-        />
-        <FormField label="目标值" input-type="number" v-model="form.targetValue" /><FormField
-          label="当前值"
-          input-type="number"
-          v-model="form.currentValue"
-        />
+        <view class="filters ui-field-row">
+          <FormField compact stretch label="类型" kind="selector" :model-value="goalTypes[form.type - 1]" :options="goalTypes" @update:model-value="setType($event)" />
+          <FormField compact stretch label="状态" kind="selector" :model-value="statusLabels[statuses.indexOf(form.status)]" :options="statusLabels" @update:model-value="form.status = statuses[statusLabels.indexOf($event)]" />
+        </view>
+        <view class="filters ui-field-row">
+          <FormField compact stretch label="当前值" input-type="number" v-model="form.currentValue" />
+          <FormField compact stretch label="目标值" input-type="number" v-model="form.targetValue" />
+        </view>
         <view class="filters ui-field-row"
           ><FormField compact stretch
             label="开始日期"
@@ -258,24 +251,26 @@ async function remove(item) {
   flex-direction: row;
   flex-wrap: wrap;
 }
-.goal-grid { display: flex; flex-direction: row; flex-wrap: wrap; gap: $space-section; align-items: flex-start; }
-.record-card { box-sizing: border-box; width: calc((100% - #{$space-section}) / 2); }
-.goal-meta, .goal-footer { justify-content: space-between; align-items: center; }
+.goal-grid { display: flex; flex-direction: row; flex-wrap: wrap; gap: $space-section; align-items: stretch; }
+.record-card { box-sizing: border-box; min-width: 0; width: calc((100% - #{$space-section}) / 2); }
+.goal-meta, .goal-footer { justify-content: space-between; align-items: center; flex-wrap: wrap; gap: $space-detail; }
 .goal-status { align-items: center; gap: $space-detail; color: #8b8f99; font-size: 12px; }
 .goal-type { color: #6366a5; background-color: #f0effa; border-radius: 4px; padding: $space-detail; font-size: 12px; }
 .status-dot { width: 7px; height: 7px; border-radius: 50%; background-color: #8b8f99; }
 .status-in_progress { background-color: #5285ed; }
 .status-completed { background-color: #76c995; }
 .status-on_hold { background-color: #e3b251; }
-.goal-footer { margin-top: $space-detail; }
+.goal-progress { display: flex; flex-direction: column; gap: $space-inline; margin-top: auto; padding-top: $space-detail; }
 .progress-track { height: 5px; border-radius: 5px; background-color: #eef0f3; overflow: hidden; }
+.progress-track-dark { background-color: #30343b; }
 .progress-fill { height: 5px; border-radius: 5px; background-color: #427bea; }
 .progress-completed { background-color: #76c995; }
 @media (min-width: 600px) { .record-card { width: calc((100% - #{$space-section} * 2) / 3); } }
 @media (min-width: 960px) { .record-card { width: calc((100% - #{$space-section} * 3) / 4); } }
 .record-card {
   background-color: #ffffff;
-  border-radius: 16px;
+  border: $space-hairline solid #e9ebef;
+  border-radius: 14px;
   display: flex;
   flex-direction: column;
   gap: $space-inline;
@@ -283,6 +278,7 @@ async function remove(item) {
 }
 .record-card-dark {
   background-color: #1c1e22;
+  border-color: #30343b;
 }
 .card-heading {
   flex-direction: row;
@@ -295,16 +291,37 @@ async function remove(item) {
   overflow: hidden;
   font-size: 17px;
   font-weight: 600;
+  line-height: 24px;
+  overflow-wrap: anywhere;
 }
 .record-secondary {
   color: #8b8f99;
   font-size: 13px;
 }
 .record-content {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  color: #858b96;
   font-size: 14px;
   line-height: 22px;
 }
 .record-error {
   color: #e05252;
 }
+.goal-tags { display: flex; flex-direction: row; flex-wrap: wrap; gap: $space-detail; }
+.goal-tag { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; color: #646c79; background-color: #f0f2f5; border-radius: 4px; padding: $space-micro $space-detail; }
+.goal-tag-dark { color: #b0b6c1; background-color: #2b2f36; }
+.goal-type-1 { color: #3f9462; background-color: #edf7ef; }
+.goal-type-2 { color: #2e889a; background-color: #edf8fa; }
+.goal-type-3 { color: #426dbe; background-color: #edf3fe; }
+.goal-type-4, .goal-type-5, .goal-type-9 { color: #bd7838; background-color: #fbf2e9; }
+.goal-type-6 { color: #b35b60; background-color: #fceef0; }
+.goal-type-8 { color: #a75a8a; background-color: #f9eef6; }
+.goal-type-dark { background-color: #2c3039; color: #bbc7df; }
+/* #ifdef WEB */
+.record-card:focus-visible { outline: 2px solid #427bea; outline-offset: 2px; }
+/* #endif */
 </style>

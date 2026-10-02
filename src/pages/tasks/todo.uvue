@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import ContentSkeleton from '../../components/ContentSkeleton.uvue';
 import { computed, onUnmounted, ref } from 'vue';
 import { onLoad, onShow } from '@dcloudio/uni-app';
 import MobilePage from '../../components/MobilePage.uvue';
@@ -119,6 +120,8 @@ const visibleTasks = computed(() =>
         (t.detail || '').includes(keyword.value)),
   ),
 );
+const selectedColumn = computed(() => columns.value.find((column) => column.id === selected.value));
+function taskCount(columnId) { return tasks.value.filter((task) => task.columnId === columnId).length; }
 const orphanCount = computed(
   () => tasks.value.filter((t) => !columns.value.some((c) => c.id === t.columnId)).length,
 );
@@ -297,7 +300,7 @@ async function moveColumn(task, columnTitle) {
     ><view class="todo-page ui-page-body" :class="{ 'todo-page-dark': isDark }">
       <PageHeader title="待办" :back="true" @back="uni.navigateBack()" />
       <view class="ui-toolbar"
-        ><FormField compact stretch label="搜索任务" v-model="keyword" /><MobileButton
+        ><FormField compact stretch hide-label placeholder="搜索任务" label="搜索任务" v-model="keyword" /><MobileButton
           label="新增列"
           icon="ant-design:file-text-outlined"
           @click="open('column')" /><MobileButton
@@ -308,32 +311,29 @@ async function moveColumn(task, columnTitle) {
       /></view>
       <scroll-view direction="horizontal" :scroll-x="true" class="column-scroll ui-section"
         ><view class="column-tabs ui-row"
-          ><MobileButton
+          ><view
             v-for="column in columns"
             :key="column.id"
-            :label="column.title"
-            :variant="selected === column.id ? 'primary' : 'quiet'"
-            @click="selected = column.id" /><MobileButton
-            v-if="orphanCount"
-            :label="'未归类 ' + orphanCount"
-            variant="quiet"
-            @click="selected = 'unassigned'" /></view
+            class="column-tab" :class="{ 'column-tab-active': selected === column.id, 'column-tab-dark': isDark, 'column-tab-active-dark': isDark && selected === column.id }"
+            role="button" tabindex="0" :aria-label="column.title" :aria-pressed="selected === column.id"
+            @click="selected = column.id" @keydown.enter.prevent="selected = column.id" @keydown.space.prevent="selected = column.id"
+            ><text>{{ column.title }}</text><text class="column-count">{{ taskCount(column.id) }}</text></view>
+          <view v-if="orphanCount" class="column-tab" :class="{ 'column-tab-active': selected === 'unassigned', 'column-tab-dark': isDark, 'column-tab-active-dark': isDark && selected === 'unassigned' }" role="button" tabindex="0" aria-label="未归类" :aria-pressed="selected === 'unassigned'" @click="selected = 'unassigned'" @keydown.enter.prevent="selected = 'unassigned'" @keydown.space.prevent="selected = 'unassigned'"><text>未归类</text><text class="column-count">{{ orphanCount }}</text></view></view
       ></scroll-view>
-      <view v-if="selected !== 'unassigned' && columns.length" class="column-tools ui-row ui-section"><text class="task-title">{{ columns.find((c) => c.id === selected)?.title }} <text class="task-secondary">{{ visibleTasks.length }}</text></text><MobileButton label="编辑任务列" icon="ant-design:more-outlined" variant="quiet" @click="open('column', columns.find((c) => c.id === selected))" /></view>
-      <view class="kanban-column ui-pad-card" :style="{ backgroundColor: isDark ? '#232830' : columns.find((c) => c.id === selected)?.bgColor || '#dce8f4' }"><PageState :loading="loading" :error="error" :empty="!visibleTasks.length" @retry="load()">
-        <view
+      <view class="kanban-column ui-pad-card" :style="{ backgroundColor: isDark ? '#232830' : selectedColumn?.bgColor || '#edf1f7' }"><view v-if="selectedColumn || selected === 'unassigned'" class="column-tools ui-row ui-section"><view class="column-heading"><text class="column-name">{{ selectedColumn?.title || '未归类' }}</text><text v-if="!loading || tasks.length" class="column-count">{{ visibleTasks.length }}</text></view><MobileButton v-if="selectedColumn" label="编辑任务列" icon="ant-design:more-outlined" variant="quiet" @click="open('column', selectedColumn)" /></view><PageState skeleton="list" :loading="loading" :error="error" :empty="!visibleTasks.length" @retry="load()">
+<template #loading><view class="task-grid" ><view v-for="n in 6" :key="n" class="task-card ui-card" :class="{ 'task-card-dark': isDark }"><ContentSkeleton variant="tile" /></view></view></template>
+
+        <view class="task-grid"><view
           v-for="task in visibleTasks"
           :key="task.id"
           class="task-card ui-card"
           :class="{ 'task-card-dark': isDark }"
-          role="button" :aria-label="'任务详情：' + task.content" @click="showTask(task)"
+          role="button" tabindex="0" :aria-label="'任务详情：' + task.content" @click="showTask(task)" @keydown.enter.prevent="showTask(task)" @keydown.space.prevent="showTask(task)"
         >
-          <text class="task-title">{{ task.content }}</text>
-          <text v-if="task.detail" class="task-content">{{ task.detail }}</text
-          ><text class="task-secondary"
-            >{{ task.unCompletedCount ? '◷ 待办 ' + task.unCompletedCount : '✓ 全部完成' }}{{ task.dueDate ? ' · 截止 ' + task.dueDate.slice(5, 10) : '' }}</text
-          >
-        </view>
+          <text class="task-title task-card-title">{{ task.content }}</text>
+          <text v-if="task.detail" class="task-content task-preview">{{ task.detail }}</text>
+          <view class="task-footer"><text class="task-secondary" :class="{ 'task-complete': task.unCompletedCount === 0 }">{{ task.unCompletedCount === 0 ? '✓ 全部完成' : '◷ 待办 ' + (task.unCompletedCount || 0) }}</text><text v-if="task.dueDate" class="task-due" :class="{ 'task-due-dark': isDark }">{{ task.dueDate.slice(5, 10) }}</text></view>
+        </view></view>
       </PageState><MobileButton label="添加任务" icon="ant-design:plus-outlined" variant="quiet" :disabled="!columns.length" @click="open('task')" /></view>
       <AdaptiveModal v-if="currentTask && !form" label="任务详情" :content-key="String(detailLoading) + String(details.length)" :show-close="false" :busy="!!busy" @close="closeTask">
         <view class="toolbar ui-row ui-mb-sm"
@@ -361,13 +361,13 @@ async function moveColumn(task, columnTitle) {
           :disabled="!!busy"
           @update:model-value="moveColumn(currentTask, $event)"
         />
-        <PageState
+        <PageState skeleton="form" :retain-content="false"
           :loading="detailLoading"
           :error="detailError"
           :empty="!details.length"
           @retry="loadDetails"
         >
-          <view v-for="detail in details" :key="detail.id" class="detail-card ui-section ui-gap-sm">
+          <view v-for="detail in details" :key="detail.id" class="detail-card ui-section ui-gap-sm" :class="{ 'detail-card-dark': isDark }">
             <view class="toolbar ui-row"
               ><MobileButton
                 :label="detail.isCompleted ? '标为未完成' : '完成明细'"
@@ -375,7 +375,7 @@ async function moveColumn(task, columnTitle) {
                 variant="quiet"
                 :loading="busy === detail.id + ':isCompleted'"
                 :disabled="!!busy"
-                @click="changeDetail(detail, 'isCompleted')" /><text class="task-title">{{
+                @click="changeDetail(detail, 'isCompleted')" /><text class="task-title" :class="{ 'detail-completed': detail.isCompleted === 1 }">{{
                 detail.content
               }}</text
               ><MobileButton
@@ -506,20 +506,33 @@ async function moveColumn(task, columnTitle) {
 }
 .column-tools {
   flex-direction: row;
-  justify-content: flex-end;
+  justify-content: space-between;
+  align-items: center;
 }
-.kanban-column { border-radius: 12px; min-height: 360px; }
+.kanban-column { border-radius: 14px; }
+.task-grid { display: flex; flex-direction: row; flex-wrap: wrap; gap: $space-section; margin-bottom: $space-section; align-items: stretch; }
 .task-card {
+  width: 100%;
+  min-width: 0;
+  margin-bottom: 0;
   background-color: #ffffff;
-  border-radius: 16px;
+  border-radius: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: $space-inline;
+  border: $space-hairline solid #e9ebef;
 }
 .task-card-dark {
   background-color: #1c1e22;
+  border-color: #30343b;
 }
 .task-title {
   flex: 1;
   font-size: 16px;
   font-weight: 600;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  line-height: 24px;
 }
 .task-content {
   font-size: 14px;
@@ -536,4 +549,25 @@ async function moveColumn(task, columnTitle) {
   flex-direction: row;
   flex-wrap: wrap;
 }
+.column-heading { display: flex; flex-direction: row; align-items: center; gap: $space-inline; min-width: 0; }
+.column-name { font-size: 15px; font-weight: 600; overflow-wrap: anywhere; }
+.column-tab { display: flex; flex-direction: row; align-items: center; gap: $space-inline; min-height: $space-controlMin; padding: 0 $space-card; border-radius: 10px; flex-shrink: 0; color: #747c8a; font-size: 14px; }
+.column-tab-active { background-color: #e8effc; color: #3265bc; font-weight: 600; }
+.column-tab-dark { color: #a2abba; }
+.column-tab-active-dark { background-color: #263a58; color: #95b9f8; }
+.column-count { font-size: 12px; opacity: 0.75; }
+.task-card-title { flex: none; }
+.task-footer { margin-top: auto; display: flex; flex-direction: row; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: $space-detail; }
+.task-preview { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; color: #818997; }
+.task-complete { color: #55a77a; }
+.task-due { padding: $space-micro $space-detail; color: #6a7485; background-color: #f2f4f7; border-radius: 5px; font-size: 12px; }
+.task-due-dark { color: #adb5c3; background-color: #2c323d; }
+.detail-card { padding: $space-inline 0; border-bottom: $space-hairline solid #eceef2; }
+.detail-card-dark { border-color: #30343b; }
+.detail-completed { color: #858c98; text-decoration: line-through; }
+@media (min-width: 600px) { .task-card { width: calc((100% - #{$space-section}) / 2); } }
+@media (min-width: 960px) { .task-card { width: calc((100% - #{$space-section} * 2) / 3); } }
+/* #ifdef WEB */
+.task-card:focus-visible, .column-tab:focus-visible { outline: 2px solid #427bea; outline-offset: 2px; }
+/* #endif */
 </style>
