@@ -6,7 +6,7 @@ import { useRefreshTheme } from '../services/refresh-theme.ts';
 import SecondaryUnlock from './SecondaryUnlock.uvue';
 provide('mobile-page-inset', true);
 const refreshIndicatorStyle = useRefreshTheme();
-const props = withDefaults(defineProps<{ refreshing?: boolean; requiresAuth?: boolean }>(), {
+const props = withDefaults(defineProps<{ refreshing?: boolean; requiresAuth?: boolean; scrollLocked?: boolean }>(), {
   requiresAuth: true,
 });
 // 子组件页面生命周期不可靠；初次挂载检查，401由请求层统一处理。
@@ -20,9 +20,9 @@ const emit = defineEmits(['refresh', 'reachbottom']);
   <view class="mobile-page" :class="themeClass('mobile-page')">
     <scroll-view
       class="mobile-page-scroll"
-      direction="vertical"
-      :scroll-y="true"
-      :refresher-enabled="true"
+      :direction="scrollLocked ? 'none' : 'vertical'"
+      :scroll-y="!scrollLocked"
+      :refresher-enabled="!scrollLocked"
       :refresher-triggered="!!refreshing"
       :refresher-default-style="refreshIndicatorStyle"
       @refresherrefresh="emit('refresh')"

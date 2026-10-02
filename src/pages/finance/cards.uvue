@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import ContentSkeleton from '../../components/ContentSkeleton.uvue';
-import { computed, onMounted, onUnmounted, ref } from 'vue';
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 import spacing from '../../styles/spacing.json';
 import AppIcon from '../../components/AppIcon.uvue';
 import MobilePage from '../../components/MobilePage.uvue';
@@ -12,6 +12,7 @@ import ConfirmAction from '../../components/ConfirmAction.uvue';
 import AdaptiveModal from '../../components/AdaptiveModal.uvue';
 import {
   fetchCards,
+  fetchCardCoverTemplates,
   fetchBanks,
   fetchCardTags,
   saveCard,
@@ -23,14 +24,25 @@ import {
 import { chooseAndUploadAttachment, authFileUrl } from '../../services/attachments.ts';
 import { useDomainPage } from '../../services/domains/page-session.ts';
 import { themeClass } from '../../services/theme.ts';
+function back() {
+  // H5 直达或刷新后只有当前页，navigateBack 不会报错，也不会回到站内入口。
+  if (getCurrentPages().length <= 1) {
+    uni.switchTab({ url: '/pages/life/index' });
+    return;
+  }
+  uni.navigateBack();
+}
 const cards = ref<any[]>([]),
   banks = ref<any[]>([]),
-  tags = ref<any[]>([]),
-  keyword = ref(''),
-  type = ref('全部'),
-  status = ref('全部'),
-  bank = ref('全部'),
-  tag = ref('全部');
+  tags = ref<any[]>([]);
+// 与 Web 的 bank-card/model.ts 保持一致：未自定义时按银行代码选择卡面色。
+const cardColors = ['#334766', '#38605C', '#685174', '#87534F', '#716348', '#414854'];
+function cardColor(card: Record<string, any>) {
+  if (card.coverColor) return card.coverColor;
+  const code = banks.value.find((item) => String(item.id) === String(card.bankId))?.code || card.bankCode || '';
+  const hash = [...String(code)].reduce((total, char) => total + (char.codePointAt(0) || 0), 0);
+  return cardColors[hash % cardColors.length];
+}
 const coverUrls = ref<Record<string, string>>({}),
   coverErrors = ref<Record<string, string>>({}),
   coverLoading = ref<Record<string, boolean>>({});
@@ -49,6 +61,68 @@ const loading = ref(false),
   revealed = ref<Record<string, string>>({}),
   revealBusy = ref(''),
   menuCardId = ref('');
+const templateOpen = ref(false), templateLoading = ref(false), templateError = ref('');
+const templateImageLoading = ref<Record<string, boolean>>({});
+const templates = ref<any[]>([]), templateUrls = ref<Record<string, string>>({}), templateImageErrors = ref<Record<string, string>>({});
+let templateStamp = 0;
+function coverFile(card: any) { return card.coverTemplateFileId || card.coverFileIds?.[0]; }
+function clearCover() {
+  draft.value.coverTemplateId = null;
+  draft.value.coverTemplateFileId = null;
+  draft.value.coverTemplateName = null;
+  draft.value.coverFileIds = [];
+  draft.value.coverSourceUrl = '';
+  coverPreview.value = '';
+}
+watch(() => [draft.value.bankId, draft.value.cardType], (value, old) => {
+  templateStamp++;
+  templateOpen.value = false;
+  templateLoading.value = false;
+  if (draft.value.coverTemplateId && old && (value[0] !== old[0] || value[1] !== old[1]) &&
+      (draft.value.bankId !== draft.value.templateBankId || draft.value.cardType !== draft.value.templateCardType)) clearCover();
+});
+async function loadTemplateImage(item: any, current: number) {
+  templateImageErrors.value[item.id] = '';
+  templateImageLoading.value[item.id] = true;
+  try {
+    const url = await authFileUrl(String(item.fileId));
+    if (alive && current === templateStamp && modal.value) templateUrls.value[item.id] = url;
+  } catch (e) {
+    if (alive && current === templateStamp) templateImageErrors.value[item.id] = e.message || '图片加载失败';
+  } finally {
+    if (alive && current === templateStamp) templateImageLoading.value[item.id] = false;
+  }
+}
+async function openTemplates() {
+  if (!draft.value.bankId || templateLoading.value) return;
+  const current = ++templateStamp;
+  templateOpen.value = true;
+  templateLoading.value = true;
+  templateError.value = '';
+  templates.value = [];
+  templateUrls.value = {};
+  templateImageErrors.value = {};
+  try {
+    const result = await fetchCardCoverTemplates(String(draft.value.bankId), draft.value.cardType);
+    if (!alive || current !== templateStamp || !modal.value) return;
+    templates.value = result;
+    await Promise.all(result.map(item => loadTemplateImage(item, current)));
+  } catch (e) {
+    if (alive && current === templateStamp) templateError.value = e.message;
+  } finally {
+    if (current === templateStamp) templateLoading.value = false;
+  }
+}
+function selectTemplate(item: any) {
+  clearCover();
+  draft.value.coverTemplateId = item.id;
+  draft.value.coverTemplateFileId = item.fileId;
+  draft.value.coverTemplateName = item.name;
+  draft.value.templateBankId = draft.value.bankId;
+  draft.value.templateCardType = draft.value.cardType;
+  coverPreview.value = templateUrls.value[item.id] || '';
+  templateOpen.value = false;
+}
 const menuLeft = ref(0), menuTop = ref(0);
 function toggleMenu(card: any) {
   if (menuCardId.value === card.id) { menuCardId.value = ''; return; }
@@ -56,7 +130,8 @@ function toggleMenu(card: any) {
     if (!alive || !rect || Array.isArray(rect)) return;
     const viewport = uni.getWindowInfo();
     const menuWidth = 168;
-    const menuHeight = spacing.controlMin * 4 + spacing.detail * 3 + spacing.inline * 2;
+    const menuItems = (card.cardNoLast4 ? 3 : 1) + (viewMode.value === 'stack' ? 1 : 0);
+    const menuHeight = spacing.controlMin * menuItems + spacing.detail * (menuItems - 1) + spacing.inline * 2;
     menuLeft.value = Math.max(spacing.overlayInline, Math.min(rect.right - menuWidth, viewport.windowWidth - spacing.overlayInline - menuWidth));
     const below = rect.bottom + spacing.detail;
     menuTop.value = Math.max(spacing.overlayInline, below + menuHeight <= viewport.windowHeight - spacing.overlayInline ? below : rect.top - menuHeight - spacing.detail);
@@ -66,6 +141,8 @@ function toggleMenu(card: any) {
 let alive = true,
   stamp = 0;
 onUnmounted(() => {
+  finishStackDrag();
+  uni.offWindowResize(measureStackFace);
   alive = false;
   stamp++;
   revealed.value = {};
@@ -80,8 +157,10 @@ async function load() {
       cards.value = data[0];
       banks.value = data[1];
       tags.value = data[2];
+      coverUrls.value = {};
+      coverErrors.value = {};
       for (const card of cards.value) {
-        if (card.coverFileIds?.[0]) loadCover(card, current);
+        if (coverFile(card)) loadCover(card, current);
       }
     }
   } catch (e) {
@@ -97,7 +176,7 @@ async function loadCover(card: any, current = stamp) {
   coverLoading.value = { ...coverLoading.value, [card.id]: true };
   coverErrors.value = { ...coverErrors.value, [card.id]: '' };
   try {
-    const url = await authFileUrl(String(card.coverFileIds[0]));
+    const url = await authFileUrl(String(coverFile(card)));
     if (alive && stamp === current)
       coverUrls.value = { ...coverUrls.value, [card.id]: url };
   } catch (e) {
@@ -120,6 +199,8 @@ useDomainPage(
     alive = false;
     stamp++;
     cards.value = [];
+    finishStackDrag();
+    expandedCardId.value = '';
     menuCardId.value = "";
     revealed.value = {};
     coverUrls.value = {};
@@ -129,6 +210,11 @@ useDomainPage(
     coverBusy.value = false;
     draft.value = {};
     modal.value = false;
+    templateStamp++;
+    templateOpen.value = false;
+    templateLoading.value = false;
+    templates.value = [];
+    templateUrls.value = {};
     tagModal.value = false;
     loading.value = false;
     refreshing.value = false;
@@ -140,23 +226,120 @@ const statusMap: Record<string, string> = {
   lost: '挂失',
   closed: '已注销',
 };
-const filtered = computed(() =>
-  cards.value
-    .filter(
-      (card) =>
-        (type.value === '全部' ||
-          (card.cardType === 'credit' ? '信用卡' : '储蓄卡') === type.value) &&
-        (status.value === '全部' || statusMap[card.status] === status.value) &&
-        (bank.value === '全部' || card.bankName === bank.value) &&
-        (tag.value === '全部' || card.tags?.some((item) => item.name === tag.value)) &&
-        [card.alias, card.cardName, card.bankName, card.cardNoLast4].some((value) =>
-          String(value || '')
-            .toLowerCase()
-            .includes(keyword.value.trim().toLowerCase()),
-        ),
-    )
-    .sort((a, b) => a.sortOrder - b.sortOrder),
+const sortedCards = computed(() =>
+  [...cards.value].sort((a, b) => a.sortOrder - b.sortOrder),
 );
+let savedView = 'stack';
+try {
+  if (uni.getStorageSync('bank-card-view-mode') === 'grid') savedView = 'grid';
+} catch (_) { /* 存储不可用时默认卡包视图 */ }
+const viewMode = ref(savedView), expandedCardId = ref('');
+// 手势只调整卡间距；保持浮点进度，松手不吸附到预设档位。
+const stackSpread = ref(0), stackHolding = ref(false);
+const stackFaceHeight = ref(184);
+const stackPeek = spacing.controlMin + spacing.card + spacing.inline + spacing.detail;
+const stackRange = computed(() => Math.max(1, stackFaceHeight.value + spacing.section - stackPeek));
+let stackHoldTimer: ReturnType<typeof setTimeout> | undefined;
+let stackTouchId: number | null = null;
+let stackStartX = 0, stackStartY = 0, stackLastY = 0;
+let suppressStackClickUntil = 0;
+let stackTouchInput = false, ignoreStackMouseUntil = 0;
+function measureStackFace() {
+  nextTick(() => {
+    if (!alive || viewMode.value !== 'stack') return;
+    uni.createSelectorQuery().select('.card-stack .card-face').boundingClientRect((rect) => {
+      if (alive && rect && !Array.isArray(rect) && rect.height > 0) stackFaceHeight.value = rect.height;
+    }).exec();
+  });
+}
+onMounted(() => { measureStackFace(); uni.onWindowResize(measureStackFace); });
+watch(() => [viewMode.value, cards.value.length, loading.value], measureStackFace);
+function stackCardStyle(card: any, index: number) {
+  if (viewMode.value !== 'stack' || cardExpanded(card) || index === sortedCards.value.length - 1) return {};
+  return { height: (stackPeek + stackRange.value * stackSpread.value) + 'px' };
+}
+function finishStackDrag() {
+  if (stackHoldTimer !== undefined) clearTimeout(stackHoldTimer);
+  stackHoldTimer = undefined;
+  if (stackHolding.value) suppressStackClickUntil = Date.now() + 450;
+  stackHolding.value = false;
+  stackTouchId = null;
+  if (stackTouchInput) ignoreStackMouseUntil = Date.now() + 750;
+  stackTouchInput = false;
+  // #ifdef WEB
+  window.removeEventListener('mousemove', moveStackDrag);
+  window.removeEventListener('mouseup', finishStackDrag);
+  window.removeEventListener('blur', finishStackDrag);
+  // #endif
+}
+function startStackDrag(event: any) {
+  if (viewMode.value !== 'stack' || cards.value.length < 2 || menuCardId.value || modal.value) return;
+  if (event.type === 'mousedown' && Date.now() < ignoreStackMouseUntil) return;
+  if (event.type === 'mousedown' && event.button != null && event.button !== 0) return;
+  finishStackDrag();
+  if (event.touches && event.touches.length !== 1) return;
+  if (!event.touches && event.type !== 'mousedown') return;
+  stackTouchInput = event.type === 'touchstart';
+  const point = event.touches ? event.touches[0] : event;
+  stackTouchId = point.identifier ?? 0;
+  stackStartX = point.clientX;
+  stackStartY = stackLastY = point.clientY;
+  suppressStackClickUntil = 0;
+  measureStackFace();
+  stackHoldTimer = setTimeout(() => {
+    stackHoldTimer = undefined;
+    if (stackTouchId !== null && alive) stackHolding.value = true;
+  }, 220);
+  // #ifdef WEB
+  if (event.type === 'mousedown') {
+    window.addEventListener('mousemove', moveStackDrag);
+    window.addEventListener('mouseup', finishStackDrag);
+    window.addEventListener('blur', finishStackDrag);
+  }
+  // #endif
+}
+function moveStackDrag(event: any) {
+  if (stackTouchId === null) return;
+  if (event.touches && event.touches.length !== 1) { finishStackDrag(); return; }
+  const point = event.touches ? event.touches[0] : event;
+  if (event.touches && point.identifier !== stackTouchId) { finishStackDrag(); return; }
+  if (!stackHolding.value) {
+    if (Math.abs(point.clientX - stackStartX) + Math.abs(point.clientY - stackStartY) > spacing.inline) {
+      finishStackDrag(); // 长按前移动交给页面滚动，不接管短划。
+      suppressStackClickUntil = Date.now() + 450;
+    }
+    return;
+  }
+  event.preventDefault?.();
+  event.stopPropagation?.();
+  const delta = point.clientY - stackLastY;
+  stackLastY = point.clientY;
+  stackSpread.value = Math.max(0, Math.min(1, stackSpread.value + delta / stackRange.value));
+}
+function toggleView() {
+  finishStackDrag();
+  viewMode.value = viewMode.value === 'stack' ? 'grid' : 'stack';
+  menuCardId.value = '';
+  expandedCardId.value = '';
+  revealed.value = {};
+  try { uni.setStorageSync('bank-card-view-mode', viewMode.value); }
+  catch (_) { /* 存储不可用不影响当前切换 */ }
+}
+function cardExpanded(card: any) {
+  return viewMode.value === 'grid' || expandedCardId.value === card.id;
+}
+function activateCard(card: any) {
+  if (Date.now() < suppressStackClickUntil) return;
+  if (viewMode.value === 'grid') { edit(card); return; }
+  menuCardId.value = '';
+  revealed.value = {};
+  expandedCardId.value = expandedCardId.value === card.id ? '' : card.id;
+}
+function cardActionLabel(card: any) {
+  const action = viewMode.value === 'grid' ? '编辑' : cardExpanded(card) ? '收起' : '展开';
+  return action + '银行卡：' + (card.alias || card.cardName || card.bankName) +
+    (card.cardNoLast4 ? ' 尾号 ' + card.cardNoLast4 : '');
+}
 async function uploadCover() {
   const mutationStamp = stamp,
     editingDraft = draft.value;
@@ -169,6 +352,7 @@ async function uploadCover() {
     });
     if (!alive || stamp !== mutationStamp || !modal.value || draft.value !== editingDraft)
       return;
+    clearCover();
     draft.value.coverFileIds = [String(file.id)];
     const url = await authFileUrl(String(file.id));
     if (!alive || stamp !== mutationStamp || !modal.value || draft.value !== editingDraft)
@@ -188,6 +372,8 @@ function edit(card: any = null) {
   draft.value = card
     ? {
         ...card,
+        templateBankId: card.bankId,
+        templateCardType: card.cardType,
         tagIds: card.tags.map((item) => String(item.id)),
         coverFileIds: [...(card.coverFileIds || [])],
       }
@@ -205,7 +391,8 @@ function edit(card: any = null) {
         creditLimit: '',
         statementDay: '',
         repaymentDay: '',
-        coverColor: '#334766',
+        coverTemplateId: null,
+        coverColor: null,
         coverSourceUrl: '',
         sortOrder: 0,
         remark: '',
@@ -213,6 +400,9 @@ function edit(card: any = null) {
         coverFileIds: [],
       };
   formError.value = '';
+  templateStamp++;
+  templateOpen.value = false;
+  templateLoading.value = false;
   modal.value = true;
 }
 const draftBank = computed({
@@ -254,8 +444,9 @@ async function save() {
     formError.value = '请选择银行或填写自定义银行';
     return;
   }
-  if (!draft.value.id && !String(draft.value.cardNo || '').trim()) {
-    formError.value = '请输入卡号';
+  const cardNo = String(draft.value.cardNo || '').trim();
+  if (cardNo && !/^[0-9]{12,19}$/.test(cardNo.replace(/[\s-]/g, ''))) {
+    formError.value = '请输入12至19位卡号';
     return;
   }
   if (draft.value.creditLimit !== '' && Number(draft.value.creditLimit) < 0) {
@@ -295,6 +486,8 @@ async function save() {
     cards.value = data.id
       ? cards.value.map((item) => (item.id === data.id ? saved : item))
       : [saved, ...cards.value];
+    if (coverFile(saved)) loadCover(saved, mutationStamp);
+    else { delete coverUrls.value[saved.id]; delete coverErrors.value[saved.id]; }
     modal.value = false;
   } catch (e) {
     formError.value = e.message;
@@ -310,6 +503,7 @@ async function remove(card: any) {
   delete revealed.value[card.id];
 }
 function cardNumber(card: any) {
+  if (!card.cardNoLast4) return '';
   return revealed.value[card.id]
     ? revealed.value[card.id].replace(/(.{4})/g, '$1 ').trim()
     : [card.cardNoFirst4, '••••', card.cardNoLast4].filter(Boolean).join(' ');
@@ -377,72 +571,64 @@ async function removeTag(value: any) {
 <template>
   <MobilePage
     :refreshing="refreshing"
+    :scroll-locked="stackHolding"
     @refresh="
       refreshing = true;
       load();
     "
-    ><PageHeader title="" back @back="uni.navigateBack()" /><view
+    ><PageHeader title="" back @back="back">
+      <view class="header-actions ui-row">
+        <button class="header-action" role="button" :aria-label="viewMode === 'stack' ? '切换为平铺视图' : '切换为堆叠视图'" @click="toggleView">
+          <AppIcon :name="viewMode === 'stack' ? 'ant-design:appstore-outlined' : 'mdi:wallet'" :size="20" />
+        </button>
+        <button class="header-action" role="button" aria-label="新增标签" @click="editTag()">
+          <AppIcon name="ant-design:tags-outlined" :size="20" />
+        </button>
+        <button class="header-action" role="button" aria-label="新增银行卡" @click="edit()">
+          <AppIcon name="ant-design:plus-outlined" :size="22" />
+        </button>
+      </view>
+    </PageHeader><view
       class="body ui-page-body"
       :class="themeClass('body')"
-      ><view class="actions search-toolbar ui-toolbar"
-        ><FormField compact stretch hide-label label="搜索银行卡" placeholder="银行、卡名或尾号" v-model="keyword" /><MobileButton
-          label="新增银行卡"
-          icon="ant-design:plus-outlined"
-          @click="edit()" /><MobileButton
-          label="新增标签"
-          icon="ant-design:tags-outlined"
-          variant="quiet"
-          @click="editTag()" /></view
-      ><view
-        class="filters ui-field-row"
-        ><FormField
-          compact
-          stretch
-          label="银行"
-          kind="selector"
-          :options="['全部', ...Array.from(new Set(cards.map((item) => item.bankName)))]"
-          v-model="bank" /><FormField
-          compact
-          stretch
-          label="类型"
-          kind="selector"
-          :options="['全部', '储蓄卡', '信用卡']"
-          v-model="type" /><FormField
-          compact
-          stretch
-          label="状态"
-          kind="selector"
-          :options="['全部', ...Object.values(statusMap)]"
-          v-model="status" /><FormField
-          compact
-          stretch
-          label="标签"
-          kind="selector"
-          :options="['全部', ...tags.map((item) => item.name)]"
-          v-model="tag" /></view
       ><PageState skeleton="list"
         :loading="loading"
         :error="error"
-        :empty="!loading && !filtered.length"
+        :empty="!loading && !sortedCards.length"
         @retry="load"
         >
-<template #loading><view class="card-grid ui-gap-md"><view v-for="n in 4" :key="n" class="card ui-gap-sm" :class="themeClass('card')"><view class="card-face ui-pad-card ui-gap-sm"><ContentSkeleton variant="cover" /></view><ContentSkeleton variant="caption" /></view></view></template>
-<view class="card-grid ui-gap-md"
+<template #loading><view class="card-grid ui-gap-md" :class="{ 'card-stack': viewMode === 'stack' }"><view v-for="n in 4" :key="n" class="card ui-gap-sm" :class="[themeClass('card'), { 'card-stack-folded': viewMode === 'stack' && n < 4 }]"><view class="card-face ui-pad-card ui-gap-sm"><ContentSkeleton variant="cover" /></view><ContentSkeleton variant="caption" /></view></view></template>
+<view class="card-grid ui-gap-md" :class="{ 'card-stack': viewMode === 'stack' }"
           ><view
-            v-for="card in filtered"
+            v-for="(card, cardIndex) in sortedCards"
             :key="card.id"
             class="card ui-gap-sm"
-            :class="themeClass('card')"
-            ><view
+            :style="stackCardStyle(card, cardIndex)"
+            :class="[themeClass('card'), { 'card-stack-folded': viewMode === 'stack' && !cardExpanded(card) && cardIndex < sortedCards.length - 1, 'card-stack-expanded': viewMode === 'stack' && cardExpanded(card) }]"
+            ><view class="card-face-shell"><view
               class="card-face ui-pad-card ui-gap-sm"
-              :class="{ 'card-face-image': !!coverUrls[card.id] }"
-              :style="{ backgroundColor: card.coverColor || '#334766' }"
-              ><image
+              :class="{ 'card-face-image': !!coverUrls[card.id], 'card-face-draggable': viewMode === 'stack', 'card-face-dragging': stackHolding }"
+              :style="{ backgroundColor: cardColor(card) }"
+              role="button"
+              tabindex="0"
+              :aria-label="cardActionLabel(card)"
+              :aria-expanded="viewMode === 'stack' ? cardExpanded(card) : undefined"
+              @touchstart="startStackDrag"
+              @touchmove="moveStackDrag"
+              @touchend="finishStackDrag"
+              @touchcancel="finishStackDrag"
+              @mousedown="startStackDrag"
+              @contextmenu.prevent
+              @click="activateCard(card)"
+              @keydown.enter.self.prevent="activateCard(card)"
+              @keydown.space.self.prevent="activateCard(card)"
+              ><view v-if="!coverUrls[card.id]" class="face-orbit" aria-hidden="true" />
+              <image
                 v-if="coverUrls[card.id]"
                 :src="coverUrls[card.id]"
                 mode="aspectFill"
                 class="cover"
-              /><view v-if="coverErrors[card.id]" class="actions ui-toolbar"
+              /><view v-if="coverErrors[card.id] && cardExpanded(card)" class="actions ui-toolbar" @click.stop
                 ><text class="ui-type-body">{{ coverErrors[card.id] }}</text
                 ><MobileButton
                   label="重试封面"
@@ -450,44 +636,49 @@ async function removeTag(value: any) {
                   :loading="coverLoading[card.id]"
                   @click="loadCover(card)" /></view
               ><view v-if="!coverUrls[card.id]" class="face-heading ui-row">
-                <AppIcon name="ant-design:bank-outlined" :size="22" color="#f1f4f9" />
+                <view class="bank-mark"><AppIcon name="ant-design:bank-outlined" :size="20" color="#f1f4f9" /></view>
                 <text class="title face-title">{{ card.bankName }}</text>
               </view>
-              <view class="face-middle ui-row">
-                <view v-if="!coverUrls[card.id]" class="card-chip" />
-                <text class="number" :class="{ 'number-on-image': !!coverUrls[card.id] }">{{ cardNumber(card) }}</text>
+              <view v-if="!coverUrls[card.id]" class="face-type-anchor">
+                <text class="face-type">{{ card.cardType === 'credit' ? '信用卡' : '储蓄卡' }}</text>
+              </view>
+              <view v-if="!coverUrls[card.id]" class="face-middle ui-row">
+                <view class="card-chip" aria-hidden="true"><view class="chip-core" /><view class="chip-line chip-line-top" /><view class="chip-line chip-line-bottom" /></view>
+                <text class="number" :class="{ 'number-revealed': !!revealed[card.id] }">{{ cardNumber(card) }}</text>
               </view><view v-if="!coverUrls[card.id]" class="face-bottom ui-row"
-                ><text class="ui-type-caption">{{ card.cardName || card.bankCode || 'BANK CARD' }}</text
-                ><text class="ui-type-caption">{{ card.cardType === 'credit' ? '信用卡' : '储蓄卡' }}</text></view
+                ><text class="face-product ui-type-caption">{{ card.cardName || card.bankCode || 'BANK CARD' }}</text
+                ></view
               ></view
             ><view
-              class="card-menu-anchor"
-              :class="{ 'card-menu-active': menuCardId === card.id }"
+              v-if="cardExpanded(card)"
+              :class="{ 'card-menu-anchor': !coverUrls[card.id], 'card-menu-active': menuCardId === card.id, 'card-image-footer': !!coverUrls[card.id] }"
             >
-              <ConfirmAction label="删除银行卡" :message="'删除尾号 ' + card.cardNoLast4 + ' 的银行卡？'" :action="() => remove(card)">
+              <view v-if="coverUrls[card.id]" class="footer-caption ui-row">
+                <text class="card-name footer-name" :class="themeClass('footer-name')">{{ card.alias || card.bankName }}</text>
+                <text v-if="card.status !== 'normal'" class="card-status">{{ statusMap[card.status] }}</text>
+              </view>
+              <text v-if="coverUrls[card.id]" class="number number-outside" :class="themeClass('secondary-text')">{{ cardNumber(card) }}</text>
+              <view class="card-menu-control"><ConfirmAction label="删除银行卡" :message="card.cardNoLast4 ? '删除尾号 ' + card.cardNoLast4 + ' 的银行卡？' : '删除' + (card.alias || card.cardName || card.bankName) + '的银行卡？'" :action="() => remove(card)">
                 <template #default="{ open, busy }">
                   <button class="card-more ui-type-body" :id="'card-more-' + card.id" role="button" aria-label="银行卡更多操作" aria-haspopup="menu" :aria-expanded="menuCardId === card.id" :loading="revealBusy === card.id || busy" :disabled="revealBusy === card.id || busy" @click="toggleMenu(card)">
-                    <AppIcon v-if="revealBusy !== card.id && !busy" name="lucide:ellipsis" :size="24" color="#f1f4f9" />
+                    <AppIcon v-if="revealBusy !== card.id && !busy" name="lucide:ellipsis" :size="20" :color="coverUrls[card.id] ? undefined : '#f1f4f9'" />
                   </button>
                   <view v-if="menuCardId === card.id" class="card-menu ui-pad-sm ui-gap-xs" :style="{ left: menuLeft + 'px', top: menuTop + 'px' }" :class="themeClass('card-menu')" role="menu">
-                    <button class="card-menu-item ui-row" role="menuitem" @click="reveal(card)"><AppIcon :name="revealed[card.id] ? 'ant-design:eye-invisible-outlined' : 'ant-design:eye-outlined'" :size="18" /><text class="ui-type-body">{{ revealed[card.id] ? '隐藏卡号' : '查看卡号' }}</text></button>
-                    <button class="card-menu-item ui-row" role="menuitem" @click="reveal(card, true)"><AppIcon name="ant-design:copy-outlined" :size="18" /><text class="ui-type-body">复制卡号</text></button>
-                    <button class="card-menu-item ui-row" role="menuitem" @click="edit(card)"><AppIcon name="ant-design:edit-outlined" :size="18" /><text class="ui-type-body">编辑银行卡</text></button>
+                    <button v-if="viewMode === 'stack'" class="card-menu-item ui-row" role="menuitem" @click="edit(card)"><AppIcon name="ant-design:edit-outlined" :size="18" /><text class="ui-type-body">编辑银行卡</text></button>
+                    <button v-if="card.cardNoLast4" class="card-menu-item ui-row" role="menuitem" @click="reveal(card)"><AppIcon :name="revealed[card.id] ? 'ant-design:eye-invisible-outlined' : 'ant-design:eye-outlined'" :size="18" /><text class="ui-type-body">{{ revealed[card.id] ? '隐藏卡号' : '查看卡号' }}</text></button>
+                    <button v-if="card.cardNoLast4" class="card-menu-item ui-row" role="menuitem" @click="reveal(card, true)"><AppIcon name="ant-design:copy-outlined" :size="18" /><text class="ui-type-body">复制卡号</text></button>
                     <button class="card-menu-item card-menu-danger ui-row" role="menuitem" @click="menuCardId = ''; open()"><AppIcon name="ant-design:delete-outlined" :size="18" color="#dc5454" /><text class="ui-type-body">删除银行卡</text></button>
                   </view>
                 </template>
-              </ConfirmAction>
-            </view>
-            <view v-if="card.alias || coverUrls[card.id] || card.status !== 'normal'" class="card-caption ui-row"
-              ><text class="card-name">{{ card.alias || (coverUrls[card.id] ? card.bankName : '') }}</text
+              </ConfirmAction></view>
+            </view></view>
+            <view v-if="cardExpanded(card) && !coverUrls[card.id] && (card.alias || card.status !== 'normal')" class="card-caption ui-row"
+              ><text class="card-name">{{ card.alias || '' }}</text
               ><text v-if="card.status !== 'normal'" class="card-status">{{
                 statusMap[card.status]
               }}</text></view
-            ><text v-if="card.cardType === 'credit'" class="card-meta" :class="themeClass('secondary-text')"
-              >额度 {{ card.creditLimit || '—' }} · 账单日
-              {{ card.statementDay || '—' }} · 还款日 {{ card.repaymentDay || '—' }}</text
-            ><view v-if="card.tags?.length" class="card-tags ui-row"><text v-for="item in card.tags" :key="item.id" class="card-tag" :class="themeClass('secondary-text')">{{ item.name }}</text></view
-            ><text v-if="card.remark" class="card-meta" :class="themeClass('secondary-text')">{{ card.remark }}</text
+            ><view v-if="cardExpanded(card) && card.tags?.length" class="card-tags ui-row"><text v-for="item in card.tags" :key="item.id" class="card-tag" :class="themeClass('secondary-text')">{{ item.name }}</text></view
+            ><text v-if="cardExpanded(card) && card.remark" class="card-meta" :class="themeClass('secondary-text')">{{ card.remark }}</text
             ></view></view></PageState
       ><view class="tags ui-mt-section"
         ><view v-for="item in tags" :key="item.id" class="actions ui-toolbar"
@@ -500,12 +691,13 @@ async function removeTag(value: any) {
             label="删除标签"
             :action="() => removeTag(item)" /></view></view></view
     ><view v-if="menuCardId" class="menu-backdrop" @click="menuCardId = ''" />
-    <AdaptiveModal v-if="modal" label="银行卡" :busy="saving" @close="modal = false"
+    <AdaptiveModal v-if="modal" label="银行卡" :busy="saving || coverBusy" @close="modal = false"
       ><view
         class="draft-face ui-pad-card ui-gap-sm"
         :class="{ 'card-face-image': !!coverPreview }"
-        :style="{ backgroundColor: draft.coverColor || '#334766' }"
-        ><image
+        :style="{ backgroundColor: cardColor(draft) }"
+        ><view v-if="!coverPreview" class="face-orbit" aria-hidden="true" />
+        <image
           v-if="coverPreview"
           :src="coverPreview"
           mode="aspectFill"
@@ -519,23 +711,28 @@ async function removeTag(value: any) {
           label="上传卡面"
           :loading="coverBusy"
           @click="uploadCover" /><MobileButton
-          v-if="draft.coverFileIds?.length"
+          v-if="draft.coverTemplateId || draft.coverFileIds?.length"
           label="移除卡面"
           variant="quiet"
-          @click="
-            draft.coverFileIds = [];
-            coverPreview = '';
-          " /></view
-      ><view class="palette ui-row"
+          @click="clearCover" />
+        <MobileButton label="选择公共卡面" variant="quiet" :disabled="!draft.bankId || coverBusy" :loading="templateLoading" @click="openTemplates" /></view
+      ><view v-if="templateOpen" class="ui-stack ui-gap-sm">
+        <text v-if="templateError" class="ui-type-caption">{{ templateError }}</text>
+        <MobileButton v-if="templateError" label="重试" variant="quiet" @click="openTemplates" />
+        <text v-if="!templateLoading && !templateError && templates.length === 0" class="ui-type-caption">暂无匹配卡面</text>
+        <view class="template-grid">
+          <view v-for="item in templates" :key="item.id" class="ui-stack ui-gap-xs">
+            <button role="button" class="template-choice" :aria-label="'选用' + item.name" :disabled="!templateUrls[item.id]" @click="selectTemplate(item)">
+              <image v-if="templateUrls[item.id]" :src="templateUrls[item.id]" class="template-image" mode="aspectFit" @error="templateImageErrors[item.id] = '图片加载失败'" />
+              <text class="ui-type-label">{{ item.name }}</text>
+            </button>
+            <MobileButton v-if="templateImageErrors[item.id]" label="重试图片" variant="quiet" :loading="templateImageLoading[item.id]" @click="loadTemplateImage(item, templateStamp)" />
+          </view>
+        </view>
+      </view
+      ><view v-if="!draft.coverTemplateId && !draft.coverFileIds?.length" class="palette ui-row"
         ><view
-          v-for="color in [
-            '#334766',
-            '#38605C',
-            '#685174',
-            '#87534F',
-            '#716348',
-            '#414854',
-          ]"
+          v-for="color in cardColors"
           :key="color"
           class="color-target"
           role="button"
@@ -543,7 +740,7 @@ async function removeTag(value: any) {
           @click="draft.coverColor = color"
           ><view
             class="color-dot"
-            :class="{ 'color-selected': draft.coverColor === color }"
+            :class="{ 'color-selected': cardColor(draft) === color }"
             :style="{ backgroundColor: color }" /></view></view
       ><FormField appearance="soft" label="银行" kind="selector"
         :options="['自定义', ...banks.map((item) => item.name)]" v-model="draftBank" />
@@ -558,7 +755,7 @@ async function removeTag(value: any) {
         <FormField appearance="soft" compact stretch label="状态" kind="selector"
           :options="Object.values(statusMap)" v-model="draftStatus" />
       </view>
-      <FormField appearance="soft" :label="draft.id ? '新卡号（留空保留）' : '卡号'" v-model="draft.cardNo" password />
+      <FormField appearance="soft" :label="draft.cardNoLast4 ? '新卡号（留空保留）' : '卡号（选填）'" v-model="draft.cardNo" password />
       <MobileButton label="更多信息" variant="quiet" @click="moreInfo = !moreInfo">
         <text class="ui-type-body">更多信息</text>
       </MobileButton>
@@ -635,9 +832,22 @@ async function removeTag(value: any) {
 .actions {
   flex-wrap: wrap;
 }
-.filters {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+.header-actions {
+  flex: 1;
+  justify-content: flex-end;
+}
+.header-action {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: $space-controlMin;
+  height: $space-controlMin;
+  padding: 0;
+  margin: 0;
+  border: 0;
+  border-radius: 50%;
+  background-color: transparent;
 }
 .card-grid {
   display: grid;
@@ -654,6 +864,11 @@ async function removeTag(value: any) {
   display: flex;
   flex-direction: column;
 }
+.card-face-shell {
+  position: relative;
+  width: 100%;
+  min-width: 0;
+}
 .card-dark {
   color: #e7e9ee;
 }
@@ -663,21 +878,69 @@ async function removeTag(value: any) {
   flex-direction: column;
   width: 100%;
   box-sizing: border-box;
-  aspect-ratio: 1.586;
-  border-radius: 14px;
+  // 接近 Web 实体银行卡的比例，窄屏保留三行信息的最小高度。
+  aspect-ratio: 1.7;
+  min-height: 184px;
+  padding: $space-card + $space-inline;
+  background-image: linear-gradient(125deg, #ffffff12, #00000015);
+  border-radius: 16px;
   color: #f1f4f9;
   position: relative;
   justify-content: space-between;
   overflow: hidden;
 }
 // 限制编辑预览的几何尺寸，避免平板上卡面挤占基础字段。
-.draft-face { max-width: 360px; margin-left: auto; margin-right: auto; }
+.draft-face { aspect-ratio: 1.586; max-width: 360px; margin-left: auto; margin-right: auto; }
+// 芯片为固定尺寸装饰图形，内部线条按芯片几何定位。
 .card-chip {
   width: 34px;
-  height: 25px;
+  height: 27px;
+  box-sizing: border-box;
   border-radius: 6px;
-  background-color: #b1ab91;
-  opacity: 0.75;
+  position: relative;
+  overflow: hidden;
+  border: $space-hairline solid #ffffff45;
+  background-image: linear-gradient(135deg, #e4d6af95, #cbb98740);
+}
+.chip-core {
+  position: absolute;
+  left: 9px;
+  right: 9px;
+  top: 0;
+  bottom: 0;
+  border-left: $space-hairline solid #ffffff45;
+  border-right: $space-hairline solid #ffffff45;
+}
+.chip-line {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: $space-hairline;
+  background-color: #ffffff45;
+}
+.chip-line-top { top: 8px; }
+.chip-line-bottom { bottom: 8px; }
+.bank-mark {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background-color: #ffffff18;
+}
+// Web 卡面的同心弧纹；尺寸与偏移属于装饰图形几何，不占内容空间。
+.face-orbit {
+  position: absolute;
+  width: 260px;
+  height: 260px;
+  right: -115px;
+  top: -36px;
+  border: $space-hairline solid #ffffff0d;
+  border-radius: 50%;
+  box-shadow: 0 0 0 26px #ffffff04, 0 0 0 62px #ffffff03;
+  pointer-events: none;
 }
 .card-caption,
 .face-bottom {
@@ -689,6 +952,7 @@ async function removeTag(value: any) {
   @include type-style('caption');
 }
 .face-heading {
+  position: relative;
   width: 100%;
   box-sizing: border-box;
   padding-right: calc(#{$space-controlMin} + #{$space-inline});
@@ -705,31 +969,26 @@ async function removeTag(value: any) {
 .face-middle {
   position: absolute;
   top: 47%;
-  left: $space-card;
-  right: $space-card;
-  min-height: 25px;
+  left: $space-card + $space-inline;
+  right: $space-card + $space-inline;
+  min-height: 27px;
   align-items: center;
   justify-content: flex-end;
 }
 .card-chip { flex-shrink: 0; }
-.number-on-image {
-  flex: none;
-  max-width: 100%;
-  padding: $space-detail $space-inline;
-  border-radius: 6px;
-  background-color: rgba(0, 0, 0, 0.65);
-}
 .face-bottom {
   position: absolute;
-  left: $space-card;
-  right: $space-card;
-  bottom: $space-card;
+  left: $space-card + $space-inline;
+  right: $space-card + $space-inline;
+  bottom: $space-card + $space-inline;
+  min-height: $space-controlMin;
+  padding-right: calc(#{$space-controlMin} + #{$space-inline});
   flex-wrap: nowrap;
 }
 .card-menu-anchor {
   position: absolute;
-  top: $space-card;
-  right: $space-card;
+  bottom: $space-card + $space-inline;
+  right: $space-card + $space-inline;
   overflow: visible;
 }
 .card-menu-active { z-index: 1200; }
@@ -742,7 +1001,7 @@ async function removeTag(value: any) {
   margin: 0;
   padding: 0;
   color: #f1f4f9;
-  background-color: rgba(0, 0, 0, 0.18);
+  background-color: transparent;
   border-radius: 12px;
 }
 .menu-backdrop {
@@ -773,7 +1032,7 @@ async function removeTag(value: any) {
 }
 .card-menu-danger { color: #dc5454; }
 /* #ifdef WEB || MP-WEIXIN */
-.card-more::after, .card-menu-item::after { border: 0; }
+.header-action::after, .card-more::after, .card-menu-item::after { border: 0; }
 /* #endif */
 .palette {
   flex-wrap: wrap;
@@ -794,41 +1053,139 @@ async function removeTag(value: any) {
   outline-offset: 2px;
 }
 .draft-cover { position: absolute; inset: 0; width: 100%; height: 100%; }
-.cover { position: absolute; inset: 0; width: 100%; height: 100%; border-radius: 14px; }
-.card-face-image { padding: 0; }
+.cover { position: absolute; inset: 0; width: 100%; height: 100%; border-radius: 16px; }
+.card-face-image { padding: 0; background-image: none; }
 .card-meta { color: $text-secondary-light; @include type-style('caption');  overflow-wrap: anywhere; }
 .card-name { @include type-style('label'); }
 .card-status { color: #c87942; @include type-style('caption'); }
 .card-tags { flex-wrap: wrap; }
 .card-tag { @include type-style('badge'); color: $text-secondary-light; border-radius: 5px; padding: $space-detail $space-inline; background-color: #80808012; }
 .card-caption { min-width: 0; overflow-wrap: anywhere; }
-.search-toolbar { flex-wrap: nowrap; }
+.face-product {
+  letter-spacing: type-tracking('number');
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  opacity: 0.85;
+}
+.face-type-anchor {
+  position: absolute;
+  top: $space-card + $space-inline;
+  right: $space-card + $space-inline;
+  height: $space-controlMin;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.face-type { @include type-style('badge'); width: $space-controlMin; text-align: center; flex-shrink: 0; opacity: 0.7; }
 
 .title {
   @include type-style('title');
+  font-weight: type-weight('strong');
 
 }
 .number {
   flex: 1;
   min-width: 0;
-  @include type-style('body');
-
+  @include type-style('metric-small');
+  font-family: type-family('mono');
   letter-spacing: type-tracking('number');
   text-align: right;
   overflow-wrap: anywhere;
 }
+.number-revealed {
+  @include type-style('body');
+  letter-spacing: type-tracking('normal');
+}
+// 自定义图片保持完整，银行名称、卡号与操作在卡面外排成一行；菜单不受卡面裁剪。
+.card-image-footer {
+  position: relative;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: $space-inline;
+  min-width: 0;
+  padding-top: $space-inline;
+}
+.footer-caption {
+  flex: 1;
+  min-width: 0;
+  align-items: center;
+}
+.footer-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: #263248;
+}
+.footer-name-dark { color: #e7e9ee; }
+.card-status { flex-shrink: 0; }
+.number-outside {
+  flex: 0 1 auto;
+  max-width: 65%;
+  @include type-style('label');
+  letter-spacing: type-tracking('normal');
+  color: $text-secondary-light;
+}
+.card-menu-control { flex-shrink: 0; }
 @media (min-width: 600px) {
   .card-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
-  .filters { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 }
-.tags {
+// 卡包限制卡面宽度，避免平板/桌面把实体卡比例放大；不额外添加页面边距。
+.card-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  width: 100%;
+  max-width: 420px;
+  margin-left: auto;
+  margin-right: auto;
 }
+// 仅占据顶部可点选区域，完整卡面由后续卡片覆盖，形成真实重叠。
+// 高度容纳现有银行标题和至少 44px 触控区，统一取自间距配置。
+.card-stack-folded {
+  height: $space-controlMin + $space-card + $space-inline + $space-detail;
+  flex-shrink: 0;
+  overflow: visible;
+}
+.card-stack-expanded {
+  margin-bottom: $space-section;
+}
+/* #ifdef WEB */
+.card-face-draggable {
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+  cursor: grab;
+}
+.card-face-dragging { cursor: grabbing; }
+/* #endif */
 .error {
   color: #dc5454;
   display: block;
 }
 
 .secondary-text-dark { color: $text-secondary-dark; }
+.template-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: $space-inline;
+}
+.template-choice {
+  padding: $space-detail;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  min-height: $space-controlMin;
+  display: flex;
+  flex-direction: column;
+  gap: $space-detail;
+}
+.template-image { width: 100%; aspect-ratio: 1.586; }
 </style>

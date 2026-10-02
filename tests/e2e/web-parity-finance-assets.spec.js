@@ -101,8 +101,7 @@ for (const width of [390, 768, 1440])
         );
         if (edit) {
           if (route === 'finance/cards') {
-            await p.getByRole('button', { name: '银行卡更多操作', exact: true }).first().click();
-            await p.getByRole('menuitem', { name: '编辑银行卡', exact: true }).click();
+            await p.getByRole('button', { name: /^编辑银行卡：/ }).first().click();
           } else await p.getByRole('button', { name: edit, exact: true }).first().click();
           await expect(p.getByRole('dialog')).toBeVisible();
           if (route === 'finance/cards') {

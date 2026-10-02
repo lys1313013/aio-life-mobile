@@ -37,3 +37,5 @@ export const deleteCard = (id: string) => request('/bank-cards/' + encodeURIComp
 export const revealCard = (id: string) => request<string>('/bank-cards/' + encodeURIComponent(id) + '/number', 'POST')
 export const saveCardTag = (data: Record<string, any>, id: string = '') => request('/bank-cards/tags' + (id ? '/' + encodeURIComponent(id) : ''), id ? 'PUT' : 'POST', data)
 export const deleteCardTag = (id: string) => request('/bank-cards/tags/' + encodeURIComponent(id), 'DELETE')
+
+export const fetchCardCoverTemplates = (bankId: string, cardType: string) => request<any[]>(queryPath('/bank-cards/cover-templates', {bankId, cardType}))
