@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import FormActions from '../../components/FormActions.uvue';
+import { isRequired, missingRequired } from '../../services/form-required.ts';
 import { computed, onMounted, onUnmounted, ref } from 'vue';
 import AdaptiveModal from '../../components/AdaptiveModal.uvue';
 import AppIcon from '../../components/AppIcon.uvue';
@@ -57,14 +59,14 @@ async function save() {
   error.value = '';
   let payload;
   if (props.kind === 'think') {
-    if (!thought.value.content.trim()) { error.value = '请输入内容'; return; }
+    if (missingRequired('thought', thought.value)) { error.value = '请输入内容'; return; }
     payload = {
       ...thought.value,
       content: thought.value.content.trim(),
       events: thought.value.events.filter(event => event.content.trim()).map(event => ({ content: event.content.trim() })),
     };
   } else {
-    if (!exercise.value.exerciseTypeId || !exercise.value.exerciseDate) {
+    if (missingRequired('exercise', exercise.value)) {
       error.value = '请选择运动类型和日期'; return;
     }
     const count = exercise.value.exerciseCount === '' ? null : Number(exercise.value.exerciseCount);
@@ -88,7 +90,7 @@ async function save() {
 <template>
   <AdaptiveModal :label="kind === 'think' ? '新增闪念' : '新增运动记录'" :show-close="false" :busy="saving" :content-key="contentKey" @close="emit('close')">
     <template v-if="kind === 'think'">
-      <FormField label="内容" kind="textarea" placeholder="记录此刻的想法…" v-model="thought.content" :disabled="saving" />
+      <FormField :required="isRequired('thought', 'content')" label="内容" kind="textarea" placeholder="记录此刻的想法…" v-model="thought.content" :disabled="saving" />
       <view v-for="(event, index) in thought.events" :key="index" class="event-fields">
         <FormField :label="'关联事件 ' + (index + 1)" kind="textarea" v-model="event.content" :disabled="saving" />
         <button class="remove-event" role="button" aria-label="移除此事件" :disabled="saving" @click="thought.events.splice(index, 1)">
@@ -98,20 +100,20 @@ async function save() {
     </template>
     <template v-else>
       <LoadingIndicator v-if="loading" label="正在加载运动类型" />
-      <FormField v-for="field in exerciseFields" :key="field.key" :label="field.label" :kind="field.kind" :input-type="field.inputType" :model-value="field.key === 'exerciseTypeId' ? typeName : exercise[field.key]" :options="field.key === 'exerciseTypeId' ? types.map(type => type.dictLabel) : []" :disabled="saving || (field.key === 'exerciseTypeId' && !types.length)" @update:model-value="updateExercise(field.key, $event)" />
+      <FormField v-for="field in exerciseFields" :key="field.key" :required="isRequired('exercise', field.key)" :label="field.label" :kind="field.kind" :input-type="field.inputType" :model-value="field.key === 'exerciseTypeId' ? typeName : exercise[field.key]" :options="field.key === 'exerciseTypeId' ? types.map(type => type.dictLabel) : []" :disabled="saving || (field.key === 'exerciseTypeId' && !types.length)" @update:model-value="updateExercise(field.key, $event)" />
     </template>
     <text v-if="error" class="form-error" role="alert">{{ error }}</text>
-    <view class="actions">
+    <FormActions>
+      <template #secondary>
       <view v-if="kind === 'think'" class="actions">
-        <MobileButton label="新增关联事件" icon="ant-design:plus-outlined" variant="quiet" :disabled="saving" @click="thought.events.push({ content: '' })" />
-        <MobileButton :label="thought.isPinned === 1 ? '取消看板展示' : '展示到看板'" :icon="thought.isPinned === 1 ? 'ant-design:star-filled' : 'ant-design:star-outlined'" variant="quiet" :disabled="saving" @click="thought.isPinned = thought.isPinned === 1 ? 0 : 1" />
+        <MobileButton label="新增关联事件" icon="ant-design:plus-outlined" variant="ghost" :disabled="saving" @click="thought.events.push({ content: '' })" />
+        <MobileButton :label="thought.isPinned === 1 ? '取消看板展示' : '展示到看板'" :icon="thought.isPinned === 1 ? 'ant-design:star-filled' : 'ant-design:star-outlined'" variant="ghost" :disabled="saving" @click="thought.isPinned = thought.isPinned === 1 ? 0 : 1" />
       </view>
       <MobileButton v-if="kind === 'exercise' && !types.length" label="重试运动类型" icon="ant-design:reload-outlined" :loading="loading" @click="loadTypes" />
-      <view class="actions form-actions">
+      </template>
         <MobileButton label="取消" variant="quiet" :disabled="saving" @click="emit('close')" />
         <MobileButton label="保存" :loading="saving" :disabled="loading || (kind === 'exercise' && !types.length)" @click="save" />
-      </view>
-    </view>
+    </FormActions>
   </AdaptiveModal>
 </template>
 
@@ -120,7 +122,6 @@ async function save() {
 @use '../../styles/typography' as *;
 .actions { display: flex; flex-direction: row; align-items: center; flex-wrap: wrap; gap: $space-inline; }
 .event-fields { gap: $space-inline; margin-bottom: $space-section; }
-.form-actions { margin-left: auto; flex-shrink: 0; }
 .form-error { @include type-style('body'); color: #e05252; margin-bottom: $space-section; }
 .remove-event { display: flex; align-items: center; justify-content: center; width: $space-controlMin; height: $space-controlMin; padding: 0; margin: 0; border: 0; background-color: transparent; }
 /* #ifdef WEB || MP-WEIXIN */

@@ -1,8 +1,9 @@
 <script setup lang="ts">
+import { createDaySwipe, daySwipeStyle } from '../services/day-swipe.ts'
 import LoadingIndicator from './LoadingIndicator.uvue'
 import AppIcon from './AppIcon.uvue'
 import { themeClass } from '../services/theme.ts'
-import { computed, ref, onMounted, onUnmounted } from 'vue'
+import { computed, ref, watch, onMounted, onUnmounted } from 'vue'
 import CategoryIcon from './CategoryIcon.uvue'
 import AdaptiveModal from './AdaptiveModal.uvue'
 import type { Category, TimeRecord } from '../services/dashboard.ts'
@@ -24,8 +25,22 @@ const props = defineProps<{
   selected?: string[]
   loading?: boolean
 }>()
-const emit = defineEmits(['edit'])
+const emit = defineEmits(['edit', 'change-day'])
 const selectedDay = ref('')
+watch(() => props.startDate, () => { selectedDay.value = '' })
+const swipeOffset = ref(0)
+const swipeDragging = ref(false)
+const daySwipe = createDaySwipe(
+  () => props.days === 1 && !props.loading && !selectedDay.value,
+  (offset) => emit('change-day', offset),
+  (offset, dragging) => {
+    swipeOffset.value = offset
+    swipeDragging.value = dragging
+  },
+)
+function openDay(date: string) {
+  if (!props.loading && !daySwipe.ignoreClick()) selectedDay.value = date
+}
 // 全天随视口缩放；短记录从日期列表 / 卡片进入，保持真实时间比例。
 const windowHeight = ref(uni.getWindowInfo().windowHeight)
 const windowWidth = ref(uni.getWindowInfo().windowWidth)
@@ -101,13 +116,15 @@ const selected = computed(() =>
   columns.value.find((column) => column.date === selectedDay.value),
 )
 function edit(record: TimeRecord) {
+  if (props.loading || daySwipe.ignoreClick()) return
   selectedDay.value = ''
   emit('edit', record)
 }
 </script>
 
 <template>
-  <view class="timeline" :aria-busy="loading" :class="[themeClass('timeline'), { 'timeline-multiple': days > 1 }]">
+  <view class="day-swipe-viewport" @touchstart="daySwipe.touchStart" @touchmove="daySwipe.touchMove" @touchend="daySwipe.touchEnd" @touchcancel="daySwipe.cancel">
+  <view class="timeline day-swipe-surface" :style="daySwipeStyle(swipeOffset, swipeDragging)" :aria-busy="loading" :class="[themeClass('timeline'), { 'timeline-multiple': days > 1, 'day-swipe-panel': days === 1 }]">
     <LoadingIndicator v-if="loading" floating label="正在加载时迹" />
     <view class="timeline-axis" :class="themeClass('timeline-axis')">
       <view class="axis-heading" :class="themeClass('axis-heading')" />
@@ -124,7 +141,7 @@ function edit(record: TimeRecord) {
     </view>
     <scroll-view
       direction="horizontal"
-      :scroll-x="true"
+      :scroll-x="days > 1"
       class="timeline-scroll"
     >
       <view
@@ -143,7 +160,7 @@ function edit(record: TimeRecord) {
             :aria-disabled="!!loading"
             :class="themeClass('column-heading')"
             :aria-label="'查看 ' + column.date + ' 记录列表'"
-            @click="!loading && (selectedDay = column.date)"
+            @click="openDay(column.date)"
           >
             <text class="column-weekday" :class="themeClass('column-weekday')">{{ column.weekday }}</text>
             <text class="column-date" :class="themeClass('column-date')">{{ column.date.slice(5) }}</text>
@@ -188,6 +205,7 @@ function edit(record: TimeRecord) {
         </view>
       </view>
     </scroll-view>
+  </view>
   </view>
   <!-- 短记录保持真实比例，通过日期标题打开大触控区域的记录列表。 -->
   <AdaptiveModal
@@ -239,8 +257,13 @@ function edit(record: TimeRecord) {
 <style scoped lang="scss">
 @use '../styles/typography' as *;
 @use '../styles/spacing.scss';
+@use '../styles/day-swipe.scss';
 @use '../styles/spacing-tokens' as *;
 @include type-utilities('body');
+
+/* #ifdef WEB */
+.day-swipe-panel { touch-action: pan-y pinch-zoom; }
+/* #endif */
 
 .timeline { position: relative; flex-direction: row; background-color: #ffffff; border-radius: 6px; overflow: hidden; }
 .timeline-axis { width: 28px; flex-shrink: 0; border-right: 1px solid #eef0f3; }

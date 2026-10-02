@@ -1,7 +1,8 @@
 <script setup lang="ts">
+import { createDaySwipe, daySwipeStyle } from '../services/day-swipe.ts'
 import ContentSkeleton from './ContentSkeleton.uvue'
 import { themeClass } from '../services/theme.ts'
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import CategoryIcon from './CategoryIcon.uvue'
 import type { Category, TimeRecord } from '../services/dashboard.ts'
 import {
@@ -11,7 +12,20 @@ import {
 } from '../services/time-format.ts'
 import { clockLabel, durationLabel } from '../services/dashboard-format.ts'
 const props = defineProps<{ records: TimeRecord[]; categories: Category[]; showDate?: boolean; loading?: boolean }>()
-const emit = defineEmits(['edit'])
+const emit = defineEmits(['edit', 'change-day'])
+const swipeOffset = ref(0)
+const swipeDragging = ref(false)
+const daySwipe = createDaySwipe(
+  () => !props.showDate && !props.loading,
+  (offset) => emit('change-day', offset),
+  (offset, dragging) => {
+    swipeOffset.value = offset
+    swipeDragging.value = dragging
+  },
+)
+function edit(record: TimeRecord) {
+  if (!props.loading && !daySwipe.ignoreClick()) emit('edit', record)
+}
 const groups = computed(() => {
   const dates = [...new Set(props.records.map((r) => r.date || ''))].sort()
   return dates.map((date) => ({
@@ -29,7 +43,8 @@ const groups = computed(() => {
 })
 </script>
 <template>
-  <view class="record-groups">
+  <view class="day-swipe-viewport" @touchstart="daySwipe.touchStart" @touchmove="daySwipe.touchMove" @touchend="daySwipe.touchEnd" @touchcancel="daySwipe.cancel">
+  <view class="record-groups day-swipe-surface" :style="daySwipeStyle(swipeOffset, swipeDragging)" :class="{ 'day-swipe-panel': !showDate, 'day-swipe-empty': !showDate && !records.length }">
     <view v-if="loading" class="record-card-grid"><view v-for="n in 6" :key="n" class="record-card-cell"><view class="record-card" :class="themeClass('record-card')"><ContentSkeleton variant="tile" compact label="正在加载时迹卡片" /></view></view></view>
     <view v-for="group in groups" :key="group.date" class="record-group">
       <text v-if="showDate" class="record-group-date" :class="themeClass('record-group-date')"
@@ -48,7 +63,7 @@ const groups = computed(() => {
             :aria-label="
               '编辑记录 ' + (item.title || item.category?.name || '未分类')
             "
-            @click="emit('edit', item)"
+            @click="edit(item)"
             :class="themeClass('record-card')"
           >
             <view class="record-card-heading"
@@ -83,13 +98,22 @@ const groups = computed(() => {
       </view>
     </view>
   </view>
+  </view>
 </template>
 <style scoped lang="scss">
 @use '../styles/typography' as *;
 @use '../styles/spacing.scss';
+@use '../styles/day-swipe.scss';
 @use '../styles/spacing-tokens' as *;
 @use '../styles/text-colors' as *;
 @include type-utilities('body');
+
+// 空日保留手势区域，仍可滑回有记录的日期。
+.day-swipe-empty { min-height: 25vh; }
+
+/* #ifdef WEB */
+.day-swipe-panel { touch-action: pan-y pinch-zoom; }
+/* #endif */
 
 .record-group {
   margin-bottom: $space-section;

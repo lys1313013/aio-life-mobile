@@ -51,8 +51,13 @@ async function loadSelected() {
     if (active && serial === detailSerial) { detailLoading.value = false; emit('resize') }
   }
 }
+const pageEnded = ref(false), failedMore = ref(false)
+function loadMore() {
+  if (!visible.value || error.value) return
+  load(true)
+}
 async function load(more = false) {
-  if (more && (loading.value || items.value.length >= total.value)) return
+  if (more && (loading.value || !items.value.length || pageEnded.value || items.value.length >= total.value)) return
   const serial = ++listSerial, type = props.type, next = more ? page.value + 1 : 1
   loading.value = true
   error.value = ''
@@ -60,10 +65,11 @@ async function load(more = false) {
     const result = await getRelated(type, keyword.value.trim(), next, all.value)
     if (!active || serial !== listSerial || type !== props.type) return
     items.value = more ? [...items.value, ...result.items.filter(item => !items.value.some(old => old.id === item.id))] : result.items
+    pageEnded.value = !result.items.length
     page.value = next
     total.value = Number(result.total)
   } catch (e) {
-    if (active && serial === listSerial) error.value = e.message || '关联记录加载失败'
+    if (active && serial === listSerial) { failedMore.value = more; error.value = e.message || '关联记录加载失败' }
   } finally {
     if (active && serial === listSerial) loading.value = false
   }
@@ -150,7 +156,7 @@ onUnmounted(() => { active = false; detailSerial++; listSerial++; clearTimeout(s
         <AppIcon name="ant-design:reload-outlined" :size="18" />
       </button>
     </view>
-    <AdaptiveModal v-if="visible" label="选择关联记录" :show-close="false" :max-width="600" :content-key="contentKey" @close="close">
+    <AdaptiveModal v-if="visible" label="选择关联记录" @reachbottom="loadMore" :show-close="false" :max-width="600" :content-key="contentKey" @close="close">
       <view class="related-toolbar">
         <input v-model="keyword" class="related-search" :class="themeClass('related-search')" :placeholder="type === 1 ? '搜索书名或作者' : '搜索影视名称或导演'" aria-label="搜索关联记录" confirm-type="search" @confirm="search" />
         <button role="button" class="related-icon-button ui-type-body" aria-label="搜索关联记录" @click="search"><AppIcon name="ant-design:search-outlined" :size="20" /></button>
@@ -168,9 +174,8 @@ onUnmounted(() => { active = false; detailSerial++; listSerial++; clearTimeout(s
         </view>
       </view>
       <LoadingIndicator v-if="loading" label="正在加载关联记录" />
-      <view v-if="error" class="related-error-row"><text class="related-error" role="alert">{{ error }}</text><button role="button" class="related-icon-button ui-type-body" aria-label="重试关联列表" @click="load(page > 0)"><AppIcon name="ant-design:reload-outlined" /></button></view>
+      <view v-if="error" class="related-error-row"><text class="related-error" role="alert">{{ error }}</text><button role="button" class="related-icon-button ui-type-body" aria-label="重试关联列表" @click="load(failedMore)"><AppIcon name="ant-design:reload-outlined" /></button></view>
       <text v-else-if="!loading && !items.length" class="related-muted related-empty-text" :class="themeClass('related-muted')">{{ keyword ? '没有找到匹配的记录' : '暂无可选记录' }}</text>
-      <button v-if="!loading && !error && items.length < total" class="related-more" role="button" @click="load(true)">加载更多</button>
     </AdaptiveModal>
   </view>
 </template>
@@ -212,10 +217,9 @@ onUnmounted(() => { active = false; detailSerial++; listSerial++; clearTimeout(s
 .related-error-row { flex-direction: row; align-items: center; gap: $space-inline; }
 .related-error { flex: 1; @include type-style('label');  color: #df5661; }
 .related-empty-text { padding: $space-section 0; text-align: center; }
-.related-more { margin: $space-inline 0 0; padding: 0; min-height: $space-controlMin; background-color: transparent; border: 0; color: #5b8ff9; @include type-style('label'); }
 @media (min-width: 600px) { .related-card { width: calc((100% - 3 * $space-section) / 4); } }
 /* #ifdef WEB || MP-WEIXIN */
-.related-icon-button::after, .related-empty::after, .related-more::after { border: 0; }
+.related-icon-button::after, .related-empty::after { border: 0; }
 /* #endif */
 
 

@@ -6,7 +6,7 @@ async function setup(page, options = {}) {
   const state = { queries: 0, ranges: [], creates: [], updates: [], deletes: 0, profiles: 0, relatedQueries: [], relatedUpdates: [], coverAuth: [], failRefresh: false, failSave: false, failDelete: false, detailFailure: false, full: false,
     records: [{ id: '9223372036854775807', date: today, categoryId: '2', startTime: 540, endTime: 599, title: '晨间运动', description: '保留原有备注', exercises: [{ exerciseTypeId: '9223372036854775806', exerciseCount: 20, description: '三组' }], relateId: '9223372036854775805', relateType: 1 }] };
   Object.assign(state, options);
-  await page.route('**/api/**', async route => {
+  await page.route('http://127.0.0.1:5180/api/**', async route => {
     const req = route.request(), url = new URL(req.url()), path = url.pathname, method = req.method();
     let data = dashboardFixture(path);
     if (path === '/api/timeTrackerCategory/list' && state.categories) data = state.categories;
@@ -742,7 +742,9 @@ test('关联卡片详情列表封面失败恢复与分页', async ({ page }) => 
   await expect(picker.locator('.related-card')).toHaveCount(16);
   await picker.locator('uni-switch').click();
   await expect(picker.locator('.related-card')).toHaveCount(24);
-  await picker.getByRole('button', { name: '加载更多' }).click();
+  await expect(picker.getByRole('button', { name: '加载更多' })).toHaveCount(0);
+  await picker.locator('.modal-scroll').hover();
+  await page.mouse.wheel(0, 10000);
   await expect(picker.locator('.related-card')).toHaveCount(30);
   await picker.locator('[aria-label="搜索关联记录"] input').fill('不存在的书');
   await expect(picker.getByText('没有找到匹配的记录')).toBeVisible();
@@ -750,3 +752,56 @@ test('关联卡片详情列表封面失败恢复与分页', async ({ page }) => 
   await expect(editor.locator('.selected-related .related-title')).toHaveText('时间之书');
   expect(state.updates).toHaveLength(0);
 });
+
+for (const view of ['时间轴视图', '卡片视图']) {
+  test(`日视图真实横滑切日且不误开编辑 ${view}`, async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await setup(page);
+    await page.getByRole('button', { name: view, exact: true }).click();
+    const cdp = await page.context().newCDPSession(page);
+    await cdp.send('Emulation.setTouchEmulationEnabled', { enabled: true });
+    async function swipe(target, dx, dy = 0) {
+      const surface = page.locator('.day-swipe-surface').first();
+      await expect.poll(() => surface.evaluate(el => getComputedStyle(el).transform)).toBe('matrix(1, 0, 0, 1, 0, 0)');
+      const surfaceX = (await surface.boundingBox()).x;
+      const box = await target.boundingBox();
+      const x = box.x + (dx < 0 ? box.width * 0.8 : box.width * 0.2);
+      const y = box.y + box.height / 2;
+      await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y }] });
+      for (let step = 1; step <= 6; step++) {
+        await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: x + dx * step / 6, y: y + dy * step / 6 }] });
+        await page.waitForTimeout(20);
+      }
+      if (dy === 0 && await page.getByRole('button', { name: '日视图', exact: true }).getAttribute('aria-pressed') === 'true') {
+        await expect.poll(async () => Math.abs((await surface.boundingBox()).x - surfaceX)).toBeGreaterThan(20);
+      }
+      await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+      await expect.poll(() => surface.evaluate(el => getComputedStyle(el).transform)).toBe('matrix(1, 0, 0, 1, 0, 0)');
+    }
+    const record = page.getByRole('button', { name: '编辑记录 晨间运动' });
+    const tomorrow = new Date(today + 'T12:00:00');
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    const nextDate = `${tomorrow.getFullYear()}-${String(tomorrow.getMonth() + 1).padStart(2, '0')}-${String(tomorrow.getDate()).padStart(2, '0')}`;
+    await swipe(record, -120);
+    await expect(page.locator('.date-value')).toHaveText(nextDate);
+    await expect(page.locator('.time-main-panel')).toHaveAttribute('aria-busy', 'false');
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    await swipe(page.locator(view === '时间轴视图' ? '.day-track' : '.record-groups'), 120);
+    await expect(page.locator('.date-value')).toHaveText(today);
+    await expect(record).toBeVisible();
+    await swipe(record, 5, -70);
+    await expect(page.locator('.date-value')).toHaveText(today);
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    await record.scrollIntoViewIfNeeded();
+    const tapBox = await record.boundingBox();
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: tapBox.x + tapBox.width / 2, y: tapBox.y + tapBox.height / 2 }] });
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+    await expect(page.getByRole('dialog', { name: '记录时间', exact: true })).toBeVisible();
+    await closeEditor(page);
+    await page.getByRole('button', { name: '周视图', exact: true }).click();
+    await expect(page.locator('.time-main-panel')).toHaveAttribute('aria-busy', 'false');
+    await swipe(page.locator('.time-main-panel'), -100);
+    await expect(page.locator('.date-value')).toHaveText(today);
+    await cdp.detach();
+  });
+}

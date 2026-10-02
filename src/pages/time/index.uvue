@@ -12,6 +12,7 @@ import { onShow, onHide } from '@dcloudio/uni-app'
 import PageHeader from '../../components/PageHeader.uvue'
 import FloatingActionButton from '../../components/FloatingActionButton.uvue'
 import AdaptiveModal from '../../components/AdaptiveModal.uvue'
+import FormActions from '../../components/FormActions.uvue'
 import CategoryIcon from '../../components/CategoryIcon.uvue'
 import TimeRecordCards from '../../components/TimeRecordCards.uvue'
 import TimeStatistics from '../../components/TimeStatistics.uvue'
@@ -309,13 +310,14 @@ function goToday() {
           <LoadingIndicator v-if="loading && !refreshing && records.length" floating label="正在更新时迹" />
           <TimeTimeline
             v-if="viewMode === 'timeline'"
-            :key="mode + date"
+            :key="mode"
             :loading="loading && !records.length"
             :records="records"
             :selected="selectedCategories"
             :categories="categories"
             :start-date="range.start"
             :days="range.days"
+            @change-day="moveDate"
             @edit="edit"
           />
           <TimeRecordCards
@@ -323,6 +325,7 @@ function goToday() {
             :loading="loading && !records.length"
             :records="filtered"
             :show-date="mode !== 'day'"
+            @change-day="moveDate"
             :categories="categories"
             @edit="edit"
           />
@@ -368,6 +371,7 @@ function goToday() {
     <AdaptiveModal
       v-if="showFilters"
       label="筛选分类"
+      :max-width="420"
       @close="showFilters = false"
     >
       <view class="filter-heading ui-mb-sm"
@@ -382,33 +386,34 @@ function goToday() {
         </button></view
       >
       <text v-if="!categories.length" class="muted-text">暂无分类</text>
-      <button
-        v-for="item in categories"
-        :key="item.id"
-        role="button"
-        class="filter-option ui-px-card ui-py-sm ui-type-body"
-        :class="{ 'filter-option-active': draftCategories.includes(item.id) }"
-        :aria-label="'筛选 ' + categoryPath(item.id, categories)"
-        :aria-pressed="draftCategories.includes(item.id)"
-        @click="toggleFilter(item.id)"
-      >
-        <CategoryIcon :icon="item.icon" :color="item.color" :size="22" /><text
-          class="filter-option-name ui-ml-section"
-          :class="themeClass('filter-option-name')"
-          >{{ categoryPath(item.id, categories) }}</text
-        ><AppIcon v-if="draftCategories.includes(item.id)" name="ant-design:check-outlined" color="#5b8ff9" />
-      </button>
-      <view class="filter-footer ui-mt-section"
-        ><button
+      <view class="filter-grid">
+        <button
+          v-for="item in categories"
+          :key="item.id"
           role="button"
-          class="filter-cancel ui-mr-section"
-          @click="showFilters = false"
+          class="filter-option"
+          :class="[themeClass('filter-option'), {
+            'filter-option-active': draftCategories.includes(item.id),
+            'filter-option-active-dark': isDark && draftCategories.includes(item.id),
+            'filter-option-wide': categoryPath(item.id, categories).length > 4,
+          }]"
+          :aria-label="'筛选 ' + categoryPath(item.id, categories)"
+          :aria-pressed="draftCategories.includes(item.id)"
+          @click="toggleFilter(item.id)"
         >
-          取消</button
-        ><button role="button" class="filter-apply" @click="applyFilters">
-          应用筛选
-        </button></view
-      >
+          <CategoryIcon :icon="item.icon" :color="item.color" :size="20" />
+          <text class="filter-option-name" :class="themeClass('filter-option-name')">{{ categoryPath(item.id, categories) }}</text>
+          <view v-if="draftCategories.includes(item.id)" class="filter-check">
+            <AppIcon name="ant-design:check-outlined" :size="12" :color="isDark ? '#a9c3ff' : '#427bea'" />
+          </view>
+        </button>
+      </view>
+      <view class="ui-mt-section">
+        <FormActions>
+          <button role="button" class="filter-cancel" @click="showFilters = false">取消</button>
+          <button role="button" class="filter-apply" @click="applyFilters">应用筛选</button>
+        </FormActions>
+      </view>
     </AdaptiveModal>
     <TimeRecordEditor
       v-if="editor"
@@ -484,46 +489,56 @@ function goToday() {
 
   color: #27272a;
 }
+.filter-grid {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: $space-inline;
+}
 .filter-option {
+  position: relative;
   display: flex;
   flex-direction: row;
   align-items: center;
-  min-height: 48px;
-  width: 100%;
+  justify-content: center;
+  gap: $space-detail;
+  min-height: $space-controlMin;
+  width: calc((100% - 2 * #{$space-inline}) / 3);
+  box-sizing: border-box;
   margin: 0;
-
+  padding: $space-inline;
   border: 0;
   border-radius: 10px;
-  background-color: transparent;
+  background-color: #f3f4f6;
   text-align: left;
   line-height: type-line('body');
 }
-.filter-option-active {
-  background-color: rgba(78, 126, 227, 0.12);
+.filter-option-wide {
+  width: 100%;
+  justify-content: flex-start;
 }
+.filter-option-dark { background-color: #282b31; }
+.filter-option-active { background-color: #e3ecff; }
+.filter-option-active-dark { background-color: #2c3953; }
 .filter-option-name {
-  flex: 1;
+  min-width: 0;
+  flex-shrink: 1;
   color: #52525b;
   @include type-style('body');
-
 }
 .filter-check {
-  color: #4e7ee3;
-  width: 24px;
-  @include type-style('title');
-  text-align: right;
-}
-.filter-footer {
-  flex-direction: row;
-
+  position: absolute;
+  top: $space-micro;
+  right: $space-micro;
 }
 .filter-cancel,
 .filter-apply {
   display: flex;
   align-items: center;
   justify-content: center;
-  flex: 1;
-  height: 44px;
+  min-width: $space-modalActionMin;
+  min-height: $space-controlMin;
+  padding: 0 $space-modal;
   line-height: $space-controlMin;
   border: 0;
   border-radius: 10px;
@@ -533,7 +548,6 @@ function goToday() {
 .filter-cancel {
   background-color: transparent;
   color: #8b8f99;
-
 }
 .filter-apply {
   background-color: #4e7ee3;
