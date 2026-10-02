@@ -443,7 +443,7 @@ async function removeTag(value: any) {
                 mode="aspectFill"
                 class="cover"
               /><view v-if="coverErrors[card.id]" class="actions ui-toolbar"
-                ><text>{{ coverErrors[card.id] }}</text
+                ><text class="ui-type-body">{{ coverErrors[card.id] }}</text
                 ><MobileButton
                   label="重试封面"
                   variant="quiet"
@@ -457,8 +457,8 @@ async function removeTag(value: any) {
                 <view v-if="!coverUrls[card.id]" class="card-chip" />
                 <text class="number" :class="{ 'number-on-image': !!coverUrls[card.id] }">{{ cardNumber(card) }}</text>
               </view><view v-if="!coverUrls[card.id]" class="face-bottom ui-row"
-                ><text>{{ card.cardName || card.bankCode || 'BANK CARD' }}</text
-                ><text>{{ card.cardType === 'credit' ? '信用卡' : '储蓄卡' }}</text></view
+                ><text class="ui-type-caption">{{ card.cardName || card.bankCode || 'BANK CARD' }}</text
+                ><text class="ui-type-caption">{{ card.cardType === 'credit' ? '信用卡' : '储蓄卡' }}</text></view
               ></view
             ><view
               class="card-menu-anchor"
@@ -466,14 +466,14 @@ async function removeTag(value: any) {
             >
               <ConfirmAction label="删除银行卡" :message="'删除尾号 ' + card.cardNoLast4 + ' 的银行卡？'" :action="() => remove(card)">
                 <template #default="{ open, busy }">
-                  <button class="card-more" :id="'card-more-' + card.id" role="button" aria-label="银行卡更多操作" aria-haspopup="menu" :aria-expanded="menuCardId === card.id" :loading="revealBusy === card.id || busy" :disabled="revealBusy === card.id || busy" @click="toggleMenu(card)">
+                  <button class="card-more ui-type-body" :id="'card-more-' + card.id" role="button" aria-label="银行卡更多操作" aria-haspopup="menu" :aria-expanded="menuCardId === card.id" :loading="revealBusy === card.id || busy" :disabled="revealBusy === card.id || busy" @click="toggleMenu(card)">
                     <AppIcon v-if="revealBusy !== card.id && !busy" name="lucide:ellipsis" :size="24" color="#f1f4f9" />
                   </button>
                   <view v-if="menuCardId === card.id" class="card-menu ui-pad-sm ui-gap-xs" :style="{ left: menuLeft + 'px', top: menuTop + 'px' }" :class="themeClass('card-menu')" role="menu">
-                    <button class="card-menu-item ui-row" role="menuitem" @click="reveal(card)"><AppIcon :name="revealed[card.id] ? 'ant-design:eye-invisible-outlined' : 'ant-design:eye-outlined'" :size="18" /><text>{{ revealed[card.id] ? '隐藏卡号' : '查看卡号' }}</text></button>
-                    <button class="card-menu-item ui-row" role="menuitem" @click="reveal(card, true)"><AppIcon name="ant-design:copy-outlined" :size="18" /><text>复制卡号</text></button>
-                    <button class="card-menu-item ui-row" role="menuitem" @click="edit(card)"><AppIcon name="ant-design:edit-outlined" :size="18" /><text>编辑银行卡</text></button>
-                    <button class="card-menu-item card-menu-danger ui-row" role="menuitem" @click="menuCardId = ''; open()"><AppIcon name="ant-design:delete-outlined" :size="18" color="#dc5454" /><text>删除银行卡</text></button>
+                    <button class="card-menu-item ui-row" role="menuitem" @click="reveal(card)"><AppIcon :name="revealed[card.id] ? 'ant-design:eye-invisible-outlined' : 'ant-design:eye-outlined'" :size="18" /><text class="ui-type-body">{{ revealed[card.id] ? '隐藏卡号' : '查看卡号' }}</text></button>
+                    <button class="card-menu-item ui-row" role="menuitem" @click="reveal(card, true)"><AppIcon name="ant-design:copy-outlined" :size="18" /><text class="ui-type-body">复制卡号</text></button>
+                    <button class="card-menu-item ui-row" role="menuitem" @click="edit(card)"><AppIcon name="ant-design:edit-outlined" :size="18" /><text class="ui-type-body">编辑银行卡</text></button>
+                    <button class="card-menu-item card-menu-danger ui-row" role="menuitem" @click="menuCardId = ''; open()"><AppIcon name="ant-design:delete-outlined" :size="18" color="#dc5454" /><text class="ui-type-body">删除银行卡</text></button>
                   </view>
                 </template>
               </ConfirmAction>
@@ -483,15 +483,15 @@ async function removeTag(value: any) {
               ><text v-if="card.status !== 'normal'" class="card-status">{{
                 statusMap[card.status]
               }}</text></view
-            ><text v-if="card.cardType === 'credit'" class="card-meta"
+            ><text v-if="card.cardType === 'credit'" class="card-meta" :class="themeClass('secondary-text')"
               >额度 {{ card.creditLimit || '—' }} · 账单日
               {{ card.statementDay || '—' }} · 还款日 {{ card.repaymentDay || '—' }}</text
-            ><view v-if="card.tags?.length" class="card-tags ui-row"><text v-for="item in card.tags" :key="item.id" class="card-tag">{{ item.name }}</text></view
-            ><text v-if="card.remark" class="card-meta">{{ card.remark }}</text
+            ><view v-if="card.tags?.length" class="card-tags ui-row"><text v-for="item in card.tags" :key="item.id" class="card-tag" :class="themeClass('secondary-text')">{{ item.name }}</text></view
+            ><text v-if="card.remark" class="card-meta" :class="themeClass('secondary-text')">{{ card.remark }}</text
             ></view></view></PageState
       ><view class="tags ui-mt-section"
         ><view v-for="item in tags" :key="item.id" class="actions ui-toolbar"
-          ><text>{{ item.name }}</text
+          ><text class="ui-type-body">{{ item.name }}</text
           ><MobileButton
             label="编辑标签"
             icon="ant-design:edit-outlined"
@@ -513,7 +513,7 @@ async function removeTag(value: any) {
         /><text v-if="!coverPreview" class="title">{{
           draftBank === '自定义' ? draft.customBankName || '选择银行' : draftBank
         }}</text
-        ><view v-if="!coverPreview" class="card-chip" /><text v-if="!coverPreview">{{ draftType }}</text></view
+        ><view v-if="!coverPreview" class="card-chip" /><text class="ui-type-body" v-if="!coverPreview">{{ draftType }}</text></view
       ><view class="actions ui-toolbar"
         ><MobileButton
           label="上传卡面"
@@ -545,54 +545,44 @@ async function removeTag(value: any) {
             class="color-dot"
             :class="{ 'color-selected': draft.coverColor === color }"
             :style="{ backgroundColor: color }" /></view></view
-      ><FormField
-        label="银行"
-        kind="selector"
-        :options="['自定义', ...banks.map((item) => item.name)]"
-        v-model="draftBank" /><FormField
-        v-if="!draft.bankId"
-        label="自定义银行"
-        v-model="draft.customBankName" /><FormField
-        label="卡名称"
-        v-model="draft.cardName" /><FormField
-        label="别名"
-        v-model="draft.alias" /><FormField
-        label="类型"
-        kind="selector"
-        :options="['储蓄卡', '信用卡']"
-        v-model="draftType" /><FormField
-        :label="draft.id ? '新卡号（留空保留）' : '卡号'"
-        v-model="draft.cardNo"
-        password /><FormField
-        label="状态"
-        kind="selector"
-        :options="Object.values(statusMap)"
-        v-model="draftStatus" /><MobileButton
-        label="更多信息"
-        variant="quiet"
-        @click="moreInfo = !moreInfo"
-        ><text>更多信息</text></MobileButton
-      ><view v-if="moreInfo"
-        ><FormField label="开户支行" v-model="draft.branchName" /><FormField
-          label="开户日期"
-          kind="date"
-          v-model="draft.openedDate" /><FormField
-          label="到期月份 YYYY-MM"
-          v-model="draft.expiryMonth" /><view v-if="draft.cardType === 'credit'"
-          ><FormField label="信用额度" v-model="draft.creditLimit" /><FormField
-            label="账单日"
-            v-model="draft.statementDay" /><FormField
-            label="还款日"
-            v-model="draft.repaymentDay" /></view
-        ><FormField label="卡面颜色" v-model="draft.coverColor" /><FormField
-          label="封面来源URL"
-          v-model="draft.coverSourceUrl" /><FormField
-          label="排序"
-          v-model="draft.sortOrder" /><FormField
-          label="备注"
-          kind="textarea"
-          v-model="draft.remark" /></view
-      ><view class="actions ui-toolbar"
+      ><FormField appearance="soft" label="银行" kind="selector"
+        :options="['自定义', ...banks.map((item) => item.name)]" v-model="draftBank" />
+      <FormField v-if="!draft.bankId" appearance="soft" label="自定义银行" v-model="draft.customBankName" />
+      <view class="ui-field-row">
+        <FormField appearance="soft" compact stretch label="卡名称" v-model="draft.cardName" />
+        <FormField appearance="soft" compact stretch label="别名" v-model="draft.alias" />
+      </view>
+      <view class="ui-field-row">
+        <FormField appearance="soft" compact stretch label="类型" kind="selector"
+          :options="['储蓄卡', '信用卡']" v-model="draftType" />
+        <FormField appearance="soft" compact stretch label="状态" kind="selector"
+          :options="Object.values(statusMap)" v-model="draftStatus" />
+      </view>
+      <FormField appearance="soft" :label="draft.id ? '新卡号（留空保留）' : '卡号'" v-model="draft.cardNo" password />
+      <MobileButton label="更多信息" variant="quiet" @click="moreInfo = !moreInfo">
+        <text class="ui-type-body">更多信息</text>
+      </MobileButton>
+      <view v-if="moreInfo">
+        <FormField appearance="soft" label="开户支行" v-model="draft.branchName" />
+        <view class="ui-field-row">
+          <FormField appearance="soft" compact stretch label="开户日期" kind="date" v-model="draft.openedDate" />
+          <FormField appearance="soft" compact stretch label="到期月份" placeholder="YYYY-MM" v-model="draft.expiryMonth" />
+        </view>
+        <view v-if="draft.cardType === 'credit'">
+          <FormField appearance="soft" label="信用额度" input-type="digit" v-model="draft.creditLimit" />
+          <view class="ui-field-row">
+            <FormField appearance="soft" compact stretch label="账单日" input-type="number" v-model="draft.statementDay" />
+            <FormField appearance="soft" compact stretch label="还款日" input-type="number" v-model="draft.repaymentDay" />
+          </view>
+        </view>
+        <view class="ui-field-row">
+          <FormField appearance="soft" compact stretch label="卡面颜色" v-model="draft.coverColor" />
+          <FormField appearance="soft" compact stretch label="排序" input-type="number" v-model="draft.sortOrder" />
+        </view>
+        <FormField appearance="soft" label="封面来源URL" v-model="draft.coverSourceUrl" />
+        <FormField appearance="soft" label="备注" kind="textarea" v-model="draft.remark" />
+      </view>
+      <view class="actions ui-toolbar"
         ><view v-for="item in tags" :key="item.id" class="actions ui-toolbar"
           ><MobileButton
             :label="item.name"
@@ -604,9 +594,9 @@ async function removeTag(value: any) {
             :disabled="item.status !== '0' && !draft.tagIds.includes(item.id)"
             variant="quiet"
             @click="toggleTag(item.id)"
-          /><text>{{ item.name }}</text></view
+          /><text class="ui-type-body">{{ item.name }}</text></view
         ></view
-      ><text v-if="formError" class="error ui-py-section">{{ formError }}</text
+      ><text v-if="formError" class="error ui-py-section ui-type-body">{{ formError }}</text
       ><view class="actions ui-toolbar"
         ><MobileButton
           label="取消"
@@ -623,15 +613,19 @@ async function removeTag(value: any) {
         label="状态"
         kind="selector"
         :options="['启用', '停用']"
-        v-model="draftTagStatus" /><text v-if="formError" class="error ui-py-section">{{
+        v-model="draftTagStatus" /><text v-if="formError" class="error ui-py-section ui-type-body">{{
         formError
       }}</text
       ><MobileButton label="保存" :loading="saving" @click="saveTag" /></AdaptiveModal
   ></MobilePage>
 </template>
 <style scoped lang="scss">
+@use '../../styles/typography' as *;
+@use '../../styles/text-colors' as *;
 @use '../../styles/spacing.scss';
 @use '../../styles/spacing-tokens' as *;
+@include type-utilities('body', 'caption');
+
 .body {
   color: #263248;
 }
@@ -676,6 +670,8 @@ async function removeTag(value: any) {
   justify-content: space-between;
   overflow: hidden;
 }
+// 限制编辑预览的几何尺寸，避免平板上卡面挤占基础字段。
+.draft-face { max-width: 360px; margin-left: auto; margin-right: auto; }
 .card-chip {
   width: 34px;
   height: 25px;
@@ -690,7 +686,7 @@ async function removeTag(value: any) {
   flex-wrap: wrap;
 }
 .face-bottom {
-  font-size: 12px;
+  @include type-style('caption');
 }
 .face-heading {
   width: 100%;
@@ -773,7 +769,7 @@ async function removeTag(value: any) {
   text-align: left;
   color: inherit;
   background-color: transparent;
-  font-size: 14px;
+  @include type-style('body');
 }
 .card-menu-danger { color: #dc5454; }
 /* #ifdef WEB || MP-WEIXIN */
@@ -800,24 +796,24 @@ async function removeTag(value: any) {
 .draft-cover { position: absolute; inset: 0; width: 100%; height: 100%; }
 .cover { position: absolute; inset: 0; width: 100%; height: 100%; border-radius: 14px; }
 .card-face-image { padding: 0; }
-.card-meta { color: #7b8493; font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; }
-.card-name { font-size: 13px; }
-.card-status { color: #c87942; font-size: 12px; }
+.card-meta { color: $text-secondary-light; @include type-style('caption');  overflow-wrap: anywhere; }
+.card-name { @include type-style('label'); }
+.card-status { color: #c87942; @include type-style('caption'); }
 .card-tags { flex-wrap: wrap; }
-.card-tag { font-size: 11px; color: #7b8493; border-radius: 5px; padding: $space-detail $space-inline; background-color: #80808012; }
+.card-tag { @include type-style('badge'); color: $text-secondary-light; border-radius: 5px; padding: $space-detail $space-inline; background-color: #80808012; }
 .card-caption { min-width: 0; overflow-wrap: anywhere; }
 .search-toolbar { flex-wrap: nowrap; }
 
 .title {
-  font-size: 17px;
-  font-weight: 600;
+  @include type-style('title');
+
 }
 .number {
   flex: 1;
   min-width: 0;
-  font-size: 14px;
-  line-height: 20px;
-  letter-spacing: 1px;
+  @include type-style('body');
+
+  letter-spacing: type-tracking('number');
   text-align: right;
   overflow-wrap: anywhere;
 }
@@ -833,4 +829,6 @@ async function removeTag(value: any) {
   color: #dc5454;
   display: block;
 }
+
+.secondary-text-dark { color: $text-secondary-dark; }
 </style>

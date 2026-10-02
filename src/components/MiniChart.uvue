@@ -7,11 +7,12 @@ import {
   onUnmounted,
   onUpdated,
   ref,
-} from 'vue';
-import MobileButton from './MobileButton.uvue';
-import FormField from './FormField.uvue';
-import { themeClass } from '../services/theme.ts';
-import { chartGeometry } from '../services/mobile-ui.ts';
+  watch,
+} from "vue";
+import MobileButton from "./MobileButton.uvue";
+import FormField from "./FormField.uvue";
+import { themeClass } from "../services/theme.ts";
+import { chartGeometry } from "../services/mobile-ui.ts";
 const props = withDefaults(
   defineProps<{
     label: string;
@@ -19,8 +20,9 @@ const props = withDefaults(
     series: { name: string; color?: string; values: number[] }[];
     kind?: string;
     unit?: string;
+    compact?: boolean;
   }>(),
-  { kind: 'line', unit: '' },
+  { kind: "line", unit: "" },
 );
 const width = ref(280),
   hidden = ref<string[]>([]),
@@ -28,23 +30,54 @@ const width = ref(280),
 const instance = getCurrentInstance();
 let active = true,
   measuring = false;
-const palette = ['#427bea', '#e05260', '#20a574', '#e7a638', '#9560c6'];
+const palette = ["#427bea", "#e05260", "#20a574", "#e7a638", "#9560c6"];
+const coloredSeries = computed(() =>
+  props.series.map((item, index) => ({
+    ...item,
+    color: /^#[\da-f]{6}$/i.test(item.color || "")
+      ? item.color
+      : palette[index % palette.length],
+  })),
+);
 const visible = computed(() =>
-  props.series
-    .filter((item) => !hidden.value.includes(item.name))
-    .map((item, index) => ({
-      ...item,
-      color: /^#[\da-f]{6}$/i.test(item.color || '') ? item.color : palette[index % palette.length],
-    })),
+  coloredSeries.value.filter((item) => !hidden.value.includes(item.name)),
 );
 const geometry = computed(() => {
   try {
-    return { ...chartGeometry(props.labels, visible.value, width.value, 180), error: '' };
+    return {
+      ...chartGeometry(props.labels, visible.value, width.value, 180),
+      error: "",
+    };
   } catch (reason) {
     return { min: 0, max: 1, zero: 180, series: [], error: reason.message };
   }
 });
-const selection = computed(() => Math.min(selected.value, Math.max(0, props.labels.length - 1)));
+// Compact dashboards start with the latest period; keep the selected period on refresh.
+watch(
+  () => props.labels.join("|"),
+  (_, previous) => {
+    if (!props.compact) return;
+    const previousLabel = previous?.split("|")[selected.value];
+    const index = previousLabel ? props.labels.indexOf(previousLabel) : -1;
+    selected.value = index >= 0 ? index : Math.max(0, props.labels.length - 1);
+  },
+  { immediate: true },
+);
+function displayNumber(value: number) {
+  if (!props.compact) return String(value);
+  return value
+    .toFixed(props.unit === "%" ? 1 : 2)
+    .replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+}
+function scaleNumber(value: number) {
+  if (!props.compact) return String(value);
+  return Math.abs(value) >= 10000
+    ? (value / 10000).toFixed(1) + "万"
+    : String(Math.round(value * 100) / 100);
+}
+const selection = computed(() =>
+  Math.min(selected.value, Math.max(0, props.labels.length - 1)),
+);
 async function measure() {
   if (!active || measuring) return;
   measuring = true;
@@ -52,9 +85,10 @@ async function measure() {
   uni
     .createSelectorQuery()
     .in(instance?.proxy)
-    .select('.mini-chart-plot')
+    .select(".mini-chart-plot")
     .boundingClientRect((rect) => {
-      if (active && rect && !Array.isArray(rect) && rect.width > 0) width.value = rect.width;
+      if (active && rect && !Array.isArray(rect) && rect.width > 0)
+        width.value = rect.width;
       measuring = false;
     })
     .exec();
@@ -77,31 +111,58 @@ function barStyle(point, index, seriesIndex) {
   const groupWidth = width.value / props.labels.length,
     barWidth = Math.max(3, groupWidth / (visible.value.length + 1));
   return {
-    left: index * groupWidth + seriesIndex * barWidth + barWidth / 2 + 'px',
-    top: Math.min(geometry.value.zero, point.y) + 'px',
-    height: Math.max(1, Math.abs(geometry.value.zero - point.y)) + 'px',
-    width: barWidth + 'px',
+    left: index * groupWidth + seriesIndex * barWidth + barWidth / 2 + "px",
+    top: Math.min(geometry.value.zero, point.y) + "px",
+    height: Math.max(1, Math.abs(geometry.value.zero - point.y)) + "px",
+    width: barWidth + "px",
     backgroundColor: visible.value[seriesIndex].color,
   };
 }
 </script>
 <template>
-  <view class="mini-chart" :class="themeClass('mini-chart')" role="figure" :aria-label="label"
-    ><text class="mini-chart-title">{{ label }}</text
-    ><view class="mini-chart-legend"
+  <view
+    class="mini-chart"
+    :class="[themeClass('mini-chart'), { 'mini-chart-compact': compact }]"
+    role="figure"
+    :aria-label="label"
+    ><view v-if="compact" class="mini-chart-header"
+      ><text class="mini-chart-title">{{ label }}</text
+      ><slot name="actions" /></view
+    ><text v-else class="mini-chart-title">{{ label }}</text
+    ><view v-if="compact" class="chart-legend-compact">
+      <button
+        v-for="item in coloredSeries"
+        :key="item.name"
+        class="chart-legend-button"
+        role="button"
+        :class="{ 'chart-legend-hidden': hidden.includes(item.name) }"
+        :aria-label="item.name"
+        :aria-pressed="!hidden.includes(item.name)"
+        @click="toggle(item.name)"
+      >
+        <view
+          class="chart-legend-swatch"
+          :style="{ backgroundColor: item.color }"
+        /><text class="ui-type-caption">{{ item.name }}</text>
+      </button> </view
+    ><view v-else class="mini-chart-legend"
       ><MobileButton
         v-for="item in series"
         :key="item.name"
         :label="item.name"
         :variant="hidden.includes(item.name) ? 'quiet' : 'primary'"
-        @click="toggle(item.name)" /></view
-    ><text v-if="geometry.error" class="mini-chart-error" role="alert">{{ geometry.error }}</text
+        @click="toggle(item.name)"><text class="ui-type-caption">{{ item.name }}</text></MobileButton></view
+    ><text v-if="geometry.error" class="mini-chart-error" role="alert">{{
+      geometry.error
+    }}</text
     ><template v-else-if="labels.length"
       ><view class="mini-chart-scale"
-        ><text>{{ geometry.max }}{{ unit }}</text
-        ><text>{{ geometry.min }}{{ unit }}</text></view
+        ><text class="ui-type-caption mini-chart-tick" :class="themeClass('mini-chart-tick')">{{ scaleNumber(geometry.max) }}{{ unit }}</text
+        ><text class="ui-type-caption mini-chart-tick" :class="themeClass('mini-chart-tick')">{{ scaleNumber(geometry.min) }}{{ unit }}</text></view
       ><view class="mini-chart-plot"
-        ><view class="mini-chart-zero" :style="{ top: geometry.zero + 'px' }" /><view
+        ><view
+          class="mini-chart-zero"
+          :style="{ top: geometry.zero + 'px' }" /><view
           v-for="(item, seriesIndex) in geometry.series"
           :key="item.name"
           class="mini-chart-series"
@@ -123,7 +184,9 @@ function barStyle(point, index, seriesIndex) {
                 backgroundColor: item.color,
                 transform: 'rotate(' + segment.angle + 'deg)',
               }" /><view
-              v-for="(point, index) in item.points"
+              v-for="(point, index) in compact && item.points.length > 18
+                ? []
+                : item.points"
               :key="index"
               class="mini-chart-dot"
               :style="{
@@ -132,24 +195,52 @@ function barStyle(point, index, seriesIndex) {
                 backgroundColor: item.color,
               }" /></template></view></view
       ><view class="mini-chart-axis"
-        ><text>{{ labels[0] }}</text
-        ><text>{{ labels[labels.length - 1] }}</text></view
+        ><text class="ui-type-caption mini-chart-tick" :class="themeClass('mini-chart-tick')">{{ labels[0] }}</text
+        ><text class="ui-type-caption mini-chart-tick" :class="themeClass('mini-chart-tick')">{{ labels[labels.length - 1] }}</text></view
       ><FormField
-        label="查看数值"
+        :label="compact ? '统计周期' : '查看数值'"
+        :compact="compact"
+        :hide-label="compact"
         kind="selector"
         :model-value="labels[selection]"
         :options="labels"
         @update:model-value="(value) => (selected = labels.indexOf(value))"
-      /><view class="mini-chart-values"
-        ><text v-for="item in visible" :key="item.name" :style="{ color: item.color }"
-          >{{ item.name }} {{ item.values[selection] }}{{ unit }}</text
+      /><view
+        class="mini-chart-values"
+        :class="{ 'chart-values-compact': compact }"
+        ><template v-if="!compact"
+          ><text class="ui-type-body"
+            v-for="item in visible"
+            :key="item.name"
+            :style="{ color: item.color }"
+            >{{ item.name }} {{ item.values[selection] }}{{ unit }}</text
+          ></template
+        >
+        <template v-else
+          ><view
+            v-for="item in visible"
+            :key="item.name"
+            class="chart-value-item"
+            :style="{ color: item.color }"
+          >
+            <text class="chart-value-label">{{
+              item.name
+            }}</text>
+            <text class="chart-value-number">
+              {{ displayNumber(item.values[selection] ?? 0) }}{{ unit }}</text
+            >
+          </view></template
         ></view
       ></template
-    ><text v-else class="mini-chart-empty">暂无数据</text></view
+    ><text v-else class="mini-chart-empty" :class="themeClass('mini-chart-empty')">暂无数据</text></view
   >
 </template>
 <style scoped lang="scss">
-@use '../styles/spacing-tokens' as *;
+@use '../styles/typography' as *;
+@use '../styles/text-colors' as *;
+@use "../styles/spacing-tokens" as *;
+@include type-utilities('caption', 'body');
+
 .mini-chart {
   padding: $space-card;
   border-radius: 16px;
@@ -162,8 +253,8 @@ function barStyle(point, index, seriesIndex) {
   color: #eeeeef;
 }
 .mini-chart-title {
-  font-size: 15px;
-  font-weight: 600;
+  @include type-style('body-strong');
+
 }
 .mini-chart-legend {
   flex-direction: row;
@@ -210,30 +301,100 @@ function barStyle(point, index, seriesIndex) {
 .mini-chart-scale {
   flex-direction: row;
   justify-content: space-between;
-  font-size: 12px;
-  color: #808692;
+  @include type-style('caption');
   margin-bottom: $space-inline;
 }
 .mini-chart-axis {
   flex-direction: row;
   justify-content: space-between;
-  font-size: 12px;
-  color: #808692;
+  @include type-style('caption');
   margin: $space-inline 0 $space-modal;
 }
 .mini-chart-values {
   flex-direction: row;
   flex-wrap: wrap;
   gap: $space-section;
-  font-size: 14px;
+  @include type-style('body');
 }
 .mini-chart-error {
   color: #e05260;
-  font-size: 13px;
+  @include type-style('label');
 }
 .mini-chart-empty {
-  color: #808692;
-  font-size: 14px;
+  color: $text-secondary-light;
+  @include type-style('body');
   margin-top: $space-modal;
 }
+.mini-chart-header {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: $space-inline;
+}
+.mini-chart-compact {
+  min-width: 0;
+}
+.chart-legend-compact {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: $space-inline;
+  margin-bottom: $space-inline;
+}
+.chart-legend-button {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: flex-start;
+  gap: $space-detail;
+  min-height: 44px;
+  min-width: 44px;
+  padding: 0;
+  margin: 0;
+  background-color: transparent;
+  color: inherit;
+  border: 0;
+  border-radius: 0;
+  @include type-style('caption');
+  line-height: $space-controlMin;
+}
+.chart-legend-hidden {
+  opacity: 0.4;
+}
+.chart-legend-swatch {
+  width: 7px;
+  height: 7px;
+  border-radius: 4px;
+}
+.chart-values-compact {
+  display: flex;
+  flex-direction: row;
+  gap: $space-inline;
+  margin-top: $space-inline;
+}
+.chart-value-item {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: $space-detail;
+}
+.chart-value-label {
+  @include type-style('badge');
+}
+.chart-value-number {
+  @include type-style('caption-strong');
+
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+/* #ifdef WEB || MP-WEIXIN */
+.chart-legend-button::after {
+  border: 0;
+}
+/* #endif */
+
+.mini-chart-tick { color: $text-secondary-light; }
+.mini-chart-tick-dark, .mini-chart-empty-dark { color: $text-secondary-dark; }
 </style>

@@ -1,0 +1,242 @@
+<script setup lang="ts">
+import { computed, ref, watch } from "vue";
+import MobileButton from "../../../components/MobileButton.uvue";
+import AppIcon from "../../../components/AppIcon.uvue";
+import { themeClass } from "../../../services/theme.ts";
+const props = defineProps<{
+  title: string;
+  rows: {
+    key: string;
+    income: number;
+    expense: number;
+    balance: number;
+    deposit: number;
+  }[];
+  showCumulative?: boolean;
+}>();
+const limit = ref(6),
+  selected = ref("");
+const sorted = computed(() => [...props.rows].reverse());
+const visible = computed(() => sorted.value.slice(0, limit.value));
+watch(
+  () => props.rows,
+  () => {
+    selected.value = "";
+    limit.value = 6;
+  },
+);
+function money(value: number) {
+  return value.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+}
+</script>
+<template>
+  <view class="ledger" :class="themeClass('ledger')">
+    <view class="ledger-heading"
+      ><text class="ledger-title">{{ title }}</text
+      ><text class="ledger-muted" :class="themeClass('ledger-muted')"
+        >元</text
+      ></view
+    >
+    <view class="ledger-columns ledger-head" :class="themeClass('ledger-head')">
+      <text class="ui-type-badge">{{ showCumulative ? "月份" : "年份" }}</text
+      ><text class="ledger-number ui-type-badge">收入</text
+      ><text class="ledger-number ui-type-badge">支出</text
+      ><text class="ledger-number ui-type-badge">结余</text>
+    </view>
+    <view v-for="row in visible" :key="row.key" class="ledger-entry">
+      <view
+        class="ledger-columns ledger-row"
+        :class="{
+          'ledger-selected': selected === row.key,
+          'ledger-selected-dark':
+            selected === row.key && !!themeClass('ledger'),
+        }"
+        :role="showCumulative ? 'button' : undefined"
+        :tabindex="showCumulative ? 0 : undefined"
+        :aria-label="showCumulative ? row.key + '累计结余' : undefined"
+        :aria-expanded="showCumulative ? selected === row.key : undefined"
+        @click="
+          showCumulative && (selected = selected === row.key ? '' : row.key)
+        "
+        @keydown.enter.prevent="
+          showCumulative && (selected = selected === row.key ? '' : row.key)
+        "
+        @keydown.space.prevent="
+          showCumulative && (selected = selected === row.key ? '' : row.key)
+        "
+      >
+        <view class="ledger-period"
+          ><text class="ui-type-badge">{{ row.key }}</text
+          ><AppIcon
+            v-if="showCumulative"
+            :name="
+              selected === row.key
+                ? 'ant-design:up-outlined'
+                : 'ant-design:down-outlined'
+            "
+            :size="10"
+        /></view>
+        <text class="ledger-number ledger-income ui-type-caption">{{ money(row.income) }}</text>
+        <text class="ledger-number ledger-expense ui-type-caption">{{
+          money(row.expense)
+        }}</text>
+        <text
+          class="ledger-number ui-type-caption"
+          :class="row.balance < 0 ? 'ledger-expense' : 'ledger-balance'"
+          >{{ money(row.balance) }}</text
+        >
+      </view>
+      <view
+        v-if="showCumulative && selected === row.key"
+        class="ledger-detail"
+        :class="themeClass('ledger-detail')"
+      >
+        <text class="ledger-muted" :class="themeClass('ledger-muted')"
+          >所选范围累计结余</text
+        ><text class="ledger-number ui-type-caption">{{ money(row.deposit) }} 元</text>
+      </view>
+    </view>
+    <view v-if="rows.length > 6" class="ledger-footer">
+      <MobileButton
+        v-if="limit < rows.length"
+        compact
+        variant="quiet"
+        :label="showCumulative ? '更多月份' : '更多年份'"
+        @click="limit += 12"
+      />
+      <MobileButton
+        v-if="limit > 6"
+        compact
+        variant="quiet"
+        label="收起明细"
+        @click="
+          limit = 6;
+          selected = '';
+        "
+      />
+    </view>
+  </view>
+</template>
+<style scoped lang="scss">
+@use '../../../styles/typography' as *;
+@use "../../../styles/text-colors" as *;
+@use "../../../styles/spacing-tokens" as *;
+@include type-utilities('badge', 'caption');
+
+.ledger {
+  padding: $space-card;
+  margin-bottom: $space-section;
+  border-radius: 16px;
+  background-color: #ffffff;
+  color: #263248;
+}
+.ledger-dark {
+  background-color: #1c1e22;
+  color: #e7e9ee;
+}
+.ledger-heading {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: $space-inline;
+}
+.ledger-title {
+  @include type-style('body-strong');
+
+}
+.ledger-muted {
+  @include type-style('badge');
+  color: $text-secondary-light;
+}
+.ledger-muted-dark {
+  color: $text-secondary-dark;
+}
+.ledger-columns {
+  display: grid;
+  grid-template-columns: 72px repeat(3, minmax(0, 1fr));
+  align-items: center;
+  column-gap: $space-detail;
+}
+.ledger-head {
+  @include type-style('badge');
+  color: $text-secondary-light;
+  padding: $space-inline 0;
+}
+.ledger-head-dark {
+  color: $text-secondary-dark;
+}
+.ledger-row {
+  min-height: 48px;
+  @include type-style('caption');
+  border-radius: 8px;
+}
+.ledger-period {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: $space-detail;
+  @include type-style('badge');
+}
+.ledger-number {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+.ledger-income {
+  color: #269b72;
+}
+.ledger-expense {
+  color: #df6573;
+}
+.ledger-balance {
+  color: #5589e8;
+}
+.ledger-selected {
+  background-color: #f4f6fa;
+}
+.ledger-selected-dark {
+  background-color: #252a33;
+}
+.ledger-detail {
+  display: flex;
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: center;
+  gap: $space-inline;
+  padding: $space-inline;
+  @include type-style('caption');
+  background-color: #f4f6fa;
+  border-radius: 8px;
+}
+.ledger-detail-dark {
+  background-color: #252a33;
+}
+.ledger-footer {
+  display: flex;
+  flex-direction: row;
+  justify-content: center;
+  gap: $space-inline;
+  margin-top: $space-inline;
+}
+@media (max-width: 360px) {
+  .ledger-columns {
+    grid-template-columns: 64px repeat(3, minmax(0, 1fr));
+  }
+  .ledger-row {
+    @include type-style('chart-label');
+  }
+  .ledger-period {
+    @include type-style('chart-label');
+  }
+}
+@media (min-width: 700px) {
+  .ledger-row {
+    @include type-style('body');
+  }
+  .ledger-period {
+    @include type-style('label');
+  }
+}
+
+</style>

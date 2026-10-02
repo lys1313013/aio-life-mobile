@@ -260,7 +260,7 @@ async function removeSelected() {
           class="upload-panel ui-pad-card ui-gap-sm"
           :class="themeClass('upload-panel')"
           ><text class="upload-title">选择账单文件</text
-          ><text class="upload-hint">支持支付宝 ZIP、CSV 或微信账单 Excel</text
+          ><text class="upload-hint" :class="themeClass('secondary-text')">支持支付宝 ZIP、CSV 或微信账单 Excel</text
           ><MobileButton
             label="选择文件"
             icon="ant-design:upload-outlined"
@@ -283,7 +283,7 @@ async function removeSelected() {
           label="默认类型"
           kind="selector"
           :options="types.map((item) => item.dictLabel)"
-          v-model="type" /><text v-if="rows.length" class="summary ui-py-section"
+          v-model="type" /><text v-if="rows.length" class="summary ui-py-section ui-type-body"
           >{{ rows.length }} 笔 · ¥{{ total.toFixed(2) }}</text
         ><view v-if="rows.length" class="actions ui-toolbar"
           ><MobileButton
@@ -319,7 +319,7 @@ async function removeSelected() {
             v-for="group in categoryTotals"
             :key="group.name"
             class="actions ui-toolbar"
-            ><text
+            ><text class="ui-type-body"
               >{{ group.name }} · {{ group.count }} 笔 · ¥{{ group.amt.toFixed(2) }}</text
             ></view
           ></view
@@ -336,15 +336,15 @@ async function removeSelected() {
                   : 'ant-design:border-outlined'
               "
               variant="quiet"
-              @click="toggle(index)" /><text
+              @click="toggle(index)" /><text class="ui-type-body"
               >{{ rows[index].expTime }} · ¥{{ rows[index].amt }}</text
             ><MobileButton
               label="编辑"
               icon="ant-design:edit-outlined"
               variant="quiet"
               @click="edit(rows[index], index)" /></view
-          ><text>{{ rows[index].counterparty }} · {{ rows[index].expDesc }}</text
-          ><text
+          ><text class="ui-type-body">{{ rows[index].counterparty }} · {{ rows[index].expDesc }}</text
+          ><text class="ui-type-body"
             >{{ rows[index].transactionId }} · 退款
             {{ rows[index].successfulRefund }}</text
           ></view
@@ -373,8 +373,12 @@ async function removeSelected() {
   ></MobilePage>
 </template>
 <style scoped lang="scss">
+@use '../../styles/typography' as *;
+@use '../../styles/text-colors' as *;
 @use '../../styles/spacing.scss';
 @use '../../styles/spacing-tokens' as *;
+@include type-utilities('body');
+
 .upload-panel {
   border: 1px dashed #6c93e7;
   border-radius: 12px;
@@ -385,12 +389,12 @@ async function removeSelected() {
   background-color: #202b40;
 }
 .upload-title {
-  font-size: 16px;
-  font-weight: 600;
+  @include type-style('title');
+
 }
 .upload-hint {
-  font-size: 12px;
-  color: #808692;
+  @include type-style('caption');
+  color: $text-secondary-light;
   text-align: center;
 }
 .body {
@@ -409,4 +413,6 @@ async function removeSelected() {
 .summary {
   display: block;
 }
+
+.secondary-text-dark { color: $text-secondary-dark; }
 </style>

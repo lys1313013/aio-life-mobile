@@ -404,7 +404,7 @@ async function removeSelected() {
             :key="group.year + '-' + group.month"
             class="record ui-card"
             :class="themeClass('record')"
-            ><text
+            ><text class="ui-type-body"
               >{{ group.year
               }}{{ group.month ? '-' + String(group.month).padStart(2, '0') : '' }} · ¥{{
                 group.detail.reduce((n, item) => n + Number(item.amt || 0), 0).toFixed(2)
@@ -413,7 +413,7 @@ async function removeSelected() {
               v-for="item in group.detail"
               :key="item.typeId"
               class="record-main ui-gap-sm"
-              ><text
+              ><text class="ui-type-body"
                 >{{ item.typeName || '未分类' }} · ¥{{
                   Number(item.amt).toFixed(2)
                 }}</text
@@ -501,15 +501,15 @@ async function removeSelected() {
         <view v-for="row in sorted" :key="ledgerId(row)" class="record ui-card" :class="themeClass('record')">
           <view class="record-main ui-gap-xs" @click="edit(row)"
             ><text class="money" :class="expense ? 'money-expense' : 'money-income'">¥{{ Number(row.amt).toFixed(2) }}</text
-            ><text class="record-meta"
+            ><text class="record-meta" :class="themeClass('secondary-text')"
               >{{ name(types, row[expense ? 'expTypeId' : 'incTypeId']) }} ·
               {{ row.expTime || row.incDate }}</text
-            ><text v-if="expense" class="record-meta"
+            ><text v-if="expense" class="record-meta" :class="themeClass('secondary-text')"
               >交易金额 ¥{{ row.transactionAmt }} ·
               {{ name(payments, row.payTypeId) }}</text
             ><text v-if="row.remark || row.expDesc" class="record-description">{{ row.remark || row.expDesc }}</text
-            ><text v-if="row.counterparty" class="record-meta">{{ row.counterparty }}</text
-            ><text v-if="row.transactionId" class="record-reference"
+            ><text v-if="row.counterparty" class="record-meta" :class="themeClass('secondary-text')">{{ row.counterparty }}</text
+            ><text v-if="row.transactionId" class="record-reference" :class="themeClass('secondary-text')"
               >{{ row.transactionId }} · {{ row.transactionStatus }}</text
             ></view
           >
@@ -541,38 +541,29 @@ async function removeSelected() {
       :busy="saving"
       @close="modal = false"
     >
-      <FormField
-        v-if="expense"
-        label="交易金额"
-        :modelValue="String(draft.transactionAmt)"
-        @update:modelValue="transaction"
-      />
-      <FormField :label="expense ? '记账金额' : '金额'" v-model="draft.amt" />
-      <FormField
-        label="类型"
-        kind="selector"
-        :options="types.map((item) => item.dictLabel)"
-        v-model="draftType"
-      />
-      <FormField
-        v-if="expense"
-        label="支付方式"
-        kind="selector"
-        :options="payments.map((item) => item.dictLabel)"
-        v-model="draftPayment"
-      />
-      <FormField v-if="expense" label="日期" kind="date" v-model="draftDate" /><FormField
-        v-if="expense"
-        label="时间"
-        kind="time"
-        v-model="draftTime"
-      /><FormField v-else label="日期" kind="date" v-model="draft.incDate" />
-      <FormField label="备注" kind="textarea" v-model="draft.remark" />
+      <view v-if="expense" class="ui-field-row">
+        <FormField appearance="soft" compact stretch label="交易金额" input-type="digit"
+          :modelValue="String(draft.transactionAmt)" @update:modelValue="transaction" />
+        <FormField appearance="soft" compact stretch label="记账金额" input-type="digit" v-model="draft.amt" />
+      </view>
+      <view class="ui-field-row">
+        <FormField v-if="!expense" appearance="soft" compact stretch label="金额" input-type="digit" v-model="draft.amt" />
+        <FormField appearance="soft" compact stretch label="类型" kind="selector"
+          :options="types.map((item) => item.dictLabel)" v-model="draftType" />
+        <FormField v-if="expense" appearance="soft" compact stretch label="支付方式" kind="selector"
+          :options="payments.map((item) => item.dictLabel)" v-model="draftPayment" />
+      </view>
+      <view v-if="expense" class="ui-field-row">
+        <FormField appearance="soft" compact stretch label="日期" kind="date" v-model="draftDate" />
+        <FormField appearance="soft" compact stretch label="时间" kind="time" v-model="draftTime" />
+      </view>
+      <FormField v-else appearance="soft" label="日期" kind="date" v-model="draft.incDate" />
+      <FormField appearance="soft" label="备注" kind="textarea" v-model="draft.remark" />
       <view v-if="expense && !ledgerId(draft)" class="tools ui-toolbar"
-        ><text>连续录入</text
+        ><text class="ui-type-body">连续录入</text
         ><switch :checked="continuous" @change="continuous = $event.detail.value"
       /></view>
-      <text v-if="formError" class="error ui-py-section">{{ formError }}</text>
+      <text v-if="formError" class="error ui-py-section ui-type-body">{{ formError }}</text>
       <view class="tools ui-toolbar"
         ><MobileButton
           label="取消"
@@ -587,8 +578,12 @@ async function removeSelected() {
   </MobilePage>
 </template>
 <style scoped lang="scss">
+@use '../../styles/typography' as *;
+@use '../../styles/text-colors' as *;
 @use '../../styles/spacing.scss';
 @use '../../styles/spacing-tokens' as *;
+@include type-utilities('body');
+
 .body {
   color: #263248;
 }
@@ -633,19 +628,19 @@ async function removeSelected() {
   overflow-wrap: anywhere;
 }
 .money {
-  font-size: 20px;
-  font-weight: 600;
+  @include type-style('metric-compact');
+
 }
 .record-dark { background-color: #1c1e22; }
 .ledger-toolbar { align-items: center; margin-top: $space-section; }
-.section-title { flex: 1; font-size: 16px; font-weight: 600; }
+.section-title { flex: 1; @include type-style('title');  }
 .filter-trigger { position: relative; flex-shrink: 0; }
-.filter-count { position: absolute; top: 0; right: 0; min-width: 16px; height: 16px; border-radius: 8px; background-color: #427bea; color: #fff; font-size: 10px; text-align: center; line-height: 16px; pointer-events: none; }
+.filter-count { position: absolute; top: 0; right: 0; min-width: 16px; height: 16px; border-radius: 8px; background-color: #427bea; color: #fff; @include type-style('chart-label'); text-align: center;  pointer-events: none; }
 .filter-footer { align-items: center; justify-content: space-between; margin-bottom: $space-section; }
-.summary { font-size: 12px; }
-.record-meta { font-size: 12px; color: #7b8493; line-height: 1.5; }
-.record-description { font-size: 14px; line-height: 1.5; }
-.record-reference { font-size: 11px; color: #7b8493; overflow-wrap: anywhere; }
+.summary { @include type-style('caption'); }
+.record-meta { @include type-style('caption'); color: $text-secondary-light;  }
+.record-description { @include type-style('body');  }
+.record-reference { @include type-style('badge'); color: $text-secondary-light; overflow-wrap: anywhere; }
 .record-actions { flex-shrink: 0; align-items: center; }
 .money-income { color: #2f9e75; }
 .money-expense { color: #d67842; }
@@ -663,4 +658,6 @@ async function removeSelected() {
   }
 }
 .filter-footer-loading { justify-content: flex-end; }
+
+.secondary-text-dark { color: $text-secondary-dark; }
 </style>

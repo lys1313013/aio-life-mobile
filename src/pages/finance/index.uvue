@@ -1,22 +1,23 @@
 <script setup lang="ts">
-import ContentSkeleton from '../../components/ContentSkeleton.uvue';
-import { computed, onMounted, onUnmounted, ref } from 'vue';
-import MobilePage from '../../components/MobilePage.uvue';
-import PageHeader from '../../components/PageHeader.uvue';
-import PageState from '../../components/PageState.uvue';
-import FormField from '../../components/FormField.uvue';
-import MiniChart from '../../components/MiniChart.uvue';
-import MetricCard from '../../components/MetricCard.uvue';
-import MobileButton from '../../components/MobileButton.uvue';
-import { fetchFinanceStatistics } from '../../services/domains/finance.ts';
-import { useDomainPage } from '../../services/domains/page-session.ts';
-import { themeClass } from '../../services/theme.ts';
+import ContentSkeleton from "../../components/ContentSkeleton.uvue";
+import { computed, onUnmounted, ref, watch } from "vue";
+import MobilePage from "../../components/MobilePage.uvue";
+import PageHeader from "../../components/PageHeader.uvue";
+import PageState from "../../components/PageState.uvue";
+import FormField from "../../components/FormField.uvue";
+import MiniChart from "../../components/MiniChart.uvue";
+import MetricCard from "../../components/MetricCard.uvue";
+import MobileButton from "../../components/MobileButton.uvue";
+import FinanceLedger from "./components/FinanceLedger.uvue";
+import { fetchFinanceStatistics } from "../../services/domains/finance.ts";
+import { useDomainPage } from "../../services/domains/page-session.ts";
+import { themeClass } from "../../services/theme.ts";
 const income = ref<any[]>([]),
   expense = ref<any[]>([]),
   loading = ref(false),
   refreshing = ref(false),
-  error = ref(''),
-  year = ref('全部');
+  error = ref(""),
+  year = ref("全部");
 let generation = 0,
   alive = true;
 onUnmounted(() => {
@@ -26,11 +27,11 @@ onUnmounted(() => {
 async function load() {
   const stamp = ++generation;
   loading.value = true;
-  error.value = '';
+  error.value = "";
   try {
     const data = await Promise.all([
-      fetchFinanceStatistics('income'),
-      fetchFinanceStatistics('expense'),
+      fetchFinanceStatistics("income"),
+      fetchFinanceStatistics("expense"),
     ]);
     if (alive && generation === stamp) {
       income.value = data[0];
@@ -60,7 +61,7 @@ useDomainPage(
   },
 );
 const years = computed(() => [
-  '全部',
+  "全部",
   ...Array.from(
     new Set([...income.value, ...expense.value].map((row) => String(row.year))),
   )
@@ -81,10 +82,14 @@ function sum(rows: any[]) {
   );
 }
 const filteredIncome = computed(() =>
-  income.value.filter((row) => year.value === '全部' || String(row.year) === year.value),
+  income.value.filter(
+    (row) => year.value === "全部" || String(row.year) === year.value,
+  ),
 );
 const filteredExpense = computed(() =>
-  expense.value.filter((row) => year.value === '全部' || String(row.year) === year.value),
+  expense.value.filter(
+    (row) => year.value === "全部" || String(row.year) === year.value,
+  ),
 );
 const totalIncome = computed(() => sum(filteredIncome.value)),
   totalExpense = computed(() => sum(filteredExpense.value));
@@ -92,7 +97,9 @@ function timeline(a: any[], b: any[], annual = false) {
   const keys = Array.from(
     new Set(
       [...a, ...b].map((row) =>
-        annual ? String(row.year) : row.year + '-' + String(row.month).padStart(2, '0'),
+        annual
+          ? String(row.year)
+          : row.year + "-" + String(row.month).padStart(2, "0"),
       ),
     ),
   ).sort();
@@ -101,7 +108,7 @@ function timeline(a: any[], b: any[], annual = false) {
     const match = (row: any) =>
       (annual
         ? String(row.year)
-        : row.year + '-' + String(row.month).padStart(2, '0')) === key;
+        : row.year + "-" + String(row.month).padStart(2, "0")) === key;
     const inc = sum(a.filter(match)),
       exp = sum(b.filter(match));
     deposit = Math.round((deposit + inc - exp) * 100) / 100;
@@ -114,13 +121,15 @@ function timeline(a: any[], b: any[], annual = false) {
     };
   });
 }
-const months = computed(() => timeline(filteredIncome.value, filteredExpense.value)),
+const months = computed(() =>
+    timeline(filteredIncome.value, filteredExpense.value),
+  ),
   annual = computed(() => timeline(income.value, expense.value, true));
 function categories(rows: any[]) {
   const map: Record<string, number> = {};
   rows.forEach((row) =>
     (row.detail || []).forEach((item) => {
-      const key = item.typeName || '未分类';
+      const key = item.typeName || "未分类";
       map[key] = (map[key] || 0) + Math.round(Number(item.amt || 0) * 100);
     }),
   );
@@ -130,12 +139,81 @@ function categories(rows: any[]) {
 }
 const incCategories = computed(() => categories(filteredIncome.value)),
   expCategories = computed(() => categories(filteredExpense.value));
-function width(amount: number, rows: any[]) {
+const comparisonMode = ref("收支");
+const comparisonRows = computed(() =>
+  year.value === "全部" ? annual.value : months.value,
+);
+const comparisonTitle = computed(
+  () =>
+    (year.value === "全部" ? "年度" : "月度") +
+    (comparisonMode.value === "收支" ? "收支对比" : "结余率"),
+);
+const colors = { income: "#269b72", expense: "#df6573", balance: "#5589e8" };
+function money(value: number) {
+  return value.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+}
+const metrics = computed(() => [
+  {
+    label: "总收入",
+    value: money(totalIncome.value),
+    unit: "元",
+    color: colors.income,
+  },
+  {
+    label: "总支出",
+    value: money(totalExpense.value),
+    unit: "元",
+    color: colors.expense,
+  },
+  {
+    label: "总结余",
+    value: money(totalIncome.value - totalExpense.value),
+    unit: "元",
+    color: colors.balance,
+  },
+  {
+    label: "结余率",
+    value: (totalIncome.value
+      ? ((totalIncome.value - totalExpense.value) / totalIncome.value) * 100
+      : 0
+    ).toFixed(1),
+    unit: "%",
+    color: colors.balance,
+  },
+]);
+const categoryGroups = computed(() => [
+  {
+    key: "income",
+    title: "收入构成",
+    rows: incCategories.value,
+    total: totalIncome.value,
+    color: colors.income,
+  },
+  {
+    key: "expense",
+    title: "支出构成",
+    rows: expCategories.value,
+    total: totalExpense.value,
+    color: colors.expense,
+  },
+]);
+const expandedCategories = ref<string[]>([]);
+watch(year, () => {
+  expandedCategories.value = [];
+});
+function toggleCategory(key: string) {
+  expandedCategories.value = expandedCategories.value.includes(key)
+    ? expandedCategories.value.filter((value) => value !== key)
+    : [...expandedCategories.value, key];
+}
+function categoryWidth(amount: number, rows: any[]) {
   return (
-    Math.max(
-      1,
-      (Math.abs(amount) / Math.max(1, ...rows.map((row) => Math.abs(row.amount)))) * 100,
-    ) + '%'
+    Math.min(
+      100,
+      (Math.abs(amount) /
+        Math.max(1, ...rows.map((row) => Math.abs(row.amount)))) *
+        100,
+    ) + "%"
   );
 }
 </script>
@@ -146,182 +224,370 @@ function width(amount: number, rows: any[]) {
       refreshing = true;
       load();
     "
-    ><PageHeader title="财务概览" back @back="uni.navigateBack()" /><view
-      class="body ui-page-body"
-      :class="themeClass('body')"
-      ><view class="actions overview-tools ui-toolbar"
-        ><MobileButton
-          label="收入"
-          variant="quiet"
-          @click="uni.navigateTo({ url: '/pages/finance/income' })" /><MobileButton
-          label="支出"
-          variant="quiet"
-          @click="uni.navigateTo({ url: '/pages/finance/expense' })" /><MobileButton
-          label="银行卡"
-          variant="quiet"
-          @click="uni.navigateTo({ url: '/pages/finance/cards' })" /></view
-      ><FormField
-        compact stretch hide-label
-        label="年份"
-        kind="selector"
-        :options="years"
-        v-model="year"
-      /><PageState skeleton="overview"
+  >
+    <PageHeader title="财务概览" back @back="uni.navigateBack()" />
+    <view class="body ui-page-body" :class="themeClass('body')">
+      <view class="overview-filter ui-toolbar">
+        <text class="muted" :class="themeClass('muted')">统计年份</text>
+        <view class="year-field">
+          <FormField
+            compact
+            stretch
+            hide-label
+            label="年份"
+            kind="selector"
+            :options="years"
+            v-model="year"
+          />
+        </view>
+      </view>
+      <PageState
+        skeleton="overview"
         :loading="loading"
         :error="error"
         :empty="!loading && !income.length && !expense.length"
         @retry="load"
-        >
-<template #loading><view class="ui-gap-md"><view class="metrics ui-row ui-section"><MetricCard v-for="label in ['总收入', '总支出', '总结余', '结余率']" :key="label" :label="label" value="" loading /></view><ContentSkeleton v-for="n in 2" :key="n" variant="chart" /></view></template>
-<view class="metrics ui-row ui-section"
-          ><MetricCard
-            label="总收入"
-            :value="totalIncome.toFixed(2)"
-            unit="元" /><MetricCard
-            label="总支出"
-            :value="totalExpense.toFixed(2)"
-            unit="元" /><MetricCard
-            label="总结余"
-            :value="(totalIncome - totalExpense).toFixed(2)"
-            unit="元" /><MetricCard
-            label="结余率"
-            :value="
-              (totalIncome
-                ? ((totalIncome - totalExpense) / totalIncome) * 100
-                : 0
-              ).toFixed(1)
+      >
+        <template #loading>
+          <view class="metrics ui-section">
+            <MetricCard
+              v-for="label in ['总收入', '总支出', '总结余', '结余率']"
+              :key="label"
+              :label="label"
+              value=""
+              loading
+            />
+          </view>
+          <ContentSkeleton v-for="n in 2" :key="n" variant="chart" />
+        </template>
+        <template v-if="income.length || expense.length">
+          <view class="metrics ui-section">
+            <view
+              v-for="metric in metrics"
+              :key="metric.label"
+              class="summary-card"
+              :class="themeClass('summary-card')"
+            >
+              <text class="muted" :class="themeClass('muted')">{{
+                metric.label
+              }}</text>
+              <view class="summary-value" :style="{ color: metric.color }">
+                <text class="summary-number">{{ metric.value }}</text
+                ><text class="summary-unit">{{ metric.unit }}</text>
+              </view>
+            </view>
+          </view>
+          <view class="chart-grid">
+            <MiniChart
+              compact
+              label="月度收支趋势"
+              :labels="months.map((row) => row.key)"
+              :series="[
+                {
+                  name: '收入',
+                  color: colors.income,
+                  values: months.map((row) => row.income),
+                },
+                {
+                  name: '支出',
+                  color: colors.expense,
+                  values: months.map((row) => row.expense),
+                },
+                {
+                  name: '结余',
+                  color: colors.balance,
+                  values: months.map((row) => row.balance),
+                },
+              ]"
+              unit="元"
+            />
+            <MiniChart
+              compact
+              label="累计结余趋势"
+              :labels="months.map((row) => row.key)"
+              :series="[
+                {
+                  name: '累计结余',
+                  color: colors.balance,
+                  values: months.map((row) => row.deposit),
+                },
+              ]"
+              unit="元"
+            />
+          </view>
+          <view class="chart-grid">
+            <view
+              v-for="group in categoryGroups"
+              :key="group.key"
+              class="panel category-panel"
+              :class="themeClass('panel')"
+            >
+              <view class="section-header"
+                ><text class="heading">{{ group.title }}</text
+                ><text class="muted" :class="themeClass('muted')"
+                  >元</text
+                ></view
+              >
+              <text
+                v-if="!group.rows.length"
+                class="muted"
+                :class="themeClass('muted')"
+                >暂无数据</text
+              >
+              <view
+                v-for="row in expandedCategories.includes(group.key)
+                  ? group.rows
+                  : group.rows.slice(0, 5)"
+                :key="row.name"
+                class="category-row"
+              >
+                <view class="category-heading"
+                  ><text class="category-name ui-type-label">{{ row.name }}</text
+                  ><text class="category-amount ui-type-label">{{ money(row.amount) }}</text
+                  ><text
+                    class="category-percent muted"
+                    :class="themeClass('muted')"
+                    >{{
+                      (group.total
+                        ? (row.amount / group.total) * 100
+                        : 0
+                      ).toFixed(1)
+                    }}%</text
+                  ></view
+                >
+                <view class="bar-track" :class="themeClass('bar-track')"
+                  ><view
+                    class="bar"
+                    :style="{
+                      width: categoryWidth(row.amount, group.rows),
+                      backgroundColor: group.color,
+                    }"
+                /></view>
+              </view>
+              <MobileButton
+                v-if="group.rows.length > 5"
+                compact
+                variant="quiet"
+                :label="
+                  expandedCategories.includes(group.key)
+                    ? '收起分类'
+                    : '全部分类（' + group.rows.length + '）'
+                "
+                @click="toggleCategory(group.key)"
+              />
+            </view>
+          </view>
+          <FinanceLedger
+            :key="year"
+            title="月度明细"
+            :rows="months"
+            show-cumulative
+          />
+          <MiniChart
+            :key="comparisonMode + year"
+            compact
+            :label="comparisonTitle"
+            kind="bar"
+            :labels="comparisonRows.map((row) => row.key)"
+            :series="
+              comparisonMode === '收支'
+                ? [
+                    {
+                      name: '收入',
+                      color: colors.income,
+                      values: comparisonRows.map((row) => row.income),
+                    },
+                    {
+                      name: '支出',
+                      color: colors.expense,
+                      values: comparisonRows.map((row) => row.expense),
+                    },
+                    {
+                      name: '结余',
+                      color: colors.balance,
+                      values: comparisonRows.map((row) => row.balance),
+                    },
+                  ]
+                : [
+                    {
+                      name: '结余率',
+                      color: colors.balance,
+                      values: comparisonRows.map((row) =>
+                        row.income
+                          ? Math.round((row.balance / row.income) * 1000) / 10
+                          : 0,
+                      ),
+                    },
+                  ]
             "
-            unit="%" /></view
-        ><MiniChart
-          label="月度收支与结余趋势"
-          :labels="months.map((row) => row.key)"
-          :series="[
-            { name: '收入', values: months.map((row) => row.income) },
-            { name: '支出', values: months.map((row) => row.expense) },
-            { name: '结余', values: months.map((row) => row.balance) },
-          ]"
-          unit="元"
-        /><MiniChart
-          label="年度累计存款趋势"
-          :labels="months.map((row) => row.key)"
-          :series="[{ name: '累计结余', values: months.map((row) => row.deposit) }]"
-          unit="元"
-        /><text class="heading ui-mt-section ui-section">月度收支与累计结余</text
-        ><view v-for="row in months" :key="row.key" class="line ui-pad-card ui-gap-sm ui-section" :class="themeClass('line')"
-          ><text>{{ row.key }}</text
-          ><text
-            >收入 {{ row.income.toFixed(2) }} · 支出 {{ row.expense.toFixed(2) }}</text
-          ><text
-            >结余 {{ row.balance.toFixed(2) }} · 累计 {{ row.deposit.toFixed(2) }}</text
-          ></view
-        ><MiniChart
-          label="收入构成金额"
-          kind="bar"
-          :labels="incCategories.map((row) => row.name)"
-          :series="[{ name: '收入', values: incCategories.map((row) => row.amount) }]"
-          unit="元"
-        /><text class="heading ui-mt-section ui-section">收入构成</text
-        ><view
-          v-for="row in incCategories"
-          :key="row.name"
-          class="line ui-pad-card ui-gap-sm ui-section" :class="themeClass('line')"
-          ><text
-            >{{ row.name }} · {{ row.amount.toFixed(2) }} ·
-            {{ ((row.amount / Math.max(1, totalIncome)) * 100).toFixed(1) }}%</text
-          ><view class="bar" :style="{ width: width(row.amount, incCategories) }" /></view
-        ><MiniChart
-          label="支出构成金额"
-          kind="bar"
-          :labels="expCategories.map((row) => row.name)"
-          :series="[{ name: '支出', values: expCategories.map((row) => row.amount) }]"
-          unit="元"
-        /><text class="heading ui-mt-section ui-section">支出构成</text
-        ><view
-          v-for="row in expCategories"
-          :key="row.name"
-          class="line ui-pad-card ui-gap-sm ui-section" :class="themeClass('line')"
-          ><text
-            >{{ row.name }} · {{ row.amount.toFixed(2) }} ·
-            {{ ((row.amount / Math.max(1, totalExpense)) * 100).toFixed(1) }}%</text
-          ><view
-            class="bar expense-bar"
-            :style="{ width: width(row.amount, expCategories) }" /></view
-        ><MiniChart
-          label="年度收支结余对比"
-          kind="bar"
-          :labels="annual.map((row) => row.key)"
-          :series="[
-            { name: '收入', values: annual.map((row) => row.income) },
-            { name: '支出', values: annual.map((row) => row.expense) },
-            { name: '结余', values: annual.map((row) => row.balance) },
-          ]"
-          unit="元"
-        /><MiniChart
-          label="每年结余占比"
-          kind="bar"
-          :labels="annual.map((row) => row.key)"
-          :series="[
-            {
-              name: '结余率',
-              values: annual.map((row) =>
-                row.income ? (row.balance / row.income) * 100 : 0,
-              ),
-            },
-          ]"
-          unit="%"
-        /><text class="heading ui-mt-section ui-section">年度结余明细</text
-        ><view v-for="row in annual" :key="row.key" class="line ui-pad-card ui-gap-sm ui-section" :class="themeClass('line')"
-          ><text
-            >{{ row.key }} · 收入 {{ row.income.toFixed(2) }} · 支出
-            {{ row.expense.toFixed(2) }} · 结余 {{ row.balance.toFixed(2) }}</text
-          ></view
-        ></PageState
-      ></view
-    ></MobilePage
-  >
+            :unit="comparisonMode === '收支' ? '元' : '%'"
+          >
+            <template #actions>
+              <view class="comparison-tabs">
+                <MobileButton
+                  v-for="mode in ['收支', '结余率']"
+                  :key="mode"
+                  compact
+                  :label="mode"
+                  :variant="comparisonMode === mode ? 'primary' : 'quiet'"
+                  @click="comparisonMode = mode"
+                />
+              </view>
+            </template>
+          </MiniChart>
+          <FinanceLedger
+            :title="year === '全部' ? '年度明细' : '历年明细'"
+            :rows="annual"
+          />
+        </template>
+      </PageState>
+    </view>
+  </MobilePage>
 </template>
 <style scoped lang="scss">
-@use '../../styles/spacing.scss';
-@use '../../styles/spacing-tokens' as *;
+@use '../../styles/typography' as *;
+@use "../../styles/text-colors" as *;
+@use "../../styles/spacing.scss";
+@use "../../styles/spacing-tokens" as *;
+@include type-utilities('label');
+
 .body {
   color: #263248;
 }
 .body-dark {
   color: #e7e9ee;
 }
-.actions {
-  flex-wrap: wrap;
+.overview-filter {
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: $space-section;
+}
+.year-field {
+  width: 132px;
+}
+.muted {
+  @include type-style('caption');
+  color: $text-secondary-light;
+}
+.muted-dark {
+  color: $text-secondary-dark;
 }
 .metrics {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: $space-inline;
+}
+.summary-card {
+  min-width: 0;
+  padding: $space-card;
+  border-radius: 14px;
+  background-color: #ffffff;
+}
+.summary-card-dark {
+  background-color: #1c1e22;
+}
+.summary-value {
+  display: flex;
+  flex-direction: row;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: $space-detail;
+  margin-top: $space-inline;
+}
+.summary-number {
+  @include type-style('metric-compact');
+
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+.summary-unit {
+  @include type-style('badge');
+}
+.chart-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  column-gap: $space-section;
+}
+.panel {
+  min-width: 0;
+  padding: $space-card;
+  border-radius: 16px;
+  background-color: #ffffff;
+  margin-bottom: $space-section;
+}
+.panel-dark {
+  background-color: #1c1e22;
+}
+.category-panel {
+  align-self: start;
 }
 .heading {
-  display: block;
-  font-weight: 600;
+  @include type-style('body-strong');
+
 }
-.line {
+.section-header {
   display: flex;
-  flex-direction: column;
-  border-radius: 12px;
-  background-color: #ffffff;
-  font-size: 13px;
-  line-height: 1.6;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: $space-section;
 }
-.line-dark { background-color: #1c1e22; }
-.overview-tools { margin-bottom: $space-inline; }
-.metrics { margin-top: $space-section; }
+.category-row {
+  margin-bottom: $space-section;
+}
+.category-heading {
+  display: flex;
+  flex-direction: row;
+  align-items: baseline;
+  gap: $space-inline;
+  @include type-style('label');
+}
+.category-name {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.category-amount {
+  font-variant-numeric: tabular-nums;
+}
+.category-percent {
+  width: 50px;
+  text-align: right;
+}
+.bar-track {
+  height: 4px;
+  border-radius: 2px;
+  background-color: #f0f2f5;
+  margin-top: $space-inline;
+  overflow: hidden;
+}
+.bar-track-dark {
+  background-color: #2b3039;
+}
 .bar {
-  height: 8px;
-  border-radius: 4px;
-  background-color: #419878;
+  height: 4px;
+  border-radius: 2px;
 }
-.expense-bar {
-  background-color: #cb7055;
+.comparison-tabs {
+  display: flex;
+  flex-direction: row;
+  gap: $space-detail;
+}
+@media (max-width: 360px) {
+  .summary-number {
+    @include type-style('metric-compact');
+  }
 }
 @media (min-width: 700px) {
   .metrics {
     grid-template-columns: repeat(4, minmax(0, 1fr));
   }
+  .summary-number {
+    @include type-style('metric-compact');
+  }
+  .chart-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
+
 </style>
