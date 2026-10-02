@@ -6,3 +6,4 @@ export function syncWeread(mode='annually',baseTime=0){return request<any>('/wer
 export function fetchWereadStats(mode,baseTime=0){return request<any>('/weread/stats','GET',{mode,baseTime},true,null,false,30000)}
 export function fetchWereadNotes(bookId){return request<any>('/weread/notes','GET',{bookId},true,null,false,120000)}
 export function fetchWereadProgress(bookId){return request<any>('/weread/progress','GET',{bookId},true,null,false,120000)}
+export function fetchWereadBookLink(bookId){return request<{deepLink:string}>('/weread/book-link','GET',{bookId},true,null,false,30000)}

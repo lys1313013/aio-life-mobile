@@ -21,6 +21,7 @@ import {
   fetchWereadStats,
   fetchWereadNotes,
   fetchWereadProgress,
+  fetchWereadBookLink,
 } from '../../services/records/weread.ts';
 const connection = ref<any>({ connected: false }),
   snapshot = ref<any>(null),
@@ -50,6 +51,46 @@ const connection = ref<any>({ connected: false }),
   noteKind = ref('划线'),
   noteQuery = ref(''),
   copyError = ref('');
+const openingBooks = ref<Record<string, boolean>>({});
+const bookLinks = ref<Record<string, string>>({});
+const bookLinkErrors = ref<Record<string, string>>({});
+function bookLink(book) {
+  const value = book?.deepLink;
+  return typeof value === 'string' && /^https:\/\/(?:[a-z0-9-]+\.)*weread\.qq\.com(?::443)?(?:[/?#]|$)/i.test(value) ? value : bookLinks.value[book?.bookId] || '';
+}
+async function openRankBook(book) {
+  if (!book || openingBooks.value[book.bookId]) return;
+  const link = bookLink(book);
+  if (link) { openLink(link); return; }
+  if (!book.bookId) return;
+  const id = book.bookId;
+  openingBooks.value[id] = true;
+  bookLinkErrors.value[id] = '';
+  // #ifdef WEB
+  const target = window.open('about:blank', '_blank');
+  if (target) target.opener = null;
+  // #endif
+  try {
+    const result = await scope.wait(fetchWereadBookLink(id));
+    const resolved = bookLink(result);
+    if (!resolved) throw new Error('暂无可用链接，点击重试');
+    bookLinks.value[id] = resolved;
+    // #ifdef WEB
+    if (target && !target.closed) target.location.replace(resolved);
+    else bookLinkErrors.value[id] = '链接已就绪，请再次点击打开';
+    // #endif
+    // #ifndef WEB
+    openLink(resolved);
+    // #endif
+  } catch (e) {
+    // #ifdef WEB
+    target?.close();
+    // #endif
+    if (e.name !== 'PageInactiveError') bookLinkErrors.value[id] = e.message || '打开失败，点击重试';
+  } finally {
+    openingBooks.value[id] = false;
+  }
+}
 const modes = { 周: 'weekly', 月: 'monthly', 年: 'annually', 累计: 'overall' };
 const disconnecting = ref(false);
 let generation = 0,
@@ -70,6 +111,8 @@ const scope = createRecordScope((clear) => {
     stats.value = {};
     notes.value = null;
     selectedBook.value = '';
+    bookLinks.value = {};
+    bookLinkErrors.value = {};
   }
 });
 onShow(() => initialize());
@@ -368,10 +411,16 @@ function openLink(url) {
               unit="分钟"
             /><view class="card ui-card" :class="{ 'card-dark': isDark }"
               ><text class="title">阅读最多的书</text
-              ><view v-for="(item, index) in stats.readLongest || []" :key="index" class="rank-row ui-row">
+              ><view v-for="(item, index) in stats.readLongest || []" :key="index" class="rank-row ui-row"
+                :role="item.book?.bookId || bookLink(item.book) ? 'button' : undefined"
+                :tabindex="item.book?.bookId || bookLink(item.book) ? 0 : undefined"
+                :aria-label="item.book?.bookId || bookLink(item.book) ? '在微信读书打开：' + item.book?.title : undefined"
+                :aria-busy="!!openingBooks[item.book?.bookId]"
+                @click="openRankBook(item.book)" @keydown.enter="openRankBook(item.book)" @keydown.space.prevent="openRankBook(item.book)">
                 <text class="rank-number" :class="{ 'record-secondary-dark': isDark }">{{ String(index + 1).padStart(2, '0') }}</text>
                 <image v-if="safeLink(item.book?.cover || item.albumInfo?.cover)" class="rank-cover" :src="safeLink(item.book?.cover || item.albumInfo?.cover)" mode="aspectFit" />
-                <view class="rank-body ui-gap-sm"><text class="rank-title">{{ item.book?.title || item.albumInfo?.name }}</text><text class="secondary" :class="{ 'record-secondary-dark': isDark }">{{ readingTime(item.readTime) }}</text></view>
+                <view class="rank-body ui-gap-sm"><text class="rank-title">{{ item.book?.title || item.albumInfo?.name }}</text><text class="secondary" :class="{ 'record-secondary-dark': isDark }">{{ readingTime(item.readTime) }}</text><text v-if="bookLinkErrors[item.book?.bookId]" class="secondary" role="alert">{{ bookLinkErrors[item.book?.bookId] }}</text></view>
+                <MobileButton v-if="openingBooks[item.book?.bookId]" label="打开中" icon="ant-design:export-outlined" icon-only :loading="true" />
               </view
               ></view
             ></view
@@ -576,7 +625,7 @@ function openLink(url) {
 .book-meta { flex-direction: row; align-items: center; flex-wrap: wrap; gap: $space-detail; }
 .book-notes { color: $text-secondary-light; @include type-style('caption'); }
 .book-progress { margin-left: auto; color: #427bea; @include type-style('badge'); }
-.rank-row { margin-top: $space-section; flex-direction: row; align-items: center; }
+.rank-row { min-height: $space-controlMin; margin-top: $space-section; flex-direction: row; align-items: center; }
 .rank-number { width: 22px; color: $text-secondary-light; @include type-style('caption'); }
 .rank-cover { width: 36px; height: 48px; flex-shrink: 0; }
 .rank-body { flex: 1; min-width: 0; }
