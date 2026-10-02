@@ -55,10 +55,9 @@ const sortedMembers = computed(() =>
   }),
 );
 const metrics = computed(() => [
-  { label: '生效中', value: stats.value.activeCount || 0, icon: 'ant-design:check-circle-outlined', tone: 'green' },
-  { label: '本月到期', value: stats.value.expiringThisMonthCount || 0, icon: 'ant-design:calendar-outlined', tone: 'orange' },
-  { label: '即将到期', value: stats.value.expiringCount || 0, icon: 'ant-design:clock-circle-outlined', tone: 'amber' },
-  { label: '当前月均', value: '¥' + Number(stats.value.monthlyAmount || 0).toFixed(2), icon: 'ant-design:account-book-outlined', tone: 'blue' },
+  { label: '生效中', value: stats.value.activeCount || 0 },
+  { label: '本月到期', value: stats.value.expiringThisMonthCount || 0 },
+  { label: '即将到期', value: stats.value.expiringCount || 0, alert: true },
 ]);
 const categoryIcons = ['ant-design:video-camera-outlined', 'ant-design:customer-service-outlined', 'ant-design:shopping-outlined', 'ant-design:cloud-outlined', 'ant-design:read-outlined', 'ant-design:trophy-outlined', 'ant-design:appstore-outlined'];
 const scope = createRecordScope((clearData) => {
@@ -174,14 +173,15 @@ async function remove(item) {
     <view class="member-page ui-page-body" :class="{ 'member-page-dark': isDark }">
       <PageHeader title="订阅" :back="true" @back="uni.navigateBack()" />
       <PageState skeleton="metrics" :loading="statsLoading" :error="statsError" @retry="loadStats">
-        <view class="metrics ui-section">
-          <view v-for="metric in metrics" :key="metric.label" class="member-metric" :class="{ 'surface-dark': isDark }">
-            <view class="metric-icon" :class="'tone-' + metric.tone">
-              <AppIcon :name="metric.icon" :size="20" :color="metric.tone === 'green' ? '#35a879' : metric.tone === 'orange' ? '#ed8936' : metric.tone === 'amber' ? '#d9a126' : '#4285ed'" />
-            </view>
-            <view class="metric-copy">
+        <view class="member-summary ui-section">
+          <view class="summary-cost">
+            <text class="metric-label" :class="{ 'secondary-text-dark': isDark }">当前月均</text>
+            <text class="summary-amount" :class="{ 'text-dark': isDark }">¥{{ Number(stats.monthlyAmount || 0).toFixed(2) }}</text>
+          </view>
+          <view class="metrics">
+            <view v-for="metric in metrics" :key="metric.label" class="member-metric">
               <text class="metric-label" :class="{ 'secondary-text-dark': isDark }">{{ metric.label }}</text>
-              <text class="metric-value" :class="{ 'metric-money': metric.tone === 'blue', 'metric-alert': metric.tone === 'orange' }">{{ metric.value }}</text>
+              <text class="metric-value" :class="{ 'text-dark': isDark, 'metric-alert': metric.alert && metric.value > 0, 'metric-alert-dark': isDark && metric.alert && metric.value > 0 }">{{ metric.value }}</text>
             </view>
           </view>
         </view>
@@ -218,10 +218,10 @@ async function remove(item) {
         :content-key="String(showDetails) + formError"
         @close="form = null"
       >
-        <FormField label="名称" v-model="form.name" />
+        <FormField appearance="soft" required label="名称" placeholder="请输入订阅名称" v-model="form.name" />
         <view class="ui-field-row">
-          <FormField compact stretch label="平台" v-model="form.provider" />
-          <FormField
+          <FormField appearance="soft" compact stretch label="平台" v-model="form.provider" />
+          <FormField appearance="soft"
             compact stretch label="分类" kind="selector"
             :model-value="categoryLabels[categories.indexOf(form.category)] || form.category"
             :options="categoryLabels"
@@ -229,8 +229,8 @@ async function remove(item) {
           />
         </view>
         <view class="ui-field-row">
-          <FormField compact stretch label="开通日期" kind="date" v-model="form.startDate" />
-          <FormField compact stretch label="到期日期" kind="date" v-model="form.expiryDate" />
+          <FormField appearance="soft" compact stretch label="开通日期" kind="date" v-model="form.startDate" />
+          <FormField appearance="soft" required compact stretch label="到期日期" kind="date" v-model="form.expiryDate" />
         </view>
         <view class="quick-dates ui-row ui-section">
           <MobileButton compact label="1月" variant="quiet" @click="quickDate(1)" />
@@ -239,8 +239,8 @@ async function remove(item) {
           <MobileButton compact label="1年" variant="quiet" @click="quickDate(12)" />
         </view>
         <view class="ui-field-row">
-          <FormField compact stretch label="价格" input-type="digit" v-model="form.price" />
-          <FormField
+          <FormField appearance="soft" compact stretch label="价格" input-type="digit" v-model="form.price" />
+          <FormField appearance="soft"
             compact stretch label="计费周期" kind="selector"
             :model-value="cycleLabels[cycles.indexOf(form.billingCycle)]"
             :options="cycleLabels"
@@ -248,8 +248,8 @@ async function remove(item) {
           />
         </view>
         <view class="ui-field-row">
-          <FormField compact stretch label="当前月均" input-type="digit" v-model="form.monthlyAmount" />
-          <FormField
+          <FormField appearance="soft" compact stretch label="当前月均" input-type="digit" v-model="form.monthlyAmount" />
+          <FormField appearance="soft"
             compact stretch label="自动续费" kind="selector"
             :model-value="form.autoRenew === 1 ? '开启' : '关闭'"
             :options="['开启', '关闭']"
@@ -267,13 +267,13 @@ async function remove(item) {
           <AppIcon :name="showDetails ? 'ant-design:up-outlined' : 'ant-design:down-outlined'" :size="14" />
         </button>
         <view v-if="showDetails" class="ui-mt-sm">
-          <FormField
+          <FormField appearance="soft"
             label="颜色" kind="selector"
             :model-value="colorLabels[colors.indexOf(form.color)] || '蓝'"
             :options="colorLabels"
             @update:model-value="form.color = colors[colorLabels.indexOf($event)]"
           />
-          <FormField compact label="备注" kind="textarea" v-model="form.note" />
+          <FormField appearance="soft" compact label="备注" kind="textarea" v-model="form.note" />
         </view>
         <text v-if="formError" class="member-error ui-mt-section ui-type-body" role="alert">{{ formError }}</text>
         <view class="toolbar modal-actions ui-row">
@@ -300,18 +300,13 @@ async function remove(item) {
 .member-page { color: #27272a; padding-bottom: calc(56px + #{$space-page} + #{$space-inline}); }
 .member-page-dark { color: #eeeeef; }
 .toolbar { flex-direction: row; align-items: center; }
-.metrics { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: $space-inline; }
-.member-metric { display: flex; flex-direction: row; align-items: center; gap: $space-inline; padding: $space-card; min-width: 0; background-color: #ffffff; border: 1px solid #e4e7ec; border-radius: 16px; }
-.metric-icon { width: 36px; height: 36px; flex-shrink: 0; border-radius: 12px; align-items: center; justify-content: center; }
-.tone-green { background-color: rgba(53, 168, 121, 0.10); }
-.tone-orange { background-color: rgba(237, 137, 54, 0.10); }
-.tone-amber { background-color: rgba(217, 161, 38, 0.10); }
-.tone-blue { background-color: rgba(66, 133, 237, 0.10); }
-.metric-copy { min-width: 0; gap: $space-detail; }
-.metric-label { color: $text-secondary-light; @include type-style('caption');  }
-.metric-value { @include type-style('metric');   }
-.metric-money { color: #4285ed; @include type-style('metric-small'); overflow-wrap: anywhere; }
-.metric-alert { color: #ed8936; }
+.member-summary { display: flex; flex-direction: column; gap: $space-section; padding: $space-inline 0 $space-section; }
+.summary-cost { min-width: 0; gap: $space-detail; }
+.summary-amount { color: #27272a; @include type-style('hero'); overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
+.metrics { display: flex; flex-direction: row; gap: $space-inline; }
+.member-metric { flex: 1; min-width: 0; gap: $space-detail; }
+.metric-label { color: $text-secondary-light; @include type-style('caption'); }
+.metric-value { color: #27272a; @include type-style('metric-compact'); font-variant-numeric: tabular-nums; }
 .member-grid { display: flex; flex-direction: row; flex-wrap: wrap; gap: $space-section; }
 .member-card { display: flex; flex-direction: column; width: calc((100% - #{$space-section}) / 2); min-width: 0; box-sizing: border-box; margin: 0; padding: $space-card; gap: $space-section; color: #27272a; text-align: left; line-height: type-leading('normal'); background-color: #ffffff; border: 1px solid #e4e7ec; border-radius: 16px; }
 .card-heading { flex-direction: row; align-items: center; gap: $space-detail; min-height: 22px; }
@@ -348,7 +343,9 @@ async function remove(item) {
 .member-card:focus-visible { outline: 2px solid #4285ed; outline-offset: 2px; }
 /* #endif */
 @media (min-width: 700px) {
-  .metrics { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .member-summary { flex-direction: row; align-items: center; }
+  .summary-cost { flex: 1; }
+  .metrics { flex: 2; }
   .member-card { width: calc((100% - #{$space-section} * 2) / 3); }
 }
 @media (min-width: 1100px) {
@@ -356,4 +353,6 @@ async function remove(item) {
 }
 
 .secondary-text-dark { color: $text-secondary-dark; }
+.metric-alert { color: #b7791f; }
+.metric-alert-dark { color: #e4b45e; }
 </style>
