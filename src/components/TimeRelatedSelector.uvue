@@ -7,9 +7,10 @@ import LoadingIndicator from './LoadingIndicator.uvue'
 import { getRelated, getRelatedRecord } from '../services/time.ts'
 import type { RelatedRecord } from '../services/time.ts'
 import { themeClass } from '../services/theme.ts'
+import { statuses } from '../services/records/contracts.ts'
 
-const props = defineProps<{ relateId?: string | null; type: number; title?: string; disabled?: boolean }>()
-const emit = defineEmits(['select', 'clear', 'resize'])
+const props = defineProps<{ relateId?: string | null; type: number; title?: string; status?: string; disabled?: boolean }>()
+const emit = defineEmits(['select', 'clear', 'resize', 'status-change'])
 const selected = ref<RelatedRecord | null>(null)
 const detailLoading = ref(false), detailError = ref('')
 const visible = ref(false), loading = ref(false), error = ref('')
@@ -18,11 +19,19 @@ const items = ref<RelatedRecord[]>([])
 const kind = computed(() => props.type === 1 ? 'read' : 'movie')
 const label = computed(() => props.type === 1 ? '阅读' : '观影')
 const selectedTitle = computed(() => selected.value?.title || props.title || '已关联记录')
+const statusLabels = computed(() => props.type === 1 ? ['想读', '在读', '读完', '搁置'] : ['想看', '在看', '看过', '搁置'])
+const selectedStatus = computed(() => props.status || selected.value?.status || '')
+const statusIndex = computed(() => Math.max(0, statuses.indexOf(selectedStatus.value)))
 const contentKey = computed(() => JSON.stringify([items.value, loading.value, error.value]))
 let detailSerial = 0, listSerial = 0, active = true
 let searchTimer: ReturnType<typeof setTimeout> | undefined
 function statusLabel(status?: string) {
-  return ({ not_started: '想看', in_progress: '在看', completed: '看过', on_hold: '搁置' })[status || ''] || ''
+  return statusLabels.value[statuses.indexOf(status || '')] || ''
+}
+function changeStatus(event) {
+  if (props.disabled || detailLoading.value || !selected.value) return
+  const status = statuses[Number(event.detail.value)]
+  if (status) emit('status-change', status === selected.value.status ? '' : status)
 }
 async function loadSelected() {
   const serial = ++detailSerial, id = props.relateId, type = props.type
@@ -119,9 +128,15 @@ onUnmounted(() => { active = false; detailSerial++; listSerial++; clearTimeout(s
         <view class="selected-related-info">
           <text class="related-title" :class="themeClass('related-title')">{{ selectedTitle }}</text>
           <LoadingIndicator v-if="detailLoading" compact label="正在加载关联记录" />
-          <text v-else-if="statusLabel(selected?.status)" class="related-status" :class="'related-status-' + selected?.status">{{ statusLabel(selected?.status) }}</text>
         </view>
       </view>
+      <picker v-if="selected && !detailLoading" class="related-status-picker" mode="selector" :range="statusLabels" :value="statusIndex"
+        :disabled="disabled" :aria-label="'修改' + label + '状态'" @change="changeStatus">
+        <view class="related-status-control">
+          <text class="related-status related-status-editable" :class="'related-status-' + selectedStatus">{{ statusLabel(selectedStatus) || '状态' }}</text>
+          <AppIcon name="ant-design:down-outlined" :size="12" color="#8b8f99" />
+        </view>
+      </picker>
       <button class="related-icon-button ui-type-body" role="button" aria-label="清除关联记录" :disabled="disabled" @click="clear">
         <AppIcon name="ant-design:close-outlined" :size="18" color="#8b8f99" />
       </button>
@@ -175,6 +190,9 @@ onUnmounted(() => { active = false; detailSerial++; listSerial++; clearTimeout(s
 .related-title { @include type-style('body');  color: #27272a; }
 .related-title-dark { color: #eeeeef; }
 .related-status { align-self: flex-start; @include type-style('badge');  padding: 0 $space-detail; border-radius: 4px; color: #8b8f99; background-color: rgba(148,163,184,.12); }
+.related-status-control { flex-direction: row; align-items: center; justify-content: center; min-height: $space-controlMin; min-width: $space-controlMin; gap: $space-detail; }
+.related-status-picker { flex-shrink: 0; }
+.related-status-editable { align-self: center; }
 .related-status-in_progress { color: #5b8ff9; background-color: rgba(91,143,249,.12); }
 .related-status-completed { color: #39a978; background-color: rgba(57,169,120,.12); }
 .related-status-on_hold { color: #cf932c; background-color: rgba(207,147,44,.12); }

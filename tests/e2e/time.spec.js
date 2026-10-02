@@ -3,7 +3,7 @@ const { dashboardFixture } = require('./fixtures.js');
 const { pullDown } = require('./gestures.js');
 const today = (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; })();
 async function setup(page, options = {}) {
-  const state = { queries: 0, ranges: [], creates: [], updates: [], deletes: 0, profiles: 0, relatedQueries: [], coverAuth: [], failRefresh: false, failSave: false, failDelete: false, detailFailure: false, full: false,
+  const state = { queries: 0, ranges: [], creates: [], updates: [], deletes: 0, profiles: 0, relatedQueries: [], relatedUpdates: [], coverAuth: [], failRefresh: false, failSave: false, failDelete: false, detailFailure: false, full: false,
     records: [{ id: '9223372036854775807', date: today, categoryId: '2', startTime: 540, endTime: 599, title: '晨间运动', description: '保留原有备注', exercises: [{ exerciseTypeId: '9223372036854775806', exerciseCount: 20, description: '三组' }], relateId: '9223372036854775805', relateType: 1 }] };
   Object.assign(state, options);
   await page.route('**/api/**', async route => {
@@ -54,6 +54,13 @@ async function setup(page, options = {}) {
       data = { items: list.slice((current - 1) * 24, current * 24), total: list.length };
     }
     const relatedMatch = path.match(/^\/api\/(read-record|movie)\/(\d+)$/);
+    if (/^\/api\/(read-record|movie)$/.test(path) && method === 'PUT') {
+      const payload = req.postDataJSON();
+      state.relatedUpdates.push({ path, payload });
+      if (state.relatedSaveFailure) return route.fulfill({ json: { rscode: '1', result: '状态服务暂不可用' } });
+      state.relatedRecords = state.relatedRecords.map(item => item.id === payload.id ? { ...item, ...payload } : item);
+      data = null;
+    }
     if (relatedMatch) {
       if (state.relatedDetailFailure) return route.abort();
       data = state.relatedRecords?.find(item => item.id === relatedMatch[2]) || { id: relatedMatch[2], title: '时间之书', status: 'in_progress' };
@@ -590,6 +597,84 @@ async function setupRelated(page, type, options = {}) {
   return setup(page, { categories: categoryPalette, relatedRecords,
     records: [{ id: '9223372036854775807', date: today, categoryId: type === 1 ? '9' : '13', startTime: 540, endTime: 599, title: '晨间运动', description: '保留备注', relateId: relatedRecords[0].id, relateType: type, exercises: [] }], ...options });
 }
+async function completeRelatedStatus(page, type) {
+  const cdp = await page.context().newCDPSession(page);
+  await cdp.send('Emulation.setTouchEmulationEnabled', { enabled: true });
+  await page.locator(`uni-picker[aria-label="修改${type === 1 ? '阅读' : '观影'}状态"]`).click();
+  await page.waitForTimeout(400);
+  const box = await page.locator('uni-picker-view-column:visible .uni-picker-view-indicator').boundingBox();
+  const x = box.x + box.width / 2, y = box.y + box.height / 2;
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y }] });
+  for (let step = 1; step <= 6; step++) {
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x, y: y - box.height * step / 6 }] });
+    await page.waitForTimeout(50);
+  }
+  await page.waitForTimeout(200);
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+  await page.waitForTimeout(350);
+  await page.locator('.uni-picker-action-confirm:visible').click();
+  await cdp.detach();
+  await expect(page.locator('.related-status-editable')).toHaveText(type === 1 ? '读完' : '看过');
+}
+for (const type of [1, 2]) {
+  test(`时迹保存关联完成状态 ${type}，取消不写入，保留日期及其他字段`, async ({ page }) => {
+    const state = await setupRelated(page, type);
+    const original = { ...state.relatedRecords[0], startTime: '2026-01-01 10:00:00', finishTime: '2026-02-01 10:00:00', rating: 4, remark: '保留书评影评' };
+    state.relatedRecords[0] = original;
+    await page.getByRole('button', { name: '编辑记录 晨间运动' }).click();
+    await completeRelatedStatus(page, type);
+    expect(state.relatedUpdates).toHaveLength(0);
+    await closeEditor(page);
+    expect(state.relatedUpdates).toHaveLength(0);
+    await page.getByRole('button', { name: '编辑记录 晨间运动' }).click();
+    await expect(page.locator('.related-status-editable')).toHaveText(type === 1 ? '在读' : '在看');
+    await completeRelatedStatus(page, type);
+    await page.getByRole('button', { name: '保存', exact: true }).click();
+    await expect(page.locator('.modal-panel[aria-label="编辑时迹"]')).toHaveCount(0);
+    expect(state.relatedUpdates).toEqual([{ path: type === 1 ? '/api/read-record' : '/api/movie', payload: {
+      id: original.id, status: 'completed', startTime: original.startTime, finishTime: original.finishTime,
+    } }]);
+    expect(state.relatedRecords[0]).toMatchObject({ rating: 4, remark: '保留书评影评' });
+  });
+}
+test('新增时迹后状态保存失败，保留草稿并重试同一条时迹', async ({ page }) => {
+  const state = await setupRelated(page, 1, { relatedSaveFailure: true });
+  await page.getByRole('button', { name: '新增时迹' }).click();
+  await page.getByRole('button', { name: '选择分类', exact: true }).click();
+  await page.getByRole('button', { name: '阅读', exact: true }).click();
+  await page.getByRole('button', { name: '选择关联阅读' }).click();
+  await page.locator('.related-card').first().click();
+  await completeRelatedStatus(page, 1);
+  await page.getByRole('button', { name: '保存', exact: true }).click();
+  await expect(page.getByRole('alert')).toContainText('时迹已保存，状态更新失败');
+  expect(state.creates).toHaveLength(1);
+  await expect(page.locator('.related-status-editable')).toHaveText('读完');
+  state.relatedSaveFailure = false;
+  await page.getByRole('button', { name: '保存', exact: true }).click();
+  await expect(page.locator('.modal-panel[aria-label="编辑时迹"]')).toHaveCount(0);
+  expect(state.creates).toHaveLength(1);
+  expect(state.updates.at(-1).id).toBe('9223372036854775804');
+  expect(state.relatedRecords[0].status).toBe('completed');
+});
+test('更换或清除关联记录时丢弃旧状态草稿', async ({ page }) => {
+  const state = await setupRelated(page, 1);
+  await page.getByRole('button', { name: '编辑记录 晨间运动' }).click();
+  await completeRelatedStatus(page, 1);
+  await page.locator('.selected-related-main').click();
+  await page.locator('.related-card').nth(1).click();
+  await expect(page.locator('.related-status-editable')).toHaveText('想读');
+  await page.getByRole('button', { name: '保存', exact: true }).click();
+  await expect(page.locator('.modal-panel[aria-label="编辑时迹"]')).toHaveCount(0);
+  expect(state.relatedUpdates).toHaveLength(0);
+  await page.getByRole('button', { name: '编辑记录 《' + state.relatedRecords[1].title + '》' }).click();
+  await page.locator('.selected-related-main').click();
+  await page.locator('.related-card').first().click();
+  await completeRelatedStatus(page, 1);
+  await page.getByRole('button', { name: '清除关联记录' }).click();
+  await page.getByRole('button', { name: '保存', exact: true }).click();
+  await expect(page.locator('.modal-panel[aria-label="编辑时迹"]')).toHaveCount(0);
+  expect(state.relatedUpdates).toHaveLength(0);
+});
 for (const type of [1, 2]) for (const width of [390, 768, 1440]) for (const colorScheme of ['light', 'dark']) {
   test(`关联卡片 ${type === 1 ? '阅读' : '观影'} ${width}px ${colorScheme}`, async ({ page }) => {
     await page.setViewportSize({ width, height: 900 });

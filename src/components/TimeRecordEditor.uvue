@@ -4,7 +4,7 @@ import spacing from '../styles/spacing.json'
 import AppIcon from './AppIcon.uvue'
 import { themeClass } from '../services/theme.ts'
 import { recordChanged } from '../services/time-changes.ts'
-import { computed, ref, onMounted, onUnmounted } from 'vue'
+import { computed, ref, watch, onMounted, onUnmounted } from 'vue'
 import AdaptiveModal from './AdaptiveModal.uvue'
 import CategoryIcon from './CategoryIcon.uvue'
 import TimeRelatedSelector from './TimeRelatedSelector.uvue'
@@ -16,6 +16,7 @@ import {
   recommendNext,
   createRecord,
   updateRecord,
+  updateRelatedStatus,
   deleteRecord,
   getExerciseTypes,
   getRelateTypes,
@@ -97,6 +98,8 @@ const relatedType = computed(
     0,
 )
 const relatedError = ref('')
+const relatedStatus = ref('')
+watch(() => [form.value.relateId, relatedType.value], () => { relatedStatus.value = '' }, { flush: 'sync' })
 const relatedLayoutRevision = ref(0)
 const layoutKey = computed(() =>
   JSON.stringify([
@@ -106,6 +109,7 @@ const layoutKey = computed(() =>
     form.value,
     errorText.value,
     relatedError.value,
+    relatedStatus.value,
     relatedLayoutRevision.value,
     exerciseError.value,
     exerciseTypes.value,
@@ -233,7 +237,9 @@ async function loadExercises() {
   }
 }
 function selectCategory(category: Category) {
+  const previousRelatedType = relatedType.value
   form.value.categoryId = category.id
+  if (relatedType.value !== previousRelatedType) clearRelated()
   choosingCategory.value = false
   if (isExercise.value && exerciseTypes.value.length === 0) loadExercises()
 }
@@ -327,9 +333,21 @@ async function submit() {
       const body = Object.assign({}, payload)
       delete body.id
       payload.id = await createRecord(body as TimeRecord)
+      // 状态另走关联记录接口；部分成功后重试必须更新同一条时迹，不能重复新增。
+      id.value = payload.id
+      form.value.id = payload.id
     }
     if (!active || token !== session.token) return
     recordChanged(payload)
+    if (relatedStatus.value && payload.relateId && payload.relateType) {
+      try {
+        await updateRelatedStatus(payload.relateType, payload.relateId, relatedStatus.value)
+      } catch (error) {
+        if (active && token === session.token) errorText.value = '时迹已保存，状态更新失败：' + report(error) + '，请再次保存重试'
+        return
+      }
+    }
+    if (!active || token !== session.token) return
     uni.showToast({ title: '已保存', icon: 'success' })
     emit('close')
   } catch (error) {
@@ -385,6 +403,7 @@ function addExercise() {
   if (exerciseTypes.value.length === 0) loadExercises()
 }
 function selectRelated(item) {
+  relatedStatus.value = ''
   form.value.relateId = item.id
   form.value.relateType = relatedType.value
   form.value.title = item.title.startsWith('《')
@@ -392,6 +411,7 @@ function selectRelated(item) {
     : '《' + item.title + '》'
 }
 function clearRelated() {
+  relatedStatus.value = ''
   form.value.relateId = null
   form.value.relateType = null
 }
@@ -498,6 +518,7 @@ function closeSelection() {
             ><input
               v-model="form.title"
               class="title-input"
+              :placeholder-class="'editor-placeholder ' + themeClass('editor-placeholder')"
               placeholder="标题"
               aria-label="记录标题"
               :maxlength="50"
@@ -616,6 +637,7 @@ function closeSelection() {
           ><textarea
             v-model="form.description"
             class="description-input"
+            :placeholder-class="'editor-placeholder ' + themeClass('editor-placeholder')"
             placeholder="描述信息"
             aria-label="记录备注"
             :maxlength="200"
@@ -627,7 +649,8 @@ function closeSelection() {
         </template>
         <view v-if="relatedType" class="form-card">
           <TimeRelatedSelector :type="relatedType" :relate-id="form.relateId" :title="form.title"
-            :disabled="saving || deleting" @select="selectRelated" @clear="clearRelated" @resize="relatedLayoutRevision++" />
+            :status="relatedStatus" :disabled="saving || deleting" @status-change="relatedStatus = $event"
+            @select="selectRelated" @clear="clearRelated" @resize="relatedLayoutRevision++" />
         </view>
         <view v-if="relatedError" class="form-error"
           ><text class="error-text" :class="themeClass('error-text')">{{ relatedError }}</text
@@ -667,6 +690,7 @@ function closeSelection() {
               type="digit"
               class="count-input"
               aria-label="运动数量"
+              :placeholder-class="'editor-placeholder ' + themeClass('editor-placeholder')"
               placeholder="数量"
               :disabled="saving || deleting"
               :aria-disabled="saving || deleting"
@@ -693,8 +717,10 @@ function closeSelection() {
         >
         <view v-if="compact" class="compact-notes">
           <input v-model="form.title" class="compact-title" :class="themeClass('compact-title')"
+            :placeholder-class="'editor-placeholder ' + themeClass('editor-placeholder')"
             placeholder="标题" aria-label="记录标题" :maxlength="50" :disabled="saving || deleting" />
           <textarea v-model="form.description" class="compact-description" :class="themeClass('compact-description')"
+            :placeholder-class="'editor-placeholder ' + themeClass('editor-placeholder')"
             placeholder="描述" aria-label="记录备注" :maxlength="200" :disabled="saving || deleting" :auto-height="true" />
         </view>
         <view v-if="ready && errorText" class="form-error"
@@ -743,7 +769,7 @@ function closeSelection() {
             :disabled="saving || deleting"
             @click="goBack"
            :class="themeClass('cancel-action')">
-            取消
+            <text class="action-label action-label-cancel" :class="themeClass('action-label-cancel')">取消</text>
           </button>
           <button
             role="button"
@@ -754,7 +780,7 @@ function closeSelection() {
             :loading="saving"
             @click="submit"
           >
-            保存
+            <text class="action-label">保存</text>
           </button></view
         >
       </view>
@@ -764,7 +790,7 @@ function closeSelection() {
         class="cancel-action state-cancel"
         @click="goBack"
        :class="themeClass('cancel-action')">
-        取消
+        <text class="action-label action-label-cancel" :class="themeClass('action-label-cancel')">取消</text>
       </button>
     </view>
   </AdaptiveModal>
@@ -1066,17 +1092,18 @@ function closeSelection() {
   margin-top: $space-inline;
 }
 .cancel-action {
+  box-sizing: border-box;
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 76px;
+  width: $space-modalActionMin;
   height: $space-controlMin;
   line-height: $space-controlMin;
-  margin: 0 $space-section 0 0;
+  margin: 0 $space-inline 0 0;
   padding: 0;
-  border: 0;
-  border-radius: 8px;
-  background-color: #f0f2f5;
+  border: $space-hairline solid #e5e7eb;
+  border-radius: 10px;
+  background-color: transparent;
   color: #71717a;
   @include type-style('body');
 }
@@ -1084,13 +1111,13 @@ function closeSelection() {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 76px;
+  width: $space-modalActionMin;
   height: $space-controlMin;
   line-height: $space-controlMin;
   border: 0;
   padding: 0;
   margin: 0;
-  border-radius: 8px;
+  border-radius: 10px;
   background-color: #4e7ee3;
   color: #ffffff;
   @include type-style('body');
@@ -1099,6 +1126,13 @@ function closeSelection() {
   overflow: visible;
   position: relative;
 }
+.action-label {
+  @include type-style('body');
+  letter-spacing: type-tracking('normal');
+  color: #ffffff;
+}
+.action-label-cancel { color: #71717a; }
+.action-label-cancel-dark { color: #b4b4bd; }
 .actions-spacer {
   flex: 1;
 }
@@ -1214,7 +1248,7 @@ function closeSelection() {
     border-color: #32353c;
   }
   .cancel-action-dark {
-    background-color: #282b32;
+    border-color: #32353c;
     color: #b4b4bd;
   }
   .delete-confirm-dark {
@@ -1246,7 +1280,7 @@ function closeSelection() {
     border-color: #d4d4d8;
   }
   .cancel-action-dark {
-    background-color: #282b32;
+    border-color: #32353c;
     color: #b4b4bd;
   }
   .small-action-dark {
@@ -1399,6 +1433,8 @@ function closeSelection() {
   @include type-style('body');
   color: #27272a;
 }
+.editor-placeholder { color: $text-secondary-light; }
+.editor-placeholder-dark { color: $text-secondary-dark; }
 .compact-title { height: $space-controlMin; }
 .compact-description {
   min-height: 72px;
