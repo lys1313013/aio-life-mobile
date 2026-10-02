@@ -32,18 +32,27 @@ export const updateRecord = (data: TimeRecord) =>
 export const deleteRecord = (id: string) =>
   request('/timeRecord/' + encodeURIComponent(id), 'DELETE')
 export const getExerciseTypes = () =>
-  request<{ dictDetailList: { id: string; dictLabel: string }[] }>(
+  request<{ dictDetailList: { id: string; dictLabel: string; icon?: string; color?: string }[] }>(
     '/userDictType/getByDictType?dictType=exercise_type',
   )
 export const getRelateTypes = () =>
   request<{ label: string; value: number }[]>('/timeRecord/relateTypes')
+export interface RelatedRecord {
+  id: string
+  title: string
+  fileId?: string
+  coverImgUrl?: string
+  status?: string
+}
+export const getRelatedRecord = (type: number, id: string) =>
+  request<RelatedRecord | null>((type === 1 ? '/read-record/' : '/movie/') + encodeURIComponent(id))
 export function getRelated(
   type: number,
   keyword: string,
   page: number,
   all: boolean,
 ) {
-  return request<{ items: { id: string; title: string }[]; total: number }>(
+  return request<{ items: RelatedRecord[]; total: number }>(
     (type === 1 ? '/read-record/page' : '/movie/page') +
       '?current=' +
       page +

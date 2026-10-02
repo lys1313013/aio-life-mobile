@@ -32,7 +32,7 @@ const groups = computed(() => {
   <view class="record-groups">
     <view v-if="loading" class="record-card-grid"><view v-for="n in 6" :key="n" class="record-card-cell"><view class="record-card" :class="themeClass('record-card')"><ContentSkeleton variant="tile" compact label="正在加载时迹卡片" /></view></view></view>
     <view v-for="group in groups" :key="group.date" class="record-group">
-      <text v-if="showDate" class="record-group-date"
+      <text v-if="showDate" class="record-group-date" :class="themeClass('record-group-date')"
         >{{ group.date.slice(5) }} · {{ group.weekday }}</text
       >
       <view class="record-card-grid">
@@ -43,7 +43,7 @@ const groups = computed(() => {
         >
           <button
             role="button"
-            class="record-card"
+            class="record-card ui-type-body"
             :style="{ borderLeftColor: item.category?.color || '#94a3b8' }"
             :aria-label="
               '编辑记录 ' + (item.title || item.category?.name || '未分类')
@@ -74,7 +74,7 @@ const groups = computed(() => {
                 class="record-card-duration"
                 :class="themeClass('record-card-duration')"
                 >{{ durationLabel(recordMinutes(item)) }}</text
-              ><text v-if="item.title" class="record-card-title">{{
+              ><text v-if="item.title" class="record-card-title" :class="themeClass('record-card-title')">{{
                 item.title
               }}</text></view
             >
@@ -85,14 +85,18 @@ const groups = computed(() => {
   </view>
 </template>
 <style scoped lang="scss">
+@use '../styles/typography' as *;
 @use '../styles/spacing.scss';
 @use '../styles/spacing-tokens' as *;
+@use '../styles/text-colors' as *;
+@include type-utilities('body');
+
 .record-group {
   margin-bottom: $space-section;
 }
 .record-group-date {
-  font-size: 12px;
-  color: #8b8f99;
+  @include type-style('caption');
+  color: $text-secondary-light;
   padding: 0 0 $space-inline;
 }
 .record-card-grid {
@@ -117,7 +121,7 @@ const groups = computed(() => {
   border-radius: 12px;
   background-color: #ffffff;
   text-align: left;
-  line-height: 20px;
+  line-height: type-line('label');
 }
 .record-card-heading {
   flex-direction: row;
@@ -126,15 +130,15 @@ const groups = computed(() => {
 .record-card-category {
   flex: 1;
   margin-left: $space-inline;
-  font-size: 12px;
+  @include type-style('caption');
   color: #71717a;
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
 }
 .record-card-time {
-  font-size: 16px;
-  font-weight: 600;
+  @include type-style('metric-small');
+
   color: #27272a;
   margin-top: $space-inline;
 }
@@ -144,14 +148,14 @@ const groups = computed(() => {
   margin-top: $space-inline;
 }
 .record-card-duration {
-  font-size: 12px;
+  @include type-style('caption');
   color: #71717a;
 }
 .record-card-title {
   flex: 1;
   margin-left: $space-inline;
-  font-size: 12px;
-  color: #8b8f99;
+  @include type-style('caption');
+  color: $text-secondary-light;
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
@@ -177,4 +181,8 @@ const groups = computed(() => {
   border: 0;
 }
 /* #endif */
+
+
+.record-group-date-dark,
+.record-card-title-dark { color: $text-secondary-dark; }
 </style>

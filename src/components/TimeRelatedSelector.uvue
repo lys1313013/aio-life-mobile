@@ -1,0 +1,205 @@
+<script setup lang="ts">
+import { computed, onUnmounted, ref, watch } from 'vue'
+import AdaptiveModal from './AdaptiveModal.uvue'
+import AppIcon from './AppIcon.uvue'
+import LibraryCover from './LibraryCover.uvue'
+import LoadingIndicator from './LoadingIndicator.uvue'
+import { getRelated, getRelatedRecord } from '../services/time.ts'
+import type { RelatedRecord } from '../services/time.ts'
+import { themeClass } from '../services/theme.ts'
+
+const props = defineProps<{ relateId?: string | null; type: number; title?: string; disabled?: boolean }>()
+const emit = defineEmits(['select', 'clear', 'resize'])
+const selected = ref<RelatedRecord | null>(null)
+const detailLoading = ref(false), detailError = ref('')
+const visible = ref(false), loading = ref(false), error = ref('')
+const keyword = ref(''), all = ref(false), page = ref(0), total = ref(0)
+const items = ref<RelatedRecord[]>([])
+const kind = computed(() => props.type === 1 ? 'read' : 'movie')
+const label = computed(() => props.type === 1 ? '阅读' : '观影')
+const selectedTitle = computed(() => selected.value?.title || props.title || '已关联记录')
+const contentKey = computed(() => JSON.stringify([items.value, loading.value, error.value]))
+let detailSerial = 0, listSerial = 0, active = true
+let searchTimer: ReturnType<typeof setTimeout> | undefined
+function statusLabel(status?: string) {
+  return ({ not_started: '想看', in_progress: '在看', completed: '看过', on_hold: '搁置' })[status || ''] || ''
+}
+async function loadSelected() {
+  const serial = ++detailSerial, id = props.relateId, type = props.type
+  detailError.value = ''
+  detailLoading.value = false
+  if (!id) { selected.value = null; return }
+  if (selected.value?.id === id) return
+  selected.value = null
+  detailLoading.value = true
+  try {
+    const record = await getRelatedRecord(type, id)
+    if (!record || record.id !== id) throw new Error('关联记录暂时无法读取')
+    if (active && serial === detailSerial) selected.value = record
+  } catch (e) {
+    if (active && serial === detailSerial) detailError.value = e.message || '关联记录加载失败'
+  } finally {
+    if (active && serial === detailSerial) { detailLoading.value = false; emit('resize') }
+  }
+}
+async function load(more = false) {
+  if (more && (loading.value || items.value.length >= total.value)) return
+  const serial = ++listSerial, type = props.type, next = more ? page.value + 1 : 1
+  loading.value = true
+  error.value = ''
+  try {
+    const result = await getRelated(type, keyword.value.trim(), next, all.value)
+    if (!active || serial !== listSerial || type !== props.type) return
+    items.value = more ? [...items.value, ...result.items.filter(item => !items.value.some(old => old.id === item.id))] : result.items
+    page.value = next
+    total.value = Number(result.total)
+  } catch (e) {
+    if (active && serial === listSerial) error.value = e.message || '关联记录加载失败'
+  } finally {
+    if (active && serial === listSerial) loading.value = false
+  }
+}
+function open() {
+  if (props.disabled) return
+  visible.value = true
+  load()
+}
+function close() {
+  visible.value = false
+  listSerial++
+  loading.value = false
+  clearTimeout(searchTimer)
+}
+function search() {
+  clearTimeout(searchTimer)
+  items.value = []
+  page.value = 0
+  total.value = 0
+  load()
+}
+function select(item: RelatedRecord) {
+  if (props.disabled) return
+  detailSerial++
+  detailLoading.value = false
+  detailError.value = ''
+  selected.value = item
+  emit('select', item)
+  close()
+}
+function clear() {
+  if (props.disabled) return
+  detailSerial++
+  selected.value = null
+  detailLoading.value = false
+  detailError.value = ''
+  emit('clear')
+}
+function changeScope(event) { all.value = event.detail.value; search() }
+watch(() => [props.relateId, props.type], ([, type], old) => {
+  if (old && type !== old[1]) { selected.value = null; keyword.value = ''; all.value = false; items.value = []; close() }
+  loadSelected()
+}, { immediate: true })
+watch(keyword, () => {
+  clearTimeout(searchTimer)
+  // 立即使旧搜索响应失效，避免防抖期间旧内容覆盖新关键词。
+  listSerial++
+  if (visible.value) searchTimer = setTimeout(search, 350)
+})
+onUnmounted(() => { active = false; detailSerial++; listSerial++; clearTimeout(searchTimer) })
+</script>
+
+<template>
+  <view class="time-related-selector">
+    <view v-if="relateId" class="selected-related" :class="themeClass('selected-related')">
+      <view class="selected-related-main" role="button" tabindex="0" :aria-label="'更换关联' + label + '：' + selectedTitle"
+        :aria-disabled="disabled" @click="open" @keydown.enter="open" @keydown.space.prevent="open">
+        <view class="selected-related-cover">
+          <LibraryCover :file-id="selected?.fileId || ''" :url="selected?.coverImgUrl || ''" :title="selectedTitle" :kind="kind" compact />
+        </view>
+        <view class="selected-related-info">
+          <text class="related-title" :class="themeClass('related-title')">{{ selectedTitle }}</text>
+          <LoadingIndicator v-if="detailLoading" compact label="正在加载关联记录" />
+          <text v-else-if="statusLabel(selected?.status)" class="related-status" :class="'related-status-' + selected?.status">{{ statusLabel(selected?.status) }}</text>
+        </view>
+      </view>
+      <button class="related-icon-button ui-type-body" role="button" aria-label="清除关联记录" :disabled="disabled" @click="clear">
+        <AppIcon name="ant-design:close-outlined" :size="18" color="#8b8f99" />
+      </button>
+    </view>
+    <button v-else class="related-empty ui-type-body" :class="themeClass('related-empty')" role="button" :aria-label="'选择关联' + label" :disabled="disabled" @click="open">
+      <AppIcon name="ant-design:plus-outlined" :size="22" color="#8b8f99" />
+    </button>
+    <view v-if="detailError" class="related-error-row">
+      <text class="related-error" role="alert">{{ detailError }}</text>
+      <button class="related-icon-button ui-type-body" role="button" aria-label="重试关联详情" :disabled="detailLoading" @click="loadSelected">
+        <AppIcon name="ant-design:reload-outlined" :size="18" />
+      </button>
+    </view>
+    <AdaptiveModal v-if="visible" label="选择关联记录" :show-close="false" :max-width="600" :content-key="contentKey" @close="close">
+      <view class="related-toolbar">
+        <input v-model="keyword" class="related-search" :class="themeClass('related-search')" :placeholder="type === 1 ? '搜索书名或作者' : '搜索影视名称或导演'" aria-label="搜索关联记录" confirm-type="search" @confirm="search" />
+        <button role="button" class="related-icon-button ui-type-body" aria-label="搜索关联记录" @click="search"><AppIcon name="ant-design:search-outlined" :size="20" /></button>
+      </view>
+      <view class="related-scope"><text class="related-muted" :class="themeClass('related-muted')">显示全部</text><switch :checked="all" aria-label="显示全部记录" @change="changeScope" /></view>
+      <view class="related-grid">
+        <view v-for="item in items" :key="item.id" class="related-card" role="button" tabindex="0"
+          :aria-label="item.title + (statusLabel(item.status) ? '，' + statusLabel(item.status) : '')"
+          :aria-pressed="relateId === item.id" @click="select(item)" @keydown.enter="select(item)" @keydown.space.prevent="select(item)">
+          <view class="related-poster" :class="{ 'related-poster-selected': relateId === item.id }">
+            <LibraryCover :file-id="item.fileId || ''" :url="item.coverImgUrl || ''" :title="item.title" :kind="kind" />
+          </view>
+          <text class="related-card-title" :class="themeClass('related-title')">{{ item.title }}</text>
+          <text v-if="statusLabel(item.status)" class="related-status" :class="'related-status-' + item.status">{{ statusLabel(item.status) }}</text>
+        </view>
+      </view>
+      <LoadingIndicator v-if="loading" label="正在加载关联记录" />
+      <view v-if="error" class="related-error-row"><text class="related-error" role="alert">{{ error }}</text><button role="button" class="related-icon-button ui-type-body" aria-label="重试关联列表" @click="load(page > 0)"><AppIcon name="ant-design:reload-outlined" /></button></view>
+      <text v-else-if="!loading && !items.length" class="related-muted related-empty-text" :class="themeClass('related-muted')">{{ keyword ? '没有找到匹配的记录' : '暂无可选记录' }}</text>
+      <button v-if="!loading && !error && items.length < total" class="related-more" role="button" @click="load(true)">加载更多</button>
+    </AdaptiveModal>
+  </view>
+</template>
+
+<style scoped lang="scss">
+@use '../styles/typography' as *;
+@use '../styles/spacing-tokens' as *;
+@use '../styles/text-colors' as *;
+@include type-utilities('body');
+
+.time-related-selector { width: 100%; }
+.selected-related { flex-direction: row; align-items: center; padding: $space-inline; gap: $space-detail; border: 1px solid #e5e7eb; border-radius: 10px; background-color: #f7f8fa; }
+.selected-related-dark { border-color: #32353c; background-color: #23262b; }
+.selected-related-main { flex: 1; min-width: 0; flex-direction: row; align-items: center; gap: $space-section; }
+.selected-related-cover { position: relative; width: 60px; height: 80px; flex-shrink: 0; border-radius: 6px; overflow: hidden; }
+.selected-related-info { flex: 1; min-width: 0; gap: $space-inline; }
+.related-title { @include type-style('body');  color: #27272a; }
+.related-title-dark { color: #eeeeef; }
+.related-status { align-self: flex-start; @include type-style('badge');  padding: 0 $space-detail; border-radius: 4px; color: #8b8f99; background-color: rgba(148,163,184,.12); }
+.related-status-in_progress { color: #5b8ff9; background-color: rgba(91,143,249,.12); }
+.related-status-completed { color: #39a978; background-color: rgba(57,169,120,.12); }
+.related-status-on_hold { color: #cf932c; background-color: rgba(207,147,44,.12); }
+.related-icon-button { display: flex; align-items: center; justify-content: center; width: $space-controlMin; height: $space-controlMin; flex-shrink: 0; margin: 0; padding: 0; border: 0; background-color: transparent; }
+.related-empty { display: flex; align-items: center; justify-content: center; width: 100%; min-height: 60px; margin: 0; padding: 0; border: 1px dashed #d5d8df; border-radius: 10px; background-color: transparent; }
+.related-empty-dark { border-color: #42454d; }
+.related-toolbar { flex-direction: row; align-items: center; gap: $space-detail; }
+.related-search { flex: 1; min-width: 0; height: $space-controlMin; padding: 0 $space-section; border-radius: 10px; @include type-style('body'); background-color: #f0f2f5; color: #27272a; }
+.related-search-dark { background-color: #282b32; color: #eeeeef; }
+.related-scope { flex-direction: row; align-items: center; justify-content: flex-end; gap: $space-inline; margin: $space-inline 0 $space-section; }
+.related-muted { @include type-style('label'); color: $text-secondary-light;  }
+.related-grid { flex-direction: row; flex-wrap: wrap; gap: $space-section; }
+.related-card { width: calc((100% - 2 * $space-section) / 3); min-width: 0; gap: $space-detail; }
+.related-poster { position: relative; width: 100%; aspect-ratio: 3 / 4; border-radius: 6px; overflow: hidden; border: 2px solid transparent; box-sizing: border-box; }
+.related-poster-selected { border-color: #5b8ff9; }
+.related-card-title { @include type-style('caption');  overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.related-error-row { flex-direction: row; align-items: center; gap: $space-inline; }
+.related-error { flex: 1; @include type-style('label');  color: #df5661; }
+.related-empty-text { padding: $space-section 0; text-align: center; }
+.related-more { margin: $space-inline 0 0; padding: 0; min-height: $space-controlMin; background-color: transparent; border: 0; color: #5b8ff9; @include type-style('label'); }
+@media (min-width: 600px) { .related-card { width: calc((100% - 3 * $space-section) / 4); } }
+/* #ifdef WEB || MP-WEIXIN */
+.related-icon-button::after, .related-empty::after, .related-more::after { border: 0; }
+/* #endif */
+
+
+.related-muted-dark { color: $text-secondary-dark; }
+</style>

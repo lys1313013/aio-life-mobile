@@ -1,12 +1,13 @@
 <script setup lang="ts">
-import ContentSkeleton from './ContentSkeleton.uvue';
 import LoadingIndicator from './LoadingIndicator.uvue';
+import spacing from '../styles/spacing.json'
 import AppIcon from './AppIcon.uvue'
 import { themeClass } from '../services/theme.ts'
 import { recordChanged } from '../services/time-changes.ts'
 import { computed, ref, onMounted, onUnmounted } from 'vue'
 import AdaptiveModal from './AdaptiveModal.uvue'
 import CategoryIcon from './CategoryIcon.uvue'
+import TimeRelatedSelector from './TimeRelatedSelector.uvue'
 import type { Category, TimeRecord } from '../services/dashboard.ts'
 import { getDateRecords, todayDate } from '../services/dashboard.ts'
 import {
@@ -18,7 +19,6 @@ import {
   deleteRecord,
   getExerciseTypes,
   getRelateTypes,
-  getRelated,
 } from '../services/time.ts'
 import {
   categoryPath,
@@ -29,10 +29,10 @@ import {
   durationEnd,
   shiftDate,
 } from '../services/time-format.ts'
-import { clockLabel, durationLabel } from '../services/dashboard-format.ts'
+import { clockLabel } from '../services/dashboard-format.ts'
 import { restoreSession, session } from '../services/session.ts'
 
-const props = defineProps<{ recordId?: string; initialDate?: string }>()
+const props = withDefaults(defineProps<{ recordId?: string; initialDate?: string; compact?: boolean }>(), { compact: true })
 const emit = defineEmits(['close'])
 const id = ref(''),
   date = ref(todayDate()),
@@ -68,12 +68,24 @@ const selectedCategory = computed(() =>
   categories.value.find((item) => item.id === form.value.categoryId),
 )
 const duration = computed(() => recordMinutes(form.value))
+const displayDate = computed(() => {
+  const [year, month, day] = date.value.split('-').map(Number)
+  const weekday = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'][new Date(year, month - 1, day).getDay()]
+  const prefix = year === new Date().getFullYear() ? '' : year + '年'
+  return `${prefix}${month}月${day}日  ${weekday}`
+})
+const displayDuration = computed(() => {
+  const hours = Math.floor(duration.value / 60), minutes = duration.value % 60
+  return (hours ? hours + '小时' : '') + (minutes || !hours ? minutes + '分' : '')
+})
 const isExercise = computed(
   () =>
     categoryName.value.split(' / ').includes('运动') ||
     (form.value.exercises || []).length > 0,
 )
-const exerciseTypes = ref<{ id: string; dictLabel: string }[]>([]),
+const choosingExercise = ref(-1)
+const exerciseSelectionKey = computed(() => JSON.stringify([exerciseTypes.value, exerciseLoading.value, exerciseError.value]))
+const exerciseTypes = ref<{ id: string; dictLabel: string; icon?: string; color?: string }[]>([]),
   exerciseLoading = ref(false),
   exerciseError = ref('')
 const relateTypes = ref<{ label: string; value: number }[]>([])
@@ -84,14 +96,8 @@ const relatedType = computed(
     form.value.relateType ||
     0,
 )
-const choosingRelated = ref(false),
-  relatedLoading = ref(false),
-  relatedError = ref(''),
-  relatedSearch = ref(''),
-  relatedAll = ref(false)
-const relatedItems = ref<{ id: string; title: string }[]>([]),
-  relatedPage = ref(0),
-  relatedTotal = ref(0)
+const relatedError = ref('')
+const relatedLayoutRevision = ref(0)
 const layoutKey = computed(() =>
   JSON.stringify([
     ready.value,
@@ -100,22 +106,13 @@ const layoutKey = computed(() =>
     form.value,
     errorText.value,
     relatedError.value,
+    relatedLayoutRevision.value,
     exerciseError.value,
     exerciseTypes.value,
   ]),
 )
-const selectionKey = computed(() =>
-  JSON.stringify([
-    choosingCategory.value,
-    categoryOptions.value,
-    relatedItems.value,
-    relatedError.value,
-    relatedLoading.value,
-  ]),
-)
-let active = true,
-  generation = 0,
-  relatedGeneration = 0
+const selectionKey = computed(() => JSON.stringify(categoryOptions.value))
+let active = true, generation = 0
 let autoDate = false
 let repeating: ReturnType<typeof setInterval> | null = null
 let suppressClickUntil = 0
@@ -136,7 +133,6 @@ onUnmounted(() => {
   stopAdjust()
   active = false
   generation++
-  relatedGeneration++
 })
 function report(error) {
   if (error.name === 'SessionExpiredError') {
@@ -190,7 +186,7 @@ async function initialize() {
       }
       result = result || (await recommendNext(date.value))
       if (!active || serial !== generation || token !== session.token) return
-      existing.value = result.items
+      existing.value = result.records
       if (!result.recommend) {
         full.value = true
         return
@@ -365,6 +361,17 @@ function exerciseName(typeId: string) {
     (typeId ? '已选运动' : '选择运动')
   )
 }
+function openExerciseSelection(index: number) {
+  if (saving.value || deleting.value) return
+  choosingExercise.value = index
+  if (!exerciseTypes.value.length) loadExercises()
+}
+function selectExercise(typeId: string) {
+  if (saving.value || deleting.value) return
+  const item = form.value.exercises?.[choosingExercise.value]
+  if (item) item.exerciseTypeId = typeId
+  choosingExercise.value = -1
+}
 function addExercise() {
   const exercises = form.value.exercises || []
   const lastExercise = exercises[exercises.length - 1]
@@ -377,49 +384,12 @@ function addExercise() {
   ]
   if (exerciseTypes.value.length === 0) loadExercises()
 }
-async function openRelated() {
-  choosingRelated.value = true
-  await searchRelated()
-}
-async function searchRelated(more = false) {
-  if (more && relatedLoading.value) return
-  const serial = ++relatedGeneration,
-    type = relatedType.value
-  const page = more ? relatedPage.value + 1 : 1
-  relatedLoading.value = true
-  relatedError.value = ''
-  try {
-    const result = await getRelated(
-      type,
-      relatedSearch.value.trim(),
-      page,
-      relatedAll.value,
-    )
-    if (!active || serial !== relatedGeneration || relatedType.value !== type)
-      return
-    relatedItems.value = more
-      ? [
-          ...relatedItems.value,
-          ...result.items.filter(
-            (r) => !relatedItems.value.some((i) => i.id === r.id),
-          ),
-        ]
-      : result.items
-    relatedPage.value = page
-    relatedTotal.value = Number(result.total)
-  } catch (error) {
-    if (serial === relatedGeneration) relatedError.value = report(error)
-  } finally {
-    if (serial === relatedGeneration) relatedLoading.value = false
-  }
-}
 function selectRelated(item) {
   form.value.relateId = item.id
   form.value.relateType = relatedType.value
   form.value.title = item.title.startsWith('《')
     ? item.title
     : '《' + item.title + '》'
-  choosingRelated.value = false
 }
 function clearRelated() {
   form.value.relateId = null
@@ -431,11 +401,6 @@ function retryOptions() {
 }
 function closeSelection() {
   choosingCategory.value = false
-  choosingRelated.value = false
-}
-function changeRelatedScope(event) {
-  relatedAll.value = event.detail.value
-  searchRelated()
 }
 </script>
 
@@ -443,19 +408,25 @@ function changeRelatedScope(event) {
   <AdaptiveModal
     :label="id ? '编辑时迹' : '记录时间'"
     :show-close="false"
+    :max-width="loading ? 280 : compact ? 440 : 600"
+    :vertical-inset="spacing.overlayBlock + spacing.modal"
     :busy="saving || deleting"
     :content-key="layoutKey"
     @close="goBack"
   >
     <view class="editor-content">
-      <view v-if="loading" class="state-card"
-         :class="themeClass('state-card')"><ContentSkeleton variant="form" label="正在加载时迹详情" /></view
-      >
+      <view v-if="loading" class="editor-loading">
+        <button role="button" class="loading-close ui-type-body" aria-label="取消加载" @click="goBack">
+          <AppIcon name="ant-design:close-outlined" :size="18" color="#8b8f99" />
+        </button>
+        <LoadingIndicator compact label="正在加载时迹详情" />
+        <text class="loading-label" :class="themeClass('loading-label')" aria-hidden="true">正在加载</text>
+      </view>
       <view v-if="full" class="state-card"
          :class="themeClass('state-card')"><text class="empty-title" :class="themeClass('empty-title')">该天已录入完毕</text
         ><picker mode="date" :value="date" @change="changeDate"
           ><view class="picker-field"
-            ><text class="action-label">选择其他日期</text></view
+            ><text class="action-label ui-type-body">选择其他日期</text></view
           ></picker
         ></view
       >
@@ -466,6 +437,50 @@ function changeRelatedScope(event) {
         </button></view
       >
       <view v-if="ready" class="editor-form">
+        <view v-if="compact" class="compact-fields">
+          <picker mode="date" :value="date" :disabled="!!id || saving || deleting"
+            aria-label="记录日期" @change="changeDate">
+            <view class="compact-row" :class="themeClass('compact-row')">
+              <AppIcon name="ant-design:calendar-outlined" :size="22" color="#8b8f99" />
+              <text class="compact-value" :class="themeClass('compact-value')">{{ displayDate }}</text>
+            </view>
+          </picker>
+          <button role="button" aria-label="选择分类" class="compact-row compact-category ui-type-body"
+            :class="themeClass('compact-row')" :disabled="saving || deleting"
+            @click="choosingCategory = true">
+            <CategoryIcon v-if="selectedCategory" :icon="selectedCategory.icon" :color="selectedCategory.color" :size="22" />
+            <AppIcon v-else name="ant-design:appstore-outlined" :size="22" color="#8b8f99" />
+            <text class="compact-value" :class="themeClass('compact-value')">{{ categoryName }}</text>
+            <AppIcon name="ant-design:right-outlined" :size="18" color="#8b8f99" />
+          </button>
+          <view class="compact-time-section">
+            <view class="compact-time-range" :class="themeClass('compact-time-range')">
+              <picker class="compact-time-picker" mode="time" aria-label="开始时间"
+                :value="clockLabel(form.startTime)" :disabled="saving || deleting" @change="changeStart">
+                <view class="compact-time-field">
+                  <text class="compact-time-label" :class="themeClass('compact-time-label')">开始</text>
+                  <text class="compact-time-number" :class="themeClass('compact-time-number')">{{ clockLabel(form.startTime) }}</text>
+                </view>
+              </picker>
+              <view class="compact-time-summary">
+                <text class="compact-duration" :class="themeClass('compact-duration')" aria-label="记录时长">{{ displayDuration }}</text>
+                <view class="compact-time-arrow" aria-hidden="true">
+                  <view class="compact-time-arrow-line" />
+                  <view class="compact-time-arrow-head" />
+                </view>
+              </view>
+              <picker class="compact-time-picker" mode="time" aria-label="结束时间"
+                :value="clockLabel(form.endTime)" :disabled="saving || deleting" @change="changeEnd">
+                <view class="compact-time-field">
+                  <text class="compact-time-label" :class="themeClass('compact-time-label')">结束</text>
+                  <text class="compact-time-number" :class="themeClass('compact-time-number')">{{ clockLabel(form.endTime) }}</text>
+                </view>
+              </picker>
+            </view>
+          </view>
+
+        </view>
+        <template v-else>
         <view class="form-card">
           <picker
             v-if="!id"
@@ -492,7 +507,7 @@ function changeRelatedScope(event) {
           <button
             role="button"
             aria-label="选择分类"
-            class="field-row field-button"
+            class="field-row field-button ui-type-body"
             :disabled="saving || deleting"
             :aria-disabled="saving || deleting"
             @click="choosingCategory = true"
@@ -521,7 +536,7 @@ function changeRelatedScope(event) {
               <view class="time-control" :class="themeClass('time-control')">
                 <button
                   role="button"
-                  class="time-step-button"
+                  class="time-step-button ui-type-body"
                   hover-class="step-pressed"
                   :aria-label="(field === 'startTime' ? '开始时间 ' : '结束时间 ') + '-1 分钟'"
                   :disabled="saving || deleting"
@@ -540,7 +555,7 @@ function changeRelatedScope(event) {
                 ><view class="time-field"><text class="time-number" :class="themeClass('time-number')">{{ clockLabel(form[field]) }}</text></view></picker>
                 <button
                   role="button"
-                  class="time-step-button"
+                  class="time-step-button ui-type-body"
                   hover-class="step-pressed"
                   :aria-label="(field === 'startTime' ? '开始时间 ' : '结束时间 ') + '+1 分钟'"
                   :disabled="saving || deleting"
@@ -555,7 +570,7 @@ function changeRelatedScope(event) {
                   v-for="delta in [-30, 30]"
                   :key="delta"
                   role="button"
-                  class="duration-step"
+                  class="duration-step ui-type-body"
                   hover-class="step-pressed"
                   :aria-label="
                     (field === 'startTime' ? '开始时间 ' : '结束时间 ') +
@@ -609,41 +624,25 @@ function changeRelatedScope(event) {
             :auto-height="true"
           :class="themeClass('description-input')" />
         </view>
-        <view v-if="relatedType" class="form-card"
-          ><text class="section-label" :class="themeClass('section-label')">{{
-            relatedType === 1 ? '关联阅读' : '关联观影'
-          }}</text
-          ><button
-            role="button"
-            class="field-row field-button"
-            :disabled="saving || deleting"
-            :aria-disabled="saving || deleting"
-            @click="openRelated"
-          >
-            <text class="field-value" :class="themeClass('field-value')">{{
-              form.relateId ? form.title || '已关联记录' : '选择记录'
-            }}</text
-            ><AppIcon name="ant-design:right-outlined" /></button
-          ><button
-            v-if="form.relateId && !id"
-            role="button"
-            class="small-action"
-            :disabled="saving || deleting"
-            :aria-disabled="saving || deleting"
-            @click="clearRelated"
-           :class="themeClass('small-action')">
-            清除关联
-          </button></view
-        >
-        <view v-if="relatedError && !choosingRelated" class="form-error"
+        </template>
+        <view v-if="relatedType" class="form-card">
+          <TimeRelatedSelector :type="relatedType" :relate-id="form.relateId" :title="form.title"
+            :disabled="saving || deleting" @select="selectRelated" @clear="clearRelated" @resize="relatedLayoutRevision++" />
+        </view>
+        <view v-if="relatedError" class="form-error"
           ><text class="error-text" :class="themeClass('error-text')">{{ relatedError }}</text
           ><button role="button" class="small-action" @click="retryOptions" :class="themeClass('small-action')">
             重试关联选项
           </button></view
         >
         <view v-if="isExercise" class="form-card"
-          ><text class="section-label" :class="themeClass('section-label')">运动明细</text
-          ><LoadingIndicator v-if="exerciseLoading" label="正在加载运动项目" />
+          ><view class="exercise-heading">
+            <text class="section-label" :class="themeClass('section-label')">运动明细</text>
+            <button v-if="compact" role="button" class="exercise-add ui-type-body" aria-label="添加运动"
+              :disabled="saving || deleting" @click="addExercise">
+              <AppIcon name="ant-design:plus-outlined" :size="20" color="#4e7ee3" />
+            </button>
+          </view><LoadingIndicator v-if="exerciseLoading" label="正在加载运动项目" />
           <view v-if="exerciseError"
             ><text class="error-text" :class="themeClass('error-text')">{{ exerciseError }}</text
             ><button role="button" class="small-action" @click="loadExercises" :class="themeClass('small-action')">
@@ -653,20 +652,16 @@ function changeRelatedScope(event) {
             v-for="(item, index) in form.exercises"
             :key="index"
             class="exercise-row"
-            ><picker
-              :range="exerciseTypes"
-              range-key="dictLabel"
+            :class="{ 'compact-exercise-row': compact }"
+            ><button role="button" class="exercise-type-control ui-type-body"
+              :aria-label="'运动项目 ' + (index + 1)"
               :disabled="saving || deleting"
-              :aria-disabled="saving || deleting"
-              @change="
-                item.exerciseTypeId =
-                  exerciseTypes[Number($event.detail.value)].id
-              "
-              ><view class="exercise-picker"
-                ><text class="field-value" :class="themeClass('field-value')">{{
+              @click="openExerciseSelection(index)"
+              ><view class="exercise-picker" :class="[compact ? 'compact-exercise-picker' : '', themeClass(compact ? 'compact-exercise-picker' : '')]"
+                ><text class="field-value exercise-name" :class="themeClass('field-value')">{{
                   exerciseName(item.exerciseTypeId)
-                }}</text></view
-              ></picker
+                }}</text><AppIcon name="ant-design:right-outlined" :size="14" color="#8b8f99" /></view
+              ></button
             ><input
               v-model="item.exerciseCount"
               type="digit"
@@ -675,7 +670,7 @@ function changeRelatedScope(event) {
               placeholder="数量"
               :disabled="saving || deleting"
               :aria-disabled="saving || deleting"
-            :class="themeClass('count-input')" /><button
+            :class="[themeClass('count-input'), compact ? 'compact-exercise-count' : '', themeClass(compact ? 'compact-exercise-count' : '')]" /><button
               role="button"
               class="remove-exercise"
               :aria-label="'移除运动 ' + (index + 1)"
@@ -683,9 +678,10 @@ function changeRelatedScope(event) {
               :aria-disabled="saving || deleting"
               @click="form.exercises.splice(index, 1)"
             >
-<AppIcon name="ant-design:close-outlined" />
+<AppIcon :name="compact ? 'ant-design:delete-outlined' : 'ant-design:close-outlined'" :size="18" :color="compact ? '#df5661' : '#8b8f99'" />
 </button></view
           ><button
+            v-if="!compact"
             role="button"
             class="small-action"
             :disabled="saving || deleting"
@@ -695,6 +691,12 @@ function changeRelatedScope(event) {
             添加运动
           </button></view
         >
+        <view v-if="compact" class="compact-notes">
+          <input v-model="form.title" class="compact-title" :class="themeClass('compact-title')"
+            placeholder="标题" aria-label="记录标题" :maxlength="50" :disabled="saving || deleting" />
+          <textarea v-model="form.description" class="compact-description" :class="themeClass('compact-description')"
+            placeholder="描述" aria-label="记录备注" :maxlength="200" :disabled="saving || deleting" :auto-height="true" />
+        </view>
         <view v-if="ready && errorText" class="form-error"
           ><text class="error-text" role="alert" :class="themeClass('error-text')">{{ errorText }}</text></view
         >
@@ -734,7 +736,8 @@ function changeRelatedScope(event) {
               ></view
             ></view
           >
-          <view class="actions-spacer" /><button
+          <view v-if="!compact" class="actions-spacer" /><button
+            v-if="!compact"
             role="button"
             class="cancel-action"
             :disabled="saving || deleting"
@@ -745,6 +748,7 @@ function changeRelatedScope(event) {
           <button
             role="button"
             class="save-button"
+            :class="{ 'compact-save': compact }"
             :disabled="saving || deleting"
             :aria-disabled="saving || deleting"
             :loading="saving"
@@ -755,7 +759,7 @@ function changeRelatedScope(event) {
         >
       </view>
       <button
-        v-if="!ready"
+        v-if="!ready && !loading"
         role="button"
         class="cancel-action state-cancel"
         @click="goBack"
@@ -765,50 +769,20 @@ function changeRelatedScope(event) {
     </view>
   </AdaptiveModal>
   <AdaptiveModal
-    v-if="choosingCategory || choosingRelated"
+    v-if="choosingCategory"
     :show-close="false"
     :content-key="selectionKey"
-    :max-width="choosingCategory ? 500 : 600"
-    :label="choosingCategory ? '选择分类' : '选择关联记录'"
+    :max-width="500"
+    label="选择分类"
     @close="closeSelection"
   >
-    <view class="selection-panel"
-      ><view v-if="!choosingCategory" class="selection-heading">
-        <text class="section-label" :class="themeClass('section-label')">选择关联记录</text>
-        <button
-          role="button"
-          class="close-selection"
-          aria-label="关闭选择"
-          @click="closeSelection"
-        >
-<AppIcon name="ant-design:close-outlined" />
-</button>
-      </view>
-      <view v-if="!choosingCategory"
-        ><view class="search-row"
-          ><input
-            v-model="relatedSearch"
-            class="search-input related-search"
-            placeholder="搜索名称"
-            aria-label="搜索关联记录"
-            confirm-type="search"
-            @confirm="searchRelated()"
-          :class="themeClass('search-input')" /><button role="button" class="small-action" @click="searchRelated()" :class="themeClass('small-action')">
-            搜索
-          </button></view
-        ><view class="field-row"
-          ><text class="muted-text">显示全部记录</text
-          ><switch :checked="relatedAll" @change="changeRelatedScope" /></view
-      ></view>
-      <view
-        class="selection-scroll"
-        :class="{ 'category-selection': choosingCategory }"
-        ><view v-if="choosingCategory" class="category-grid"
+    <view class="selection-panel"><view class="selection-scroll category-selection"
+        ><view class="category-grid"
           ><button
             v-for="item in categoryOptions"
             :key="item.id"
             role="button"
-            class="category-option"
+            class="category-option ui-type-body"
             :aria-label="categoryPath(item.id, categories)"
             :aria-pressed="item.id === form.categoryId"
             :class="[({ 'category-selected': item.id === form.categoryId }), themeClass(({ 'category-selected': item.id === form.categoryId }))]"
@@ -821,39 +795,38 @@ function changeRelatedScope(event) {
           ><text v-if="!categoryOptions.length" class="muted-text"
             >暂无分类</text
           ></view
-        ><template v-else
-          ><text v-if="relatedError" class="error-text" :class="themeClass('error-text')">{{ relatedError }}</text
-          ><button
-            v-for="item in relatedItems"
-            :key="item.id"
-            role="button"
-            class="related-option"
-            @click="selectRelated(item)"
-          >
-            <text class="field-value" :class="themeClass('field-value')">{{ item.title }}</text></button
-          ><LoadingIndicator v-if="relatedLoading" label="正在加载关联记录" />
-          <text
-            v-else-if="!relatedItems.length && !relatedError"
-            class="muted-text"
-            >暂无匹配记录</text
-          ><button
-            v-if="relatedError || relatedItems.length < relatedTotal"
-            role="button"
-            class="small-action"
-            :disabled="relatedLoading"
-            @click="searchRelated(!relatedError)"
-           :class="themeClass('small-action')">
-            {{ relatedError ? '重试' : '加载更多' }}
-          </button></template
         ></view
       >
     </view>
   </AdaptiveModal>
+  <AdaptiveModal v-if="choosingExercise >= 0" label="选择运动" :show-close="false"
+    :max-width="500" :content-key="exerciseSelectionKey" @close="choosingExercise = -1">
+    <LoadingIndicator v-if="exerciseLoading" label="正在加载运动项目" />
+    <view v-else-if="exerciseError" class="form-error">
+      <text class="error-text" :class="themeClass('error-text')">{{ exerciseError }}</text>
+      <button role="button" class="small-action" :class="themeClass('small-action')" @click="loadExercises">重试运动类型</button>
+    </view>
+    <view v-else class="category-grid">
+      <button v-for="item in exerciseTypes" :key="item.id" role="button" class="category-option ui-type-body"
+        :aria-label="item.dictLabel" :aria-pressed="item.id === form.exercises?.[choosingExercise]?.exerciseTypeId"
+        :class="[{ 'category-selected': item.id === form.exercises?.[choosingExercise]?.exerciseTypeId }, themeClass({ 'category-selected': item.id === form.exercises?.[choosingExercise]?.exerciseTypeId })]"
+        @click="selectExercise(item.id)">
+        <CategoryIcon :icon="item.icon || 'lucide:dumbbell'" :color="item.color || '#1890ff'" :size="24" />
+        <text class="category-name" :class="themeClass('category-name')">{{ item.dictLabel }}</text>
+      </button>
+      <text v-if="!exerciseTypes.length" class="muted-text">暂无运动类型</text>
+    </view>
+  </AdaptiveModal>
+
 </template>
 
 <style scoped lang="scss">
+@use '../styles/typography' as *;
 @use '../styles/spacing.scss';
 @use '../styles/spacing-tokens' as *;
+@use '../styles/text-colors' as *;
+@include type-utilities('body');
+
 .editor-content {
   width: 100%;
 }
@@ -876,25 +849,24 @@ function changeRelatedScope(event) {
   margin: 0;
   border-radius: 0;
   background-color: transparent;
-  line-height: 24px;
+  line-height: type-line('title');
   text-align: left;
 }
 .field-label {
-  font-size: 13px;
-  line-height: 20px;
-  font-weight: 400;
+  @include type-style('label');
+
   color: #8b8f99;
   margin-right: $space-inline;
   flex-shrink: 0;
 }
 .required-mark {
   margin-right: $space-detail;
-  font-size: 13px;
+  @include type-style('label');
   color: #df5661;
 }
 .duration-unit {
-  font-size: 13px;
-  line-height: 20px;
+  @include type-style('label');
+
   color: #8b8f99;
   flex-shrink: 0;
 }
@@ -909,7 +881,7 @@ function changeRelatedScope(event) {
   margin-left: $space-fieldLabel;
 }
 .field-value {
-  font-size: 14px;
+  @include type-style('body');
   color: #27272a;
   flex-shrink: 1;
 }
@@ -962,13 +934,13 @@ function changeRelatedScope(event) {
 .time-number {
   width: 100%;
   text-align: center;
-  font-size: 16px;
+  @include type-style('metric-small');
   line-height: $space-controlMin;
   color: #27272a;
-  font-weight: 400;
+
 }
 .time-divider {
-  font-size: 20px;
+  @include type-style('glyph-medium');
   color: #b4b4bd;
 }
 .quick-row {
@@ -978,13 +950,16 @@ function changeRelatedScope(event) {
   justify-content: space-between;
 }
 .small-action {
+  display: flex;
+  align-items: center;
+  justify-content: center;
   min-height: $space-controlMin;
   line-height: $space-controlMin;
   padding: 0 $space-inline;
   margin: 0;
   border: 0;
   background-color: transparent;
-  font-size: 13px;
+  @include type-style('label');
   color: #4e7ee3;
 }
 .duration-input {
@@ -994,7 +969,7 @@ function changeRelatedScope(event) {
   border: 1px solid #e5e7eb;
   border-radius: 8px;
   padding: 0 $space-inline;
-  font-size: 16px;
+  @include type-style('body');
   margin: 0 $space-inline;
   color: #27272a;
   text-align: right;
@@ -1014,18 +989,18 @@ function changeRelatedScope(event) {
 .step-face {
   width: 100%;
   height: 28px;
-  line-height: 26px;
+  line-height: type-leading('stepControl');
   border: 1px solid #e5e7eb;
   border-radius: 4px;
   text-align: center;
-  font-size: 12px;
+  @include type-style('caption');
   color: #52525b;
 }
 .step-pressed {
   opacity: 0.55;
 }
 .title-input {
-  font-size: 14px;
+  @include type-style('body');
   height: $space-controlMin;
   margin-top: $space-inline;
   padding: 0 $space-section;
@@ -1039,16 +1014,15 @@ function changeRelatedScope(event) {
   margin-top: $space-inline;
   border: 1px solid #e5e7eb;
   border-radius: 8px;
-  font-size: 14px;
-  line-height: 22px;
+  @include type-style('body');
+
   color: #71717a;
   padding: $space-inline;
 }
 .section-label {
-  font-size: 14px;
+  @include type-style('body-strong');
   color: #71717a;
-  font-weight: 600;
-  line-height: 32px;
+
 }
 .exercise-row {
   flex-direction: row;
@@ -1062,7 +1036,7 @@ function changeRelatedScope(event) {
   flex: 1;
   height: $space-controlMin;
   color: #27272a;
-  font-size: 14px;
+  @include type-style('body');
   text-align: right;
 }
 .remove-exercise,
@@ -1076,7 +1050,7 @@ function changeRelatedScope(event) {
   padding: 0;
   margin: 0;
   border: 0;
-  font-size: 24px;
+  @include type-style('glyph-large');
   background-color: transparent;
   color: #8b8f99;
 }
@@ -1092,6 +1066,9 @@ function changeRelatedScope(event) {
   margin-top: $space-inline;
 }
 .cancel-action {
+  display: flex;
+  align-items: center;
+  justify-content: center;
   width: 76px;
   height: $space-controlMin;
   line-height: $space-controlMin;
@@ -1101,9 +1078,12 @@ function changeRelatedScope(event) {
   border-radius: 8px;
   background-color: #f0f2f5;
   color: #71717a;
-  font-size: 14px;
+  @include type-style('body');
 }
 .save-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
   width: 76px;
   height: $space-controlMin;
   line-height: $space-controlMin;
@@ -1113,7 +1093,7 @@ function changeRelatedScope(event) {
   border-radius: 8px;
   background-color: #4e7ee3;
   color: #ffffff;
-  font-size: 14px;
+  @include type-style('body');
 }
 .delete-anchor {
   overflow: visible;
@@ -1138,7 +1118,7 @@ function changeRelatedScope(event) {
   border: 0;
   color: #c65353;
   background-color: transparent;
-  font-size: 14px;
+  @include type-style('body');
 }
 .delete-confirm {
   position: absolute;
@@ -1172,7 +1152,7 @@ function changeRelatedScope(event) {
   background-color: #f0f2f5;
   border-radius: 10px;
   padding: 0 $space-section;
-  font-size: 14px;
+  @include type-style('body');
   color: #27272a;
 }
 .search-row {
@@ -1200,11 +1180,11 @@ function changeRelatedScope(event) {
   border: 1px solid transparent;
   border-radius: 6px;
   background-color: transparent;
-  line-height: 18px;
+  line-height: type-line('caption');
 }
 .category-name {
-  font-size: 13px;
-  line-height: 18px;
+  @include type-style('label');
+
   color: #52525b;
   text-align: center;
   margin-top: $space-inline;
@@ -1217,7 +1197,7 @@ function changeRelatedScope(event) {
   flex-direction: row;
   align-items: center;
   min-height: 52px;
-  line-height: 24px;
+  line-height: type-line('title');
   padding: $space-card;
   margin: 0;
   border: 0;
@@ -1286,7 +1266,212 @@ function changeRelatedScope(event) {
   }
 }
 
+.editor-loading {
+  position: relative;
+  min-height: 104px;
+  align-items: center;
+  justify-content: center;
+  gap: $space-detail;
+}
+.loading-close {
+  display: flex;
+  flex-direction: row;
+  position: absolute;
+  top: -$space-inline;
+  right: -$space-inline;
+  width: $space-controlMin;
+  height: $space-controlMin;
+  margin: 0;
+  padding: 0;
+  line-height: type-leading('normal');
+  align-items: center;
+  justify-content: center;
+  background-color: transparent;
+  border: 0;
+}
+.loading-label { @include type-style('label');  color: #71717a; }
+.loading-label-dark { color: #a1a1aa; }
+
+/* 首页与时迹共用：时间、附属记录、标题和描述。 */
+.compact-fields,
+.compact-notes {
+  gap: $space-form;
+  margin-bottom: $space-form;
+}
+.compact-row {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: $space-section;
+  min-height: 52px;
+  padding: $space-detail $space-section;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  box-sizing: border-box;
+}
+.compact-category {
+  width: 100%;
+  margin: 0;
+  background-color: transparent;
+  text-align: left;
+  line-height: type-line('title');
+}
+.compact-value {
+  flex: 1;
+  min-width: 0;
+  @include type-style('body');
+  color: #27272a;
+}
+.compact-time-range {
+  flex-direction: row;
+  align-items: center;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  background-color: #f7f8fa;
+  padding: $space-inline 0;
+}
+.compact-time-arrow {
+  position: relative;
+  width: 100%;
+  height: type-line('glyph-chevron');
+}
+// 1px 横线保持清晰，较小的尖端仅承担方向提示；长度随时长文字自适应。
+.compact-time-arrow-line {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  right: 1px;
+  height: 1px;
+  background-color: #8b8f99;
+}
+.compact-time-arrow-head {
+  position: absolute;
+  top: 50%;
+  right: 1px;
+  width: 6px;
+  height: 6px;
+  margin-top: -3px;
+  box-sizing: border-box;
+  border-top: 1px solid #8b8f99;
+  border-right: 1px solid #8b8f99;
+  transform: rotate(45deg);
+}
+.compact-time-summary {
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  gap: $space-detail;
+  padding-top: $space-detail;
+}
+.compact-time-picker {
+  flex: 1;
+  min-width: 0;
+}
+.compact-time-field {
+  align-items: center;
+  justify-content: center;
+  min-height: 64px;
+}
+.compact-time-label {
+  @include type-style('label');
+
+  color: $text-secondary-light;
+}
+.compact-time-number {
+  @include type-style('time-value');
+
+  color: #27272a;
+}
+.compact-duration {
+  padding: 0 $space-detail;
+  text-align: center;
+  @include type-style('caption');
+
+  color: $text-secondary-light;
+}
+.compact-title,
+.compact-description {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  padding: 0 $space-section;
+  @include type-style('body');
+  color: #27272a;
+}
+.compact-title { height: $space-controlMin; }
+.compact-description {
+  min-height: 72px;
+  line-height: type-line('body');
+  padding: $space-inline $space-section;
+}
+.compact-save { flex: 1; @include type-style('body'); border-radius: 10px; }
+.compact-row-dark,
+.compact-time-range-dark,
+.compact-title-dark,
+.compact-description-dark { border-color: #32353c; }
+.compact-time-range-dark { background-color: #23262b; }
+.compact-value-dark,
+.compact-time-number-dark,
+.compact-title-dark,
+.compact-description-dark { color: #eeeeef; }
+
+.exercise-heading {
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+}
+.exercise-add {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: $space-controlMin;
+  height: $space-controlMin;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background-color: transparent;
+}
+.compact-exercise-row {
+  gap: $space-inline;
+  margin-top: $space-inline;
+}
+.exercise-type-control { flex: 1; min-width: 0; margin: 0; padding: 0; border: 0; background-color: transparent; text-align: left; }
+.compact-exercise-picker {
+  flex-direction: row;
+  align-items: center;
+  gap: $space-inline;
+  min-width: 0;
+  min-height: $space-controlMin;
+  box-sizing: border-box;
+  padding: 0 $space-section;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+}
+.exercise-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.compact-exercise-count {
+  flex: none;
+  width: 72px;
+  min-width: 0;
+  box-sizing: border-box;
+  padding: 0 $space-inline;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  text-align: center;
+}
+.compact-exercise-picker-dark,
+.compact-exercise-count-dark { border-color: #32353c; }
+
 /* #ifdef WEB || MP-WEIXIN */
+.exercise-add::after,
+.loading-close::after,
+.compact-category::after,
 .cancel-action::after,
 .field-button::after,
 .small-action::after,
@@ -1296,9 +1481,14 @@ function changeRelatedScope(event) {
 .save-button::after,
 .delete-button::after,
 .close-selection::after,
+.exercise-type-control::after,
 .category-option::after,
 .related-option::after {
   border: 0;
 }
 /* #endif */
+
+
+.compact-time-label-dark,
+.compact-duration-dark { color: $text-secondary-dark; }
 </style>

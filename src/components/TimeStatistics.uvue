@@ -73,11 +73,11 @@ onUnmounted(() => generation++)
   <view class="time-statistics">
     <PageState skeleton="chart" :loading="loading" :error="error" :has-content="trend.length > 0" @retry="loadTrend">
       <MiniChart v-if="trendSeries.length" :label="trendTitle" :labels="trendLabels" :series="trendSeries" unit="h" />
-      <view v-else class="stats-card" :class="themeClass('stats-card')"><text class="stats-caption" :class="themeClass('stats-caption')">{{ trendTitle }}</text><text class="stats-empty">暂无记录</text></view>
+      <view v-else class="stats-card" :class="themeClass('stats-card')"><text class="stats-caption" :class="themeClass('stats-caption')">{{ trendTitle }}</text><text class="stats-empty" :class="themeClass('stats-empty')">暂无记录</text></view>
     </PageState>
     <view v-for="panel in panels" :key="panel.id" class="stats-card" :class="themeClass('stats-card')" role="figure" :aria-label="panel.title">
       <text class="stats-caption" :class="themeClass('stats-caption')">{{ panel.title }}</text>
-      <text v-if="!panel.rows.length" class="stats-empty">暂无记录</text>
+      <text v-if="!panel.rows.length" class="stats-empty" :class="themeClass('stats-empty')">暂无记录</text>
       <view v-else class="distribution-overview">
         <view class="distribution-ring" role="img" :aria-label="panel.title + '，合计 ' + durationLabel(total)">
           <view v-for="(segment, index) in ringSegments(panel.rows)" :key="index" class="distribution-arm" :style="{ transform: segment.transform }"><view class="distribution-segment" :style="{ backgroundColor: segment.color }" /></view>
@@ -85,28 +85,30 @@ onUnmounted(() => generation++)
         </view>
       </view>
       <view v-for="item in panel.rows" :key="item.id" class="stat-row">
-        <view class="stat-heading"><text class="stat-name" :class="themeClass('stat-name')">{{ item.name }}</text><text class="stat-value">{{ durationLabel(item.minutes) }} · {{ Math.round(item.minutes / Math.max(1, total) * 100) }}%</text></view>
+        <view class="stat-heading"><text class="stat-name" :class="themeClass('stat-name')">{{ item.name }}</text><text class="stat-value" :class="themeClass('stat-value')">{{ durationLabel(item.minutes) }} · {{ Math.round(item.minutes / Math.max(1, total) * 100) }}%</text></view>
         <view class="stat-track" :class="themeClass('stat-track')"><view class="stat-fill" :style="{ width: item.minutes / Math.max(1, total) * 100 + '%', backgroundColor: item.color }" /></view>
       </view>
     </view>
     <view v-if="mode !== 'day'" class="stats-card" :class="themeClass('stats-card')" role="figure" aria-label="每日时间分布">
       <text class="stats-caption" :class="themeClass('stats-caption')">每日时间分布</text>
       <view v-for="item in daily" :key="item.start" class="daily-stat">
-        <view class="stat-heading"><text class="stat-name" :class="themeClass('stat-name')">{{ item.start.slice(5) }}</text><text class="stat-value">{{ durationLabel(item.minutes) }}</text></view>
+        <view class="stat-heading"><text class="stat-name" :class="themeClass('stat-name')">{{ item.start.slice(5) }}</text><text class="stat-value" :class="themeClass('stat-value')">{{ durationLabel(item.minutes) }}</text></view>
         <view class="daily-track" :class="themeClass('daily-track')"><view v-for="segment in item.segments" :key="segment.id" class="daily-segment" :style="{ width: segment.minutes / maximum * 100 + '%', backgroundColor: segment.color }" /></view>
-        <view v-if="item.segments.length" class="daily-detail"><text v-for="segment in item.segments" :key="segment.id" class="daily-detail-text">{{ segment.name }} {{ durationLabel(segment.minutes) }}</text></view>
+        <view v-if="item.segments.length" class="daily-detail"><text v-for="segment in item.segments" :key="segment.id" class="daily-detail-text" :class="themeClass('daily-detail-text')">{{ segment.name }} {{ durationLabel(segment.minutes) }}</text></view>
       </view>
     </view>
   </view>
 </template>
 <style scoped lang="scss">
+@use '../styles/typography' as *;
 @use '../styles/spacing.scss';
 @use '../styles/spacing-tokens' as *;
+@use '../styles/text-colors' as *;
 .distribution-overview { align-items: center; margin-top: $space-section; }
 .distribution-ring { position: relative; width: 132px; height: 132px; align-items: center; justify-content: center; }
 .distribution-arm { position: absolute; top: 0; left: 0; width: 132px; height: 132px; align-items: center; }
 .distribution-segment { width: 5px; height: 22px; }
-.distribution-total { font-size: 16px; font-weight: 600; color: #27272a; }
+.distribution-total { @include type-style('metric-small');  color: #27272a; }
 .distribution-total-dark { color: #eeeeef; }
 .stats-card {
   padding: $space-card;
@@ -128,20 +130,20 @@ onUnmounted(() => generation++)
   border-radius: 10px;
   background-color: transparent;
   color: #8b8f99;
-  font-size: 14px;
+  @include type-style('body');
 }
 .stats-tab-active {
   color: #427bea;
   background-color: #edf3ff;
-  font-weight: 600;
+  font-weight: type-weight('medium');
 }
 .stats-caption {
   color: #71717a;
-  font-size: 12px;
+  @include type-style('caption');
 }
 .stats-empty {
-  color: #8b8f99;
-  font-size: 13px;
+  color: $text-secondary-light;
+  @include type-style('label');
   padding: $space-section 0;
 }
 .stat-row {
@@ -155,12 +157,12 @@ onUnmounted(() => generation++)
 .stat-name {
   flex: 1;
   color: #52525b;
-  font-size: 13px;
+  @include type-style('label');
   margin-right: $space-inline;
 }
 .stat-value {
-  color: #8b8f99;
-  font-size: 12px;
+  color: $text-secondary-light;
+  @include type-style('caption');
 }
 .stat-track {
   height: 6px;
@@ -193,10 +195,10 @@ onUnmounted(() => generation++)
   margin-top: $space-detail;
 }
 .daily-detail-text {
-  color: #8b8f99;
-  font-size: 10px;
+  color: $text-secondary-light;
+  @include type-style('chart-label');
   margin-right: $space-inline;
-  line-height: 16px;
+
 }
 .stats-legend {
   flex-direction: row;
@@ -216,7 +218,7 @@ onUnmounted(() => generation++)
 }
 .legend-name {
   color: #8b8f99;
-  font-size: 11px;
+  @include type-style('badge');
 }
 
 .stats-card-dark {
@@ -240,4 +242,8 @@ onUnmounted(() => generation++)
   border: 0;
 }
 /* #endif */
+
+.stats-empty-dark,
+.stat-value-dark,
+.daily-detail-text-dark { color: $text-secondary-dark; }
 </style>

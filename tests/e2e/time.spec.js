@@ -3,10 +3,10 @@ const { dashboardFixture } = require('./fixtures.js');
 const { pullDown } = require('./gestures.js');
 const today = (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; })();
 async function setup(page, options = {}) {
-  const state = { queries: 0, ranges: [], creates: [], updates: [], deletes: 0, profiles: 0, failRefresh: false, failSave: false, failDelete: false, detailFailure: false, full: false,
+  const state = { queries: 0, ranges: [], creates: [], updates: [], deletes: 0, profiles: 0, relatedQueries: [], coverAuth: [], failRefresh: false, failSave: false, failDelete: false, detailFailure: false, full: false,
     records: [{ id: '9223372036854775807', date: today, categoryId: '2', startTime: 540, endTime: 599, title: '晨间运动', description: '保留原有备注', exercises: [{ exerciseTypeId: '9223372036854775806', exerciseCount: 20, description: '三组' }], relateId: '9223372036854775805', relateType: 1 }] };
   Object.assign(state, options);
-  await page.route('http://127.0.0.1:5180/api/**', async route => {
+  await page.route('**/api/**', async route => {
     const req = route.request(), url = new URL(req.url()), path = url.pathname, method = req.method();
     let data = dashboardFixture(path);
     if (path === '/api/timeTrackerCategory/list' && state.categories) data = state.categories;
@@ -23,7 +23,7 @@ async function setup(page, options = {}) {
     }
     if (path === '/api/timeRecord/recommendNext') data = { records: state.records.filter(r => r.date === url.searchParams.get('date')), recommend: state.full ? null : { categoryId: '1', startTime: 600, endTime: 659, date: today } };
     if (path === '/api/timeRecord/relateTypes') data = [{ label: '阅读', value: 1 }, { label: '观影', value: 2 }];
-    if (path === '/api/userDictType/getByDictType') data = { dictDetailList: [{ id: '9223372036854775806', dictLabel: '俯卧撑' }] };
+    if (path === '/api/userDictType/getByDictType') data = { dictDetailList: state.exerciseTypes || [{ id: '9223372036854775806', dictLabel: '俯卧撑' }] };
     if (path === '/api/timeRecord' && method === 'POST') {
       state.creates.push(req.postDataJSON());
       await new Promise(resolve => setTimeout(resolve, 200));
@@ -44,7 +44,28 @@ async function setup(page, options = {}) {
       if (state.failDelete) return route.abort();
       state.records = state.records.filter(r => r.id !== match[1]); data = null;
     }
-    if (path === '/api/read-record/page') data = { items: [{ id: '9223372036854775803', title: '时间之书' }], total: 1 };
+    if (/^\/api\/(read-record|movie)\/page$/.test(path)) {
+      state.relatedQueries.push(Object.fromEntries(url.searchParams));
+      if (state.relatedListFailure) return route.abort();
+      let list = state.relatedRecords || [{ id: '9223372036854775803', title: '时间之书', status: 'in_progress' }];
+      if (url.searchParams.get('activeOnly') === 'true') list = list.filter(item => ['in_progress', 'not_started'].includes(item.status));
+      if (url.searchParams.get('title')) list = list.filter(item => item.title.includes(url.searchParams.get('title')));
+      const current = Number(url.searchParams.get('current'));
+      data = { items: list.slice((current - 1) * 24, current * 24), total: list.length };
+    }
+    const relatedMatch = path.match(/^\/api\/(read-record|movie)\/(\d+)$/);
+    if (relatedMatch) {
+      if (state.relatedDetailFailure) return route.abort();
+      data = state.relatedRecords?.find(item => item.id === relatedMatch[2]) || { id: relatedMatch[2], title: '时间之书', status: 'in_progress' };
+    }
+    if (path.startsWith('/api/mock-cover/') || path.startsWith('/api/file/preview/')) {
+      if (path.startsWith('/api/file/preview/')) state.coverAuth.push(req.headers().authorization);
+      if (state.coverFailure) return route.abort();
+      const colors = ['#294448', '#ba704d', '#59646f', '#836b50', '#234b65', '#6a555f'];
+      const index = Number(path.split('/').pop()) || 0;
+      const coverTitle = state.relatedRecords?.find(item => item.fileId === path.split('/').pop() && path.startsWith('/api/file/preview/') || item.coverImgUrl === path)?.title || '时间之书';
+      return route.fulfill({ contentType: 'image/svg+xml', body: `<svg xmlns="http://www.w3.org/2000/svg" width="300" height="400"><rect width="300" height="400" fill="${colors[index % colors.length]}"/><path d="M0 290 Q110 170 300 250 V400 H0" fill="#ffffff" opacity=".12"/><circle cx="230" cy="90" r="45" fill="#eadaba" opacity=".65"/><text x="26" y="175" font-family="sans-serif" font-size="30" fill="#fff">${coverTitle}</text><text x="28" y="210" font-family="sans-serif" font-size="11" fill="#ddd">AIO LIFE · TEST COVER</text></svg>` });
+    }
     await route.fulfill({ json: { rscode: '0', data } });
   });
   await page.goto('/');
@@ -55,6 +76,30 @@ async function setup(page, options = {}) {
   await page.locator('uni-tabbar').getByText('时迹', { exact: true }).click();
   await expect(page.getByRole('button', { name: '编辑记录 晨间运动' })).toBeVisible();
   return state;
+}
+
+async function closeEditor(page) {
+  await page.locator('.modal-mask').last().click({ position: { x: 8, y: 8 } });
+}
+async function previousMinute(page, label) {
+  const cdp = await page.context().newCDPSession(page);
+  await cdp.send('Emulation.setTouchEmulationEnabled', { enabled: true });
+  await page.locator(`uni-picker[aria-label="${label}"]`).click();
+  // 等待原生 picker 的入场动画，避免用移动中的坐标发起手势。
+  await page.waitForTimeout(400);
+  const column = page.locator('uni-picker-view-column:visible').nth(1);
+  const box = await column.locator('.uni-picker-view-indicator').boundingBox();
+  const x = box.x + box.width / 2, y = box.y + box.height / 2;
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y }] });
+  for (let step = 1; step <= 6; step++) {
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x, y: y + box.height * step / 6 }] });
+    await page.waitForTimeout(50);
+  }
+  await page.waitForTimeout(200);
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+  await page.waitForTimeout(350);
+  await page.locator('.uni-picker-action-confirm:visible').click();
+  await cdp.detach();
 }
 
 test('时迹新增、失败保留、重复提交、编辑保留附属字段、删除失败恢复', async ({ page }) => {
@@ -78,7 +123,8 @@ test('时迹新增、失败保留、重复提交、编辑保留附属字段、�
   expect(state.creates[1]).not.toHaveProperty('id');
   await page.getByRole('button', { name: '编辑记录 晨间运动' }).click();
   await expect(page.locator('.exercise-picker').getByText('俯卧撑', { exact: true })).toBeVisible();
-  await page.getByRole('button', { name: '结束时间 -1 分钟' }).click();
+  await previousMinute(page, '结束时间');
+  await expect(page.locator('.compact-time-number').nth(1)).toHaveText('09:58');
   await page.getByRole('button', { name: '保存', exact: true }).click();
   await expect(page.getByRole('button', { name: '编辑记录 晨间运动' })).toBeVisible();
   await expect(page.getByRole('dialog', { name: '编辑时迹', exact: true })).toHaveCount(0);
@@ -107,7 +153,7 @@ test('完整详情未读到不能编辑；全天已满不能新增', async ({ pa
   state.detailFailure = false;
   await page.getByRole('button', { name: '重试加载' }).click();
   await expect(page.getByRole('button', { name: '保存', exact: true })).toBeVisible();
-  await page.getByRole('button', { name: '取消', exact: true }).click();
+  await closeEditor(page);
   state.full = true;
   await page.getByRole('button', { name: '新增时迹' }).click();
   await expect(page.getByText('该天已录入完毕')).toBeVisible();
@@ -153,7 +199,7 @@ test('三页下拉刷新、失败收起与恢复，移除常驻刷新按钮', as
   await pullDown(page, '.dashboard-scroll');
   await expect.poll(() => state.profiles).toBeGreaterThan(before);
   await expect(page.getByRole('button', { name: /^刷新/ })).toHaveCount(0);
-  await page.locator('uni-tabbar').getByText('我的', { exact: true }).click();
+  await page.locator('uni-tabbar').getByText('我', { exact: true }).click();
   await expect(page.getByText('时迹测试用户', { exact: true })).toBeVisible();
   const profileBefore = state.profiles;
   await pullDown(page, '.tab-scroll');
@@ -180,7 +226,7 @@ for (const width of [390, 768, 1440]) for (const colorScheme of ['light', 'dark'
   });
 }
 
-test('首页待记录时长与加号、起止各四个快捷调时、小时分钟联动、取消不保存', async ({ page }) => {
+test('首页待记录时长与加号、统一精简弹窗、遮罩关闭不保存', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.clock.install({ time: new Date(today + 'T11:20:00') });
   const state = await setup(page);
@@ -189,23 +235,17 @@ test('首页待记录时长与加号、起止各四个快捷调时、小时分�
   await page.clock.fastForward(60000);
   await expect(page.getByRole('button', { name: '新增时迹', exact: true })).toContainText('1h21m');
   await page.getByRole('button', { name: '新增时迹', exact: true }).click();
-  await expect(page.getByRole('dialog', { name: '记录时间', exact: true })).toBeVisible();
-  await expect(page.getByText('10:59', { exact: true })).toBeVisible();
-  for (const field of ['开始时间', '结束时间']) for (const delta of ['-1', '+1', '-30', '+30']) await expect(page.getByRole('button', { name: `${field} ${delta} 分钟`, exact: true })).toBeVisible();
-  await page.getByRole('button', { name: '开始时间 -30 分钟', exact: true }).click();
-  await expect(page.getByRole('dialog', { name: '记录时间', exact: true }).getByText('10:00', { exact: true })).toBeVisible();
-  await page.getByRole('button', { name: '开始时间 +1 分钟', exact: true }).click();
-  await expect(page.getByText('10:01', { exact: true })).toBeVisible();
-  await expect(page.locator('[aria-label="时长分钟"] input')).toHaveValue('59');
-  await page.locator('[aria-label="时长分钟"] input').fill('24');
-  await expect(page.getByText('10:24', { exact: true })).toBeVisible();
-  await page.locator('[aria-label="时长小时"] input').fill('1');
-  await expect(page.getByText('11:24', { exact: true })).toBeVisible();
-  await page.getByRole('button', { name: '取消', exact: true }).click();
-  await expect(page.locator('.dashboard-scroll')).toBeVisible();
+  const dialog = page.locator('.modal-panel[aria-label="记录时间"]');
+  await expect(dialog.locator('.compact-fields')).toBeVisible();
+  await expect(dialog.locator('.compact-time-number').nth(1)).toHaveText('10:59');
+  await expect(dialog.locator('[aria-label="记录时长"]')).toHaveText('1小时');
+  await expect(dialog.getByRole('button', { name: '取消', exact: true })).toHaveCount(0);
+  await expect(dialog.getByRole('button', { name: '开始时间 +1 分钟', exact: true })).toHaveCount(0);
+  await closeEditor(page);
+  await expect(dialog).toHaveCount(0);
   expect(state.creates).toHaveLength(0);
   await page.getByRole('button', { name: '编辑时迹 运动', exact: true }).click();
-  await expect(page.getByRole('dialog', { name: '编辑时迹', exact: true })).toBeVisible();
+  await expect(page.locator('.modal-panel[aria-label="编辑时迹"] .compact-fields')).toBeVisible();
 });
 
 const timelineRecords = () => [
@@ -271,7 +311,7 @@ test('短记录通过日期列表编辑，跨日记录沿用所属日期，空�
   expect((await row.boundingBox()).height).toBeGreaterThanOrEqual(44);
   await row.click();
   await expect(page.getByText('23:59', { exact: true }).first()).toBeVisible();
-  await page.getByRole('button', { name: '取消', exact: true }).click();
+  await closeEditor(page);
   await page.getByRole('button', { name: '后一天', exact: true }).click();
   await expect(page.getByText('这段时间还没有记录', { exact: true })).toBeVisible();
   await expect(page.locator('.hour-label')).toHaveCount(23);
@@ -314,10 +354,15 @@ for (const width of [390, 768, 1440]) for (const colorScheme of ['light', 'dark'
     expect(Math.abs(simple.height - content.height)).toBeLessThan(2);
     expect(simple.height).toBeLessThan(700);
     expect(Math.abs(simple.y + simple.height / 2 - 450)).toBeLessThan(2);
-    const steps = await dialog.locator('.time-column').first().locator('.duration-step').evaluateAll(items => items.map(item => { const r = item.getBoundingClientRect(); return { x: r.x, y: r.y, height: r.height }; }));
-    expect(steps.every(item => item.height >= 44)).toBe(true);
-    expect(new Set(steps.map(item => item.y)).size).toBe(1);
-    await expect(dialog.locator('.step-face').first()).toHaveCSS('border-top-style', 'solid');
+    const times = await dialog.locator('.compact-time-field').evaluateAll(items => items.map(item => item.getBoundingClientRect().height));
+    expect(times).toHaveLength(2);
+    expect(times.every(height => height >= 44)).toBe(true);
+    await expect(dialog.locator('.time-step-button, .duration-fields, .modal-close')).toHaveCount(0);
+    await expect(dialog.locator('[aria-label="记录标题"] .uni-input-placeholder')).toHaveText('标题');
+    await expect(dialog.locator('[aria-label="记录备注"] .uni-textarea-placeholder')).toHaveText('描述');
+    await expect(dialog.locator('.compact-duration')).toHaveText('2小时');
+    await expect(dialog.getByRole('button', { name: '取消', exact: true })).toHaveCount(0);
+    expect(simple.width).toBeLessThanOrEqual(440);
     await page.screenshot({ path: `test-results/time-modal-${width}-${colorScheme}.png` });
     await page.getByRole('button', { name: '选择分类', exact: true }).click();
     const category = page.locator('.modal-panel[aria-label="选择分类"]');
@@ -338,38 +383,39 @@ for (const width of [390, 768, 1440]) for (const colorScheme of ['light', 'dark'
     await expect.poll(async () => (await dialog.boundingBox()).height).toBeGreaterThan(simple.height);
     for (let i = 0; i < 10; i++) await dialog.getByRole('button', { name: '添加运动', exact: true }).click();
     const large = await dialog.boundingBox();
-    expect(large.height).toBeLessThanOrEqual(852);
+    expect(large.height).toBeLessThanOrEqual(820);
+    expect(large.y).toBeGreaterThanOrEqual(40);
     const scroller = dialog.locator('.modal-scroll .uni-scroll-view').last();
     expect(await scroller.evaluate(el => el.scrollHeight > el.clientHeight)).toBe(true);
-    await dialog.getByRole('button', { name: '取消', exact: true }).click();
+    await dialog.getByRole('button', { name: '保存', exact: true }).scrollIntoViewIfNeeded();
+    await page.screenshot({ path: `artifacts/time-compact/time-long-${width}-${colorScheme}.png` });
+    await closeEditor(page);
     await expect(dialog).toHaveCount(0);
     await expect(page).toHaveURL(/pages\/time\/index/);
   });
 }
 
-test('描边调时按钮点击一次、长按连续调整，松手后停止', async ({ page }) => {
-  await page.setViewportSize({ width: 390, height: 844 });
-  await setup(page);
-  await page.getByRole('button', { name: '新增时迹', exact: true }).click();
-  const dialog = page.locator('.modal-panel[aria-label="记录时间"]');
-  const end = dialog.locator('.time-number').nth(1);
-  await expect(end).toHaveText('10:59');
-  const increment = dialog.getByRole('button', { name: '结束时间 +1 分钟', exact: true });
-  await increment.click();
-  await expect(end).toHaveText('11:00');
-  const box = await increment.boundingBox();
-  const cdp = await page.context().newCDPSession(page);
-  await cdp.send('Emulation.setTouchEmulationEnabled', { enabled: true });
-  await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: box.x + box.width / 2, y: box.y + box.height / 2 }] });
-  await expect.poll(() => end.innerText()).not.toBe('11:00');
-  await page.waitForTimeout(250);
-  await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
-  const released = await end.innerText();
-  const [h, m] = released.split(':').map(Number);
-  expect(h * 60 + m).toBeGreaterThanOrEqual(663);
-  await page.waitForTimeout(400);
-  await expect(end).toHaveText(released);
-  await dialog.getByRole('button', { name: '取消', exact: true }).click();
+for (const width of [390, 768, 1440]) for (const colorScheme of ['light', 'dark']) test(`首页与时迹编辑同一记录布局一致 ${width} ${colorScheme}`, async ({ page }) => {
+  await page.setViewportSize({ width, height: 900 });
+  await page.emulateMedia({ colorScheme });
+  const state = await setup(page);
+  const dialog = page.locator('.modal-panel[aria-label="编辑时迹"]');
+  await page.getByRole('button', { name: '编辑记录 晨间运动' }).click();
+  await expect(dialog.locator('.compact-fields')).toBeVisible();
+  const fields = await dialog.locator('.compact-fields').innerText();
+  await closeEditor(page);
+  await page.locator('uni-tabbar').getByText('首页', { exact: true }).click();
+  await page.getByRole('button', { name: '编辑时迹 运动', exact: true }).click();
+  await expect(dialog.locator('.compact-fields')).toHaveText(fields, { useInnerText: true });
+  await page.screenshot({ path: `artifacts/time-compact/home-unified-${width}-${colorScheme}.png` });
+  if (width === 390) {
+    await previousMinute(page, '结束时间');
+    await expect(dialog.locator('.compact-time-number').nth(1)).toHaveText('09:58');
+    await expect(dialog.locator('[aria-label="记录时长"]')).toHaveText('59分');
+  }
+  await dialog.getByRole('button', { name: '保存', exact: true }).click();
+  await expect(dialog).toHaveCount(0);
+  expect(state.updates[0]).toMatchObject({ date: today, endTime: width === 390 ? 598 : 599, description: '保留原有备注', relateId: '9223372036854775805', exercises: [{ exerciseTypeId: '9223372036854775806', exerciseCount: 20, description: '三组' }] });
 });
 
 
@@ -381,9 +427,9 @@ for (const width of [390, 768, 1440]) for (const colorScheme of ['light', 'dark'
     const add = page.getByRole('button', { name: '新增时迹', exact: true });
     const initial = await add.boundingBox();
     const tabbar = await page.locator('uni-tabbar').boundingBox();
-    expect(initial.height).toBe(56);
+    expect(initial.height).toBe(width <= 1024 ? 48 : 56);
     expect(initial.y + initial.height).toBeLessThan(tabbar.y);
-    await expect(add).not.toHaveCSS('background-image', 'none');
+    await expect(add).toHaveCSS('background-color', 'rgba(24, 144, 255, 0.45)');
     const track = await page.locator('.day-track').boundingBox();
     expect(track.height).toBeLessThanOrEqual(700);
     await page.screenshot({ path: `test-results/time-aligned-${width}-${colorScheme}.png` });
@@ -399,7 +445,7 @@ for (const width of [390, 768, 1440]) for (const colorScheme of ['light', 'dark'
     await page.screenshot({ path: `test-results/time-cards-${width}-${colorScheme}.png` });
     await page.getByRole('button', { name: '编辑记录 一分钟回顾', exact: true }).click();
     await expect(page.getByRole('dialog', { name: '编辑时迹', exact: true })).toBeVisible();
-    await page.getByRole('button', { name: '取消', exact: true }).click();
+    await closeEditor(page);
     await page.getByRole('button', { name: '时间轴视图', exact: true }).click();
     await expect(page.locator('.timeline-event')).toHaveCount(7);
     await expect(page.getByRole('button', { name: '编辑记录 休息', exact: true })).toHaveCSS('opacity', '0.25');
@@ -430,9 +476,192 @@ test('统计类型、每日分布、十期趋势失败恢复与分类口径', as
   await page.route('**/timeRecord/queryByDateRange?**', route => route.abort());
   await page.getByRole('button', { name: '编辑记录 专注学习', exact: true }).click();
   await page.getByRole('button', { name: '保存', exact: true }).click();
-  await expect(page.getByRole('button', { name: '重试趋势统计', exact: true })).toBeVisible();
+  await expect(page.locator('.time-statistics').getByRole('button', { name: '重试', exact: true })).toBeVisible();
   await page.unroute('**/timeRecord/queryByDateRange?**');
-  await page.getByRole('button', { name: '重试趋势统计', exact: true }).click();
+  await page.locator('.time-statistics').getByRole('button', { name: '重试', exact: true }).click();
   await expect(page.locator('.mini-chart')).toBeVisible();
   await expect(page.locator('.mini-chart-title')).toContainText('记录日均');
+});
+
+for (const width of [320, 390, 768, 1440]) for (const colorScheme of ['light', 'dark']) {
+  test(`精简新增表单 ${width}px ${colorScheme}`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 844 });
+    await page.emulateMedia({ colorScheme });
+    await setup(page, { categories: categoryPalette });
+    await page.getByRole('button', { name: '新增时迹', exact: true }).click();
+    const dialog = page.getByRole('dialog', { name: '记录时间', exact: true });
+    await expect(dialog.locator('.compact-duration')).toHaveText('1小时');
+    await page.getByRole('button', { name: '选择分类', exact: true }).click();
+    await page.getByRole('button', { name: '吃饭', exact: true }).click();
+    await expect(dialog.locator('.compact-description')).toBeVisible();
+    await expect(dialog.locator('.compact-title')).toBeVisible();
+    await expect(dialog.locator('uni-picker[aria-label="记录日期"]')).not.toContainText('>');
+    await expect(dialog.locator('uni-picker[aria-label="记录日期"] .category-icon')).toHaveCount(1);
+    await expect(dialog.getByText('选填', { exact: false })).toHaveCount(0);
+    const panel = await dialog.boundingBox();
+    const save = await dialog.getByRole('button', { name: '保存', exact: true }).boundingBox();
+    expect(save.width).toBeCloseTo(panel.width - 32, 0);
+    expect(panel.height).toBeLessThan(520);
+    expect(Math.abs(panel.y + panel.height / 2 - 422)).toBeLessThan(2);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    await page.screenshot({ path: `test-results/time-compact-${width}-${colorScheme}.png` });
+    await dialog.locator('uni-picker[aria-label="记录日期"]').click();
+    if (width < 768) {
+      await expect(page.locator('.uni-picker-action-confirm:visible')).toBeVisible();
+      await page.locator('.uni-picker-action-cancel:visible').click();
+    } else {
+      // H5 宽屏使用浏览器原生日期输入，窄屏使用滚轮 picker。
+      const input = dialog.locator('uni-picker[aria-label="记录日期"] input');
+      await expect(input).toHaveAttribute('type', 'date');
+      await expect(input).toHaveValue(today);
+      await input.press('Escape');
+      await input.press('Tab');
+    }
+    await closeEditor(page);
+    await expect(dialog).toHaveCount(0);
+  });
+}
+
+for (const width of [390, 768, 1440]) for (const colorScheme of ['light', 'dark']) {
+  test(`运动明细紧凑行与增删保存 ${width}px ${colorScheme}`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 900 });
+    await page.emulateMedia({ colorScheme });
+    const exercises = [
+      { exerciseTypeId: '9223372036854775806', exerciseCount: 20, description: '三组' },
+      { exerciseTypeId: '9223372036854775802', exerciseCount: 10, description: '两组' },
+    ];
+    const state = await setup(page, {
+      categories: categoryPalette,
+      records: [{ id: '9223372036854775807', date: today, categoryId: '2', startTime: 540, endTime: 599, title: '晨间运动', description: '', exercises }],
+      exerciseTypes: [{ id: '9223372036854775806', dictLabel: '俯卧撑' }, { id: '9223372036854775802', dictLabel: '健腹轮' }],
+    });
+    await page.getByRole('button', { name: '编辑记录 晨间运动' }).click();
+    const dialog = page.locator('.modal-panel[aria-label="编辑时迹"]');
+    await expect(dialog.locator('.exercise-picker').getByText('健腹轮', { exact: true })).toBeVisible();
+    const add = dialog.getByRole('button', { name: '添加运动', exact: true });
+    await expect(add).toHaveText('');
+    const rows = dialog.locator('.compact-exercise-row');
+    await expect(rows).toHaveCount(2);
+    const dimensions = await rows.evaluateAll(items => items.map(row => [...row.children].map(child => child.getBoundingClientRect().toJSON())));
+    for (const controls of dimensions) {
+      for (const control of controls) expect(control.height).toBeGreaterThanOrEqual(44);
+      expect(Math.max(...controls.map(item => item.y)) - Math.min(...controls.map(item => item.y))).toBeLessThan(2);
+    }
+    const timeBox = await dialog.locator('.compact-time-section').boundingBox();
+    const exerciseBox = await rows.first().boundingBox();
+    const notesBox = await dialog.locator('.compact-notes').boundingBox();
+    expect(exerciseBox.y).toBeGreaterThan(timeBox.y + timeBox.height);
+    expect(exerciseBox.y + exerciseBox.height).toBeLessThan(notesBox.y);
+    await page.screenshot({ path: `artifacts/time-compact/time-exercises-${width}-${colorScheme}.png` });
+    await dialog.getByRole('button', { name: '运动项目 1', exact: true }).click();
+    const exercisePicker = page.locator('.modal-panel[aria-label="选择运动"]');
+    await expect(exercisePicker.getByRole('button', { name: '俯卧撑', exact: true })).toHaveAttribute('aria-pressed', 'true');
+    await page.screenshot({ path: `artifacts/time-compact/exercise-picker-${width}-${colorScheme}.png` });
+    await closeEditor(page);
+    await expect(exercisePicker).toHaveCount(0);
+    await expect(rows.nth(0)).toContainText('俯卧撑');
+    await dialog.getByRole('button', { name: '运动项目 1', exact: true }).click();
+    await exercisePicker.getByRole('button', { name: '健腹轮', exact: true }).click();
+    await expect(exercisePicker).toHaveCount(0);
+    await expect(rows.nth(0)).toContainText('健腹轮');
+
+    await add.click();
+    await expect(rows).toHaveCount(3);
+    await expect(rows.nth(2).locator('.exercise-picker').getByText('健腹轮', { exact: true })).toBeVisible();
+    await dialog.getByRole('button', { name: '移除运动 3', exact: true }).click();
+    await expect(rows).toHaveCount(2);
+    await dialog.locator('[aria-label="运动数量"] input').first().fill('25');
+    await dialog.getByRole('button', { name: '保存', exact: true }).click();
+    await expect(dialog).toHaveCount(0);
+    expect(state.updates[0].exercises).toEqual([{ ...exercises[0], exerciseTypeId: exercises[1].exerciseTypeId, exerciseCount: 25 }, exercises[1]]);
+  });
+}
+
+function relatedFixture(type, count = 6) {
+  const names = type === 1 ? ['时间之书', '第二本书', '山间来信', '生活的节奏', '城市漫游', '未完成的篇章'] : ['星际旅程', '第二部电影', '海岸之夜', '无声的季节', '夏日来信', '远方的灯塔'];
+  return Array.from({ length: count }, (_, i) => ({
+    id: String(9223372036854775700n + BigInt(i)), title: names[i % names.length] + (i >= 6 ? i : ''),
+    status: ['in_progress', 'not_started', 'completed', 'on_hold'][i % 4],
+    ...(i === 0 ? { fileId: String(type) } : i === 5 ? {} : { coverImgUrl: '/api/mock-cover/' + (i + type) }),
+  }));
+}
+async function setupRelated(page, type, options = {}) {
+  const relatedRecords = options.relatedRecords || relatedFixture(type);
+  return setup(page, { categories: categoryPalette, relatedRecords,
+    records: [{ id: '9223372036854775807', date: today, categoryId: type === 1 ? '9' : '13', startTime: 540, endTime: 599, title: '晨间运动', description: '保留备注', relateId: relatedRecords[0].id, relateType: type, exercises: [] }], ...options });
+}
+for (const type of [1, 2]) for (const width of [390, 768, 1440]) for (const colorScheme of ['light', 'dark']) {
+  test(`关联卡片 ${type === 1 ? '阅读' : '观影'} ${width}px ${colorScheme}`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 900 });
+    await page.emulateMedia({ colorScheme });
+    const state = await setupRelated(page, type);
+    await page.getByRole('button', { name: '编辑记录 晨间运动' }).click();
+    const editor = page.locator('.modal-panel[aria-label="编辑时迹"]');
+    await expect(editor.locator('.selected-related .related-title')).toHaveText(state.relatedRecords[0].title);
+    await expect(editor.locator('.selected-related .library-cover-image img')).toBeVisible();
+    expect(state.coverAuth).toContain('Bearer time-fixture');
+    const relatedBox = await editor.locator('.selected-related').boundingBox();
+    const timeBox = await editor.locator('.compact-time-section').boundingBox();
+    const notesBox = await editor.locator('.compact-notes').boundingBox();
+    expect(relatedBox.y).toBeGreaterThan(timeBox.y + timeBox.height);
+    expect(relatedBox.y + relatedBox.height).toBeLessThan(notesBox.y);
+    await page.screenshot({ path: `artifacts/time-compact/related-selected-${type}-${width}-${colorScheme}.png` });
+    await editor.locator('.selected-related-main').click();
+    const picker = page.locator('.modal-panel[aria-label="选择关联记录"]');
+    await expect(picker.locator('.related-card')).toHaveCount(4);
+    expect(state.relatedQueries.at(-1).activeOnly).toBe('true');
+    if (type === 1) expect(state.relatedQueries.at(-1).inProgressFirst).toBe('true');
+    await picker.locator('uni-switch').click();
+    await expect(picker.locator('.related-card')).toHaveCount(6);
+    const positions = await picker.locator('.related-card').evaluateAll(nodes => nodes.map(n => n.getBoundingClientRect().toJSON()));
+    expect(new Set(positions.slice(0, width < 600 ? 3 : 4).map(r => r.y)).size).toBe(1);
+    expect(positions[width < 600 ? 3 : 4].y).toBeGreaterThan(positions[0].y);
+    await page.screenshot({ path: `artifacts/time-compact/related-grid-${type}-${width}-${colorScheme}.png` });
+    await picker.locator('[aria-label="搜索关联记录"] input').fill('第二');
+    await expect(picker.locator('.related-card')).toHaveCount(1);
+    await picker.locator('.related-card').click();
+    await expect(picker).toHaveCount(0);
+    await expect(editor.locator('.selected-related .related-title')).toHaveText(state.relatedRecords[1].title);
+    await expect(editor.locator('[aria-label="记录标题"] input')).toHaveValue('《' + state.relatedRecords[1].title + '》');
+    await editor.getByRole('button', { name: '保存', exact: true }).click();
+    await expect(editor).toHaveCount(0);
+    expect(state.updates[0]).toMatchObject({ relateId: state.relatedRecords[1].id, relateType: type, description: '保留备注' });
+    await page.getByRole('button', { name: '编辑记录 《' + state.relatedRecords[1].title + '》' }).click();
+    await editor.getByRole('button', { name: '清除关联记录' }).click();
+    await expect(editor.locator('.related-empty')).toBeVisible();
+    await editor.getByRole('button', { name: '保存', exact: true }).click();
+    await expect(editor).toHaveCount(0);
+    expect(state.updates[1]).toMatchObject({ relateId: null, relateType: null });
+  });
+}
+test('关联卡片详情列表封面失败恢复与分页', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 900 });
+  const state = await setupRelated(page, 1, { relatedDetailFailure: true, relatedRecords: relatedFixture(1, 30) });
+  await page.getByRole('button', { name: '编辑记录 晨间运动' }).click();
+  const editor = page.locator('.modal-panel[aria-label="编辑时迹"]');
+  await expect(editor.getByRole('button', { name: '重试关联详情' })).toBeVisible();
+  await expect(editor.getByRole('button', { name: '清除关联记录' })).toBeVisible();
+  state.relatedDetailFailure = false;
+  state.coverFailure = true;
+  await editor.getByRole('button', { name: '重试关联详情' }).click();
+  await expect(editor.getByRole('button', { name: '重试封面' })).toBeVisible();
+  state.coverFailure = false;
+  await editor.getByRole('button', { name: '重试封面' }).click();
+  await expect(editor.locator('.library-cover-image img')).toBeVisible();
+  state.relatedListFailure = true;
+  await editor.locator('.selected-related-main').click();
+  const picker = page.locator('.modal-panel[aria-label="选择关联记录"]');
+  await expect(picker.getByRole('button', { name: '重试关联列表' })).toBeVisible();
+  state.relatedListFailure = false;
+  await picker.getByRole('button', { name: '重试关联列表' }).click();
+  await expect(picker.locator('.related-card')).toHaveCount(16);
+  await picker.locator('uni-switch').click();
+  await expect(picker.locator('.related-card')).toHaveCount(24);
+  await picker.getByRole('button', { name: '加载更多' }).click();
+  await expect(picker.locator('.related-card')).toHaveCount(30);
+  await picker.locator('[aria-label="搜索关联记录"] input').fill('不存在的书');
+  await expect(picker.getByText('没有找到匹配的记录')).toBeVisible();
+  await closeEditor(page);
+  await expect(editor.locator('.selected-related .related-title')).toHaveText('时间之书');
+  expect(state.updates).toHaveLength(0);
 });

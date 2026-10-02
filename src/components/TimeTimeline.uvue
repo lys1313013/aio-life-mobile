@@ -108,7 +108,7 @@ function edit(record: TimeRecord) {
 
 <template>
   <view class="timeline" :aria-busy="loading" :class="[themeClass('timeline'), { 'timeline-multiple': days > 1 }]">
-    <view v-if="loading" class="timeline-loading"><LoadingIndicator label="正在加载时迹" /></view>
+    <LoadingIndicator v-if="loading" floating label="正在加载时迹" />
     <view class="timeline-axis" :class="themeClass('timeline-axis')">
       <view class="axis-heading" :class="themeClass('axis-heading')" />
       <view class="axis-hours" :style="{ height: trackHeight + 'px' }">
@@ -138,7 +138,7 @@ function edit(record: TimeRecord) {
         >
           <button
             role="button"
-            class="column-heading"
+            class="column-heading ui-type-body"
             :disabled="loading"
             :aria-disabled="!!loading"
             :class="themeClass('column-heading')"
@@ -157,7 +157,7 @@ function edit(record: TimeRecord) {
               v-for="item in column.entries"
               :key="item.id"
               role="button"
-              class="timeline-event"
+              class="timeline-event ui-type-body"
               :class="[
                 {
                   'event-multiple': days > 1,
@@ -212,7 +212,7 @@ function edit(record: TimeRecord) {
           v-for="item in selected.entries"
           :key="item.id"
           role="button"
-          class="sheet-record"
+          class="sheet-record ui-type-body"
           :aria-label="'编辑记录 ' + item.title"
           @click="edit(item)"
         >
@@ -237,28 +237,30 @@ function edit(record: TimeRecord) {
 </template>
 
 <style scoped lang="scss">
+@use '../styles/typography' as *;
 @use '../styles/spacing.scss';
 @use '../styles/spacing-tokens' as *;
+@include type-utilities('body');
+
 .timeline { position: relative; flex-direction: row; background-color: #ffffff; border-radius: 6px; overflow: hidden; }
-.timeline-loading { position: absolute; left: 28px; right: 0; top: $space-controlMin; z-index: 1; }
 .timeline-axis { width: 28px; flex-shrink: 0; border-right: 1px solid #eef0f3; }
 .axis-heading { height: $space-controlMin; border-bottom: 1px solid #eef0f3; }
 .axis-hours { position: relative; }
-.hour-label { position: absolute; right: 0; width: 100%; text-align: center; font-size: 10px; line-height: 14px; color: #8b8f99; transform: translateY(-7px); }
+.hour-label { position: absolute; right: 0; width: 100%; text-align: center; @include type-style('chart-label');  color: #8b8f99; transform: translateY(-7px); }
 .timeline-scroll { flex: 1; width: 0; }
 .timeline-columns { flex-direction: row; width: 100%; }
 .timeline-column { flex: 1; min-width: 0; }
-.column-heading { display: flex; flex-direction: column; justify-content: center; align-items: center; height: $space-controlMin; width: 100%; margin: 0; padding: 0; border: 0; border-bottom: 1px solid #eef0f3; background-color: transparent; border-radius: 0; line-height: 18px; }
-.column-weekday { font-size: 12px; color: #52525b; }
-.column-date { font-size: 9px; line-height: 14px; color: #8b8f99; }
+.column-heading { display: flex; flex-direction: column; justify-content: center; align-items: center; height: $space-controlMin; width: 100%; margin: 0; padding: 0; border: 0; border-bottom: 1px solid #eef0f3; background-color: transparent; border-radius: 0; line-height: type-line('caption'); }
+.column-weekday { @include type-style('caption'); color: #52525b; }
+.column-date { @include type-style('chart-detail');  color: #8b8f99; }
 .day-track { position: relative; border-right: 1px solid #eef0f3; }
-.timeline-event { display: flex; position: absolute; left: 8px; right: 8px; margin: 0; padding: 0 $space-detail; border: 0; box-shadow: inset 0 -1px 0 #ffffff; min-height: 0; border-radius: 4px; align-items: center; justify-content: center; overflow: hidden; line-height: 16px; }
+.timeline-event { display: flex; position: absolute; left: 8px; right: 8px; margin: 0; padding: 0 $space-detail; border: 0; box-shadow: inset 0 -1px 0 #ffffff; min-height: 0; border-radius: 4px; align-items: center; justify-content: center; overflow: hidden; line-height: type-line('badge'); }
 .event-info { flex-direction: row; align-items: center; justify-content: center; width: 100%; gap: $space-detail; }
 /* Dense timeline labels and multi-day event insets follow chart geometry. */
 .event-info-column { flex-direction: column; gap: 1px; }
-.event-title { min-width: 0; max-width: 100%; color: #ffffff; font-size: 12px; line-height: 16px; font-weight: 500; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-.event-title-small { font-size: 10px; line-height: 12px; }
-.event-time { flex-shrink: 0; max-width: 100%; color: #ffffff; opacity: 0.9; font-size: 9px; line-height: 12px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.event-title { min-width: 0; max-width: 100%; color: #ffffff; @include type-style('timeline');   overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.event-title-small { @include type-style('timeline-small');  }
+.event-time { flex-shrink: 0; max-width: 100%; color: #ffffff; opacity: 0.9; @include type-style('chart-detail');  overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .event-compact { border-radius: 3px; }
 .event-tiny { border-radius: 2px; }
 .event-highlighted { outline: 1px solid #5b8ff9; box-shadow: 0 0 5px #5b8ff980; z-index: 1; }
@@ -274,8 +276,8 @@ function edit(record: TimeRecord) {
   margin-bottom: $space-section;
 }
 .sheet-title {
-  font-size: 17px;
-  font-weight: 600;
+  @include type-style('title');
+
   color: #27272a;
 }
 .sheet-close {
@@ -287,7 +289,7 @@ function edit(record: TimeRecord) {
   border: 0;
   color: #71717a;
   background-color: transparent;
-  font-size: 26px;
+  @include type-style('glyph-chevron');
 }
 .sheet-scroll {
   width: 100%;
@@ -301,7 +303,7 @@ function edit(record: TimeRecord) {
   margin: 0;
   border: 0;
   background-color: transparent;
-  line-height: 20px;
+  line-height: type-line('label');
 }
 .sheet-dot {
   width: 8px;
@@ -315,17 +317,17 @@ function edit(record: TimeRecord) {
   min-width: 0;
 }
 .sheet-name {
-  font-size: 15px;
+  @include type-style('body');
   color: #27272a;
 }
 .sheet-meta,
 .sheet-empty {
-  font-size: 12px;
-  line-height: 20px;
+  @include type-style('caption');
+
   color: #8b8f99;
 }
 .sheet-arrow {
-  font-size: 22px;
+  @include type-style('glyph-medium');
   color: #8b8f99;
   margin-left: $space-section;
 }
@@ -365,4 +367,5 @@ function edit(record: TimeRecord) {
   border: 0;
 }
 /* #endif */
+
 </style>
