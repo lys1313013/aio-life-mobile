@@ -111,13 +111,13 @@ test('菜单锁使用完整字符串ID与二级密码；通知留空保留应用
 
 test('离开锁定页面取消等待，返回不保留二级密码',async({page})=>{
  await setup(page);
- await page.evaluate(()=>new Promise(resolve=>uni.navigateTo({url:'/pages/profile/preferences?section=keys',success:resolve})));
+ await page.goto('/#/pages/profile/preferences?section=keys');
  const dialog=page.getByRole('dialog',{name:'解锁菜单',exact:true});
  await expect(dialog).toBeVisible();
  await dialog.locator('[aria-label="二级密码"] input').fill('temporary-secondary');
- await page.evaluate(()=>new Promise(resolve=>uni.navigateTo({url:'/pages/profile/security',success:resolve})));
+ await page.goto('/#/pages/profile/security');
  await expect(dialog).toHaveCount(0);
- await page.evaluate(()=>new Promise(resolve=>uni.navigateBack({success:resolve})));
+ await page.goBack();
  await expect(dialog).toBeVisible();
  await expect(dialog.locator('[aria-label="二级密码"] input')).toHaveValue('');
  await dialog.getByRole('button',{name:'取消',exact:true}).click();

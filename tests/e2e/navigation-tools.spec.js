@@ -28,7 +28,7 @@ for (const width of [320, 390, 768, 1440]) {
       await page.getByRole('button', { name: '周视图', exact: true }).click();
       await expect(header.getByRole('button', { name: '上一周期', exact: true })).toBeVisible();
       await page.screenshot({ path: testInfo.outputPath('time.png') });
-      await page.locator('uni-tabbar').getByText('生活', { exact: true }).click();
+      await page.locator('uni-tabbar').getByText('全部', { exact: true }).click();
       const search = header.locator('[aria-label="搜索功能"] input');
       await search.fill('不存在的模拟功能');
       await expect(page.getByText('未找到相关功能', { exact: true })).toBeVisible();

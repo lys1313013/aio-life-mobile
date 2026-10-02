@@ -1,20 +1,27 @@
 import { reactive, watch } from 'vue'
 import { session } from './session.ts'
 
-export const secondaryLock = reactive({ menuPath: '', token: '', visible: false })
+export const secondaryLock = reactive({ menuPath: '', token: '', visible: false, checking: false })
 const pending: Array<{ path: string; token: string; resolve: () => void; reject: (reason: Error) => void }> = []
 let navigationRevision = 0
 let lifecycleInstalled = false
 const unlockedPaths = new Map<string, number>()
-let checking = false
 export function setMenuChecking(value: boolean) {
-  checking = value
-  if (value) uni.showLoading({ title: '检查菜单锁', mask: true })
-  else uni.hideLoading()
+  secondaryLock.checking = value
 }
 export function isMenuUnlocked(path: string) { return (unlockedPaths.get(path) || 0) > Date.now() }
 export function unlockNavigationRevision() { return navigationRevision }
-export function invalidateUnlocks() { navigationRevision++; cancelUnlock(); if (checking) setMenuChecking(false) }
+export function invalidateUnlocks() { navigationRevision++; cancelUnlock(); setMenuChecking(false) }
+function resumeNavigation(name: string, options: any) {
+  // H5 生产编译按静态调用收集 uni API；动态 uni[name] 会在裁剪后丢失方法。
+  switch (name) {
+    case 'navigateTo': return uni.navigateTo(options)
+    case 'redirectTo': return uni.redirectTo(options)
+    case 'reLaunch': return uni.reLaunch(options)
+    case 'switchTab': return uni.switchTab(options)
+    case 'navigateBack': return uni.navigateBack(options)
+  }
+}
 export function installUnlockLifecycle(needsCheck?: (url: string) => boolean, checkAccess?: (url: string) => Promise<void>) {
   if (lifecycleInstalled) return
   lifecycleInstalled = true
@@ -28,7 +35,7 @@ export function installUnlockLifecycle(needsCheck?: (url: string) => boolean, ch
       checkAccess(options.url).then(() => {
         if (revision !== navigationRevision) return
         resuming = true
-        try { uni[name](options) } finally { resuming = false }
+        try { resumeNavigation(name, options) } finally { resuming = false }
       }).catch((error) => {
         if (revision !== navigationRevision) return
         if (error.message !== '已取消解锁') uni.showToast({ title: error.message || '菜单锁检查失败，请重试', icon: 'none' })

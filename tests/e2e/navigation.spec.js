@@ -30,8 +30,11 @@ test('四栏切换、日期查询、退出清理与重新登录', async ({ page 
   await expect(page.locator('uni-tabbar')).toBeHidden();
   await login();
   await expect(page.locator('uni-tabbar').getByText('首页', { exact: true })).toBeVisible();
+  const homeIcon = page.locator('uni-tabbar .uni-tabbar__item').first().locator('img');
+  await expect(homeIcon).toHaveAttribute('src', /home-house-active\.png(?:\?.*)?$/);
   await page.locator('uni-tabbar').getByText('时迹', { exact: true }).click();
   await expect(page).toHaveURL(/pages\/time\/index/);
+  await expect(homeIcon).toHaveAttribute('src', /home-house\.png(?:\?.*)?$/);
   await expect(page.locator('.timeline-event')).toHaveCount(8);
   const today = await page.locator('.date-value').innerText();
   const initialRequestCount = dates.length;
@@ -43,9 +46,11 @@ test('四栏切换、日期查询、退出清理与重新登录', async ({ page 
   await page.getByRole('button', { name: '后一天' }).click();
   await expect(page.locator('.date-value')).toHaveText(today);
   await expect.poll(() => dates.slice(initialRequestCount).includes(today)).toBe(true);
-  await page.locator('uni-tabbar').getByText('生活', { exact: true }).click();
+  await page.locator('uni-tabbar').getByText('全部', { exact: true }).click();
   await expect(page.getByText('暂无可用功能', { exact: true })).toBeVisible();
-  await page.locator('uni-tabbar').getByText('我的', { exact: true }).click();
+  await expect(homeIcon).toHaveAttribute('src', /home-house\.png(?:\?.*)?$/);
+  await page.locator('uni-tabbar').getByText('我', { exact: true }).click();
+  await expect(homeIcon).toHaveAttribute('src', /home-house\.png(?:\?.*)?$/);
   await expect(page.getByText('导航测试用户', { exact: true })).toBeVisible();
   await expect(page.getByText('fixture@example.com')).toBeVisible();
   await page.getByRole('button', { name: '退出登录', exact: true }).click();
@@ -53,7 +58,8 @@ test('四栏切换、日期查询、退出清理与重新登录', async ({ page 
   await expect(page.getByText('退出当前账号？')).toBeHidden();
   await page.locator('uni-tabbar').getByText('首页', { exact: true }).click();
   await expect(page.locator('.dashboard-scroll')).toBeVisible();
-  await page.locator('uni-tabbar').getByText('我的', { exact: true }).click();
+  await expect(homeIcon).toHaveAttribute('src', /home-house-active\.png(?:\?.*)?$/);
+  await page.locator('uni-tabbar').getByText('我', { exact: true }).click();
   await page.getByRole('button', { name: '退出登录', exact: true }).click();
   await page.getByRole('button', { name: '退出', exact: true }).click();
   await expect(page.getByText('欢迎回来', { exact: true })).toBeVisible();

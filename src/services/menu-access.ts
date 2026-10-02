@@ -1,8 +1,19 @@
+import { watch } from 'vue'
 import { request } from './api.ts'
 import { isBusinessDestination, lockedMenuPaths } from './life-catalog.ts'
 import { requestUnlock, unlockNavigationRevision, isMenuUnlocked, setMenuChecking } from './secondary-lock.ts'
 import { session } from './session.ts'
 import { cachedMenuAccess, loadMenuAccess } from './menu-access-cache.ts'
+
+let warmupInstalled = false
+export function installMenuAccessWarmup() {
+  if (warmupInstalled) return
+  warmupInstalled = true
+  watch(() => session.token, (token) => {
+    // 登录及恢复会话时预取，正常切换页面只查内存。失败不缓存，点击时重新检查。
+    if (token) void loadMenuAccess(request).catch(() => {})
+  }, { immediate: true, flush: 'post' })
+}
 
 export function needsMenuCheck(url: string) {
   return !!session.token && isBusinessDestination(url)

@@ -10,6 +10,7 @@ import ConfirmAction from '../../components/ConfirmAction.uvue';
 import AdaptiveModal from '../../components/AdaptiveModal.uvue';
 import { request } from '../../services/api.ts';
 import { session, restoreSession } from '../../services/session.ts';
+import { clearLifeCatalogCache } from '../../services/life-catalog-cache.ts';
 import { themeClass, setThemeMode, theme } from '../../services/theme.ts';
 import {
   flattenMenuOptions,
@@ -232,6 +233,7 @@ async function resetMenus() {
   await load();
 }
 async function clearCache() {
+  clearLifeCatalogCache();
   const keys = uni.getStorageInfoSync().keys;
   for (const key of keys)
     if (
@@ -295,11 +297,11 @@ function back() {
             <text class="preference-title">{{
               mode === 'keys' ? item.remark : item.modelName
             }}</text
-            ><text class="preference-detail">{{ mode === 'llm' ? (item.hasApiKey ? '******' : '') : mask(item.apiKey) }}</text>
-            <text v-if="mode === 'keys'" class="preference-detail"
+            ><text class="preference-detail" :class="themeClass('preference-detail')">{{ mode === 'llm' ? (item.hasApiKey ? '******' : '') : mask(item.apiKey) }}</text>
+            <text v-if="mode === 'keys'" class="preference-detail" :class="themeClass('preference-detail')"
               >{{ item.expiredAt || '永不过期' }} · {{ item.createTime }}</text
             >
-            <text v-else class="preference-detail">{{ item.baseUrl }}</text>
+            <text v-else class="preference-detail" :class="themeClass('preference-detail')">{{ item.baseUrl }}</text>
             <view class="preference-actions ui-row ui-mt-section"
               ><MobileButton
                 v-if="mode === 'llm'"
@@ -384,7 +386,7 @@ function back() {
           kind="password"
           v-model="form.apiKey"
           :placeholder="form.id ? '留空保留原密钥' : ''" /><view class="preference-row ui-row"
-          ><text>默认模型</text
+          ><text class="preference-field-label" :class="themeClass('preference-field-label')">默认模型</text
           ><switch
             :checked="form.isDefault"
             aria-label="默认模型"
@@ -399,15 +401,19 @@ function back() {
       :max-width="520"
       @close="generatedKey = ''"
     >
-      <text class="preference-detail">仅本次显示完整密钥，请妥善保存。</text
+      <text class="preference-detail" :class="themeClass('preference-detail')">仅本次显示完整密钥，请妥善保存。</text
       ><text class="preference-secret ui-mb-section ui-mt-section" selectable>{{ generatedKey }}</text
       ><MobileButton label="复制" icon="ant-design:copy-outlined" @click="uni.setClipboardData({ data: generatedKey })" />
     </AdaptiveModal>
   </view>
 </template>
 <style scoped lang="scss">
+@use '../../styles/typography' as *;
+@use '../../styles/text-colors' as *;
 @use '../../styles/spacing.scss';
 @use '../../styles/spacing-tokens' as *;
+@include type-utilities('body');
+
 .preference-list {
 
 }
@@ -415,7 +421,6 @@ function back() {
   background-color: #fff;
   color: #27272a;
   border-radius: 14px;
-
 
 }
 .preference-surface-dark {
@@ -430,7 +435,7 @@ function back() {
 }
 .preference-name {
   flex: 1;
-  font-size: 14px;
+  @include type-style('body');
 }
 .preference-actions {
   flex-direction: row;
@@ -439,19 +444,29 @@ function back() {
 
 }
 .preference-title {
-  font-size: 17px;
-  font-weight: 600;
+  @include type-style('title');
+
 }
 .preference-detail {
-  font-size: 13px;
-  line-height: 22px;
-  color: #8b8f99;
+  @include type-style('label');
+
+  color: $text-secondary-light;
 }
 .preference-secret {
-  font-size: 14px;
-  line-height: 24px;
+  @include type-style('body');
+
   word-break: break-all;
 
+}
 
+.preference-detail-dark {
+  color: $text-secondary-dark;
+}
+.preference-field-label {
+  @include type-style('label');
+  color: #27272a;
+}
+.preference-field-label-dark {
+  color: #eeeeef;
 }
 </style>

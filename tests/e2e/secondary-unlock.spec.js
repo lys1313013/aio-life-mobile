@@ -1,9 +1,9 @@
 const { test, expect } = require('@playwright/test');
 const { dashboardFixture } = require('./fixtures.js');
 const lockedId = '9223372036854775807';
-async function setup(page) {
-  const state = { verified: [], reads: 0, checks: 0, trees: 0, ids: [lockedId], failCheck: false, delayCheck: null, requireUnlock: false, unlocked: false };
-  await page.route('http://127.0.0.1:5180/api/**', async (route) => {
+async function setup(page, initial = {}) {
+  const state = { verified: [], reads: 0, checks: 0, trees: 0, ids: [lockedId], failCheck: false, delayCheck: null, requireUnlock: false, unlocked: false, ...initial };
+  await page.route(/http:\/\/127\.0\.0\.1:\d+\/api\//, async (route) => {
     const path = new URL(route.request().url()).pathname;
     let data = dashboardFixture(path) ?? [];
     if (path === '/api/auth/login') data = { accessToken: 'unlock-fixture' };
@@ -36,7 +36,7 @@ async function setup(page) {
   await page.locator('[aria-label="密码"] input').fill('fixture-password');
   await page.getByRole('button', { name: '登录', exact: true }).click();
   await expect(page.locator('.dashboard-scroll')).toBeVisible();
-  await page.locator('uni-tabbar').getByText('生活', { exact: true }).click();
+  await page.locator('uni-tabbar').getByText('全部', { exact: true }).click();
   await expect(page.getByRole('button', { name: '笔记', exact: true })).toBeVisible();
   return state;
 }
@@ -45,6 +45,9 @@ for (const width of [390, 768, 1440]) for (const theme of ['light', 'dark']) {
     await page.setViewportSize({ width, height: 900 });
     await page.emulateMedia({ colorScheme: theme });
     const state = await setup(page);
+    await expect.poll(() => state.trees).toBe(1);
+    expect(state.checks).toBe(1);
+    await expect(page.locator('uni-loading')).toHaveCount(0);
     const entry = page.getByRole('button', { name: '笔记', exact: true });
     const modal = page.getByRole('dialog', { name: '解锁菜单', exact: true });
     await entry.click();
@@ -85,21 +88,21 @@ for (const width of [390, 768, 1440]) for (const theme of ['light', 'dark']) {
     await expect(page.getByText('检查菜单锁', { exact: true })).toHaveCount(0);
   });
 }
-test('我的入口不请求菜单锁，检查服务失败也可进入个人中心', async ({ page }) => {
+test('我的入口不重复请求菜单锁，检查服务失败也可进入个人中心', async ({ page }) => {
   const state = await setup(page);
   state.failCheck = true;
-  await page.locator('uni-tabbar').getByText('我的', { exact: true }).click();
+  await page.locator('uni-tabbar').getByText('我', { exact: true }).click();
   await expect(page).toHaveURL(/pages\/profile\/index/);
   await expect(page.getByRole('button', { name: '退出登录', exact: true })).toBeVisible();
-  expect(state.checks).toBe(0);
-  expect(state.trees).toBe(0);
+  expect(state.checks).toBe(1);
+  expect(state.trees).toBe(1);
   await expect(page.getByText('检查菜单锁', { exact: true })).toHaveCount(0);
   await expect(page.getByRole('dialog', { name: '解锁菜单', exact: true })).toHaveCount(0);
 });
 
-test('检查失败不进入菜单，迟到的检查不能覆盖新导航', async ({ page }) => {
-  const state = await setup(page);
-  state.failCheck = true;
+test('预取失败可进入首页，点击重试失败不进入菜单，迟到检查不能覆盖新导航', async ({ page }) => {
+  const state = await setup(page, { failCheck: true });
+  await expect.poll(() => state.checks).toBe(1);
   await page.getByRole('button', { name: '笔记', exact: true }).click();
   await expect(page.getByText('菜单锁检查失败', { exact: true })).toBeVisible();
   await expect(page).toHaveURL(/pages\/life\/index/);
@@ -108,8 +111,10 @@ test('检查失败不进入菜单，迟到的检查不能覆盖新导航', async
   let release;
   state.delayCheck = new Promise((resolve) => { release = resolve; });
   await page.getByRole('button', { name: '笔记', exact: true }).click();
-  await expect(page.getByText('检查菜单锁', { exact: true })).toBeVisible();
-  await page.evaluate(() => uni.switchTab({ url: '/pages/home/index' }));
+  await expect(page.locator('.page-navigation [role="status"]')).toBeVisible();
+  await expect(page.locator('uni-loading')).toHaveCount(0);
+  await expect(page.getByText('检查菜单锁', { exact: true })).toHaveCount(0);
+  await page.locator('uni-tabbar').getByText('首页', { exact: true }).click();
   const response = page.waitForResponse((result) => new URL(result.url()).pathname === '/api/auth/secondary-lock/menus');
   release();
   await response;
@@ -119,8 +124,7 @@ test('检查失败不进入菜单，迟到的检查不能覆盖新导航', async
 });
 
 test('无锁结果缓存，重复进入不再检查；服务端2001仍触发解锁并使缓存失效', async ({ page }) => {
-  const state = await setup(page);
-  state.ids = [];
+  const state = await setup(page, { ids: [] });
   const entry = page.getByRole('button', { name: '笔记', exact: true });
   await entry.click();
   await expect(page).toHaveURL(/pages\/records\/notes/);
@@ -141,4 +145,27 @@ test('无锁结果缓存，重复进入不再检查；服务端2001仍触发解�
   await expect(page).toHaveURL(/pages\/records\/notes/);
   expect(state.checks).toBe(2);
   expect(state.trees).toBe(1);
+});
+
+test('冷启动慢检查复用预取请求，无全局遮罩且解锁前不读取业务数据', async ({ page }) => {
+  let release;
+  const delayCheck = new Promise((resolve) => { release = resolve; });
+  const state = await setup(page, { delayCheck });
+  await page.getByRole('button', { name: '笔记', exact: true }).click();
+  await expect(page.locator('.page-navigation [role="status"]')).toBeVisible();
+  await expect(page.locator('uni-loading')).toHaveCount(0);
+  await expect(page.getByText('检查菜单锁', { exact: true })).toHaveCount(0);
+  await expect(page).toHaveURL(/pages\/life\/index/);
+  expect(state.checks).toBe(1);
+  expect(state.reads).toBe(0);
+  for (const width of [390, 768, 1440]) for (const theme of ['light', 'dark']) {
+    await page.setViewportSize({ width, height: 900 });
+    await page.emulateMedia({ colorScheme: theme });
+    await expect(page.locator('.page-navigation [role="status"]')).toBeVisible();
+    await page.screenshot({ path: `artifacts/secondary-unlock-guard/check-${width}-${theme}.png` });
+  }
+  release();
+  await expect(page.getByRole('dialog', { name: '解锁菜单', exact: true })).toBeVisible();
+  await expect(page.locator('.page-navigation [role="status"]')).toHaveCount(0);
+  expect(state.reads).toBe(0);
 });

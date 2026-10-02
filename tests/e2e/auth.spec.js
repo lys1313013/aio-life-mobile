@@ -61,7 +61,7 @@ test('登录后携带 Bearer，刷新恢复会话，退出后不能访问首页'
   await page.reload();
   await expect(page.locator('.dashboard-scroll')).toBeVisible();
   expect(requests.login).toBe(1);
-  await page.getByText('我的', { exact: true }).last().click();
+  await page.getByText('我', { exact: true }).last().click();
   await expect(page.getByText(profile.nickname)).toBeVisible();
   await page.getByRole('button', { name: '退出登录', exact: true }).click();
   await page.getByRole('button', { name: '退出', exact: true }).click();
@@ -91,7 +91,7 @@ test('暂时断网保留会话，重试成功，注销断网也清理本机会�
   await page.getByRole('button', { name: '重新加载' }).click();
   await expect(page.locator('.dashboard-scroll')).toBeVisible();
   expect(requests.login).toBe(1);
-  await page.getByText('我的', { exact: true }).last().click();
+  await page.getByText('我', { exact: true }).last().click();
   await expect(page.getByText(profile.nickname)).toBeVisible();
   await page.getByRole('button', { name: '退出登录', exact: true }).click();
   await page.getByRole('button', { name: '退出', exact: true }).click();
@@ -114,11 +114,11 @@ for (const width of [390, 768, 1440]) {
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
       await page.screenshot({ path: `test-results/login-${width}-${colorScheme}.png`, fullPage: true });
       await signIn(page);
-      await expect(page.getByRole('button', { name: 'GitHub', exact: true })).toBeEnabled();
+      await expect(page.getByRole('button', { name: '刷新GitHub', exact: true })).toBeEnabled();
       await expect(page.getByText('记录想法，让行动更清晰。')).toBeVisible();
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
       await page.screenshot({ path: `test-results/home-${width}-${colorScheme}.png`, fullPage: true });
-      for (const [label, path] of [['时迹', 'time'], ['我的', 'profile']]) {
+      for (const [label, path] of [['时迹', 'time'], ['我', 'profile']]) {
         await page.locator('uni-tabbar').getByText(label, { exact: true }).click();
         await expect(page).toHaveURL(new RegExp('pages/' + path + '/index'));
         await expect(page.locator('.tab-page').last()).toHaveCSS('background-color', colorScheme === 'dark' ? 'rgb(17, 18, 21)' : 'rgb(240, 242, 245)');

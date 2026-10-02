@@ -42,7 +42,7 @@ async function setup(page) {
   await page.locator('[aria-label="密码"] input').fill('fixture-password');
   await page.getByRole('button', { name: '登录', exact: true }).click();
   await expect(page.locator('.dashboard-scroll')).toBeVisible();
-  await page.locator('uni-tabbar').getByText('我的', { exact: true }).click();
+  await page.locator('uni-tabbar').getByText('我', { exact: true }).click();
   await expect(page.getByText('测试用户', { exact: true })).toBeVisible();
   return state;
 }
@@ -84,7 +84,7 @@ for (const width of [390, 768, 1440]) {
       await expect(page.locator('.tab-page').last()).toHaveCSS('background-color', bg);
       await page.locator('uni-tabbar').getByText('时迹', { exact: true }).click();
       await expect(page.locator('.tab-page').last()).toHaveCSS('background-color', bg);
-      await page.locator('uni-tabbar').getByText('我的', { exact: true }).click();
+      await page.locator('uni-tabbar').getByText('我', { exact: true }).click();
       await page.getByRole('button', { name: '跟随系统', exact: true }).click();
       await expect(page.locator('.tab-page').last()).toHaveCSS('background-color', system === 'dark' ? 'rgb(17, 18, 21)' : 'rgb(240, 242, 245)');
       await page.emulateMedia({ colorScheme: system === 'dark' ? 'light' : 'dark' });

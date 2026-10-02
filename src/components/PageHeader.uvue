@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { onMounted, onUnmounted, ref } from 'vue'
 import AppIcon from './AppIcon.uvue'
+import LoadingIndicator from './LoadingIndicator.uvue'
+import { secondaryLock } from '../services/secondary-lock.ts'
 import spacing from '../styles/spacing.json'
 import { navigationLayout } from '../services/navigation-layout.ts'
 import { refreshNativeTheme, themeClass } from '../services/theme.ts'
@@ -44,7 +46,7 @@ onUnmounted(() => uni.offWindowResize(updateLayout))
       <button
         v-if="back"
         role="button"
-        class="navigation-button"
+        class="navigation-button ui-type-body"
         hover-class="navigation-button-pressed"
         aria-label="返回"
         @click="$emit('back')"
@@ -54,14 +56,18 @@ onUnmounted(() => uni.offWindowResize(updateLayout))
       <view class="navigation-content" :class="{ 'navigation-content-wide': !back }">
         <slot><text class="navigation-title" :class="themeClass('navigation-title')">{{ title }}</text></slot>
       </view>
+      <LoadingIndicator v-if="secondaryLock.checking" compact label="正在加载" />
     </view>
   </view>
   </view>
 </template>
 
 <style scoped lang="scss">
+@use '../styles/typography' as *;
 @use '../styles/spacing.scss';
 @use '../styles/spacing-tokens' as *;
+@include type-utilities('body');
+
 .navigation-placeholder {
   flex-shrink: 0;
 }
@@ -101,9 +107,8 @@ onUnmounted(() => uni.offWindowResize(updateLayout))
   white-space: nowrap;
   text-overflow: ellipsis;
   color: #242428;
-  font-size: 17px;
-  font-weight: 600;
-  line-height: 32px;
+  @include type-style('title');
+
 }
 .navigation-button {
   flex-shrink: 0;
@@ -111,7 +116,7 @@ onUnmounted(() => uni.offWindowResize(updateLayout))
   flex-direction: row;
   width: 44px;
   height: 44px;
-  line-height: 44px;
+  line-height: $space-controlMin;
   margin: 0;
   padding: 0;
   border: 0;
@@ -142,4 +147,5 @@ onUnmounted(() => uni.offWindowResize(updateLayout))
   outline-offset: 2px;
 }
 /* #endif */
+
 </style>

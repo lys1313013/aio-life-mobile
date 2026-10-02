@@ -6,7 +6,9 @@ import { fileURLToPath } from 'node:url'
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const webIcons = resolve(root, '../aio-life-front/packages/@core/base/icons/src/local-icons/generated')
 const names = new Set()
-const tabs = { home: 'lucide:layout-dashboard', time: 'lucide:clock', life: 'lucide:layout-grid', profile: 'lucide:user' }
+// Web 首页菜单的 lucide:home 是 lucide:house 的别名，直接复用原始图形。
+// 更换图形时使用新资源名，避免客户端沿用旧仪表盘 PNG 的缓存。
+const tabs = { 'home-house': 'lucide:house', time: 'lucide:clock', life: 'lucide:layout-grid', profile: 'lucide:user' }
 for (const name of Object.values(tabs)) names.add(name)
 function scan(directory) {
   for (const entry of readdirSync(directory, { withFileTypes: true })) {
@@ -30,11 +32,13 @@ for (const prefix of ['ant-design', 'lucide']) {
     icons[name] = { body: icon.body, width: icon.width || collection.width || 24, height: icon.height || collection.height || 24 }
   }
 }
-writeFileSync(resolve(root, 'src/services/icons/action-icons.json'), JSON.stringify({ sources, icons }, null, 2) + '\n')
-console.log(`已同步 ${Object.keys(icons).length} 个 Web 同款图标`)
+if (!process.argv.includes('--tabs-only')) {
+  writeFileSync(resolve(root, 'src/services/icons/action-icons.json'), JSON.stringify({ sources, icons }, null, 2) + '\n')
+  console.log(`已同步 ${Object.keys(icons).length} 个 Web 同款图标`)
+}
 
 // 原生 tabBar 需要本地 PNG；用现有 Playwright 将同一 SVG 渲染为三倍分辨率资源。
-if (process.argv.includes('--tabs')) {
+if (process.argv.includes('--tabs') || process.argv.includes('--tabs-only')) {
   const { chromium } = await import('@playwright/test')
   const browser = await chromium.launch({ channel: process.env.CI ? undefined : 'chrome' })
   try {

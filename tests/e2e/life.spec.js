@@ -81,7 +81,7 @@ async function setup(page, options = {}) {
   await page.locator('[aria-label="账号"] input').fill("fixture");
   await page.locator('[aria-label="密码"] input').fill("fixture-password");
   await page.getByRole("button", { name: "登录", exact: true }).click();
-  await page.locator("uni-tabbar").getByText("生活", { exact: true }).click();
+  await page.locator("uni-tabbar").getByText("全部", { exact: true }).click();
   await expect(page).toHaveURL(/pages\/life\/index/);
   return state;
 }
@@ -180,7 +180,7 @@ test("配置的菜单树支持嵌套返回、搜索直达与原生业务路由",
   await page.getByRole("button", { name: "清空搜索" }).click();
   await page.getByRole("button", { name: "时迹", exact: true }).click();
   await expect(page).toHaveURL(/pages\/time\/index/);
-  await page.locator("uni-tabbar").getByText("我的", { exact: true }).click();
+  await page.locator("uni-tabbar").getByText("我", { exact: true }).click();
   await page.getByRole("button", { name: "关于", exact: true }).click();
   await expect(page).toHaveURL(/pages\/about\/index/);
 });
@@ -279,18 +279,21 @@ test("空目录不补默认项；未登录直接访问生活会跳转登录", as
 });
 
 for (const empty of [false, true]) {
-  test(`生活目录在页面重建后复用缓存，空目录=${empty}`, async ({ page }) => {
+  test(`生活目录重新进入和整页刷新后复用缓存，空目录=${empty}`, async ({ page }) => {
     const state = await setup(page, { empty });
     const content = empty
       ? page.getByText("暂无可用功能", { exact: true })
       : page.getByRole("button", { name: "运动", exact: true });
     await expect(content).toBeVisible();
     expect(state.catalogCalls).toBe(1);
-    await page.evaluate(() => uni.reLaunch({ url: '/pages/home/index' }));
+    await page.goto('/#/pages/home/index');
     await expect(page.locator('.dashboard-scroll')).toBeVisible();
-    await page.locator('uni-tabbar').getByText('生活', { exact: true }).click();
+    await page.locator('uni-tabbar').getByText('全部', { exact: true }).click();
     await expect(content).toBeVisible();
     await expect(page.locator('.life-page .content-skeleton')).toHaveCount(0);
+    expect(state.catalogCalls).toBe(1);
+    await page.reload();
+    await expect(content).toBeVisible();
     expect(state.catalogCalls).toBe(1);
     await pullDown(page, '.tab-scroll');
     await expect.poll(() => state.catalogCalls).toBe(2);
@@ -302,7 +305,7 @@ test("退出再登录清除目录缓存，即使服务端返回相同 Token", as
   const options = { empty: false };
   const state = await setup(page, options);
   await expect(page.getByRole('button', { name: '运动', exact: true })).toBeVisible();
-  await page.locator('uni-tabbar').getByText('我的', { exact: true }).click();
+  await page.locator('uni-tabbar').getByText('我', { exact: true }).click();
   await page.getByRole('button', { name: '退出登录', exact: true }).click();
   await page.getByRole('button', { name: '退出', exact: true }).click();
   await expect(page.getByRole('button', { name: '登录', exact: true })).toBeVisible();
@@ -310,7 +313,7 @@ test("退出再登录清除目录缓存，即使服务端返回相同 Token", as
   await page.locator('[aria-label="账号"] input').fill('fixture');
   await page.locator('[aria-label="密码"] input').fill('fixture-password');
   await page.getByRole('button', { name: '登录', exact: true }).click();
-  await page.locator('uni-tabbar').getByText('生活', { exact: true }).click();
+  await page.locator('uni-tabbar').getByText('全部', { exact: true }).click();
   await expect(page.getByText('暂无可用功能', { exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: '运动', exact: true })).toHaveCount(0);
   expect(state.catalogCalls).toBe(2);
@@ -359,7 +362,7 @@ test("12 项上限不截断既有配置，停用可恢复、清空可保存", as
     await lastQuick.scrollIntoViewIfNeeded();
     await expect(lastQuick).toBeVisible();
   }).toPass({ timeout: 5000 });
-  await page.locator("uni-tabbar").getByText("生活", { exact: true }).click();
+  await page.locator("uni-tabbar").getByText("全部", { exact: true }).click();
   await openEditor(page);
   for (const item of entries.slice(0, 12))
     await dialog
@@ -397,7 +400,7 @@ test("离页后的目录结果不能覆盖再次进入的新结果", async ({ pa
   await expect.poll(() => state.catalogCalls).toBe(1);
   await page.locator("uni-tabbar").getByText("首页", { exact: true }).click();
   await expect(page.locator('.dashboard-scroll')).toBeVisible();
-  await page.locator("uni-tabbar").getByText("生活", { exact: true }).click();
+  await page.locator("uni-tabbar").getByText("全部", { exact: true }).click();
   await expect.poll(() => state.catalogCalls).toBe(2);
   await expect(
     page.getByRole("button", { name: "运动", exact: true }),

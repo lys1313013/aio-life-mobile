@@ -40,7 +40,7 @@ for (const width of [390, 768, 1440]) for (const theme of ['light', 'dark']) {
     await page.locator('[aria-label="账号"] input').fill('fixture');
     await page.locator('[aria-label="密码"] input').fill('fixture-password');
     await page.getByRole('button', { name: '登录', exact: true }).click();
-    await page.locator('uni-tabbar').getByText('生活', { exact: true }).click();
+    await page.locator('uni-tabbar').getByText('全部', { exact: true }).click();
     for (const [label, name] of samples) {
       const image = page.getByRole('button', { name: label, exact: true }).locator('.category-icon-image img');
       await expect(image).toHaveCount(1);

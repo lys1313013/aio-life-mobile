@@ -2,17 +2,22 @@
 import { onHide, onLaunch } from '@dcloudio/uni-app'
 import { restoreSession } from './services/session.ts'
 import { installUnlockLifecycle, invalidateUnlocks } from './services/secondary-lock.ts'
-import { needsMenuCheck, checkMenuAccess } from './services/menu-access.ts'
+import { needsMenuCheck, checkMenuAccess, installMenuAccessWarmup } from './services/menu-access.ts'
 
 import { initializeTheme } from './services/theme.ts'
 
-onLaunch(() => { installUnlockLifecycle(needsMenuCheck, checkMenuAccess); initializeTheme(); restoreSession() })
+onLaunch(() => { installUnlockLifecycle(needsMenuCheck, checkMenuAccess); initializeTheme(); restoreSession(); installMenuAccessWarmup() })
 onHide(invalidateUnlocks)
 </script>
 
 <style lang="scss">
+@use './styles/typography' as *;
 @use './styles/spacing-tokens' as *;
 /* Vapor 使用简单类选择器；主题色显式传递，不依赖浏览器 DOM。 */
+// 容器使用统一正文尺度；文字节点另行显式引用，兼容不继承样式的 App 端。
+.page, .tab-page, .dashboard-page, .mobile-page, .modal-panel {
+  @include type-style('body');
+}
 .page {
   flex: 1;
   min-height: 100%;
@@ -36,11 +41,10 @@ onHide(invalidateUnlocks)
   justify-content: center;
   background-color: #39765e;
 }
-.brand-symbol { font-size: 21px; color: #ffffff; font-weight: 700; }
-.brand-name { margin-left: $space-inline; font-size: 17px; font-weight: 600; color: #203b2f; }
+.brand-symbol { @include type-style('glyph-medium'); color: #ffffff;  }
+.brand-name { margin-left: $space-inline; @include type-style('brand');  color: #203b2f; }
 .ink { color: #203b2f; }
 .muted { color: #75847a; }
-
 
 .primary-button {
   width: 100%;
@@ -51,13 +55,13 @@ onHide(invalidateUnlocks)
   border-radius: 16px;
   background-color: #39765e;
   color: #ffffff;
-  font-size: 16px;
-  font-weight: 600;
+  @include type-style('body');
+
   align-items: center;
   justify-content: center;
 }
 .primary-disabled { opacity: 0.65; }
-.error-text { font-size: 13px; line-height: 21px; color: #b74437; }
+.error-text { @include type-style('label');  color: #b74437; }
 
 .icon-button {
   width: 42px;
@@ -68,13 +72,13 @@ onHide(invalidateUnlocks)
   border-radius: 14px;
   background-color: #e9eee7;
   color: #39765e;
-  font-size: 24px;
-  line-height: 42px;
+  @include type-style('glyph-large');
+  line-height: type-leading('legacyIcon');
   align-items: center;
   justify-content: center;
 }
 
-.footer-note { font-size: 12px; color: #8b988f; line-height: 20px; text-align: center; }
+.footer-note { @include type-style('caption'); color: #8b988f;  text-align: center; }
 
   .page-dark { background-color: #151d19; }
   .ink-dark, .brand-name-dark { color: #e4ece6; }
@@ -86,9 +90,9 @@ onHide(invalidateUnlocks)
 .tab-scroll { flex: 1; height: 0; }
 .tab-content { width: 100%; max-width: $space-contentMax; align-self: center; padding: $space-page; padding-bottom: calc($space-page + env(safe-area-inset-bottom)); }
 .state-card { background-color: #ffffff; border-radius: 16px; padding: $space-section $space-card; align-items: center; }
-.muted-text { font-size: 13px; line-height: 22px; color: #8b8f99; }
-.empty-title { font-size: 15px; line-height: 24px; color: #52525b; margin-bottom: $space-inline; }
-.text-action { font-size: 14px; padding: $space-detail $space-card; margin-top: $space-section; border: 0; background-color: transparent; color: #5b8ff9; }
+.muted-text { @include type-style('label');  color: #8b8f99; }
+.empty-title { @include type-style('body');  color: #52525b; margin-bottom: $space-inline; }
+.text-action { @include type-style('body'); padding: $space-detail $space-card; margin-top: $space-section; border: 0; background-color: transparent; color: #5b8ff9; }
 
   .tab-page-dark { background-color: #111215; }
   .state-card-dark { background-color: #1c1e22; }
