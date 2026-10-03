@@ -445,7 +445,8 @@ async function removeSelected() {
         ><text class="section-title">{{ expense ? '支出明细' : '收入明细' }}</text><view class="filter-trigger"><MobileButton :label="activeFilterCount ? '更多筛选，已启用 ' + activeFilterCount + ' 项条件' : '更多筛选'" icon="ant-design:filter-outlined" variant="quiet" @click="showFilters = !showFilters" /><text v-if="activeFilterCount" class="filter-count">{{ activeFilterCount }}</text></view><MobileButton
           label="统计"
           icon="ant-design:bar-chart-outlined"
-          variant="quiet"
+          :variant="showStatistics ? 'primary' : 'quiet'"
+          :aria-expanded="showStatistics"
           @click="toggleStatistics" /><MobileButton
           label="新增"
           icon="ant-design:plus-outlined"
@@ -456,7 +457,7 @@ async function removeSelected() {
           variant="quiet"
           @click="uni.navigateTo({ url: '/pages/finance/import' })"
       /></view>
-      <view v-if="showStatistics"
+      <view v-if="showStatistics" class="statistics-panel"
         ><FormField
           label="统计周期"
           kind="selector"
@@ -469,26 +470,27 @@ async function removeSelected() {
           ><view
             v-for="group in statistics"
             :key="group.year + '-' + group.month"
-            class="record ui-card"
-            :class="themeClass('record')"
-            ><text class="ui-type-body"
+            class="statistics-card ui-card"
+            :class="themeClass('statistics-card')"
+            ><view class="statistics-heading"
+              ><text class="statistics-period"
               >{{ group.year
-              }}{{ group.month ? '-' + String(group.month).padStart(2, '0') : '' }} · ¥{{
-                group.detail.reduce((n, item) => n + Number(item.amt || 0), 0).toFixed(2)
-              }}</text
+              }}{{ group.month ? '-' + String(group.month).padStart(2, '0') : '' }}</text
+              ><text class="statistics-total">¥{{ statisticsTotal([group]).toFixed(2) }}</text></view
             ><view
               v-for="item in group.detail"
               :key="item.typeId"
-              class="record-main ui-gap-sm"
-              ><text class="ui-type-body"
-                >{{ item.typeName || '未分类' }} · ¥{{
+              class="statistics-row"
+              ><text class="statistics-category"
+                >{{ item.typeName || '未分类' }}</text
+              ><text class="statistics-amount">¥{{
                   Number(item.amt).toFixed(2)
                 }}</text
-              ><MobileButton
+              ><view class="statistics-action"><MobileButton
                 label="查看对应记录"
                 icon="ant-design:export-outlined"
-                variant="quiet"
-                @click="filterStatistics(group, item)" /></view></view></PageState></view
+                variant="ghost"
+                @click="filterStatistics(group, item)" /></view></view></view></PageState></view
       ><view class="filters ui-field-row">
         <FormField v-if="showFilters" compact stretch hide-label label="年份" kind="selector"
           :options="['全部年份', ...overviewYears]" v-model="filterYear" />
@@ -661,18 +663,46 @@ async function removeSelected() {
   display: block;
   color: #718096;
 }
-.record {
+.statistics-card {
   background-color: #ffffff;
   border-radius: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+.statistics-card-dark { background-color: #1c1e22; }
+.statistics-heading {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
   gap: $space-inline;
+  margin-bottom: $space-detail;
+}
+.statistics-period { @include type-style('label'); }
+.statistics-total { @include type-style('title'); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.statistics-row {
   display: flex;
   flex-direction: row;
   align-items: center;
-  justify-content: space-between;
-  flex-wrap: wrap;
+  gap: $space-inline;
+  min-height: $space-controlMin;
 }
-.record-dark { background-color: #1c1e22; }
-.record-main { display: flex; flex-direction: column; flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.statistics-category {
+  @include type-style('body');
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.statistics-amount {
+  @include type-style('body');
+  flex-shrink: 0;
+  white-space: nowrap;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.statistics-action { flex-shrink: 0; }
 .ledger-toolbar { align-items: center; margin-top: $space-section; }
 .section-title { flex: 1; @include type-style('title');  }
 .filter-trigger { position: relative; flex-shrink: 0; }
