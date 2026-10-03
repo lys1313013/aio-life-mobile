@@ -1,0 +1,194 @@
+<script setup lang="ts">
+import { computed, reactive, ref } from 'vue';
+import { onHide, onShow, onUnload } from '@dcloudio/uni-app';
+import PageHeader from '../../components/PageHeader.uvue';
+import MobilePage from '../../components/MobilePage.uvue';
+import MobileButton from '../../components/MobileButton.uvue';
+import PageState from '../../components/PageState.uvue';
+import LoadMore from '../../components/LoadMore.uvue';
+import ConfirmAction from '../../components/ConfirmAction.uvue';
+import AdaptiveModal from '../../components/AdaptiveModal.uvue';
+import FormField from '../../components/FormField.uvue';
+import AppIcon from '../../components/AppIcon.uvue';
+import StorageThumbnail from './components/StorageThumbnail.uvue';
+import { fetchUser } from '../../services/api.ts';
+import { restoreSession, session } from '../../services/session.ts';
+import { themeClass } from '../../services/theme.ts';
+import { createStorageBrowser, storageBreadcrumbs, storageBrowserState, storageObjectName, storageSize } from './services/storage-state.ts';
+import { deleteStorageObject, downloadStorageObject, queryStorageObjects } from './services/storage.ts';
+const data = reactive(storageBrowserState());
+const inputPrefix = ref(''), refreshing = ref(false), checking = ref(false), authError = ref('');
+const shown = ref(false), preview = ref<any>(null), detail = ref<any>(null), downloadError = ref(''), downloadMessage = ref('');
+const downloading = ref<string[]>([]);
+const authorized = computed(() => !!session.user?.roles?.includes('admin'));
+const crumbs = computed(() => storageBreadcrumbs(data.prefix));
+let token = '', lifecycle = 0;
+const browser = createStorageBrowser(queryStorageObjects, data, () => shown.value && authorized.value && token === session.token);
+function back() { uni.navigateBack({ fail: () => uni.switchTab({ url: '/pages/profile/index' }) }); }
+function current(version) { return shown.value && lifecycle === version && token === session.token; }
+async function initialize() {
+  const version = ++lifecycle;
+  shown.value = true;
+  restoreSession();
+  if (!session.token) { uni.reLaunch({ url: '/pages/login/index' }); return; }
+  if (token !== session.token) { Object.assign(data, storageBrowserState()); inputPrefix.value = ''; }
+  token = session.token;
+  authError.value = '';
+  checking.value = true;
+  try {
+    if (!session.user) await fetchUser();
+    if (!current(version)) return;
+    if (!authorized.value) throw Error('仅管理员可使用对象存储管理');
+    browser.resume();
+    await browser.load();
+  } catch (reason) { if (current(version)) authError.value = reason instanceof Error ? reason.message : '读取账号权限失败'; }
+  finally { if (current(version)) checking.value = false; }
+}
+onShow(initialize);
+function pause() {
+  shown.value = false;
+  lifecycle++;
+  checking.value = false;
+  refreshing.value = false;
+  browser.pause();
+  preview.value = null;
+  detail.value = null;
+  downloading.value = [];
+  downloadError.value = '';
+  downloadMessage.value = '';
+}
+onHide(pause);
+onUnload(pause);
+async function navigate(prefix) {
+  preview.value = null;
+  detail.value = null;
+  inputPrefix.value = prefix;
+  await browser.load(prefix);
+}
+async function refresh() {
+  if (refreshing.value || checking.value) return;
+  refreshing.value = true;
+  try { if (authError.value || !authorized.value) await initialize(); else await browser.load(); }
+  finally { refreshing.value = false; }
+}
+async function remove(item) {
+  if (!authorized.value || item.directory || !shown.value) throw Error('无法删除此对象');
+  const version = lifecycle;
+  await deleteStorageObject(item.key);
+  if (!current(version)) return;
+  browser.remove(item.key);
+  if (preview.value?.key === item.key) preview.value = null;
+  if (detail.value?.key === item.key) detail.value = null;
+}
+async function download(item) {
+  if (!authorized.value || item.directory || downloading.value.includes(item.key)) return;
+  const version = lifecycle;
+  downloading.value = [...downloading.value, item.key];
+  downloadError.value = '';
+  downloadMessage.value = '';
+  try {
+    const message = await downloadStorageObject(item.key, () => current(version));
+    if (current(version)) downloadMessage.value = message;
+  } catch (reason) { if (current(version)) downloadError.value = reason instanceof Error ? reason.message : '下载失败，请重试'; }
+  finally { if (current(version)) downloading.value = downloading.value.filter(key => key !== item.key); }
+}
+function modified(value) { return value ? value.replace('T', ' ').replace(/:\d{2}(\.\d+)?Z$/, ' UTC') : '—'; }
+</script>
+<template>
+  <view class="tab-page" :class="themeClass('tab-page')">
+    <PageHeader title="对象存储" back @back="back" />
+    <MobilePage :refreshing="refreshing" :scroll-locked="!!preview || !!detail" @refresh="refresh" @reachbottom="browser.more">
+      <view class="ui-page-body storage-body">
+        <PageState v-if="checking || authError || !authorized" :loading="checking" :error="authError" @retry="initialize" />
+        <template v-else>
+          <view class="ui-toolbar">
+            <FormField v-model="inputPrefix" label="路径前缀" placeholder="路径前缀" hide-label compact stretch />
+            <MobileButton label="搜索路径" icon="ant-design:search-outlined" :loading="data.loading" @click="navigate(inputPrefix)" />
+          </view>
+          <text v-if="data.bucket" class="storage-caption" :class="themeClass('storage-caption')">{{ data.bucket }}</text>
+          <view class="storage-breadcrumbs" aria-label="存储路径">
+            <MobileButton label="根目录" variant="ghost" :disabled="data.loading" @click="navigate('')" />
+            <view v-for="crumb in crumbs" :key="crumb.prefix" class="storage-crumb">
+              <text class="storage-caption" :class="themeClass('storage-caption')">/</text>
+              <MobileButton :label="crumb.label" variant="ghost" :disabled="data.loading" @click="navigate(crumb.prefix)" />
+            </view>
+          </view>
+          <text v-if="downloadError" class="storage-error" role="alert">{{ downloadError }}</text>
+          <text v-if="downloadMessage" class="storage-caption" :class="themeClass('storage-caption')" role="status">{{ downloadMessage }}</text>
+          <PageState :loading="data.loading" :error="data.error" :empty="data.loaded && !data.items.length" :has-content="data.loaded" empty-text="此路径下暂无文件" @retry="browser.retry">
+            <view class="storage-grid">
+              <view v-for="item in data.items" :key="item.key" class="storage-card" :class="themeClass('storage-card')">
+                <view class="storage-cover" :class="themeClass('storage-cover')">
+                  <button role="button" v-if="item.directory" class="storage-cover-button" :aria-label="'打开目录 ' + item.key" :disabled="data.loading" @click="navigate(item.key)">
+                    <AppIcon name="lucide:folder" :size="40" color="#427bea" />
+                  </button>
+                  <StorageThumbnail v-else-if="item.previewable && shown" :key="item.key + ':' + item.lastModified + ':' + item.size" :object-key="item.key" @preview="url => preview = { key: item.key, url }" />
+                  <view v-else class="storage-file-icon"><AppIcon name="lucide:file-text" :size="36" color="#70819a" /></view>
+                </view>
+                <view class="storage-card-content">
+                  <button role="button" class="storage-name-button" :aria-label="(item.directory ? '打开目录 ' : '文件详情 ') + item.key" @click="item.directory ? navigate(item.key) : detail = item">
+                    <text class="storage-name" :class="themeClass('storage-name')">{{ storageObjectName(item.key, data.prefix) }}</text>
+                  </button>
+                  <template v-if="!item.directory">
+                    <text class="storage-caption" :class="themeClass('storage-caption')">{{ storageSize(item.size) }}</text>
+                    <text v-if="item.lastModified" class="storage-caption" :class="themeClass('storage-caption')">{{ modified(item.lastModified) }}</text>
+                    <view class="storage-actions">
+                      <MobileButton :label="'下载 ' + item.key" icon="ant-design:download-outlined" variant="ghost" :loading="downloading.includes(item.key)" @click="download(item)" />
+                      <ConfirmAction :label="'删除 ' + item.key" :message="'确认永久删除「' + storageObjectName(item.key, data.prefix) + '」？'" :action="() => remove(item)">
+                        <template #default="{ open, busy }"><MobileButton :label="'删除 ' + item.key" icon="ant-design:delete-outlined" variant="ghost" :loading="busy" @click="open" /></template>
+                      </ConfirmAction>
+                    </view>
+                  </template>
+                </view>
+              </view>
+            </view>
+          </PageState>
+          <LoadMore :has-more="!!data.nextCursor" :loading="data.loadingMore" :error="data.moreError" @load="browser.retryMore" />
+        </template>
+      </view>
+    </MobilePage>
+    <AdaptiveModal v-if="preview" :label="'预览 ' + preview.key" :max-width="960" show-close @close="preview = null">
+      <text class="storage-name" :class="themeClass('storage-name')">{{ preview.key }}</text>
+      <image class="storage-preview" :src="preview.url" mode="aspectFit" />
+    </AdaptiveModal>
+    <AdaptiveModal v-if="detail" label="文件详情" show-close @close="detail = null">
+      <view class="storage-detail">
+        <text class="storage-name" :class="themeClass('storage-name')">{{ detail.key }}</text>
+        <text class="storage-caption" :class="themeClass('storage-caption')">{{ data.bucket }}</text>
+        <text class="storage-caption" :class="themeClass('storage-caption')">{{ storageSize(detail.size) }} · {{ detail.size }} B</text>
+        <text class="storage-caption" :class="themeClass('storage-caption')">{{ modified(detail.lastModified) }}</text>
+      </view>
+    </AdaptiveModal>
+  </view>
+</template>
+<style scoped lang="scss">
+@use '../../styles/spacing.scss';
+@use '../../styles/spacing-tokens' as *;
+@use '../../styles/typography' as *;
+@use '../../styles/text-colors' as *;
+.storage-body { gap: $space-section; }
+.storage-breadcrumbs { flex-direction: row; flex-wrap: wrap; align-items: center; gap: $space-detail; }
+.storage-crumb { flex-direction: row; align-items: center; min-width: 0; }
+.storage-grid { flex-direction: row; flex-wrap: wrap; gap: $space-section; }
+.storage-card { width: calc((100% - #{$space-section}) / 2); min-width: 0; border-radius: 12px; background-color: #ffffff; }
+.storage-card-dark { background-color: #1c1e22; }
+.storage-cover { height: 136px; border-radius: 12px; background-color: #e9edf3; }
+.storage-cover-dark { background-color: #262a32; }
+.storage-cover-button { display: flex; width: 100%; height: 100%; margin: 0; padding: 0; align-items: center; justify-content: center; background-color: transparent; }
+.storage-file-icon { height: 100%; align-items: center; justify-content: center; }
+.storage-card-content { padding: $space-card; gap: $space-detail; }
+.storage-name-button { display: flex; flex-direction: column; box-sizing: border-box; width: 100%; padding: 0; margin: 0; min-height: $space-controlMin; min-width: 0; align-items: stretch; justify-content: center; text-align: left; white-space: normal; background-color: transparent; }
+.storage-name { @include type-style('body'); width: 100%; min-width: 0; color: #27272a; word-break: break-all; white-space: normal; text-align: left; }
+.storage-name-dark { color: #eeeeef; }
+.storage-caption { @include type-style('caption'); color: $text-secondary-light; word-break: break-all; }
+.storage-caption-dark { color: $text-secondary-dark; }
+.storage-error { @include type-style('label'); color: #df4353; }
+.storage-actions { flex-direction: row; justify-content: flex-end; gap: $space-detail; }
+.storage-preview { width: 100%; height: 60vh; margin-top: $space-section; }
+.storage-detail { gap: $space-inline; }
+/* #ifdef WEB || MP-WEIXIN */
+.storage-cover-button::after, .storage-name-button::after { border: 0; }
+@media (min-width: 640px) { .storage-card { width: calc((100% - #{$space-section * 2}) / 3); } }
+@media (min-width: 960px) { .storage-card { width: calc((100% - #{$space-section * 3}) / 4); } }
+/* #endif */
+</style>

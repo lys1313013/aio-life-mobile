@@ -1,0 +1,58 @@
+<script setup lang="ts">
+import { getCurrentInstance, onMounted, onUnmounted, ref } from 'vue';
+import AppIcon from '../../../components/AppIcon.uvue';
+import MobileButton from '../../../components/MobileButton.uvue';
+import LoadingIndicator from '../../../components/LoadingIndicator.uvue';
+import { readStorageObject, releaseStorageFile } from '../services/storage.ts';
+const props = defineProps<{ objectKey: string }>();
+const emit = defineEmits(['preview']);
+const src = ref(''), loading = ref(false), failed = ref(false);
+const instance = getCurrentInstance();
+let active = true, observer;
+async function load() {
+  if (!active || loading.value || src.value) return;
+  loading.value = true;
+  failed.value = false;
+  try {
+    const path = await readStorageObject(props.objectKey);
+    if (!active) { releaseStorageFile(path); return; }
+    src.value = path;
+  } catch (_) { if (active) failed.value = true; }
+  finally { if (active) loading.value = false; }
+}
+function imageFailed() {
+  releaseStorageFile(src.value);
+  src.value = '';
+  failed.value = true;
+}
+onMounted(() => {
+  observer = uni.createIntersectionObserver(instance?.proxy);
+  observer.relativeToViewport().observe('.storage-thumbnail', result => {
+    if (result.intersectionRatio > 0) { observer?.disconnect(); load(); }
+  });
+});
+onUnmounted(() => {
+  active = false;
+  observer?.disconnect();
+  releaseStorageFile(src.value);
+});
+</script>
+<template>
+  <view class="storage-thumbnail">
+    <LoadingIndicator v-if="loading" compact label="加载图片" />
+    <MobileButton v-else-if="failed" label="重试图片加载" icon="ant-design:reload-outlined" variant="ghost" @click="load" />
+    <button role="button" v-else-if="src" class="storage-image-button" :aria-label="'预览 ' + objectKey" @click="emit('preview', src)">
+      <image class="storage-image" :src="src" mode="aspectFit" @error="imageFailed" />
+    </button>
+    <AppIcon v-else name="ant-design:picture-outlined" :size="32" color="#70819a" />
+  </view>
+</template>
+<style scoped lang="scss">
+@use '../../../styles/spacing-tokens' as *;
+.storage-thumbnail { width: 100%; height: 100%; align-items: center; justify-content: center; }
+.storage-image-button { display: flex; width: 100%; height: 100%; min-height: $space-controlMin; padding: 0; margin: 0; background-color: transparent; border-radius: 0; }
+.storage-image { width: 100%; height: 100%; }
+/* #ifdef WEB || MP-WEIXIN */
+.storage-image-button::after { border: 0; }
+/* #endif */
+</style>
