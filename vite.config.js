@@ -2,9 +2,16 @@ import { defineConfig, loadEnv } from 'vite';
 import uni from '@dcloudio/vite-plugin-uni';
 import { weixinSubpackageVendors } from './scripts/weixin-subpackage-vendors.mjs';
 
-export default defineConfig(({ mode }) => {
+export default defineConfig(({ command, mode }) => {
   const env = loadEnv(mode, process.cwd(), '');
+  // Freeze the package timestamp at build time, independent of the build host's timezone.
+  const buildTime = command === 'build' && process.env.NODE_ENV === 'production'
+    ? new Date(Date.now() + 8 * 60 * 60 * 1000).toISOString().slice(0, 19).replace('T', ' ')
+    : '';
   return {
+    define: {
+      'import.meta.env.VITE_APP_BUILD_TIME': JSON.stringify(buildTime),
+    },
     plugins: [weixinSubpackageVendors(), uni()],
     // Compile object rest/spread before DevTools Babel; its helper modules are
     // otherwise missing from lazy-loaded subpackages. Keep other targets intact.

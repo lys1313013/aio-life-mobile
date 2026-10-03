@@ -3,6 +3,7 @@ import PageHeader from '../../components/PageHeader.uvue';
 import MobilePage from '../../components/MobilePage.uvue';
 import { themeClass } from '../../services/theme.ts';
 import manifest from '../../../package.json';
+const buildTime = import.meta.env.VITE_APP_BUILD_TIME;
 function back() {
   uni.navigateBack({ fail: () => uni.switchTab({ url: '/pages/profile/index' }) });
 }
@@ -15,7 +16,8 @@ function back() {
           class="about-title"
           >AIO Life</text
         ><text class="about-description">记录生活，管理时间与目标。</text
-        ><text class="about-version" :class="themeClass('about-version')">{{ manifest.version }}</text></view
+        ><text class="about-version" :class="themeClass('about-version')">{{ manifest.version }}</text
+        ><text class="about-build-time" :class="themeClass('about-build-time')">{{ buildTime ? `打包时间：${buildTime}（北京时间）` : '开发模式' }}</text></view
       ></MobilePage
     ></view
   >
@@ -51,6 +53,14 @@ function back() {
 
 }
 .about-version-dark {
+  color: $text-secondary-dark;
+}
+.about-build-time {
+  @include type-style('caption');
+  color: $text-secondary-light;
+  text-align: center;
+}
+.about-build-time-dark {
   color: $text-secondary-dark;
 }
 </style>
