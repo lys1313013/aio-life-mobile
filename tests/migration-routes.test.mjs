@@ -16,6 +16,7 @@ const businessPaths=[
  '/finance-management/dashboard','/finance-management/income','/finance-management/expense','/finance-management/import','/finance-management/bank-cards',
  '/my-hub/device','/wardrobe','/membership','/message','/mcp/tools',
  '/config-management/sysDictType','/config-management/sysDictData','/system/user','/system/menu','/system/user-dict','/system/feedback','/system/config','/system/operation-log','/system/access-log',
+ '/system/bank-card-covers','/system/storage',
 ]
 test('迁移基线中的所有业务叶菜单及历史别名均有已注册原生页面',()=>{
  for(const path of businessPaths){const destination=nativeDestination(path);assert.ok(destination,`${path} 缺少原生映射`);assert.ok(routes.includes(destination.split('?')[0].slice(1)),`${path} 指向未注册页面 ${destination}`)}

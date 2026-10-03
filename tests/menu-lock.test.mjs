@@ -22,3 +22,13 @@ test('共用页面按模式隔离菜单锁，详情/新增参数保留', () => {
   assert.equal(matchesNativeMenu('/pages/admin/index?kind=menus', '/system/user'), false);
   assert.equal(matchesNativeMenu('/pages/tasks/todo?detailId=123&taskId=456', '/task-center/todo'), true);
 });
+
+test('新增系统管理页面继承父菜单锁并隔离各自叶菜单', () => {
+  const tree = [{ path: '/system', meta: { menuId: 'system' }, children: [
+    { path: '/system/bank-card-covers', meta: { menuId: 'covers' } },
+    { path: '/system/storage', meta: { menuId: 'storage' } },
+  ] }];
+  assert.deepEqual(lockedMenuPaths('/pages/admin/bank-card-covers', tree, ['system']), ['/system/bank-card-covers']);
+  assert.deepEqual(lockedMenuPaths('/pages/admin/storage', tree, ['system']), ['/system/storage']);
+  assert.deepEqual(lockedMenuPaths('/pages/admin/storage', tree, ['covers']), []);
+});
