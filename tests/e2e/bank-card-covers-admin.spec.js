@@ -142,3 +142,98 @@ test('卡面预览失败重试恢复图片且不误开编辑弹窗', async ({ pa
   await expect(page.getByRole('dialog')).toHaveCount(0);
   expect(errors).toEqual([]);
 });
+
+for (const width of [390, 768, 1440]) for (const theme of ['light', 'dark']) {
+  test(`竖向卡面旋转预览与上传 ${width} ${theme}`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 1000 });
+    await page.emulateMedia({ colorScheme: theme });
+    const state = await setup(page);
+    await page.goto('/#/pages/admin/bank-card-covers');
+    await page.getByRole('button', { name: '新增公共卡面', exact: true }).click();
+    const editor = page.getByRole('dialog', { name: '新增公共卡面', exact: true });
+    const png = await page.evaluate(() => {
+      const canvas = document.createElement('canvas'); canvas.width = 605; canvas.height = 960;
+      const ctx = canvas.getContext('2d');
+      ctx.fillStyle = '#ff0000'; ctx.fillRect(0, 0, 605, 480);
+      ctx.fillStyle = '#0000ff'; ctx.fillRect(0, 480, 605, 480);
+      return canvas.toDataURL('image/png').split(',')[1];
+    });
+    const chooser = page.waitForEvent('filechooser');
+    await editor.getByRole('button', { name: '上传卡面', exact: true }).click();
+    await (await chooser).setFiles({ name: 'portrait.png', mimeType: 'image/png', buffer: Buffer.from(png, 'base64') });
+    const preview = editor.locator('.crop-image');
+    await editor.getByRole('button', { name: '向左旋转90度', exact: true }).click();
+    await expect(preview).toHaveAttribute('style', /rotate\(270deg\)/);
+    await editor.getByRole('button', { name: '向右旋转90度', exact: true }).click();
+    await expect(preview).toHaveAttribute('style', /rotate\(0deg\)/);
+    for (let turn = 0; turn < 4; turn++) await editor.getByRole('button', { name: '向右旋转90度', exact: true }).click();
+    await expect(preview).toHaveAttribute('style', /rotate\(0deg\)/);
+    await editor.getByRole('button', { name: '向右旋转90度', exact: true }).click();
+    if (theme === 'dark') {
+      await picker(page, '图片适配', '填满');
+      await expect(page.locator('.uni-picker-action-confirm:visible, .uni-picker-select .uni-picker-item:visible')).toHaveCount(0);
+    }
+    const stage = await editor.locator('.crop-preview').boundingBox(), image = await preview.boundingBox();
+    expect(Math.abs(stage.width - image.width)).toBeLessThan(1);
+    expect(Math.abs(stage.height - image.height)).toBeLessThan(1);
+    await page.screenshot({ path: `artifacts/cover-rotation/${width}-${theme}.png`, fullPage: true });
+    await editor.getByRole('button', { name: '确认上传', exact: true }).click();
+    await expect(editor.getByRole('button', { name: '更换卡面', exact: true })).toBeVisible();
+    expect(state.uploads).toHaveLength(1);
+    const uploaded = state.uploads[0];
+    const start = uploaded.indexOf(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]));
+    const end = uploaded.indexOf(Buffer.from('IEND'), start) + 8;
+    const pixels = await page.evaluate(async data => {
+      const img = new Image(); img.src = 'data:image/png;base64,' + data; await img.decode();
+      const canvas = document.createElement('canvas'); canvas.width = img.width; canvas.height = img.height;
+      const ctx = canvas.getContext('2d'); ctx.drawImage(img, 0, 0);
+      return { width: img.width, height: img.height, left: [...ctx.getImageData(10, 302, 1, 1).data], right: [...ctx.getImageData(949, 302, 1, 1).data] };
+    }, uploaded.subarray(start, end).toString('base64'));
+    expect(pixels).toEqual({ width: 960, height: 605, left: [0, 0, 255, 255], right: [255, 0, 0, 255] });
+  });
+}
+
+for (const width of [390, 768, 1440]) for (const theme of ['light', 'dark']) {
+  test(`已有卡面旋转取消与保存 ${width} ${theme}`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 1000 });
+    await page.emulateMedia({ colorScheme: theme });
+    const state = await setup(page);
+    await page.goto('/#/pages/admin/bank-card-covers');
+    const png = await page.evaluate(() => {
+      const canvas = document.createElement('canvas'); canvas.width = 605; canvas.height = 960;
+      const ctx = canvas.getContext('2d');
+      ctx.fillStyle = '#ff0000'; ctx.fillRect(0, 0, 605, 480);
+      ctx.fillStyle = '#0000ff'; ctx.fillRect(0, 480, 605, 480);
+      return canvas.toDataURL('image/png').split(',')[1];
+    });
+    await page.route('**/api/file/preview/' + fileId, route => route.fulfill({ contentType: 'image/png', body: Buffer.from(png, 'base64') }));
+    await page.getByRole('button', { name: '编辑' + cover.name, exact: true }).click();
+    const editor = page.getByRole('dialog', { name: '编辑公共卡面', exact: true });
+    await expect(editor.getByRole('button', { name: '移除卡面', exact: true })).toHaveCount(0);
+    await editor.getByRole('button', { name: '旋转已有卡面', exact: true }).click();
+    await editor.getByRole('button', { name: '向右旋转90度', exact: true }).click();
+    await expect(editor.getByRole('button', { name: '保存', exact: true })).toBeDisabled();
+    await editor.getByRole('button', { name: '取消调整', exact: true }).click();
+    expect(state.uploads).toHaveLength(0);
+    await expect(editor.getByRole('button', { name: '保存', exact: true })).toBeEnabled();
+    await editor.getByRole('button', { name: '旋转已有卡面', exact: true }).click();
+    await expect(editor.locator('.crop-image')).toHaveAttribute('style', /rotate\(0deg\)/);
+    await editor.getByRole('button', { name: '向右旋转90度', exact: true }).click();
+    await page.screenshot({ path: `artifacts/cover-rotation/existing-${width}-${theme}.png`, fullPage: true });
+    await editor.getByRole('button', { name: '确认上传', exact: true }).click();
+    await expect(editor.getByRole('button', { name: '旋转已有卡面', exact: true })).toBeVisible();
+    expect(state.uploads).toHaveLength(1);
+    const uploaded = state.uploads[0], start = uploaded.indexOf(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]));
+    const pixels = await page.evaluate(async data => {
+      const img = new Image(); img.src = 'data:image/png;base64,' + data; await img.decode();
+      const canvas = document.createElement('canvas'); canvas.width = img.width; canvas.height = img.height;
+      const ctx = canvas.getContext('2d'); ctx.drawImage(img, 0, 0);
+      return { width: img.width, height: img.height, left: [...ctx.getImageData(10, 302, 1, 1).data], right: [...ctx.getImageData(949, 302, 1, 1).data] };
+    }, uploaded.subarray(start, uploaded.indexOf(Buffer.from('IEND'), start) + 8).toString('base64'));
+    expect(pixels).toEqual({ width: 960, height: 605, left: [0, 0, 255, 255], right: [255, 0, 0, 255] });
+    await editor.getByRole('button', { name: '保存', exact: true }).click();
+    await expect(editor).toHaveCount(0);
+    expect(state.calls.at(-1).method).toBe('PUT');
+    expect(state.calls.at(-1).body.fileId).toBe(uploadedId);
+  });
+}

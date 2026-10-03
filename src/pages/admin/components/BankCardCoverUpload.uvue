@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { computed, getCurrentInstance, nextTick, onUnmounted, ref } from 'vue';
+import { computed, getCurrentInstance, nextTick, onUnmounted, ref, watch } from 'vue';
 import { session } from '../../../services/session.ts';
-import { uploadAttachment } from '../../../services/attachments.ts';
+import { authFileUrl, uploadAttachment } from '../../../services/attachments.ts';
 import { coverPlacement } from '../services/bank-card-covers.ts';
 import MobileButton from '../../../components/MobileButton.uvue';
 import FormActions from '../../../components/FormActions.uvue';
@@ -9,29 +9,41 @@ import FormField from '../../../components/FormField.uvue';
 const props = defineProps<{ disabled: boolean; fileId: string }>();
 const emit = defineEmits(['change', 'busy']);
 const source = ref(''), mode = ref('完整'), zoom = ref(100), busy = ref(false), error = ref('');
+const rotation = ref(0), loadingExisting = ref(false);
+let generation = 0;
 const instance = getCurrentInstance();
 const canvasId = 'bank-card-cover-upload-' + instance?.uid;
 let active = true, width = 0, height = 0;
-const imageStyle = computed(() => ({ transform: 'scale(' + (mode.value === '填满' ? zoom.value / 100 : 1) + ')' }));
+const imageStyle = computed(() => ({
+  width: rotation.value % 180 !== 0 ? (605 / 960 * 100) + '%' : '100%',
+  height: rotation.value % 180 !== 0 ? (960 / 605 * 100) + '%' : '100%',
+  transform: 'translate(-50%, -50%) rotate(' + rotation.value + 'deg) scale(' + (mode.value === '填满' ? zoom.value / 100 : 1) + ')',
+}));
+function rotate(direction: number) {
+  if (busy.value || props.disabled) return;
+  rotation.value = (rotation.value + direction + 360) % 360;
+}
 function setBusy(value) { busy.value = value; emit('busy', value || !!source.value); }
 function clear() {
+  generation++;
   // #ifdef WEB
   if (source.value.startsWith('blob:')) URL.revokeObjectURL(source.value);
   // #endif
-  source.value = ''; error.value = ''; emit('busy', false);
+  source.value = ''; error.value = ''; busy.value = false; loadingExisting.value = false; emit('busy', false);
 }
 async function choose() {
   if (props.disabled || busy.value) return;
   const token = session.token;
+  const version = ++generation;
   setBusy(true); error.value = '';
   try {
     const result: any = await new Promise((resolve, reject) => uni.chooseImage({ count: 1, sizeType: ['original'], success: resolve, fail: reject }));
-    if (!active || token !== session.token) return;
+    if (!active || version !== generation || token !== session.token) return;
     const path = result.tempFilePaths[0];
     const size = result.tempFiles?.[0]?.size;
     if (typeof size === 'number' && size > 5 * 1024 * 1024) throw Error('请选择不超过5MB的PNG或JPEG图片');
     const info: any = await new Promise((resolve, reject) => uni.getImageInfo({ src: path, success: resolve, fail: () => reject(Error('无法读取图片，请重试')) }));
-    if (!active || token !== session.token) return;
+    if (!active || version !== generation || token !== session.token) return;
     let imageType = info.type || '';
     // H5 的 getImageInfo 只返回宽高，原始 File 保留 MIME 类型。
     // #ifdef WEB
@@ -39,11 +51,34 @@ async function choose() {
     // #endif
     if (!['png', 'jpeg', 'jpg'].includes(String(imageType).toLowerCase())) throw Error('卡面仅支持PNG或JPEG图片');
     coverPlacement(info.width, info.height, 'contain');
-    width = info.width; height = info.height; source.value = path; mode.value = '完整'; zoom.value = 100;
+    width = info.width; height = info.height; source.value = path; mode.value = '完整'; zoom.value = 100; rotation.value = 0;
   } catch (reason) {
-    if (active && token === session.token && !String(reason.errMsg || '').includes('cancel')) error.value = reason.message || '选择图片失败，请重试';
-  } finally { if (active) setBusy(false); }
+    if (active && version === generation && token === session.token && !String(reason.errMsg || '').includes('cancel')) error.value = reason.message || '选择图片失败，请重试';
+  } finally { if (active && version === generation) setBusy(false); }
 }
+async function editExisting() {
+  if (props.disabled || busy.value || !props.fileId) return;
+  const token = session.token, version = ++generation;
+  let path = '';
+  setBusy(true); loadingExisting.value = true; error.value = '';
+  try {
+    path = await authFileUrl(props.fileId);
+    if (!active || version !== generation || token !== session.token) return;
+    const info: any = await new Promise((resolve, reject) => uni.getImageInfo({ src: path, success: resolve, fail: () => reject(Error('无法读取卡面，请重试')) }));
+    if (!active || version !== generation || token !== session.token) return;
+    coverPlacement(info.width, info.height, 'contain');
+    width = info.width; height = info.height; source.value = path; path = '';
+    mode.value = '完整'; zoom.value = 100; rotation.value = 0;
+  } catch (reason) {
+    if (active && version === generation && token === session.token) error.value = reason.message || '卡面加载失败，请重试';
+  } finally {
+    // #ifdef WEB
+    if (path.startsWith('blob:')) URL.revokeObjectURL(path);
+    // #endif
+    if (active && version === generation) { loadingExisting.value = false; setBusy(false); }
+  }
+}
+watch(() => [props.fileId, session.token], clear);
 function render(): Promise<string> {
   return new Promise((resolve, reject) => {
     uni.createCanvasContextAsync({ id: canvasId, component: instance?.proxy,
@@ -54,8 +89,15 @@ function render(): Promise<string> {
           ctx.canvas.width = 960; ctx.canvas.height = 605;
           const image = context.createImage();
           await new Promise((done, fail) => { image.onload = done; image.onerror = () => fail(Error('卡面读取失败')); image.src = source.value; });
-          const box = coverPlacement(width, height, mode.value === '填满' ? 'cover' : 'contain', zoom.value / 100);
-          ctx.clearRect(0, 0, 960, 605); ctx.drawImage(image, box.x, box.y, box.width, box.height);
+          const swapped = rotation.value % 180 !== 0;
+          const box = coverPlacement(swapped ? height : width, swapped ? width : height, mode.value === '填满' ? 'cover' : 'contain', zoom.value / 100);
+          const drawWidth = swapped ? box.height : box.width, drawHeight = swapped ? box.width : box.height;
+          ctx.clearRect(0, 0, 960, 605);
+          ctx.save();
+          ctx.translate(960 / 2, 605 / 2);
+          ctx.rotate(rotation.value * Math.PI / 180);
+          ctx.drawImage(image, -drawWidth / 2, -drawHeight / 2, drawWidth, drawHeight);
+          ctx.restore();
           const data = context.toDataURL('image/png');
           if (!data.startsWith('data:image/png;base64,')) throw Error('图片处理失败');
           if (data.split(',')[1].length * 3 / 4 > 3 * 1024 * 1024) throw Error('处理后的卡面不能超过3MB');
@@ -68,12 +110,13 @@ function render(): Promise<string> {
 async function confirm() {
   if (!source.value || busy.value || props.disabled) return;
   const token = session.token;
+  const version = ++generation;
   let path = '';
   setBusy(true); error.value = '';
   try {
     await nextTick();
     const data = await render();
-    if (!active || token !== session.token) return;
+    if (!active || version !== generation || token !== session.token) return;
     // #ifdef WEB
     const bytes = uni.base64ToArrayBuffer(data.split(',')[1]);
     path = URL.createObjectURL(new Blob([bytes], { type: 'image/png' }));
@@ -87,11 +130,11 @@ async function confirm() {
     // #ifndef WEB
     await new Promise((resolve, reject) => uni.getFileSystemManager().writeFile({ filePath: path, data: uni.base64ToArrayBuffer(data.split(',')[1]), success: resolve, fail: () => reject(Error('卡面文件生成失败')) }));
     // #endif
-    if (!active || token !== session.token) return;
+    if (!active || version !== generation || token !== session.token) return;
     const result = await uploadAttachment('/system/bank-card-covers/upload', path);
-    if (active && token === session.token) { emit('change', result.id); clear(); }
+    if (active && version === generation && token === session.token) { emit('change', result.id); clear(); }
   } catch (reason) {
-    if (active && token === session.token) error.value = reason.message || '上传失败，请重试';
+    if (active && version === generation && token === session.token) error.value = reason.message || '上传失败，请重试';
   } finally {
     // #ifdef WEB
     if (path.startsWith('blob:')) URL.revokeObjectURL(path);
@@ -99,7 +142,7 @@ async function confirm() {
     // #ifndef WEB
     if (path) uni.getFileSystemManager().unlink({ filePath: path });
     // #endif
-    if (active) setBusy(false);
+    if (active && version === generation) setBusy(false);
   }
 }
 onUnmounted(() => { active = false; clear(); });
@@ -108,11 +151,15 @@ onUnmounted(() => { active = false; clear(); });
   <view class="cover-upload">
     <template v-if="source">
       <view class="crop-preview"><image class="crop-image" :src="source" :mode="mode === '填满' ? 'aspectFill' : 'aspectFit'" :style="imageStyle" aria-label="调整卡面预览" /></view>
+      <view class="ui-row">
+        <MobileButton label="向左旋转90度" icon="ant-design:undo-outlined" variant="quiet" :disabled="busy || disabled" @click="rotate(-90)" />
+        <MobileButton label="向右旋转90度" icon="ant-design:reload-outlined" variant="quiet" :disabled="busy || disabled" @click="rotate(90)" />
+      </view>
       <FormField label="图片适配" kind="selector" :options="['完整', '填满']" v-model="mode" :disabled="busy" />
       <slider v-if="mode === '填满'" :value="zoom" :min="100" :max="300" :step="5" :disabled="busy" aria-label="卡面缩放" @changing="zoom = $event.detail.value" @change="zoom = $event.detail.value" />
       <FormActions><MobileButton label="取消调整" variant="quiet" :disabled="busy" @click="clear" /><MobileButton label="确认上传" :loading="busy" @click="confirm" /></FormActions>
     </template>
-    <view v-else class="ui-row"><MobileButton :label="fileId ? '更换卡面' : '上传卡面'" icon="ant-design:upload-outlined" variant="quiet" :disabled="disabled" :loading="busy" @click="choose" /><MobileButton v-if="fileId" label="移除卡面" icon="ant-design:delete-outlined" variant="quiet" :disabled="disabled || busy" @click="emit('change', '')" /></view>
+    <view v-else class="ui-row"><MobileButton :label="fileId ? '更换卡面' : '上传卡面'" icon="ant-design:upload-outlined" variant="quiet" :disabled="disabled" :loading="busy && !loadingExisting" @click="choose" /><MobileButton v-if="fileId" label="旋转已有卡面" icon="ant-design:reload-outlined" variant="quiet" :disabled="disabled || busy" :loading="loadingExisting" @click="editExisting" /></view>
     <text v-if="error" class="upload-error ui-mt-sm" role="alert">{{ error }}</text>
     <canvas :id="canvasId" :canvas-id="canvasId" type="2d" class="upload-canvas" />
   </view>
@@ -121,8 +168,8 @@ onUnmounted(() => { active = false; clear(); });
 @use '../../../styles/spacing.scss';
 @use '../../../styles/spacing-tokens' as *;
 @use '../../../styles/typography' as *;
-.crop-preview { width: 100%; aspect-ratio: 960 / 605; overflow: hidden; border-radius: 14px; background-color: #e6e9ee; margin-bottom: $space-form; }
-.crop-image { width: 100%; height: 100%; }
+.crop-preview { position: relative; width: 100%; aspect-ratio: 960 / 605; overflow: hidden; border-radius: 14px; background-color: #e6e9ee; margin-bottom: $space-form; }
+.crop-image { position: absolute; top: 50%; left: 50%; }
 .upload-error { @include type-style('caption'); color: #d44756; }
 // 画布尺寸是卡面输出几何规格，不参与表单间距。
 .upload-canvas { position: fixed; left: -2000px; top: 0; width: 960px; height: 605px; pointer-events: none; }
