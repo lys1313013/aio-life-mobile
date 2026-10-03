@@ -1,0 +1,93 @@
+<script setup lang="ts">
+import { onUnmounted, ref } from 'vue';
+import AdaptiveModal from '../../components/AdaptiveModal.uvue';
+import FormActions from '../../components/FormActions.uvue';
+import FormField from '../../components/FormField.uvue';
+import MobileButton from '../../components/MobileButton.uvue';
+import { request } from '../../services/api.ts';
+import { todayDate } from '../../services/dashboard.ts';
+import type { WatchedTask } from '../../services/dashboard.ts';
+import { session } from '../../services/session.ts';
+
+const props = defineProps<{ task: WatchedTask }>();
+const emit = defineEmits(['close', 'saved']);
+const form = ref({
+  content: props.task.content,
+  priority: props.task.priority ?? 10,
+  startTime: props.task.startTime?.replace('T', ' ') ?? null,
+  endTime: props.task.endTime?.replace('T', ' ') ?? null,
+  isStarred: props.task.isStarred ?? 1,
+});
+const priorities = [1, 10, 20], priorityLabels = ['高', '中', '低'];
+const dateFields = [{ key: 'startTime', label: '开始' }, { key: 'endTime', label: '结束' }];
+const saving = ref(false), error = ref('');
+let savedStarred = props.task.isStarred ?? 1;
+const owner = session.token;
+let active = true;
+onUnmounted(() => { active = false; });
+function isCurrent() { return active && owner === session.token; }
+function setDate(key: string, value: string) {
+  form.value[key] = value + ' ' + (form.value[key]?.slice(11, 19) || '00:00:00');
+}
+function setTime(key: string, value: string) {
+  form.value[key] = (form.value[key]?.slice(0, 10) || todayDate()) + ' ' + value + ':00';
+}
+async function save() {
+  if (saving.value || !isCurrent()) return;
+  error.value = '';
+  if (!form.value.content.trim()) { error.value = '请输入内容'; return; }
+  if (!priorities.includes(form.value.priority)) { error.value = '请选择优先级'; return; }
+  if (form.value.startTime && form.value.endTime && form.value.endTime < form.value.startTime) {
+    error.value = '结束时间不能早于开始时间'; return;
+  }
+  const payload = {
+    id: props.task.id, taskId: props.task.taskId,
+    content: form.value.content.trim(), priority: form.value.priority,
+    startTime: form.value.startTime, endTime: form.value.endTime,
+  };
+  saving.value = true;
+  try {
+    // 首页使用轻量接口，不同步引入待办分包。
+    const updated = await request<boolean>('/taskDetails', 'PUT', payload);
+    if (!isCurrent()) return;
+    if (!updated) throw new Error('保存失败，待办可能已被删除');
+    if (form.value.isStarred !== savedStarred) {
+      const starred = await request<boolean>('/taskDetails/' + (form.value.isStarred === 1 ? 'star/' : 'unstar/') + encodeURIComponent(props.task.id), 'POST');
+      if (!isCurrent()) return;
+      if (!starred) throw new Error('内容已保存，关注状态更新失败，请重试');
+      savedStarred = form.value.isStarred;
+    }
+    emit('saved', { ...props.task, ...payload, isStarred: savedStarred });
+  } catch (e) {
+    if (isCurrent()) error.value = e.message;
+  } finally {
+    saving.value = false;
+  }
+}
+</script>
+
+<template>
+  <AdaptiveModal label="编辑待办" :busy="saving" :content-key="error" @close="emit('close')">
+    <FormField label="内容" required v-model="form.content" :disabled="saving" />
+    <FormField label="优先级" kind="selector" :options="priorityLabels" :model-value="priorityLabels[priorities.indexOf(form.priority)]" :disabled="saving" @update:model-value="form.priority = priorities[priorityLabels.indexOf($event)]" />
+    <view v-for="field in dateFields" :key="field.key" class="ui-field-row">
+      <FormField compact stretch :label="field.label + '日期'" kind="date" :model-value="form[field.key]?.slice(0, 10) || ''" :disabled="saving" @update:model-value="setDate(field.key, $event)" />
+      <FormField compact stretch :label="field.label + '时间'" kind="time" :model-value="form[field.key]?.slice(11, 16) || ''" :disabled="saving" @update:model-value="setTime(field.key, $event)" />
+    </view>
+    <text v-if="error" class="form-error" role="alert">{{ error }}</text>
+    <FormActions>
+      <template #secondary>
+        <MobileButton :label="form.isStarred === 1 ? '取消关注' : '添加关注'" :icon="form.isStarred === 1 ? 'ant-design:star-filled' : 'ant-design:star-outlined'" variant="ghost" :disabled="saving" @click="form.isStarred = form.isStarred === 1 ? 0 : 1" />
+      </template>
+      <MobileButton label="取消" variant="quiet" :disabled="saving" @click="emit('close')" />
+      <MobileButton label="保存" :loading="saving" @click="save" />
+    </FormActions>
+  </AdaptiveModal>
+</template>
+
+<style scoped lang="scss">
+@use '../../styles/spacing.scss';
+@use '../../styles/spacing-tokens' as *;
+@use '../../styles/typography' as *;
+.form-error { @include type-style('body'); color: #e05252; margin-bottom: $space-section; }
+</style>

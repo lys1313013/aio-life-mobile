@@ -36,6 +36,10 @@ export interface WatchedTask {
   taskName?: string
   isCompleted: number
   priority?: number
+  sort?: number
+  isStarred?: number
+  startTime?: string | null
+  endTime?: string | null
 }
 export interface ExerciseItem {
   icon?: string

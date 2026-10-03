@@ -92,7 +92,7 @@ test('运动分页失败保留已有记录，重试使用同一游标', async ({
 
 test('首页关注待办失败可重试，完成只提交长ID与状态',async({page})=>{
   let fail=true;const writes=[];const detail={id:'9223372036854775807',taskId:'9223372036854775806',content:'模拟关注待办',isCompleted:0};
-  await page.route('http://127.0.0.1:5180/api/**',async route=>{
+  await page.route(new URL('/api/**',test.info().project.use.baseURL).href,async route=>{
     const path=new URL(route.request().url()).pathname;let data=dashboardFixture(path);
     if(path==='/api/auth/login')data={accessToken:'dashboard-action-fixture'};
     if(path==='/api/user/info')data={id:'fixture-user',nickname:'模拟首页'};
@@ -109,8 +109,12 @@ test('首页关注待办失败可重试，完成只提交长ID与状态',async({
   fail=false;await page.getByRole('button',{name:'重试待办',exact:true}).click();await page.getByRole('button',{name:'完成待办',exact:true}).click();
   await expect(page.getByRole('button',{name:'标记未完成',exact:true})).toBeVisible();
   expect(writes.at(-1)).toEqual({id:'9223372036854775807',isCompleted:1});
+  const home=page.url();
   await page.getByRole('button',{name:'编辑待办 模拟关注待办',exact:true}).click();
-  await expect(page).toHaveURL(/detailId=9223372036854775807&taskId=9223372036854775806/);
+  const editor=page.getByRole('dialog',{name:'编辑待办',exact:true});
+  await expect(editor).toBeVisible();
+  await expect(editor.getByRole('textbox',{name:'内容',exact:true})).toHaveValue(detail.content);
+  await expect(page).toHaveURL(home);
 });
 
 for (const width of [390, 768, 1440]) {

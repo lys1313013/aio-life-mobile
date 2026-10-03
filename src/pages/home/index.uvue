@@ -35,6 +35,7 @@ import type {
 } from '../../services/dashboard.ts'
 import TimeRecordEditor from '../../components/TimeRecordEditor.uvue'
 import RecordCreateModal from './RecordCreateModal.uvue'
+import WatchedTaskEditModal from './WatchedTaskEditModal.uvue'
 import { takeRecordChange } from '../../services/time-changes.ts'
 import { elapsedSinceRecord } from '../../services/time-format.ts'
 import { todayDate } from '../../services/dashboard.ts'
@@ -91,6 +92,9 @@ const timeElapsed = computed(() => {
 })
 const timeEditor = ref<{ recordId: string } | null>(null)
 const recordCreateKind = ref<'think' | 'exercise' | null>(null)
+const thoughtEditId = ref('')
+const watchedEditor = ref<WatchedTask | null>(null)
+const editVersions = { thoughts: 0, watched: 0 }
 function openTimeRecord(id = '') { timeEditor.value = { recordId: id } }
 function closeTimeEditor() {
   timeEditor.value = null
@@ -179,7 +183,7 @@ onShow(() => {
   }
   refresh()
 })
-onHide(() => { active = false; timeEditor.value = null; recordCreateKind.value = null; if (minuteTimer) clearInterval(minuteTimer); minuteTimer = null })
+onHide(() => { active = false; timeEditor.value = null; recordCreateKind.value = null; thoughtEditId.value = ''; watchedEditor.value = null; if (minuteTimer) clearInterval(minuteTimer); minuteTimer = null })
 onUnload(() => {
   active = false
   if (minuteTimer) clearInterval(minuteTimer)
@@ -252,6 +256,7 @@ async function loadSection(key: string) {
   state.error = ''
   if (key === 'exercise' || key === 'commits') pageVersions[key]++
   const token = session.token
+  const editVersion = editVersions[key]
   try {
     if (key === 'time') {
       const requestedDate = todayDate()
@@ -270,11 +275,11 @@ async function loadSection(key: string) {
     }
     if (key === 'thoughts') {
       const data = await getThoughts()
-      if (isCurrent(token)) thoughts.value = data
+      if (isCurrent(token) && editVersion === editVersions.thoughts) thoughts.value = data
     }
     if (key === 'watched') {
       const data = await getWatched()
-      if (isCurrent(token)) watched.value = data
+      if (isCurrent(token) && editVersion === editVersions.watched) watched.value = data
     }
     if (key === 'exercise') {
       const data = await getExercises()
@@ -339,14 +344,33 @@ function openOverviewLink(item: OverviewCard, destination?: string) {
   openBusinessLink(destination)
 }
 const taskBusy = ref('')
-function openWatched(task) {uni.navigateTo({url:'/pages/tasks/todo?detailId='+encodeURIComponent(task.id)+(task.taskId?'&taskId='+encodeURIComponent(task.taskId):'')})}
-function openThought(thought) {uni.navigateTo({url:'/pages/records/notes?kind=think&editId='+encodeURIComponent(thought.id)})}
-function addThought() { recordCreateKind.value = 'think' }
+function openWatched(task: WatchedTask) { if (!taskBusy.value) watchedEditor.value = { ...task } }
+function openThought(thought: Thought) { thoughtEditId.value = thought.id; recordCreateKind.value = 'think' }
+function addThought() { thoughtEditId.value = ''; recordCreateKind.value = 'think' }
 function addExercise() { recordCreateKind.value = 'exercise' }
-function handleRecordCreated() {
+function handleWatchedSaved(task: WatchedTask) {
+  editVersions.watched++
+  watched.value = watched.value.map(item => item.id === task.id ? task : item)
+    .filter(item => item.isStarred !== 0)
+    .sort((a, b) => (a.priority ?? 10) - (b.priority ?? 10) || (a.sort ?? 0) - (b.sort ?? 0) || a.id.length - b.id.length || a.id.localeCompare(b.id))
+  watchedEditor.value = null
+}
+function handleThoughtDeleted(id: string) {
+  editVersions.thoughts++
+  thoughts.value = thoughts.value.filter(item => item.id !== id)
+  recordCreateKind.value = null
+  thoughtEditId.value = ''
+}
+function handleRecordCreated(savedThought) {
   const kind = recordCreateKind.value
   recordCreateKind.value = null
-  if (kind === 'think') loadSection('thoughts')
+  thoughtEditId.value = ''
+  if (kind === 'think') {
+    if (savedThought) {
+      editVersions.thoughts++
+      thoughts.value = thoughts.value.flatMap(item => item.id === savedThought.id ? (savedThought.isPinned === 1 ? [{ ...item, ...savedThought }] : []) : [item])
+    } else loadSection('thoughts')
+  }
   if (kind === 'exercise') {
     loadSection('exercise')
     const card = cards.value.find(item => item.type === 'EXERCISE')
@@ -769,7 +793,8 @@ function trendLines(points) {
       </view></scroll-view
     >
     <TimeRecordEditor v-if="timeEditor" :record-id="timeEditor.recordId" @close="closeTimeEditor" />
-    <RecordCreateModal v-if="recordCreateKind" :kind="recordCreateKind" @close="recordCreateKind = null" @saved="handleRecordCreated" />
+    <RecordCreateModal v-if="recordCreateKind" :kind="recordCreateKind" :thought-id="recordCreateKind === 'think' ? thoughtEditId : ''" @close="recordCreateKind = null" @saved="handleRecordCreated" @deleted="handleThoughtDeleted" />
+    <WatchedTaskEditModal v-if="watchedEditor" :task="watchedEditor" @close="watchedEditor = null" @saved="handleWatchedSaved" />
   </view>
 </template>
 
