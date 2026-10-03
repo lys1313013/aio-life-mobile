@@ -80,7 +80,7 @@ export async function logout() {
   }
 }
 
-export function uploadAvatar(filePath: string): Promise<string> {
+export function uploadAvatar(filePath: string): Promise<{ id: string; fileUrl: string }> {
   const token = session.token
   return new Promise((resolve, reject) => {
     uni.uploadFile({
@@ -90,8 +90,8 @@ export function uploadAvatar(filePath: string): Promise<string> {
         try {
           const body = typeof response.data === 'string' ? JSON.parse(response.data) : response.data
           const data = readResponse(response.statusCode, body)
-          if (!data || typeof data.fileUrl !== 'string' || !data.fileUrl) throw new Error('头像上传结果异常，请重试')
-          resolve(data.fileUrl)
+          if (!data || typeof data.id !== 'string' || !/^[a-fA-F0-9]{32}$/.test(data.id) || typeof data.fileUrl !== 'string' || !data.fileUrl) throw new Error('头像上传结果异常，请重试')
+          resolve({ id: data.id, fileUrl: data.fileUrl })
         } catch (error) {
           if (response.statusCode === 401) {
             if (session.token === token) clearSession()

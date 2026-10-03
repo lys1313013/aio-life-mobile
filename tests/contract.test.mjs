@@ -36,3 +36,15 @@ test('实际登录账号优先于旧接口的昵称展示字段', () => {
   const user = readUser({ id: '123', username: '生活记录者', accountUsername: 'u_123' });
   assert.equal(user.username, 'u_123');
 });
+
+
+test('头像只读取文件 ID 和展示 URL，不再使用旧 avatar 地址', () => {
+  const fileId = '0123456789abcdef0123456789abcdef';
+  const user = readUser({ id: '42', avatarFileId: fileId, avatarUrl: 'https://example.test/api/file/preview/' + fileId, avatar: 'http://localhost/old.png' });
+  assert.equal(user.avatarFileId, fileId);
+  assert.equal(user.avatarUrl, 'https://example.test/api/file/preview/' + fileId);
+  assert.equal(user.avatar, undefined);
+  assert.equal(readUser({ id: '42', avatar: 'http://localhost/old.png' }).avatarUrl, '');
+  assert.equal(readUser({ id: '42', avatarFileId: null }).avatarFileId, null);
+  assert.throws(() => readUser({ id: '42', avatarFileId: 123 }), /头像信息异常/);
+});

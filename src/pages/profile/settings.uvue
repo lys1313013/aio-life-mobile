@@ -13,7 +13,7 @@ const saving = ref(false)
 const uploading = ref(false)
 const ready = ref(false)
 const errorText = ref('')
-const form = ref({ nickname: '', introduction: '', avatar: '' })
+const form = ref<{ nickname: string; introduction: string; avatarFileId: string | null; avatarUrl: string }>({ nickname: '', introduction: '', avatarFileId: null, avatarUrl: '' })
 const email = computed(() => session.user?.email || '未设置')
 let active = false, revision = 0
 function clearPage() {
@@ -23,7 +23,7 @@ function clearPage() {
   saving.value = false
   uploading.value = false
   errorText.value = ''
-  form.value = { nickname: '', introduction: '', avatar: '' }
+  form.value = { nickname: '', introduction: '', avatarFileId: null, avatarUrl: '' }
 }
 function suspend() { active = false; clearPage() }
 watch(() => session.token, () => {
@@ -63,7 +63,8 @@ async function load() {
     form.value = {
       nickname: user.nickname,
       introduction: user.introduction,
-      avatar: user.avatar
+      avatarFileId: user.avatarFileId,
+      avatarUrl: user.avatarUrl
     }
     ready.value = true
   } catch (error) {
@@ -83,8 +84,11 @@ function chooseAvatar() {
       uploading.value = true
       errorText.value = ''
       try {
-        const url = await uploadAvatar(result.tempFilePaths[0])
-        if (current(token, version)) form.value.avatar = url
+        const uploaded = await uploadAvatar(result.tempFilePaths[0])
+        if (current(token, version)) {
+          form.value.avatarFileId = uploaded.id
+          form.value.avatarUrl = uploaded.fileUrl
+        }
       } catch (error) {
         if (current(token, version)) failure(error)
       } finally {
@@ -107,12 +111,12 @@ async function save() {
   saving.value = true
   errorText.value = ''
   const token = session.token, version = revision
-  const data = { ...form.value, nickname }
+  const data = { nickname, introduction: form.value.introduction, avatarFileId: form.value.avatarFileId }
   try {
     await request('/users', 'PUT', data)
     if (!current(token, version)) return
     if (session.user)
-      session.user = { ...session.user, ...data, name: nickname }
+      session.user = { ...session.user, ...data, avatarUrl: form.value.avatarUrl, name: nickname }
     uni.showToast({ title: '已保存', icon: 'success' })
     back()
   } catch (error) {
@@ -168,9 +172,9 @@ function back() {
             @click="chooseAvatar"
           >
             <image
-              v-if="form.avatar"
+              v-if="form.avatarUrl"
               class="settings-avatar"
-              :src="form.avatar"
+              :src="form.avatarUrl"
               mode="aspectFill"
             />
             <view

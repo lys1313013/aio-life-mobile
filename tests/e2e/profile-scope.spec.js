@@ -4,7 +4,7 @@ const { dashboardFixture } = require('./fixtures.js');
 async function setup(page) {
   const state = { writes: [], wait: null, pendingReads: 0 };
   await page.addInitScript(() => localStorage.setItem('aio-life-mobile.access-token.v1', 'account-a'));
-  await page.route('http://127.0.0.1:5180/api/**', async route => {
+  await page.route(new URL('/api/**', test.info().project.use.baseURL).href, async route => {
     const path = new URL(route.request().url()).pathname;
     const account = route.request().headers().authorization?.includes('account-b') ? 'B' : 'A';
     let data = dashboardFixture(path);
@@ -44,7 +44,7 @@ test('资料页切账号清空旧表单并保存当前账号数据', async ({ pa
   await signInAsB(page);
   await page.getByRole('button', { name: '保存', exact: true }).click();
   await expect.poll(() => state.writes.length).toBe(1);
-  expect(state.writes[0]).toEqual({ account: 'B', body: { nickname: '用户B', introduction: 'B简介', avatar: '' } });
+  expect(state.writes[0]).toEqual({ account: 'B', body: { nickname: '用户B', introduction: 'B简介', avatarFileId: null } });
 });
 
 test('资料页离页旧加载不能覆盖返回后的当前加载', async ({ page }) => {

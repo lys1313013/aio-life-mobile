@@ -2,8 +2,8 @@ const { test, expect } = require('@playwright/test');
 const { dashboardFixture } = require('./fixtures.js');
 
 async function setup(page) {
-  const state = { profile: { id: '9223372036854775807', accountUsername: 'fixture', nickname: '测试用户', email: 'fixture@example.com', introduction: '测试简介', avatar: '' }, binds: [], writes: [], failSave: false, failList: false, failDelete: false, expired: false, delay: 0 };
-  await page.route('http://127.0.0.1:5180/api/**', async route => {
+  const state = { profile: { id: '9223372036854775807', accountUsername: 'fixture', nickname: '测试用户', email: 'fixture@example.com', introduction: '测试简介', avatarFileId: null }, binds: [], writes: [], failSave: false, failList: false, failDelete: false, expired: false, delay: 0 };
+  await page.route(new URL('/api/**', test.info().project.use.baseURL).href, async route => {
     const path = new URL(route.request().url()).pathname;
     const method = route.request().method();
     if (state.expired) return route.fulfill({ status: 401, body: '未授权' });
@@ -14,7 +14,7 @@ async function setup(page) {
       state.writes.push({ path, method, data: route.request().postDataJSON() });
       if (state.delay) await new Promise(resolve => setTimeout(resolve, state.delay));
       if (state.failSave) return route.fulfill({ json: { rscode: '1', result: '保存失败，请重试' } });
-      Object.assign(state.profile, route.request().postDataJSON()); data = null;
+      Object.assign(state.profile, route.request().postDataJSON()); state.profile.avatarUrl = state.profile.avatarFileId ? '/avatar-fixture.png' : ''; data = null;
     }
     if (path === '/api/userbinds/list') {
       if (state.failList) return route.abort();
@@ -110,7 +110,7 @@ test('基本设置保存失败保留表单，重试保存并更新我的资料',
   await page.getByRole('button', { name: '保存', exact: true }).click();
   await expect(page).toHaveURL(/pages\/profile\/index/);
   await expect(page.getByText('新的昵称', { exact: true })).toBeVisible();
-  expect(state.writes[1].data).toEqual({ nickname: '新的昵称', introduction: '新的简介', avatar: '' });
+  expect(state.writes[1].data).toEqual({ nickname: '新的昵称', introduction: '新的简介', avatarFileId: null });
 });
 
 test('绑定加载失败重试、新增失败重试、编辑留空保留凭证、确认解绑失败重试', async ({ page }) => {
@@ -163,11 +163,11 @@ test('头像通过统一上传接口保存，携带鉴权且不改写邮箱', as
   const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aX1cAAAAASUVORK5CYII=', 'base64');
   let uploaded = false;
   await page.route('**/avatar-fixture.png', route => route.fulfill({ contentType: 'image/png', body: png }));
-  await page.route('http://127.0.0.1:5180/api/file/upload', async route => {
+  await page.route(new URL('/api/file/upload', test.info().project.use.baseURL).href, async route => {
     expect(route.request().headers().authorization).toBe('Bearer profile-fixture');
     expect(route.request().postDataBuffer().toString()).toContain('name="bizType"\r\n\r\navatar');
     uploaded = true;
-    await route.fulfill({ json: { rscode: '0', data: { fileUrl: '/avatar-fixture.png' } } });
+    await route.fulfill({ json: { rscode: '0', data: { id: '0123456789abcdef0123456789abcdef', fileUrl: '/avatar-fixture.png' } } });
   });
   await page.getByRole('button', { name: '基本设置', exact: true }).click();
   await expect(page.locator('[aria-label="昵称"] input')).toHaveValue('测试用户');
@@ -178,7 +178,9 @@ test('头像通过统一上传接口保存，携带鉴权且不改写邮箱', as
   await page.getByRole('button', { name: '保存', exact: true }).click();
   await expect(page).toHaveURL(/pages\/profile\/index/);
   expect(uploaded).toBe(true);
-  expect(state.writes.at(-1).data.avatar).toBe('/avatar-fixture.png');
+  expect(state.writes.at(-1).data.avatarFileId).toBe('0123456789abcdef0123456789abcdef');
+  expect(state.writes.at(-1).data.avatar).toBeUndefined();
+  expect(state.writes.at(-1).data.avatarUrl).toBeUndefined();
   expect(state.writes.at(-1).data.email).toBeUndefined();
 });
 

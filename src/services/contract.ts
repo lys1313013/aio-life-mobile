@@ -52,12 +52,16 @@ export function readUser(data) {
   if (data == null || typeof data.id !== 'string' || data.id.length === 0) {
     throw new Error('用户信息异常，请重试')
   }
+  if (data.avatarFileId != null && (typeof data.avatarFileId !== 'string' || !/^[a-fA-F0-9]{32}$/.test(data.avatarFileId))) {
+    throw new Error('头像信息异常，请重试')
+  }
   return {
     id: data.id,
     username: typeof data.accountUsername === 'string' ? data.accountUsername : (typeof data.username === 'string' ? data.username : ''),
     name: data.nickname || data.realName || data.username || '朋友',
     nickname: typeof data.nickname === 'string' ? data.nickname : '',
-    avatar: typeof data.avatar === 'string' ? data.avatar : '',
+    avatarFileId: typeof data.avatarFileId === 'string' ? data.avatarFileId : null,
+    avatarUrl: typeof data.avatarUrl === 'string' ? data.avatarUrl : '',
     email: typeof data.email === 'string' ? data.email : '',
     introduction: typeof data.introduction === 'string' ? data.introduction : '',
     roles: Array.isArray(data.roles) ? data.roles.filter(role => typeof role === 'string') : [],
