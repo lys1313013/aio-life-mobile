@@ -1,0 +1,49 @@
+<script setup lang="ts">
+import { onUnmounted, ref, watch } from 'vue';
+import { authFileUrl } from '../../../services/attachments.ts';
+import { session } from '../../../services/session.ts';
+import { themeClass } from '../../../services/theme.ts';
+import LoadingIndicator from '../../../components/LoadingIndicator.uvue';
+import MobileButton from '../../../components/MobileButton.uvue';
+const props = defineProps<{ fileId: string; name: string }>();
+const source = ref(''), loading = ref(false), error = ref(false);
+let generation = 0;
+function release(url) {
+  // #ifdef WEB
+  if (url.startsWith('blob:')) URL.revokeObjectURL(url);
+  // #endif
+}
+async function load() {
+  const version = ++generation;
+  release(source.value); source.value = ''; error.value = false;
+  loading.value = !!props.fileId;
+  if (!props.fileId) return;
+  try {
+    const url = await authFileUrl(props.fileId);
+    if (version !== generation) { release(url); return; }
+    source.value = url;
+  } catch (_) {
+    if (version === generation) { error.value = true; loading.value = false; }
+  }
+}
+watch(() => [props.fileId, session.token], load, { immediate: true });
+onUnmounted(() => { generation++; release(source.value); });
+</script>
+<template>
+  <view class="cover-preview" :class="themeClass('cover-preview')">
+    <image v-if="source && !error" class="cover-image" :src="source" mode="aspectFit" :aria-label="name" @load="loading = false" @error="error = true; loading = false" />
+    <view v-if="!source || loading || error" class="cover-placeholder ui-pad-card">
+      <LoadingIndicator v-if="loading" compact label="正在加载卡面" />
+      <template v-else><text class="cover-placeholder-text">{{ error ? '卡面加载失败' : '卡面预览' }}</text><view v-if="error" @click.stop><MobileButton label="重试卡面" icon="ant-design:reload-outlined" variant="quiet" @click="load" /></view></template>
+    </view>
+  </view>
+</template>
+<style scoped lang="scss">
+@use '../../../styles/spacing.scss';
+@use '../../../styles/typography' as *;
+.cover-preview { position: relative; width: 100%; aspect-ratio: 960 / 605; overflow: hidden; border-radius: 14px; background-color: #edf0f4; }
+.cover-preview-dark { background-color: #282d35; }
+.cover-image { position: absolute; width: 100%; height: 100%; }
+.cover-placeholder { position: absolute; inset: 0; align-items: center; justify-content: center; }
+.cover-placeholder-text { @include type-style('caption'); color: #858c97; }
+</style>

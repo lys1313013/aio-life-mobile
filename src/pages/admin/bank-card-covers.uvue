@@ -1,0 +1,192 @@
+<script setup lang="ts">
+import { computed, nextTick, ref, watch } from 'vue';
+import { onHide, onShow, onUnload } from '@dcloudio/uni-app';
+import PageHeader from '../../components/PageHeader.uvue';
+import MobilePage from '../../components/MobilePage.uvue';
+import PageState from '../../components/PageState.uvue';
+import FormField from '../../components/FormField.uvue';
+import FormActions from '../../components/FormActions.uvue';
+import MobileButton from '../../components/MobileButton.uvue';
+import ConfirmAction from '../../components/ConfirmAction.uvue';
+import FloatingActionButton from '../../components/FloatingActionButton.uvue';
+import AdaptiveModal from '../../components/AdaptiveModal.uvue';
+import BankCardCoverPreview from './components/BankCardCoverPreview.uvue';
+import BankCardCoverUpload from './components/BankCardCoverUpload.uvue';
+import { themeClass } from '../../services/theme.ts';
+import { fetchUser } from '../../services/api.ts';
+import { restoreSession, session } from '../../services/session.ts';
+import { listCoverTemplates, listCoverBanks, saveCoverTemplate, setCoverEnabled, deleteCoverTemplate, createCoverMutations } from './services/bank-card-covers.ts';
+const rows = ref<any[]>([]), banks = ref<any[]>([]);
+const loading = ref(false), refreshing = ref(false), loaded = ref(false), error = ref('');
+const keyword = ref(''), bankFilter = ref(''), typeFilter = ref('全部类型'), statusFilter = ref('全部状态');
+const opened = ref(false), saving = ref(false), uploading = ref(false), original = ref<any>(null), editorError = ref('');
+const busy = ref<Record<string, boolean>>({}), rowErrors = ref<Record<string, string>>({});
+const form = ref(empty());
+const authorized = computed(() => !!session.token && !!session.user?.roles?.includes('admin'));
+const locked = computed(() => saving.value || uploading.value);
+const mutations = createCoverMutations();
+let alive = true, generation = 0, editorGeneration = 0, lifecycle = 0;
+function empty() { return { name: '', bankId: '', cardType: 'debit', sourceUrl: '', fileId: '', isEnabled: 1, sortOrder: '0' }; }
+const editableBanks = computed(() => banks.value.filter(bank => bank.enabled || bank.id === original.value?.bankId));
+const shown = computed(() => rows.value.filter(row =>
+  (!keyword.value.trim() || (row.name + ' ' + row.bankName).includes(keyword.value.trim())) &&
+  (!bankFilter.value || row.bankId === bankFilter.value) &&
+  (typeFilter.value === '全部类型' || row.cardType === (typeFilter.value === '信用卡' ? 'credit' : 'debit')) &&
+  (statusFilter.value === '全部状态' || row.isEnabled === (statusFilter.value === '启用' ? 1 : 0))
+).slice().sort((a, b) => a.sortOrder - b.sortOrder || a.id.localeCompare(b.id)));
+function current(token) { return alive && token === session.token; }
+function bankLabel(bank) { return bank.name + (bank.enabled ? '' : '（已停用）'); }
+function changeBank(value) { form.value.bankId = editableBanks.value.find(bank => bankLabel(bank) === value)?.id || ''; }
+function back() { uni.navigateBack({ fail: () => uni.switchTab({ url: '/pages/profile/index' }) }); }
+async function load(refresh = false) {
+  const version = ++generation, mutationVersion = mutations.version(), token = session.token;
+  loading.value = true; refreshing.value = refresh; error.value = '';
+  try {
+    if (!session.user) await fetchUser();
+    if (!current(token)) return;
+    if (!authorized.value) throw Error('当前账号没有管理员权限');
+    const [covers, bankList] = await Promise.all([listCoverTemplates(), listCoverBanks()]);
+    if (!current(token) || version !== generation) return;
+    rows.value = mutations.merge(covers, mutationVersion); banks.value = bankList; loaded.value = true;
+  } catch (reason) {
+    if (current(token) && version === generation) error.value = reason.message || '加载失败，请重试';
+  } finally {
+    if (current(token) && version === generation) { loading.value = false; refreshing.value = false; }
+  }
+}
+function edit(row = null) {
+  if (!authorized.value || !loaded.value || locked.value || (row && busy.value[row.id])) return;
+  original.value = row ? { ...row } : null;
+  form.value = row ? { name: row.name, bankId: row.bankId, cardType: row.cardType, sourceUrl: row.sourceUrl || '', fileId: row.fileId, isEnabled: row.isEnabled, sortOrder: String(row.sortOrder) } : empty();
+  editorGeneration++; editorError.value = ''; opened.value = true;
+}
+function close() { if (!locked.value) { opened.value = false; editorGeneration++; } }
+function replace(row) {
+  mutations.record(row.id, row);
+  rows.value = [...rows.value.filter(item => item.id !== row.id), row];
+}
+async function save() {
+  if (!authorized.value || locked.value || !opened.value) return;
+  const token = session.token, editor = editorGeneration;
+  saving.value = true; editorError.value = '';
+  try {
+    const row = await saveCoverTemplate(form.value, original.value);
+    if (current(token) && editor === editorGeneration) { replace(row); opened.value = false; }
+  } catch (reason) {
+    if (current(token) && editor === editorGeneration) editorError.value = reason.message || '保存失败，请重试';
+  } finally { if (current(token) && editor === editorGeneration) saving.value = false; }
+}
+async function toggle(row) {
+  if (!authorized.value || busy.value[row.id]) return;
+  const token = session.token, version = lifecycle;
+  busy.value[row.id] = true; rowErrors.value[row.id] = '';
+  try { const next = await setCoverEnabled(row); if (current(token) && version === lifecycle) replace(next); }
+  catch (reason) { if (current(token) && version === lifecycle) rowErrors.value[row.id] = reason.message || '更新失败，请重试'; }
+  finally { if (current(token) && version === lifecycle) busy.value[row.id] = false; }
+}
+async function remove(row) {
+  if (!authorized.value) throw Error('当前账号没有管理员权限');
+  if (busy.value[row.id]) throw Error('操作进行中，请稍后重试');
+  const token = session.token, version = lifecycle;
+  busy.value[row.id] = true;
+  try {
+    await deleteCoverTemplate(row);
+    if (current(token) && version === lifecycle) { mutations.record(row.id); rows.value = rows.value.filter(item => item.id !== row.id); delete rowErrors.value[row.id]; }
+  } finally { if (current(token) && version === lifecycle) busy.value[row.id] = false; }
+}
+watch(() => session.token, () => {
+  generation++; editorGeneration++; rows.value = []; banks.value = []; loaded.value = false; opened.value = false;
+  loading.value = false; refreshing.value = false; saving.value = false; uploading.value = false; busy.value = {}; rowErrors.value = {}; mutations.clear();
+}, { flush: 'sync' });
+onShow(() => {
+  alive = true;
+  restoreSession();
+  if (!session.token) { uni.reLaunch({ url: '/pages/login/index' }); return; }
+  load();
+});
+onHide(() => {
+  nextTick(() => {
+    // 打开系统图片选择器不代表离开当前路由；实际切页才废弃编辑和异步响应。
+    const pages = getCurrentPages();
+    if (pages[pages.length - 1]?.route === 'pages/admin/bank-card-covers') return;
+    alive = false; generation++; editorGeneration++; lifecycle++; opened.value = false;
+    saving.value = false; uploading.value = false; loading.value = false; refreshing.value = false; busy.value = {};
+  });
+});
+onUnload(() => { alive = false; generation++; editorGeneration++; lifecycle++; });
+</script>
+<template>
+  <view class="cover-page" :class="themeClass('cover-page')">
+    <PageHeader title="银行卡卡面" back @back="back" />
+    <MobilePage :refreshing="refreshing" @refresh="load(true)">
+      <view class="ui-page-body">
+        <template v-if="authorized">
+          <FormField label="搜索卡面" v-model="keyword" placeholder="名称 / 银行" />
+          <view class="cover-filters ui-field-row">
+            <FormField compact stretch label="银行" kind="selector" :model-value="banks.find(bank => bank.id === bankFilter)?.name || '全部银行'" :options="['全部银行', ...banks.map(bank => bank.name)]" @update:model-value="bankFilter = banks.find(bank => bank.name === $event)?.id || ''" />
+            <FormField compact stretch label="类型" kind="selector" v-model="typeFilter" :options="['全部类型', '储蓄卡', '信用卡']" />
+            <FormField compact stretch label="状态" kind="selector" v-model="statusFilter" :options="['全部状态', '启用', '停用']" />
+          </view>
+        </template>
+        <PageState :loading="loading" :error="error" :empty="authorized && !shown.length" :has-content="rows.length > 0" empty-text="暂无卡面" @retry="load()">
+          <view v-if="authorized" class="cover-grid">
+            <view v-for="row in shown" :key="row.id" class="cover-item">
+              <view class="cover-edit" role="button" :tabindex="busy[row.id] ? -1 : 0" :aria-label="'编辑' + row.name" :aria-disabled="!!busy[row.id]" @click="edit(row)" @keydown.enter.self.prevent="edit(row)" @keydown.space.self.prevent="edit(row)">
+                <BankCardCoverPreview :file-id="row.fileId" :name="row.name" />
+              </view>
+              <view class="cover-info ui-gap-sm">
+                <text class="cover-name">{{ row.name }}</text>
+                <MobileButton :label="(row.isEnabled === 1 ? '停用' : '启用') + row.name" :icon="row.isEnabled === 1 ? 'ant-design:check-circle-outlined' : 'ant-design:stop-outlined'" variant="quiet" :loading="busy[row.id]" @click="toggle(row)" />
+                <ConfirmAction :label="'删除' + row.name" :message="'删除' + row.name + '？'" :action="() => remove(row)">
+                  <template #default="slot"><MobileButton :label="'删除' + row.name" icon="ant-design:delete-outlined" variant="quiet" :disabled="row.usageCount > 0 || busy[row.id]" :loading="slot.busy" @click="slot.open" /></template>
+                </ConfirmAction>
+              </view>
+              <text class="cover-meta" :class="themeClass('cover-meta')">{{ row.bankName }} · {{ row.cardType === 'credit' ? '信用卡' : '储蓄卡' }} · {{ row.usageCount }} 张使用</text>
+              <view v-if="rowErrors[row.id]" class="cover-row-error ui-row"><text class="cover-error">{{ rowErrors[row.id] }}</text><MobileButton label="重试状态更新" icon="ant-design:reload-outlined" variant="quiet" @click="toggle(row)" /></view>
+            </view>
+          </view>
+        </PageState>
+      </view>
+    </MobilePage>
+    <FloatingActionButton v-if="authorized" label="新增公共卡面" :disabled="!loaded || loading || !!error" @click="edit()" />
+    <AdaptiveModal v-if="opened" :label="original ? '编辑公共卡面' : '新增公共卡面'" :max-width="560" :busy="locked" @close="close">
+      <view class="cover-form">
+        <view class="cover-form-preview ui-mb-section"><BankCardCoverPreview :file-id="form.fileId" :name="form.name || '卡面预览'" /></view>
+        <FormField label="卡面图片" required><BankCardCoverUpload :file-id="form.fileId" :disabled="saving" @change="form.fileId = $event" @busy="uploading = $event" /></FormField>
+        <FormField label="卡面名称" required v-model="form.name" :disabled="locked" />
+        <view class="ui-field-row">
+          <FormField compact stretch label="银行" required kind="selector" :model-value="editableBanks.find(bank => bank.id === form.bankId) ? bankLabel(editableBanks.find(bank => bank.id === form.bankId)) : ''" :options="editableBanks.map(bankLabel)" :disabled="locked || !!original?.usageCount" @update:model-value="changeBank" />
+          <FormField compact stretch label="银行卡类型" required kind="selector" :model-value="form.cardType === 'credit' ? '信用卡' : '储蓄卡'" :options="['储蓄卡', '信用卡']" :disabled="locked || !!original?.usageCount" @update:model-value="form.cardType = $event === '信用卡' ? 'credit' : 'debit'" />
+        </view>
+        <FormField label="图片出处" v-model="form.sourceUrl" placeholder="https://" :disabled="locked" />
+        <view class="ui-field-row">
+          <FormField compact stretch label="排序" v-model="form.sortOrder" input-type="number" :disabled="locked" />
+          <FormField compact stretch label="状态" kind="selector" :options="['启用', '停用']" :model-value="form.isEnabled === 1 ? '启用' : '停用'" :disabled="locked" @update:model-value="form.isEnabled = $event === '启用' ? 1 : 0" />
+        </view>
+        <text v-if="editorError" class="cover-error ui-mb-section" role="alert">{{ editorError }}</text>
+        <FormActions><MobileButton label="取消" variant="quiet" :disabled="locked" @click="close" /><MobileButton label="保存" :loading="saving" :disabled="uploading" @click="save" /></FormActions>
+      </view>
+    </AdaptiveModal>
+  </view>
+</template>
+<style scoped lang="scss">
+@use '../../styles/spacing.scss';
+@use '../../styles/spacing-tokens' as *;
+@use '../../styles/typography' as *;
+.cover-page { height: 100%; min-height: 0; color: #27272a; }
+.cover-page-dark { color: #eeeeef; }
+// 底部为56px悬浮按钮预留点击区。
+.cover-grid { display: flex; flex-direction: row; flex-wrap: wrap; align-items: flex-start; gap: $space-section; padding-bottom: calc(56px + #{$space-page} + #{$space-section}); }
+// 卡面保持实体卡比例与可读尺寸，平板和桌面不无限拉伸。
+.cover-item { width: 100%; max-width: 360px; min-width: 0; }
+.cover-edit { width: 100%; min-height: 44px; border-radius: 14px; }
+.cover-info { display: flex; flex-direction: row; align-items: center; margin-top: $space-detail; }
+.cover-name { @include type-style('label'); flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.cover-meta { @include type-style('caption'); color: #666d78; overflow-wrap: anywhere; }
+.cover-meta-dark { color: #a9b0ba; }
+.cover-error { @include type-style('caption'); color: #d44756; }
+.cover-row-error { align-items: center; }
+.cover-form-preview { width: 100%; max-width: 320px; align-self: center; }
+@media (min-width: 640px) { .cover-item { width: calc((100% - #{$space-section}) / 2); } }
+@media (min-width: 1100px) { .cover-item { width: calc((100% - #{$space-section} * 2) / 3); } }
+</style>
