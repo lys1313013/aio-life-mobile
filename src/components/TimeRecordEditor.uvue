@@ -6,6 +6,7 @@ import { themeClass } from '../services/theme.ts'
 import { recordChanged } from '../services/time-changes.ts'
 import { computed, ref, watch, onMounted, onUnmounted } from 'vue'
 import AdaptiveModal from './AdaptiveModal.uvue'
+import TimeEndPicker from './TimeEndPicker.uvue'
 import CategoryIcon from './CategoryIcon.uvue'
 import TimeRelatedSelector from './TimeRelatedSelector.uvue'
 import type { Category, TimeRecord } from '../services/dashboard.ts'
@@ -57,6 +58,7 @@ const form = ref<TimeRecord>({
   exercises: [],
 })
 const choosingCategory = ref(false)
+const choosingEndTime = ref(false)
 const categoryOptions = computed(() =>
   categories.value.filter((category) => category.isEnabled !== 0),
 )
@@ -251,8 +253,10 @@ function changeDate(event) {
 function changeStart(event) {
   form.value.startTime = clockMinutes(event.detail.value)
 }
-function changeEnd(event) {
-  form.value.endTime = clockMinutes(event.detail.value)
+function changeEnd(minutes: number) {
+  if (saving.value || deleting.value) return
+  form.value.endTime = minutes
+  choosingEndTime.value = false
 }
 function changeDuration(event, unit: string) {
   const value = Number(event.detail.value)
@@ -489,13 +493,13 @@ function closeSelection() {
                   <view class="compact-time-arrow-head" />
                 </view>
               </view>
-              <picker class="compact-time-picker" mode="time" aria-label="结束时间"
-                :value="clockLabel(form.endTime)" :disabled="saving || deleting" @change="changeEnd">
+              <button role="button" class="compact-time-picker end-time-trigger" aria-label="结束时间"
+                :disabled="saving || deleting" @click="choosingEndTime = true">
                 <view class="compact-time-field">
                   <text class="compact-time-label" :class="themeClass('compact-time-label')">结束</text>
                   <text class="compact-time-number" :class="themeClass('compact-time-number')">{{ clockLabel(form.endTime) }}</text>
                 </view>
-              </picker>
+              </button>
             </view>
           </view>
 
@@ -567,13 +571,18 @@ function closeSelection() {
                   @touchcancel="stopAdjust"
                 ><AppIcon name="ant-design:minus-outlined" :size="18" /></button>
                 <picker
+                  v-if="field === 'startTime'"
                   class="time-picker"
                   mode="time"
                   :aria-label="field === 'startTime' ? '开始时间' : '结束时间'"
                   :value="clockLabel(form[field])"
                   :disabled="saving || deleting"
-                  @change="field === 'startTime' ? changeStart($event) : changeEnd($event)"
+                  @change="changeStart"
                 ><view class="time-field"><text class="time-number" :class="themeClass('time-number')">{{ clockLabel(form[field]) }}</text></view></picker>
+                <button v-else role="button" class="time-picker end-time-trigger" aria-label="结束时间"
+                  :disabled="saving || deleting" @click="choosingEndTime = true">
+                  <view class="time-field"><text class="time-number" :class="themeClass('time-number')">{{ clockLabel(form.endTime) }}</text></view>
+                </button>
                 <button
                   role="button"
                   class="time-step-button ui-type-body"
@@ -844,6 +853,8 @@ function closeSelection() {
     </view>
   </AdaptiveModal>
 
+  <TimeEndPicker v-if="choosingEndTime" :value="form.endTime"
+    @change="changeEnd" @close="choosingEndTime = false" />
 </template>
 
 <style scoped lang="scss">
@@ -1401,6 +1412,16 @@ function closeSelection() {
   flex: 1;
   min-width: 0;
 }
+.end-time-trigger {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background-color: transparent;
+}
+/* #ifdef WEB || MP-WEIXIN */
+.end-time-trigger::after { border: 0; }
+/* #endif */
 .compact-time-field {
   align-items: center;
   justify-content: center;

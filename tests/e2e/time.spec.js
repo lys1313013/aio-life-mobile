@@ -3,7 +3,7 @@ const { dashboardFixture } = require('./fixtures.js');
 const { pullDown } = require('./gestures.js');
 const today = (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; })();
 async function setup(page, options = {}) {
-  const state = { queries: 0, ranges: [], creates: [], updates: [], deletes: 0, profiles: 0, relatedQueries: [], relatedUpdates: [], coverAuth: [], failRefresh: false, failSave: false, failDelete: false, detailFailure: false, full: false,
+  const state = { queries: 0, ranges: [], creates: [], updates: [], updateIds: [], deletes: 0, profiles: 0, relatedQueries: [], relatedUpdates: [], coverAuth: [], failRefresh: false, failSave: false, failDelete: false, detailFailure: false, full: false,
     records: [{ id: '9223372036854775807', date: today, categoryId: '2', startTime: 540, endTime: 599, title: '晨间运动', description: '保留原有备注', exercises: [{ exerciseTypeId: '9223372036854775806', exerciseCount: 20, description: '三组' }], relateId: '9223372036854775805', relateType: 1 }] };
   Object.assign(state, options);
   await page.route('http://127.0.0.1:5180/api/**', async route => {
@@ -36,7 +36,7 @@ async function setup(page, options = {}) {
       data = state.records.find(r => r.id === match[1]);
     }
     if (match && method === 'PUT') {
-      const payload = req.postDataJSON(); state.updates.push(payload);
+      const payload = req.postDataJSON(); state.updates.push(payload); state.updateIds.push(match[1]);
       state.records = state.records.map(r => r.id === match[1] ? { ...r, ...payload } : r); data = null;
     }
     if (match && method === 'DELETE') {
@@ -91,7 +91,7 @@ async function closeEditor(page) {
 async function previousMinute(page, label) {
   const cdp = await page.context().newCDPSession(page);
   await cdp.send('Emulation.setTouchEmulationEnabled', { enabled: true });
-  await page.locator(`uni-picker[aria-label="${label}"]`).click();
+  await page.locator(`[aria-label="${label}"]`).click();
   // 等待原生 picker 的入场动画，避免用移动中的坐标发起手势。
   await page.waitForTimeout(400);
   const column = page.locator('uni-picker-view-column:visible').nth(1);
@@ -105,8 +105,39 @@ async function previousMinute(page, label) {
   await page.waitForTimeout(200);
   await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
   await page.waitForTimeout(350);
-  await page.locator('.uni-picker-action-confirm:visible').click();
+  await page.locator('.uni-picker-action-confirm:visible, .time-end-confirm:visible').click();
   await cdp.detach();
+}
+
+for (const width of [390, 768, 1440]) for (const colorScheme of ['light', 'dark']) {
+  test(`结束时间选择器内此刻、取消和滚轮 ${width} ${colorScheme}`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 900 });
+    await page.emulateMedia({ colorScheme });
+    await page.clock.setFixedTime(new Date(`${today}T11:22:00`));
+    const state = await setup(page);
+    await page.getByRole('button', { name: '编辑记录 晨间运动' }).click();
+    const editor = page.getByRole('dialog', { name: '编辑时迹', exact: true });
+    await expect(editor.getByText('此刻', { exact: true })).toHaveCount(0);
+    await editor.getByRole('button', { name: '结束时间', exact: true }).click();
+    const picker = page.getByRole('dialog', { name: '选择结束时间', exact: true });
+    await expect(picker).toBeVisible();
+    await page.screenshot({ path: `artifacts/time-end-picker/${width}-${colorScheme}.png` });
+    await picker.getByRole('button', { name: '取消', exact: true }).click();
+    await expect(editor.locator('.compact-time-number').nth(1)).toHaveText('09:59');
+    await previousMinute(page, '结束时间');
+    await expect(editor.locator('.compact-time-number').nth(1)).toHaveText('09:58');
+    await editor.getByRole('button', { name: '结束时间', exact: true }).click();
+    // 点击时读取当前分钟，不能使用打开弹层时的旧时间。
+    await page.clock.setFixedTime(new Date(`${today}T11:23:00`));
+    await picker.getByRole('button', { name: '结束时间设为此刻' }).click();
+    await expect(picker).toHaveCount(0);
+    await expect(editor.locator('.compact-time-number').nth(0)).toHaveText('09:00');
+    await expect(editor.locator('.compact-time-number').nth(1)).toHaveText('11:23');
+    await expect(editor.locator('[aria-label="记录时长"]')).toHaveText('2小时24分');
+    await editor.getByRole('button', { name: '保存', exact: true }).click();
+    await expect(editor).toHaveCount(0);
+    expect(state.updates[0]).toMatchObject({ date: today, startTime: 540, endTime: 683 });
+  });
 }
 
 test('时迹新增、失败保留、重复提交、编辑保留附属字段、删除失败恢复', async ({ page }) => {
@@ -188,7 +219,8 @@ test('日周月查询与重叠校验', async ({ page }) => {
 
 test('三页下拉刷新、失败收起与恢复，移除常驻刷新按钮', async ({ page }) => {
   const state = await setup(page);
-  await expect(page.getByRole('button', { name: /^刷新/ })).toHaveCount(0);
+  // 整张概览卡的点击刷新沿用 Web；其余位置均不得出现独立刷新控件。
+  await expect(page.getByRole('button', { name: /^刷新/ }).and(page.locator(':not(.overview-card)'))).toHaveCount(0);
   const count = state.queries;
   await pullDown(page, '.tab-scroll');
   await expect.poll(() => state.queries).toBeGreaterThan(count);
@@ -205,7 +237,7 @@ test('三页下拉刷新、失败收起与恢复，移除常驻刷新按钮', as
   const before = state.profiles;
   await pullDown(page, '.dashboard-scroll');
   await expect.poll(() => state.profiles).toBeGreaterThan(before);
-  await expect(page.getByRole('button', { name: /^刷新/ })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: /^刷新/ }).and(page.locator(':not(.overview-card)'))).toHaveCount(0);
   await page.locator('uni-tabbar').getByText('我', { exact: true }).click();
   await expect(page.getByText('时迹测试用户', { exact: true })).toBeVisible();
   const profileBefore = state.profiles;
@@ -513,16 +545,15 @@ for (const width of [320, 390, 768, 1440]) for (const colorScheme of ['light', '
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     await page.screenshot({ path: `test-results/time-compact-${width}-${colorScheme}.png` });
     await dialog.locator('uni-picker[aria-label="记录日期"]').click();
-    if (width < 768) {
+    // DCloud 仅在 Windows/macOS 桌面使用原生日期输入；Linux CI 使用滚轮。
+    const nativeDate = dialog.locator('uni-picker[aria-label="记录日期"] input[type="date"]');
+    if (await nativeDate.count()) {
+      await expect(nativeDate).toHaveValue(today);
+      await nativeDate.press('Escape');
+      await nativeDate.press('Tab');
+    } else {
       await expect(page.locator('.uni-picker-action-confirm:visible')).toBeVisible();
       await page.locator('.uni-picker-action-cancel:visible').click();
-    } else {
-      // H5 宽屏使用浏览器原生日期输入，窄屏使用滚轮 picker。
-      const input = dialog.locator('uni-picker[aria-label="记录日期"] input');
-      await expect(input).toHaveAttribute('type', 'date');
-      await expect(input).toHaveValue(today);
-      await input.press('Escape');
-      await input.press('Tab');
     }
     await closeEditor(page);
     await expect(dialog).toHaveCount(0);
@@ -598,6 +629,12 @@ async function setupRelated(page, type, options = {}) {
     records: [{ id: '9223372036854775807', date: today, categoryId: type === 1 ? '9' : '13', startTime: 540, endTime: 599, title: '晨间运动', description: '保留备注', relateId: relatedRecords[0].id, relateType: type, exercises: [] }], ...options });
 }
 async function completeRelatedStatus(page, type) {
+  if (page.viewportSize().width >= 500) {
+    await page.locator(`uni-picker[aria-label="修改${type === 1 ? '阅读' : '观影'}状态"]`).click();
+    await page.locator('.uni-picker-select:visible').getByText(type === 1 ? '读完' : '看过', { exact: true }).click();
+    await expect(page.locator('.related-status-editable')).toHaveText(type === 1 ? '读完' : '看过');
+    return;
+  }
   const cdp = await page.context().newCDPSession(page);
   await cdp.send('Emulation.setTouchEmulationEnabled', { enabled: true });
   await page.locator(`uni-picker[aria-label="修改${type === 1 ? '阅读' : '观影'}状态"]`).click();
@@ -653,7 +690,8 @@ test('新增时迹后状态保存失败，保留草稿并重试同一条时迹',
   await page.getByRole('button', { name: '保存', exact: true }).click();
   await expect(page.locator('.modal-panel[aria-label="编辑时迹"]')).toHaveCount(0);
   expect(state.creates).toHaveLength(1);
-  expect(state.updates.at(-1).id).toBe('9223372036854775804');
+  expect(state.updateIds).toEqual(['9223372036854775804']);
+  expect(state.updates.at(-1)).not.toHaveProperty('id');
   expect(state.relatedRecords[0].status).toBe('completed');
 });
 test('更换或清除关联记录时丢弃旧状态草稿', async ({ page }) => {
@@ -796,7 +834,7 @@ for (const view of ['时间轴视图', '卡片视图']) {
     const tapBox = await record.boundingBox();
     await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: tapBox.x + tapBox.width / 2, y: tapBox.y + tapBox.height / 2 }] });
     await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
-    await expect(page.getByRole('dialog', { name: '记录时间', exact: true })).toBeVisible();
+    await expect(page.getByRole('dialog', { name: '编辑时迹', exact: true })).toBeVisible();
     await closeEditor(page);
     await page.getByRole('button', { name: '周视图', exact: true }).click();
     await expect(page.locator('.time-main-panel')).toHaveAttribute('aria-busy', 'false');
