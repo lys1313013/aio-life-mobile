@@ -10,7 +10,6 @@ import {
   watch,
 } from "vue";
 import MobileButton from "./MobileButton.uvue";
-import FormField from "./FormField.uvue";
 import { themeClass } from "../services/theme.ts";
 import { chartGeometry } from "../services/mobile-ui.ts";
 import spacing from "../styles/spacing.json";
@@ -128,11 +127,13 @@ const extremeLabels = computed(() => {
     });
   });
 });
-// Compact dashboards start with the latest period; keep the selected period on refresh.
+// Charts select values directly by default; explicitly hidden selectors stay static.
+const interactive = computed(() => props.periodControls || props.selectable || !props.hidePeriodSelector);
+// Start with the latest period and keep the selected period on refresh.
 watch(
   () => props.labels.join("|"),
   (_, previous) => {
-    if (!props.compact && !props.periodControls && !props.selectable) return;
+    if (!props.compact && !interactive.value) return;
     const previousLabel = previous?.split("|")[selected.value];
     const index = previousLabel ? props.labels.indexOf(previousLabel) : -1;
     selected.value = index >= 0 ? index : Math.max(0, props.labels.length - 1);
@@ -156,7 +157,6 @@ const selection = computed(() =>
     ? Math.max(0, props.labels.length - 1)
     : Math.min(selected.value, Math.max(0, props.labels.length - 1)),
 );
-const interactive = computed(() => props.periodControls || props.selectable);
 function selectPeriod(event) {
   if (!interactive.value) return;
   const x = event.detail?.x ?? event.clientX;
@@ -164,8 +164,11 @@ function selectPeriod(event) {
   uni.createSelectorQuery().in(instance?.proxy).select('.mini-chart-plot')
     .boundingClientRect((rect) => {
       if (!active || !rect || Array.isArray(rect) || rect.width <= 0) return;
-      selected.value = Math.max(0, Math.min(props.labels.length - 1,
-        Math.floor((x - rect.left) / rect.width * props.labels.length)));
+      const position = (x - rect.left) / rect.width;
+      const index = props.kind === 'bar'
+        ? Math.floor(position * props.labels.length)
+        : Math.round(position * (props.labels.length - 1));
+      selected.value = Math.max(0, Math.min(props.labels.length - 1, index));
     }).exec();
 }
 async function measure() {
@@ -251,10 +254,10 @@ function barStyle(point, index, seriesIndex) {
         ><text class="ui-type-caption mini-chart-tick" :class="themeClass('mini-chart-tick')">{{ scaleNumber(geometry.max) }}{{ unit }}</text
         ><text class="ui-type-caption mini-chart-tick" :class="themeClass('mini-chart-tick')">{{ scaleNumber(geometry.min) }}{{ unit }}</text></view
       ><view :class="{ 'chart-coordinate': periodControls }">
-      <view class="mini-chart-plot" :class="{ 'chart-plot-interactive': periodControls, 'chart-plot-selectable': selectable }"
+      <view class="mini-chart-plot" :class="{ 'chart-plot-interactive': periodControls, 'chart-plot-selectable': interactive && !periodControls }"
         :role="interactive ? 'slider' : undefined"
         :tabindex="interactive ? 0 : undefined"
-        :aria-label="interactive ? label + (unit === '%' ? '，点击柱子查看比例' : '，点击柱子查看金额') : undefined"
+        :aria-label="interactive ? label + '，点击图表查看数值' : undefined"
         :aria-valuemin="interactive ? 0 : undefined"
         :aria-valuemax="interactive ? labels.length - 1 : undefined"
         :aria-valuenow="interactive ? selection : undefined"
@@ -316,16 +319,8 @@ function barStyle(point, index, seriesIndex) {
           <text class="chart-period-label">{{ labels[selection] }}{{ visible.map((item) => item.name).join(' / ') }}</text>
           <text v-for="item in visible" :key="item.name" class="chart-period-amount">{{ displayNumber(item.values[selection] ?? 0) }}{{ unit }}</text>
         </view>
-      </view><FormField v-else-if="!hidePeriodSelector && !selectable"
-        :label="compact ? '统计周期' : '查看数值'"
-        :compact="compact"
-        :hide-label="compact"
-        kind="selector"
-        :model-value="labels[selection]"
-        :options="labels"
-        @update:model-value="(value) => (selected = labels.indexOf(value))"
-      /><text
-        v-if="selectable && !periodControls"
+      </view><text
+        v-if="interactive && !periodControls"
         class="chart-selected-label mini-chart-tick"
         :class="themeClass('mini-chart-tick')"
         aria-live="polite"

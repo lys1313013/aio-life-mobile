@@ -25,7 +25,7 @@ for (const width of [390, 768, 1440]) for (const theme of ['light', 'dark']) {
     await expect(page.locator('.chart-period-label')).toHaveText('3月支出');
     await expect(page.locator('.chart-period-amount')).toHaveText('525.00元');
     await expect(page.locator('.mini-chart uni-picker')).toHaveCount(0);
-    const plot = page.getByRole('slider', { name: '月度支出趋势，点击柱子查看金额' });
+    const plot = page.getByRole('slider', { name: '月度支出趋势，点击图表查看数值' });
     const box = await plot.boundingBox();
     // Tap the empty space above a bar, not only its painted pixels.
     await plot.click({ position: { x: box.width / 2, y: 8 } });
