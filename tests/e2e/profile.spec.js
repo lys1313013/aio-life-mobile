@@ -72,7 +72,7 @@ for (const width of [390, 768, 1440]) {
       await page.getByRole('button', { name: '账号绑定', exact: true }).click();
       await page.getByRole('button', { name: '新增绑定', exact: true }).click();
       await expect(page.getByRole('dialog')).toBeVisible();
-      await expect(page.locator('.modal-panel')).toHaveCSS('background-color', selected === '夜间' ? 'rgb(28, 30, 34)' : 'rgb(255, 255, 255)');
+      await expect(page.locator('.modal-surface')).toHaveCSS('background-color', selected === '夜间' ? 'rgba(28, 30, 34, 0.97)' : 'rgba(255, 255, 255, 0.97)');
       await page.screenshot({ path: `test-results/bindings-${width}-${system}.png`, fullPage: true });
       const box = await page.locator('.modal-panel').boundingBox();
       expect(box.width).toBeLessThanOrEqual(Math.min(480, width - 32));

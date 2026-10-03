@@ -13,6 +13,8 @@ async function setup(page, override) {
   await page.locator('[aria-label="账号"] input').fill('test');
   await page.locator('[aria-label="密码"] input').fill('fixture-password');
   await page.getByRole('button', { name: '登录', exact: true }).click();
+  // 首页分区并行加载会调整卡片位置；坐标手势必须在首屏布局稳定后开始。
+  await page.waitForLoadState('networkidle');
 }
 async function swipeCardUp(page, selector) {
   const card = page.locator(selector);

@@ -1,3 +1,4 @@
+const { dismissModal } = require('./modal');
 const { test, expect } = require('@playwright/test');
 const { setup } = require('./qa-domains-fixtures');
 const path = require('node:path');
@@ -53,13 +54,13 @@ for (const width of [390, 768, 1440]) for (const theme of ['light', 'dark']) {
     await expect(page.locator('.search-results')).toContainText('搜索结果 · 1');
     await page.locator('.search-results').getByRole('button', { name: '模拟小林', exact: true }).click();
     await expect(page.getByRole('dialog', { name: '模拟小林', exact: true })).toBeVisible();
-    await page.getByRole('button', { name: '关闭', exact: true }).click();
+    await dismissModal(page);
     await page.getByRole('button', { name: '清空搜索', exact: true }).click();
     await expect(page.locator('.search-results')).toHaveCount(0);
     await page.getByRole('button', { name: '新增人物', exact: true }).click();
     await expect(page.getByRole('dialog', { name: '人物', exact: true })).toBeVisible();
     await page.screenshot({ path: path.resolve(`test-results/relationship-form-${width}-${theme}.png`) });
-    await page.getByRole('button', { name: '关闭', exact: true }).click();
+    await dismissModal(page);
     await page.getByRole('button', { name: '关系明细', exact: true }).click();
     await expect(page.locator('.relation-row')).toHaveCount(13);
     expect(errors).toEqual([]);

@@ -54,10 +54,10 @@ for (const width of [390, 768, 1440]) for (const theme of ['light', 'dark']) {
     await expect(dialog).toBeVisible();
     // 已保存的 svg 名称可回显、预览、更新，不能退化成圆点。
     await expect(page.locator('[aria-label="图标"] input')).toHaveValue('svg:ab-wheel');
-    await loadedImages(dialog.locator('.modal-content > .category-icon .category-icon-image img'), 1);
+    await loadedImages(dialog.locator('.category-icon-preview .category-icon-image img'), 1);
     await page.locator('[aria-label="图标"] input').fill('svg:push-up');
     await expect.poll(async () => {
-      const src = await dialog.locator('.modal-content > .category-icon .category-icon-image img').getAttribute('src');
+      const src = await dialog.locator('.category-icon-preview .category-icon-image img').getAttribute('src');
       return Buffer.from(src.split(',')[1], 'base64').toString().includes(catalog.icons['svg:push-up'].body.replaceAll('currentColor', '#5b8ff9'));
     }).toBe(true);
     await page.screenshot({ path: testInfo.outputPath('editor.png') });

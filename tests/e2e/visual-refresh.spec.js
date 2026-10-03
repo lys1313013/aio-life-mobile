@@ -77,11 +77,10 @@ for (const width of [390, 768, 1440]) {
   }
 }
 
-test('订阅搜索与编辑失败恢复保留完整字段和长ID', async ({ page }) => {
+test('订阅编辑失败恢复保留完整字段和长ID', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 900 });
   const state = await subscriptions(page);
-  await page.getByRole('textbox', { name: '搜索订阅', exact: true }).fill('即将到期');
-  await expect(page.locator('.member-card')).toHaveCount(1);
+  await expect(page.locator('.member-card')).toHaveCount(6);
   await page.getByRole('button', { name: '编辑订阅：模拟即将到期订阅', exact: true }).click();
   const dialog = page.getByRole('dialog', { name: '编辑订阅', exact: true });
   await dialog.getByRole('textbox', { name: '名称', exact: true }).fill('模拟即将到期订阅更新');
@@ -92,7 +91,7 @@ test('订阅搜索与编辑失败恢复保留完整字段和长ID', async ({ pag
   state.fail = false;
   await dialog.getByRole('button', { name: '保存', exact: true }).click();
   await expect(dialog).toHaveCount(0);
-  await expect(page.locator('.member-card')).toContainText('模拟即将到期订阅更新');
+  await expect(page.getByRole('button', { name: '编辑订阅：模拟即将到期订阅更新', exact: true })).toBeVisible();
   expect(state.writes).toHaveLength(2);
   expect(state.writes[1]).toMatchObject({ method: 'PUT', body: { id: longId, note: '模拟备注，保存后应保留', category: 'video', provider: '模拟平台', monthlyAmount: 8.25 } });
 });

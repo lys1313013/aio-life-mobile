@@ -1,3 +1,4 @@
+const { dismissModal } = require('./modal');
 const { test, expect } = require("@playwright/test");
 const fs = require("node:fs");
 const out = "artifacts/menu-manager";
@@ -144,7 +145,7 @@ for (const width of [320, 390, 768, 1440])
         .getByRole("textbox", { name: "其他菜单属性" })
         .fill('{"keepAlive":true}');
       await dialog.getByRole("button", { name: "收起高级设置" }).click();
-      await dialog.getByRole("button", { name: "关闭", exact: true }).click();
+      await dismissModal(page);
       await page.getByRole("button", { name: "调整顺序", exact: true }).click();
       await page.screenshot({ path: `${out}/${width}-${theme}-sort.png` });
       const areas = await page
@@ -208,7 +209,7 @@ test("菜单搜索、编辑失败恢复、父级新增、保护菜单、排序�
   await expect(
     page.getByRole("button", { name: "停用菜单", exact: true }),
   ).toBeVisible();
-  await page.getByRole("button", { name: "关闭", exact: true }).click();
+  await dismissModal(page);
   await page.getByRole("button", { name: "系统管理更多操作" }).click();
   await expect(
     page.getByRole("button", { name: "停用菜单", exact: true }),
@@ -216,7 +217,7 @@ test("菜单搜索、编辑失败恢复、父级新增、保护菜单、排序�
   await expect(
     page.getByRole("button", { name: "删除菜单", exact: true }),
   ).toHaveCount(0);
-  await page.getByRole("button", { name: "关闭", exact: true }).click();
+  await dismissModal(page);
   await page.getByRole("button", { name: "记录更多操作" }).click();
   await page.getByRole("button", { name: "新增子菜单", exact: true }).click();
   dialog = page.getByRole("dialog", { name: "菜单管理", exact: true });

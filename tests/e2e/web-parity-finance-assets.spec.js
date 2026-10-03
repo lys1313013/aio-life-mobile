@@ -1,3 +1,4 @@
+const { dismissModal } = require('./modal');
 const { test, expect } = require('@playwright/test'),
   fs = require('node:fs');
 const { setup } = require('./qa-domains-fixtures');
@@ -142,7 +143,7 @@ for (const width of [390, 768, 1440])
                 )
                 .forEach((x) => (x.scrollTop = 0)),
             );
-          await p.getByRole('dialog').getByRole('button', { name: route === 'finance/cards' ? '取消' : '关闭', exact: true }).click();
+          await dismissModal(p);
         } else if (route === 'finance/import') {
           await expect(
             p.getByRole('textbox', { name: '支付宝 CSV 内容', exact: true }),

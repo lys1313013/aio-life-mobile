@@ -1,3 +1,4 @@
+const { dismissModal } = require('./modal');
 const {expect}=require('@playwright/test');
 const {setup}=require('./qa-domains-fixtures.js');
 const fs=require('node:fs'),path=require('node:path');
@@ -30,7 +31,7 @@ async function start(page,routeName,options={}){
 }
 async function shot(page,route,variant,name){const dir=path.resolve('test-results/page-audit/domains');fs.mkdirSync(dir,{recursive:true});const key=route+'-'+variant+'-'+name;page._qaShots=page._qaShots||{};const count=page._qaShots[key]=(page._qaShots[key]||0)+1;const file=path.join(dir,route.replaceAll('/','-')+'-'+variant+'-'+name+(count>1?'-'+count:'')+'.png');await page.screenshot({path:file,fullPage:true});fs.mkdirSync('/tmp/qa-domains-evidence',{recursive:true});fs.copyFileSync(file,path.join('/tmp/qa-domains-evidence',path.basename(file)));return file;}
 async function panel(page,route,variant,label,records){const modal=page.locator('[role=dialog][aria-label="'+label+'"]');await expect(modal).toBeVisible();const box=await modal.boundingBox();const size=page.viewportSize();expect(box.x).toBeGreaterThanOrEqual(0);expect(box.y).toBeGreaterThanOrEqual(0);expect(box.width).toBeLessThanOrEqual(size.width);expect(box.y+box.height).toBeLessThanOrEqual(size.height+1);records.push(await shot(page,route,variant,label));await modal.locator('.uni-scroll-view').evaluateAll(nodes=>nodes.forEach(n=>n.scrollTop=n.scrollHeight));records.push(await shot(page,route,variant,label+'-bottom'));await inspectPickers(page,modal,route,variant+'-'+label,records);return modal;}
-async function close(page){await page.locator('[role=dialog]').last().locator('[role=button][aria-label="关闭"]').click();}
+async function close(page){await dismissModal(page);}
 async function picker(page,label,choice){
  const field=page.locator('uni-picker[aria-label="'+label+'"]').last();const current=(await field.locator('.form-field-input').innerText()).trim();await field.click();
  await page.waitForTimeout(400);const wheel=page.locator('uni-picker-view.uni-picker-content').last();

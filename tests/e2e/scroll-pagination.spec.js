@@ -21,8 +21,15 @@ function rows(page, count) {
 }
 function gate() { let release; const promise = new Promise(resolve => { release = resolve; }); return { promise, release }; }
 async function scrollBottom(page) {
+  const scroller = page.locator('.mobile-page-scroll .uni-scroll-view[style]').first();
   await page.locator('.mobile-page-scroll').hover();
+  // 锁定版本 uni-h5 对 scrolltolower 有 200ms 节流（含页面初次触底）。
+  // 避开框架节流后再验证业务去重，避免单次瞬移滚轮在初始化窗口被吞掉。
+  await page.waitForTimeout(220);
+  const bottom = await scroller.evaluate(el => el.scrollHeight - el.clientHeight);
   await page.mouse.wheel(0, 100000);
+  // wheel() 只发送输入；等待浏览器实际滚动，不能提前断言接口状态。
+  await expect.poll(() => scroller.evaluate(el => el.scrollTop)).toBeGreaterThanOrEqual(bottom - 1);
 }
 async function moveAway(page) {
   await page.locator('.mobile-page-scroll').hover();
@@ -100,6 +107,7 @@ test('支出空末页停止请求，筛选后忽略旧分页结果', async ({ pa
   await page.getByRole('button', { name: '筛选', exact: true }).click();
   await expect(page.locator('.expense-row')).toHaveCount(50);
   await scrollBottom(page);
+  await expect.poll(() => requests).toEqual([1, 2, 1, 1, 2]);
   await expect(page.locator('.load-more')).toHaveCount(0);
   await moveAway(page); await scrollBottom(page);
   expect(requests).toEqual([1, 2, 1, 1, 2]);
