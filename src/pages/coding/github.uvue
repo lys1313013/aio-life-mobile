@@ -34,9 +34,9 @@ const username = ref(''),
   moreBusy = ref(false),
   moreError = ref('');
 const sections = reactive({
-  calendar: { loading: true, error: '' },
-  repos: { loading: true, error: '' },
-  commits: { loading: true, error: '' },
+  calendar: { loading: true, error: '', loaded: false },
+  repos: { loading: true, error: '', loaded: false },
+  commits: { loading: true, error: '', loaded: false },
 });
 let alive = true,
   stamp = 0,
@@ -118,6 +118,7 @@ async function load(section = '') {
           page.value = 1;
           hasMore.value = result.length === 20;
         }
+        sections[key].loaded = true;
       } catch (reason) {
         if (alive && stamp === current) sections[key].error = reason.message || '加载失败';
       } finally {
@@ -194,7 +195,7 @@ useDomainPage(
     days.value = [];
     hasMore.value = false;
     moreError.value = '';
-    Object.values(sections).forEach(section => { section.loading = false; section.error = ''; });
+    Object.values(sections).forEach(section => { section.loading = false; section.error = ''; section.loaded = false; });
     loading.value = false;
     refreshing.value = false;
   },
@@ -220,18 +221,18 @@ useDomainPage(
           @click="uni.navigateTo({ url: '/pages/profile/bindings' })" /></view
       ><PageState v-if="error" :error="error" @retry="load()" />
       <template v-if="!error || username"><view class="metrics ui-row ui-section"
-          ><MetricCard label="过去一年提交" :value="sections.calendar.error ? '—' : String(total)" :loading="sections.calendar.loading" /><MetricCard
+          ><MetricCard label="过去一年提交" :value="sections.calendar.error && !sections.calendar.loaded ? '—' : String(total)" :loading="sections.calendar.loading && !sections.calendar.loaded" /><MetricCard
             label="今日提交次数"
-            :value="sections.calendar.error ? '—' : String(summary.today)" :loading="sections.calendar.loading" /><MetricCard
+            :value="sections.calendar.error && !sections.calendar.loaded ? '—' : String(summary.today)" :loading="sections.calendar.loading && !sections.calendar.loaded" /><MetricCard
             label="连续提交"
-            :value="sections.calendar.error ? '—' : String(summary.streak)" :loading="sections.calendar.loading"
-            unit="天" /><MetricCard label="活跃天数" :value="sections.calendar.error ? '—' : String(summary.active)" :loading="sections.calendar.loading" unit="天" /><MetricCard
+            :value="sections.calendar.error && !sections.calendar.loaded ? '—' : String(summary.streak)" :loading="sections.calendar.loading && !sections.calendar.loaded"
+            unit="天" /><MetricCard label="活跃天数" :value="sections.calendar.error && !sections.calendar.loaded ? '—' : String(summary.active)" :loading="sections.calendar.loading && !sections.calendar.loaded" unit="天" /><MetricCard
             label="总 Star 数"
-            :value="sections.repos.error ? '—' : String(totalStars)"
-            :loading="sections.repos.loading" /><MetricCard
+            :value="sections.repos.error && !sections.repos.loaded ? '—' : String(totalStars)"
+            :loading="sections.repos.loading && !sections.repos.loaded" /><MetricCard
             label="最长连续"
-            :value="sections.calendar.error ? '—' : String(longestStreak)"
-            :loading="sections.calendar.loading"
+            :value="sections.calendar.error && !sections.calendar.loaded ? '—' : String(longestStreak)"
+            :loading="sections.calendar.loading && !sections.calendar.loaded"
             unit="天" /></view
         ><PageState skeleton="calendar" :loading="sections.calendar.loading" :error="sections.calendar.error" @retry="load('calendar')"
         ><scroll-view scroll-x class="calendar-scroll ui-card" :class="themeClass('calendar-scroll')"
