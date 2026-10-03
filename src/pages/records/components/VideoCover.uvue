@@ -1,0 +1,50 @@
+<script setup lang="ts">
+import { ref, watch, onUnmounted } from 'vue';
+import { authFileUrl } from '../../../services/attachments.ts';
+import { session } from '../../../services/session.ts';
+import AppIcon from '../../../components/AppIcon.uvue';
+import ContentSkeleton from '../../../components/ContentSkeleton.uvue';
+const props = defineProps<{ fileId?: string; state?: string; title: string }>();
+const emit = defineEmits<{ (event: 'retry'): void }>();
+const source = ref(''), loading = ref(false), failed = ref(false);
+let generation = 0;
+function release(url: string) {
+  // #ifdef WEB
+  if (url.startsWith('blob:')) URL.revokeObjectURL(url);
+  // #endif
+}
+async function load() {
+  const revision = ++generation;
+  release(source.value); source.value = ''; failed.value = false;
+  loading.value = !!props.fileId && !!session.token;
+  if (!loading.value) return;
+  try {
+    const url = await authFileUrl(props.fileId!);
+    if (revision !== generation) { release(url); return; }
+    source.value = url;
+  } catch { if (revision === generation) { failed.value = true; loading.value = false; } }
+}
+function retry() { if (props.state === 'FAILED') emit('retry'); else load(); }
+watch(() => [props.fileId, session.token], load, { immediate: true });
+onUnmounted(() => { generation++; release(source.value); });
+</script>
+<template>
+  <view class="video-cover">
+    <image v-if="source && !failed" class="video-cover-image" :src="source" :aria-label="title + ' 封面'" mode="aspectFill" @load="loading = false" @error="failed = true; loading = false" />
+    <view v-if="!source || failed || loading" class="video-cover-placeholder">
+      <ContentSkeleton v-if="loading || state === 'PENDING'" variant="cover" />
+      <AppIcon v-else name="ant-design:play-circle-outlined" :size="28" color="#8b8f99" />
+    </view>
+    <button v-if="failed || state === 'FAILED'" class="video-cover-retry" role="button" aria-label="重试封面" @click.stop="retry" @keydown.stop><AppIcon name="ant-design:reload-outlined" :size="20" /></button>
+  </view>
+</template>
+<style scoped lang="scss">
+@use '../../../styles/spacing-tokens' as *;
+.video-cover { position: absolute; left: 0; right: 0; top: 0; bottom: 0; }
+.video-cover-image { width: 100%; height: 100%; }
+.video-cover-placeholder { position: absolute; left: 0; right: 0; top: 0; bottom: 0; align-items: center; justify-content: center; }
+.video-cover-retry { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); display: flex; align-items: center; justify-content: center; width: $space-controlMin; height: $space-controlMin; padding: 0; margin: 0; border-radius: 50%; background-color: rgba(148,163,184,0.2); }
+/* #ifdef WEB || MP-WEIXIN */
+.video-cover-retry::after { border: 0; }
+/* #endif */
+</style>

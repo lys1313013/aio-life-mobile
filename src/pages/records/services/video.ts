@@ -15,3 +15,6 @@ result=await new Promise((resolve,reject)=>{uni.request({url:'https://api.bilibi
 // #endif
 if(result?.code!==0||!result.data)throw new Error(result?.message||'视频解析失败');const data=result.data,pages=data.pages||[],episode=Math.max(1,Math.min(Number(url.match(/[?&]p=(\d+)/)?.[1]||1),data.videos||1)),duration=Number(data.duration||0);const watched=pages.slice(0,episode-1).reduce((sum,page)=>sum+Number(page.duration||0),0);return {title:data.title||'',cover:data.pic||'',duration,episodes:data.videos||1,currentEpisode:episode,watchedDuration:Math.min(watched,duration),bvid:data.bvid||id.bvid||'',aid:String(data.aid||id.aid||''),description:data.desc||'',ownerName:data.owner?.name||'',pagesInfo:JSON.stringify(pages),url:'https://www.bilibili.com/video/'+(data.bvid||id.bvid||'av'+id.aid)+(episode>1?'?p='+episode:'')}
 }
+
+export function fetchVideoCovers(ids: string[]) { return request<any[]>('/b-video/covers', 'GET', { ids: ids.join(',') }) }
+export function retryVideoCover(id: string) { return request('/b-video/' + recordId(id) + '/cover/retry', 'POST') }

@@ -1,10 +1,11 @@
 <script setup lang="ts">
+import VideoCover from './components/VideoCover.uvue';
 import FormActions from '../../components/FormActions.uvue';
 import { isRequired, missingRequired } from '../../services/form-required.ts';
 import ContentSkeleton from '../../components/ContentSkeleton.uvue';
 import AppIcon from '../../components/AppIcon.uvue';
-import { computed, ref } from 'vue';
-import { onShow } from '@dcloudio/uni-app';
+import { computed, ref, onUnmounted } from 'vue';
+import { onShow, onHide } from '@dcloudio/uni-app';
 import MobilePage from '../../components/MobilePage.uvue';
 import PageHeader from '../../components/PageHeader.uvue';
 import MobileButton from '../../components/MobileButton.uvue';
@@ -22,6 +23,8 @@ import {
 } from '../../services/records/contracts.ts';
 import {
   fetchVideoPage,
+  fetchVideoCovers,
+  retryVideoCover,
   saveVideo,
   deleteVideo,
   fetchVideoCounts,
@@ -58,7 +61,37 @@ const scope = createRecordScope((clear) => {
     statistics.value = {};
   }
 });
+let coverTimer: ReturnType<typeof setTimeout> | undefined;
+let coverRevision = 0;
+function stopCoverPolling() { coverRevision++; clearTimeout(coverTimer); }
+onHide(stopCoverPolling);
+onUnmounted(stopCoverPolling);
 onShow(() => load());
+function pollCovers() {
+  clearTimeout(coverTimer);
+  const ids = rows.value.filter(item => item.coverState === 'PENDING').map(item => item.id);
+  if (!ids.length) return;
+  const revision = coverRevision;
+  coverTimer = setTimeout(async () => {
+    try {
+      const values = [];
+      for (let index = 0; index < ids.length; index += 100)
+        values.push(...await scope.wait(fetchVideoCovers(ids.slice(index, index + 100))));
+      if (revision !== coverRevision) return;
+      for (const cover of values) {
+        const item = rows.value.find(item => item.id === cover.id);
+        if (item) { item.coverFileId = cover.coverFileId; item.coverState = cover.coverState; }
+      }
+      pollCovers();
+    } catch { /* 查询失败停止轮询，保留当前封面；下拉刷新可恢复。 */ }
+  }, 3000);
+}
+async function retryCover(item) {
+  if (item.coverState !== 'FAILED') return;
+  item.coverState = 'PENDING';
+  try { await scope.wait(retryVideoCover(item.id)); pollCovers(); }
+  catch (e) { item.coverState = 'FAILED'; if (e.name !== 'PageInactiveError') uni.showToast({ title: e.message || '重试失败', icon: 'none' }); }
+}
 const filtered = computed(() =>
   rows.value.filter((item) =>
     [item.title, item.ownerName, item.notes]
@@ -86,6 +119,7 @@ function videoProgress(item) {
     : Number(item.progress || 0))));
 }
 async function load() {
+  stopCoverPolling();
   const current = ++generation;
   loading.value = true;
   error.value = '';
@@ -104,6 +138,7 @@ async function load() {
     }
     if (current === generation) {
       rows.value = data;
+      pollCovers();
       counts.value = statusCounts;
       statistics.value = stats;
     }
@@ -260,7 +295,7 @@ function play(url) {
       <PageState skeleton="media" :loading="loading" :error="error" :empty="!filtered.length" @retry="load"
         >
 <template #loading><view class="video-grid"><view v-for="n in 6" :key="n" class="video-card" :class="{ 'video-card-dark': isDark }"><view class="video-poster"><ContentSkeleton variant="cover" /></view><view class="video-body"><ContentSkeleton variant="goal-tile" /></view></view></view></template>
-<view class="video-grid"><view v-for="item in filtered" :key="item.id" class="video-card" :class="{ 'video-card-dark': isDark }" role="button" tabindex="0" :aria-label="'编辑视频：' + item.title" @click="open(item)" @keydown.enter="open(item)" @keydown.space.prevent="open(item)"><view class="video-poster" :class="{ 'video-poster-dark': isDark }"><image v-if="item.cover" class="cover" :src="item.cover" mode="aspectFill" /><view v-else class="video-cover-empty"><AppIcon name="ant-design:play-circle-outlined" :size="28" color="#8b8f99" /></view><text class="video-status" :class="'video-status-' + item.status">{{ statusLabels[item.status] }}</text><text class="video-duration">{{ clockDuration(item.duration) }}</text></view><view class="video-body"><text class="video-title">{{ item.title }}</text><view class="video-meta ui-row"><text class="video-meta-text" :class="{ 'record-secondary-dark': isDark }">{{ item.ownerName || '' }}</text><text class="episode">{{ item.currentEpisode || 1 }}/{{ item.episodes || 1 }}</text></view><view class="video-meta ui-row"><text class="video-meta-text" :class="{ 'record-secondary-dark': isDark }">{{ clockDuration(item.watchedDuration) }} / {{ clockDuration(item.duration) }}</text><text class="episode">{{ videoProgress(item) }}%</text></view><view class="progress-track" :class="{ 'progress-track-dark': isDark }"><view class="progress-fill" :style="{ width: (videoProgress(item)) + '%' }" /></view></view></view></view></PageState
+<view class="video-grid"><view v-for="item in filtered" :key="item.id" class="video-card" :class="{ 'video-card-dark': isDark }" role="button" tabindex="0" :aria-label="'编辑视频：' + item.title" @click="open(item)" @keydown.enter="open(item)" @keydown.space.prevent="open(item)"><view class="video-poster" :class="{ 'video-poster-dark': isDark }"><VideoCover :file-id="item.coverFileId" :state="item.coverState" :title="item.title" @retry="retryCover(item)" /><text class="video-status" :class="'video-status-' + item.status">{{ statusLabels[item.status] }}</text><text class="video-duration">{{ clockDuration(item.duration) }}</text></view><view class="video-body"><text class="video-title">{{ item.title }}</text><view class="video-meta ui-row"><text class="video-meta-text" :class="{ 'record-secondary-dark': isDark }">{{ item.ownerName || '' }}</text><text class="episode">{{ item.currentEpisode || 1 }}/{{ item.episodes || 1 }}</text></view><view class="video-meta ui-row"><text class="video-meta-text" :class="{ 'record-secondary-dark': isDark }">{{ clockDuration(item.watchedDuration) }} / {{ clockDuration(item.duration) }}</text><text class="episode">{{ videoProgress(item) }}%</text></view><view class="progress-track" :class="{ 'progress-track-dark': isDark }"><view class="progress-fill" :style="{ width: (videoProgress(item)) + '%' }" /></view></view></view></view></PageState
       ><AdaptiveModal
         v-if="form"
         label="编辑学习视频"

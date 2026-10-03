@@ -26,6 +26,11 @@ test('GET 精确路径优先，筛选保留 false 和零', () => {
   assert.deepEqual(pickQuery('/movie/page', { current: 0, activeOnly: false, userId: '11' }), { current: 0, activeOnly: false })
 })
 
+test('视频封面批量查询保留完整字符串 ID 并拒绝用户归属参数', () => {
+  const ids = '9007199254740993,9223372036854775806'
+  assert.deepEqual(minimalRequestPayload('/b-video/covers', 'GET', { ids, userId: '11' }), { ids })
+})
+
 test('实际 uni.request 边界执行筛选且不修改原对象', async () => {
   const apiSource = await readFile(new URL('../src/services/api.ts', import.meta.url), 'utf8')
   const apiCode = (await transform(apiSource
