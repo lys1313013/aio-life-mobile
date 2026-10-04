@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { appTextColor } from '../services/app-layout.ts';
 import LoadingIndicator from './LoadingIndicator.uvue';
 import { themeClass } from '../services/theme.ts';
 defineProps<{ label: string; value: string | number; unit?: string; loading?: boolean; valueKind?: 'number' | 'text' }>();
@@ -7,8 +8,8 @@ defineProps<{ label: string; value: string | number; unit?: string; loading?: bo
   <view class="metric-card ui-pad-card" :class="themeClass('metric-card')"
     ><text class="metric-label" :class="themeClass('metric-label')">{{ label }}</text
     ><view v-if="loading" class="metric-placeholder"><LoadingIndicator :label="'正在加载' + label" compact /></view><view v-else class="metric-value ui-gap-xs ui-mt-xs"
-      ><text class="metric-number" :class="{ 'metric-text': valueKind === 'text' }">{{ value }}</text
-      ><text v-if="unit" class="metric-unit">{{ unit }}</text></view
+      ><text :style="appTextColor()" class="metric-number" :class="{ 'metric-text': valueKind === 'text' }">{{ value }}</text
+      ><text :style="appTextColor()" v-if="unit" class="metric-unit">{{ unit }}</text></view
     ></view
   >
 </template>
@@ -53,7 +54,7 @@ align-items: flex-end;
   overflow-wrap: anywhere;
   font-variant-numeric: tabular-nums;
 }
-.metric-text { @include type-style('title'); }
+.metric-text { @include type-style('title'); min-height: type-line('metric'); }
 .metric-placeholder { height: type-line('metric'); margin-top: $space-detail; justify-content: center; }
 .metric-unit {
   @include type-style('label');

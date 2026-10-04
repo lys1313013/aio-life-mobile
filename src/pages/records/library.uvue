@@ -52,6 +52,7 @@ const rows = ref<any[]>([]),
   statusFilter = ref('全部状态'),
   loading = ref(false),
   refreshing = ref(false),
+  entryLoading = ref(false),
   error = ref(''),
   editing = ref('');
 const form = ref<any>(null),
@@ -76,8 +77,11 @@ const issues = computed(() => [
 ]);
 const scope = createRecordScope((clear) => {
   form.value = null;
+  entryLoading.value = false;
   importingOpen.value = false;
   if (clear) {
+    requestedEdit = '';
+    requestedCreate = false;
     rows.value = [];
     importRequest.value = null;
     preview.value = null;
@@ -87,8 +91,11 @@ const scope = createRecordScope((clear) => {
 });
 let alive = true,
   generation = 0;
+let requestedEdit = '', requestedCreate = false;
 onLoad((options) => {
   kind.value = options?.kind === 'read' ? 'read' : 'movie';
+  requestedEdit = options?.editId || '';
+  requestedCreate = options?.create === '1';
 });
 onShow(() => load());
 onUnmounted(() => {
@@ -125,6 +132,18 @@ async function load(refresh = false, more = false) {
       page.value = next;
       pageEnded.value = !data.items.length;
       total.value = data.total;
+      if (requestedEdit) {
+        // 首页入口可能不在列表首屏，始终读取完整详情后再允许编辑。
+        entryLoading.value = true;
+        const detail = await scope.wait(fetchLibraryDetail(kind.value, requestedEdit));
+        if (!alive || current !== generation) return;
+        setEditForm(detail);
+        requestedEdit = '';
+        requestedCreate = false;
+      } else if (requestedCreate) {
+        requestedCreate = false;
+        open();
+      }
     }
   } catch (e) {
     if (e.name === 'PageInactiveError') return;
@@ -133,11 +152,23 @@ async function load(refresh = false, more = false) {
     if (current === generation) {
       loading.value = false;
       refreshing.value = false;
+      entryLoading.value = false;
     }
   }
 }
+function setEditForm(detail) {
+  if (!detail?.id) throw Error('记录不存在或已删除');
+  formError.value = '';
+  created.value = false;
+  form.value = {
+    ...detail,
+    files: detail.fileId
+      ? [{ id: detail.fileId, fileName: detail.title + ' 封面' }]
+      : [],
+  };
+}
 async function open(item = null) {
-  if (editing.value) return;
+  if (editing.value || entryLoading.value) return;
   formError.value = '';
   created.value = false;
   if (!item) {
@@ -163,12 +194,7 @@ async function open(item = null) {
   editing.value = item.id;
   try {
     const detail = await scope.wait(fetchLibraryDetail(kind.value, item.id));
-    form.value = {
-      ...detail,
-      files: detail.fileId
-        ? [{ id: detail.fileId, fileName: detail.title + ' 封面' }]
-        : [],
-    };
+    setEditForm(detail);
   } catch (e) {
     if (e.name === 'PageInactiveError') return;
     error.value = e.message;
@@ -451,6 +477,7 @@ async function submitImport() {
         </picker>
         <text v-if="!loading || rows.length" class="library-count" :class="{ 'record-secondary-dark': isDark }">{{ total }} 条</text>
       </view>
+      <LoadingIndicator v-if="entryLoading" label="正在加载记录详情" />
       <PageState skeleton="media"
         :loading="loading && !rows.length"
         :error="error"
@@ -668,6 +695,7 @@ async function submitImport() {
     ><template #fixed
       ><FloatingActionButton
         :label="'新增' + title"
+        :disabled="entryLoading"
         @click="open()" /></template
   ></MobilePage>
 </template>

@@ -58,6 +58,7 @@ export function memberPayload(form) {
   if (missingRequired('member', form)) throw new Error('请输入会员名称和到期日期')
   if (form.startDate && form.expiryDate < form.startDate) throw new Error('到期日期不能早于开通日期')
   const payload = { ...form, name: form.name.trim(), autoRenew: Number(form.autoRenew || 0) }
+  if (Object.prototype.hasOwnProperty.call(form, 'providerId')) payload.providerId = form.providerId ? recordId(form.providerId) : null
   if (form.id) payload.id = recordId(form.id)
   for (const key of ['price', 'monthlyAmount']) { if (form[key] === '' || form[key] == null) payload[key] = null; else { const number = Number(form[key]); if (!Number.isFinite(number) || number < 0) throw new Error('金额必须为非负数字'); payload[key] = number } }
   return payload

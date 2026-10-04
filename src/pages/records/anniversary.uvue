@@ -6,10 +6,11 @@ import FormActions from '../../components/FormActions.uvue';
 import { isRequired, missingRequired } from '../../services/form-required.ts';
 import ContentSkeleton from '../../components/ContentSkeleton.uvue';
 import { computed, onUnmounted, ref } from 'vue';
-import { onShow } from '@dcloudio/uni-app';
+import { onLoad, onShow } from '@dcloudio/uni-app';
 import MobilePage from '../../components/MobilePage.uvue';
 import PageHeader from '../../components/PageHeader.uvue';
 import MobileButton from '../../components/MobileButton.uvue';
+import AppIcon from '../../components/AppIcon.uvue';
 import FormField from '../../components/FormField.uvue';
 import FloatingActionButton from '../../components/FloatingActionButton.uvue';
 import ConfirmAction from '../../components/ConfirmAction.uvue';
@@ -21,6 +22,7 @@ import {
   fetchEvents,
   saveEvent,
   deleteEvent,
+  setAnniversaryPinned,
   daysFromToday,
 } from './services/events.ts';
 const rows = ref<any[]>([]),
@@ -48,6 +50,15 @@ const gradients = [
   ['#374151', '#111827'],
 ];
 const activeMenu = ref('');
+const pinningId = ref('');
+let pendingEditId = '';
+onLoad((query) => {
+  pendingEditId = String(query?.editId || '');
+  if (query?.create === '1') {
+    open();
+    form.value.isPinned = query?.home === '1' ? 1 : 0;
+  }
+});
 const sortedRows = computed(() => [...rows.value].sort((a, b) =>
   Math.abs(daysFromToday(a.targetDate)) - Math.abs(daysFromToday(b.targetDate)),
 ));
@@ -75,7 +86,15 @@ async function load(refresh = false) {
   error.value = '';
   try {
     const data = await scope.wait(fetchEvents('anniversary'));
-    if (alive && current === generation) rows.value = data;
+    if (alive && current === generation) {
+      rows.value = data;
+      if (pendingEditId) {
+        const item = data.find((row) => row.id === pendingEditId);
+        pendingEditId = '';
+        if (item) open(item);
+        else uni.showToast({ title: '纪念日已删除或不可访问', icon: 'none' });
+      }
+    }
   } catch (e) {
     if (e.name === 'PageInactiveError') return;
     if (current === generation) error.value = e.message;
@@ -87,12 +106,14 @@ async function load(refresh = false) {
   }
 }
 function open(item = null) {
+  if (pinningId.value) return;
   activeMenu.value = '';
   formError.value = '';
   form.value = item
-    ? { ...item }
+    ? { ...item, isPinned: item.isPinned === 1 ? 1 : 0 }
     : {
         title: '',
+        isPinned: 0,
         targetDate: new Date().toLocaleDateString('sv-SE'),
         note: '',
         color: colors[0],
@@ -126,6 +147,19 @@ async function save() {
     saving.value = false;
   }
 }
+async function togglePinned(item) {
+  if (pinningId.value) return;
+  pinningId.value = item.id;
+  try {
+    const saved = await scope.wait(setAnniversaryPinned(item.id, item.isPinned === 1 ? 0 : 1));
+    const index = rows.value.findIndex((row) => row.id === item.id);
+    if (index >= 0) rows.value[index] = { ...rows.value[index], ...saved };
+  } catch (e) {
+    if (e.name !== 'PageInactiveError') uni.showToast({ title: e.message || '固定失败，请重试', icon: 'none' });
+  } finally {
+    pinningId.value = '';
+  }
+}
 async function remove(item) {
   await scope.wait(deleteEvent('anniversary', item.id));
   rows.value = rows.value.filter((r) => r.id !== item.id);
@@ -145,11 +179,11 @@ async function remove(item) {
               :class="{ 'event-card-active': activeMenu === item.id }" :style="cardStyle(item.color)">
               <view class="event-card-header">
                 <text class="event-emoji">{{ item.icon || '🎉' }}</text>
-                <button class="event-more ui-type-body" role="button" :aria-label="'更多操作：' + item.title"
+                <view class="event-actions ui-row"><button class="event-more ui-type-body" role="button" :aria-label="item.isPinned === 1 ? '取消固定到首页' : '固定到首页'" :loading="pinningId === item.id" :disabled="!!pinningId" @click="togglePinned(item)"><AppIcon v-if="pinningId !== item.id" :name="item.isPinned === 1 ? 'ant-design:pushpin-filled' : 'ant-design:pushpin-outlined'" :size="20" color="#ffffff" /></button><button class="event-more ui-type-body" role="button" :aria-label="'更多操作：' + item.title"
                   :aria-expanded="activeMenu === item.id" aria-haspopup="true"
                   @click="activeMenu = activeMenu === item.id ? '' : item.id">
                   <view class="more-dot" /><view class="more-dot" /><view class="more-dot" />
-                </button>
+                </button></view>
               </view>
               <view v-if="activeMenu === item.id" class="event-menu ui-pad-xs" :class="{ 'event-menu-dark': isDark }">
                 <button :style="appTextColor()" class="event-menu-item" role="button" aria-label="编辑纪念日" @click="open(item)"><text :class="buttonLabelClasses(['event-menu-item'])">编辑</text></button>
@@ -190,7 +224,8 @@ async function remove(item) {
               <view class="color-swatch" :class="{ 'swatch-active': form.color === color }" :style="cardStyle(color)" />
             </button>
           </view>
-          <FormField label="备注" kind="textarea" v-model="form.note" /><text
+          <FormField label="备注" kind="textarea" v-model="form.note" />
+          <FormField label="添加到首页"><switch :checked="form.isPinned === 1" :disabled="saving" aria-label="添加到首页" @change="form.isPinned = $event.detail.value ? 1 : 0" /></FormField><text
             v-if="formError"
             class="event-error ui-section ui-type-body"
             >{{ formError }}</text

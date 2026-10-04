@@ -3,7 +3,7 @@ import FormActions from '../../components/FormActions.uvue';
 import { isRequired } from '../../services/form-required.ts';
 import ContentSkeleton from '../../components/ContentSkeleton.uvue';
 import { onUnmounted, ref } from 'vue';
-import { onShow } from '@dcloudio/uni-app';
+import { onLoad, onShow } from '@dcloudio/uni-app';
 import MobilePage from '../../components/MobilePage.uvue';
 import PageHeader from '../../components/PageHeader.uvue';
 import MobileButton from '../../components/MobileButton.uvue';
@@ -14,7 +14,7 @@ import AdaptiveModal from '../../components/AdaptiveModal.uvue';
 import FloatingActionButton from '../../components/FloatingActionButton.uvue';
 import { createRecordScope } from '../../services/records/page-scope.ts';
 import { isDark } from '../../services/theme.ts';
-import { fetchGoals, saveGoal, deleteGoal } from './services/tasks.ts';
+import { fetchGoals, saveGoal, deleteGoal, setGoalPinned } from './services/tasks.ts';
 import {
   dateTime,
   goalDateRange,
@@ -31,6 +31,15 @@ const goals = ref<any[]>([]),
   keyword = ref(''),
   typeFilter = ref('全部类型'),
   statusFilter = ref('全部状态');
+const pinningId = ref('');
+let pendingEditId = '';
+onLoad((query) => {
+  pendingEditId = String(query?.editId || '');
+  if (query?.create === '1') {
+    open();
+    form.value.isPinned = query?.home === '1' ? 1 : 0;
+  }
+});
 const form = ref<any>(null),
   saving = ref(false),
   formError = ref('');
@@ -59,7 +68,15 @@ async function load(refresh = false) {
         ...(status >= 0 ? { status: statuses[status] } : {}),
       }),
     );
-    if (alive && current === generation) goals.value = data;
+    if (alive && current === generation) {
+      goals.value = data;
+      if (pendingEditId) {
+        const item = data.find((row) => row.id === pendingEditId);
+        pendingEditId = '';
+        if (item) open(item);
+        else uni.showToast({ title: '目标已删除或不可访问', icon: 'none' });
+      }
+    }
   } catch (e) {
     if (e.name === 'PageInactiveError') return;
     if (alive && current === generation) error.value = e.message;
@@ -75,11 +92,13 @@ function goalTags(value) { return textTags(value).split(/[,，]/).map((tag) => t
 function shortDate(value) { return value ? String(value).slice(5, 10) : ''; }
 function resetFilters() { keyword.value = ''; typeFilter.value = '全部类型'; statusFilter.value = '全部状态'; load(); }
 function open(item = null) {
+  if (pinningId.value) return;
   formError.value = '';
   form.value = item
-    ? { ...item, tags: textTags(item.tags) }
+    ? { ...item, isPinned: item.isPinned === 1 ? 1 : 0, tags: textTags(item.tags) }
     : {
         title: '',
+        isPinned: 0,
         type: 1,
         status: 'in_progress',
         description: '',
@@ -139,6 +158,19 @@ async function save() {
     saving.value = false;
   }
 }
+async function togglePinned(item) {
+  if (pinningId.value) return;
+  pinningId.value = item.id;
+  try {
+    const saved = await scope.wait(setGoalPinned(item.id, item.isPinned === 1 ? 0 : 1));
+    const index = goals.value.findIndex((row) => row.id === item.id);
+    if (index >= 0) goals.value[index] = { ...goals.value[index], ...saved };
+  } catch (e) {
+    if (e.name !== 'PageInactiveError') uni.showToast({ title: e.message || '固定失败，请重试', icon: 'none' });
+  } finally {
+    pinningId.value = '';
+  }
+}
 async function remove(item) {
   await scope.wait(deleteGoal(item.id));
   goals.value = goals.value.filter((g) => g.id !== item.id);
@@ -178,7 +210,7 @@ async function remove(item) {
               <text class="goal-type" :class="['goal-type-' + item.type, { 'goal-type-dark': isDark }]">{{ goalTypes[item.type - 1] }}</text>
               <view class="goal-status ui-row"><view class="status-dot" :class="'status-' + item.status" /><text class="goal-status-text ui-type-caption" :class="{ 'secondary-text-dark': isDark }">{{ statusLabels[statuses.indexOf(item.status)] }}</text></view>
             </view>
-            <text :max-lines="2" class="record-title">{{ item.title }}</text>
+            <view class="goal-heading ui-row"><text :max-lines="2" class="record-title">{{ item.title }}</text><view @click.stop @keydown.enter.stop @keydown.space.stop><MobileButton :label="item.isPinned === 1 ? '取消固定到首页' : '固定到首页'" :icon="item.isPinned === 1 ? 'ant-design:pushpin-filled' : 'ant-design:pushpin-outlined'" variant="ghost" :loading="pinningId === item.id" :disabled="!!pinningId" @click="togglePinned(item)" /></view></view>
             <view v-if="goalTags(item.tags).length" class="goal-tags"><text v-for="tag in goalTags(item.tags)" :key="tag" class="goal-tag" :class="{ 'goal-tag-dark': isDark }">{{ tag }}</text></view>
             <text :max-lines="3" v-if="item.description" class="record-content" :class="{ 'secondary-text-dark': isDark }">{{ item.description }}</text>
             <view class="goal-progress"><view class="goal-footer ui-row"><text class="record-secondary" :class="{ 'secondary-text-dark': isDark }">{{ item.startDate || item.endDate ? (shortDate(item.startDate) || '—') + ' ~ ' + (shortDate(item.endDate) || '—') : '无期限' }}</text><text class="record-secondary" :class="{ 'secondary-text-dark': isDark }">{{ progress(item) }}%</text></view>
@@ -223,6 +255,7 @@ async function remove(item) {
           kind="textarea"
           v-model="form.content"
         /><FormField appearance="soft" label="标签" v-model="form.tags" />
+        <FormField appearance="soft" label="添加到首页"><switch :checked="form.isPinned === 1" :disabled="saving" aria-label="添加到首页" @change="form.isPinned = $event.detail.value ? 1 : 0" /></FormField>
         <text v-if="formError" class="record-error ui-section ui-type-body">{{ formError }}</text
         ><FormActions>
           <template #secondary><ConfirmAction v-if="form.id" label="删除目标" :action="() => remove(form)" /></template>
@@ -260,6 +293,8 @@ async function remove(item) {
   flex-wrap: wrap;
 }
 .goal-title-row { align-items: flex-end; }
+.goal-heading { align-items: center; }
+.record-title { flex: 1; min-width: 0; }
 .goal-grid { display: flex; flex-direction: row; flex-wrap: wrap; gap: $space-section; align-items: stretch; }
 .record-card { box-sizing: border-box; min-width: 0; width: calc((100% - #{$space-section}) / 2); }
 .goal-meta, .goal-footer { justify-content: space-between; align-items: center; flex-wrap: wrap; gap: $space-detail; }

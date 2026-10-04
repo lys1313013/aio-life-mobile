@@ -1,0 +1,163 @@
+<script setup lang="ts">
+import { computed, getCurrentInstance, onUnmounted, ref } from 'vue'
+import { onShow, onHide } from '@dcloudio/uni-app'
+import PageHeader from '../../components/PageHeader.uvue'
+import PageState from '../../components/PageState.uvue'
+import LifeMenuIcon from '../../components/LifeMenuIcon.uvue'
+import LoadingIndicator from '../../components/LoadingIndicator.uvue'
+import ConfirmAction from '../../components/ConfirmAction.uvue'
+import { isDark } from '../../services/theme.ts'
+import { homeCards, homeCardPreferences as state } from '../../services/home-cards.ts'
+import { moveHomeCard } from '../../services/home-card-preferences.ts'
+import spacing from '../../styles/spacing.json'
+
+const groups = [{ key: 'overview', title: '概览' }, { key: 'section', title: '详情' }]
+const rows = (group: string) => state.items.filter(item => item.group === group)
+const busy = computed(() => !!state.busy || state.loading)
+const dragging = ref(''), dragGroup = ref(''), from = ref(-1), target = ref(-1), offset = ref(0)
+const scrollTop = ref(0)
+let actualScroll = 0, startScroll = 0, startY = 0, lastY = 0, rowHeight = spacing.controlMin + spacing.detail
+let timer: ReturnType<typeof setTimeout> | null = null
+let autoScroll: ReturnType<typeof setInterval> | null = null
+let viewport = { top: 0, bottom: 0, height: 0 }, maxScroll = 0
+let visible = true
+let gesture = 0
+const instance = getCurrentInstance()
+function back() { uni.navigateBack({ fail: () => uni.switchTab({ url: '/pages/profile/index' }) }) }
+onShow(() => { visible = true; void homeCards.load() })
+onHide(() => { visible = false; cancel() })
+onUnmounted(cancel)
+function report(error) { if (visible) uni.showToast({ title: error.message || '保存失败，请重试', icon: 'none' }) }
+async function toggle(item, event) {
+  try { await homeCards.toggle(item.cardKey, !!event.detail.value) }
+  catch (error) { report(error) }
+  // Native switch can retain its own optimistic state; remount after every response, including failures.
+  switchVersion.value++
+}
+const switchVersion = ref(0)
+async function reset() {
+  if (busy.value || dragging.value) return
+  await homeCards.reset()
+}
+function y(event) { return event.touches?.[0]?.clientY ?? event.touches?.[0]?.pageY ?? 0 }
+function cancel() {
+  gesture++
+  if (timer) clearTimeout(timer)
+  if (autoScroll) clearInterval(autoScroll)
+  timer = null; autoScroll = null
+  dragging.value = ''; dragGroup.value = ''; offset.value = 0; from.value = -1; target.value = -1
+}
+function start(group: string, item, index: number, event) {
+  if (busy.value) return
+  cancel()
+  const version = gesture
+  startY = y(event); lastY = startY; startScroll = actualScroll
+  timer = setTimeout(() => {
+    if (!visible || version !== gesture) return
+    uni.createSelectorQuery().in(instance?.proxy)
+      .select('.card-preferences-scroll').boundingClientRect()
+      .select('.preferences-content').boundingClientRect()
+      .select('.preference-row').boundingClientRect()
+      .exec(rects => {
+        if (!visible || version !== gesture || !rects?.[0]) return
+        viewport = rects[0]; maxScroll = Math.max(0, (rects[1]?.height || 0) - viewport.height)
+        rowHeight = rects[2]?.height || rowHeight
+        dragging.value = item.cardKey; dragGroup.value = group; from.value = index; target.value = index
+        // Only the handle captures the gesture; ordinary rows remain freely scrollable.
+        uni.vibrateShort({ fail: () => {} })
+        autoScroll = setInterval(() => {
+          const edge = spacing.controlMin
+          const step = lastY < viewport.top + edge ? -spacing.inline : lastY > viewport.bottom - edge ? spacing.inline : 0
+          if (!step) return
+          scrollTop.value = Math.max(0, Math.min(maxScroll, actualScroll + step))
+          updateTarget()
+        }, 40)
+      })
+  }, 300)
+}
+function updateTarget() {
+  offset.value = lastY - startY + actualScroll - startScroll
+  target.value = Math.max(0, Math.min(rows(dragGroup.value).length - 1, from.value + Math.round(offset.value / rowHeight)))
+}
+function move(event) {
+  lastY = y(event)
+  if (!dragging.value) { if (Math.abs(lastY - startY) > spacing.inline) cancel(); return }
+  updateTarget()
+}
+function scrolled(event) {
+  actualScroll = event.detail.scrollTop
+  if (dragging.value) updateTarget()
+}
+async function finish() {
+  if (!dragging.value) { cancel(); return }
+  const group = dragGroup.value, oldIndex = from.value, newIndex = target.value
+  const keys = moveHomeCard(rows(group), oldIndex, newIndex).map(item => item.cardKey)
+  cancel()
+  if (oldIndex === newIndex) return
+  try { await homeCards.reorder(group, keys) } catch (error) { report(error) }
+}
+// Keyboard fallback on H5 without adding permanent arrow buttons.
+async function keyboard(group: string, index: number, direction: number) {
+  if (busy.value || index + direction < 0 || index + direction >= rows(group).length) return
+  try { await homeCards.reorder(group, moveHomeCard(rows(group), index, index + direction).map(item => item.cardKey)) }
+  catch (error) { report(error) }
+}
+function rowStyle(item) {
+  return dragging.value === item.cardKey ? { transform: 'translateY(' + offset.value + 'px)', zIndex: 2 } : {}
+}
+</script>
+<template>
+  <view class="preferences-page" :class="{ 'preferences-page-dark': isDark }">
+    <PageHeader title="首页卡片" back @back="back">
+      <view class="preferences-header"><text class="preferences-title" :class="{ 'text-dark': isDark }">首页卡片</text><view v-if="!busy && !dragging && state.ready"><ConfirmAction label="恢复默认" icon="ant-design:undo-outlined" message="恢复全部卡片的默认显示和顺序？" :danger="false" :action="reset" /></view><LoadingIndicator v-else-if="state.busy === 'reset'" compact /></view>
+    </PageHeader>
+    <scroll-view class="card-preferences-scroll" :scroll-y="!dragging" :scroll-top="scrollTop" @scroll="scrolled">
+      <view class="preferences-content ui-page-inset">
+        <PageState :loading="state.loading && !state.ready" :error="state.error" skeleton="form" @retry="homeCards.load">
+          <view v-for="group in groups" :key="group.key" class="preference-group">
+            <view class="group-heading"><text class="group-label" :class="{ 'muted-dark': isDark }">{{ group.title }}</text><LoadingIndicator v-if="state.busy === group.key" compact /></view>
+            <view v-for="(item, index) in rows(group.key)" :key="item.cardKey" class="preference-row" :class="{ 'row-dark': isDark, 'row-dragging': dragging === item.cardKey, 'insert-before': dragging && dragGroup === group.key && target === index && target < from, 'insert-after': dragging && dragGroup === group.key && target === index && target > from }" :style="rowStyle(item)">
+              <view role="button" tabindex="0" class="drag-handle" :aria-label="'拖动调整' + item.title + '顺序'" @touchstart="start(group.key, item, index, $event)" @touchmove.stop.prevent="move" @touchend="finish" @touchcancel="cancel" @keydown.up.prevent="keyboard(group.key, index, -1)" @keydown.down.prevent="keyboard(group.key, index, 1)">
+                <view class="grip"><view v-for="dot in 6" :key="dot" class="grip-dot" :class="{ 'grip-dot-dark': isDark }" /></view>
+              </view>
+              <LifeMenuIcon :icon="item.icon" :size="20" />
+              <text class="card-name" :class="{ 'text-dark': isDark }">{{ item.title }}</text>
+              <LoadingIndicator v-if="state.busy === item.cardKey" compact />
+              <switch v-else :key="item.cardKey + ':' + switchVersion" :checked="item.enabled" :disabled="busy || !!dragging" :aria-label="'显示' + item.title" color="#5879ce" @change="toggle(item, $event)" />
+            </view>
+          </view>
+        </PageState>
+      </view>
+    </scroll-view>
+  </view>
+</template>
+<style scoped lang="scss">
+@use '../../styles/typography' as *;
+@use '../../styles/spacing.scss';
+@use '../../styles/spacing-tokens' as *;
+.preferences-page { flex: 1; height: 100%; background-color: #fff; }
+.preferences-page-dark { background-color: #1c1e22; }
+.preferences-header { flex: 1; display: flex; flex-direction: row; align-items: center; justify-content: space-between; }
+.preferences-title { @include type-style('title'); color: #27272a; }
+.card-preferences-scroll { flex: 1; min-height: 0; height: 0; }
+/* Settings keep a readable control width on tablet and desktop; page inset remains single-owned. */
+.preferences-content { padding-bottom: $space-page; max-width: 640px; width: 100%; margin: 0 auto; }
+.preference-group { margin-bottom: $space-section; }
+.group-heading { display: flex; flex-direction: row; align-items: center; min-height: $space-controlMin; }
+.group-label { @include type-style('caption'); color: #71717a; flex: 1; }
+.preference-row { position: relative; display: flex; flex-direction: row; align-items: center; min-height: $space-controlMin + $space-detail; background-color: #fff; gap: $space-inline; }
+.row-dark { background-color: #1c1e22; }
+.card-name { flex: 1; min-width: 0; @include type-style('body'); color: #27272a; }
+.drag-handle { display: flex; align-items: center; justify-content: center; width: $space-controlMin; height: $space-controlMin; flex-shrink: 0; }
+.grip { width: 10px; display: flex; flex-direction: row; flex-wrap: wrap; gap: 2px; }
+.grip-dot { width: 3px; height: 3px; border-radius: 2px; background-color: #a1a1aa; }
+.grip-dot-dark { background-color: #71717a; }
+.row-dragging { box-shadow: 0 4px 14px rgba(0,0,0,.12); border-radius: 6px; }
+.insert-before { border-top: 2px solid #5879ce; }
+.insert-after { border-bottom: 2px solid #5879ce; }
+.text-dark { color: #ececf0; }
+.muted-dark { color: #a1a1aa; }
+/* #ifdef WEB */
+.drag-handle { touch-action: none; cursor: grab; user-select: none; }
+/* #endif */
+</style>

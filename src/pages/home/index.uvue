@@ -4,12 +4,14 @@ import { appTextColor } from '../../services/app-layout.ts'
 import { buttonLabelClasses } from '../../services/button-label.ts'
 import ContentSkeleton from '../../components/ContentSkeleton.uvue';
 import TimeDonut from './TimeDonut.uvue'
+import BusinessCards from './BusinessCards.uvue'
 import AppIcon from '../../components/AppIcon.uvue'
 import SecondaryUnlock from "../../components/SecondaryUnlock.uvue";
 import { isDark, themeClass } from '../../services/theme.ts'
 import { useRefreshTheme } from '../../services/refresh-theme.ts'
 const refreshTheme = useRefreshTheme()
-import { nextTick, computed, reactive, ref } from 'vue'
+import { nextTick, computed, reactive, ref, watch } from 'vue'
+import { homeCards, homeCardPreferences } from '../../services/home-cards.ts'
 import { onShow, onHide, onUnload, onResize } from '@dcloudio/uni-app'
 import DashboardAction from '../../components/DashboardAction.uvue'
 import iconCatalog from '../../services/icons/catalog.ts'
@@ -53,6 +55,10 @@ import spacing from '../../styles/spacing.json'
 const viewportWidth = ref(uni.getWindowInfo().windowWidth)
 const quickIconSize = computed(() => viewportWidth.value < 640 ? 20 : 24)
 onResize(event => { viewportWidth.value = event.size.windowWidth })
+const businessCardRefs = ref<Record<string, any>>({})
+const homeSections = computed(() => homeCardPreferences.items.filter(item => item.group === 'section' && item.enabled))
+const sectionEnabled = (key: string) => homeCards.enabled('section.' + (key === 'commits' ? 'github' : key))
+const businessActive = ref(false)
 const loading = ref(false)
 const refreshing = ref(false)
 async function pullRefresh() {
@@ -118,14 +124,12 @@ const states = reactive({
   commits: { loading: false, error: '' },
 })
 const watchedAutoHeight = computed(() => viewportWidth.value < 768 && !(states.watched.loading && !refreshing.value) && !states.watched.error)
-const githubBound = computed(() =>
-  cards.value.some((item) => item.type === 'GITHUB'),
-)
+const githubBound = ref(false)
 const visibleCards = computed(() =>
   cards.value.filter(
     (item) =>
-      item.loading || item.error || (item.value !== '' && item.value != null),
-  ),
+      homeCards.enabled('overview.' + item.type.toLowerCase()) && (item.loading || item.error || (item.value !== '' && item.value != null)),
+  ).sort((a, b) => homeCards.order('overview.' + a.type.toLowerCase()) - homeCards.order('overview.' + b.type.toLowerCase())),
 )
 const moreExercise = ref(false)
 const moreCommits = ref(false)
@@ -148,8 +152,16 @@ function maybeLoadMore(key: string) {
   if (!moreErrors[key]) loadMore(key)
 }
 let refreshTask: Promise<void> | null = null
+let homeGeneration = 0
 let active = true
 let redirecting = false
+watch(() => session.token, () => {
+  homeGeneration++; refreshTask = null; cards.value = []; githubBound.value = false
+  businessActive.value = false; overview.loading = false
+  for (const key of Object.keys(states)) { states[key].loading = false; states[key].error = '' }
+  links.value = []; thoughts.value = []; watched.value = []; commits.value = []
+  exercise.value = { days: [] }; time.value = timeSummary([], [])
+}, { flush: 'sync' })
 
 function goLogin() {
   if (redirecting) return
@@ -185,29 +197,45 @@ onShow(() => {
     loadSection('time'); loadSection('exercise')
     const card = cards.value.find(item => item.type === 'EXERCISE')
     if (card) loadCard(card)
+    refresh()
     return
   }
   refresh()
 })
-onHide(() => { active = false; timeChartActive.value = false; timeEditor.value = null; recordCreateKind.value = null; thoughtEditId.value = ''; watchedEditor.value = null; if (minuteTimer) clearInterval(minuteTimer); minuteTimer = null })
+onHide(() => { homeGeneration++; refreshTask = null; businessActive.value = false; active = false; timeChartActive.value = false; timeEditor.value = null; recordCreateKind.value = null; thoughtEditId.value = ''; watchedEditor.value = null; if (minuteTimer) clearInterval(minuteTimer); minuteTimer = null })
 onUnload(() => {
+  homeGeneration++; refreshTask = null
+  businessActive.value = false
   active = false
   if (minuteTimer) clearInterval(minuteTimer)
 })
 
+watch(() => homeCardPreferences.items.map(item => item.cardKey + ':' + item.enabled + ':' + item.sortOrder).join('|'), () => {
+  // Saving may finish after navigating back from preferences. Reload newly enabled cards then.
+  if (active && homeCardPreferences.ready && !loading.value) void refresh()
+})
+
 function refresh() {
   if (refreshTask) return refreshTask
-  refreshTask = loadHome().finally(() => { refreshTask = null })
-  return refreshTask
+  const operation = loadHome().finally(() => { if (refreshTask === operation) refreshTask = null })
+  refreshTask = operation
+  return operation
 }
 async function loadHome() {
+  const generation = ++homeGeneration
+  overview.loading = false; moreExercise.value = false; moreCommits.value = false
+  for (const key of Object.keys(states)) states[key].loading = false
   loading.value = true
   errorText.value = ''
   const token = session.token
   try {
-    await fetchUser()
-    if (!isCurrent(token)) return
+    await Promise.all([fetchUser(), homeCards.load()])
+    if (!homeCardPreferences.ready || homeCardPreferences.error) throw new Error(homeCardPreferences.error || '首页设置加载失败')
+    if (!isCurrent(token) || generation !== homeGeneration) return
+    businessActive.value = true
+    await nextTick()
     await Promise.all([
+      ...Object.values(businessCardRefs.value).filter(Boolean).map((card: any) => card.refresh()),
       loadOverview(),
       loadSection('time'),
       loadSection('links'),
@@ -216,9 +244,9 @@ async function loadHome() {
       loadSection('exercise'),
     ])
   } catch (error) {
-    if (active) errorText.value = handleError(error)
+    if (active && generation === homeGeneration) errorText.value = handleError(error)
   } finally {
-    loading.value = false
+    if (generation === homeGeneration) loading.value = false
   }
 }
 async function loadOverview() {
@@ -226,77 +254,84 @@ async function loadOverview() {
   overview.loading = true
   overview.error = ''
   const token = session.token
+  const generation = homeGeneration
   try {
     const items = await getOverview()
-    if (!isCurrent(token)) return
-    cards.value = items.map((item) => ({ ...(refreshing.value ? cards.value.find(card => card.type === item.type) : {}), ...item, loading: false, error: '' }))
+    if (!isCurrent(token) || generation !== homeGeneration) return
+    githubBound.value = items.some(item => item.type === 'GITHUB')
+    cards.value = items.filter(item => homeCards.enabled('overview.' + item.type.toLowerCase()))
+      .sort((a, b) => homeCards.order('overview.' + a.type.toLowerCase()) - homeCards.order('overview.' + b.type.toLowerCase()))
+      .map((item) => ({ ...(refreshing.value ? cards.value.find(card => card.type === item.type) : {}), ...item, loading: false, error: '' }))
     await Promise.all([
       ...cards.value.map((item) => loadCard(item)),
       ...(githubBound.value ? [loadSection('commits')] : []),
     ])
   } catch (error) {
-    if (active) overview.error = handleError(error)
+    if (isCurrent(token) && generation === homeGeneration) overview.error = handleError(error)
   } finally {
-    overview.loading = false
+    if (generation === homeGeneration) overview.loading = false
   }
 }
 async function loadCard(item: OverviewCard) {
-  if (item.loading) return
+  if (item.loading || !homeCards.enabled('overview.' + item.type.toLowerCase())) return
   item.loading = true
   item.error = ''
   const token = session.token
+  const generation = homeGeneration
   try {
     const data = await getCard(item.type)
     if (data == null) throw new Error('卡片数据为空，请重试')
-    if (isCurrent(token)) Object.assign(item, data)
+    if (isCurrent(token) && generation === homeGeneration) Object.assign(item, data)
   } catch (error) {
-    if (active) item.error = handleError(error)
+    if (isCurrent(token) && generation === homeGeneration) item.error = handleError(error)
   } finally {
-    item.loading = false
+    if (generation === homeGeneration) item.loading = false
   }
 }
 async function loadSection(key: string) {
+  if (!sectionEnabled(key)) return
   const state = states[key]
   if (state.loading) return
   state.loading = true
   state.error = ''
   if (key === 'exercise' || key === 'commits') pageVersions[key]++
   const token = session.token
+  const generation = homeGeneration
   const editVersion = editVersions[key]
   try {
     if (key === 'time') {
       const requestedDate = todayDate()
       const data = await getTime(requestedDate)
-      if (isCurrent(token)) {
+      if (isCurrent(token) && generation === homeGeneration) {
         time.value = timeSummary(data.categories, data.records)
         timeDate.value = requestedDate
       }
     }
     if (key === 'links') {
       const data = await getQuickLinks()
-      if (isCurrent(token))
+      if (isCurrent(token) && generation === homeGeneration)
         links.value = data
           .filter((item) => item.enabled === 1)
           .sort((a, b) => a.sortOrder - b.sortOrder)
     }
     if (key === 'thoughts') {
       const data = await getThoughts()
-      if (isCurrent(token) && editVersion === editVersions.thoughts) thoughts.value = data
+      if (isCurrent(token) && generation === homeGeneration && editVersion === editVersions.thoughts) thoughts.value = data
     }
     if (key === 'watched') {
       const data = await getWatched()
-      if (isCurrent(token) && editVersion === editVersions.watched) watched.value = data
+      if (isCurrent(token) && generation === homeGeneration && editVersion === editVersions.watched) watched.value = data
     }
     if (key === 'exercise') {
       const data = await getExercises()
-      if (isCurrent(token)) {
+      if (isCurrent(token) && generation === homeGeneration) {
         exercise.value = data
         moreErrors.exercise = ''
       }
     }
     if (key === 'commits') {
       const data = await getCommits()
-      if (isCurrent(token)) {
+      if (isCurrent(token) && generation === homeGeneration) {
         commits.value = data
         commitPage.value = 1
         hasMoreCommits.value = data.length === 10
@@ -304,24 +339,25 @@ async function loadSection(key: string) {
       }
     }
   } catch (error) {
-    if (active) state.error = handleError(error)
+    if (isCurrent(token) && generation === homeGeneration) state.error = handleError(error)
   } finally {
-    state.loading = false
+    if (generation === homeGeneration) state.loading = false
   }
 }
 async function loadMore(key: string) {
   const isExercise = key === 'exercise'
-  if (!active || states[key].loading || (isExercise ? moreExercise.value : moreCommits.value)) return
+  if (!active || !sectionEnabled(key) || states[key].loading || (isExercise ? moreExercise.value : moreCommits.value)) return
   if (isExercise ? !exercise.value.hasMore : !hasMoreCommits.value) return
   const busy = isExercise ? moreExercise : moreCommits
   busy.value = true
   moreErrors[key] = ''
   const version = pageVersions[key]
   const token = session.token
+  const generation = homeGeneration
   try {
     if (isExercise) {
       const data = await getExercises(exercise.value.lastDate || '')
-      if (isCurrent(token) && pageVersions[key] === version)
+      if (isCurrent(token) && generation === homeGeneration && pageVersions[key] === version)
         exercise.value = {
           ...data,
           days: [...exercise.value.days, ...data.days],
@@ -329,16 +365,16 @@ async function loadMore(key: string) {
         }
     } else {
       const data = await getCommits(commitPage.value + 1)
-      if (isCurrent(token) && pageVersions[key] === version) {
+      if (isCurrent(token) && generation === homeGeneration && pageVersions[key] === version) {
         commits.value = [...commits.value, ...data.filter(item => !commits.value.some(existing => existing.id === item.id))]
         commitPage.value++
         hasMoreCommits.value = data.length === 10 && commitPage.value < 100
       }
     }
   } catch (error) {
-    if (isCurrent(token) && pageVersions[key] === version) moreErrors[key] = handleError(error)
+    if (isCurrent(token) && generation === homeGeneration && pageVersions[key] === version) moreErrors[key] = handleError(error)
   } finally {
-    busy.value = false
+    if (generation === homeGeneration) busy.value = false
   }
 }
 function openLink(path: string) { openBusinessLink(path) }
@@ -461,7 +497,7 @@ function trendLines(points) {
         ><view v-if="overview.error" class="global-error" role="alert"
           ><text class="failure-text" :class="themeClass('failure-text')">{{ overview.error }}</text
           ><button role="button" class="text-button ui-pad-sm" @click="loadOverview"><text :class="buttonLabelClasses(['text-button ui-pad-sm'])">重试统计卡片</text></button></view
-        ><view class="overview-grid">
+        ><view v-if="homeCardPreferences.ready" class="overview-grid">
           <view
             v-if="(loading || overview.loading) && cards.length === 0"
             v-for="n in 4"
@@ -511,8 +547,8 @@ function trendLines(points) {
               >
             </view>
           </view><SecondaryUnlock />
-  </view><view class="section-grid">
-          <view class="section-cell ui-pad-xs"
+  </view><view v-if="homeCardPreferences.ready" class="section-grid"><template v-for="section in homeSections" :key="section.cardKey">
+          <view v-if="section.cardKey === 'section.time'" class="section-cell ui-pad-xs"
             ><DashboardSection
               title="时迹"
               :height="sectionHeight('time')"
@@ -568,7 +604,7 @@ function trendLines(points) {
                   ></view></scroll-view>
               </view>
             </DashboardSection></view
-          ><view class="section-cell ui-pad-xs"
+          ><view v-if="section.cardKey === 'section.links'" class="section-cell ui-pad-xs"
             ><DashboardSection
               title="快捷导航" skeleton="grid"
               :height="sectionHeight('links')"
@@ -598,9 +634,7 @@ function trendLines(points) {
                 </button></view></scroll-view>
             </DashboardSection></view
           ><view
-            v-if="
-              states.watched.loading || states.watched.error || watched.length
-            "
+            v-if="section.cardKey === 'section.watched' && (states.watched.loading || states.watched.error || watched.length)"
             class="section-cell ui-pad-xs"
             ><DashboardSection
               title="待办"
@@ -620,7 +654,7 @@ function trendLines(points) {
                 ></scroll-view
               ></DashboardSection
             ></view
-          ><view class="section-cell ui-pad-xs"
+          ><view v-if="section.cardKey === 'section.thoughts'" class="section-cell ui-pad-xs"
             ><DashboardSection
               title="闪念"
               compact
@@ -645,11 +679,7 @@ function trendLines(points) {
               ></DashboardSection
             ></view
           ><view
-            v-if="
-              states.exercise.loading ||
-              states.exercise.error ||
-              exercise.days.length
-            "
+            v-if="section.cardKey === 'section.exercise' && (states.exercise.loading || states.exercise.error || exercise.days.length)"
             class="section-cell ui-pad-xs"
             ><DashboardSection
               title="运动"
@@ -706,7 +736,7 @@ function trendLines(points) {
                 </view></scroll-view
               ></DashboardSection
             ></view
-          ><view v-if="githubBound" class="section-cell ui-pad-xs"
+          ><view v-if="section.cardKey === 'section.github' && githubBound" class="section-cell ui-pad-xs"
             ><DashboardSection
               title="最近提交"
               icon="simple-icons:github"
@@ -735,7 +765,8 @@ function trendLines(points) {
               ></DashboardSection
             ></view
           >
-        </view>
+        <BusinessCards v-if="['section.goal', 'section.anniversary', 'section.reading', 'section.membership', 'section.movie'].includes(section.cardKey)" :ref="el => { businessCardRefs[section.cardKey] = el }" :only="section.cardKey.slice(8)" :active="businessActive" />
+        </template></view>
       </view></scroll-view
     ><TimeRecordEditor v-if="timeEditor" :record-id="timeEditor.recordId" @close="closeTimeEditor" /><RecordCreateModal v-if="recordCreateKind" :kind="recordCreateKind" :thought-id="recordCreateKind === 'think' ? thoughtEditId : ''" @close="recordCreateKind = null" @saved="handleRecordCreated" @deleted="handleThoughtDeleted" /><WatchedTaskEditModal v-if="watchedEditor" :task="watchedEditor" @close="watchedEditor = null" @saved="handleWatchedSaved" />
   </view>
