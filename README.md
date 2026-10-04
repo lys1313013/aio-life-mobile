@@ -80,9 +80,44 @@ GitHub Actions 将单元测试与 Web / 微信编译放在 `Unit tests and Web /
 
 ### 本地业务图标
 
-`src/services/icons/catalog.ts` 统一合并通用、操作与 Web 同款业务图标，供菜单、首页、运动记录和分类编辑使用。`business-icons.json` 按实际引用同步 Web 路由菜单、字典分类预设、Web 显式图标清单、mobile 源码图标和完整运动预设，并包含 Web 自定义 SVG（含 9 个运动图标）。同步覆盖 Lucide、Ant Design、MDI 等引用到的集合，保留原始名称、比例和颜色，不全量打包所有图标库；运行时不访问外部图标服务。服务端自定义的任意图标若未在上述来源中声明，仍需先加入 Web 显式图标清单再同步。
+`src/services/icons/catalog.ts` 读取生成阶段已合并的本地图标目录，供菜单、首页、运动记录和分类编辑使用。`business-icons.json` 按实际引用同步 Web 路由菜单、字典分类预设、Web 显式图标清单、mobile 源码图标和完整运动预设，并包含 Web 自定义 SVG（含 9 个运动图标）。同步覆盖 Lucide、Ant Design、MDI 等引用到的集合，保留原始名称、比例和颜色，不全量打包所有图标库；运行时不访问外部图标服务。服务端自定义的任意图标若未在上述来源中声明，仍需先加入 Web 显式图标清单再同步。
 
 Web 更新图标后执行 `npm run icons:sync`，用 `npm run icons:check` 检查同步结果。同步时生成 `catalog.generated.json`，按通用、操作、业务的顺序合并去重，运行时只打包这一份目录，保留所有图形和运动预设。这两个维护命令需要相邻 `aio-life-front` 源码及其已安装的 `@iconify/json`；生成的 JSON 随 mobile 提交，正常构建无需 Web 仓库。
+
+#### 菜单管理中配置新图标
+
+**在 Web 菜单管理中保存图标编号，不会自动把图形加入 mobile 安装包。** Web 能预览某个图标，也不代表 mobile 已收录；mobile 不会在缺失时向 Iconify 下载图标。菜单组件 `LifeMenuIcon.uvue` 找不到本地名称时显示 `lucide:layout-dashboard`，直接使用 `CategoryIcon.uvue` 的其他入口则显示圆点。已收录图标从本地 SVG 数据渲染，不依赖外部图标服务。
+
+新增前先在 mobile 仓库检查完整编号，例如 Chrome 风格的密码钥匙：
+
+```bash
+node --input-type=module -e "import fs from 'node:fs'; const name = 'material-symbols:vpn-key-outline-rounded'; const catalog = JSON.parse(fs.readFileSync('src/services/icons/catalog.generated.json', 'utf8')); const found = Object.hasOwn(catalog.icons, name); console.log(name + ': ' + (found ? '已收录' : '未收录')); process.exitCode = found ? 0 : 1;"
+```
+
+未收录时按以下步骤维护（上述编号仅作示例，不表示已加入资源）：
+
+1. 将完整编号加入相邻 Web 仓库 `scripts/icons/local-icons.config.json` 的 `icons` 数组。mobile 同步脚本读取该数组，不会把 `collections` 中的整个集合打包进来，也不会自动扫描数据库菜单配置。只为单个菜单补充所需图标，避免引入整套图标库。
+2. 在 Web 仓库生成并校验资源：
+
+   ```bash
+   cd ../aio-life-front
+   pnpm icons:generate
+   pnpm icons:check
+   ```
+
+3. 在 mobile 仓库同步并校验：
+
+   ```bash
+   cd ../aio-life-mobile
+   npm run icons:sync
+   npm run icons:check
+   ```
+
+   若脚本报图标不存在或别名变换不受支持，应核对完整名称和当前锁定版本的 `@iconify/json`；不能仅凭在线预览成功就跳过校验。不要手工修改生成 JSON。
+4. 再次执行完整编号检查。`icons:check` 只验证声明来源与生成物一致，不检查数据库中所有动态配置是否已覆盖。分别在 Web、mobile 独立仓库保存配置及生成物；mobile 生成物包括 `business-icons.json` 和 `catalog.generated.json`。
+5. 准备提交时按本仓库规范执行统一验证，关注微信包体以及目标菜单在深浅色主题中的显示。构建并发布对应客户端后，新资源才会到达用户；旧版小程序或 App 即使收到新菜单编号，仍会显示兜底图标。微信构建、上传、体验版及正式发布是不同阶段。
+
+推荐先发布包含新图标的客户端资源，再切换菜单编号。若已提前配置，可先恢复已收录的编号，或接受旧客户端暂时显示兜底图标。Web 侧维护说明见相邻仓库的 `scripts/icons/README.md`。
 
 此前首页验证（2026-09-30，早于微信登录接入）：真实本地后端账号登录、首页统计与各模块读取、刷新恢复登录已通过；6 项纯逻辑测试、15 项 Web E2E（包含 390 / 768 / 1440px 深浅色、卡片独立重试、并发 401、空账号、分页恢复、三栏切换与退出后重新登录）已通过。微信开发者工具已验证真实接口登录、首页、三栏导航与资料读取；微信真机仍需扫码验证。iOS / Android 未构建安装包、未做 Vapor 真机测试。
 
@@ -155,9 +190,21 @@ npm run check:weixin-size:only  # 只检查已有 dist/build/mp-weixin，适合�
 }
 ```
 
-项目 npm 编译器统一固定为 **5.31 Alpha 对应版本 `3.0.0-alpha-5030120260930001`**，建议使用同版本 HBuilderX 5.31 Alpha 导入根目录的 CLI 项目进行 App 调试。页面使用组合式 API，`.ts` 中使用 JS/TS 业务逻辑；只有打开网页版链接的 `window.open` 放在 `WEB` 条件编译内，App / 小程序采用 `uni.*`。图表使用基础 `view`，未引入 Web ECharts。该版本属于 Alpha 通道，升级编译器时须重新执行跨端验证。2026-10-01 实测本机 HBuilderX 为 5.26.2026091802，与当前 5.31 Alpha npm 编译器不匹配；本次未升级。未安装完整 Xcode，simctl 不可用，不能据此验证 App Vapor。
+项目 npm 编译器统一固定为 **5.31 Alpha 对应版本 `3.0.0-alpha-5030120260930001`**，使用同版本 HBuilderX 5.31 Alpha，按下文准备并导入独立 App 工程。页面使用组合式 API，`.ts` 中使用 JS/TS 业务逻辑；只有打开网页版链接的 `window.open` 放在 `WEB` 条件编译内，App / 小程序采用 `uni.*`。图表使用基础 `view`，未引入 Web ECharts。该版本属于 Alpha 通道，升级编译器时须重新执行跨端验证。2026-10-04 本机已安装 HBuilderX 5.31 Alpha（保留原 5.26 正式版），Android 原生编译和云打包通过，iOS App 资源编译通过。未安装完整 Xcode，未生成签名 IPA；资源编译不能代替 iOS 原生联编和真机验证。
 
-App 运行 / 打包需配置项目自己的 DCloud AppID、设备或模拟器，以及相应签名配置。不要使用示例项目 AppID，也不要提交证书和私钥。仓库保留空 AppID，未生成安装包。
+执行 `npm run prepare:app` 生成 `artifacts/android/AIO-Life-App`，再用匹配版本的 HBuilderX 打开这个工程。该步骤复制当前源码、保留本地 DCloud AppID，并提供 App 专用依赖转换和生产 API 配置；生成物全部被 Git 忽略。首次在生成工程的 manifest 可视化界面获取自己的 DCloud AppID，或通过本地环境变量 `AIO_DCLOUD_APP_ID` 配置，再选择「发行 → 原生 App 云打包」。Android 可使用云端证书；iOS 需自己的 Bundle ID、Apple 签名证书和描述文件。不要提交证书、私钥或真实 AppID；源码 manifest 保持空 AppID。
+
+2026-10-04 小米 14 真机定位到 5.31 云包的 C++ 运行库不匹配：`libuniappx.so` 引用了云包中 `libc++_shared.so` 缺失的 `__from_chars_floating_point` 符号，导致页面初始化前黑屏。`prepare:app` 现在从已安装的同版本官方 Vapor 基座提取匹配的 arm64 C++ 库，通过忽略工程中的 UTS `libs` 目录参与云打包，并校验两份库的 SHA-256。默认 HBuilderX 路径为 `/Applications/HBuilderX-Alpha.app/Contents/HBuilderX`，可用 `AIO_HBUILDERX_ROOT` 指定；升级 HBuilderX 后必须重新验证，不能继续套用旧运行库。二进制不进入源码仓库。
+
+APK 下载后执行 `node scripts/check-android-runtime.mjs <apk路径>` 检查实际原生库的 C++ 导入符号，再做签名校验、覆盖安装和冷启动检查。2026-10-04 小米 14 已验证登录、首页统计及快捷导航图标、首页时迹图表与记录、记录编辑弹窗打开；全部功能页图标也已恢复。最新 APK 的设备状态记录在忽略目录 `artifacts/android/build-report.json`。Android 启动图标使用 `src/app-resources/icons/android` 中的现有品牌图标，并在 manifest 中显式配置各密度。
+
+同日通过独立标准调试基座定位时迹独立页空白：接口已返回记录，但当前 Vapor 原生运行中，条件 `template` 内的正文没有挂载；改为显式 `view` 容器后，已在小米 14 深色主题下看到日时间轴与真实记录，临时诊断代码已移除。手机、平板、桌面深浅色共 6 项 H5 时迹布局回归通过。云端打包当日免费额度已用完，现存 `modal-fixed` APK **不包含这次时迹容器修复**；标准调试基座验证不能代替新版 APK 验收。卡片视图、周/月切换和其余业务仍需原生逐项验证，详细边界见 `artifacts/android/time-render-fix-report.json`。
+
+原生 `button` [不支持嵌套组件](https://doc.dcloud.net.cn/uni-app-x/component/button.html)。`prepare:app` 会解析 App 工程的模板，将含图标、插槽或其他子组件的按钮转换为 `AioNativeButton` 点击容器，保留 class/style、可访问名称和事件，显式阻止禁用/加载中的点击。不要直接对 App 使用的复杂按钮嵌套 `view` 作为修复；Web/微信源码与原生按钮的授权行为不受这一步转换影响。
+
+原生接口也要按 App 签名处理：`onKeyboardHeightChange` 返回监听编号，销毁弹窗时用该编号调用 `offKeyboardHeightChange`；微信仍传原回调函数。当前 Android Vapor 的 SVG 图像解码器出现过 `unimplemented`，分类图标通过本地 UTS 插件栅格化为透明 PNG 并缓存，其他平台保留 SVG。生产时迹查询仍可能返回旧版完整 `{items,total}`，客户端兼容完整数据，但拒绝把不完整分页当作全天记录进行统计。
+
+App 的 CommonJS 依赖（ZIP、SM4）在构建时转换为 ESM，动态 GBK 解码依赖内联到 Vapor 的 IIFE，保留原导入和密码库能力。App 网格、视口高度和按钮文字使用原生适配；Web/微信保留原样式。编译仍报告 `gap`、部分媒体查询、`aspect-ratio` 等原生 CSS 兼容警告，安装包目前用于设备验证，不能据此声称所有页面和功能已完成 App 验收。
 
 Web 与小程序按官方机制仍使用 VDOM 运行；它们构建成功只能证明这两个目标的编译，不能代替 App Vapor 真机验证。
 
