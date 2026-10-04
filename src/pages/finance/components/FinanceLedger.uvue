@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import { useAppLayout } from '../../../services/app-layout.ts'
+const { appLedgerCell } = useAppLayout()
+
 import { computed, ref, watch } from "vue";
 import MobileButton from "../../../components/MobileButton.uvue";
 import AppIcon from "../../../components/AppIcon.uvue";
@@ -38,10 +41,10 @@ function money(value: number) {
       ></view
     >
     <view class="ledger-columns ledger-head" :class="themeClass('ledger-head')">
-      <text class="ui-type-badge">{{ showCumulative ? "月份" : "年份" }}</text
-      ><text class="ledger-number ui-type-badge">收入</text
-      ><text class="ledger-number ui-type-badge">支出</text
-      ><text class="ledger-number ui-type-badge">结余</text>
+      <text :style="appLedgerCell(true)" class="ui-type-badge">{{ showCumulative ? "月份" : "年份" }}</text
+      ><text :style="appLedgerCell(false)" class="ledger-number ui-type-badge">收入</text
+      ><text :style="appLedgerCell(false)" class="ledger-number ui-type-badge">支出</text
+      ><text :style="appLedgerCell(false)" class="ledger-number ui-type-badge">结余</text>
     </view>
     <view v-for="row in visible" :key="row.key" class="ledger-entry">
       <view
@@ -65,7 +68,7 @@ function money(value: number) {
           showCumulative && (selected = selected === row.key ? '' : row.key)
         "
       >
-        <view class="ledger-period"
+        <view :style="appLedgerCell(true)" class="ledger-period"
           ><text class="ui-type-badge">{{ row.key }}</text
           ><AppIcon
             v-if="showCumulative"
@@ -76,11 +79,11 @@ function money(value: number) {
             "
             :size="10"
         /></view>
-        <text class="ledger-number ledger-income ui-type-caption">{{ money(row.income) }}</text>
-        <text class="ledger-number ledger-expense ui-type-caption">{{
+        <text :style="appLedgerCell(false)" class="ledger-number ledger-income ui-type-caption">{{ money(row.income) }}</text>
+        <text :style="appLedgerCell(false)" class="ledger-number ledger-expense ui-type-caption">{{
           money(row.expense)
         }}</text>
-        <text
+        <text :style="appLedgerCell(false)"
           class="ledger-number ui-type-caption"
           :class="row.balance < 0 ? 'ledger-expense' : 'ledger-balance'"
           >{{ money(row.balance) }}</text
@@ -153,8 +156,18 @@ function money(value: number) {
   color: $text-secondary-dark;
 }
 .ledger-columns {
-  display: grid;
-  grid-template-columns: 72px repeat(3, minmax(0, 1fr));
+
+/* #ifndef APP */
+display: grid;
+/* #endif */
+/* #ifdef APP */
+display: flex; flex-direction: row; flex-wrap: wrap; justify-content: space-between;
+/* #endif */
+
+/* #ifndef APP */
+grid-template-columns: 72px repeat(3, minmax(0, 1fr));
+/* #endif */
+
   align-items: center;
   column-gap: $space-detail;
 }
@@ -221,7 +234,11 @@ function money(value: number) {
 }
 @media (max-width: 360px) {
   .ledger-columns {
-    grid-template-columns: 64px repeat(3, minmax(0, 1fr));
+
+/* #ifndef APP */
+grid-template-columns: 64px repeat(3, minmax(0, 1fr));
+/* #endif */
+
   }
   .ledger-row {
     @include type-style('chart-label');

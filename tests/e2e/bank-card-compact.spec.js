@@ -22,9 +22,13 @@ for (const width of [320, 390, 600, 768, 1440]) {
       await page.route('**/api/bank-cards/90/number', route => route.fulfill({ json: { rscode: '0', data: '4333000000000001234' } }));
       await page.route('**/api/bank-cards/88/number', route => route.fulfill({ json: { rscode: '0', data: '6222000000000001234' } }));
       await page.goto('/#/pages/finance/cards');
-      await expect(page.locator('.card-grid .card')).toHaveCount(3);
-      await expect(page.locator('.number').first()).toHaveText('6222 •••• 1234');
+      await expect(page.locator('.card-grid .card')).toHaveCount(1);
+      await expect(page.getByRole('button', { name: '储蓄卡', exact: true })).toHaveAttribute('aria-pressed', 'true');
+      await expect(page.locator('.card .number, .card .face-type, .card .face-tail')).toHaveCount(0);
       await expect(page.locator('.card-face').first()).toHaveCSS('background-color', 'rgb(135, 83, 79)');
+      await page.screenshot({ path: `${out}/${width}-${theme}-debit.png`, fullPage: true });
+      await page.getByRole('button', { name: '信用卡', exact: true }).click();
+      await expect(page.locator('.card-grid .card')).toHaveCount(2);
       await expect(page.locator('.navigation-title')).toHaveCount(0);
       await expect(page.locator('.card-actions')).toHaveCount(0);
       await expect(page.locator('.card-grid').getByText(/额度|账单日|还款日/)).toHaveCount(0);
@@ -33,61 +37,49 @@ for (const width of [320, 390, 600, 768, 1440]) {
       await page.screenshot({ path: `${out}/${width}-${theme}.png`, fullPage: true });
       const geometry = await page.locator('.card').evaluateAll(cards => cards.map(card => {
         const face = card.querySelector('.card-face').getBoundingClientRect();
-        const number = card.querySelector('.number').getBoundingClientRect();
-        const chip = card.querySelector('.card-chip')?.getBoundingClientRect();
         const more = card.querySelector('.card-more').getBoundingClientRect();
-        return { placed: number.left >= face.left && number.right <= face.right + 1 && (card.querySelector('.card-face-image') ? number.top >= face.bottom : number.top >= face.top && number.bottom <= face.bottom), aligned: !chip || Math.abs((chip.top + chip.height / 2) - (number.top + number.height / 2)) < 2, width: more.width, height: more.height };
+        return { placed: more.left >= face.left && more.right <= face.right + 1, width: more.width, height: more.height };
       }));
-      for (const card of geometry) { expect(card.placed).toBe(true); expect(card.aligned).toBe(true); expect(card.width).toBeGreaterThanOrEqual(44); expect(card.height).toBeGreaterThanOrEqual(44); }
+      for (const card of geometry) { expect(card.placed).toBe(true); expect(card.width).toBeGreaterThanOrEqual(44); expect(card.height).toBeGreaterThanOrEqual(44); }
       const positions = await page.locator('.card').evaluateAll(cards => cards.map(card => {
         const face = card.querySelector('.card-face').getBoundingClientRect();
-        const type = card.querySelector('.face-type')?.getBoundingClientRect();
         const more = card.querySelector('.card-more').getBoundingClientRect();
         return {
-          typeAtTopRight: !type || (type.top < face.top + face.height / 3 && type.left > face.left + face.width / 2),
           menuAtBottomRight: more.right <= face.right + 1 && (card.querySelector('.card-face-image') ? more.top >= face.bottom : more.top > face.top + face.height / 2 && more.bottom <= face.bottom),
         };
       }));
       for (const position of positions) {
-        expect(position.typeAtTopRight).toBe(true);
         expect(position.menuAtBottomRight).toBe(true);
       }
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
       const imageCard = page.locator('.card').filter({ has: page.locator('.card-face-image') });
       await expect(imageCard.locator('.face-middle')).toHaveCount(0);
-      await expect(imageCard.locator('.card-image-footer .number')).toHaveText('4333 •••• 1234');
+      await expect(imageCard.locator('.card-image-footer .number')).toHaveCount(0);
       const footerLayout = await imageCard.evaluate(card => {
         const face = card.querySelector('.card-face').getBoundingClientRect();
         const footer = card.querySelector('.card-image-footer').getBoundingClientRect();
         const caption = card.querySelector('.footer-caption').getBoundingClientRect();
-        const number = card.querySelector('.number').getBoundingClientRect();
         const more = card.querySelector('.card-more').getBoundingClientRect();
-        return { outside: footer.top >= face.bottom, nameSeparated: caption.right <= number.left, separated: number.right < more.left, aligned: Math.abs(number.top + number.height / 2 - more.top - more.height / 2) < 2 };
+        return { outside: footer.top >= face.bottom, separated: caption.right <= more.left, aligned: Math.abs(caption.top + caption.height / 2 - more.top - more.height / 2) < 2 };
       });
-      expect(footerLayout).toEqual({ outside: true, nameSeparated: true, separated: true, aligned: true });
+      expect(footerLayout).toEqual({ outside: true, separated: true, aligned: true });
       const imageMore = imageCard.getByRole('button', { name: '银行卡更多操作', exact: true });
       await imageMore.click();
       await page.getByRole('menuitem', { name: '查看卡号', exact: true }).click();
-      await expect(imageCard.locator('.number')).toHaveText('4333 0000 0000 0001 234');
-      expect(await imageCard.evaluate(card => {
-        const face = card.querySelector('.card-face').getBoundingClientRect();
-        const number = card.querySelector('.number').getBoundingClientRect();
-        const more = card.querySelector('.card-more').getBoundingClientRect();
-        return number.left >= face.left && number.right <= more.left && number.top >= face.bottom && number.width >= card.querySelector('.number').scrollWidth - 1;
-      })).toBe(true);
+      const numberDialog = page.getByRole('dialog', { name: '银行卡卡号', exact: true });
+      await expect(numberDialog.locator('.card-number-detail')).toHaveText('4333 0000 0000 0001 234');
       await page.screenshot({ path: `${out}/${width}-${theme}-full-number.png`, fullPage: true });
-      await imageMore.click();
-      await page.getByRole('menuitem', { name: '隐藏卡号', exact: true }).click();
+      await numberDialog.getByRole('button', { name: '关闭', exact: true }).click();
+      await page.getByRole('button', { name: '储蓄卡', exact: true }).click();
       const more = page.getByRole('button', { name: '银行卡更多操作', exact: true }).first();
       await more.click();
       await expect(page.getByRole('menu')).toBeVisible();
       await page.screenshot({ path: `${out}/${width}-${theme}-menu.png`, fullPage: true });
       await page.getByRole('menuitem', { name: '查看卡号', exact: true }).click();
-      await expect(page.locator('.number').first()).toHaveText('6222 0000 0000 0001 234');
+      await expect(numberDialog.locator('.card-number-detail')).toHaveText('6222 0000 0000 0001 234');
       await expect(page.getByRole('menu')).toHaveCount(0);
-      await more.click();
-      await page.getByRole('menuitem', { name: '隐藏卡号', exact: true }).click();
-      await expect(page.locator('.number').first()).toHaveText('6222 •••• 1234');
+      await numberDialog.getByRole('button', { name: '关闭', exact: true }).click();
+      await expect(page.locator('.card .number')).toHaveCount(0);
       await page.getByRole('button', { name: '银行卡更多操作', exact: true }).first().click();await page.getByRole('menuitem', { name: '编辑银行卡', exact: true }).click();
       await expect(page.getByRole('dialog', { name: '银行卡', exact: true })).toBeVisible();
       await page.getByRole('button', { name: '更多信息', exact: true }).click();
@@ -99,7 +91,7 @@ for (const width of [320, 390, 600, 768, 1440]) {
       await expect(page.getByRole('dialog', { name: '删除银行卡', exact: true })).toBeVisible();
       await page.screenshot({ path: `${out}/${width}-${theme}-confirm.png`, fullPage: true });
       await page.getByRole('button', { name: '取消', exact: true }).click();
-      await expect(page.locator('.card-grid .card')).toHaveCount(3);
+      await expect(page.locator('.card-grid .card')).toHaveCount(1);
       expect(state.calls).toEqual([]);
       expect(errors).toEqual([]);
     });

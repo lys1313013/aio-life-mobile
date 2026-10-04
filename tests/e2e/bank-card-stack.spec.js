@@ -47,7 +47,9 @@ for (const width of [320, 390, 768, 1440]) for (const theme of ['light', 'dark']
     await first.getByRole('button', { name: '银行卡更多操作' }).click();
     await expect(page.getByRole('menuitem', { name: '编辑银行卡', exact: true })).toBeVisible();
     await page.getByRole('menuitem', { name: '查看卡号', exact: true }).click();
-    await expect(first.locator('.number')).toHaveText('6222 0000 1234');
+    const numberDialog = page.getByRole('dialog', { name: '银行卡卡号', exact: true });
+    await expect(numberDialog.locator('.card-number-detail')).toHaveText('6222 0000 1234');
+    await numberDialog.getByRole('button', { name: '关闭', exact: true }).click();
     await first.getByRole('button', { name: '银行卡更多操作' }).click();
     await page.getByRole('menuitem', { name: '编辑银行卡', exact: true }).click();
     await expect(page.getByRole('dialog', { name: '银行卡', exact: true })).toBeVisible();

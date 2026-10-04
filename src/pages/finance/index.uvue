@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import { useAppLayout } from '../../services/app-layout.ts'
+const { appGridItem } = useAppLayout()
+
 import ContentSkeleton from "../../components/ContentSkeleton.uvue";
 import { computed, onUnmounted, ref } from "vue";
 import MobilePage from "../../components/MobilePage.uvue";
@@ -234,7 +237,7 @@ const categoryGroups = computed(() => [
       >
         <template #loading>
           <view class="metrics ui-section">
-            <MetricCard
+            <MetricCard :style="appGridItem(2, 'inline', [[700, 4]], false)"
               v-for="label in ['总收入', '总支出', '总结余', '结余率']"
               :key="label"
               :label="label"
@@ -246,7 +249,7 @@ const categoryGroups = computed(() => [
         </template>
         <template v-if="income.length || expense.length">
           <view class="metrics ui-section">
-            <view
+            <view :style="appGridItem(2, 'inline', [[700, 4]], false)"
               v-for="metric in metrics"
               :key="metric.label"
               class="summary-card"
@@ -262,7 +265,7 @@ const categoryGroups = computed(() => [
             </view>
           </view>
           <view class="chart-grid">
-            <MiniChart
+            <MiniChart :style="appGridItem(1, 'section', [[700, 2]], false)"
               compact
               label="月度收支趋势"
               hide-period-selector
@@ -286,7 +289,7 @@ const categoryGroups = computed(() => [
               ]"
               unit="元"
             />
-            <MiniChart
+            <MiniChart :style="appGridItem(1, 'section', [[700, 2]], false)"
               compact
               label="累计结余趋势"
               hide-period-selector
@@ -315,7 +318,7 @@ const categoryGroups = computed(() => [
             />
           </view>
           <view class="chart-grid">
-            <TypeDistribution
+            <TypeDistribution :style="appGridItem(1, 'section', [[700, 2]], false)"
               v-for="group in categoryGroups"
               :key="group.key"
               class="category-panel"
@@ -421,8 +424,18 @@ const categoryGroups = computed(() => [
   color: $text-secondary-dark;
 }
 .metrics {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+
+/* #ifndef APP */
+display: grid;
+/* #endif */
+/* #ifdef APP */
+display: flex; flex-direction: row; flex-wrap: wrap; justify-content: space-between;
+/* #endif */
+
+/* #ifndef APP */
+grid-template-columns: repeat(2, minmax(0, 1fr));
+/* #endif */
+
   gap: $space-inline;
 }
 .summary-card {
@@ -437,7 +450,14 @@ const categoryGroups = computed(() => [
 .summary-value {
   display: flex;
   flex-direction: row;
-  align-items: baseline;
+
+/* #ifndef APP */
+align-items: baseline;
+/* #endif */
+/* #ifdef APP */
+align-items: flex-end;
+/* #endif */
+
   flex-wrap: wrap;
   gap: $space-detail;
   margin-top: $space-inline;
@@ -452,12 +472,22 @@ const categoryGroups = computed(() => [
   @include type-style('badge');
 }
 .chart-grid {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
+
+/* #ifndef APP */
+display: grid;
+/* #endif */
+/* #ifdef APP */
+display: flex; flex-direction: row; flex-wrap: wrap; justify-content: space-between;
+/* #endif */
+
+/* #ifndef APP */
+grid-template-columns: minmax(0, 1fr);
+/* #endif */
+
   column-gap: $space-section;
 }
 .category-panel {
-  align-self: start;
+  align-self: flex-start;
   margin-bottom: $space-section;
 }
 .comparison-tabs {
@@ -472,13 +502,21 @@ const categoryGroups = computed(() => [
 }
 @media (min-width: 700px) {
   .metrics {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+
+/* #ifndef APP */
+grid-template-columns: repeat(4, minmax(0, 1fr));
+/* #endif */
+
   }
   .summary-number {
     @include type-style('metric-compact');
   }
   .chart-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+
+/* #ifndef APP */
+grid-template-columns: repeat(2, minmax(0, 1fr));
+/* #endif */
+
   }
 }
 

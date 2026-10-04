@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import { useAppLayout } from '../../services/app-layout.ts'
+const { appGridItem } = useAppLayout()
+
 import FormActions from '../../components/FormActions.uvue';
 import { isRequired } from '../../services/form-required.ts';
 import ContentSkeleton from '../../components/ContentSkeleton.uvue';
@@ -396,7 +399,7 @@ async function removeSelected() {
         :error="statisticsError"
         @retry="types.length ? loadStatistics() : initialize()"
         >
-<template #loading><view class="finance-summary ui-gap-sm ui-section"><FormField compact stretch hide-label label="选择年份" kind="selector" :options="overviewYears" v-model="overviewYear" /><view class="metrics ui-row"><view class="summary-total"><MetricCard :label="expense ? '总支出' : '总收入'" value="" loading /></view><MetricCard :label="overviewYear + (expense ? '年总支出' : '年总收入')" value="" loading /><MetricCard :label="expense ? '月均支出' : '月均收入'" value="" loading /></view></view><view class="chart-grid ui-gap-md"><ContentSkeleton v-for="n in 2" :key="n" variant="chart" /></view></template>
+<template #loading><view class="finance-summary ui-gap-sm ui-section"><FormField compact stretch hide-label label="选择年份" kind="selector" :options="overviewYears" v-model="overviewYear" /><view class="metrics ui-row"><view :style="appGridItem(2, 'section', [[700, 3]], true)" class="summary-total"><MetricCard :label="expense ? '总支出' : '总收入'" value="" loading /></view><MetricCard :style="appGridItem(2, 'section', [[700, 3]], false)" :label="overviewYear + (expense ? '年总支出' : '年总收入')" value="" loading /><MetricCard :style="appGridItem(2, 'section', [[700, 3]], false)" :label="expense ? '月均支出' : '月均收入'" value="" loading /></view></view><view class="chart-grid ui-gap-md"><ContentSkeleton :style="appGridItem(1, 'section', [[700, 2]], false)" v-for="n in 2" :key="n" variant="chart" /></view></template>
 <view class="finance-summary ui-gap-sm ui-section"
           ><FormField
             compact
@@ -406,17 +409,17 @@ async function removeSelected() {
             kind="selector"
             :options="overviewYears"
             v-model="overviewYear" /><view class="metrics ui-row"
-            ><view class="summary-total"><MetricCard
+            ><view :style="appGridItem(2, 'section', [[700, 3]], true)" class="summary-total"><MetricCard
               :label="expense ? '总支出' : '总收入'"
               :value="statisticsTotal(overviewRows).toFixed(2)"
-              unit="元" /></view><MetricCard
+              unit="元" /></view><MetricCard :style="appGridItem(2, 'section', [[700, 3]], false)"
               :label="overviewYear + (expense ? '年总支出' : '年总收入')"
               :value="yearAmount.toFixed(2)"
-              unit="元" /><MetricCard
+              unit="元" /><MetricCard :style="appGridItem(2, 'section', [[700, 3]], false)"
               :label="expense ? '月均支出' : '月均收入'"
               :value="monthlyAverage.toFixed(2)"
               unit="元" /></view></view
-        ><view class="chart-grid ui-gap-md"><MiniChart
+        ><view class="chart-grid ui-gap-md"><MiniChart :style="appGridItem(1, 'section', [[700, 2]], false)"
           :label="expense ? '月度支出趋势' : '月度收入趋势'"
           kind="bar"
           period-controls
@@ -427,7 +430,7 @@ async function removeSelected() {
               values: yearRows.map((row) => statisticsTotal([row])),
             },
           ]"
-          unit="元" /><TypeDistribution v-if="expense" label="支出类型分布" :items="distribution" /><MiniChart v-else
+          unit="元" /><TypeDistribution :style="appGridItem(1, 'section', [[700, 2]], false)" v-if="expense" label="支出类型分布" :items="distribution" /><MiniChart :style="appGridItem(1, 'section', [[700, 2]], false)" v-else
           :label="expense ? '支出类型分布' : '收入类型分布'"
           kind="bar"
           compact
@@ -492,9 +495,9 @@ async function removeSelected() {
                 variant="ghost"
                 @click="filterStatistics(group, item)" /></view></view></view></PageState></view
       ><view class="filters ui-field-row">
-        <FormField v-if="showFilters" compact stretch hide-label label="年份" kind="selector"
+        <FormField :style="appGridItem(2, 'section', [[700, 3]], false)" v-if="showFilters" compact stretch hide-label label="年份" kind="selector"
           :options="['全部年份', ...overviewYears]" v-model="filterYear" />
-        <FormField
+        <FormField :style="appGridItem(2, 'section', [[700, 3]], false)"
           compact
           stretch
           hide-label
@@ -503,7 +506,7 @@ async function removeSelected() {
           :options="['全部类型', ...types.map((item) => item.dictLabel)]"
           v-model="typeFilter"
         />
-        <FormField
+        <FormField :style="appGridItem(2, 'section', [[700, 3]], false)"
           compact
           stretch
           v-if="expense && showFilters"
@@ -513,7 +516,7 @@ async function removeSelected() {
           :options="['全部支付方式', ...payments.map((item) => item.dictLabel)]"
           v-model="payFilter"
         />
-        <FormField
+        <FormField :style="appGridItem(2, 'section', [[700, 3]], false)"
           compact
           stretch
           v-if="showFilters"
@@ -522,7 +525,7 @@ async function removeSelected() {
           placeholder="起始日期"
           kind="date"
           v-model="filters.startTime"
-        /><FormField
+        /><FormField :style="appGridItem(2, 'section', [[700, 3]], false)"
           compact
           stretch
           v-if="showFilters"
@@ -532,7 +535,7 @@ async function removeSelected() {
           kind="date"
           v-model="filters.endTime"
         />
-        <FormField
+        <FormField :style="appGridItem(2, 'section', [[700, 3]], false)"
           compact
           stretch
           v-if="expense && showFilters"
@@ -540,7 +543,7 @@ async function removeSelected() {
           label="备注"
           placeholder="备注"
           v-model="filters.remark"
-        /><FormField
+        /><FormField :style="appGridItem(2, 'section', [[700, 3]], false)"
           compact
           stretch
           v-if="expense && showFilters"
@@ -548,7 +551,7 @@ async function removeSelected() {
           label="交易对方"
           placeholder="交易对方"
           v-model="filters.counterparty"
-        /><FormField
+        /><FormField :style="appGridItem(2, 'section', [[700, 3]], false)"
           compact
           stretch
           v-if="expense && showFilters"
@@ -557,7 +560,7 @@ async function removeSelected() {
           placeholder="交易描述"
           v-model="filters.expDesc"
         />
-        <FormField
+        <FormField :style="appGridItem(2, 'section', [[700, 3]], false)"
           compact
           stretch
           hide-label
@@ -645,14 +648,38 @@ async function removeSelected() {
   display: flex;
   flex-direction: column;
 }
-.summary-total { grid-column: 1 / -1; }
+.summary-total {
+/* #ifndef APP */
+grid-column: 1 / -1;
+/* #endif */
+ }
 .metrics {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+
+/* #ifndef APP */
+display: grid;
+/* #endif */
+/* #ifdef APP */
+display: flex; flex-direction: row; flex-wrap: wrap; justify-content: space-between;
+/* #endif */
+
+/* #ifndef APP */
+grid-template-columns: repeat(2, minmax(0, 1fr));
+/* #endif */
+
 }
 .filters {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+
+/* #ifndef APP */
+display: grid;
+/* #endif */
+/* #ifdef APP */
+display: flex; flex-direction: row; flex-wrap: wrap; justify-content: space-between;
+/* #endif */
+
+/* #ifndef APP */
+grid-template-columns: repeat(2, minmax(0, 1fr));
+/* #endif */
+
 }
 .tools {
   flex-wrap: wrap;
@@ -660,7 +687,14 @@ async function removeSelected() {
 .continuous-label { color: $text-secondary-light; }
 .continuous-label-dark { color: $text-secondary-dark; }
 .summary {
-  display: block;
+
+/* #ifndef APP */
+display: block;
+/* #endif */
+/* #ifdef APP */
+display: flex;
+/* #endif */
+
   color: #718096;
 }
 .statistics-card {
@@ -709,17 +743,51 @@ async function removeSelected() {
 .filter-count { position: absolute; top: 0; right: 0; min-width: 16px; height: 16px; border-radius: 8px; background-color: #427bea; color: #fff; @include type-style('chart-label'); text-align: center;  pointer-events: none; }
 .filter-footer { align-items: center; justify-content: space-between; margin-bottom: $space-section; }
 .summary { @include type-style('caption'); }
-.chart-grid { display: grid; grid-template-columns: minmax(0, 1fr); }
+.chart-grid {
+/* #ifndef APP */
+display: grid;
+/* #endif */
+/* #ifdef APP */
+display: flex; flex-direction: row; flex-wrap: wrap; justify-content: space-between;
+/* #endif */
+
+/* #ifndef APP */
+grid-template-columns: minmax(0, 1fr);
+/* #endif */
+ }
 .error {
   color: #dc5454;
-  display: block;
+
+/* #ifndef APP */
+display: block;
+/* #endif */
+/* #ifdef APP */
+display: flex;
+/* #endif */
+
 }
 @media (min-width: 700px) {
-  .summary-total { grid-column: auto; }
-  .filters { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-  .chart-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .summary-total {
+/* #ifndef APP */
+grid-column: auto;
+/* #endif */
+ }
+  .filters {
+/* #ifndef APP */
+grid-template-columns: repeat(3, minmax(0, 1fr));
+/* #endif */
+ }
+  .chart-grid {
+/* #ifndef APP */
+grid-template-columns: repeat(2, minmax(0, 1fr));
+/* #endif */
+ }
   .metrics {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+
+/* #ifndef APP */
+grid-template-columns: repeat(3, minmax(0, 1fr));
+/* #endif */
+
   }
 }
 .filter-footer-loading { justify-content: flex-end; }

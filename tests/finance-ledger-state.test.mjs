@@ -56,6 +56,7 @@ async function fixture(kind = 'expense', count = 101) {
   const prefix = `import { ref, computed, watch } from ${JSON.stringify(vue)};
 const {api,hooks}=globalThis.__ledgerFixtures[${id}];
 const {fetchLedger,fetchDictionary,saveLedger,deleteLedger,deleteExpenses,ledgerId,fetchFinanceStatistics}=api;
+const useAppLayout=()=>({appGridItem:()=>({})});
 const onMounted=fn=>{hooks.mount=fn},onUnmounted=fn=>{hooks.unmount=fn},defineProps=()=>({kind:${JSON.stringify(kind)}});`;
   const exports = 'export {initialize,load,loadMore,loadStatistics,refresh,save,remove,removeSelected,rows,page,total,pageEnded,moreError,error,statistics,statisticsError,statisticsBusy,overviewRows,statisticsPeriod,loading,refreshing,draft,selected,modal,formError};';
   const code = transformSync(prefix + source + exports, { loader: 'ts', format: 'esm' }).code;

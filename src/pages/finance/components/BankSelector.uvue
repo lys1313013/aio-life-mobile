@@ -1,0 +1,118 @@
+<script setup lang="ts">
+import { computed, ref, watch } from 'vue';
+import spacing from '../../../styles/spacing.json';
+import AppIcon from '../../../components/AppIcon.uvue';
+import FormField from '../../../components/FormField.uvue';
+import { appTextColor } from '../../../services/app-layout.ts';
+import { themeClass } from '../../../services/theme.ts';
+const props = defineProps<{
+  banks: any[];
+  bankId?: string | null;
+  customBankName?: string | null;
+  bankName?: string;
+  originalBankId?: string | null;
+  disabled?: boolean;
+}>();
+const emit = defineEmits(['select']);
+const keyword = ref('');
+const open = ref(false);
+const visibleCount = ref(40);
+const indexedBanks = computed(() => props.banks.map(bank => ({
+  ...bank, searchText: (bank.name + ' ' + (bank.code || '')).toLocaleLowerCase(),
+})));
+const matches = computed(() => {
+  const query = keyword.value.trim().toLocaleLowerCase();
+  return indexedBanks.value.filter(bank => bank.searchText.includes(query));
+});
+const visibleBanks = computed(() => matches.value.slice(0, visibleCount.value));
+const customAllowed = computed(() => keyword.value.trim() &&
+  !props.banks.some(bank => bank.name === keyword.value.trim()));
+watch(() => [props.bankId, props.customBankName, props.bankName], () => {
+  if (open.value) return;
+  keyword.value = props.bankId
+    ? props.banks.find(bank => String(bank.id) === String(props.bankId))?.name || props.bankName || ''
+    : props.customBankName || '';
+}, { immediate: true });
+function search(event: any) {
+  keyword.value = event.detail.value;
+  visibleCount.value = 40;
+  open.value = true;
+  emit('select', { bankId: null, customBankName: keyword.value.trim() || null });
+}
+function choose(bank: any) {
+  if (props.disabled || (bank.enabled === false && String(bank.id) !== props.originalBankId)) return;
+  emit('select', { bankId: String(bank.id), customBankName: null });
+  keyword.value = bank.name;
+  open.value = false;
+  uni.hideKeyboard();
+}
+function custom() {
+  if (!customAllowed.value || props.disabled) return;
+  emit('select', { bankId: null, customBankName: keyword.value.trim() });
+  open.value = false;
+  uni.hideKeyboard();
+}
+function close() {
+  open.value = false;
+  keyword.value = props.bankId
+    ? props.banks.find(bank => String(bank.id) === String(props.bankId))?.name || props.bankName || ''
+    : props.customBankName || '';
+}
+</script>
+<template>
+  <FormField label="银行" required appearance="soft">
+    <view class="bank-input-row" :class="themeClass('bank-input-row')">
+      <AppIcon name="ant-design:search-outlined" :size="18" />
+      <input class="bank-input" :class="themeClass('bank-input')" :style="appTextColor()" :value="keyword" :disabled="disabled"
+        placeholder="输入银行名称或代码" aria-label="银行" :aria-expanded="open"
+        confirm-type="search" @input="search" @focus="open = true" @confirm="open = true" />
+      <button v-if="open" class="bank-icon" role="button" aria-label="收起银行选项" @click="close">
+        <AppIcon name="ant-design:up-outlined" :size="16" />
+      </button>
+      <button v-else class="bank-icon" role="button" aria-label="展开银行选项" :disabled="disabled" @click="open = true">
+        <AppIcon name="ant-design:down-outlined" :size="16" />
+      </button>
+    </view>
+    <view v-if="open" class="bank-results" :class="themeClass('bank-results')">
+      <scroll-view :key="keyword" class="bank-results-scroll" :style="{ height: Math.min(Math.max(matches.length, 1), 5) * spacing.controlMin + 'px' }" scroll-y :show-scrollbar="false"
+        @scrolltolower="visibleCount = Math.min(visibleCount + 40, matches.length)">
+        <button v-for="bank in visibleBanks" :key="bank.id" class="bank-option" role="button"
+          :aria-label="'选择' + bank.name" :aria-disabled="disabled || (bank.enabled === false && String(bank.id) !== originalBankId)" :disabled="disabled || (bank.enabled === false && String(bank.id) !== originalBankId)"
+          @click="choose(bank)">
+          <text class="bank-option-name" :class="themeClass('bank-option-name')" :style="appTextColor()">{{ bank.name }}</text>
+          <text v-if="bank.enabled === false" class="bank-meta" :class="themeClass('bank-meta')">已停用</text>
+          <AppIcon v-else-if="String(bank.id) === bankId" name="ant-design:check-outlined" :size="18" />
+        </button>
+        <text v-if="!matches.length" class="bank-empty bank-meta" :class="themeClass('bank-meta')">未找到匹配银行</text>
+      </scroll-view>
+      <button v-if="customAllowed" class="bank-option bank-custom" role="button" aria-label="使用自定义银行" :disabled="disabled" @click="custom">
+        <AppIcon name="ant-design:plus-outlined" :size="18" />
+        <text class="bank-option-name" :class="themeClass('bank-option-name')" :style="appTextColor()">使用“{{ keyword.trim() }}”</text>
+      </button>
+    </view>
+  </FormField>
+</template>
+<style scoped lang="scss">
+@use '../../../styles/typography' as *;
+@use '../../../styles/spacing-tokens' as *;
+@use '../../../styles/text-colors' as *;
+.bank-input-row { display: flex; flex-direction: row; align-items: center; padding-left: $space-card; border-radius: 10px; background-color: #f2f4f7; gap: $space-inline; }
+.bank-input-row-dark { background-color: #272a30; }
+.bank-input { flex: 1; min-width: 0; height: $space-controlMin; @include type-style('body'); color: #27272a; }
+.bank-input-dark { color: #eeeeef; }
+.bank-icon { display: flex; align-items: center; justify-content: center; width: $space-controlMin; height: $space-controlMin; margin: 0; padding: 0; background-color: transparent; border: 0; }
+.bank-results { margin-top: $space-detail; border-radius: 10px; background-color: #f2f4f7; overflow: hidden; }
+.bank-results-dark { background-color: #272a30; }
+// 限制可见结果区域，几千条数据分批渲染，搜索仍覆盖完整银行库。
+.bank-results-scroll { height: 220px; }
+.bank-option { display: flex; flex-direction: row; align-items: center; width: 100%; min-height: $space-controlMin; gap: $space-inline; margin: 0; padding: $space-inline $space-card; border: 0; border-radius: 0; text-align: left; background-color: transparent; }
+.bank-option-name { flex: 1; min-width: 0; @include type-style('body'); color: #27272a; }
+.bank-option-name-dark { color: #eeeeef; }
+.bank-meta { @include type-style('caption'); color: $text-secondary-light; }
+.bank-meta-dark { color: $text-secondary-dark; }
+.bank-empty { padding: $space-card; }
+.bank-custom { border-top: $space-hairline solid #80808020; }
+/* #ifdef WEB || MP-WEIXIN */
+.bank-icon::after, .bank-option::after { border: 0; }
+/* #endif */
+</style>

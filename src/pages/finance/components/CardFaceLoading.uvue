@@ -6,36 +6,41 @@ withDefaults(defineProps<{ layer?: number }>(), { layer: 0 });
   <view class="card-loading" :class="[themeClass('card-loading'), { 'card-loading-alternate': layer % 2 === 1 }, themeClass({ 'card-loading-alternate': layer % 2 === 1 })]" role="status" aria-label="正在加载银行卡卡面" aria-live="polite">
     <view class="loading-heading" aria-hidden="true">
       <view class="loading-mark" :class="themeClass('loading-shape')" />
-      <view class="loading-title" :class="themeClass('loading-shape')" />
+      <view class="loading-track" :class="themeClass('loading-track')">
+        <view class="loading-runner" :class="themeClass('loading-runner')" />
+      </view>
       <view class="loading-type" :class="themeClass('loading-shape')" />
     </view>
     <view class="loading-middle" aria-hidden="true">
       <view class="loading-chip" :class="themeClass('loading-shape')" />
       <view class="loading-number" :class="themeClass('loading-shape')" />
     </view>
-    <view class="loading-track" :class="themeClass('loading-track')" aria-hidden="true">
-      <view class="loading-runner" :class="themeClass('loading-runner')" />
-    </view>
   </view>
 </template>
 <style scoped lang="scss">
 @use '../../../styles/spacing-tokens' as *;
-// 整张占位始终不透明，动画只在底部短轨道内移动，堆叠时不透出下一张卡。
-.card-loading { position: absolute; inset: 0; border-radius: inherit; overflow: hidden; background-color: #dce3ec; padding: $space-card + $space-inline; box-sizing: border-box; border: $space-hairline solid #a9b8cc; }
+// 整张占位始终不透明，动画放在顶部标题区，堆叠时每张卡都能看到加载状态。
+.card-loading { position: absolute; top: 0; right: 0; bottom: 0; left: 0;
+/* #ifndef APP */
+border-radius: inherit;
+/* #endif */
+/* #ifdef APP */
+border-radius: 18px;
+/* #endif */
+ overflow: hidden; background-color: #dce3ec; padding: $space-card + $space-inline; box-sizing: border-box; border: $space-hairline solid #a9b8cc; }
 // 相邻占位交替底色，细轮廓沿圆角勾出每张卡的顶边，避免堆叠融成一块。
 .card-loading-alternate { background-color: #cbd6e4; }
 .card-loading-dark { background-color: #2a3341; border-color: #5d6c82; }
 .card-loading-alternate-dark { background-color: #344155; }
 .loading-heading, .loading-middle { display: flex; flex-direction: row; align-items: center; gap: $space-inline; }
-.loading-mark, .loading-title, .loading-type, .loading-chip, .loading-number { background-color: #b6c3d4; border-radius: 5px; }
+.loading-mark, .loading-type, .loading-chip, .loading-number { background-color: #b6c3d4; border-radius: 5px; }
 .loading-shape-dark { background-color: #465368; }
 .loading-mark { width: 32px; height: 32px; border-radius: 50%; }
-.loading-title { width: 30%; height: 14px; }
 .loading-type { width: 15%; height: 10px; margin-left: auto; }
 .loading-middle { position: absolute; left: $space-card + $space-inline; right: $space-card + $space-inline; top: 47%; }
 .loading-chip { width: 34px; height: 27px; }
 .loading-number { width: 42%; height: 14px; margin-left: auto; }
-.loading-track { position: absolute; left: $space-card + $space-inline; bottom: $space-card + $space-inline; width: 56px; height: 3px; border-radius: 3px; overflow: hidden; background-color: #b6c3d4; }
+.loading-track { width: 30%; height: 3px; border-radius: 3px; overflow: hidden; background-color: #b6c3d4; }
 .loading-track-dark { background-color: #465368; }
 .loading-runner { width: 35%; height: 100%; background-color: #7c8da6; border-radius: 3px; animation: card-loading-slide 1.4s ease-in-out infinite; }
 .loading-runner-dark { background-color: #8294ae; }
