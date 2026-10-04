@@ -117,6 +117,9 @@ async function save() {
     if (!current(token, version)) return
     if (session.user)
       session.user = { ...session.user, ...data, avatarUrl: form.value.avatarUrl, name: nickname }
+    // 保存绑定后重新获取服务端公共 URL，避免继续展示临时上传预览地址。
+    await fetchUser()
+    if (!current(token, version)) return
     uni.showToast({ title: '已保存', icon: 'success' })
     back()
   } catch (error) {
