@@ -15,7 +15,7 @@ function dashboardFixture(path) {
   if (path === '/api/thought/dashboard') return [{ id: '1', content: '记录想法，让行动更清晰。', createTime: '2026-09-30 10:00:00' }, { id: '2', content: 'PRIVATE HIDDEN CONTENT', hiddenContent: true }];
   if (path === '/api/taskDetails/watched') return [];
   if (path === '/api/timeTrackerCategory/list') return [{ id: '1', name: '学习', color: '#5b8ff9' }, { id: '2', name: '运动', color: '#3fb27f' }];
-  if (path === '/api/timeRecord/query') return { items: [{ id: '1', categoryId: '1', startTime: 540, endTime: 599 }, { id: '2', categoryId: '2', startTime: 660, endTime: 689 }] };
+  if (path === '/api/timeRecord/query') return [{ id: '1', categoryId: '1', startTime: 540, endTime: 599 }, { id: '2', categoryId: '2', startTime: 660, endTime: 689 }];
   if (path === '/api/exerciseRecord/dashboardSummary') return { hasMore: false, days: ['2026-09-30', '2026-09-29', '2026-09-28'].map((date, i) => ({ date, items: [{ exerciseTypeId: '1', typeLabel: i === 1 ? '俯卧撑' : '跑步', count: 5 - i, deltaCount: 1, color: i === 1 ? '#3b82f6' : '#3fb27f', trend: [3, 2, 4, 3, 5].map((count, j) => ({ date: 'day-' + j, count })) }] })) };
   if (path === '/api/github/recent-commits') return [{ id: '1', repo: 'aio-life-mobile', message: 'feat: add analytics dashboard', date: '2026-09-30T10:30:00' }, { id: '2', repo: 'aio-life', message: 'docs: update getting started', date: '2026-09-29T16:20:00' }];
 }

@@ -119,18 +119,7 @@ export async function getTime(date = todayDate()) {
   ])
   return { categories, records }
 }
-export async function getDateRecords(date: string): Promise<TimeRecord[]> {
-  const records: TimeRecord[] = []
-  let page = 1
-  while (true) {
-    const result = await request<{ items: TimeRecord[]; total?: number | string }>(
-      '/timeRecord/query?date=' + encodeURIComponent(date) + '&pageSize=100&page=' + page,
-    )
-    const items = result.items || []
-    const added = items.filter(item => !records.some(record => record.id === item.id))
-    records.push(...added)
-    if (result.total == null || records.length >= Number(result.total)) return records
-    if (added.length === 0) throw new Error('记录未完整加载，请重试')
-    page++
-  }
+/** 单日接口一次返回完整列表；失败继续交由调用端显示重试。 */
+export function getDateRecords(date: string): Promise<TimeRecord[]> {
+  return request<TimeRecord[]>('/timeRecord/query?date=' + encodeURIComponent(date))
 }

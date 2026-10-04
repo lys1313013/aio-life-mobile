@@ -1,27 +1,51 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, nextTick, onUnmounted, ref, watch } from 'vue'
+import { clampTimeSelection, resolveTimeWheelSelection } from '../services/time-selection.ts'
 import spacing from '../styles/spacing.json'
 import { isDark, themeClass } from '../services/theme.ts'
 
-const props = defineProps<{ value: number }>()
+const props = withDefaults(defineProps<{ value: number; min?: number; max?: number; label?: string; showNow?: boolean }>(), {
+  min: 0, max: 1439, label: '结束时间', showNow: true,
+})
 const emit = defineEmits(['change', 'close'])
-const selection = ref([Math.floor(props.value / 60), props.value % 60])
-const hours = Array.from({ length: 24 }, (_, index) => String(index).padStart(2, '0'))
-const minutes = Array.from({ length: 60 }, (_, index) => String(index).padStart(2, '0'))
+const selected = ref(props.min <= props.max ? clampTimeSelection(props.value, props.min, props.max) : props.value)
+// 分钟列使用当天绝对分钟，00/59 两侧天然相邻，小时跟随选中分钟。
+const selection = ref([Math.floor(selected.value / 60), selected.value])
+const hours = Array.from({ length: 24 }, (_, index) => index)
+const minutes = Array.from({ length: 1440 }, (_, index) => index)
+const available = computed(() => props.min <= props.max)
+const nowMinute = ref(currentMinute())
+const nowDisabled = computed(() => !available.value || isDisabled(nowMinute.value))
+function currentMinute() { const now = new Date(); return now.getHours() * 60 + now.getMinutes() }
+function isDisabled(value: number) { return !available.value || value < props.min || value > props.max }
+function hourDisabled(hour: number) { return !available.value || hour * 60 > props.max || hour * 60 + 59 < props.min }
 const safeBottom = uni.getWindowInfo().safeAreaInsets?.bottom || 0
 const maskStyle = computed(() => {
   const color = isDark.value ? '28, 30, 34' : '255, 255, 255'
   return `background-image: linear-gradient(180deg, rgba(${color}, 0.95), rgba(${color}, 0.6)), linear-gradient(0deg, rgba(${color}, 0.95), rgba(${color}, 0.6));`
 })
-function change(event) {
-  selection.value = event.detail.value
+async function change(event) {
+  const raw = event.detail.value
+  const previous = selected.value
+  selection.value = raw
+  selected.value = resolveTimeWheelSelection(previous, raw, props.min, props.max)
+  // 先接收原生位置，再回弹到合法值；同值赋值也能纠正原生滚轮。
+  await nextTick()
+  selection.value = [Math.floor(selected.value / 60), selected.value]
 }
+watch(() => [props.value, props.min, props.max], () => {
+  selected.value = available.value ? clampTimeSelection(props.value, props.min, props.max) : props.value
+  selection.value = [Math.floor(selected.value / 60), selected.value]
+})
+// 弹层停留期间保持“此刻”的禁用状态准确，点击时再次读取最新时间。
+const clockTimer = setInterval(() => { nowMinute.value = currentMinute() }, 1000)
+onUnmounted(() => clearInterval(clockTimer))
 function confirm() {
-  emit('change', selection.value[0] * 60 + selection.value[1])
+  if (available.value && !isDisabled(selected.value)) emit('change', selected.value)
 }
 function useCurrentTime() {
-  const now = new Date()
-  emit('change', now.getHours() * 60 + now.getMinutes())
+  nowMinute.value = currentMinute()
+  if (!nowDisabled.value) emit('change', nowMinute.value)
 }
 </script>
 
@@ -29,26 +53,26 @@ function useCurrentTime() {
   <view class="time-end-mask" @click="emit('close')">
     <view class="time-end-panel" :class="themeClass('time-end-panel')"
       :style="{ paddingBottom: safeBottom + 'px' }"
-      role="dialog" aria-label="选择结束时间" aria-modal="true" @click.stop>
+      role="dialog" :aria-label="'选择' + label" aria-modal="true" @click.stop>
       <view class="time-end-toolbar" :class="themeClass('time-end-toolbar')">
         <button role="button" class="time-end-action" :class="themeClass('time-end-action')"
           @click="emit('close')">取消</button>
-        <button role="button" class="time-end-action time-end-primary" :class="themeClass('time-end-primary')"
-          aria-label="结束时间设为此刻" @click="useCurrentTime">此刻</button>
+        <button v-if="showNow" role="button" class="time-end-action time-end-primary" :class="[themeClass('time-end-primary'), { 'time-option-disabled': nowDisabled }]"
+          :aria-label="label + '设为此刻'" :disabled="nowDisabled" @click="useCurrentTime">此刻</button>
         <button role="button" class="time-end-action time-end-primary time-end-confirm" :class="themeClass('time-end-primary')"
-          @click="confirm">完成</button>
+          :disabled="!available || isDisabled(selected)" @click="confirm">完成</button>
       </view>
       <picker-view class="time-end-wheel" :value="selection"
         :indicator-style="'height: ' + spacing.controlMin + 'px;'" :mask-style="maskStyle"
         @change="change">
         <picker-view-column>
           <view v-for="hour in hours" :key="hour" class="time-end-item">
-            <text class="time-end-number" :class="themeClass('time-end-number')">{{ hour }}</text>
+            <text class="time-end-number" :class="[themeClass('time-end-number'), { 'time-option-disabled': hourDisabled(hour) }]" :aria-disabled="hourDisabled(hour)">{{ String(hour).padStart(2, '0') }}</text>
           </view>
         </picker-view-column>
         <picker-view-column>
           <view v-for="minute in minutes" :key="minute" class="time-end-item">
-            <text class="time-end-number" :class="themeClass('time-end-number')">{{ minute }}</text>
+            <text class="time-end-number" :class="[themeClass('time-end-number'), { 'time-option-disabled': isDisabled(minute) }]" :aria-disabled="isDisabled(minute)">{{ String(minute % 60).padStart(2, '0') }}</text>
           </view>
         </picker-view-column>
       </picker-view>
@@ -122,4 +146,6 @@ function useCurrentTime() {
   color: #27272a;
 }
 .time-end-number-dark { color: #eeeeef; }
+.time-option-disabled { opacity: 0.3; }
+
 </style>

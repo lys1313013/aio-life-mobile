@@ -9,15 +9,18 @@ interface SwipeEvent {
   preventDefault?: () => void;
 }
 
-/** 单指横滑切日；先锁定方向，避免纵向滚动结束时误切日期。 */
+/** 单指横滑切换周期；先锁定方向，避免纵向滚动结束时误切日期。 */
 export function createDaySwipe(
   enabled: () => boolean,
-  changeDay: (offset: number) => void,
+  changePeriod: (offset: number) => void,
   onDrag?: (offset: number, dragging: boolean) => void,
+  canChange: (offset: number) => boolean = () => true,
 ) {
   let start: null | TouchPoint = null;
   let direction = '';
   let suppressClickUntil = 0;
+  let allowPrevious = false;
+  let allowNext = false;
 
   function cancel() {
     if (start && direction) suppressClickUntil = Date.now() + 400;
@@ -32,6 +35,9 @@ export function createDaySwipe(
     const point = event.touches[0];
     if (!point) return;
     start = { clientX: point.clientX, clientY: point.clientY };
+    // 以手势开始时的边界为准；月内滚动到边缘后，要再次滑动才翻月。
+    allowPrevious = canChange(-1);
+    allowNext = canChange(1);
     suppressClickUntil = 0;
   }
 
@@ -47,6 +53,9 @@ export function createDaySwipe(
     const dy = point.clientY - start.clientY;
     if (!direction && Math.max(Math.abs(dx), Math.abs(dy)) > 10) {
       direction = Math.abs(dx) > Math.abs(dy) * 1.5 ? 'horizontal' : 'vertical';
+      if (direction === 'horizontal' && !(dx < 0 ? allowNext : allowPrevious)) {
+        direction = 'scroll';
+      }
     }
     if (direction) suppressClickUntil = Date.now() + 400;
     if (direction === 'horizontal') {
@@ -66,10 +75,11 @@ export function createDaySwipe(
       event.touches.length === 0 &&
       event.changedTouches.length === 1 &&
       direction === 'horizontal' &&
+      (dx < 0 ? allowNext : allowPrevious) &&
       Math.abs(dx) >= 50 &&
       Math.abs(dx) > Math.abs(dy) * 1.5;
     cancel();
-    if (shouldChange) changeDay(dx < 0 ? 1 : -1);
+    if (shouldChange) changePeriod(dx < 0 ? 1 : -1);
   }
 
   return {
@@ -81,7 +91,7 @@ export function createDaySwipe(
   };
 }
 
-/** 松手时恢复居中；同一内容容器保留到下一日期，承接切日过渡。 */
+/** 松手时恢复居中；同一内容容器保留到下一周期，承接切换过渡。 */
 export function daySwipeStyle(offset: number, dragging: boolean) {
   return {
     opacity: 1 - Math.abs(offset) / 480,

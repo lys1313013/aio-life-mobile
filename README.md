@@ -179,7 +179,7 @@ Web 与小程序按官方机制仍使用 VDOM 运行；它们构建成功只能�
 | POST / PUT / DELETE | `/userbinds`、`/userbinds/{id}` | 新增、编辑和解除平台绑定 |
 | GET | `/userbinds/douban/verify?accountId=...` | 验证豆瓣公开主页 |
 | GET | `/dashboard/tasks`、`/dashboard/card/{type}` | 按账号获取统计卡片 |
-| GET | `/timeTrackerCategory/list`、`/timeRecord/query?date=YYYY-MM-DD&pageSize=100&page=1` | 分类和当天完整分页记录，分钟为闭区间 |
+| GET | `/timeTrackerCategory/list`、`/timeRecord/query?date=YYYY-MM-DD` | 分类和当天完整记录（数组，不分页），分钟为闭区间 |
 | GET | `/timeRecord/queryByDateRange?startDate=...&endDate=...` | 周 / 月记录及上期对比 |
 | GET | `/timeRecord/recommendNext?date=...`、`/timeRecord/{id}` | 推荐空闲时段与完整详情 |
 | POST / PUT / DELETE | `/timeRecord`、`/timeRecord/{id}` | 新增、修改、删除 |

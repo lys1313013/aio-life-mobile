@@ -16,7 +16,9 @@ test('四栏切换、日期查询、退出清理与重新登录', async ({ page 
     if (path === '/api/timeRecord/query') {
       dates.push(url.searchParams.get('date'));
       const records = Array.from({ length: 8 }, (_, i) => ({ id: String(i + 1), categoryId: '1', startTime: i * 60, endTime: i * 60 + 29 }));
-      data = { items: url.searchParams.get('page') === '2' ? records.slice(4) : records.slice(0, 4), total: 8 };
+      expect(url.searchParams.has('page')).toBe(false);
+      expect(url.searchParams.has('pageSize')).toBe(false);
+      data = records;
     }
     await route.fulfill({ json: { rscode: '0', data } });
   });

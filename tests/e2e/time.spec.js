@@ -15,7 +15,7 @@ async function setup(page, options = {}) {
     if (path === '/api/timeRecord/query') {
       state.queries++;
       if (state.failRefresh) return route.abort();
-      data = { items: state.records.filter(r => r.date === url.searchParams.get('date')), total: state.records.filter(r => r.date === url.searchParams.get('date')).length };
+      data = state.records.filter(r => r.date === url.searchParams.get('date'));
     }
     if (path === '/api/timeRecord/queryByDateRange') {
       state.ranges.push([url.searchParams.get('startDate'), url.searchParams.get('endDate')]);
@@ -88,7 +88,7 @@ async function setup(page, options = {}) {
 async function closeEditor(page) {
   await page.locator('.modal-mask').last().click({ position: { x: 8, y: 8 } });
 }
-async function previousMinute(page, label) {
+async function previousMinute(page, label, delta = -1) {
   const cdp = await page.context().newCDPSession(page);
   await cdp.send('Emulation.setTouchEmulationEnabled', { enabled: true });
   await page.locator(`[aria-label="${label}"]`).click();
@@ -99,7 +99,7 @@ async function previousMinute(page, label) {
   const x = box.x + box.width / 2, y = box.y + box.height / 2;
   await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y }] });
   for (let step = 1; step <= 6; step++) {
-    await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x, y: y + box.height * step / 6 }] });
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x, y: y - delta * box.height * step / 6 }] });
     await page.waitForTimeout(50);
   }
   await page.waitForTimeout(200);
@@ -108,6 +108,34 @@ async function previousMinute(page, label) {
   await page.locator('.uni-picker-action-confirm:visible, .time-end-confirm:visible').click();
   await cdp.detach();
 }
+
+test('时迹分钟滚轮跨小时并停在相邻记录边界，起止均支持禁选', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.clock.setFixedTime(new Date(`${today}T11:22:00`));
+  const state = await setup(page, { records: [
+    { id: '101', date: today, categoryId: '1', startTime: 540, endTime: 558, title: '上一条' },
+    { id: '102', date: today, categoryId: '1', startTime: 560, endTime: 599, title: '晨间运动' },
+    { id: '103', date: today, categoryId: '1', startTime: 601, endTime: 659, title: '下一条' },
+  ] });
+  await page.getByRole('button', { name: '编辑记录 晨间运动', exact: true }).click();
+  const editor = page.getByRole('dialog', { name: '编辑时迹', exact: true });
+  const values = editor.locator('.compact-time-number');
+  await previousMinute(page, '结束时间', 1);
+  await expect(values.nth(1)).toHaveText('10:00');
+  await previousMinute(page, '结束时间', 1);
+  await expect(values.nth(1)).toHaveText('10:00');
+  await previousMinute(page, '结束时间');
+  await expect(values.nth(1)).toHaveText('09:59');
+  await previousMinute(page, '开始时间');
+  await expect(values.nth(0)).toHaveText('09:19');
+  await previousMinute(page, '开始时间');
+  await expect(values.nth(0)).toHaveText('09:19');
+  await editor.getByRole('button', { name: '结束时间', exact: true }).click();
+  const picker = page.getByRole('dialog', { name: '选择结束时间', exact: true });
+  await expect(picker.getByRole('button', { name: '结束时间设为此刻' })).toBeDisabled();
+  await picker.getByRole('button', { name: '取消', exact: true }).click();
+  expect(state.updates).toHaveLength(0);
+});
 
 for (const width of [390, 768, 1440]) for (const colorScheme of ['light', 'dark']) {
   test(`结束时间选择器内此刻、取消和滚轮 ${width} ${colorScheme}`, async ({ page }) => {
@@ -839,7 +867,70 @@ for (const view of ['时间轴视图', '卡片视图']) {
     await page.getByRole('button', { name: '周视图', exact: true }).click();
     await expect(page.locator('.time-main-panel')).toHaveAttribute('aria-busy', 'false');
     await swipe(page.locator('.time-main-panel'), -100);
-    await expect(page.locator('.date-value')).toHaveText(today);
+    tomorrow.setDate(tomorrow.getDate() + 6);
+    const nextWeek = `${tomorrow.getFullYear()}-${String(tomorrow.getMonth() + 1).padStart(2, '0')}-${String(tomorrow.getDate()).padStart(2, '0')}`;
+    await expect(page.locator('.date-value')).toHaveText(nextWeek);
+    await cdp.detach();
+  });
+}
+
+// 真实触摸事件覆盖周期切换，以及月内滚动与翻月之间的边界。
+async function periodSwipe(page, cdp, dx, dy = 0) {
+  const surface = page.locator('.day-swipe-surface').first();
+  await expect.poll(() => surface.evaluate(el => getComputedStyle(el).transform)).toBe('matrix(1, 0, 0, 1, 0, 0)');
+  const target = page.locator('.timeline-scroll, .record-groups').first();
+  await target.scrollIntoViewIfNeeded();
+  // 纵向触摸滚动有惯性，待其结束后再开始下一次独立横滑。
+  await page.waitForTimeout(300);
+  const box = await target.boundingBox();
+  const x = box.x + (dx < 0 ? box.width * 0.8 : box.width * 0.2);
+  const y = box.y + Math.min(box.height / 2, 180);
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y }] });
+  for (let step = 1; step <= 6; step++) {
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: x + dx * step / 6, y: y + dy * step / 6 }] });
+    await page.waitForTimeout(20);
+  }
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+  await expect.poll(() => surface.evaluate(el => getComputedStyle(el).transform)).toBe('matrix(1, 0, 0, 1, 0, 0)');
+}
+
+for (const view of ['时间轴视图', '卡片视图']) for (const period of ['周', '月']) {
+  test(`${period}视图真实横滑切换周期 ${view}`, async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.clock.install({ time: new Date('2026-03-31T12:00:00') });
+    const state = await setup(page, { records: [{ id: '1', date: '2026-03-31', categoryId: '2', startTime: 540, endTime: 599, title: '晨间运动' }] });
+    await page.getByRole('button', { name: view, exact: true }).click();
+    await page.getByRole('button', { name: period + '视图', exact: true }).click();
+    await expect(page.locator('.time-main-panel')).toHaveAttribute('aria-busy', 'false');
+    const cdp = await page.context().newCDPSession(page);
+    await cdp.send('Emulation.setTouchEmulationEnabled', { enabled: true });
+    await periodSwipe(page, cdp, 5, -70);
+    await expect(page.locator('.date-value')).toHaveText('2026-03-31');
+    await periodSwipe(page, cdp, 120);
+    await expect(page.locator('.date-value')).toHaveText(period === '周' ? '2026-03-24' : '2026-02-28');
+    await expect(page.locator('.time-main-panel')).toHaveAttribute('aria-busy', 'false');
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    if (period === '月' && view === '时间轴视图') {
+      const scroll = page.locator('.timeline-scroll .uni-scroll-view').last();
+      // 从月初向左滑仅滚动日期列，同一手势即使到达边缘也不翻月。
+      await periodSwipe(page, cdp, -120);
+      await expect.poll(() => scroll.evaluate(el => el.scrollLeft)).toBeGreaterThan(20);
+      await expect(page.locator('.date-value')).toHaveText('2026-02-28');
+      // 月内原生横向滚动也有惯性，结束后再定位到距月末 70px。
+      await page.waitForTimeout(600);
+      await scroll.evaluate(el => { el.scrollLeft = el.scrollWidth - el.clientWidth - 70; });
+      await page.waitForTimeout(150);
+      await expect.poll(() => scroll.evaluate(el => el.scrollWidth - el.clientWidth - el.scrollLeft)).toBe(70);
+      await periodSwipe(page, cdp, -120);
+      await expect.poll(() => scroll.evaluate(el => Math.abs(el.scrollWidth - el.clientWidth - el.scrollLeft))).toBeLessThan(2);
+      await expect(page.locator('.date-value')).toHaveText('2026-02-28');
+      await page.waitForTimeout(150);
+    }
+    await periodSwipe(page, cdp, -120);
+    await expect(page.locator('.date-value')).toHaveText(period === '周' ? '2026-03-31' : '2026-03-28');
+    await expect(page.locator('.time-main-panel')).toHaveAttribute('aria-busy', 'false');
+    expect(state.ranges).toContainEqual(period === '周' ? ['2026-03-30', '2026-04-05'] : ['2026-03-01', '2026-03-31']);
+    await expect(page.getByRole('dialog')).toHaveCount(0);
     await cdp.detach();
   });
 }

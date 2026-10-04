@@ -74,7 +74,7 @@ test('空账号不伪造统计和记录，不请求未绑定 GitHub，手机可�
   let github = 0;
   await setup(page, async (route, path) => {
     if (path === '/api/github/recent-commits') github++;
-    const empty = { '/api/dashboard/tasks': [], '/api/quick-nav/my': [], '/api/thought/dashboard': [], '/api/taskDetails/watched': [], '/api/exerciseRecord/dashboardSummary': { days: [] }, '/api/timeRecord/query': { items: [] } };
+    const empty = { '/api/dashboard/tasks': [], '/api/quick-nav/my': [], '/api/thought/dashboard': [], '/api/taskDetails/watched': [], '/api/exerciseRecord/dashboardSummary': { days: [] }, '/api/timeRecord/query': [] };
     if (path in empty) { await route.fulfill({ json: { rscode: '0', data: empty[path] } }); return true; }
   });
   await expect(page.getByText('今日暂无记录')).toBeVisible();

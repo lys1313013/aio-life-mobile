@@ -12,12 +12,12 @@ import {
 } from '../services/time-format.ts'
 import { clockLabel, durationLabel } from '../services/dashboard-format.ts'
 const props = defineProps<{ records: TimeRecord[]; categories: Category[]; showDate?: boolean; loading?: boolean }>()
-const emit = defineEmits(['edit', 'change-day'])
+const emit = defineEmits(['edit', 'change-period'])
 const swipeOffset = ref(0)
 const swipeDragging = ref(false)
 const daySwipe = createDaySwipe(
-  () => !props.showDate && !props.loading,
-  (offset) => emit('change-day', offset),
+  () => !props.loading,
+  (offset) => emit('change-period', offset),
   (offset, dragging) => {
     swipeOffset.value = offset
     swipeDragging.value = dragging
@@ -44,7 +44,7 @@ const groups = computed(() => {
 </script>
 <template>
   <view class="day-swipe-viewport" @touchstart="daySwipe.touchStart" @touchmove="daySwipe.touchMove" @touchend="daySwipe.touchEnd" @touchcancel="daySwipe.cancel">
-  <view class="record-groups day-swipe-surface" :style="daySwipeStyle(swipeOffset, swipeDragging)" :class="{ 'day-swipe-panel': !showDate, 'day-swipe-empty': !showDate && !records.length }">
+  <view class="record-groups day-swipe-surface day-swipe-panel" :style="daySwipeStyle(swipeOffset, swipeDragging)" :class="{ 'day-swipe-empty': !records.length }">
     <view v-if="loading" class="record-card-grid"><view v-for="n in 6" :key="n" class="record-card-cell"><view class="record-card" :class="themeClass('record-card')"><ContentSkeleton variant="tile" compact label="正在加载时迹卡片" /></view></view></view>
     <view v-for="group in groups" :key="group.date" class="record-group">
       <text v-if="showDate" class="record-group-date" :class="themeClass('record-group-date')"
@@ -108,7 +108,7 @@ const groups = computed(() => {
 @use '../styles/text-colors' as *;
 @include type-utilities('body');
 
-// 空日保留手势区域，仍可滑回有记录的日期。
+// 空周期保留手势区域，仍可滑回有记录的日期。
 .day-swipe-empty { min-height: 25vh; }
 
 /* #ifdef WEB */

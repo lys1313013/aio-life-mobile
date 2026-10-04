@@ -3,7 +3,7 @@ import { createDaySwipe, daySwipeStyle } from '../services/day-swipe.ts'
 import LoadingIndicator from './LoadingIndicator.uvue'
 import AppIcon from './AppIcon.uvue'
 import { themeClass } from '../services/theme.ts'
-import { computed, ref, watch, onMounted, onUnmounted } from 'vue'
+import { computed, ref, watch, onMounted, onUnmounted, getCurrentInstance, nextTick } from 'vue'
 import CategoryIcon from './CategoryIcon.uvue'
 import AdaptiveModal from './AdaptiveModal.uvue'
 import type { Category, TimeRecord } from '../services/dashboard.ts'
@@ -25,18 +25,45 @@ const props = defineProps<{
   selected?: string[]
   loading?: boolean
 }>()
-const emit = defineEmits(['edit', 'change-day'])
+const emit = defineEmits(['edit', 'change-period'])
 const selectedDay = ref('')
-watch(() => props.startDate, () => { selectedDay.value = '' })
+const instance = getCurrentInstance()
+const scrollLeft = ref(0)
+const scrollWidth = ref(0)
+const viewportWidth = ref(0)
+watch(() => props.startDate, () => {
+  selectedDay.value = ''
+  scrollLeft.value = 0
+  scrollWidth.value = 0
+  daySwipe.cancel()
+})
+function trackScroll(event) {
+  scrollLeft.value = event.detail.scrollLeft
+  scrollWidth.value = event.detail.scrollWidth
+}
+async function measureViewport() {
+  await nextTick()
+  uni.createSelectorQuery().in(instance?.proxy).select('.timeline-scroll')
+    .boundingClientRect((rect) => {
+      if (rect && !Array.isArray(rect)) viewportWidth.value = rect.width
+    }).exec()
+}
+function canChangePeriod(offset: number) {
+  if (props.days === 1) return true
+  if (!viewportWidth.value) return false
+  const contentWidth = Math.max(scrollWidth.value, columnsMinWidth.value)
+  return offset < 0 ? scrollLeft.value <= 1 : scrollLeft.value + viewportWidth.value >= contentWidth - 1
+}
 const swipeOffset = ref(0)
 const swipeDragging = ref(false)
 const daySwipe = createDaySwipe(
-  () => props.days === 1 && !props.loading && !selectedDay.value,
-  (offset) => emit('change-day', offset),
+  () => !props.loading && !selectedDay.value,
+  (offset) => emit('change-period', offset),
   (offset, dragging) => {
     swipeOffset.value = offset
     swipeDragging.value = dragging
   },
+  canChangePeriod,
 )
 function openDay(date: string) {
   if (!props.loading && !daySwipe.ignoreClick()) selectedDay.value = date
@@ -44,6 +71,7 @@ function openDay(date: string) {
 // 全天随视口缩放；短记录从日期列表 / 卡片进入，保持真实时间比例。
 const windowHeight = ref(uni.getWindowInfo().windowHeight)
 const windowWidth = ref(uni.getWindowInfo().windowWidth)
+const columnsMinWidth = computed(() => props.days > 7 ? props.days * (windowWidth.value > 1024 ? 80 : 45) : props.days > 1 ? 308 : 0)
 const now = ref(new Date())
 let clock: ReturnType<typeof setInterval> | undefined
 const trackHeight = computed(() =>
@@ -53,8 +81,10 @@ const minuteHeight = computed(() => trackHeight.value / 1440)
 function resize() {
   windowHeight.value = uni.getWindowInfo().windowHeight
   windowWidth.value = uni.getWindowInfo().windowWidth
+  measureViewport()
 }
 onMounted(() => {
+  measureViewport()
   uni.onWindowResize(resize)
   clock = setInterval(() => { now.value = new Date() }, 60000)
 })
@@ -140,13 +170,15 @@ function edit(record: TimeRecord) {
       </view>
     </view>
     <scroll-view
+      :key="startDate"
       direction="horizontal"
       :scroll-x="days > 1"
       class="timeline-scroll"
+      @scroll="trackScroll"
     >
       <view
         class="timeline-columns"
-        :style="{ minWidth: days > 7 ? days * (windowWidth > 1024 ? 80 : 45) + 'px' : days > 1 ? '308px' : '0px' }"
+        :style="{ minWidth: columnsMinWidth + 'px' }"
       >
         <view
           v-for="column in columns"
