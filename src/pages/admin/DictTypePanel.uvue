@@ -1,0 +1,177 @@
+<script setup lang="ts">
+import { computed, onUnmounted, ref } from 'vue';
+import FormField from '../../components/FormField.uvue';
+import MobileButton from '../../components/MobileButton.uvue';
+import PageState from '../../components/PageState.uvue';
+import LoadMore from '../../components/LoadMore.uvue';
+import ConfirmAction from '../../components/ConfirmAction.uvue';
+import AdaptiveModal from '../../components/AdaptiveModal.uvue';
+import FormActions from '../../components/FormActions.uvue';
+import { themeClass } from '../../services/theme.ts';
+const props = defineProps<{
+  rows: any[]; total: number; loading: boolean; error: string;
+  moreError: string; hasMore: boolean; busy: boolean; remove: (row: any) => Promise<unknown>;
+}>();
+const emit = defineEmits(['search', 'edit', 'retry', 'more']);
+const keyword = ref(''), sort = ref('服务端顺序'), descending = ref(false), showSort = ref(false);
+const selected = ref<any>(null), showingDetails = ref(false), removing = ref(false);
+const actionBusy = computed(() => props.loading || props.busy || removing.value);
+let timer: ReturnType<typeof setTimeout> | undefined;
+const sortFields = { '名称': 'dictName', '标识': 'dictType', '备注': 'remark', '更新时间': 'updateTime' };
+const sorted = computed(() => {
+  const key = sortFields[sort.value];
+  if (!key) return props.rows;
+  return [...props.rows].sort((a, b) => {
+    const order = String(a[key] ?? '').localeCompare(String(b[key] ?? ''));
+    return descending.value ? -order : order;
+  });
+});
+const details = computed(() => selected.value ? [
+  ['字典标识', selected.value.dictType || '—'],
+  ['备注', selected.value.remark || '—'],
+  ['更新时间', selected.value.updateTime || '—'],
+] : []);
+function shortUpdated(value: unknown) {
+  const date = String(value ?? '').match(/^\d{4}-(\d{2}-\d{2})/);
+  return date?.[1] || '—';
+}
+function search() {
+  clearTimeout(timer);
+  selected.value = null;
+  emit('search', { keyword: keyword.value.trim(), type: '' });
+}
+function input(value: string) {
+  if (keyword.value === value) return;
+  keyword.value = value;
+  clearTimeout(timer);
+  timer = setTimeout(search, 300);
+}
+function reset() {
+  keyword.value = ''; sort.value = '服务端顺序'; descending.value = false;
+  search();
+}
+function open(row, detail = false) {
+  if (actionBusy.value) return;
+  selected.value = row;
+  showingDetails.value = detail;
+}
+function editSelected() {
+  if (actionBusy.value || !selected.value) return;
+  const row = selected.value;
+  selected.value = null;
+  emit('edit', row);
+}
+async function removeSelected() {
+  if (actionBusy.value || !selected.value) return;
+  removing.value = true;
+  try {
+    await props.remove(selected.value);
+    selected.value = null;
+  } finally {
+    removing.value = false;
+  }
+}
+onUnmounted(() => clearTimeout(timer));
+</script>
+<template>
+  <view class="dict-panel ui-page-body" :class="themeClass('dict-panel')">
+    <view class="dict-search" :class="themeClass('dict-search')">
+      <MobileButton label="查询" icon="ant-design:search-outlined" variant="ghost" :loading="loading" @click="search" />
+      <FormField label="字典名称" hide-label compact stretch>
+        <input class="dict-search-input" :class="themeClass('dict-search-input')" aria-label="字典名称" placeholder="搜索字典名称" :value="keyword" @input="input($event.detail.value)" @confirm="search" />
+      </FormField>
+      <MobileButton v-if="keyword" label="重置筛选" icon="ant-design:close-outlined" variant="ghost" @click="reset" />
+    </view>
+    <view class="dict-toolbar">
+      <text class="dict-count" :class="themeClass('dict-muted')">{{ error ? '加载失败' : loading && !rows.length ? '查询中…' : '共 ' + total + ' 类' }}</text>
+      <MobileButton label="排序设置" icon="ant-design:arrow-up-outlined" variant="ghost" @click="showSort = !showSort" />
+    </view>
+    <view v-if="showSort" class="dict-sort">
+      <FormField label="已加载数据排序" compact stretch kind="selector" v-model="sort" :options="['服务端顺序', ...Object.keys(sortFields)]" />
+      <MobileButton :label="descending ? '降序' : '升序'" :icon="descending ? 'ant-design:arrow-down-outlined' : 'ant-design:arrow-up-outlined'" variant="ghost" :disabled="sort === '服务端顺序'" @click="descending = !descending" />
+    </view>
+    <PageState :loading="loading" :error="error" :empty="!rows.length" :has-content="!!rows.length" :empty-text="keyword ? '没有匹配的字典类型' : '暂无字典类型'" @retry="emit('retry')">
+      <view v-if="rows.length" class="dict-list" :class="themeClass('dict-list')">
+        <view class="dict-table-header" :class="themeClass('dict-table-header')">
+          <view class="dict-table-columns">
+            <text class="dict-title dict-column-heading" :class="themeClass('dict-muted')">名称</text>
+            <text class="dict-value dict-column-heading" :class="themeClass('dict-muted')">标识</text>
+            <text class="dict-updated dict-column-heading" :class="themeClass('dict-muted')">更新</text>
+          </view>
+          <view class="dict-action-space" />
+        </view>
+        <view v-for="row in sorted" :key="row.dictId" class="dict-row" :class="themeClass('dict-row')">
+          <button class="dict-row-content dict-table-columns" :aria-label="'查看' + row.dictName + '详情'" :disabled="actionBusy" @click="open(row, true)">
+            <text class="dict-title" :class="themeClass('dict-title')">{{ row.dictName || '未命名' }}</text>
+            <text class="dict-value" :class="themeClass('dict-muted')">{{ row.dictType || '—' }}</text>
+            <text class="dict-updated" :class="themeClass('dict-muted')">{{ shortUpdated(row.updateTime) }}</text>
+          </button>
+          <MobileButton :label="row.dictName + '更多操作'" icon="ant-design:more-outlined" variant="ghost" :disabled="actionBusy" @click="open(row)" />
+        </view>
+        <text v-if="!hasMore && !loading" class="dict-end" :class="themeClass('dict-muted')">已全部加载</text>
+      </view>
+    </PageState>
+    <LoadMore :error="moreError" :loading="loading" :has-more="hasMore" @load="emit('more')" />
+    <AdaptiveModal v-if="selected" :label="showingDetails ? '字典类型详情' : '字典类型操作'" :busy="actionBusy" :content-key="selected.dictId + ':' + showingDetails" @close="selected = null">
+      <text class="dict-detail-title" :class="themeClass('dict-detail-title')">{{ selected.dictName }}</text>
+      <template v-if="showingDetails">
+        <view v-for="item in details" :key="item[0]" class="dict-detail-row">
+          <text class="dict-detail-label" :class="themeClass('dict-muted')">{{ item[0] }}</text>
+          <text class="dict-detail-value" :class="themeClass('dict-detail-value')">{{ item[1] }}</text>
+        </view>
+      </template>
+      <FormActions>
+        <template #secondary>
+          <ConfirmAction label="删除" :message="'确定删除“' + selected.dictName + '”？'" :action="removeSelected">
+            <template #default="action">
+              <MobileButton label="删除" icon="ant-design:delete-outlined" variant="ghost" :loading="action.busy" :disabled="actionBusy" @click="action.open" />
+            </template>
+          </ConfirmAction>
+        </template>
+        <MobileButton v-if="!showingDetails" label="查看详情" icon="ant-design:eye-outlined" variant="ghost" :disabled="actionBusy" @click="showingDetails = true" />
+        <MobileButton label="编辑" icon="ant-design:edit-outlined" variant="ghost" :disabled="actionBusy" @click="editSelected" />
+        <MobileButton label="关闭" icon="ant-design:close-outlined" variant="ghost" :disabled="actionBusy" @click="selected = null" />
+      </FormActions>
+    </AdaptiveModal>
+  </view>
+</template>
+<style scoped lang="scss">
+@use '../../styles/typography' as *;
+@use '../../styles/text-colors' as *;
+@use '../../styles/spacing.scss';
+@use '../../styles/spacing-tokens' as *;
+.dict-panel { gap: $space-detail; }
+.dict-search, .dict-toolbar, .dict-sort, .dict-row, .dict-table-header, .dict-table-columns { flex-direction: row; align-items: center; }
+.dict-search { border-radius: 10px; background-color: #fff; overflow: hidden; }
+.dict-search-input { @include type-style('body'); width: 100%; min-width: 0; height: $space-controlMin; color: #27272a; }
+.dict-search-input-dark { color: #eeeeef; }
+.dict-search-dark { background-color: #1c1e22; }
+.dict-toolbar { justify-content: space-between; }
+.dict-count { @include type-style('caption'); color: $text-secondary-light; }
+.dict-sort { gap: $space-inline; align-items: flex-end; margin-bottom: $space-inline; }
+.dict-list { background-color: #fff; border-radius: 8px; overflow: hidden; }
+.dict-list-dark { background-color: #1c1e22; }
+.dict-table-header { padding-top: $space-inline; padding-bottom: $space-inline; background-color: #e9edf3; }
+.dict-table-header-dark { background-color: #24272d; }
+.dict-table-columns { display: flex; flex: 1; min-width: 0; padding-left: $space-card; gap: $space-inline; }
+.dict-action-space { width: $space-controlMin; flex-shrink: 0; }
+.dict-row { min-height: $space-controlMin; border-bottom: $space-hairline solid #edf0f4; }
+.dict-row-dark { border-bottom-color: #2a2d33; }
+.dict-row-content { min-height: $space-controlMin; margin: 0; padding-top: 0; padding-bottom: 0; padding-right: 0; border: 0; border-radius: 0; background-color: transparent !important; text-align: left; @include type-style('body'); }
+// 原生 button 禁用时不继承其文字颜色，分页等待仍保持可读。
+.dict-title { @include type-style('body'); color: #27272a; flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.dict-title-dark { color: #eeeeef; }
+.dict-value { @include type-style('body'); color: $text-secondary-light; flex: 1.5; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.dict-updated { @include type-style('caption'); color: $text-secondary-light; width: $space-controlMin; flex-shrink: 0; text-align: right; }
+.dict-column-heading { @include type-style('caption'); color: $text-secondary-light; }
+.dict-end { @include type-style('caption'); color: $text-secondary-light; text-align: center; padding: $space-card; }
+.dict-detail-title { @include type-style('title'); color: #27272a; overflow-wrap: anywhere; margin-bottom: $space-section; }
+.dict-detail-row { flex-direction: row; gap: $space-inline; margin-bottom: $space-inline; }
+.dict-detail-label { @include type-style('label'); color: $text-secondary-light; width: 80px; flex-shrink: 0; }
+.dict-detail-value { @include type-style('body'); color: #27272a; flex: 1; min-width: 0; overflow-wrap: anywhere; white-space: pre-wrap; }
+.dict-detail-title-dark, .dict-detail-value-dark { color: #eeeeef; }
+.dict-muted-dark { color: $text-secondary-dark; }
+/* #ifdef WEB || MP-WEIXIN */
+.dict-row-content::after { border: 0; }
+/* #endif */
+</style>
