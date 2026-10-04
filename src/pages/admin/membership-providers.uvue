@@ -1,0 +1,140 @@
+<script setup lang="ts">
+import { computed, ref, watch } from 'vue';
+import { onHide, onShow, onUnload } from '@dcloudio/uni-app';
+import PageHeader from '../../components/PageHeader.uvue';
+import MobilePage from '../../components/MobilePage.uvue';
+import PageState from '../../components/PageState.uvue';
+import FormField from '../../components/FormField.uvue';
+import FormActions from '../../components/FormActions.uvue';
+import MobileButton from '../../components/MobileButton.uvue';
+import ConfirmAction from '../../components/ConfirmAction.uvue';
+import FloatingActionButton from '../../components/FloatingActionButton.uvue';
+import AdaptiveModal from '../../components/AdaptiveModal.uvue';
+import MembershipLogo from '../../components/MembershipLogo.uvue';
+import { themeClass } from '../../services/theme.ts';
+import { fetchUser } from '../../services/api.ts';
+import { restoreSession, session } from '../../services/session.ts';
+import { memberCategories as categories, memberCategoryLabels as categoryLabels } from '../../services/membership-provider.ts';
+import { listMembershipProviders, listMembershipIcons, saveMembershipProvider, deleteMembershipProvider } from './services/membership-providers.ts';
+const rows = ref<any[]>([]), icons = ref<any[]>([]), keyword = ref(''), categoryFilter = ref('全部分类');
+const loading = ref(false), refreshing = ref(false), loaded = ref(false), error = ref('');
+const form = ref<any>(null), original = ref<any>(null), saving = ref(false), formError = ref('');
+const authorized = computed(() => !!session.token && !!session.user?.roles?.includes('admin'));
+const shown = computed(() => rows.value.filter(row => (categoryFilter.value === '全部分类' || row.category === categories[categoryLabels.indexOf(categoryFilter.value)]) && (row.name + ' ' + row.code).toLowerCase().includes(keyword.value.trim().toLowerCase())).slice().sort((a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name)));
+let active = true, generation = 0, revision = 0, editorRevision = 0;
+function current(token, version) { return active && token === session.token && version === revision; }
+function back() { uni.navigateBack({ fail: () => uni.switchTab({ url: '/pages/profile/index' }) }); }
+async function load(refresh = false) {
+  if (saving.value || form.value) return;
+  const token = session.token, lifecycle = revision, version = ++generation;
+  loading.value = true; refreshing.value = refresh; error.value = '';
+  try {
+    if (!session.user) await fetchUser();
+    if (!current(token, lifecycle)) return;
+    if (!authorized.value) throw Error('当前账号没有管理员权限');
+    const [data, catalog] = await Promise.all([listMembershipProviders(), listMembershipIcons()]);
+    if (!current(token, lifecycle) || version !== generation) return;
+    rows.value = data; icons.value = catalog; loaded.value = true;
+  } catch (reason) { if (current(token, lifecycle) && version === generation) error.value = reason.message || '加载失败，请重试'; }
+  finally { if (current(token, lifecycle) && version === generation) { loading.value = false; refreshing.value = false; } }
+}
+function open(row = null) {
+  if (!authorized.value || !loaded.value || loading.value || saving.value) return;
+  original.value = row ? { ...row } : null;
+  form.value = row ? { ...row, sortOrder: String(row.sortOrder) } : { name: '', code: '', category: 'other', iconKey: null, sortOrder: '0', isEnabled: 1 };
+  editorRevision++; formError.value = '';
+}
+function close() { if (!saving.value) { form.value = null; editorRevision++; } }
+async function save() {
+  if (!authorized.value || saving.value || !form.value) return;
+  const token = session.token, lifecycle = revision, editor = editorRevision;
+  saving.value = true; formError.value = '';
+  try {
+    const saved = await saveMembershipProvider(form.value, original.value);
+    if (current(token, lifecycle) && editor === editorRevision) { rows.value = [...rows.value.filter(row => row.id !== saved.id), saved]; form.value = null; }
+  } catch (reason) { if (current(token, lifecycle) && editor === editorRevision) formError.value = reason.message || '保存失败，请重试'; }
+  finally { if (current(token, lifecycle) && editor === editorRevision) saving.value = false; }
+}
+async function remove() {
+  if (!authorized.value || saving.value || !original.value) throw Error('请稍后重试');
+  const token = session.token, lifecycle = revision, editor = editorRevision, id = original.value.id;
+  saving.value = true;
+  try {
+    await deleteMembershipProvider(id);
+    if (current(token, lifecycle) && editor === editorRevision) { rows.value = rows.value.filter(row => row.id !== id); form.value = null; }
+  } finally { if (current(token, lifecycle) && editor === editorRevision) saving.value = false; }
+}
+function deactivate() { active = false; revision++; generation++; editorRevision++; form.value = null; saving.value = false; loading.value = false; refreshing.value = false; }
+watch(() => session.token, () => { deactivate(); rows.value = []; icons.value = []; loaded.value = false; }, { flush: 'sync' });
+onShow(() => { restoreSession(); active = true; if (!session.token) { uni.reLaunch({ url: '/pages/login/index' }); return; } load(); });
+onHide(deactivate);
+onUnload(deactivate);
+</script>
+<template>
+  <view class="provider-page" :class="themeClass('provider-page')">
+    <PageHeader title="会员平台" back @back="back" />
+    <MobilePage :refreshing="refreshing" @refresh="load(true)">
+      <view class="ui-page-body">
+        <view v-if="authorized" class="ui-toolbar"><FormField compact stretch label="搜索平台" placeholder="名称 / 编码" v-model="keyword" /><FormField compact stretch label="筛选分类" kind="selector" v-model="categoryFilter" :options="['全部分类', ...categoryLabels]" /></view>
+        <PageState :loading="loading" :error="error" :empty="authorized && !shown.length" :has-content="rows.length > 0" empty-text="暂无会员平台" @retry="load()">
+          <view v-if="authorized" class="provider-grid">
+            <button role="button" tabindex="0" v-for="row in shown" :key="row.id" class="provider-item" :class="themeClass('provider-item')" :aria-label="'编辑平台：' + row.name" :disabled="loading" @click="open(row)" @keydown.enter.prevent="open(row)" @keydown.space.prevent="open(row)">
+              <MembershipLogo :icon-key="row.iconKey" :category="row.category" :name="row.name" :size="36" />
+              <view class="provider-info"><text class="provider-name">{{ row.name }}</text><text class="provider-meta" :class="themeClass('provider-meta')">{{ categoryLabels[categories.indexOf(row.category)] }} · {{ row.code }}</text></view>
+              <text v-if="row.isEnabled === 0" class="provider-meta" :class="themeClass('provider-meta')">停用</text>
+            </button>
+          </view>
+        </PageState>
+      </view>
+      <template #fixed><FloatingActionButton v-if="authorized && !form" label="新增会员平台" :disabled="!loaded || loading || !!error" @click="open()" /></template>
+    </MobilePage>
+    <AdaptiveModal v-if="form" :label="original ? '编辑会员平台' : '新增会员平台'" :max-width="560" :busy="saving" @close="close">
+      <FormField appearance="soft" required label="平台名称" v-model="form.name" :disabled="saving" />
+      <FormField appearance="soft" required label="平台编码" v-model="form.code" :disabled="saving" placeholder="例如 tencent_video" />
+      <FormField appearance="soft" required label="分类" kind="selector" :model-value="categoryLabels[categories.indexOf(form.category)]" :options="categoryLabels" :disabled="saving" @update:model-value="form.category = categories[categoryLabels.indexOf($event)]" />
+      <FormField appearance="soft" label="图标" compact>
+        <scroll-view scroll-y class="icon-scroll" :class="{ 'icon-scroll-compact': icons.length < 4 }">
+          <view class="icon-options">
+            <button role="button" tabindex="0" class="icon-option" :class="{ 'icon-selected': !form.iconKey }" aria-label="使用分类图标" :aria-pressed="!form.iconKey" :disabled="saving" @click="form.iconKey = null" @keydown.enter.prevent="form.iconKey = null" @keydown.space.prevent="form.iconKey = null"><MembershipLogo :category="form.category" :size="28" /><text class="icon-label">分类图标</text></button>
+            <button role="button" tabindex="0" v-for="icon in icons" :key="icon.key" class="icon-option" :class="{ 'icon-selected': form.iconKey === icon.key }" :aria-label="'选择' + icon.name + '图标'" :aria-pressed="form.iconKey === icon.key" :disabled="saving" @click="form.iconKey = icon.key" @keydown.enter.prevent="form.iconKey = icon.key" @keydown.space.prevent="form.iconKey = icon.key"><MembershipLogo :icon-key="icon.key" :category="form.category" :name="icon.name" :size="28" /><text class="icon-label">{{ icon.name }}</text></button>
+          </view>
+        </scroll-view>
+      </FormField>
+      <view class="ui-field-row ui-mt-section">
+        <FormField appearance="soft" compact stretch label="排序" v-model="form.sortOrder" input-type="number" :disabled="saving" />
+        <FormField appearance="soft" compact stretch label="状态" kind="selector" :model-value="form.isEnabled === 1 ? '启用' : '停用'" :options="['启用', '停用']" :disabled="saving" @update:model-value="form.isEnabled = $event === '启用' ? 1 : 0" />
+      </view>
+      <text v-if="formError" class="provider-error ui-mt-section" role="alert">{{ formError }}</text>
+      <FormActions><template #secondary><ConfirmAction v-if="original" label="删除平台" :action="remove"><template #default="slot"><MobileButton label="删除平台" icon="ant-design:delete-outlined" variant="quiet" :disabled="saving" :loading="slot.busy" @click="slot.open" /></template></ConfirmAction></template><MobileButton label="取消" variant="quiet" :disabled="saving" @click="close" /><MobileButton label="保存" :loading="saving" @click="save" /></FormActions>
+    </AdaptiveModal>
+  </view>
+</template>
+<style scoped lang="scss">
+@use '../../styles/spacing.scss';
+@use '../../styles/spacing-tokens' as *;
+@use '../../styles/typography' as *;
+.provider-page { height: 100%; min-height: 0; color: #27272a; }
+.provider-page-dark { color: #eeeeef; }
+// 为悬浮按钮预留触控空间。
+.provider-grid { flex-direction: row; flex-wrap: wrap; gap: $space-section; padding-bottom: calc(56px + #{$space-page} + #{$space-section}); }
+.provider-item { display: flex; flex-direction: row; align-items: center; gap: $space-inline; width: 100%; min-width: 0; min-height: $space-controlMin; margin: 0; padding: $space-card; background-color: #fff; color: #27272a; border: 0; border-radius: 12px; text-align: left; }
+.provider-item-dark { background-color: #1c1e22; color: #eeeeef; }
+.provider-info { flex: 1; min-width: 0; gap: $space-detail; }
+.provider-name { @include type-style('label'); overflow-wrap: anywhere; }
+.provider-meta { @include type-style('caption'); color: #667080; overflow-wrap: anywhere; }
+.provider-meta-dark { color: #a9b0ba; }
+.provider-error { @include type-style('caption'); color: #d44756; }
+// 图标网格最多显示约两行，少量选项不占据空白滚动区。
+.icon-scroll { height: 180px; }
+.icon-scroll-compact { height: calc(64px + #{$space-inline}); }
+.icon-options { flex-direction: row; flex-wrap: wrap; gap: $space-inline; }
+.icon-option { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: $space-detail; width: calc((100% - #{$space-inline} * 3) / 4); min-height: 64px; margin: 0; padding: $space-detail; border: 1px solid transparent; border-radius: 8px; background-color: transparent; color: inherit; }
+.icon-selected { border-color: #4285ed; background-color: rgba(66, 133, 237, 0.12); }
+.icon-label { @include type-style('caption'); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* #ifdef WEB || MP-WEIXIN */
+.provider-item::after { border: 0; }
+.icon-option::after { border: 0; }
+/* #endif */
+@media (min-width: 640px) { .provider-item { width: calc((100% - #{$space-section}) / 2); } }
+@media (min-width: 1100px) { .provider-item { width: calc((100% - #{$space-section} * 2) / 3); } }
+</style>

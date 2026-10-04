@@ -5,7 +5,7 @@ import FormActions from '../../components/FormActions.uvue';
 import { isRequired } from '../../services/form-required.ts';
 import ContentSkeleton from '../../components/ContentSkeleton.uvue';
 import { computed, onUnmounted, ref } from 'vue';
-import { onShow } from '@dcloudio/uni-app';
+import { onLoad, onShow } from '@dcloudio/uni-app';
 import MobilePage from '../../components/MobilePage.uvue';
 import PageHeader from '../../components/PageHeader.uvue';
 import MobileButton from '../../components/MobileButton.uvue';
@@ -15,11 +15,14 @@ import ConfirmAction from '../../components/ConfirmAction.uvue';
 import PageState from '../../components/PageState.uvue';
 import AdaptiveModal from '../../components/AdaptiveModal.uvue';
 import AppIcon from '../../components/AppIcon.uvue';
+import MembershipLogo from '../../components/MembershipLogo.uvue';
+import { editableProviders } from '../../services/membership-provider.ts';
 import { createRecordScope } from '../../services/records/page-scope.ts';
 import { isDark } from '../../services/theme.ts';
 import { memberPayload, addMonthsClamped } from '../../services/records/contracts.ts';
 import {
   fetchMembers,
+  fetchMemberProviders,
   fetchMemberStats,
   saveMember,
   deleteMember,
@@ -35,6 +38,26 @@ const rows = ref<any[]>([]),
   saving = ref(false),
   formError = ref(''),
   showDetails = ref(false);
+const originalProviderRecord = ref<any>(null);
+const providers = ref<any[]>([]), providersLoading = ref(false), providersError = ref('');
+let providersGeneration = 0;
+const providerOptions = computed(() => editableProviders(providers.value, originalProviderRecord.value));
+const providerLabel = (row) => row.name + (row.name === '自定义平台' || providerOptions.value.filter(item => item.name === row.name).length > 1 ? '（' + (row.code || row.id) + '）' : '') + (row.isEnabled === 0 ? '（已停用）' : '');
+const selectedProviderLabel = computed(() => { const row = providerOptions.value.find(item => item.id === form.value?.providerId); return row ? providerLabel(row) : '自定义平台'; });
+async function loadProviders() {
+  const version = ++providersGeneration;
+  providersLoading.value = true; providersError.value = '';
+  try { const data = await scope.wait(fetchMemberProviders()); if (version === providersGeneration) providers.value = data; }
+  catch (reason) { if (reason.name !== 'PageInactiveError' && version === providersGeneration) providersError.value = reason.message; }
+  finally { if (version === providersGeneration) providersLoading.value = false; }
+}
+function changeProvider(label) {
+  const row = providerOptions.value.find(item => providerLabel(item) === label);
+  form.value.providerId = row?.id || null;
+  form.value.providerName = row?.name || '';
+  form.value.providerIconKey = row?.iconKey || null;
+  if (row) { form.value.provider = row.name; form.value.category = row.category; }
+}
 const categories = ['video', 'music', 'shopping', 'cloud', 'study', 'game', 'other'],
   categoryLabels = ['视频', '音乐', '购物', '云盘', '学习', '游戏', '其他'];
 const cycles = ['week', 'two_weeks', 'month', 'quarter', 'half_year', 'year'],
@@ -66,14 +89,23 @@ const metrics = computed(() => [
 const categoryIcons = ['ant-design:video-camera-outlined', 'ant-design:customer-service-outlined', 'ant-design:shopping-outlined', 'ant-design:cloud-outlined', 'ant-design:read-outlined', 'ant-design:trophy-outlined', 'ant-design:appstore-outlined'];
 const scope = createRecordScope((clearData) => {
   form.value = null;
+  providersGeneration++; providersLoading.value = false; providersError.value = '';
   if (clearData) {
+    requestedEdit = '';
+    requestedCreate = false;
     rows.value = [];
+    providers.value = [];
     stats.value = {};
   }
 });
 let alive = true,
   generation = 0,
   statsGeneration = 0;
+let requestedEdit = '', requestedCreate = false;
+onLoad((options) => {
+  requestedEdit = options?.editId || '';
+  requestedCreate = options?.create === '1';
+});
 onUnmounted(() => {
   alive = false;
   generation++;
@@ -102,7 +134,19 @@ async function load(refresh = false) {
   const statsRequest = loadStats();
   try {
     const data = await scope.wait(fetchMembers());
-    if (alive && current === generation) rows.value = data;
+    if (alive && current === generation) {
+      rows.value = data;
+      if (requestedEdit) {
+        const selected = data.find((item) => item.id === requestedEdit);
+        if (!selected) throw Error('会员记录不存在或已删除');
+        open(selected);
+        requestedEdit = '';
+        requestedCreate = false;
+      } else if (requestedCreate) {
+        requestedCreate = false;
+        open();
+      }
+    }
   } catch (e) {
     if (e.name === 'PageInactiveError') return;
     if (current === generation) error.value = e.message;
@@ -115,6 +159,7 @@ async function load(refresh = false) {
   }
 }
 function open(item = null) {
+  originalProviderRecord.value = item ? { ...item } : null;
   formError.value = '';
   showDetails.value = false;
   form.value = item
@@ -122,6 +167,7 @@ function open(item = null) {
     : {
         name: '',
         provider: '',
+        providerId: null,
         category: 'other',
         startDate: '',
         expiryDate: '',
@@ -132,6 +178,7 @@ function open(item = null) {
         note: '',
         color: colors[0],
       };
+  loadProviders();
 }
 function quickDate(months) {
   form.value.expiryDate = addMonthsClamped(
@@ -196,10 +243,11 @@ async function remove(item) {
         <view class="member-grid">
           <button role="button" tabindex="0" v-for="item in sortedMembers" :key="item.id" class="member-card ui-type-body" :class="{ 'surface-dark': isDark, 'text-dark': isDark }" :aria-label="'编辑订阅：' + item.name" @click="open(item)" @keydown.enter.prevent="open(item)" @keydown.space.prevent="open(item)">
             <view class="card-heading">
+              <MembershipLogo :icon-key="item.providerIconKey" :category="item.category" :name="item.providerName || item.provider" :size="24" />
               <text class="member-title">{{ item.name }}</text>
               <AppIcon v-if="item.autoRenew === 1" name="ant-design:sync-outlined" :size="14" color="#4285ed" />
             </view>
-            <text v-if="item.provider" class="member-provider" :class="{ 'secondary-text-dark': isDark }">{{ item.provider }}</text>
+            <text v-if="item.providerName || item.provider" class="member-provider" :class="{ 'secondary-text-dark': isDark }">{{ item.providerName || item.provider }}</text>
             <view class="member-tags">
               <text class="member-status" :class="'member-status-' + item.status">{{ statusLabels[statusCodes.indexOf(item.status)] || item.status }}</text>
               <view class="category-tag" :class="{ 'category-tag-dark': isDark }"><AppIcon :name="categoryIcons[categories.indexOf(item.category)] || categoryIcons[6]" :size="12" /><text class="category-label">{{ categoryLabels[categories.indexOf(item.category)] || '其他' }}</text></view>
@@ -219,12 +267,20 @@ async function remove(item) {
         v-if="form"
         :label="form.id ? '编辑订阅' : '新增订阅'"
         :busy="saving"
-        :content-key="String(showDetails) + formError"
+        :content-key="String(showDetails) + formError + selectedProviderLabel + providersError"
         @close="form = null"
       >
         <FormField :required="isRequired('member', 'name')" appearance="soft" label="名称" placeholder="请输入订阅名称" v-model="form.name" />
         <view class="ui-field-row">
-          <FormField appearance="soft" compact stretch label="平台" v-model="form.provider" />
+          <FormField v-if="form.providerId" appearance="soft" compact stretch label="平台" kind="selector" :model-value="providersLoading ? '加载中…' : selectedProviderLabel" :options="['自定义平台', ...providerOptions.map(providerLabel)]" :disabled="providersLoading || !!providersError || saving" @update:model-value="changeProvider" />
+          <FormField v-else appearance="soft" compact stretch label="平台">
+            <view class="custom-provider" :class="{ 'custom-provider-dark': isDark }">
+              <input class="custom-provider-input" :style="appTextColor()" aria-label="自定义平台" :value="form.provider" :disabled="saving" placeholder="自定义平台" @input="form.provider = $event.detail.value" />
+              <picker class="custom-provider-picker" mode="selector" aria-label="选择会员平台" :range="['自定义平台', ...providerOptions.map(providerLabel)]" :value="0" :disabled="providersLoading || !!providersError || saving" @change="changeProvider(['自定义平台', ...providerOptions.map(providerLabel)][$event.detail.value])">
+                <view class="custom-provider-trigger"><AppIcon :name="providersLoading ? 'ant-design:loading-outlined' : 'ant-design:down-outlined'" :size="14" /></view>
+              </picker>
+            </view>
+          </FormField>
           <FormField appearance="soft"
             compact stretch label="分类" kind="selector"
             :model-value="categoryLabels[categories.indexOf(form.category)] || form.category"
@@ -232,6 +288,7 @@ async function remove(item) {
             @update:model-value="form.category = categories[categoryLabels.indexOf($event)]"
           />
         </view>
+        <view v-if="providersError" class="ui-row ui-section"><text class="member-error ui-type-body">{{ providersError }}</text><MobileButton label="重试平台加载" icon="ant-design:reload-outlined" variant="quiet" :loading="providersLoading" @click="loadProviders" /></view>
         <view class="ui-field-row">
           <FormField appearance="soft" compact stretch label="开通日期" kind="date" v-model="form.startDate" />
           <FormField :required="isRequired('member', 'expiryDate')" appearance="soft" compact stretch label="到期日期" kind="date" v-model="form.expiryDate" />
@@ -302,6 +359,11 @@ async function remove(item) {
 /* 为悬浮新增按钮预留滚动空间，确保末行卡片可完整露出。 */
 .member-page { color: #27272a; padding-bottom: calc(56px + #{$space-page} + #{$space-inline}); }
 .member-page-dark { color: #eeeeef; }
+.custom-provider { flex-direction: row; align-items: center; min-width: 0; min-height: $space-controlMin; background-color: #f2f4f7; border-radius: 10px; }
+.custom-provider-dark { background-color: #272a30; }
+.custom-provider-input { flex: 1; min-width: 0; height: $space-controlMin; padding-left: $space-card; @include type-style('body'); }
+.custom-provider-picker { width: $space-controlMin; flex-shrink: 0; }
+.custom-provider-trigger { height: $space-controlMin; width: $space-controlMin; align-items: center; justify-content: center; }
 .toolbar { flex-direction: row; align-items: center; }
 .member-summary { display: flex; flex-direction: column; gap: $space-section; padding: $space-inline 0 $space-section; }
 .summary-cost { min-width: 0; gap: $space-detail; }

@@ -1,0 +1,45 @@
+import { readFile } from 'node:fs/promises';
+import assert from 'node:assert/strict';
+import test from 'node:test';
+import { withFormRequired } from './helpers/form-required-source.mjs';
+const moduleUrl = text => `data:text/javascript;base64,${Buffer.from(text).toString('base64')}`;
+const sharedSource = await readFile(new URL('../src/services/membership-provider.ts', import.meta.url), 'utf8');
+const sharedUrl = moduleUrl(sharedSource);
+const { editableProviders, providerIconPath, readMemberProviders } = await import(sharedUrl);
+const contractUrl = moduleUrl(withFormRequired(await readFile(new URL('../src/services/records/contracts.ts', import.meta.url), 'utf8')));
+const { memberPayload } = await import(contractUrl);
+const adminSource = (await readFile(new URL('../src/pages/admin/services/membership-providers.ts', import.meta.url), 'utf8')).replace("import { request } from '../../../services/api.ts';", 'const request = (...args) => globalThis.__membershipRequest(...args);').replace("from '../../../services/membership-provider.ts'", `from '${sharedUrl}'`).replace("from '../../../services/records/contracts.ts'", `from '${contractUrl}'`).replace('request<any[]>', 'request');
+const admin = await import(moduleUrl(adminSource));
+const id = '9223372036854775807';
+const provider = { id, name: '模拟平台', code: 'demo_video', category: 'video', iconKey: 'tencent-video', sortOrder: 1, isEnabled: 1 };
+test('平台选择保留字符串长ID与停用原平台，不将停用项开放给新记录', () => {
+  assert.deepEqual(readMemberProviders([provider]), [provider]);
+  assert.throws(() => readMemberProviders([{ ...provider, id: 123 }]), /数据异常/);
+  assert.deepEqual(editableProviders([], null), []);
+  const options = editableProviders([], { providerId: id, providerName: provider.name, category: 'video', providerIconKey: provider.iconKey });
+  assert.equal(options[0].id, id); assert.equal(options[0].isEnabled, 0); assert.equal(options[0].iconKey, provider.iconKey);
+  assert.equal(editableProviders([provider], { providerId: id }).length, 1);
+});
+test('会员修改区分保留平台和显式解除平台，拒绝数字ID', () => {
+  const form = { name: '测试', expiryDate: '2027-01-01' };
+  assert.equal('providerId' in memberPayload(form), false);
+  assert.equal(memberPayload({ ...form, providerId: id }).providerId, id);
+  assert.equal(memberPayload({ ...form, providerId: '' }).providerId, null);
+  assert.equal(memberPayload({ ...form, providerId: null }).providerId, null);
+  assert.throws(() => memberPayload({ ...form, providerId: 123 }), /ID/);
+});
+test('图标仅允许受限内置key，不能变成任意URL或路径', () => {
+  assert.equal(providerIconPath('tencent-video'), '/membership/provider-icons/tencent-video');
+  for (const key of ['https://bad.test/a', '../file', '/file', 'a?x', 'a.svg', '', null]) assert.equal(providerIconPath(key), '');
+});
+test('管理保存只发送平台字段，启停0/1、空图标null并验证排序', async () => {
+  const calls = [];
+  globalThis.__membershipRequest = (...args) => { calls.push(args); return Promise.resolve({ ...provider, ...args[2] }); };
+  await admin.saveMembershipProvider({ ...provider, iconKey: '', sortOrder: '2', isEnabled: 0, extra: 'ignored' }, provider);
+  assert.deepEqual(calls[0], ['/system/membership-providers/' + id, 'PUT', { name: provider.name, code: provider.code, category: 'video', iconKey: null, sortOrder: 2, isEnabled: 0 }]);
+  assert.throws(() => admin.membershipProviderPayload({ ...provider, sortOrder: '' }), /排序/);
+  assert.throws(() => admin.membershipProviderPayload({ ...provider, isEnabled: true }), /启用/);
+  await admin.deleteMembershipProvider(id);
+  assert.deepEqual(calls.at(-1), ['/system/membership-providers/' + id, 'DELETE']);
+  delete globalThis.__membershipRequest;
+});

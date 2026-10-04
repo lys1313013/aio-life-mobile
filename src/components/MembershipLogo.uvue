@@ -1,0 +1,22 @@
+<script setup lang="ts">
+import { computed, ref, watch } from 'vue';
+import AppIcon from './AppIcon.uvue';
+import { apiUrl } from '../services/api.ts';
+import { memberCategories, memberCategoryIcons, providerIconPath } from '../services/membership-provider.ts';
+const props = withDefaults(defineProps<{ iconKey?: string | null; category?: string; name?: string; size?: number }>(), { iconKey: null, category: 'other', name: '', size: 28 });
+const failed = ref(false);
+const src = computed(() => { const path = providerIconPath(props.iconKey); return path ? apiUrl(path) : ''; });
+const fallback = computed(() => memberCategoryIcons[memberCategories.indexOf(props.category)] || memberCategoryIcons[6]);
+watch(src, () => { failed.value = false; });
+</script>
+<template>
+  <view class="membership-logo" :class="{ 'membership-logo-light': !!src && !failed }" :style="{ width: size + 'px', height: size + 'px' }">
+    <image v-if="src && !failed" class="membership-logo-image" :src="src" mode="aspectFit" :aria-label="name || '平台 Logo'" @error="failed = true" />
+    <AppIcon v-else :name="fallback" :size="size" />
+  </view>
+</template>
+<style scoped lang="scss">
+.membership-logo { flex-shrink: 0; align-items: center; justify-content: center; }
+.membership-logo-light { background-color: #fff; border-radius: 6px; }
+.membership-logo-image { width: 100%; height: 100%; }
+</style>
