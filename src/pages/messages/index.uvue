@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { isRequired, missingRequired } from '../../services/form-required.ts';
-import { computed, onMounted, onUnmounted, ref, watch, nextTick } from 'vue';
+import { computed, nextTick, onUnmounted, ref } from 'vue';
+import { conversationMessages, groupConversations } from './services/conversations.ts';
+import LoadingIndicator from '../../components/LoadingIndicator.uvue';
 import MobilePage from '../../components/MobilePage.uvue';
 import PageHeader from '../../components/PageHeader.uvue';
 import MobileButton from '../../components/MobileButton.uvue';
@@ -8,6 +10,7 @@ import ConfirmAction from '../../components/ConfirmAction.uvue';
 import PageState from '../../components/PageState.uvue';
 import LoadMore from '../../components/LoadMore.uvue';
 import FormField from '../../components/FormField.uvue';
+import FormActions from '../../components/FormActions.uvue';
 import AdaptiveModal from '../../components/AdaptiveModal.uvue';
 import {
   fetchMessages,
@@ -15,32 +18,26 @@ import {
   markAllRead,
   deleteMessage,
   sendMessage,
-  fetchSessions,
-  createSession,
-  updateSession,
-  deleteSession,
-  fetchHistory,
-  clearHistory,
   fetchAdminMessages,
   adminSendMessage,
   adminDeleteMessage,
   fetchUserBasic,
 } from '../../services/domains/social.ts';
-import { streamChat, makeChatAbort } from './services/chat-stream.ts';
-import { markdownBlocks, markdownLinks } from './services/markdown.ts';
-import { openExternal } from '../../services/domains/coding.ts';
 import { session } from '../../services/session.ts';
 import { useDomainPage } from '../../services/domains/page-session.ts';
+import spacing from '../../styles/spacing.json';
 import { themeClass } from '../../services/theme.ts';
-const chatScrollTarget = ref('');
 const userInfo = ref<Record<string, any>>({});
 const mode = ref('消息'),
   filter = ref('全部'),
   messages = ref<any[]>([]),
-  sessions = ref<any[]>([]),
-  history = ref<any[]>([]),
-  activeSession = ref(''),
   receiver = ref(''),
+  draftReceiver = ref(''),
+  chatDraft = ref(''),
+  chatError = ref(''),
+  readBusy = ref(false),
+  selectedMessage = ref(''),
+  chatScrollTarget = ref(''),
   content = ref(''),
   title = ref(''),
   loading = ref(false),
@@ -48,40 +45,60 @@ const mode = ref('消息'),
   sending = ref(false),
   error = ref(''),
   modal = ref(false),
-  rename = ref<any>(null),
   adminRows = ref<any[]>([]),
   adminUser = ref(''),
   adminPage = ref(1),
   adminTotal = ref(0);
 const admin = computed(() => session.user?.roles?.includes('admin') || false);
-let historyStamp = 0,
-  alive = true,
-  stamp = 0,
-  controller: any = null;
+let alive = true, stamp = 0;
 onUnmounted(() => {
   alive = false;
   stamp++;
-  controller?.abort();
 });
-watch(history, () => {
+const own = computed(() => String(session.user?.id || ''));
+const conversations = computed(() => groupConversations(messages.value, own.value, userInfo.value));
+const visibleConversations = computed(() => conversations.value.filter((item) => filter.value !== '未读' || item.unread));
+const unreadCount = computed(() => conversations.value.reduce((count, item) => count + item.unread, 0));
+const chatMessages = computed(() => conversationMessages(messages.value, own.value, receiver.value));
+function messageTime(value: string) {
+  return String(value || '').replace('T', ' ').slice(5, 16);
+}
+function showTime(index: number) {
+  const rows = chatMessages.value;
+  if (!index) return true;
+  const before = Date.parse(String(rows[index - 1].createTime || '').replace(' ', 'T'));
+  const current = Date.parse(String(rows[index].createTime || '').replace(' ', 'T'));
+  return !Number.isFinite(before) || !Number.isFinite(current) || current - before >= 300000;
+}
+function isOwn(item: any) { return String(item.senderId) === own.value; }
+function avatar(id: string) {
+  return String(id) === own.value ? session.user?.avatarUrl || '' : userInfo.value[String(id)]?.avatarUrl || userInfo.value[String(id)]?.avatar || '';
+}
+function changeMode(channel: string) {
+  mode.value = channel;
+  load();
+}
+function back() {
+  if (receiver.value) {
+    receiver.value = '';
+    chatDraft.value = '';
+    chatError.value = '';
+    selectedMessage.value = '';
+  } else if (mode.value === '管理') changeMode('消息');
+  else uni.navigateBack();
+}
+async function scrollToLatest() {
   chatScrollTarget.value = '';
-  nextTick(() => {
-    if (alive) chatScrollTarget.value = 'chat-bottom';
-  });
-});
-const modes = computed(() =>
-  admin.value ? ['消息', '私聊', 'AI', '管理'] : ['消息', '私聊', 'AI'],
-);
-const filtered = computed(() =>
-  messages.value.filter(
-    (item) =>
-      (filter.value !== '未读' || !item.isRead) &&
-      (mode.value !== '私聊' ||
-        !receiver.value ||
-        String(item.receiverId) === receiver.value ||
-        String(item.senderId) === receiver.value),
-  ),
-);
+  await nextTick();
+  if (alive && receiver.value) chatScrollTarget.value = 'chat-bottom';
+}
+function openCompose() {
+  error.value = '';
+  draftReceiver.value = '';
+  title.value = '';
+  content.value = '';
+  modal.value = true;
+}
 const moreError = ref(''), adminEnded = ref(false);
 function loadMore() {
   if (mode.value !== '管理' || !admin.value || error.value || moreError.value) return;
@@ -95,11 +112,7 @@ async function load(more = false) {
   error.value = '';
   moreError.value = '';
   try {
-    if (mode.value === 'AI') {
-      const rows = await fetchSessions();
-      if (alive && current === stamp) sessions.value = rows;
-      if (activeSession.value) await selectSession(activeSession.value);
-    } else if (mode.value === '管理') {
+    if (mode.value === '管理') {
       const data = await fetchAdminMessages({
         current: nextPage,
         size: 30,
@@ -133,21 +146,22 @@ useDomainPage(
   () => {
     alive = false;
     stamp++;
-    controller?.abort();
     messages.value = [];
-    sessions.value = [];
-    history.value = [];
     adminRows.value = [];
-    activeSession.value = '';
     receiver.value = '';
+    draftReceiver.value = '';
+    chatDraft.value = '';
+    chatError.value = '';
+    selectedMessage.value = '';
+    readBusy.value = false;
     content.value = '';
     title.value = '';
-    rename.value = null;
     adminUser.value = '';
     userInfo.value = {};
     modal.value = false;
     loading.value = false;
     refreshing.value = false;
+    sending.value = false;
   },
 );
 async function loadUserInfo(rows: any[], current: number) {
@@ -162,43 +176,34 @@ async function loadUserInfo(rows: any[], current: number) {
   });
   userInfo.value = map;
 }
-const conversations = computed(() => {
-  const own = String(session.user?.id || '');
-  const map: Record<string, any> = {};
-  messages.value.forEach((item) => {
-    const id = String(item.senderId) === own ? String(item.receiverId) : String(item.senderId);
-    if (!map[id])
-      map[id] = {
-        id,
-        name: userInfo.value[id]?.nickname || id,
-        avatar: userInfo.value[id]?.avatarUrl || '',
-        unread: 0,
-        last: '',
-      };
-    if (!item.isRead && String(item.receiverId) === own) map[id].unread++;
-    map[id].last = item.content;
-  });
-  return Object.values(map);
-});
 function username(id: string) {
-  return userInfo.value[String(id)]?.nickname || id;
+  return String(id) === own.value ? session.user?.name || '我' : userInfo.value[String(id)]?.nickname || id;
 }
 async function selectConversation(id: string) {
-  const current = stamp;
   receiver.value = id;
-  const unread = messages.value.filter((item) => String(item.senderId) === id && !item.isRead);
-  for (const item of unread) {
-    await markRead(item.id);
-    if (!alive || stamp !== current) return;
-    item.isRead = true;
-  }
+  chatDraft.value = '';
+  chatError.value = '';
+  selectedMessage.value = '';
+  scrollToLatest();
+  await readConversation();
 }
-async function read(item: any) {
-  const mutationStamp = stamp;
-  if (item.isRead) return;
-  await markRead(item.id);
-  if (!alive || stamp !== mutationStamp) return;
-  item.isRead = true;
+async function readConversation() {
+  const current = stamp, peer = receiver.value;
+  readBusy.value = true;
+  chatError.value = '';
+  try {
+    const unread = conversationMessages(messages.value, own.value, peer).filter((item) => String(item.receiverId) === own.value && !item.isRead);
+    for (const item of unread) {
+      if (!alive || current !== stamp || receiver.value !== peer) return;
+      await markRead(item.id);
+      if (!alive || current !== stamp) return;
+      item.isRead = true;
+    }
+  } catch (e) {
+    if (alive && current === stamp && receiver.value === peer) chatError.value = '已读状态更新失败，请重试';
+  } finally {
+    if (alive && current === stamp && receiver.value === peer) readBusy.value = false;
+  }
 }
 async function readAll() {
   const mutationStamp = stamp;
@@ -211,25 +216,27 @@ async function remove(item: any) {
   await deleteMessage(item.id);
   if (!alive || stamp !== mutationStamp) return;
   messages.value = messages.value.filter((row) => row.id !== item.id);
+  selectedMessage.value = '';
 }
 async function removeConversation() {
   const mutationStamp = stamp;
-  const rows = messages.value.filter(
-    (item) =>
-      String(item.senderId) === receiver.value || String(item.receiverId) === receiver.value,
-  );
-  for (const item of rows) await deleteMessage(item.id);
-  if (!alive || stamp !== mutationStamp) return;
-  messages.value = messages.value.filter((item) => !rows.some((row) => row.id === item.id));
+  const peer = receiver.value;
+  const rows = conversationMessages(messages.value, own.value, peer);
+  for (const item of rows) {
+    await deleteMessage(item.id);
+    if (!alive || stamp !== mutationStamp) return;
+    messages.value = messages.value.filter((row) => row.id !== item.id);
+  }
+  if (receiver.value === peer) back();
 }
 async function send() {
   const mutationStamp = stamp;
-  if (sending.value || missingRequired('message', { content: content.value, receiver: receiver.value })) return;
+  if (sending.value || missingRequired('message', { content: content.value, receiver: draftReceiver.value })) return;
   sending.value = true;
   error.value = '';
   try {
     const data = {
-      receiverId: receiver.value.trim(),
+      receiverId: draftReceiver.value.trim(),
       title: title.value || 'Chat Message',
       content: content.value.trim(),
       type: 1,
@@ -238,124 +245,48 @@ async function send() {
       await adminSendMessage(data);
       if (!alive || stamp !== mutationStamp) return;
       modal.value = false;
+      sending.value = false;
       await load();
     } else {
       const rows = await sendMessage(data);
       if (!alive || stamp !== mutationStamp) return;
       messages.value = [...messages.value, ...(Array.isArray(rows) ? rows : [rows])];
       modal.value = false;
-    }
-    content.value = '';
-  } catch (e) {
-    error.value = e.message;
-  } finally {
-    sending.value = false;
-  }
-}
-async function selectSession(id: string) {
-  const mutationStamp = stamp,
-    current = ++historyStamp;
-  loading.value = true;
-  error.value = '';
-  try {
-    const data = await fetchHistory(id);
-    if (alive && stamp === mutationStamp && current === historyStamp) {
-      activeSession.value = id;
-      history.value = data;
-    }
-  } catch (e) {
-    if (alive && stamp === mutationStamp && current === historyStamp) error.value = e.message;
-  } finally {
-    if (alive && stamp === mutationStamp && current === historyStamp) loading.value = false;
-  }
-}
-async function newSession() {
-  const mutationStamp = stamp;
-  if (sending.value) return;
-  sending.value = true;
-  try {
-    const row = await createSession('新会话');
-    if (!alive || stamp !== mutationStamp) return;
-    sessions.value = [row, ...sessions.value];
-    activeSession.value = row.id;
-    history.value = [];
-  } catch (e) {
-    error.value = e.message;
-  } finally {
-    sending.value = false;
-  }
-}
-async function removeSession(row: any) {
-  const mutationStamp = stamp;
-  await deleteSession(row.id);
-  if (!alive || stamp !== mutationStamp) return;
-  sessions.value = sessions.value.filter((item) => item.id !== row.id);
-  if (activeSession.value === row.id) {
-    activeSession.value = '';
-    history.value = [];
-  }
-}
-async function saveTitle() {
-  const mutationStamp = stamp;
-  if (sending.value) return;
-  sending.value = true;
-  try {
-    await updateSession(rename.value.id, rename.value.title);
-    if (!alive || stamp !== mutationStamp) return;
-    sessions.value = sessions.value.map((item) =>
-      item.id === rename.value.id ? { ...item, title: rename.value.title } : item,
-    );
-    rename.value = null;
-  } catch (e) {
-    error.value = e.message;
-  } finally {
-    sending.value = false;
-  }
-}
-async function clear() {
-  const mutationStamp = stamp;
-  await clearHistory(activeSession.value);
-  if (!alive || stamp !== mutationStamp) return;
-  history.value = [];
-}
-async function ask() {
-  const mutationStamp = stamp;
-  if (sending.value || !content.value.trim()) return;
-  sending.value = true;
-  error.value = '';
-  const prompt = content.value.trim();
-  const localId = 'local-' + Date.now();
-  try {
-    if (!activeSession.value) {
-      const row = await createSession(prompt.slice(0, 20));
+      const peer = data.receiverId;
+      if (!userInfo.value[peer]) {
+        try {
+          const user = await fetchUserBasic(peer);
+          if (alive && stamp === mutationStamp) userInfo.value[peer] = user;
+        } catch (_) { /* ID remains a usable fallback. */ }
+      }
       if (!alive || stamp !== mutationStamp) return;
-      sessions.value = [row, ...sessions.value];
-      activeSession.value = row.id;
+      await selectConversation(peer);
     }
-    history.value = [
-      ...history.value,
-      { id: localId, role: 'user', content: prompt },
-      { id: localId + '-reply', role: 'assistant', content: '' },
-    ];
-    controller = makeChatAbort();
-    await streamChat(
-      prompt,
-      activeSession.value,
-      (token) => {
-        if (alive && stamp === mutationStamp)
-          history.value = history.value.map((item) =>
-            item.id === localId + '-reply' ? { ...item, content: item.content + token } : item,
-          );
-      },
-      controller?.signal,
-    );
     content.value = '';
-    await selectSession(activeSession.value);
   } catch (e) {
-    error.value = e.message;
+    if (alive && stamp === mutationStamp) error.value = e.message;
   } finally {
-    sending.value = false;
-    controller = null;
+    if (alive && stamp === mutationStamp) sending.value = false;
+  }
+}
+async function sendChat() {
+  if (sending.value || !chatDraft.value.trim() || !receiver.value) return;
+  const current = stamp, peer = receiver.value, draft = chatDraft.value;
+  sending.value = true;
+  chatError.value = '';
+  try {
+    const result = await sendMessage({ receiverId: peer, title: 'Chat Message', content: draft.trim(), type: 1 });
+    if (!alive || stamp !== current) return;
+    const rows = Array.isArray(result) ? result : result ? [result] : [];
+    messages.value = [...messages.value, ...rows.filter((row) => !messages.value.some((item) => item.id === row.id))];
+    if (receiver.value === peer) {
+      if (chatDraft.value === draft) chatDraft.value = '';
+      scrollToLatest();
+    }
+  } catch (e) {
+    if (alive && stamp === current && receiver.value === peer) chatError.value = e.message;
+  } finally {
+    if (alive && stamp === current) sending.value = false;
   }
 }
 async function adminRemove(row: any) {
@@ -367,250 +298,168 @@ async function adminRemove(row: any) {
 }
 </script>
 <template>
-  <MobilePage
-    @reachbottom="loadMore"
-    :refreshing="refreshing"
-    @refresh="
-      refreshing = true;
-      load();
-    "
-    ><PageHeader title="消息中心" back @back="uni.navigateBack()" /><view
-      class="body ui-page-body"
-      :class="themeClass('body')"
-      ><FormField
-        label="频道"
-        kind="selector"
-        :options="modes"
-        v-model="mode"
-        @update:modelValue="load()" /><PageState skeleton="list" :loading="loading" :error="error" @retry="load()"
-        ><view v-if="mode === '消息' || mode === '私聊'"
-          ><view class="actions ui-toolbar"
-            ><FormField compact stretch
-              label="筛选"
-              kind="selector"
-              :options="['全部', '未读']"
-              v-model="filter" /><ConfirmAction
-              label="全部已读"
-              icon="ant-design:check-outlined"
-              :danger="false"
-              :action="readAll" /><MobileButton
-              label="发送消息"
-              icon="ant-design:plus-outlined"
-              @click="modal = true" /></view
-          ><view v-if="mode === '私聊'"
-            ><view
-              v-for="item in conversations"
-              :key="item.id"
-              class="conversation ui-row ui-py-section"
-              @click="selectConversation(item.id)"
-              ><image v-if="item.avatar" :src="item.avatar" mode="aspectFill" class="avatar" /><text class="ui-type-body conversation-title"
-                >{{ item.name }} {{ item.unread ? ' · ' + item.unread : '' }}</text
-              ><text class="message-meta" :class="themeClass('message-meta')">{{ item.last }}</text></view
-            ></view
-          ><FormField compact stretch v-if="mode === '私聊'" label="会话用户 ID" v-model="receiver" /><ConfirmAction
-            v-if="mode === '私聊' && receiver"
-            label="删除当前会话"
-            :action="removeConversation" /><view
-            v-for="item in filtered"
-            :key="item.id"
-            class="message ui-card"
-            ><text class="title">{{ item.title }} {{ item.isRead ? '' : '•' }}</text
-            ><text class="ui-type-body message-content" selectable>{{ item.content }}</text
-            ><text class="message-meta" :class="themeClass('message-meta')"
-              >{{ item.createTime }} · {{ username(item.senderId) }} →
-              {{ username(item.receiverId) }}</text
-            ><view class="actions ui-row"
-              ><ConfirmAction
-                v-if="!item.isRead"
-                label="标为已读"
-                icon="ant-design:check-outlined"
-                :danger="false"
-                :action="() => read(item)" /><ConfirmAction
-                label="删除消息"
-                :action="() => remove(item)" /></view></view></view
-        ><view v-if="mode === 'AI'"
-          ><MobileButton label="新建会话" icon="ant-design:plus-outlined" :loading="sending" @click="newSession" /><view
-            v-for="item in sessions"
-            :key="item.id"
-            class="actions ui-toolbar"
-            ><MobileButton
-              :label="item.title"
-              variant="quiet"
-              :disabled="sending"
-              @click="selectSession(item.id)" /><MobileButton
-              label="修改标题"
-              icon="ant-design:edit-outlined"
-              variant="quiet"
-              :disabled="sending"
-              @click="rename = { ...item }" /><ConfirmAction
-              label="删除会话"
-              :action="() => removeSession(item)" /></view
-          ><ConfirmAction v-if="activeSession" label="清空当前历史" :action="clear" /><scroll-view
-            class="chat-scroll ui-mt-section"
-            direction="vertical"
-            :scroll-y="true"
-            :scroll-into-view="chatScrollTarget"
-            ><view v-for="item in history" :key="item.id" class="message ui-card"
-              ><text class="message-meta" :class="themeClass('message-meta')"
-                >{{ item.role === 'user' ? '我' : 'AI' }} · {{ item.modelName }}</text
-              ><view v-for="(block, blockIndex) in markdownBlocks(item.content)" :key="blockIndex"
-                ><rich-text class="markdown-content"
-                  v-if="block.kind === 'text'"
-                  :nodes="block.html"
-                  selectable /><scroll-view
-                  v-else
-                  class="markdown-table-scroll ui-mt-sm ui-section"
-                  direction="horizontal"
-                  :scroll-x="true"
-                  :scroll-y="false"
-                  aria-label="AI 表格，可横向滚动"
-                  ><view
-                    class="markdown-table"
-                    :style="{ width: block.headers.length * 160 + 'px' }"
-                    ><view class="markdown-table-row markdown-table-head"
-                      ><view
-                        v-for="(cell, column) in block.headers"
-                        :key="column"
-                        class="markdown-table-cell ui-pad-card"
-                        :style="{ textAlign: block.align[column] }"
-                        ><rich-text class="markdown-cell-head" :nodes="cell" selectable /></view></view
-                    ><view
-                      v-for="(row, rowIndex) in block.rows"
-                      :key="rowIndex"
-                      class="markdown-table-row"
-                      ><view
-                        v-for="(cell, column) in row"
-                        :key="column"
-                        class="markdown-table-cell ui-pad-card"
-                        :style="{ textAlign: block.align[column] }"
-                        ><rich-text class="markdown-cell-content"
-                          :nodes="cell"
-                          selectable /></view></view></view></scroll-view></view
-              ><view class="actions ui-row"
-                ><MobileButton
-                  v-for="link in markdownLinks(item.content)"
-                  :key="link.url"
-                  :label="link.label"
-                  variant="quiet"
-                  @click="openExternal(link.url)" /><MobileButton
-                  label="复制内容"
-                  icon="ant-design:copy-outlined"
-                  variant="quiet"
-                  @click="uni.setClipboardData({ data: item.content })" /></view
-              ><MobileButton
-                label="从本地隐藏"
-                icon="ant-design:close-outlined"
-                variant="quiet"
-                @click="history = history.filter((row) => row.id !== item.id)" /></view
-            ><view id="chat-bottom" /></scroll-view
-          ><FormField compact stretch
-            label="消息"
-            kind="textarea"
-            v-model="content"
-            :disabled="sending" /><MobileButton
-            label="发送给 AI"
-            :loading="sending"
-            @click="ask" /></view
-        ><view v-if="mode === '管理' && admin"
-          ><FormField label="用户 ID" v-model="adminUser" /><view class="actions ui-toolbar"
-            ><MobileButton
-              label="筛选"
-              :loading="loading"
-              @click="
-                adminPage = 1;
-                load();
-              " /><MobileButton label="发送通知" icon="ant-design:plus-outlined" @click="modal = true" /></view
-          ><view v-for="item in adminRows" :key="item.id" class="message ui-card"
-            ><text class="title">{{ item.title }}</text
-            ><text class="ui-type-body message-content" selectable>{{ item.content }}</text
-            ><text class="message-meta" :class="themeClass('message-meta')">{{ item.receiverId }} · {{ item.createTime }}</text
-            ><ConfirmAction label="管理员删除" :action="() => adminRemove(item)" /></view
-          ><LoadMore :loading="loading" :error="moreError" :has-more="!adminEnded && adminRows.length < adminTotal" @load="load(true)" /></view></PageState></view
-    ><AdaptiveModal v-if="modal" label="发送消息" :busy="sending" @close="modal = false"
-      ><FormField label="接收用户 ID" :required="isRequired('message', 'receiver')" v-model="receiver" /><FormField
-        label="标题"
-        v-model="title" /><FormField label="内容" :required="isRequired('message', 'content')" kind="textarea" v-model="content" /><MobileButton
-        label="发送"
-        :loading="sending"
-        @click="send" /></AdaptiveModal
-    ><AdaptiveModal v-if="rename" label="会话标题" :busy="sending" @close="rename = null"
-      ><FormField label="标题" v-model="rename.title" /><MobileButton
-        label="保存"
-        :loading="sending"
-        @click="saveTitle" /></AdaptiveModal
-  ></MobilePage>
+  <MobilePage :scroll-locked="!!receiver" :refreshing="refreshing" @reachbottom="loadMore" @refresh="refreshing = true; load()">
+    <template v-if="!receiver">
+      <PageHeader :title="mode === '管理' ? '消息管理' : '消息中心'" back @back="back">
+        <text class="header-title" :class="themeClass('header-title')">{{ mode === '管理' ? '消息管理' : '消息中心' }}</text>
+        <MobileButton v-if="admin && mode !== '管理'" label="管理消息" icon="ant-design:setting-outlined" variant="ghost" @click="changeMode('管理')" />
+        <MobileButton :label="mode === '管理' ? '发送通知' : '发送消息'" icon="ant-design:plus-outlined" variant="ghost" @click="openCompose" />
+      </PageHeader>
+      <view class="ui-page-body">
+        <template v-if="mode === '消息'">
+          <view class="list-toolbar">
+            <view class="filter-tabs" role="tablist" aria-label="消息筛选">
+              <button v-for="option in ['全部', '未读']" :key="option" class="filter-button" role="tab" :aria-label="option" :aria-selected="filter === option" @click="filter = option">
+                <text class="filter-label" :class="[{ 'filter-active': filter === option }, themeClass(['filter-label', { 'filter-active': filter === option }])]">{{ option }}</text>
+                <text v-if="option === '未读' && unreadCount" class="count" :class="themeClass('count')">{{ unreadCount }}</text>
+              </button>
+            </view>
+            <ConfirmAction label="全部已读" icon="ant-design:check-outlined" :danger="false" :action="readAll">
+              <template #default="{ open, busy }"><MobileButton label="全部已读" icon="ant-design:check-outlined" variant="ghost" :disabled="!unreadCount" :loading="busy" @click="open" /></template>
+            </ConfirmAction>
+          </view>
+          <PageState :loading="loading" :error="error" :empty="!visibleConversations.length" :empty-text="filter === '未读' ? '暂无未读会话' : '暂无会话'" @retry="load()">
+            <view class="conversation-list" :class="themeClass('conversation-list')">
+              <button v-for="item in visibleConversations" :key="item.id" class="conversation" :class="themeClass('conversation')" role="button" :aria-label="'与' + item.name + '的会话'" @click="selectConversation(item.id)">
+                <image v-if="item.avatar" :src="item.avatar" mode="aspectFill" class="avatar" />
+                <view v-else class="avatar avatar-fallback" :class="themeClass('avatar-fallback')"><text class="avatar-letter" :class="themeClass('avatar-letter')">{{ item.name.slice(0, 1) }}</text></view>
+                <view class="conversation-info">
+                  <view class="conversation-line"><text class="conversation-name" :class="themeClass('conversation-name')">{{ item.name }}</text><text class="meta" :class="themeClass('meta')">{{ messageTime(item.time) }}</text></view>
+                  <view class="conversation-line"><text class="conversation-preview" :class="themeClass('conversation-preview')">{{ item.last }}</text><text v-if="item.unread" class="unread-badge">{{ item.unread > 99 ? '99+' : item.unread }}</text></view>
+                </view>
+              </button>
+            </view>
+          </PageState>
+        </template>
+        <PageState v-else :loading="loading" :error="error" @retry="load()">
+          <view class="ui-toolbar"><FormField compact stretch label="用户 ID" v-model="adminUser" /><MobileButton label="筛选" icon="ant-design:search-outlined" :loading="loading" @click="load()" /></view>
+          <view v-for="item in adminRows" :key="item.id" class="message ui-card" :class="themeClass('message')">
+            <text class="conversation-name" :class="themeClass('conversation-name')">{{ item.title }}</text>
+            <text class="bubble-text" :class="themeClass('bubble-text')" selectable>{{ item.content }}</text>
+            <view class="conversation-line"><text class="meta" :class="themeClass('meta')">{{ item.receiverId }} · {{ messageTime(item.createTime) }}</text><ConfirmAction label="管理员删除" :action="() => adminRemove(item)" /></view>
+          </view>
+          <LoadMore :loading="loading" :error="moreError" :has-more="!adminEnded && adminRows.length < adminTotal" @load="load(true)" />
+        </PageState>
+      </view>
+    </template>
+    <template #fixed>
+      <view v-if="receiver" class="chat-shell" :class="themeClass('chat-shell')">
+        <PageHeader :title="username(receiver)" back @back="back">
+          <text class="header-title" :class="themeClass('header-title')">{{ username(receiver) }}</text>
+          <ConfirmAction label="删除当前会话" :action="removeConversation">
+            <template #default="{ open, busy }"><MobileButton label="删除当前会话" icon="ant-design:more-outlined" variant="ghost" :loading="busy" @click="open" /></template>
+          </ConfirmAction>
+        </PageHeader>
+        <LoadingIndicator v-if="readBusy" label="正在更新已读状态" />
+        <scroll-view class="chat-scroll" direction="vertical" :scroll-y="true" :scroll-into-view="chatScrollTarget" :scroll-with-animation="false">
+          <view class="chat-messages ui-page-inset">
+            <view v-for="(item, index) in chatMessages" :key="item.id" class="chat-entry">
+              <text v-if="showTime(index)" class="chat-time" :class="themeClass('chat-time')">{{ messageTime(item.createTime) }}</text>
+              <view class="bubble-row" :class="{ 'bubble-row-own': isOwn(item) }">
+                <image v-if="avatar(item.senderId)" :src="avatar(item.senderId)" mode="aspectFill" class="chat-avatar" />
+                <view v-else class="chat-avatar avatar-fallback" :class="themeClass('avatar-fallback')"><text class="avatar-letter" :class="themeClass('avatar-letter')">{{ username(item.senderId).slice(0, 1) }}</text></view>
+                <view class="bubble-column" :class="{ 'bubble-column-own': isOwn(item) }">
+                  <view class="bubble" :class="[{ 'bubble-own': isOwn(item) }, themeClass(['bubble', { 'bubble-own': isOwn(item) }])]" role="button" aria-label="消息操作" @click="selectedMessage = selectedMessage === item.id ? '' : item.id" @longpress="selectedMessage = item.id">
+                    <text v-if="item.title && item.title !== 'Chat Message' && item.title.trim() !== item.content?.trim()" class="bubble-title" :class="themeClass('bubble-title')">{{ item.title }}</text>
+                    <text class="bubble-text" :class="[themeClass('bubble-text'), { 'bubble-text-own': isOwn(item) }]" selectable>{{ item.content || item.title }}</text>
+                  </view>
+                  <view v-if="selectedMessage === item.id" class="bubble-actions">
+                    <MobileButton label="复制消息" icon="ant-design:copy-outlined" variant="ghost" @click="uni.setClipboardData({ data: item.content || item.title }); selectedMessage = ''" />
+                    <ConfirmAction label="删除消息" :action="() => remove(item)" />
+                  </view>
+                </view>
+              </view>
+            </view>
+            <text v-if="!chatMessages.length" class="chat-time" :class="themeClass('chat-time')">暂无消息</text>
+            <view id="chat-bottom" class="chat-bottom" />
+          </view>
+        </scroll-view>
+        <view class="composer" :class="themeClass('composer')">
+          <view v-if="chatError" class="chat-error-row"><text class="chat-error" role="alert">{{ chatError }}</text><MobileButton v-if="chatError === '已读状态更新失败，请重试'" label="重试已读" icon="ant-design:reload-outlined" variant="ghost" @click="readConversation" /></view>
+          <view class="composer-row">
+            <view class="chat-input-shell" :class="themeClass('chat-input-shell')"><textarea class="chat-input" :class="themeClass('chat-input')" v-model="chatDraft" aria-label="消息内容" placeholder="发消息…" :maxlength="500" :auto-height="true" :disabled="sending" :adjust-position="true" :cursor-spacing="spacing.modal" :show-confirm-bar="false" /></view>
+            <MobileButton label="发送" icon="ant-design:arrow-up-outlined" :variant="chatDraft.trim() ? 'primary' : 'quiet'" :disabled="!chatDraft.trim()" :loading="sending" @click="sendChat" />
+          </view>
+        </view>
+      </view>
+      <AdaptiveModal v-if="modal" label="发送消息" :busy="sending" @close="modal = false">
+        <FormField label="接收用户 ID" :required="isRequired('message', 'receiver')" v-model="draftReceiver" />
+        <FormField v-if="mode === '管理'" label="标题" v-model="title" />
+        <FormField label="内容" :required="isRequired('message', 'content')" kind="textarea" v-model="content" />
+        <text v-if="error" class="chat-error ui-mb-section" role="alert">{{ error }}</text>
+        <FormActions><MobileButton label="取消" variant="quiet" :disabled="sending" @click="modal = false" /><MobileButton label="发送" :loading="sending" @click="send" /></FormActions>
+      </AdaptiveModal>
+    </template>
+  </MobilePage>
 </template>
 <style scoped lang="scss">
 @use '../../styles/typography' as *;
 @use '../../styles/spacing.scss';
 @use '../../styles/spacing-tokens' as *;
 @use '../../styles/text-colors' as *;
-@include type-utilities('body');
-
-.markdown-table-scroll {
-  width: 100%;
-}
-.markdown-table {
-  border: 1px solid #8b93a2;
-  border-radius: 8px;
-}
-.markdown-table-row {
-  display: flex;
-  flex-direction: row;
-}
-.markdown-table-head {
-  font-weight: type-weight('medium');
-  background-color: #8b93a222;
-}
-.markdown-table-cell {
-  width: 160px;
-  flex-shrink: 0;
-  box-sizing: border-box;
-  white-space: normal;
-  word-break: break-all;
-  border-bottom: 1px solid #8b93a244;
-}
-.body {
-  color: #263248;
-}
-.body-dark {
-  color: #e7e9ee;
-}
-.actions {
-  flex-wrap: wrap;
-}
-.chat-scroll {
-  height: 420px;
-  width: 100%;
-}
-.conversation {
-  min-height: 44px;
-  flex-wrap: wrap;
-}
-.avatar {
-  width: 36px;
-  height: 36px;
-  border-radius: 18px;
-}
-.message {
-  display: flex;
-  flex-direction: column;
-}
-.title {
-  @include type-style('title');
-  overflow-wrap: anywhere;
-
-}
-.message-meta {
-  @include type-style('label');
-  color: $text-secondary-light;
-  overflow-wrap: anywhere;
-}
-
-.message-meta-dark { color: $text-secondary-dark; }
-.message-content { @include type-style('prose'); white-space: pre-wrap; overflow-wrap: anywhere; }
-.conversation-title { @include type-style('body-strong'); overflow-wrap: anywhere; }
-.markdown-content { @include type-style('prose'); overflow-wrap: anywhere; }
-.markdown-cell-head { @include type-style('body-strong'); }
-.markdown-cell-content { @include type-style('body'); }
+.header-title { @include type-style('title'); color: #27272a; flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.header-title-dark { color: #eeeeef; }
+.list-toolbar, .filter-tabs, .conversation-line, .bubble-actions, .composer-row, .chat-error-row { display: flex; flex-direction: row; align-items: center; gap: $space-inline; }
+.list-toolbar { justify-content: space-between; margin-bottom: $space-detail; }
+.filter-button { display: flex; flex-direction: row; align-items: center; gap: $space-detail; min-height: $space-controlMin; min-width: $space-controlMin; margin: 0; padding: 0 $space-inline; background-color: transparent; }
+.filter-label { @include type-style('label'); color: $text-secondary-light; }
+.filter-label-dark { color: $text-secondary-dark; }
+.filter-active { @include type-style('label-strong'); color: #245fc9; }
+.filter-active-dark { color: #9bbcff; }
+.count { @include type-style('badge'); color: $text-secondary-light; }
+.count-dark { color: $text-secondary-dark; }
+.conversation-list { border-radius: 12px; background-color: #ffffff; }
+.conversation-list-dark { background-color: #1c1e22; }
+.conversation { display: flex; flex-direction: row; align-items: center; gap: $space-card; width: 100%; min-height: 76px; box-sizing: border-box; margin: 0; padding: $space-card; background-color: transparent; text-align: left; border-radius: 0; }
+.conversation-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: $space-detail; }
+.conversation-line { justify-content: space-between; min-width: 0; }
+.conversation-name { @include type-style('body-strong'); color: #27272a; flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.conversation-name-dark { color: #eeeeef; }
+.conversation-preview { @include type-style('label'); color: $text-secondary-light; flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.conversation-preview-dark { color: $text-secondary-dark; }
+.meta { @include type-style('caption'); color: $text-secondary-light; flex-shrink: 0; }
+.meta-dark { color: $text-secondary-dark; }
+.avatar { width: 44px; height: 44px; border-radius: 14px; flex-shrink: 0; }
+.avatar-fallback { display: flex; align-items: center; justify-content: center; background-color: #e7ebf0; }
+.avatar-fallback-dark { background-color: #323740; }
+.avatar-letter { @include type-style('title'); color: #626e82; }
+.avatar-letter-dark { color: #ced3dd; }
+.unread-badge { @include type-style('badge-strong'); color: #ffffff; background-color: #dd4c59; border-radius: 10px; min-width: 18px; padding: 0 $space-detail; text-align: center; flex-shrink: 0; }
+.message { display: flex; flex-direction: column; background-color: #ffffff; border-radius: 12px; }
+.message-dark { background-color: #1c1e22; }
+.chat-shell { position: absolute; top: 0; right: 0; bottom: 0; left: 0; display: flex; flex-direction: column; background-color: #f0f2f5; }
+.chat-shell-dark { background-color: #111215; }
+.chat-scroll { flex: 1; height: 0; min-height: 0; width: 100%; }
+.chat-messages { display: flex; flex-direction: column; gap: $space-section; }
+.chat-entry { width: 100%; }
+.chat-time { @include type-style('caption'); color: $text-secondary-light; text-align: center; margin-bottom: $space-section; }
+.chat-time-dark { color: $text-secondary-dark; }
+.bubble-row { display: flex; flex-direction: row; align-items: flex-start; gap: $space-inline; }
+.bubble-row-own { flex-direction: row-reverse; }
+.chat-avatar { width: 36px; height: 36px; flex-shrink: 0; border-radius: 10px; }
+.bubble-column { display: flex; flex-direction: column; align-items: flex-start; max-width: 78%; min-width: 0; }
+.bubble-column-own { align-items: flex-end; }
+.bubble { box-sizing: border-box; max-width: 100%; min-height: $space-controlMin; padding: $space-inline $space-card; background-color: #ffffff; border-radius: 4px 14px 14px 14px; }
+.bubble-dark { background-color: #272a30; }
+.bubble-own { background-color: #95ec69; border-radius: 14px 4px 14px 14px; }
+.bubble-own-dark { background-color: #70b44e; }
+.bubble-text { @include type-style('body'); color: #27272a; white-space: pre-wrap; overflow-wrap: anywhere; word-break: break-word; }
+.bubble-text-dark { color: #eeeeef; }
+.bubble-text-own { color: #182812; }
+.bubble-title { @include type-style('body-strong'); color: #27272a; white-space: pre-wrap; overflow-wrap: anywhere; margin-bottom: $space-detail; }
+.bubble-title-dark { color: #eeeeef; }
+.bubble-actions { margin-top: $space-detail; }
+.chat-bottom { height: $space-hairline; }
+.composer { flex-shrink: 0; width: 100%; max-width: $space-contentMax; align-self: center; box-sizing: border-box; padding: $space-inline $space-page; padding-bottom: calc($space-inline + env(safe-area-inset-bottom)); background-color: #ffffff; }
+.composer-dark { background-color: #1c1e22; }
+.composer-row { align-items: flex-end; }
+.chat-input-shell { display: flex; justify-content: center; flex: 1; min-width: 0; min-height: $space-controlMin; padding: $space-inline $space-card; box-sizing: border-box; background-color: #f0f2f5; border-radius: 12px; }
+.chat-input-shell-dark { background-color: #292c32; }
+.chat-input { @include type-style('body'); width: 100%; min-width: 0; min-height: type-line('body'); max-height: 120px; color: #27272a; }
+.chat-input-dark { background-color: #292c32; color: #eeeeef; }
+.chat-error { @include type-style('caption'); color: #df5264; flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.chat-error-row { margin-bottom: $space-detail; }
+/* #ifdef WEB || MP-WEIXIN */
+.conversation::after, .filter-button::after { border: 0; }
+/* #endif */
 </style>

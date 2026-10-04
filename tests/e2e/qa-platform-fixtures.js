@@ -16,7 +16,7 @@ if(p==='/api/timeRecord/9223372036854775807')data={id:'9223372036854775807',cate
 if(p==='/api/menu/preferences')data={menus:[{id:'9223372036854775807',title:'模拟菜单',children:[]},...['category','categoryadmin','dashboard'].map((id,i)=>({id,title:['个人分类','管理分类','时间看板'][i],children:[]}))],hiddenMenuIds:[]};
 if(p==='/api/auth/secondary-password/status')data={hasPassword:true};
 if(p==='/api/auth/secondary-lock/menus')data=[];
-if(p==='/api/userbinds/list'||p==='/api/api-key/list'||p==='/api/llm/key/list')data=[];
+if(p==='/api/userbinds/list'||p==='/api/api-key/list')data=[];
 if(p==='/api/notification/channels/feishu')data={configured:true,enabled:true,appId:'fixture',receiverOpenId:'fixture-open'};
 if(p==='/api/timeTrackerCategory/admin/list')data=[{id:'9223372036854775807',name:'模拟管理分类',parentId:'0',color:'#427bea',userId:'0',isEnabled:1,isTrackTime:1}];
 if(p==='/api/notification/preferences')data=[{bizType:'fixture',description:'模拟通知',visible:true,channels:[{channel:'EMAIL',enabled:true}]}];
@@ -37,7 +37,6 @@ if(p==='/api/menu/admin/tree')data=[{...row,status:1}];
 if(p==='/api/system-config/list')data=[{configKey:'fixture.config',configType:'JSON',configValue:'{"enabled":true}',description:'模拟配置'}];
 if(p==='/api/userbinds/list')data=[{id,platform:'github',platformUsername:'fixture-github'}];
 if(p==='/api/api-key/list')data=[{id,remark:'模拟Key',hasApiKey:true,createTime:'2026-10-01'}];
-if(p==='/api/llm/key/list')data=[{id,modelName:'模拟模型',baseUrl:'https://example.test/v1',hasApiKey:true,isDefault:0}];
 if(p==='/api/feedback/admin/'+id)data={...row,comments:[],attachments:[]};
 const personality={id,code:'QA',name:'模拟人格',motto:'模拟格言',description:'模拟详情',color:'#427bea',vector:Array(15).fill(1),strengths:['模拟优势'],weaknesses:['模拟弱点']};
 if(p==='/api/cbti/personalities'||p==='/api/cbti/admin/personalities')data=[personality];

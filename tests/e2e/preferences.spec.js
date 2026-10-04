@@ -18,8 +18,7 @@ async function setup(page) {
   }
   if(path==='/api/auth/secondary-verify') {state.unlock=true;data={menuPath:'/profile'};}
   if(path==='/api/menu/preferences')data={menus:[{id:'root',title:'记录',children:[{id:'9223372036854775807',title:'笔记',children:[]}]}],hiddenMenuIds:[]};
-  if(path==='/api/llm/key/list')data=[{id:'9223372036854775807',modelName:'fixture-model',hasApiKey:true,baseUrl:'https://example.test/v1',isDefault:1}];
-  if(path==='/api/llm/key'||path==='/api/auth/change-password'){
+  if(path==='/api/auth/change-password'){
    state.writes.push({path,body:route.request().postDataJSON()});
    if(state.fail)return route.fulfill({json:{rscode:'1',result:'保存失败，请重试'}});
    data=null;
@@ -34,7 +33,7 @@ async function setup(page) {
  await expect(page.locator('.dashboard-scroll')).toBeVisible();
  return state;
 }
-test('修改密码校验、失败保留和重试；大模型编辑不回传掩码',async({page})=>{
+test('修改密码校验、失败保留和重试',async({page})=>{
  const state=await setup(page);
  await page.goto('/#/pages/profile/preferences?section=password');
  await page.getByRole('button',{name:'修改密码',exact:true}).click();
@@ -52,15 +51,7 @@ test('修改密码校验、失败保留和重试；大模型编辑不回传掩�
  await dialog.getByRole('button',{name:'保存',exact:true}).click();
  await expect(dialog).toHaveCount(0);
  expect(state.writes.at(-1).body).toEqual({oldPassword:'old-fixture',newPassword:'new-fixture'});
- await page.goto('/#/pages/profile/preferences?section=llm');
- await page.reload();
- await page.getByRole('button',{name:'编辑',exact:true}).click();
- const llm=page.getByRole('dialog',{name:'大模型配置',exact:true});
- await expect(llm.locator('[aria-label="API Key"] input')).toHaveValue('');
- await llm.getByRole('button',{name:'保存',exact:true}).click();
- await expect(llm).toHaveCount(0);
- expect(state.writes.at(-1).body).not.toHaveProperty('apiKey');
- expect(state.writes.at(-1).body.id).toBe('9223372036854775807');
+
 });
 test('接口菜单锁解锁后重试一次，隐藏菜单保留长ID',async({page})=>{
  const state=await setup(page);
@@ -81,10 +72,10 @@ test('接口菜单锁解锁后重试一次，隐藏菜单保留长ID',async({pag
 });
 for(const width of [390,768,1440])for(const theme of ['light','dark'])test(`设置布局 ${width} ${theme}`,async({page})=>{
  await page.setViewportSize({width,height:900});await page.emulateMedia({colorScheme:theme});await setup(page);
- await page.goto('/#/pages/profile/preferences?section=llm');
+ await page.goto('/#/pages/profile/preferences?section=password');
  await page.reload();
- await page.getByRole('button',{name:'新增',exact:true}).click();
- const panel=page.getByRole('dialog',{name:'大模型配置',exact:true});await expect(panel).toBeVisible();
+ await page.getByRole('button',{name:'修改密码',exact:true}).click();
+ const panel=page.getByRole('dialog',{name:'修改密码',exact:true});await expect(panel).toBeVisible();
  const box=await panel.boundingBox();expect(box.width).toBeLessThanOrEqual(Math.min(width-32,520));expect(box.y).toBeGreaterThanOrEqual(0);expect(box.y+box.height).toBeLessThanOrEqual(901);
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
  await page.screenshot({path:`test-results/preferences-${width}-${theme}.png`,fullPage:true});

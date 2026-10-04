@@ -1,0 +1,181 @@
+<script setup lang="ts">
+import { computed, ref, watch } from 'vue';
+import { onShow, onHide, onUnload } from '@dcloudio/uni-app';
+import AppIcon from '../../components/AppIcon.uvue';
+import PageHeader from '../../components/PageHeader.uvue';
+import MobilePage from '../../components/MobilePage.uvue';
+import PageState from '../../components/PageState.uvue';
+import { fetchUser } from '../../services/api.ts';
+import { restoreSession, session } from '../../services/session.ts';
+import { themeClass } from '../../services/theme.ts';
+
+const user = computed(() => session.user);
+const loading = ref(false);
+const error = ref('');
+const entries = [
+  { title: '账号绑定', path: 'bindings' },
+  { title: '修改密码', path: 'preferences?section=password' },
+  { title: '菜单锁', path: 'security' },
+];
+let active = false;
+let revision = 0;
+function reset() {
+  revision++;
+  loading.value = false;
+  error.value = '';
+}
+function suspend() {
+  active = false;
+  reset();
+}
+watch(() => session.token, () => {
+  reset();
+  if (active && session.token) load();
+}, { flush: 'sync' });
+onHide(suspend);
+onUnload(suspend);
+onShow(() => {
+  restoreSession();
+  active = true;
+  if (!session.token) {
+    uni.reLaunch({ url: '/pages/login/index' });
+    return;
+  }
+  load();
+});
+async function load() {
+  if (loading.value) return;
+  const version = ++revision;
+  const token = session.token;
+  loading.value = true;
+  error.value = '';
+  try {
+    await fetchUser();
+  } catch (reason) {
+    if (!active || version !== revision || token !== session.token) return;
+    if (reason.name === 'SessionExpiredError') {
+      uni.reLaunch({ url: '/pages/login/index' });
+      return;
+    }
+    error.value = reason.message || '加载失败，请重试';
+  } finally {
+    if (version === revision) loading.value = false;
+  }
+}
+function back() {
+  if (getCurrentPages().length <= 1) {
+    uni.switchTab({ url: '/pages/profile/index' });
+    return;
+  }
+  uni.navigateBack({ fail: () => uni.switchTab({ url: '/pages/profile/index' }) });
+}
+function openPage(path: string) {
+  uni.navigateTo({ url: '/pages/profile/' + path });
+}
+</script>
+
+<template>
+  <view class="tab-page" :class="themeClass('tab-page')">
+    <PageHeader title="账号与安全" back @back="back" />
+    <MobilePage :refreshing="loading" @refresh="load">
+      <view class="ui-page-body ui-gap-section">
+        <view class="account-card ui-pad-card" :class="themeClass('account-card')">
+          <PageState skeleton="form" :loading="loading" :error="error" :has-content="!!user" @retry="load">
+            <view v-if="user" class="account-details">
+              <view class="account-row">
+                <text class="account-label" :class="themeClass('account-label')">账号</text>
+                <text class="account-value" :class="themeClass('account-value')" selectable>{{ user.username || '未设置' }}</text>
+              </view>
+              <view class="account-row">
+                <text class="account-label" :class="themeClass('account-label')">邮箱</text>
+                <text class="account-value" :class="themeClass('account-value')" selectable>{{ user.email || '未设置' }}</text>
+              </view>
+            </view>
+          </PageState>
+        </view>
+        <view class="account-card ui-pad-card" :class="themeClass('account-card')">
+          <button
+            v-for="entry in entries"
+            :key="entry.path"
+            role="button"
+            class="account-entry"
+            :aria-label="entry.title"
+            @click="openPage(entry.path)"
+          >
+            <text class="entry-label" :class="themeClass('entry-label')">{{ entry.title }}</text>
+            <AppIcon name="ant-design:right-outlined" />
+          </button>
+        </view>
+      </view>
+    </MobilePage>
+  </view>
+</template>
+
+<style scoped lang="scss">
+@use '../../styles/typography' as *;
+@use '../../styles/text-colors' as *;
+@use '../../styles/spacing.scss';
+@use '../../styles/spacing-tokens' as *;
+
+.account-card {
+  border-radius: 16px;
+  background-color: #ffffff;
+}
+.account-card-dark {
+  background-color: #1c1e22;
+}
+.account-row {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: $space-inline;
+  min-height: $space-controlMin;
+  padding-top: $space-detail;
+  padding-bottom: $space-detail;
+}
+.account-label {
+  flex-shrink: 0;
+  @include type-style('body');
+  color: $text-secondary-light;
+}
+.account-label-dark {
+  color: $text-secondary-dark;
+}
+.account-value {
+  flex: 1;
+  min-width: 0;
+  text-align: right;
+  word-break: break-all;
+  @include type-style('body');
+  color: #27272a;
+}
+.account-value-dark {
+  color: #eeeeef;
+}
+.account-entry {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 48px;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background-color: transparent;
+}
+/* #ifdef WEB || MP-WEIXIN */
+.account-entry::after {
+  border: 0;
+}
+/* #endif */
+.entry-label {
+  @include type-style('body');
+  color: #27272a;
+}
+.entry-label-dark {
+  color: #eeeeef;
+}
+</style>

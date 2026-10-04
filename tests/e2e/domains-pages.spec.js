@@ -7,4 +7,37 @@ test('人物编辑失败保留社交与备注字段',async({page})=>{const state
 test('银行卡编辑留空卡号保留封面并失败恢复',async({page})=>{await page.addInitScript(()=>localStorage.setItem('bank-card-view-mode','grid'));const state=await setup(page);await page.goto('/#/pages/finance/cards');await page.getByRole('button', { name: '银行卡更多操作', exact: true }).first().click();await page.getByRole('menuitem', { name: '编辑银行卡', exact: true }).click();await page.locator('[aria-label="别名"] input').fill('模拟新别名');state.fail=true;await page.getByRole('button',{name:'保存',exact:true}).click();await expect(page.getByText('模拟保存失败',{exact:true})).toBeVisible();state.fail=false;await page.getByRole('button',{name:'保存',exact:true}).click();await expect(page.getByText('模拟新别名',{exact:true})).toBeVisible();expect(state.calls.at(-1).body.cardNo).toBeUndefined();expect(state.calls.at(-1).body.coverFileIds).toEqual([])});
 test('账单CSV预览和后端重复失败保留',async({page})=>{const state=await setup(page);await page.goto('/#/pages/finance/import');await page.getByRole('button',{name:'粘贴 CSV 内容',exact:true}).click();await page.locator('[aria-label="支付宝 CSV 内容"] textarea').fill('交易号,商户订单号,交易创建时间,付款时间,最近修改时间,交易来源地,交易类型,交易对方,商品名称,金额（元）,收/支,交易状态,服务费（元）,成功退款（元）,备注,资金状态\nfixture1,fixtureM,2026-10-01 01:00:00,2026-10-01 01:00:00,,PC,餐饮,商店,商品,99,支出,交易成功,0,72.6,fixture,已支付');await page.getByRole('button',{name:'解析预览',exact:true}).click();await expect(page.getByText('1 笔 · ¥26.40',{exact:true})).toBeVisible();state.fail=true;await page.getByRole('button',{name:'确认导入',exact:true}).click();await expect(page.getByText('交易号已存在: fixture1',{exact:true})).toBeVisible();await expect(page.getByText('1 笔 · ¥26.40',{exact:true})).toBeVisible();state.fail=false;await expect(page.getByRole('button',{name:'确认导入',exact:true})).toHaveAttribute('aria-busy','false');await page.getByRole('button',{name:'确认导入',exact:true}).click();await expect(page.getByRole('button',{name:'确认导入',exact:true})).toHaveCount(0);expect(state.calls.at(-1).body[0].amt).toBe(26.4)});
 test('银行卡封面失败可见且可独立重试',async({page})=>{const state=await setup(page);state.cards[0].coverFileIds=['fixture-cover'];let count=0;await page.route('http://127.0.0.1:5180/api/file/preview/fixture-cover',route=>{count++;return count===1?route.fulfill({status:500,body:'fixture failure'}):route.fulfill({contentType:'image/png',body:Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a8XsAAAAASUVORK5CYII=','base64')})});await page.goto('/#/pages/finance/cards');await expect(page.getByText('附件加载失败，请重试',{exact:true})).toBeVisible();await page.getByRole('button',{name:'重试封面',exact:true}).click();await expect(page.locator('.card .cover')).toBeVisible();await expect(page.getByRole('button',{name:'重试封面',exact:true})).toHaveCount(0);expect(count).toBe(2)});
-for(const theme of ['light','dark'])test(`AI Markdown横向表格 ${theme}`,async({page})=>{await page.setViewportSize({width:1440,height:900});await page.emulateMedia({colorScheme:theme});await setup(page);await page.route('http://127.0.0.1:5180/api/llm/chat/history?**',route=>route.fulfill({json:{rscode:'0',data:[{id:'table-fixture',role:'assistant',content:'模拟表格\n| 项目 | 金额 | 说明 |\n| :--- | ---: | :---: |\n| **收入** | 100 | a\\|b |\n| 支出 | -140 | `<script>` |'}]}}));await page.goto('/#/pages/messages/index');await page.locator('uni-picker[aria-label="频道"]').click();await page.locator('.uni-picker-select .uni-picker-item').getByText('AI',{exact:true}).click();await page.getByRole('button',{name:'模拟会话',exact:true}).click();await page.setViewportSize({width:390,height:900});await expect(page.locator('.markdown-table')).toBeVisible();await expect(page.getByText('a|b',{exact:true})).toBeVisible();expect(await page.locator('.markdown-table').evaluate(el=>el.getBoundingClientRect().width)).toBe(480);expect(await page.locator('.markdown-table-scroll').evaluate(el=>el.getBoundingClientRect().width)).toBeLessThan(390);expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);await page.locator('.markdown-table-scroll').hover();await page.mouse.wheel(480,0);await expect.poll(()=>page.locator('.markdown-table-scroll').evaluate(el=>Math.max(...Array.from(el.querySelectorAll('.uni-scroll-view')).map(node=>node.scrollLeft)))).toBeGreaterThan(0);await page.screenshot({path:require('node:path').resolve(__dirname,`../../test-results/domains-markdown-table-${theme}.png`),fullPage:true})});
+for (const theme of ['light', 'dark']) test(`消息会话双向气泡与发送失败恢复 ${theme}`, async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 900 });
+  await page.emulateMedia({ colorScheme: theme });
+  const state = await setup(page);
+  state.messages = [
+    { id: '1', senderId: '2', receiverId: '1', title: 'Chat Message', content: '模拟来信', createTime: '2026-10-04 09:30:00', isRead: false },
+    { id: '2', senderId: '1', receiverId: '2', title: 'Chat Message', content: '模拟回复', createTime: '2026-10-04 09:31:00', isRead: true },
+  ];
+  let fail = true;
+  await page.route('http://127.0.0.1:5180/api/message', async route => {
+    if (fail) return route.fulfill({ json: { rscode: '1', result: '模拟发送失败' } });
+    await route.fulfill({ json: { rscode: '0', data: { ...route.request().postDataJSON(), id: '3', senderId: '1', isRead: true, createTime: '2026-10-04 09:32:00' } } });
+  });
+  await page.goto('/#/pages/messages/index');
+  await expect(page.locator('.conversation')).toHaveCount(1);
+  await expect(page.locator('.conversation-preview')).toHaveText('模拟回复');
+  await page.locator('.conversation').click();
+  await expect(page.locator('.bubble')).toHaveCount(2);
+  await expect(page.locator('.bubble-own')).toContainText('模拟回复');
+  await expect(page.getByRole('tab', { name: 'AI', exact: true })).toHaveCount(0);
+  const input = page.locator('.chat-input textarea');
+  await input.fill('模拟新回复');
+  await page.getByRole('button', { name: '发送', exact: true }).click();
+  await expect(page.getByRole('alert')).toContainText('模拟发送失败');
+  await expect(input).toHaveValue('模拟新回复');
+  await expect(page.locator('.bubble')).toHaveCount(2);
+  fail = false;
+  await page.getByRole('button', { name: '发送', exact: true }).click();
+  await expect(input).toHaveValue('');
+  await expect(page.locator('.bubble')).toHaveCount(3);
+  await expect(page.locator('.bubble-own').last()).toContainText('模拟新回复');
+  await page.getByRole('button', { name: '返回', exact: true }).click();
+  await expect(page.locator('.conversation-preview')).toHaveText('模拟新回复');
+});

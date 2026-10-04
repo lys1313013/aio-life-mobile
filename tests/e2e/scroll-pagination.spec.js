@@ -54,8 +54,7 @@ for (const [path, endpoint, selector, size] of scenarios) {
     await page.goto('/#/pages/' + path);
     if (path === 'messages/index') {
       await page.setViewportSize({ width: 768, height: 850 });
-      await page.locator('uni-picker[aria-label="频道"]').click();
-      await page.locator('.uni-picker-item').filter({ hasText: /^管理$/ }).filter({ visible: true }).click();
+      await page.getByRole('button', { name: '管理消息', exact: true }).click();
     }
     await expect(page.locator(selector)).toHaveCount(size);
     await expect(page.getByRole('button', { name: /继续加载|加载更多|下一页/ })).toHaveCount(0);

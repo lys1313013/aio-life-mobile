@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { buttonLabelClasses } from '../../services/button-label.ts'
 import RequiredMark from '../../components/RequiredMark.uvue';
 import { isRequired } from '../../services/form-required.ts';
 import ContentSkeleton from '../../components/ContentSkeleton.uvue';
@@ -266,9 +267,7 @@ function back() {
             :disabled="loading"
             :aria-disabled="loading"
             @click="load"
-          >
-            重试
-          </button></view
+          ><text :class="buttonLabelClasses(['text-action'])">重试</text></button></view
         >
         <view
           v-if="loaded && records.length === 0 && !loading"
@@ -276,9 +275,7 @@ function back() {
           :class="themeClass('state-card')"
           ><text class="empty-title" :class="themeClass('empty-title')"
             >还没有绑定账号</text
-          ><button role="button" class="text-action" @click="edit()">
-            绑定第一个账号
-          </button></view
+          ><button role="button" class="text-action" @click="edit()"><text :class="buttonLabelClasses(['text-action'])">绑定第一个账号</text></button></view
         >
         <view
           v-for="record in records"
@@ -351,8 +348,7 @@ function back() {
                 :aria-disabled="!!deleting"
                 @click="confirmId = ''"
                 :class="themeClass('binding-cancel')"
-              >
-                取消</button
+              ><text :class="buttonLabelClasses(['binding-cancel', themeClass('binding-cancel')])">取消</text></button
               ><button
                 role="button"
                 class="binding-danger ui-px-card"
@@ -360,9 +356,7 @@ function back() {
                 :disabled="!!deleting"
                 :aria-disabled="!!deleting"
                 @click="unbind(record.id)"
-              >
-                解除绑定
-              </button></view
+              ><text :class="buttonLabelClasses(['binding-danger ui-px-card'])">解除绑定</text></button></view
             >
           </view>
         </view>
@@ -407,9 +401,7 @@ function back() {
           class="binding-help"
           aria-label="填写说明"
           @click="showHelp = !showHelp"
-        >
-          ?
-        </button></view
+        ><text :class="buttonLabelClasses(['binding-help'])">?</text></button></view
       >
       <text v-if="showHelp" class="binding-hint ui-mb-section" :class="themeClass('binding-hint')">{{
         currentPlatform.hint
@@ -440,9 +432,7 @@ function back() {
           :disabled="verifying || saving"
           :aria-disabled="verifying || saving"
           @click="verify"
-        >
-          验证账号
-        </button></view
+        ><text :class="buttonLabelClasses(['text-action'])">验证账号</text></button></view
       >
       <text
         v-if="form.platform === 'github'"
@@ -484,8 +474,7 @@ function back() {
           :aria-disabled="saving"
           @click="closeEditor()"
           :class="themeClass('binding-cancel')"
-        >
-          取消</button
+        ><text :class="buttonLabelClasses(['binding-cancel', themeClass('binding-cancel')])">取消</text></button
         ><button
           role="button"
           class="binding-save"
@@ -494,7 +483,7 @@ function back() {
           :aria-disabled="saving || verifying"
           @click="save"
         >
-          {{ saving ? '保存中…' : '保存' }}
+          <text :class="buttonLabelClasses(['binding-save'])">{{ saving ? '保存中…' : '保存' }}</text>
         </button></view
       >
     </AdaptiveModal>
@@ -711,4 +700,15 @@ function back() {
 .binding-hint-dark {
   color: $text-secondary-dark;
 }
+
+/* 按钮文字独立声明样式，兼容 App 不继承容器排版。 */
+.app-button-label { @include type-style('body'); color: #27272a; }
+.app-button-label-dark { color: #eeeeef; }
+.text-action-label { @include type-style('body'); color: #5b8ff9; }
+.binding-cancel-label, .binding-save-label, .binding-danger-label { @include type-style('body'); }
+.binding-cancel-label { color: #71717a; }
+.binding-save-label { color: #ffffff; }
+.binding-danger-label { color: #ffffff; }
+.binding-help-label { color: #8b8f99; @include type-style('title'); }
+.binding-cancel-dark-label { color: #b4b4bd; }
 </style>

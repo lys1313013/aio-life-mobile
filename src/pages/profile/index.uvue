@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { buttonLabelClasses } from '../../services/button-label.ts'
 import ContentSkeleton from '../../components/ContentSkeleton.uvue';
 import AppIcon from '../../components/AppIcon.uvue'
 import MobileButton from '../../components/MobileButton.uvue'
@@ -16,9 +17,9 @@ import { restoreSession, session } from '../../services/session.ts'
 const preferenceLinks = [
   {title:'反馈',path:'/pages/records/feedback'},
   {title:'消息中心',path:'/pages/messages/index'},
-  {title:'修改密码',path:'preferences?section=password'}, {title:'菜单显示',path:'preferences?section=menus'},
-  {title:'菜单锁',path:'security'}, {title:'API Key',path:'preferences?section=keys'},
-  {title:'大模型配置',path:'preferences?section=llm'}, {title:'通知设置',path:'notifications'},
+  {title:'菜单显示',path:'preferences?section=menus'},
+  {title:'API Key',path:'preferences?section=keys'},
+  {title:'通知设置',path:'notifications'},
   {title:'系统设置',path:'preferences?section=system'},
   {title:'MBTI 测试',path:'/pages/personality/mbti'}, {title:'CBTI 测试',path:'/pages/personality/cbti'},
 ]
@@ -129,9 +130,7 @@ async function signOut() {
             role="alert"
             :class="themeClass('error-text')"
             >{{ errorText }}</text
-          ><button role="button" class="text-action" @click="load">
-            重试账户信息
-          </button></view
+          ><button role="button" class="text-action" @click="load"><text :class="buttonLabelClasses(['text-action'])">重试账户信息</text></button></view
         >
         <view v-if="user" class="profile-card ui-pad-card">
           <image
@@ -165,24 +164,6 @@ async function signOut() {
           :class="themeClass('state-card')"
           ><ContentSkeleton variant="profile" label="正在加载个人资料" /></view
         >
-        <view
-          v-if="user && (user.username || user.email)"
-          class="account-card ui-pad-card"
-          :class="themeClass('account-card')"
-        >
-          <view v-if="user.username" class="account-row ui-row ui-py-card"
-            ><text class="muted-text">账号</text
-            ><text class="account-value" :class="themeClass('account-value')">{{
-              user.username
-            }}</text></view
-          >
-          <view v-if="user.email" class="account-row ui-row ui-py-card"
-            ><text class="muted-text">邮箱</text
-            ><text class="account-value" :class="themeClass('account-value')">{{
-              user.email
-            }}</text></view
-          >
-        </view>
         <view class="profile-menu ui-pad-card ui-mt-section" :class="themeClass('profile-menu')">
           <button
             role="button"
@@ -197,11 +178,11 @@ async function signOut() {
           <button
             role="button"
             class="menu-row ui-type-body"
-            aria-label="账号绑定"
-            @click="openPage('bindings')"
+            aria-label="账号与安全"
+            @click="openPage('account-security')"
           >
             <text class="menu-label" :class="themeClass('menu-label')"
-              >账号绑定</text
+              >账号与安全</text
             ><AppIcon name="ant-design:right-outlined" />
           </button>
           <button v-for="entry in preferenceLinks" :key="entry.path" role="button" class="menu-row ui-type-body" :aria-label="entry.title" @click="openPage(entry.path)"><text class="menu-label" :class="themeClass('menu-label')">{{entry.title}}</text><AppIcon name="ant-design:right-outlined" /></button>
@@ -226,7 +207,13 @@ async function signOut() {
                 :aria-pressed="theme.mode === option.value"
                 @click="changeTheme(option.value)"
               >
-                {{ option.label }}
+                <text :class="buttonLabelClasses(['theme-option ui-px-card', [
+                  { 'theme-selected': theme.mode === option.value },
+                  themeClass([
+                    'theme-option',
+                    { 'theme-selected': theme.mode === option.value }
+                  ])
+                ]])">{{ option.label }}</text>
               </button></view
             ></view
           >
@@ -263,9 +250,7 @@ async function signOut() {
             :disabled="leaving" :aria-disabled="leaving"
             @click="confirmLogout = !confirmLogout"
             :class="themeClass('signout-button')"
-          >
-            退出登录
-          </button>
+          ><text :class="buttonLabelClasses(['signout-button', themeClass('signout-button')])">退出登录</text></button>
         </view>
       </view>
     </scroll-view>
@@ -320,6 +305,10 @@ async function signOut() {
   margin-left: 0;
 }
 .theme-option {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
   min-height: 44px;
 
   margin: 0;
@@ -369,24 +358,6 @@ async function signOut() {
 
   text-align: center;
 }
-.account-card {
-
-  border-radius: 16px;
-  background-color: #ffffff;
-}
-.account-row {
-  flex-direction: row;
-  align-items: center;
-  justify-content: space-between;
-
-}
-.account-value {
-  @include type-style('body');
-  color: #27272a;
-
-  flex-shrink: 1;
-  text-align: right;
-}
 .signout-anchor {
   position: relative;
   // 提升整个锚点层级，让向上展开的确认框覆盖前一张菜单卡片。
@@ -394,6 +365,10 @@ async function signOut() {
   overflow: visible;
 }
 .signout-button {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
   width: 100%;
   height: 48px;
   margin: 0;
@@ -413,7 +388,14 @@ async function signOut() {
   transform: translateX(-50%);
   // 限制浮层宽度，手机与宽屏都保持紧凑，并避免窄屏溢出。
   width: 264px;
-  max-width: 100%;
+
+/* #ifndef APP */
+max-width: 100%;
+/* #endif */
+/* #ifdef APP */
+flex-shrink: 1;
+/* #endif */
+
   box-sizing: border-box;
   overflow: visible;
   padding: $space-modal;
@@ -474,8 +456,7 @@ async function signOut() {
   color: #9dbcfa;
   background-color: #303238;
 }
-.profile-name-dark,
-.account-value-dark {
+.profile-name-dark {
   color: #eeeeef;
 }
 .profile-avatar-dark {
@@ -487,7 +468,6 @@ async function signOut() {
 .profile-intro-dark {
   color: #9c9ca6;
 }
-.account-card-dark,
 .signout-button-dark {
   background-color: #1c1e22;
 }
@@ -503,4 +483,14 @@ async function signOut() {
   background-color: #303238;
 }
 
+/* 按钮文字独立声明样式，兼容 App 不继承容器排版。 */
+.app-button-label { @include type-style('body'); color: #27272a; }
+.app-button-label-dark { color: #eeeeef; }
+.text-action-label { @include type-style('body'); color: #5b8ff9; }
+.theme-option-label { @include type-style('caption'); color: #71717a; }
+.theme-selected-label { color: #4e7ee3; }
+.signout-button-label { color: #c65353; @include type-style('body'); }
+.theme-option-dark-label { color: #b4b4bd; }
+.theme-selected-dark-label { color: #9dbcfa; }
+.signout-button-dark-label { color: #ed9191; }
 </style>

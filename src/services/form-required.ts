@@ -35,7 +35,6 @@ const fields = {
 };
 
 export function requiredFields(kind, form = {}) {
-  if (kind === 'llm') return ['modelName', 'baseUrl', ...(form.id ? [] : ['apiKey'])];
   if (kind === 'binding') return ['platform', ...(form.platform === 'weread'
     ? (form.id ? [] : ['accessToken']) : ['platformUsername'])];
   if (kind === 'card') return [form.bankId ? 'bankId' : 'customBankName'];

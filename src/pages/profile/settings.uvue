@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { buttonLabelClasses } from '../../services/button-label.ts'
 import ContentSkeleton from '../../components/ContentSkeleton.uvue';
 import SecondaryUnlock from "../../components/SecondaryUnlock.uvue";
 import { themeClass } from '../../services/theme.ts'
@@ -157,9 +158,7 @@ function back() {
             class="text-action"
             :disabled="loading" :aria-disabled="loading"
             @click="load"
-          >
-            重试
-          </button></view
+          ><text :class="buttonLabelClasses(['text-action'])">重试</text></button></view
         >
         <view
           v-if="ready"
@@ -194,30 +193,30 @@ function back() {
               uploading ? '上传中…' : '更换头像'
             }}</text>
           </button>
+          <view class="settings-inline-row">
+            <text class="settings-label settings-inline-label" :class="themeClass('settings-label')">昵称</text>
+            <input
+              v-model="form.nickname"
+              class="settings-input ui-px-card"
+              aria-label="昵称"
+              placeholder="怎么称呼你"
+              :maxlength="64"
+              :disabled="saving" :aria-disabled="saving"
+              :class="themeClass('settings-input')"
+            />
+          </view>
+          <view class="settings-inline-row">
+            <text class="settings-label settings-inline-label" :class="themeClass('settings-label')">邮箱</text>
+            <text class="settings-readonly ui-px-card" :class="themeClass('settings-readonly')" selectable>{{ email }}</text>
+          </view>
           <text class="settings-label ui-mb-section ui-mt-section" :class="themeClass('settings-label')"
-            >昵称</text
-          >
-          <input
-            v-model="form.nickname"
-            class="settings-input ui-px-card"
-            aria-label="昵称"
-            placeholder="怎么称呼你"
-            :maxlength="64"
-            :disabled="saving" :aria-disabled="saving"
-            :class="themeClass('settings-input')"
-          />
-          <text class="settings-label ui-mb-section ui-mt-section" :class="themeClass('settings-label')"
-            >邮箱</text
-          >
-          <text class="settings-readonly" :class="themeClass('settings-readonly')">{{ email }}</text>
-          <text class="settings-label ui-mb-section ui-mt-section" :class="themeClass('settings-label')"
-            >个人简介</text
+            >签名</text
           >
           <textarea
             v-model="form.introduction"
             class="settings-textarea ui-pad-card"
-            aria-label="个人简介"
-            placeholder="简单介绍一下自己"
+            aria-label="签名"
+            placeholder="写一句你喜欢的话"
             :maxlength="255"
             :disabled="saving" :aria-disabled="saving"
             :class="themeClass('settings-textarea')"
@@ -229,7 +228,7 @@ function back() {
             :loading="saving"
             @click="save"
           >
-            {{ saving ? '保存中…' : '保存' }}
+            <text :class="buttonLabelClasses(['settings-save ui-mt-section'])">{{ saving ? '保存中…' : '保存' }}</text>
           </button>
         </view>
       </view>
@@ -258,7 +257,7 @@ function back() {
   width: 100%;
 
   padding: 0;
-  background-color: transparent;
+  background-color: transparent !important;
   border: 0;
   align-items: center;
 }
@@ -286,7 +285,19 @@ function back() {
   @include type-style('label');
 
 }
+.settings-inline-row {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: $space-inline;
+  min-height: $space-controlMin;
+}
+.settings-inline-label {
+  flex-shrink: 0;
+}
 .settings-input {
+  flex: 1;
+  min-width: 0;
   height: 48px;
 
   border-radius: 12px;
@@ -295,6 +306,9 @@ function back() {
   @include type-style('body');
 }
 .settings-readonly {
+  flex: 1;
+  min-width: 0;
+  word-break: break-all;
   color: $text-secondary-light;
   @include type-style('body');
 
@@ -309,14 +323,19 @@ function back() {
   @include type-style('body');
 }
 .settings-save {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
   width: 100%;
   height: 48px;
   border: 0;
   border-radius: 12px;
   padding: 0;
 
-  color: #ffffff;
-  background-color: #4e7ee3;
+  // 保留保存中的对比度，避免框架禁用底色覆盖后出现白字配浅灰底。
+  color: #ffffff !important;
+  background-color: #4e7ee3 !important;
   @include type-style('body');
   line-height: type-leading('tallControl');
 }
@@ -349,4 +368,10 @@ function back() {
 .settings-readonly-dark {
   color: $text-secondary-dark;
 }
+
+/* 按钮文字独立声明样式，兼容 App 不继承容器排版。 */
+.app-button-label { @include type-style('body'); color: #27272a; }
+.app-button-label-dark { color: #eeeeef; }
+.text-action-label { @include type-style('body'); color: #5b8ff9; }
+.settings-save-label { color: #ffffff; @include type-style('body'); }
 </style>

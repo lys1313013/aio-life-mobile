@@ -16,13 +16,11 @@ import { themeClass, setThemeMode, theme } from '../../services/theme.ts';
 import {
   flattenMenuOptions,
   passwordPayload,
-  llmPayload,
 } from '../../services/preferences-contract.ts';
 const titles = {
   password: '修改密码',
   menus: '菜单显示',
   keys: 'API Key',
-  llm: '大模型配置',
   system: '系统设置',
 };
 const mode = ref('password');
@@ -41,38 +39,6 @@ const form = ref<any>({});
 let revision = 0,
   active = true;
 const expiry = ['永不过期', '1 天', '7 天', '30 天'];
-const presetNames = [
-  '自定义',
-  'OpenAI',
-  'DeepSeek',
-  '硅基流动',
-  '阿里百炼',
-  'Kimi',
-  'MiniMax',
-  '美团',
-  '魔搭',
-  'Ollama',
-];
-const presets = [
-  null,
-  ['gpt-4o', 'https://api.openai.com/v1'],
-  ['deepseek-chat', 'https://api.deepseek.com'],
-  ['deepseek-ai/DeepSeek-V3', 'https://api.siliconflow.cn/v1'],
-  ['qwen-plus', 'https://dashscope.aliyuncs.com/compatible-mode/v1'],
-  ['moonshot-v1-8k', 'https://api.moonshot.cn/v1'],
-  ['MiniMax-M2.7', 'https://api.minimaxi.com/v1'],
-  ['LongCat-Flash-Chat', 'https://api.longcat.chat/openai'],
-  ['qwen-max', 'https://api-inference.modelscope.cn/v1'],
-  ['llama3.2', 'http://localhost:11434/v1'],
-];
-function usePreset(name) {
-  form.value.preset = name;
-  const p = presets[presetNames.indexOf(name)];
-  if (p) {
-    form.value.modelName = p[0];
-    form.value.baseUrl = p[1];
-  }
-}
 watch(
   () => session.token,
   () => {
@@ -121,8 +87,8 @@ async function load() {
       if (!active || version !== revision || token !== session.token) return;
       menuItems.value = flat;
       hidden.value = flat.filter((x) => x.hidden).map((x) => x.id);
-    } else if (mode.value === 'keys' || mode.value === 'llm') {
-      const data: any = await request(mode.value === 'keys' ? '/api-key/list' : '/llm/key/list');
+    } else if (mode.value === 'keys') {
+      const data: any = await request('/api-key/list');
       if (!Array.isArray(data)) throw new Error('列表数据异常');
       if (!active || version !== revision || token !== session.token) return;
       items.value = data;
@@ -137,21 +103,11 @@ async function load() {
     if (version === revision) loading.value = false;
   }
 }
-function edit(row = null) {
+function edit() {
   formError.value = '';
-  form.value =
-    mode.value === 'password'
-      ? { oldPassword: '', password: '', confirm: '' }
-      : mode.value === 'keys'
-        ? { remark: '', expiry: expiry[0] }
-        : {
-            id: row?.id || '',
-            modelName: row?.modelName || '',
-            baseUrl: row?.baseUrl || '',
-            apiKey: '',
-            isDefault: row?.isDefault === 1,
-            preset: '自定义',
-          };
+  form.value = mode.value === 'password'
+    ? { oldPassword: '', password: '', confirm: '' }
+    : { remark: '', expiry: expiry[0] };
   editing.value = true;
 }
 async function save() {
@@ -172,8 +128,7 @@ async function save() {
       if (!data?.apiKey) throw new Error('生成结果异常');
       if (active && token === session.token && version === revision)
         generatedKey.value = data.apiKey;
-    } else if (mode.value === 'llm')
-      await request('/llm/key', form.value.id ? 'PUT' : 'POST', llmPayload(form.value));
+    }
     if (!active || token !== session.token || version !== revision) return;
     editing.value = false;
     form.value = {};
@@ -187,26 +142,10 @@ async function save() {
 async function remove(row) {
   const token = session.token;
   await request(
-    (mode.value === 'keys' ? '/api-key/' : '/llm/key/') + encodeURIComponent(row.id),
+    '/api-key/' + encodeURIComponent(row.id),
     'DELETE',
   );
   if (token === session.token && active) items.value = items.value.filter((x) => x.id !== row.id);
-}
-const defaultBusy = ref('');
-async function setDefault(row) {
-  if (defaultBusy.value) return;
-  defaultBusy.value = row.id;
-  const token = session.token,
-    v = revision;
-  try {
-    await request('/llm/key/default/' + encodeURIComponent(row.id), 'PUT');
-    if (!active || token !== session.token || v !== revision) return;
-    items.value = items.value.map((x) => ({ ...x, isDefault: x.id === row.id ? 1 : 0 }));
-  } catch (reason) {
-    error.value = reason.message;
-  } finally {
-    defaultBusy.value = '';
-  }
 }
 function toggle(id) {
   if (saving.value) return;
@@ -286,7 +225,7 @@ function back() {
               :danger="false"
           /></view>
         </view>
-        <view v-if="mode === 'keys' || mode === 'llm'" class="preference-list ui-page-body">
+        <view v-if="mode === 'keys'" class="preference-list ui-page-body">
           <MobileButton label="新增" icon="ant-design:plus-outlined" :disabled="!ready" @click="edit()" />
           <PageState :empty="ready && !items.length" />
           <view
@@ -295,30 +234,15 @@ function back() {
             class="preference-surface ui-card"
             :class="themeClass('preference-surface')"
           >
-            <text class="preference-title">{{
-              mode === 'keys' ? item.remark : item.modelName
-            }}</text
-            ><text class="preference-detail" :class="themeClass('preference-detail')">{{ mode === 'llm' ? (item.hasApiKey ? '******' : '') : mask(item.apiKey) }}</text>
-            <text v-if="mode === 'keys'" class="preference-detail" :class="themeClass('preference-detail')"
+            <text class="preference-title">{{ item.remark }}</text>
+            <text class="preference-detail" :class="themeClass('preference-detail')">{{ mask(item.apiKey) }}</text>
+            <text class="preference-detail" :class="themeClass('preference-detail')"
               >{{ item.expiredAt || '永不过期' }} · {{ item.createTime }}</text
             >
-            <text v-else class="preference-detail" :class="themeClass('preference-detail')">{{ item.baseUrl }}</text>
             <view class="preference-actions ui-row ui-mt-section"
-              ><MobileButton
-                v-if="mode === 'llm'"
-                label="编辑"
-                icon="ant-design:edit-outlined"
-                variant="quiet"
-                @click="edit(item)" /><MobileButton
-                v-if="mode === 'llm'"
-                :label="item.isDefault === 1 ? '默认模型' : '设为默认'"
-                :icon="item.isDefault === 1 ? 'ant-design:star-filled' : 'ant-design:star-outlined'"
-                variant="quiet"
-                :disabled="item.isDefault === 1 || !!defaultBusy"
-                :loading="defaultBusy === item.id"
-                @click="setDefault(item)" /><ConfirmAction
+              ><ConfirmAction
                 label="删除"
-                :message="'删除' + (item.remark || item.modelName) + '？'"
+                :message="'删除' + item.remark + '？'"
                 :action="() => remove(item)"
             /></view>
           </view>
@@ -374,25 +298,6 @@ function back() {
           :options="expiry"
           v-model="form.expiry"
       /></view>
-      <view v-if="mode === 'llm'"
-        ><FormField
-          label="服务商"
-          kind="selector"
-          :options="presetNames"
-          :model-value="form.preset"
-          @update:model-value="usePreset" /><FormField :required="isRequired('llm', 'modelName', form)"
-          label="模型名称"
-          v-model="form.modelName" /><FormField :required="isRequired('llm', 'baseUrl', form)" label="接口地址" v-model="form.baseUrl" /><FormField :required="isRequired('llm', 'apiKey', form)"
-          label="API Key"
-          kind="password"
-          v-model="form.apiKey"
-          :placeholder="form.id ? '留空保留原密钥' : ''" /><view class="preference-row ui-row"
-          ><text class="preference-field-label" :class="themeClass('preference-field-label')">默认模型</text
-          ><switch
-            :checked="form.isDefault"
-            aria-label="默认模型"
-            @change="form.isDefault = $event.detail.value" /></view
-      ></view>
       <text v-if="formError" class="error-text" role="alert">{{ formError }}</text
       ><MobileButton label="保存" :loading="saving" @click="save" />
     </AdaptiveModal>
@@ -462,12 +367,5 @@ function back() {
 
 .preference-detail-dark {
   color: $text-secondary-dark;
-}
-.preference-field-label {
-  @include type-style('label');
-  color: #27272a;
-}
-.preference-field-label-dark {
-  color: #eeeeef;
 }
 </style>

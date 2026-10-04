@@ -34,16 +34,6 @@ test('订阅标记字段与实际保存校验一致，非必填金额保留 null
   assert.equal(memberPayload(form).monthlyAmount, null);
 });
 
-test('LLM 新增密钥必填，编辑留空保留，与实际 payload 一致', async () => {
-  const { llmPayload } = await load('../src/services/preferences-contract.ts');
-  const form = { modelName: '模拟模型', baseUrl: 'https://example.test', apiKey: '' };
-  assert.equal(isRequired('llm', 'apiKey', form), true);
-  assert.throws(() => llmPayload(form), /API Key/);
-  const edit = { ...form, id: '9223372036854775807' };
-  assert.equal(isRequired('llm', 'apiKey', edit), false);
-  assert.equal('apiKey' in llmPayload(edit), false);
-});
-
 test('绑定凭证根据平台和新增编辑状态切换，编辑留空不覆盖凭证', async () => {
   const { bindingPayload } = await load('../src/services/profile-contract.ts');
   const form = { platform: 'weread', platformUsername: '', accessToken: '' };

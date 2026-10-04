@@ -54,6 +54,9 @@ for (const width of [390, 768, 1440]) {
       await page.emulateMedia({ colorScheme: system });
       const errors = []; page.on('pageerror', e => errors.push(e.message));
       await setup(page);
+      await expect(page.getByRole('button', { name: '账号与安全', exact: true })).toBeVisible();
+      await expect(page.getByRole('button', { name: '账号绑定', exact: true })).toHaveCount(0);
+      await expect(page.locator('.account-card')).toHaveCount(0);
       const selected = system === 'dark' ? '日间' : '夜间';
       const bg = selected === '夜间' ? 'rgb(17, 18, 21)' : 'rgb(240, 242, 245)';
       await page.getByRole('button', { name: selected, exact: true }).click();
@@ -69,6 +72,10 @@ for (const width of [390, 768, 1440]) {
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
       await page.screenshot({ path: `test-results/settings-${width}-${system}.png`, fullPage: true });
       await page.getByRole('button', { name: '返回', exact: true }).last().click();
+      await page.getByRole('button', { name: '账号与安全', exact: true }).click();
+      await expect(page.locator('.account-value').first()).toHaveText('fixture');
+      await expect(page.locator('.account-value').last()).toHaveText('fixture@example.com');
+      await page.screenshot({ path: `test-results/account-security-${width}-${system}.png`, fullPage: true });
       await page.getByRole('button', { name: '账号绑定', exact: true }).click();
       await page.getByRole('button', { name: '新增绑定', exact: true }).click();
       await expect(page.getByRole('dialog')).toBeVisible();
@@ -78,6 +85,8 @@ for (const width of [390, 768, 1440]) {
       expect(box.width).toBeLessThanOrEqual(Math.min(480, width - 32));
       expect(box.y).toBeGreaterThan(0);
       await page.getByRole('button', { name: '取消', exact: true }).click();
+      await page.getByRole('button', { name: '返回', exact: true }).last().click();
+      await expect(page.getByText('账号与安全', { exact: true })).toBeVisible();
       await page.getByRole('button', { name: '返回', exact: true }).last().click();
       await page.reload();
       await expect(page.getByRole('button', { name: selected, exact: true })).toHaveAttribute('aria-pressed', 'true');
@@ -100,7 +109,7 @@ test('基本设置保存失败保留表单，重试保存并更新我的资料',
   const nickname = page.locator('[aria-label="昵称"] input');
   await expect(nickname).toHaveValue('测试用户');
   await nickname.fill('新的昵称');
-  await page.locator('[aria-label="个人简介"] textarea').fill('新的简介');
+  await page.locator('[aria-label="签名"] textarea').fill('新的简介');
   state.failSave = true; state.delay = 250;
   await page.getByRole('button', { name: '保存', exact: true }).click();
   await expect(page.getByRole('button', { name: '保存中…', exact: true })).toBeDisabled();
@@ -115,6 +124,9 @@ test('基本设置保存失败保留表单，重试保存并更新我的资料',
 
 test('绑定加载失败重试、新增失败重试、编辑留空保留凭证、确认解绑失败重试', async ({ page }) => {
   const state = await setup(page); state.failList = true;
+  await page.getByRole('button', { name: '账号与安全', exact: true }).click();
+  await expect(page.locator('.account-value').first()).toHaveText('fixture');
+  await expect(page.locator('.account-value').last()).toHaveText('fixture@example.com');
   await page.getByRole('button', { name: '账号绑定', exact: true }).click();
   await expect(page.getByRole('alert')).toBeVisible();
   await expect(page.getByRole('button', { name: '新增绑定', exact: true })).toBeDisabled();
@@ -186,6 +198,9 @@ test('头像通过统一上传接口保存，携带鉴权且不改写邮箱', as
 
 test('微信读书新建必填密钥，编辑不回显且留空保留', async ({ page }) => {
   const state = await setup(page);
+  await page.getByRole('button', { name: '账号与安全', exact: true }).click();
+  await expect(page.locator('.account-value').first()).toHaveText('fixture');
+  await expect(page.locator('.account-value').last()).toHaveText('fixture@example.com');
   await page.getByRole('button', { name: '账号绑定', exact: true }).click();
   await page.getByRole('button', { name: '新增绑定', exact: true }).click();
   await page.locator('uni-picker').click();
