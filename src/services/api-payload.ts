@@ -150,11 +150,6 @@ export interface ChangePasswordReq {
   newPassword?: null | string;
 }
 
-export interface ChatReq {
-  prompt?: null | string;
-  conversationId?: null | string;
-}
-
 export interface ChatSessionSaveReq {
   title?: null | string;
 }
@@ -1148,7 +1143,6 @@ export interface ApiRequests {
   CbtiPersonalitySaveReq: CbtiPersonalitySaveReq;
   CbtiTestReq: CbtiTestReq;
   ChangePasswordReq: ChangePasswordReq;
-  ChatReq: ChatReq;
   ChatSessionSaveReq: ChatSessionSaveReq;
   CommonReq: CommonReq;
   DeviceCreateReq: DeviceCreateReq;
@@ -1403,10 +1397,6 @@ const fields: Record<string, Record<string, null | string>> = {
   ChangePasswordReq: {
     oldPassword: null,
     newPassword: null,
-  },
-  ChatReq: {
-    prompt: null,
-    conversationId: null,
   },
   ChatSessionSaveReq: {
     title: null,
@@ -2638,8 +2628,6 @@ const requestModels: Array<{
     model: 'FeedbackCommentCreateReq',
     list: false,
   },
-  { method: 'POST', path: '/llm/chat', model: 'ChatReq', list: false },
-  { method: 'POST', path: '/llm/chat/stream', model: 'ChatReq', list: false },
   {
     method: 'POST',
     path: '/llm/sessions',

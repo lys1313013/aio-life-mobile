@@ -14,7 +14,6 @@ export const updateSession = (id:string,title:string) => request('/llm/sessions/
 export const deleteSession = (id:string) => request('/llm/sessions/'+encodeURIComponent(id),'DELETE')
 export const fetchHistory = (conversationId:string) => request<any[]>(queryPath('/llm/chat/history',{conversationId}))
 export const clearHistory = (conversationId:string) => request(queryPath('/llm/chat/history',{conversationId}),'DELETE')
-export const chat = (prompt:string,conversationId:string) => request<string>('/llm/chat','POST',{prompt,conversationId})
 export const fetchTools = () => request<any[]>('/mcp/tools')
 export const callTool = (name:string,args:Record<string,any>) => request<any>('/mcp/tools/call','POST',{name,arguments:args})
 export const fetchGraph = () => request<any>('/relationships/graph')
