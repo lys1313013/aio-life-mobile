@@ -1,0 +1,32 @@
+import Intent from 'android.content.Intent'
+import Uri from 'android.net.Uri'
+import { OpenWereadBook, OpenWereadWeb } from '../interface.uts'
+
+export const openWereadBook: OpenWereadBook = (bookId: string): boolean => {
+  if (!/^[\w-]+$/.test(bookId)) return false
+  const activity = UTSAndroid.getUniActivity()
+  if (activity == null) return false
+  try {
+    const intent = new Intent(Intent.ACTION_VIEW, Uri.parse('weread://reading?bId=' + encodeURIComponent(bookId) + '&style=1'))
+    intent.setPackage('com.tencent.weread')
+    // 直接尝试启动并捕获未安装/拒绝，避免包可见性检查误判。
+    activity.startActivity(intent)
+    return true
+  } catch (e) {
+    return false
+  }
+}
+
+export const openWereadWeb: OpenWereadWeb = (url: string): boolean => {
+  const uri = Uri.parse(url)
+  const host = uri.getHost() ?? ''
+  if (uri.getScheme() != 'https' || uri.getUserInfo() != null || !(host == 'weread.qq.com' || host.endsWith('.weread.qq.com'))) return false
+  const activity = UTSAndroid.getUniActivity()
+  if (activity == null) return false
+  try {
+    activity.startActivity(new Intent(Intent.ACTION_VIEW, uri))
+    return true
+  } catch (e) {
+    return false
+  }
+}

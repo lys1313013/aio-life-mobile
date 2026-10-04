@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { appTextColor } from '../../services/app-layout.ts'
+import { appTextColor, useAppLayout } from '../../services/app-layout.ts'
 
 import { buttonLabelClasses } from '../../services/button-label.ts'
 import { isRequired, missingRequired } from '../../services/form-required.ts';
@@ -16,7 +16,12 @@ import AdaptiveModal from '../../components/AdaptiveModal.uvue';
 import MetricCard from '../../components/MetricCard.uvue';
 import MiniChart from '../../components/MiniChart.uvue';
 import { isDark } from '../../services/theme.ts';
+import { dateLabel, parseDate } from '../../services/time-format.ts';
 import { createRecordScope } from '../../services/records/page-scope.ts';
+import { isMobileBrowser, wereadAppLink, wereadBrowserLink, wereadWebLink } from './services/weread-links.ts';
+// #ifdef APP-ANDROID
+import { openWereadBook, openWereadWeb } from '../../uni_modules/aio-weread-launcher';
+// #endif
 import {
   fetchWereadConnection,
   connectWeread,
@@ -35,7 +40,7 @@ const connection = ref<any>({ connected: false }),
   error = ref(''),
   tab = ref('阅读看板'),
   mode = ref('年'),
-  date = ref(new Date().toLocaleDateString('sv-SE')),
+  date = ref(dateLabel(new Date())),
   statsLoading = ref(false),
   settings = ref(false),
   keyInput = ref(''),
@@ -58,12 +63,35 @@ const connection = ref<any>({ connected: false }),
 const openingBooks = ref<Record<string, boolean>>({});
 const bookLinks = ref<Record<string, string>>({});
 const bookLinkErrors = ref<Record<string, string>>({});
+const showWebFallback = ref<Record<string, boolean>>({});
 function bookLink(book) {
-  const value = book?.deepLink;
-  return typeof value === 'string' && /^https:\/\/(?:[a-z0-9-]+\.)*weread\.qq\.com(?::443)?(?:[/?#]|$)/i.test(value) ? value : bookLinks.value[book?.bookId] || '';
+  return wereadWebLink(book?.deepLink) || bookLinks.value[book?.bookId] || '';
 }
 async function openRankBook(book) {
   if (!book || openingBooks.value[book.bookId]) return;
+  const scheme = wereadAppLink(book.bookId);
+  // #ifdef WEB
+  if (scheme && isMobileBrowser(navigator.userAgent, navigator.maxTouchPoints)) {
+    showWebFallback.value[book.bookId] = true;
+    window.location.assign(wereadBrowserLink(book.bookId, navigator.userAgent, bookLink(book)));
+    return;
+  }
+  // #endif
+  // #ifdef APP-ANDROID
+  if (scheme) {
+    showWebFallback.value[book.bookId] = true;
+    bookLinkErrors.value[book.bookId] = '';
+    if (!openWereadBook(book.bookId)) {
+      bookLinkErrors.value[book.bookId] = '无法打开微信读书，可使用网页版阅读';
+    }
+    return;
+  }
+  // #endif
+  await openWebBook(book);
+}
+async function openWebBook(book) {
+  if (!book || openingBooks.value[book.bookId]) return;
+  bookLinkErrors.value[book.bookId] = '';
   const link = bookLink(book);
   if (link) { openLink(link); return; }
   if (!book.bookId) return;
@@ -95,6 +123,7 @@ async function openRankBook(book) {
     openingBooks.value[id] = false;
   }
 }
+const { appGridItem } = useAppLayout();
 const modes = { 周: 'weekly', 月: 'monthly', 年: 'annually', 累计: 'overall' };
 const disconnecting = ref(false);
 let generation = 0,
@@ -117,6 +146,7 @@ const scope = createRecordScope((clear) => {
     selectedBook.value = '';
     bookLinks.value = {};
     bookLinkErrors.value = {};
+    showWebFallback.value = {};
   }
 });
 onShow(() => initialize());
@@ -144,9 +174,7 @@ const trend = computed(() =>
   Object.entries(stats.value.readTimes || {})
     .sort((a, b) => Number(a[0]) - Number(b[0]))
     .map(([time, value]) => ({
-      label: new Date(Number(time) * 1000).toLocaleDateString('zh-CN', {
-        timeZone: 'Asia/Shanghai',
-      }),
+      label: readingPeriod(time),
       value: Math.round(Number(value) / 60),
     })),
 );
@@ -185,6 +213,14 @@ const noteItems = computed(() => {
     (item.text + ' ' + item.thought).toLowerCase().includes(noteQuery.value.toLowerCase()),
   );
 });
+// 原生运行时的 locale 参数支持不同，显式按上海时区生成短标签。
+function readingPeriod(seconds) {
+  const day = new Date((Number(seconds) + 8 * 60 * 60) * 1000);
+  const year = day.getUTCFullYear(), month = day.getUTCMonth() + 1;
+  return mode.value === '年' ? month + '月'
+    : mode.value === '累计' ? year + '年'
+      : month + '/' + day.getUTCDate();
+}
 function readingTime(seconds) {
   if (seconds == null) return '—';
   const minutes = Math.floor(Math.max(0, Number(seconds)) / 60);
@@ -231,9 +267,12 @@ async function refresh() {
   }
 }
 function timestamp() {
-  return mode.value === '累计'
-    ? 0
-    : Math.floor(new Date(date.value + 'T00:00:00+08:00').getTime() / 1000);
+  if (mode.value === '累计') return 0;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date.value) || dateLabel(parseDate(date.value)) !== date.value)
+    throw new Error('请选择有效日期');
+  const [year, month, day] = date.value.split('-').map(Number);
+  // Android 的本地化日期与字符串解析存在差异；按上海时区零点生成秒时间戳。
+  return Math.floor((Date.UTC(year, month - 1, day) - 8 * 60 * 60 * 1000) / 1000);
 }
 async function changeMode() {
   if (statsLoading.value || syncing.value) return;
@@ -241,7 +280,7 @@ async function changeMode() {
   statsLoading.value = true;
   error.value = '';
   try {
-    if (date.value > new Date().toLocaleDateString('sv-SE'))
+    if (date.value > dateLabel(new Date()))
       throw new Error('请选择当前或过去的日期');
     const result = await scope.wait(fetchWereadStats(modes[mode.value], timestamp()));
     if (current === statsRevision) {
@@ -356,7 +395,10 @@ function openLink(url) {
   // #ifdef WEB
   window.open(url, '_blank', 'noopener,noreferrer');
   // #endif
-  // #ifdef APP
+  // #ifdef APP-ANDROID
+  if (!openWereadWeb(url)) uni.showToast({ title: '无法打开链接', icon: 'none' });
+  // #endif
+  // #ifdef APP-IOS
   plus.runtime.openURL(url);
   // #endif
   // #ifdef MP-WEIXIN
@@ -382,28 +424,30 @@ function openLink(url) {
           @click="settings = true"
         /><template v-if="snapshot"
           ><view class="weread-tabs ui-row ui-section"><button v-for="label in ['阅读看板', '我的书架', '阅读笔记']" :key="label" role="button" class="weread-tab" :class="{ 'weread-tab-dark': isDark, 'weread-tab-active': tab === label }" :aria-pressed="tab === label" @click="tab = label"><text :class="buttonLabelClasses(['weread-tab', { 'weread-tab-dark': isDark, 'weread-tab-active': tab === label }])">{{ label }}</text></button></view><view v-if="tab === '阅读看板'"
-            ><view class="toolbar ui-row ui-section"
-              ><FormField compact stretch
+            ><view class="toolbar dashboard-filters ui-row ui-section"
+              ><view class="dashboard-filter"><FormField compact
                 label="周期"
                 kind="selector"
                 v-model="mode"
                 :options="['周', '月', '年', '累计']"
                 :disabled="statsLoading || syncing"
-                @update:model-value="changeMode" /><FormField compact stretch
-                v-if="mode !== '累计'"
+                @update:model-value="changeMode" /></view><view v-if="mode !== '累计'" class="dashboard-filter dashboard-date"><FormField compact
                 label="统计日期"
                 kind="date"
                 v-model="date"
                 :disabled="statsLoading || syncing"
-                @update:model-value="changeMode" /></view
-            ><view class="metrics ui-row ui-section"
-              ><view class="dashboard-metric"><MetricCard label="阅读时长" :value="readingTime(stats.totalReadTime)" /></view><view class="dashboard-metric"><MetricCard
+                @update:model-value="changeMode" /></view></view
+            ><view class="metrics dashboard-metrics ui-row ui-section"
+              ><view class="dashboard-metric" :style="appGridItem(2, 'inline', [[600, 4]])"><MetricCard value-kind="text" :loading="statsLoading" label="阅读时长" :value="readingTime(stats.totalReadTime)" /></view><view class="dashboard-metric" :style="appGridItem(2, 'inline', [[600, 4]])"><MetricCard
                 label="阅读天数"
+                :loading="statsLoading"
                 :value="stats.readDays ?? '—'"
-                unit="天" /></view><view class="dashboard-metric"><MetricCard
+                unit="天" /></view><view class="dashboard-metric" :style="appGridItem(2, 'inline', [[600, 4]])"><MetricCard
                 label="日均阅读"
-                :value="readingTime(stats.dayAverageReadTime)" /></view><view class="dashboard-metric"><MetricCard
+                value-kind="text" :loading="statsLoading"
+                :value="readingTime(stats.dayAverageReadTime)" /></view><view class="dashboard-metric" :style="appGridItem(2, 'inline', [[600, 4]])"><MetricCard
                 label="已读完"
+                unit="本" :loading="statsLoading"
                 :value="
                   stats.readStat?.find((item) => item.stat === '读完')?.counts ?? '—'
                 " /></view></view
@@ -414,17 +458,20 @@ function openLink(url) {
               :series="[{ name: '阅读时长', values: trend.map((item) => item.value) }]"
               unit="分钟"
             /><view class="card ui-card" :class="{ 'card-dark': isDark }"
-              ><text class="title">阅读最多的书</text
+              ><text :style="appTextColor()" class="title">阅读最多的书</text
               ><view v-for="(item, index) in stats.readLongest || []" :key="index" class="rank-row ui-row"
                 :role="item.book?.bookId || bookLink(item.book) ? 'button' : undefined"
                 :tabindex="item.book?.bookId || bookLink(item.book) ? 0 : undefined"
                 :aria-label="item.book?.bookId || bookLink(item.book) ? '在微信读书打开：' + item.book?.title : undefined"
                 :aria-busy="!!openingBooks[item.book?.bookId]"
-                @click="openRankBook(item.book)" @keydown.enter="openRankBook(item.book)" @keydown.space.prevent="openRankBook(item.book)">
+                @click="openRankBook(item.book)" @keydown.enter.self="openRankBook(item.book)" @keydown.space.self.prevent="openRankBook(item.book)">
                 <text class="rank-number" :class="{ 'record-secondary-dark': isDark }">{{ String(index + 1).padStart(2, '0') }}</text>
                 <image v-if="safeLink(item.book?.cover || item.albumInfo?.cover)" class="rank-cover" :src="safeLink(item.book?.cover || item.albumInfo?.cover)" mode="aspectFit" />
-                <view class="rank-body ui-gap-sm"><text :max-lines="2" class="rank-title">{{ item.book?.title || item.albumInfo?.name }}</text><text class="secondary" :class="{ 'record-secondary-dark': isDark }">{{ readingTime(item.readTime) }}</text><text v-if="bookLinkErrors[item.book?.bookId]" class="secondary" role="alert">{{ bookLinkErrors[item.book?.bookId] }}</text></view>
+                <view class="rank-body ui-gap-sm"><text :max-lines="2" :style="appTextColor()" class="rank-title">{{ item.book?.title || item.albumInfo?.name }}</text><text class="secondary" :class="{ 'record-secondary-dark': isDark }">{{ readingTime(item.readTime) }}</text><text v-if="bookLinkErrors[item.book?.bookId]" class="secondary" role="alert">{{ bookLinkErrors[item.book?.bookId] }}</text></view>
                 <MobileButton v-if="openingBooks[item.book?.bookId]" label="打开中" icon="ant-design:export-outlined" icon-only :loading="true" />
+                <view v-if="showWebFallback[item.book?.bookId]" @click.stop>
+                  <MobileButton label="网页版阅读" icon="ant-design:link-outlined" icon-only variant="quiet" :loading="!!openingBooks[item.book?.bookId]" @click="openWebBook(item.book)" />
+                </view>
               </view
               ></view
             ></view
@@ -451,7 +498,7 @@ function openLink(url) {
                 <AppIcon v-else name="lucide:book-open" :size="32" color="#8b8f99" />
                 <text class="book-status" :class="{ 'book-status-completed': book.finishReading === 1 }">{{ book.finishReading === 1 ? '已读完' : '未读完' }}</text>
               </view><view class="book-body ui-gap-sm">
-                <text class="book-title">{{ book.title }}</text>
+                <text :style="appTextColor()" class="book-title">{{ book.title }}</text>
                 <text class="book-author" :class="{ 'record-secondary-dark': isDark }">{{ book.author || '作者未知' }}</text>
                 <view class="book-meta ui-row"><text class="book-notes" :class="{ 'record-secondary-dark': isDark }">{{ notebookMap.has(book.bookId) ? (notebookMap.get(book.bookId)?.noteCount || 0) + ' 划线 · ' + (notebookMap.get(book.bookId)?.reviewCount || 0) + ' 点评' : '暂无笔记' }}</text><text v-if="notebookMap.get(book.bookId)?.readingProgress != null" class="book-progress">{{ notebookMap.get(book.bookId)?.readingProgress }}%</text></view>
               </view></view></view><text v-if="!books.length" class="secondary" :class="{ 'record-secondary-dark': isDark }">没有匹配的图书</text></view
@@ -481,14 +528,14 @@ function openLink(url) {
                 class="card ui-card"
                 :class="{ 'card-dark': isDark }"
                 ><view class="toolbar ui-row"
-                  ><text class="title">{{ item.chapter }}</text
+                  ><text :style="appTextColor()" class="title">{{ item.chapter }}</text
                   ><MobileButton
                     label="复制笔记"
                     icon="ant-design:copy-outlined"
                     variant="quiet"
                     @click="copy([item.text, item.thought].filter(Boolean).join('\n'))" /></view
-                ><text class="note-excerpt" selectable>{{ item.text }}</text
-                ><text v-if="item.thought" class="note-thought" :class="{ 'note-thought-dark': isDark }" selectable>{{ item.thought }}</text
+                ><text :style="appTextColor()" class="note-excerpt" selectable>{{ item.text }}</text
+                ><text v-if="item.thought" :style="appTextColor()" class="note-thought" :class="{ 'note-thought-dark': isDark }" selectable>{{ item.thought }}</text
                 ><text class="secondary" :class="{ 'record-secondary-dark': isDark }">{{ readingDate(item.time) }}</text></view
               ></PageState
             ><text v-if="copyError" class="error ui-section ui-type-body">{{ copyError }}</text></view
@@ -533,7 +580,7 @@ function openLink(url) {
           detailRevision++;
           detail = null;
         "
-        ><view class="detail-heading ui-row"><image v-if="safeLink(detail.cover)" class="detail-cover" :src="safeLink(detail.cover)" mode="aspectFit" /><view class="detail-heading-body ui-gap-sm"><text class="title">{{ detail.title }}</text><text class="secondary" :class="{ 'record-secondary-dark': isDark }">{{ detail.author }}</text></view></view
+        ><view class="detail-heading ui-row"><image v-if="safeLink(detail.cover)" class="detail-cover" :src="safeLink(detail.cover)" mode="aspectFit" /><view class="detail-heading-body ui-gap-sm"><text :style="appTextColor()" class="title">{{ detail.title }}</text><text class="secondary" :class="{ 'record-secondary-dark': isDark }">{{ detail.author }}</text></view></view
         ><PageState skeleton="form" :retain-content="false" :loading="detailLoading" :error="detailError" @retry="showBook(detail)"
           ><view class="metrics ui-row ui-section"
             ><MetricCard
@@ -545,11 +592,12 @@ function openLink(url) {
           ><view class="detail-meta ui-row ui-section"><text class="secondary" :class="{ 'record-secondary-dark': isDark }">最近阅读 {{ readingDate(progress?.book?.updateTime) }}</text><text class="detail-status" :class="{ 'record-secondary-dark': isDark }">{{ detail.finishReading === 1 ? '已读完' : '未读完' }}</text></view></PageState
         ><view class="toolbar ui-row"
           ><MobileButton label="查看笔记" @click="showNotes" /><MobileButton
-            v-if="safeLink(detail.deepLink)"
+            v-if="detail.bookId || bookLink(detail)"
             label="微信读书打开"
             icon="ant-design:export-outlined"
             variant="quiet"
-            @click="openLink(detail.deepLink)" /></view></AdaptiveModal></view
+            :loading="!!openingBooks[detail.bookId]"
+            @click="openRankBook(detail)" /><MobileButton v-if="showWebFallback[detail.bookId]" label="网页版阅读" icon="ant-design:link-outlined" icon-only variant="quiet" :loading="!!openingBooks[detail.bookId]" @click="openWebBook(detail)" /></view><text v-if="bookLinkErrors[detail.bookId]" class="secondary" role="alert">{{ bookLinkErrors[detail.bookId] }}</text></AdaptiveModal></view
   ></MobilePage>
 </template>
 <style scoped lang="scss">
@@ -680,7 +728,15 @@ text-overflow: ellipsis;
 /* #endif */
 @media (min-width: 600px) { .weread-book-card { width: calc((100% - #{$space-section} * 2) / 3); } }
 @media (min-width: 900px) { .weread-book-card { width: calc((100% - #{$space-section} * 3) / 4); } }
+.dashboard-filter { flex: 1; min-width: 0; }
+.metrics { align-items: stretch; }
 .dashboard-metric { width: calc((100% - #{$space-inline}) / 2); min-width: 0; }
+/* #ifdef APP */
+// 原生 flex 不依赖 gap；列宽从同一份间距配置计算。
+.dashboard-metrics { gap: 0; justify-content: space-between; margin-bottom: $space-section - $space-inline; }
+.dashboard-filters { gap: 0; }
+.dashboard-date { margin-left: $space-inline; }
+/* #endif */
 .detail-meta { align-items: center; flex-wrap: wrap; }
 .detail-status { color: $text-secondary-light; @include type-style('caption'); margin-left: auto; }
 @media (min-width: 600px) { .dashboard-metric { width: calc((100% - #{$space-inline} * 3) / 4); } }
