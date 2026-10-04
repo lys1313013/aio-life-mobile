@@ -19,14 +19,28 @@ async function setup(page, override) {
 async function swipeCardUp(page, selector) {
   const card = page.locator(selector);
   await card.evaluate(el => el.scrollIntoView({block:'center'}));
-  const box = await card.boundingBox();
+  const scroller = card.locator('.uni-scroll-view[style]').first();
+  const box = await scroller.boundingBox();
+  const before = await scroller.evaluate(el => el.scrollTop);
+  const bottom = await scroller.evaluate(el => el.scrollHeight - el.clientHeight);
   const client = await page.context().newCDPSession(page);
-  await client.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 1 });
-  await client.send('Input.synthesizeScrollGesture', {
-    x: box.x + box.width / 2, y: box.y + box.height - 20,
-    yDistance: -(box.height - 40), speed: 500, gestureSourceType: 'touch',
-  });
-  await client.detach();
+  try {
+    await client.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 1 });
+    // Linux headless 下 synthesizeScrollGesture(touch) 不可靠；使用真实触摸序列，
+    // 同时覆盖 scrolltolower 和内容不足一屏时的 touchend 分页分支。
+    const x = box.x + box.width / 2, y = box.y + box.height - 20;
+    await client.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y }] });
+    for (let step = 1; step <= 8; step++) {
+      await client.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x, y: y - (box.height - 40) * step / 8 }] });
+      await page.waitForTimeout(30);
+    }
+    await client.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+    if (bottom > before + 1) {
+      await expect.poll(() => scroller.evaluate(el => el.scrollTop), { message: '卡片触摸手势应实际滚动内部列表' }).toBeGreaterThan(before);
+    }
+  } finally {
+    await client.detach();
+  }
 }
 test('统计卡和内容卡独立失败、重试恢复，隐藏闪念不暴露原文', async ({ page }) => {
   let cards = 0, thoughts = 0;
