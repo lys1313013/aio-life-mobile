@@ -1,0 +1,93 @@
+<script setup lang="ts">
+import { ref } from 'vue'
+import { onLoad, onUnload } from '@dcloudio/uni-app'
+import PageHeader from '../../components/PageHeader.uvue'
+import MobilePage from '../../components/MobilePage.uvue'
+import MobileButton from '../../components/MobileButton.uvue'
+import { fetchUser } from '../../services/api.ts'
+import { restoreSession, session } from '../../services/session.ts'
+import { themeClass } from '../../services/theme.ts'
+import { rememberWebLoginScene, clearWebLoginScene, scanWebLogin, confirmWebLogin, cancelWebLogin } from '../../services/wechat-web-login.ts'
+
+const scene = ref(''), status = ref('LOADING'), error = ref(''), busy = ref(false), nickname = ref('')
+let active = true
+onLoad(async (options) => {
+  scene.value = rememberWebLoginScene(options?.scene)
+  if (!scene.value) { status.value = 'EXPIRED'; return }
+  // #ifndef MP-WEIXIN
+  status.value = 'UNSUPPORTED'
+  return
+  // #endif
+  // #ifdef MP-WEIXIN
+  restoreSession()
+  if (!session.token) { uni.reLaunch({ url: '/pages/login/index' }); return }
+  await load()
+  // #endif
+})
+onUnload(() => { active = false })
+
+async function load() {
+  if (busy.value) return
+  busy.value = true; error.value = ''
+  try {
+    const result = await scanWebLogin(scene.value)
+    if (!active) return
+    status.value = result.status
+    if (result.status === 'SCANNED') {
+      const user = await fetchUser()
+      if (active) nickname.value = user.name || user.username || '当前账号'
+    } else clearWebLoginScene()
+  } catch (reason) {
+    if (active) { status.value = 'ERROR'; error.value = reason.message || '请求失败，请重试' }
+  } finally { if (active) busy.value = false }
+}
+async function decide(confirm) {
+  if (busy.value || status.value !== 'SCANNED') return
+  busy.value = true; error.value = ''
+  try {
+    const result = confirm ? await confirmWebLogin(scene.value) : await cancelWebLogin(scene.value)
+    if (!active) return
+    status.value = result.status
+    if (result.status !== 'SCANNED') clearWebLoginScene()
+  } catch (reason) {
+    if (active) error.value = reason.message || '操作失败，请重试'
+  } finally { if (active) busy.value = false }
+}
+function leave() {
+  clearWebLoginScene()
+  uni.reLaunch({ url: '/pages/home/index' })
+}
+</script>
+
+<template>
+  <view class="page" :class="themeClass('page')">
+    <PageHeader title="登录网页版" />
+    <MobilePage :requires-auth="false" refresh-disabled>
+      <view class="ui-page-body web-login-content">
+        <image class="web-login-logo" src="/static/login-logo.png" mode="aspectFit" />
+        <text class="web-login-title ink" :class="themeClass('ink')">{{ status === 'CONFIRMED' || status === 'CONSUMED' ? '已确认登录' : status === 'CANCELLED' ? '已取消登录' : status === 'EXPIRED' ? '二维码已失效' : status === 'UNSUPPORTED' ? '请使用微信扫一扫' : '登录 AIO Life 网页版' }}</text>
+        <text v-if="status === 'SCANNED'" class="web-login-account ink" :class="themeClass('ink')">{{ nickname }}</text>
+        <text class="web-login-note muted" :class="themeClass('muted')">{{ status === 'CONFIRMED' || status === 'CONSUMED' ? '请返回电脑继续使用。' : status === 'EXPIRED' ? '请刷新网页二维码后重新扫描。' : status === 'SCANNED' ? '仅在你本人打开网页时确认登录。' : status === 'LOADING' ? '加载中' : '' }}</text>
+        <text v-if="error" class="error-text" :class="themeClass('error-text')">{{ error }}</text>
+        <view v-if="status === 'SCANNED'" class="web-login-actions">
+          <MobileButton label="确认登录" :loading="busy" @click="decide(true)" />
+          <MobileButton label="取消" variant="quiet" :disabled="busy" @click="decide(false)" />
+        </view>
+        <MobileButton v-else-if="status === 'ERROR'" label="重试" :loading="busy" @click="load" />
+        <MobileButton v-else-if="status !== 'LOADING'" label="完成" variant="quiet" @click="leave" />
+      </view>
+    </MobilePage>
+  </view>
+</template>
+
+<style scoped lang="scss">
+@use '../../styles/spacing.scss';
+@use '../../styles/spacing-tokens' as *;
+@use '../../styles/typography' as *;
+.web-login-content { display: flex; flex-direction: column; align-items: center; gap: $space-section; padding-top: $space-overlayBlock; }
+.web-login-logo { width: 64px; height: 64px; }
+.web-login-title { @include type-style('title'); text-align: center; }
+.web-login-account { @include type-style('body'); text-align: center; }
+.web-login-note { @include type-style('caption'); text-align: center; }
+.web-login-actions { display: flex; flex-direction: column; gap: $space-inline; width: 100%; max-width: 360px; margin-top: $space-section; }
+</style>

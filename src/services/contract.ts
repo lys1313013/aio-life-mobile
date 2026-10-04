@@ -42,12 +42,6 @@ export function readWechatLogin(data) {
   throw new Error('微信登录结果异常，请重试')
 }
 
-export function readPhoneCode(detail) {
-  if (detail != null && typeof detail.code === 'string' && detail.code.length > 0) return detail.code
-  if (detail != null && detail.errno === 1400001) throw new Error('手机号授权额度暂不可用，请使用账号密码登录')
-  throw new Error('未完成手机号授权，可重试或使用已有账号登录')
-}
-
 export function readUser(data) {
   if (data == null || typeof data.id !== 'string' || data.id.length === 0) {
     throw new Error('用户信息异常，请重试')

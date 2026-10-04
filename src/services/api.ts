@@ -94,7 +94,10 @@ export function uploadAvatar(filePath: string): Promise<{ id: string; fileUrl: s
           resolve({ id: data.id, fileUrl: data.fileUrl })
         } catch (error) {
           if (response.statusCode === 401) {
-            if (session.token === token) clearSession()
+            if (session.token === token) {
+              clearSession()
+              uni.reLaunch({ url: '/pages/login/index' })
+            }
             const expired = new Error('登录已过期，请重新登录'); expired.name = 'SessionExpiredError'; reject(expired)
           } else reject(error)
         }

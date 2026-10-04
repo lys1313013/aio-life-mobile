@@ -3,12 +3,12 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 const contractSource = await readFile(new URL('../src/services/contract.ts', import.meta.url), 'utf8');
-const { readWechatLogin, readPhoneCode, readResponse } = await import(`data:text/javascript;base64,${Buffer.from(contractSource).toString('base64')}`);
+const { readWechatLogin, readResponse } = await import(`data:text/javascript;base64,${Buffer.from(contractSource).toString('base64')}`);
 const source = (await readFile(new URL('../src/services/wechat-auth.ts', import.meta.url), 'utf8'))
   .replace(/^import .+$/gm, '')
   .replace(/\/\/ #ifndef MP-WEIXIN[\s\S]*?\/\/ #endif/g, '')
   .replace(/export /g, '');
-const createService = new Function('request', 'readWechatLogin', 'saveToken', 'uni', source + '\nreturn { startWechatLogin, loginWithWechatPhone, bindWechatAccount, initializeWechatPassword };');
+const createService = new Function('request', 'readWechatLogin', 'saveToken', 'uni', source + '\nreturn { fetchWechatCapabilities, startWechatLogin, registerWithWechat, bindWechatAccount, initializeWechatPassword };');
 const loggedIn = { status: 'LOGGED_IN', id: '9223372036854775807', accessToken: 'final-token', hasPassword: true, accountUsername: 'fixture-user' };
 const pending = { status: 'PHONE_REQUIRED', loginTicket: 'fixture-ticket', expiresIn: 300 };
 
@@ -30,19 +30,28 @@ test('待授权票据不能作为业务 Token 保存', async () => {
   assert.deepEqual(saved, []);
 });
 
-test('手机号授权使用 phoneCode，只有完成登录才保存 Token', async () => {
-  const { service, saved } = fixture(async (path, method, body) => {
-    assert.equal(path, '/auth/wechat/mini/phone-login');
-    assert.deepEqual(body, { loginTicket: 'ticket', phoneCode: 'phone-code' });
+test('微信注册只提交服务端票据，成功后保存业务 Token', async () => {
+  const { service, saved } = fixture(async (path, method, body, auth) => {
+    assert.equal(path, '/auth/wechat/mini/register');
+    assert.equal(method, 'POST');
+    assert.equal(auth, false);
+    assert.deepEqual(body, { loginTicket: 'ticket' });
     return loggedIn;
   });
-  await service.loginWithWechatPhone('ticket', 'phone-code');
+  await service.registerWithWechat('ticket');
   assert.deepEqual(saved, ['final-token']);
 });
 
-test('手机号命中已有账号时不保存登录态', async () => {
-  const { service, saved } = fixture(async () => ({ ...pending, status: 'BIND_REQUIRED' }));
-  await service.loginWithWechatPhone('ticket', 'phone-code');
+test('旧后端未声明注册能力时隐藏微信直接注册入口', async () => {
+  const old = fixture(async () => ({ enabled: true })).service;
+  assert.deepEqual(await old.fetchWechatCapabilities(), { enabled: true, registrationEnabled: false });
+  const current = fixture(async () => ({ enabled: true, registrationEnabled: true })).service;
+  assert.deepEqual(await current.fetchWechatCapabilities(), { enabled: true, registrationEnabled: true });
+});
+
+test('微信注册失败不写入登录态', async () => {
+  const { service, saved } = fixture(async () => { throw new Error('票据失效'); });
+  await assert.rejects(service.registerWithWechat('expired'), /票据失效/);
   assert.deepEqual(saved, []);
 });
 
@@ -74,12 +83,6 @@ test('绑定冲突不保存原账号会话且仍清理临时 Token', async () =>
   await assert.rejects(service.bindWechatAccount('ticket', 'user', 'password'), /绑定冲突/);
   assert.deepEqual(saved, []);
   assert.equal(loggedOut, true);
-});
-
-test('取消授权和额度不足有可读提示，不发送无效手机号 code', () => {
-  assert.throws(() => readPhoneCode({ errMsg: 'getPhoneNumber:fail user deny' }), /未完成手机号授权/);
-  assert.throws(() => readPhoneCode({ errno: 1400001 }), /额度暂不可用/);
-  assert.equal(readPhoneCode({ code: 'phone-code' }), 'phone-code');
 });
 
 test('拒绝缺少 Token、数字 ID、未知状态及无效票据期限', () => {

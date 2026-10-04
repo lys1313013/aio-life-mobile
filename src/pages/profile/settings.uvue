@@ -17,8 +17,14 @@ const errorText = ref('')
 const form = ref<{ nickname: string; introduction: string; avatarFileId: string | null; avatarUrl: string }>({ nickname: '', introduction: '', avatarFileId: null, avatarUrl: '' })
 const email = computed(() => session.user?.email || '未设置')
 let active = false, revision = 0
+// #ifdef MP-WEIXIN
+let wechatAvatarSelection: { token: string; version: number } | null = null
+// #endif
 function clearPage() {
   revision++
+  // #ifdef MP-WEIXIN
+  wechatAvatarSelection = null
+  // #endif
   ready.value = false
   loading.value = false
   saving.value = false
@@ -74,27 +80,51 @@ async function load() {
     if (current(token, version)) loading.value = false
   }
 }
+async function uploadSelectedAvatar(filePath: string, token: string, version: number) {
+  if (!current(token, version) || !filePath || uploading.value || saving.value || !ready.value) return
+  uploading.value = true
+  errorText.value = ''
+  try {
+    const uploaded = await uploadAvatar(filePath)
+    if (current(token, version)) {
+      form.value.avatarFileId = uploaded.id
+      form.value.avatarUrl = uploaded.fileUrl
+    }
+  } catch (error) {
+    if (current(token, version)) failure(error)
+  } finally {
+    if (current(token, version)) uploading.value = false
+  }
+}
+// #ifdef MP-WEIXIN
+function beginWechatAvatarSelection() {
+  if (!active || uploading.value || saving.value || !ready.value) return
+  wechatAvatarSelection = { token: session.token, version: revision }
+}
+function chooseWechatAvatar(event: { detail?: { avatarUrl?: string } }) {
+  const selection = wechatAvatarSelection
+  wechatAvatarSelection = null
+  const filePath = event.detail?.avatarUrl
+  if (!selection || !filePath) return
+  return uploadSelectedAvatar(filePath, selection.token, selection.version)
+}
+function wechatAvatarError(event: { detail?: { errMsg?: string } }) {
+  const selection = wechatAvatarSelection
+  wechatAvatarSelection = null
+  if (!selection || !current(selection.token, selection.version)) return
+  if (event.detail?.errMsg?.toLowerCase().includes('cancel')) return
+  errorText.value = '无法获取微信头像，请重试或更换头像上传'
+}
+// #endif
 function chooseAvatar() {
   if (uploading.value || saving.value || !ready.value) return
   const token = session.token, version = revision
   uni.chooseImage({
     count: 1,
     sizeType: ['compressed'],
-    success: async (result) => {
-      if (!current(token, version) || !result.tempFilePaths.length) return
-      uploading.value = true
-      errorText.value = ''
-      try {
-        const uploaded = await uploadAvatar(result.tempFilePaths[0])
-        if (current(token, version)) {
-          form.value.avatarFileId = uploaded.id
-          form.value.avatarUrl = uploaded.fileUrl
-        }
-      } catch (error) {
-        if (current(token, version)) failure(error)
-      } finally {
-        if (current(token, version)) uploading.value = false
-      }
+    success: (result) => {
+      if (!result.tempFilePaths.length) return
+      return uploadSelectedAvatar(result.tempFilePaths[0], token, version)
     },
     fail: (error) => {
       if (current(token, version) && !error.errMsg.includes('cancel'))
@@ -165,14 +195,14 @@ function back() {
           class="settings-card ui-card"
           :class="themeClass('settings-card')"
         >
-          <button
-            role="button"
-            class="avatar-picker ui-mb-section ui-type-body"
-            :disabled="uploading || saving" :aria-disabled="uploading || saving"
-            :loading="uploading"
-            aria-label="更换头像"
-            @click="chooseAvatar"
-          >
+          <view class="avatar-section ui-mb-section">
+            <button
+              role="button"
+              class="avatar-picker"
+              :disabled="uploading || saving" :aria-disabled="uploading || saving"
+              aria-label="选择头像图片"
+              @click="chooseAvatar"
+            >
             <image
               v-if="form.avatarUrl"
               class="settings-avatar"
@@ -189,10 +219,30 @@ function back() {
                 >{{ (form.nickname || '我').slice(0, 1) }}</text
               ></view
             >
-            <text class="settings-link">{{
-              uploading ? '上传中…' : '更换头像'
-            }}</text>
-          </button>
+            </button>
+            <view class="avatar-actions">
+              <button
+                role="button"
+                class="avatar-picker"
+                :disabled="uploading || saving" :aria-disabled="uploading || saving"
+                :loading="uploading"
+                aria-label="更换头像"
+                @click="chooseAvatar"
+              ><text class="settings-link">{{ uploading ? '上传中…' : '更换头像' }}</text></button>
+              <!-- #ifdef MP-WEIXIN -->
+              <button
+                role="button"
+                class="avatar-picker"
+                :open-type="uploading || saving ? '' : 'chooseAvatar'"
+                :disabled="uploading || saving" :aria-disabled="uploading || saving"
+                aria-label="从微信获取头像"
+                @click="beginWechatAvatarSelection"
+                @chooseavatar="chooseWechatAvatar"
+                @error="wechatAvatarError"
+              ><text class="settings-link">从微信获取</text></button>
+              <!-- #endif -->
+            </view>
+          </view>
           <view class="settings-inline-row">
             <text class="settings-label settings-inline-label" :class="themeClass('settings-label')">昵称</text>
             <input
@@ -251,15 +301,29 @@ function back() {
 .settings-error {
 
 }
-.avatar-picker {
+.avatar-section {
   display: flex;
   flex-direction: column;
-  width: 100%;
-
+  align-items: center;
+}
+.avatar-actions {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  gap: $space-inline;
+}
+.avatar-picker {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  min-height: $space-controlMin;
+  min-width: $space-controlMin;
+  margin: 0;
   padding: 0;
   background-color: transparent !important;
   border: 0;
-  align-items: center;
 }
 .settings-avatar {
   width: 72px;

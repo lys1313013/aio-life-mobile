@@ -1,0 +1,159 @@
+<script setup lang="ts">
+import { computed, ref, watch } from 'vue'
+import { onShow, onUnload } from '@dcloudio/uni-app'
+import MobilePage from '../../components/MobilePage.uvue'
+import PageHeader from '../../components/PageHeader.uvue'
+import MobileButton from '../../components/MobileButton.uvue'
+import LoadingIndicator from '../../components/LoadingIndicator.uvue'
+import FormActions from '../../components/FormActions.uvue'
+import { fetchUser } from '../../services/api.ts'
+import { restoreSession, session } from '../../services/session.ts'
+import { themeClass } from '../../services/theme.ts'
+import { parseLoginQr, scanLoginQr, decideLoginQr, scanWithCamera, type LoginQrInfo } from './services/qr-login.ts'
+
+const info = ref<LoginQrInfo | null>(null)
+const busy = ref(false)
+const error = ref('')
+const remaining = ref(0)
+const result = ref('')
+const user = computed(() => session.user)
+const requestTime = computed(() => {
+  if (!info.value) return ''
+  const date = new Date(info.value.requestedAt)
+  return String(date.getHours()).padStart(2, '0') + ':' + String(date.getMinutes()).padStart(2, '0')
+})
+let qr: { id: string; ticket: string } | null = null
+let revision = 0
+let deadline = 0
+let unloaded = false
+let timer: ReturnType<typeof setInterval> | null = null
+const supported = ref(true)
+// #ifdef WEB
+supported.value = false
+// #endif
+function reset() {
+  revision++
+  info.value = null; qr = null; error.value = ''; busy.value = false; result.value = ''
+  if (timer != null) clearInterval(timer)
+}
+watch(() => session.token, reset, { flush: 'sync' })
+onShow(() => {
+  restoreSession()
+  if (!session.token) { uni.reLaunch({ url: '/pages/login/index' }); return }
+  remaining.value = Math.max(0, Math.ceil((deadline - Date.now()) / 1000))
+})
+onUnload(() => { unloaded = true; reset() })
+function back() {
+  uni.navigateBack({ fail: () => uni.switchTab({ url: '/pages/profile/index' }) })
+}
+function current(version: number, token: string) {
+  return !unloaded && version === revision && token === session.token
+}
+async function scan() {
+  if (busy.value) return
+  reset()
+  busy.value = true
+  const version = revision, token = session.token
+  try {
+    const content = await scanWithCamera()
+    if (!current(version, token)) return
+    qr = parseLoginQr(content)
+    await inspect(version, token)
+  } catch (reason) {
+    if (current(version, token) && reason.name !== 'ScanCancelledError') error.value = reason.message
+  } finally {
+    if (current(version, token)) busy.value = false
+  }
+}
+async function inspect(version: number, token: string) {
+  if (!qr) return
+  const value = await scanLoginQr(qr)
+  if (!current(version, token)) return
+  info.value = value
+  deadline = Date.now() + value.expiresIn * 1000
+  remaining.value = value.expiresIn
+  if (timer != null) clearInterval(timer)
+  timer = setInterval(() => { remaining.value = Math.max(0, Math.ceil((deadline - Date.now()) / 1000)) }, 1000)
+  if (['CONFIRMED', 'ISSUING', 'CONSUMED'].includes(value.status)) result.value = '已确认，请返回网页继续'
+  else if (value.status === 'REJECTED') result.value = '已取消登录'
+  else if (value.status === 'FAILED') result.value = '登录未完成，请刷新网页二维码'
+  if (!session.user) await fetchUser()
+}
+async function retry() {
+  if (!qr) { await scan(); return }
+  if (busy.value) return
+  busy.value = true; error.value = ''
+  const version = revision, token = session.token
+  try { await inspect(version, token) }
+  catch (reason) { if (current(version, token)) error.value = reason.message }
+  finally { if (current(version, token)) busy.value = false }
+}
+async function decide(approve: boolean) {
+  if (busy.value || !qr || !info.value || remaining.value <= 0 || !user.value || result.value) return
+  busy.value = true; error.value = ''
+  const version = revision, token = session.token
+  try {
+    await decideLoginQr(qr, approve)
+    if (!current(version, token)) return
+    result.value = approve ? '已确认，请返回网页继续' : '已取消登录'
+    if (timer != null) clearInterval(timer)
+  } catch (reason) { if (current(version, token)) error.value = reason.message }
+  finally { if (current(version, token)) busy.value = false }
+}
+</script>
+
+<template>
+  <view class="tab-page" :class="themeClass('tab-page')">
+    <PageHeader title="扫码登录" back @back="back" />
+    <MobilePage :refresh-disabled="true">
+      <view class="ui-page-body ui-gap-section">
+        <view class="login-panel ui-pad-card" :class="themeClass('login-panel')">
+          <text v-if="!supported" class="login-text" :class="themeClass('login-text')">请在 AIO Life App 或微信小程序中使用扫一扫</text>
+          <template v-else>
+            <LoadingIndicator v-if="busy" label="处理中" />
+            <text v-if="result" class="login-title" :class="themeClass('login-title')" role="status">{{ result }}</text>
+            <template v-else-if="info">
+              <text class="login-title" :class="themeClass('login-title')">确认登录 AIO Life 网页版</text>
+              <text class="login-text" :class="themeClass('login-text')">{{ user?.name || '正在读取账号' }}{{ user?.username ? ' · ' + user.username : '' }}</text>
+              <text class="login-text" :class="themeClass('login-text')">{{ info.browser }}</text>
+              <text class="login-note" :class="themeClass('login-note')">请求时间 {{ requestTime }}</text>
+              <text class="login-code" :class="themeClass('login-code')">{{ info.verificationCode }}</text>
+              <text class="login-note" :class="themeClass('login-note')">仅确认本人发起、且网页核对码一致的登录</text>
+              <text class="login-note" :class="themeClass('login-note')">{{ remaining > 0 ? remaining + ' 秒后过期' : '二维码已过期，请刷新网页后重新扫码' }}</text>
+              <FormActions v-if="remaining > 0">
+                <MobileButton label="取消" variant="quiet" :disabled="busy || !user" @click="decide(false)" />
+                <MobileButton label="确认登录" :loading="busy" :disabled="busy || !user" @click="decide(true)" />
+              </FormActions>
+            </template>
+            <text v-else class="login-text" :class="themeClass('login-text')">扫描网页上的 App 登录二维码</text>
+            <text v-if="error" class="login-error" :class="themeClass('login-error')" role="alert">{{ error }}</text>
+            <MobileButton v-if="error" label="重试" variant="quiet" :loading="busy" @click="retry" />
+            <MobileButton v-if="!info || remaining <= 0 || result" :label="info ? '重新扫码' : '扫一扫'" :loading="busy" @click="scan" />
+          </template>
+        </view>
+      </view>
+    </MobilePage>
+  </view>
+</template>
+
+<style scoped lang="scss">
+@use '../../styles/spacing.scss';
+@use '../../styles/spacing-tokens' as *;
+@use '../../styles/typography' as *;
+.login-panel { gap: $space-section; border-radius: 16px; background-color: #fff; }
+/* 确认内容保持紧凑，宽屏不把短表单拉成整行；页面边距仍由 MobilePage 提供。 */
+/* #ifndef APP */
+.login-panel { width: 100%; max-width: 480px; align-self: center; box-sizing: border-box; }
+/* #endif */
+.login-panel-dark { background-color: #1c1e22; }
+.login-title { @include type-style('title'); color: #27272a; }
+.login-text { @include type-style('body'); color: #27272a; }
+.login-note { @include type-style('caption'); color: #71717a; }
+.login-code { @include type-style('metric'); color: #27272a; }
+.login-title-dark { color: #eeeeef; }
+.login-text-dark { color: #eeeeef; }
+.login-code-dark { color: #eeeeef; }
+.login-note-dark { color: #9c9ca6; }
+.login-error { @include type-style('body'); color: #c65353; }
+.login-error-dark { color: #ed9191; }
+</style>

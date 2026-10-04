@@ -21,9 +21,12 @@ export function getWechatCode() {
   })
 }
 
-export async function fetchWechatEnabled() {
+export async function fetchWechatCapabilities() {
   const data = await request('/auth/wechat/mini/capabilities', 'GET', null, false)
-  return data != null && data.enabled === true
+  return {
+    enabled: data != null && data.enabled === true,
+    registrationEnabled: data != null && data.enabled === true && data.registrationEnabled === true,
+  }
 }
 
 function acceptLogin(data) {
@@ -38,8 +41,8 @@ export async function startWechatLogin() {
   return acceptLogin(await request('/auth/wechat/mini/login', 'POST', { loginCode }, false))
 }
 
-export async function loginWithWechatPhone(loginTicket, phoneCode) {
-  return acceptLogin(await request('/auth/wechat/mini/phone-login', 'POST', { loginTicket, phoneCode }, false))
+export async function registerWithWechat(loginTicket) {
+  return acceptLogin(await request('/auth/wechat/mini/register', 'POST', { loginTicket }, false))
 }
 
 export async function bindWechatAccount(loginTicket, username, password) {

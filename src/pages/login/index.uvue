@@ -3,13 +3,14 @@ import { buttonLabelClasses } from '../../services/button-label.ts'
 import AppIcon from '../../components/AppIcon.uvue'
 import FormField from '../../components/FormField.uvue'
 import PageHeader from '../../components/PageHeader.uvue'
+import { webLoginReturnPath } from '../../services/wechat-web-login.ts'
 import { themeClass } from '../../services/theme.ts'
 import { ref } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
 import { login } from '../../services/api.ts'
-import { validateCredentials, readPhoneCode } from '../../services/contract.ts'
+import { validateCredentials } from '../../services/contract.ts'
 import { restoreSession, session } from '../../services/session.ts'
-import { fetchWechatEnabled, startWechatLogin, loginWithWechatPhone, bindWechatAccount, initializeWechatPassword } from '../../services/wechat-auth.ts'
+import { fetchWechatCapabilities, startWechatLogin, registerWithWechat, bindWechatAccount, initializeWechatPassword } from '../../services/wechat-auth.ts'
 
 const username = ref('')
 const password = ref('')
@@ -20,6 +21,7 @@ const busy = ref(false)
 const errorText = ref('')
 const mode = ref('password')
 const wechatEnabled = ref(false)
+const wechatRegistrationEnabled = ref(false)
 const wechatCapabilityFailed = ref(false)
 const loginTicket = ref('')
 const ticketExpiresAt = ref(0)
@@ -45,7 +47,9 @@ async function loadWechatCapabilities() {
   errorText.value = ''
   wechatCapabilityFailed.value = false
   try {
-    wechatEnabled.value = await fetchWechatEnabled()
+    const capabilities = await fetchWechatCapabilities()
+    wechatEnabled.value = capabilities.enabled
+    wechatRegistrationEnabled.value = capabilities.registrationEnabled
     if (wechatEnabled.value) mode.value = 'wechat'
     capabilitiesLoaded = true
   } catch (_) {
@@ -54,7 +58,7 @@ async function loadWechatCapabilities() {
   } finally { busy.value = false }
 }
 
-function goHome() { uni.reLaunch({ url: '/pages/home/index' }) }
+function goHome() { uni.reLaunch({ url: webLoginReturnPath() || '/pages/home/index' }) }
 
 function switchMode(next) {
   if (busy.value) return
@@ -88,7 +92,7 @@ function acceptWechat(result) {
   }
   loginTicket.value = result.loginTicket
   ticketExpiresAt.value = Date.now() + result.expiresIn * 1000
-  mode.value = result.status === 'BIND_REQUIRED' ? 'bind' : 'phone'
+  mode.value = result.status === 'BIND_REQUIRED' ? 'bind' : 'register'
   if (result.status === 'BIND_REQUIRED') errorText.value = '请登录原账号，验证后绑定微信'
 }
 
@@ -108,19 +112,18 @@ async function wechatLogin() {
   finally { busy.value = false }
 }
 
-async function phoneAuthorized(event) {
-  if (busy.value) return
+async function registerWechat() {
+  if (busy.value || !wechatRegistrationEnabled.value) return
   errorText.value = ''
-  // 拒绝授权不消费票据，可在有效期内重新授权。
-  let code = ''
-  try { requireTicket(); code = readPhoneCode(event.detail) }
+  try { requireTicket() }
   catch (error) { errorText.value = error.message; return }
   busy.value = true
-  try { acceptWechat(await loginWithWechatPhone(loginTicket.value, code)) }
+  try { acceptWechat(await registerWithWechat(loginTicket.value)) }
   catch (error) {
     loginTicket.value = ''
+    ticketExpiresAt.value = 0
     mode.value = 'wechat'
-    errorText.value = error.message || '手机号验证失败，请重新微信登录'
+    errorText.value = error.message || '注册失败，请重新微信登录'
   } finally { busy.value = false }
 }
 
@@ -187,7 +190,7 @@ async function setPassword() {
     <!-- #endif -->
     <view class="login-main">
       <view class="login-content">
-        <text class="login-title ink" :class="themeClass('ink')">{{ mode === 'set-password' ? '设置登录密码' : mode === 'bind' ? '绑定已有账号' : '欢迎回来' }}</text>
+        <text class="login-title ink" :class="themeClass('ink')">{{ mode === 'set-password' ? '设置登录密码' : mode === 'bind' ? '绑定已有账号' : mode === 'register' ? '创建账号' : '欢迎回来' }}</text>
         <text class="login-subtitle muted" :class="themeClass('muted')">{{ mode === 'set-password' ? '设置密码，下次也可使用账号登录。' : mode === 'bind' ? '登录后，将微信绑定到你的账号。' : '让生活，有迹可循。' }}</text>
 
         <view class="login-form">
@@ -196,9 +199,10 @@ async function setPassword() {
             <button class="primary-button" :loading="busy" :disabled="busy" @click="wechatLogin"><text :class="buttonLabelClasses(['primary-button'])">微信登录</text></button>
             <button class="text-button muted ui-pad-sm ui-mt-section" :disabled="busy" @click="switchMode('password')" :class="themeClass('muted')"><text :class="buttonLabelClasses(['text-button muted ui-pad-sm ui-mt-section', themeClass('muted')])">账号密码登录</text></button>
           </view>
-          <view v-if="mode === 'phone'">
-            <button class="primary-button" :open-type="busy ? '' : 'getPhoneNumber'" :loading="busy" :disabled="busy" @getphonenumber="phoneAuthorized"><text :class="buttonLabelClasses(['primary-button'])">授权手机号并注册</text></button>
-            <text class="phone-note muted ui-mt-section" :class="themeClass('muted')">首次使用将创建账号，已有账号请先登录绑定。</text>
+          <view v-if="mode === 'register'">
+            <button v-if="wechatRegistrationEnabled" class="primary-button" :loading="busy" :disabled="busy" @click="registerWechat"><text :class="buttonLabelClasses(['primary-button'])">注册新账号</text></button>
+            <text class="wechat-note muted ui-mt-section" :class="themeClass('muted')">{{ wechatRegistrationEnabled ? '已有账号请先登录绑定，保留原有数据。' : '微信注册暂未开放，可先注册账号后绑定微信。' }}</text>
+            <button v-if="!wechatRegistrationEnabled" class="primary-button ui-mt-section" :disabled="busy" @click="openAuth('register')"><text :class="buttonLabelClasses(['primary-button ui-mt-section'])">注册账号</text></button>
             <button class="text-button muted ui-pad-sm ui-mt-section" :disabled="busy" @click="switchMode('bind')" :class="themeClass('muted')"><text :class="buttonLabelClasses(['text-button muted ui-pad-sm ui-mt-section', themeClass('muted')])">已有账号，登录并绑定</text></button>
             <button class="text-button muted ui-pad-sm ui-mt-section" :disabled="busy" @click="switchMode('wechat')" :class="themeClass('muted')"><text :class="buttonLabelClasses(['text-button muted ui-pad-sm ui-mt-section', themeClass('muted')])">返回微信登录</text></button>
           </view>
@@ -299,7 +303,7 @@ min-height: 100vh;
 .form-message { padding-top: $space-inline; }
 .login-footer { padding: $space-modal $space-page; padding-bottom: calc($space-overlayBlock + env(safe-area-inset-bottom)); text-align: center; @include type-style('caption');  }
 .text-button { display: flex; flex-direction: row; align-items: center; justify-content: center; min-height: $space-controlMin; margin: 0; padding: 0; border: 0; border-radius: 8px; background-color: transparent; @include type-style('body');  }
-.phone-note { @include type-style('caption');  text-align: center; }
+.wechat-note { @include type-style('caption');  text-align: center; }
 .account-note { @include type-style('label');  }
 // 保留登录中的按钮外观，覆盖框架默认禁用底色；禁用行为仍由 disabled 控制。
 .text-button, .password-toggle { background-color: transparent !important; }
