@@ -10,6 +10,8 @@ import MobilePage from '../../components/MobilePage.uvue';
 import FloatingActionButton from '../../components/FloatingActionButton.uvue';
 import MobileButton from '../../components/MobileButton.uvue';
 import FormField from '../../components/FormField.uvue';
+import AppIcon from '../../components/AppIcon.uvue';
+import FormActions from '../../components/FormActions.uvue';
 import PageState from '../../components/PageState.uvue';
 import ConfirmAction from '../../components/ConfirmAction.uvue';
 import AdaptiveModal from '../../components/AdaptiveModal.uvue';
@@ -28,6 +30,7 @@ const rows = ref<any[]>([]),
   category = ref('全部'),
   loading = ref(false),
   saving = ref(false),
+  editingId = ref(''),
   error = ref(''),
   formError = ref(''),
   ready = ref(false),
@@ -209,12 +212,14 @@ async function unlock() {
   }
 }
 async function edit(row = null) {
+  if (saving.value) return;
   if (!master.value) {
     askUnlock(() => edit(row));
     return;
   }
   touch();
   formError.value = '';
+  editingId.value = row?.id || '';
   saving.value = true;
   const token = session.token,
     v = version,
@@ -246,6 +251,7 @@ async function edit(row = null) {
     error.value = e.message;
   } finally {
     saving.value = false;
+    editingId.value = '';
   }
 }
 async function save() {
@@ -370,72 +376,84 @@ function back() {
 }
 </script>
 <template>
-  <view class="tab-page" :class="themeClass('tab-page')"
-    ><PageHeader title="密码管理" back @back="back" /><MobilePage
-      :refreshing="loading"
-      @refresh="load"
-      ><PageState skeleton="list" :loading="loading" :error="error" :empty="ready && !filtered.length" @retry="load"
-        ><view class="vault-tools ui-section"
-          ><FormField compact stretch label="搜索" v-model="query" /><FormField compact stretch
-            label="分类"
-            kind="selector"
-            :options="['全部', ...categories]"
-            v-model="category" /><view class="vault-actions ui-row ui-mt-sm"
-            ><MobileButton
-              v-if="!master"
-              label="解锁"
-              :disabled="!ready"
-              @click="askUnlock" /><MobileButton
-              v-else
-              label="锁定"
-              variant="quiet"
-              @click="lock" /></view></view
-        ><view class="vault-grid ui-gap-section"><view :style="appGridItem(1, 'section', [[768, 2]], false)"
-          v-for="row in filtered"
-          :key="row.id"
-          class="vault-card ui-card"
-          :class="themeClass('vault-card')"
-          ><text class="vault-title">{{ row.title }}</text
-          ><text class="vault-muted" :class="themeClass('vault-muted')">{{ row.category }} · {{ row.website }}</text
-          ><view class="vault-row ui-row"
-            ><text class="vault-value" selectable>{{ master ? row.plainUsername : '••••••' }}</text
-            ><MobileButton
-              label="复制账号"
-              icon="ant-design:copy-outlined"
-              variant="quiet"
-              @click="copy(row.plainUsername)" /></view
-          ><view class="vault-row ui-row"
-            ><text class="vault-value" selectable>{{
-              master && showSecret.includes(row.id) ? row.plainPassword : '••••••••'
-            }}</text
-            ><MobileButton
-              label="显示或隐藏密码"
-              :icon="showSecret.includes(row.id) ? 'ant-design:eye-invisible-outlined' : 'ant-design:eye-outlined'"
-              variant="quiet"
-              @click="reveal(row)" /><MobileButton
-              label="复制密码"
-              icon="ant-design:copy-outlined"
-              variant="quiet"
-              :disabled="master && row.decryptError"
-              @click="copy(row.plainPassword)" /></view
-          ><text v-if="master && row.decryptError" class="error-text"
-            >该记录无法解密，请核对主密码或在原端检查记录</text
-          ><text v-if="master && row.plainRemark" class="vault-muted" :class="themeClass('vault-muted')">{{ row.plainRemark }}</text
-          ><view class="vault-actions ui-row ui-mt-sm"
-            ><MobileButton
-              label="收藏"
-              :icon="row.favorite ? 'ant-design:star-filled' : 'ant-design:star-outlined'"
-              variant="quiet"
-              :loading="favoriteBusy === row.id"
-              @click="favorite(row)" /><MobileButton
-              label="编辑密码"
-              icon="ant-design:edit-outlined"
-              variant="quiet"
-              :loading="saving"
-              @click="edit(row)" /><ConfirmAction
-              label="删除密码"
-              :message="'删除' + row.title + '？'"
-              :action="() => remove(row)" /></view></view></view></PageState><template #fixed><FloatingActionButton label="新增密码" :loading="saving" :disabled="!ready" @click="edit()" /></template></MobilePage
+  <view class="tab-page" :class="themeClass('tab-page')">
+    <PageHeader title="密码管理" back @back="back">
+      <text class="vault-page-title" :class="themeClass('vault-page-title')">密码管理</text>
+      <MobileButton
+        :label="master ? '锁定' : '解锁'"
+        :icon="master ? 'ant-design:unlock-outlined' : 'ant-design:lock-outlined'"
+        variant="ghost"
+        :disabled="!ready"
+        @click="master ? lock() : askUnlock()"
+      />
+    </PageHeader>
+    <MobilePage :refreshing="loading" @refresh="load">
+      <view class="ui-page-body">
+        <view class="vault-tools ui-section">
+          <view class="vault-search" :class="themeClass('vault-search')">
+            <AppIcon name="ant-design:search-outlined" :size="18" />
+            <FormField compact stretch hide-label label="搜索"><input class="vault-search-input" :class="themeClass('vault-search-input')"
+              aria-label="搜索" placeholder="搜索标题或网站" :value="query"
+              @input="query = $event.detail.value" /></FormField>
+            <MobileButton v-if="query" label="清空搜索" icon="ant-design:close-outlined"
+              variant="ghost" @click="query = ''" />
+          </view>
+          <view class="vault-filter">
+            <FormField compact stretch hide-label label="分类" kind="selector"
+              :options="['全部', ...categories]" v-model="category" />
+          </view>
+        </view>
+        <PageState skeleton="list" :loading="loading" :error="error"
+          :empty="ready && !filtered.length" :empty-text="query || category !== '全部' ? '没有匹配的密码' : '暂无密码记录'" @retry="load">
+          <view class="vault-grid ui-gap-section">
+            <view v-for="row in filtered" :key="row.id"
+              :style="appGridItem(1, 'section', [[768, 2]], false)"
+              class="vault-card ui-pad-card" :class="themeClass('vault-card')">
+              <view class="vault-card-header">
+                <view class="vault-heading">
+                  <text class="vault-title">{{ row.title }}</text>
+                  <text v-if="row.category" class="vault-category" :class="themeClass('vault-category')">{{ row.category }}</text>
+                </view>
+                <view class="vault-card-actions">
+                  <MobileButton label="收藏"
+                    :icon="row.favorite ? 'ant-design:star-filled' : 'ant-design:star-outlined'"
+                    variant="ghost" :loading="favoriteBusy === row.id" @click="favorite(row)" />
+                  <MobileButton label="编辑密码" icon="ant-design:edit-outlined" variant="ghost"
+                    :loading="saving && editingId === row.id" @click="edit(row)" />
+                  <ConfirmAction label="删除密码" :message="'删除' + row.title + '？'" :action="() => remove(row)">
+                    <template #default="{ open, busy }">
+                      <MobileButton label="删除密码" icon="ant-design:delete-outlined" variant="ghost"
+                        :loading="busy" @click="open" />
+                    </template>
+                  </ConfirmAction>
+                </view>
+              </view>
+              <text v-if="row.website" class="vault-website vault-muted" :class="themeClass('vault-muted')">{{ row.website }}</text>
+              <view v-if="row.username" class="vault-row">
+                <text class="vault-field-label" :class="themeClass('vault-muted')">账号</text>
+                <text class="vault-value" selectable>{{ master ? row.plainUsername || '—' : '••••••' }}</text>
+                <MobileButton label="复制账号" icon="ant-design:copy-outlined" variant="ghost"
+                  :disabled="!!master && row.decryptError" @click="copy(row.plainUsername)" />
+              </view>
+              <view class="vault-row">
+                <text class="vault-field-label" :class="themeClass('vault-muted')">密码</text>
+                <text class="vault-value" selectable>{{ master && showSecret.includes(row.id) ? row.plainPassword : '••••••••' }}</text>
+                <view class="vault-card-actions">
+                  <MobileButton label="显示或隐藏密码"
+                    :icon="showSecret.includes(row.id) ? 'ant-design:eye-invisible-outlined' : 'ant-design:eye-outlined'"
+                    variant="ghost" :disabled="!!master && row.decryptError" @click="reveal(row)" />
+                  <MobileButton label="复制密码" icon="ant-design:copy-outlined" variant="ghost"
+                    :disabled="!!master && row.decryptError" @click="copy(row.plainPassword)" />
+                </view>
+              </view>
+              <text v-if="master && row.decryptError" class="error-text">该记录无法解密，请核对主密码或在原端检查记录</text>
+              <text v-if="master && row.plainRemark" class="vault-remark vault-muted" :class="themeClass('vault-muted')">{{ row.plainRemark }}</text>
+            </view>
+          </view>
+        </PageState>
+      </view>
+      <template #fixed><FloatingActionButton label="新增密码" :loading="saving && !editingId" :disabled="!ready" @click="edit()" /></template>
+    </MobilePage
     ><AdaptiveModal
       v-if="unlocking"
       label="解锁密码库"
@@ -449,7 +467,7 @@ function back() {
         v-model="confirm" /><text v-if="formError" class="error-text" role="alert">{{
         formError
       }}</text
-      ><MobileButton label="解锁" :loading="saving" @click="unlock" /></AdaptiveModal
+      ><FormActions><MobileButton label="取消" variant="quiet" :disabled="saving" @click="unlocking = false" /><MobileButton label="解锁" :loading="saving" @click="unlock" /></FormActions></AdaptiveModal
     ><AdaptiveModal
       v-if="editing"
       label="密码记录"
@@ -484,7 +502,7 @@ function back() {
           aria-label="收藏密码"
           @change="form.favorite = $event.detail.value" /></view
       ><text v-if="formError" class="error-text" role="alert">{{ formError }}</text
-      ><MobileButton label="保存" :loading="saving" @click="save" /></AdaptiveModal
+      ><FormActions><MobileButton label="取消" variant="quiet" :disabled="saving" @click="editing = false" /><MobileButton label="保存" :loading="saving" @click="save" /></FormActions></AdaptiveModal
   ></view>
 </template>
 <style scoped lang="scss">
@@ -492,55 +510,112 @@ function back() {
 @use '../../styles/spacing.scss';
 @use '../../styles/spacing-tokens' as *;
 @use '../../styles/text-colors' as *;
+.vault-page-title {
+  flex: 1;
+  @include type-style('title');
+  color: #242428;
+}
+.vault-page-title-dark { color: #eeeeef; }
 .vault-tools {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: $space-inline;
+}
+.vault-search {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  flex: 1;
+  min-width: 0;
+  min-height: $space-controlMin;
+  padding-left: $space-card;
+  gap: $space-inline;
+  border-radius: 10px;
+  background-color: #fff;
+}
+.vault-search-dark { background-color: #1c1e22; }
+.vault-search-input {
+  flex: 1;
+  min-width: 0;
+  height: $space-controlMin;
+  @include type-style('body');
+  color: #27272a;
+}
+.vault-search-input-dark { color: #eeeeef; }
+.vault-filter {
+  // 分类选择器保留两字分类与下拉箭头的空间。
+  width: 100px;
+  flex-shrink: 0;
 }
 .vault-grid {
-/* #ifndef APP */
-display: grid;
-/* #endif */
-/* #ifdef APP */
-display: flex; flex-direction: row; flex-wrap: wrap; justify-content: space-between;
-/* #endif */
-
-/* #ifndef APP */
-grid-template-columns: minmax(0, 1fr);
-/* #endif */
- }
-@media (min-width: 768px) { .vault-grid {
-/* #ifndef APP */
-grid-template-columns: repeat(2, minmax(0, 1fr));
-/* #endif */
- } }
+  /* #ifndef APP */
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: start;
+  /* #endif */
+  /* #ifdef APP */
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  /* #endif */
+}
+@media (min-width: 768px) {
+  .vault-grid {
+    /* #ifndef APP */
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    /* #endif */
+  }
+}
 .vault-card {
+  gap: $space-detail;
+  min-width: 0;
   margin-bottom: 0;
   background-color: #fff;
   color: #27272a;
   border-radius: 14px;
 }
-.vault-card-dark {
-  background-color: #1c1e22;
-  color: #eeeeef;
+.vault-card-dark { background-color: #1c1e22; color: #eeeeef; }
+.vault-card-header {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  gap: $space-detail;
 }
-.vault-title {
-  @include type-style('title');
-  overflow-wrap: anywhere;
-
-}
-.vault-muted {
-  @include type-style('label');
+.vault-heading { flex: 1; min-width: 0; }
+.vault-title { @include type-style('title'); overflow-wrap: anywhere; }
+.vault-category {
+  @include type-style('caption');
   color: $text-secondary-light;
-  overflow-wrap: anywhere;
-
+}
+.vault-category-dark { color: $text-secondary-dark; }
+.vault-card-actions {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  flex-shrink: 0;
+}
+.vault-muted { @include type-style('label'); color: $text-secondary-light; overflow-wrap: anywhere; }
+.vault-website {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 .vault-row {
-  min-height: 48px;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: $space-inline;
+  min-height: $space-controlMin;
 }
+.vault-field-label { @include type-style('caption'); color: $text-secondary-light; flex-shrink: 0; }
 .vault-value {
   flex: 1;
+  min-width: 0;
   @include type-style('body');
   word-break: break-all;
 }
-.vault-actions {
-}
+
 .vault-muted-dark { color: $text-secondary-dark; }
 </style>

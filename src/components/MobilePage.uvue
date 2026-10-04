@@ -1,27 +1,36 @@
 <script setup lang="ts">
-import { onMounted, provide } from 'vue';
+import { computed, onMounted, provide } from 'vue';
 import { session } from '../services/session.ts';
 import { themeClass } from '../services/theme.ts';
 import { useRefreshTheme } from '../services/refresh-theme.ts';
 import SecondaryUnlock from './SecondaryUnlock.uvue';
 provide('mobile-page-inset', true);
 const refreshIndicatorStyle = useRefreshTheme();
-const props = withDefaults(defineProps<{ refreshing?: boolean; requiresAuth?: boolean; scrollLocked?: boolean; refreshDisabled?: boolean }>(), {
+const props = withDefaults(defineProps<{ dragScrolling?: boolean; scrollTop?: number; refreshing?: boolean; requiresAuth?: boolean; scrollLocked?: boolean; refreshDisabled?: boolean }>(), {
   requiresAuth: true,
+});
+const scrollEnabled = computed(() => {
+  // H5 仅在 scroll-y 开启时接受 scroll-top；拖动手势自身阻止默认滚动。
+  // #ifdef WEB
+  if (props.dragScrolling) return true;
+  // #endif
+  return !props.scrollLocked;
 });
 // 子组件页面生命周期不可靠；初次挂载检查，401由请求层统一处理。
 onMounted(() => {
   if (props.requiresAuth && session.initialized && !session.token)
     uni.reLaunch({ url: '/pages/login/index' });
 });
-const emit = defineEmits(['refresh', 'reachbottom']);
+const emit = defineEmits(['refresh', 'reachbottom', 'scroll']);
 </script>
 <template>
   <view class="mobile-page" :class="themeClass('mobile-page')">
     <scroll-view
       class="mobile-page-scroll"
-      :direction="scrollLocked ? 'none' : 'vertical'"
-      :scroll-y="!scrollLocked"
+      :scroll-top="scrollTop"
+      @scroll="emit('scroll', $event)"
+      :direction="scrollEnabled ? 'vertical' : 'none'"
+      :scroll-y="scrollEnabled"
       :refresher-enabled="!scrollLocked && !refreshDisabled"
       :refresher-triggered="!!refreshing"
       :refresher-default-style="refreshIndicatorStyle"

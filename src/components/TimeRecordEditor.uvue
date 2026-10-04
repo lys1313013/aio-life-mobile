@@ -29,7 +29,6 @@ import {
   validateRecord,
   adjustRecordTime,
   durationEnd,
-  shiftDate,
 } from '../services/time-format.ts'
 import { timeSelectionBounds } from '../services/time-selection.ts'
 import { clockLabel } from '../services/dashboard-format.ts'
@@ -121,7 +120,6 @@ const layoutKey = computed(() =>
 )
 const selectionKey = computed(() => JSON.stringify(categoryOptions.value))
 let active = true, generation = 0
-let autoDate = false
 let repeating: ReturnType<typeof setInterval> | null = null
 let suppressClickUntil = 0
 onMounted(() => {
@@ -133,7 +131,6 @@ onMounted(() => {
   }
   id.value = props.recordId || ''
   date.value = props.initialDate || todayDate()
-  autoDate = !props.initialDate && !id.value
   initialize()
 })
 onUnmounted(() => {
@@ -178,21 +175,7 @@ async function initialize() {
         })),
       }
     } else {
-      let result
-      if (autoDate) {
-        const yesterday = shiftDate(todayDate(), -1)
-        const previous = await recommendNext(yesterday)
-        if (
-          previous.records.length &&
-          previous.recommend &&
-          Math.max(...previous.records.map((r) => r.endTime)) < 1439 - 60
-        ) {
-          result = previous
-          date.value = yesterday
-        }
-        autoDate = false
-      }
-      result = result || (await recommendNext(date.value))
+      const result = await recommendNext(date.value)
       if (!active || serial !== generation || token !== session.token) return
       existing.value = result.records
       if (!result.recommend) {
@@ -248,7 +231,6 @@ function selectCategory(category: Category) {
   if (isExercise.value && exerciseTypes.value.length === 0) loadExercises()
 }
 function changeDate(event) {
-  autoDate = false
   date.value = event.detail.value
   initialize()
 }
