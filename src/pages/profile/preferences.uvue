@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { isRequired, missingRequired } from '../../services/form-required.ts';
+import { isRequired } from '../../services/form-required.ts';
 import { computed, ref, watch } from 'vue';
 import { onLoad, onHide, onShow } from '@dcloudio/uni-app';
 import PageHeader from '../../components/PageHeader.uvue';
@@ -20,7 +20,6 @@ import {
 const titles = {
   password: '修改密码',
   menus: '菜单显示',
-  keys: 'API Key',
   system: '系统设置',
 };
 const mode = ref('password');
@@ -31,23 +30,19 @@ const loading = ref(false),
   error = ref(''),
   formError = ref(''),
   editing = ref(false);
-const items = ref<any[]>([]),
-  menuItems = ref<any[]>([]),
+const menuItems = ref<any[]>([]),
   hidden = ref<string[]>([]);
-const generatedKey = ref('');
 const form = ref<any>({});
 let revision = 0,
   active = true;
-const expiry = ['永不过期', '1 天', '7 天', '30 天'];
+let legacyKeys = false;
 watch(
   () => session.token,
   () => {
     revision++;
-    items.value = [];
     menuItems.value = [];
     hidden.value = [];
     form.value = {};
-    generatedKey.value = '';
     editing.value = false;
     ready.value = false;
     error.value = '';
@@ -56,9 +51,15 @@ watch(
   { flush: 'sync' },
 );
 onLoad((options) => {
+  if (options?.section === 'keys') {
+    legacyKeys = true;
+    uni.redirectTo({ url: '/pages/mcp/api-keys' });
+    return;
+  }
   mode.value = Object.keys(titles).includes(options?.section || '') ? options.section : 'password';
 });
 onShow(() => {
+  if (legacyKeys) return;
   active = true;
   restoreSession();
   if (!session.token) {
@@ -71,7 +72,6 @@ onHide(() => {
   active = false;
   revision++;
   editing.value = false;
-  generatedKey.value = '';
   form.value = {};
   ready.value = false;
 });
@@ -87,11 +87,6 @@ async function load() {
       if (!active || version !== revision || token !== session.token) return;
       menuItems.value = flat;
       hidden.value = flat.filter((x) => x.hidden).map((x) => x.id);
-    } else if (mode.value === 'keys') {
-      const data: any = await request('/api-key/list');
-      if (!Array.isArray(data)) throw new Error('列表数据异常');
-      if (!active || version !== revision || token !== session.token) return;
-      items.value = data;
     }
     if (version === revision && active) ready.value = true;
   } catch (reason) {
@@ -105,9 +100,7 @@ async function load() {
 }
 function edit() {
   formError.value = '';
-  form.value = mode.value === 'password'
-    ? { oldPassword: '', password: '', confirm: '' }
-    : { remark: '', expiry: expiry[0] };
+  form.value = { oldPassword: '', password: '', confirm: '' };
   editing.value = true;
 }
 async function save() {
@@ -119,16 +112,6 @@ async function save() {
   try {
     if (mode.value === 'password')
       await request('/auth/change-password', 'POST', passwordPayload(form.value));
-    else if (mode.value === 'keys') {
-      if (missingRequired('apiKey', form.value)) throw new Error('请输入备注');
-      const data: any = await request('/api-key/generate', 'POST', {
-        remark: form.value.remark.trim(),
-        expireDays: [0, 1, 7, 30][expiry.indexOf(form.value.expiry)],
-      });
-      if (!data?.apiKey) throw new Error('生成结果异常');
-      if (active && token === session.token && version === revision)
-        generatedKey.value = data.apiKey;
-    }
     if (!active || token !== session.token || version !== revision) return;
     editing.value = false;
     form.value = {};
@@ -138,14 +121,6 @@ async function save() {
   } finally {
     saving.value = false;
   }
-}
-async function remove(row) {
-  const token = session.token;
-  await request(
-    '/api-key/' + encodeURIComponent(row.id),
-    'DELETE',
-  );
-  if (token === session.token && active) items.value = items.value.filter((x) => x.id !== row.id);
 }
 function toggle(id) {
   if (saving.value) return;
@@ -184,10 +159,6 @@ async function clearCache() {
       uni.removeStorageSync(key);
   uni.reLaunch({ url: '/pages/home/index' });
 }
-function mask(value) {
-  const s = String(value || '');
-  return s.length > 12 ? s.slice(0, 8) + '…' + s.slice(-4) : '••••••••';
-}
 function back() {
   uni.navigateBack({ fail: () => uni.switchTab({ url: '/pages/profile/index' }) });
 }
@@ -224,28 +195,6 @@ function back() {
               icon="ant-design:undo-outlined"
               :danger="false"
           /></view>
-        </view>
-        <view v-if="mode === 'keys'" class="preference-list ui-page-body">
-          <MobileButton label="新增" icon="ant-design:plus-outlined" :disabled="!ready" @click="edit()" />
-          <PageState :empty="ready && !items.length" />
-          <view
-            v-for="item in items"
-            :key="item.id"
-            class="preference-surface ui-card"
-            :class="themeClass('preference-surface')"
-          >
-            <text class="preference-title">{{ item.remark }}</text>
-            <text class="preference-detail" :class="themeClass('preference-detail')">{{ mask(item.apiKey) }}</text>
-            <text class="preference-detail" :class="themeClass('preference-detail')"
-              >{{ item.expiredAt || '永不过期' }} · {{ item.createTime }}</text
-            >
-            <view class="preference-actions ui-row ui-mt-section"
-              ><ConfirmAction
-                label="删除"
-                :message="'删除' + item.remark + '？'"
-                :action="() => remove(item)"
-            /></view>
-          </view>
         </view>
         <view
           v-if="mode === 'system'"
@@ -291,38 +240,17 @@ function back() {
           kind="password"
           v-model="form.confirm"
       /></view>
-      <view v-if="mode === 'keys'"
-        ><FormField :required="isRequired('apiKey', 'remark')" label="备注" v-model="form.remark" /><FormField
-          label="有效期"
-          kind="selector"
-          :options="expiry"
-          v-model="form.expiry"
-      /></view>
       <text v-if="formError" class="error-text" role="alert">{{ formError }}</text
       ><MobileButton label="保存" :loading="saving" @click="save" />
-    </AdaptiveModal>
-    <AdaptiveModal
-      v-if="generatedKey"
-      label="新 API Key"
-      :max-width="520"
-      @close="generatedKey = ''"
-    >
-      <text class="preference-detail" :class="themeClass('preference-detail')">仅本次显示完整密钥，请妥善保存。</text
-      ><text class="preference-secret ui-mb-section ui-mt-section" selectable>{{ generatedKey }}</text
-      ><MobileButton label="复制" icon="ant-design:copy-outlined" @click="uni.setClipboardData({ data: generatedKey })" />
     </AdaptiveModal>
   </view>
 </template>
 <style scoped lang="scss">
 @use '../../styles/typography' as *;
-@use '../../styles/text-colors' as *;
 @use '../../styles/spacing.scss';
 @use '../../styles/spacing-tokens' as *;
 @include type-utilities('body');
 
-.preference-list {
-
-}
 .preference-surface {
   background-color: #fff;
   color: #27272a;
@@ -348,24 +276,5 @@ function back() {
 
   align-items: center;
 
-}
-.preference-title {
-  @include type-style('title');
-
-}
-.preference-detail {
-  @include type-style('label');
-
-  color: $text-secondary-light;
-}
-.preference-secret {
-  @include type-style('body');
-
-  word-break: break-all;
-
-}
-
-.preference-detail-dark {
-  color: $text-secondary-dark;
 }
 </style>

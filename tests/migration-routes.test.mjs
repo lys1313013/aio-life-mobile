@@ -14,7 +14,7 @@ const businessPaths=[
  '/relationship/graph','/record/password','/password-manager','/coding/github','/coding/leetcode','/coding/csdn',
  '/finance/dashboard','/finance/income','/finance/expense','/finance/import','/finance/bank-cards',
  '/finance-management/dashboard','/finance-management/income','/finance-management/expense','/finance-management/import','/finance-management/bank-cards',
- '/my-hub/device','/wardrobe','/membership','/message','/mcp/tools',
+ '/my-hub/device','/wardrobe','/membership','/message','/mcp/tools','/mcp/api-keys',
  '/config-management/sysDictType','/config-management/sysDictData','/system/user','/system/menu','/system/user-dict','/system/feedback','/system/config','/system/operation-log','/system/access-log',
  '/system/bank-card-covers','/system/storage',
 ]

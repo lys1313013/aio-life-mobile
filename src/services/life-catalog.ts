@@ -37,6 +37,7 @@ const nativePages = {
   "/time/my-categories": "/pages/categories/index",
   "/time/category-admin": "/pages/categories/index?admin=1",
   "/mcp/tools": "/pages/mcp/index",
+  "/mcp/api-keys": "/pages/mcp/api-keys",
   "/relationship": "/pages/relationship/index",
   "/relationship/graph": "/pages/relationship/index",
   "/password-manager": "/pages/vault/index",

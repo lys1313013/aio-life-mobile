@@ -1,51 +1,67 @@
 <script setup lang="ts">
-import { useAppLayout } from '../../services/app-layout.ts'
-const { appGridItem } = useAppLayout()
+import { computed, onUnmounted, ref } from "vue";
+import MobilePage from "../../components/MobilePage.uvue";
+import PageHeader from "../../components/PageHeader.uvue";
+import MobileButton from "../../components/MobileButton.uvue";
+import AppIcon from "../../components/AppIcon.uvue";
+import PageState from "../../components/PageState.uvue";
+import FormField from "../../components/FormField.uvue";
+import FormActions from "../../components/FormActions.uvue";
+import AdaptiveModal from "../../components/AdaptiveModal.uvue";
+import { toolFields, buildToolArguments } from "./services/mcp-schema.ts";
+import { toolGroups, toolPresentation } from "./services/presentation.ts";
+import { fetchTools, callTool } from "../../services/domains/social.ts";
+import { useDomainPage } from "../../services/domains/page-session.ts";
+import { apiUrl } from "../../services/api.ts";
+import { isDark, themeClass } from "../../services/theme.ts";
 
-import { computed, onMounted, onUnmounted, ref } from 'vue';
-import MobilePage from '../../components/MobilePage.uvue';
-import PageHeader from '../../components/PageHeader.uvue';
-import MobileButton from '../../components/MobileButton.uvue';
-import PageState from '../../components/PageState.uvue';
-import FormField from '../../components/FormField.uvue';
-import AdaptiveModal from '../../components/AdaptiveModal.uvue';
-import { toolFields, buildToolArguments } from './services/mcp-schema.ts';
-import { fetchTools, callTool } from '../../services/domains/social.ts';
-import { useDomainPage } from '../../services/domains/page-session.ts';
-import { apiUrl } from '../../services/api.ts';
-import { themeClass } from '../../services/theme.ts';
 const guideOpen = ref(false);
-let serviceAddress = apiUrl('/mcp');
+let serviceAddress = apiUrl("/mcp");
 // #ifdef WEB
 serviceAddress = new URL(serviceAddress, window.location.origin).toString();
 // #endif
-const clientConfig = JSON.stringify({mcpServers: {'aio-life': {type: 'streamable-http', url: serviceAddress, headers: {Authorization: 'Bearer <your-api-key>'}}}}, null, 2);
-const tools = ref<any[]>([]),
-  keyword = ref(''),
-  loading = ref(false),
-  refreshing = ref(false),
-  busy = ref(false),
-  error = ref(''),
-  callError = ref(''),
-  current = ref<any>(null),
-  args = ref<Record<string, any>>({}),
-  result = ref<any>(null);
-let alive = true,
-  stamp = 0;
+const clientConfig = JSON.stringify(
+  {
+    mcpServers: {
+      "aio-life": {
+        type: "streamable-http",
+        url: serviceAddress,
+        headers: { Authorization: "Bearer <your-api-key>" },
+      },
+    },
+  },
+  null,
+  2,
+);
+const tools = ref<any[]>([]);
+const keyword = ref("");
+const activeGroup = ref("all");
+const loading = ref(false);
+const refreshing = ref(false);
+const busy = ref(false);
+const error = ref("");
+const callError = ref("");
+const current = ref<any>(null);
+const args = ref<Record<string, any>>({});
+const result = ref<any>(null);
+let alive = true;
+let stamp = 0;
+let callStamp = 0;
 onUnmounted(() => {
   alive = false;
+  callStamp++;
 });
 async function load() {
-  const current = ++stamp;
+  const requestStamp = ++stamp;
   loading.value = true;
-  error.value = '';
+  error.value = "";
   try {
     const data = await fetchTools();
-    if (alive && stamp === current) tools.value = data;
+    if (alive && stamp === requestStamp) tools.value = data;
   } catch (e) {
-    if (alive) error.value = e.message;
+    if (alive && stamp === requestStamp) error.value = e.message;
   } finally {
-    if (alive) {
+    if (alive && stamp === requestStamp) {
       loading.value = false;
       refreshing.value = false;
     }
@@ -59,42 +75,94 @@ useDomainPage(
   () => {
     alive = false;
     stamp++;
+    callStamp++;
     tools.value = [];
     current.value = null;
+    guideOpen.value = false;
     args.value = {};
     result.value = null;
+    busy.value = false;
     loading.value = false;
     refreshing.value = false;
   },
 );
-const filtered = computed(() =>
-  tools.value.filter((item) =>
-    (item.name + ' ' + item.description).toLowerCase().includes(keyword.value.toLowerCase()),
+const groups = computed(() =>
+  toolGroups.filter(
+    (group) =>
+      group.value === "all" ||
+      tools.value.some((tool) => toolPresentation(tool).group === group.value),
   ),
 );
+const filtered = computed(() =>
+  tools.value.filter((tool) => {
+    const info = toolPresentation(tool);
+    return (
+      (activeGroup.value === "all" || info.group === activeGroup.value) &&
+      (info.title + " " + tool.name + " " + tool.description)
+        .toLowerCase()
+        .includes(keyword.value.trim().toLowerCase())
+    );
+  }),
+);
+const groupIcons: Record<string, string> = {
+  time: "ant-design:clock-circle-outlined",
+  plan: "ant-design:check-outlined",
+  learn: "ant-design:book-outlined",
+  life: "ant-design:appstore-outlined",
+  other: "ant-design:appstore-outlined",
+};
 const fields = computed(() => toolFields(current.value?.inputSchema || {}));
+const resultText = computed(
+  () =>
+    result.value?.content
+      ?.map((item) => {
+        if (!item.text) return JSON.stringify(item, null, 2);
+        try {
+          return JSON.stringify(JSON.parse(item.text), null, 2);
+        } catch {
+          return item.text;
+        }
+      })
+      .join("\n") || "无返回内容",
+);
 function open(tool: any) {
+  if (busy.value) return;
   current.value = tool;
   args.value = {};
   result.value = null;
-  callError.value = '';
+  callError.value = "";
+}
+function close() {
+  if (!busy.value) current.value = null;
 }
 async function run() {
-  if (busy.value) return;
-  callError.value = '';
+  if (busy.value || !current.value) return;
+  const requestStamp = ++callStamp;
+  callError.value = "";
+  result.value = null;
   try {
     const data = buildToolArguments(current.value.inputSchema, args.value);
     busy.value = true;
-    const currentStamp = stamp;
     const value = await callTool(current.value.name, data);
-    if (alive && stamp === currentStamp) result.value = value;
+    if (alive && callStamp === requestStamp) result.value = value;
   } catch (e) {
-    callError.value = e.message;
+    if (alive && callStamp === requestStamp) callError.value = e.message;
   } finally {
-    busy.value = false;
+    if (alive && callStamp === requestStamp) busy.value = false;
   }
 }
+function copy(value: string) {
+  uni.setClipboardData({
+    data: value,
+    fail: () => uni.showToast({ title: "复制失败，请长按复制", icon: "none" }),
+  });
+}
+function manageKeys() {
+  guideOpen.value = false;
+  uni.navigateTo({ url: "/pages/mcp/api-keys" });
+}
 </script>
+
 <template>
   <MobilePage
     :refreshing="refreshing"
@@ -102,45 +170,278 @@ async function run() {
       refreshing = true;
       load();
     "
-    ><PageHeader title="MCP 工具" back @back="uni.navigateBack()" /><view
-      class="body ui-page-body"
-      :class="themeClass('body')"
-      ><view class="tool-toolbar ui-toolbar">
-        <FormField compact stretch hide-label label="搜索工具名称或描述" placeholder="搜索工具名称或描述" v-model="keyword" />
-        <MobileButton label="配置指南" icon="ant-design:question-circle-outlined" variant="quiet" @click="guideOpen = !guideOpen" />
-      </view>
-      <view v-if="guideOpen" class="guide ui-card" :class="themeClass('guide')">
-        <view class="guide-body ui-gap-sm">
-          <text class="title">配置指南</text>
-          <text class="description" :class="themeClass('description')">服务地址</text><text class="config-code" selectable>{{ serviceAddress }}</text>
-          <text class="description" :class="themeClass('description')">传输类型</text><text class="ui-type-body">Streamable HTTP</text>
-          <text class="description" :class="themeClass('description')">认证方式</text><text class="config-code" selectable>Authorization: Bearer &lt;API Key&gt;</text>
-          <MobileButton label="管理 API Key" icon="ant-design:key-outlined" variant="quiet" @click="uni.navigateTo({url:'/pages/profile/preferences?section=keys'})" />
-          <text class="description" :class="themeClass('description')">客户端配置</text><text class="config-code" selectable>{{ clientConfig }}</text>
+  >
+    <PageHeader title="MCP 工具" back @back="uni.navigateBack()">
+      <text class="navigation-title" :class="themeClass('navigation-title')"
+        >MCP 工具</text
+      >
+      <MobileButton
+        label="连接配置"
+        icon="ant-design:setting-outlined"
+        variant="ghost"
+        @click="guideOpen = true"
+      />
+    </PageHeader>
+    <view class="body ui-page-body" :class="themeClass('body')">
+      <view class="connection ui-card" :class="themeClass('surface')">
+        <view class="connection-icon" :class="themeClass('connection-icon')"
+          ><AppIcon
+            name="ant-design:link-outlined"
+            :size="22"
+            :color="isDark ? '#9bbcff' : '#427bea'"
+        /></view>
+        <view class="connection-info">
+          <view class="connection-heading"
+            ><text class="connection-title" :class="themeClass('primary-text')"
+              >AIO Life</text
+            ><text class="protocol" :class="themeClass('secondary-text')"
+              >Streamable HTTP</text
+            ></view
+          >
+          <text
+            class="connection-address"
+            :class="themeClass('secondary-text')"
+            selectable
+            >{{ serviceAddress }}</text
+          >
         </view>
+        <MobileButton
+          label="复制服务地址"
+          icon="ant-design:copy-outlined"
+          variant="ghost"
+          @click="copy(serviceAddress)"
+        />
       </view>
-      <text class="description ui-section" :class="themeClass('description')">{{ keyword ? filtered.length + ' / ' : '' }}{{ tools.length }} 个工具</text>
-      <PageState skeleton="list" :loading="loading" :error="error" :empty="!loading && !filtered.length" @retry="load">
-        <view class="tool-grid">
-          <view :style="appGridItem(1, 'section', [[768, 2]], false)" v-for="tool in filtered" :key="tool.name" class="tool ui-card" :class="themeClass('tool')">
-            <view class="tool-heading ui-row">
-              <view class="tool-identity">
-                <text class="tool-name" :class="themeClass('tool-name')">{{ tool.name }}</text>
-                <text class="parameter-count" :class="themeClass('parameter-count')">{{ Object.keys(tool.inputSchema?.properties || {}).length }} 参数</text>
-              </view>
-              <MobileButton :label="'输入参数并调用 ' + tool.name" icon="ant-design:play-circle-outlined" variant="quiet" @click="open(tool)" />
-            </view>
-            <text class="tool-description" :class="themeClass('tool-description')">{{ tool.description }}</text>
-          </view>
-        </view>
-      </PageState></view
-    ><AdaptiveModal v-if="current" :label="current.name" :busy="busy" @close="current = null"
-      ><text class="tool-modal-name">{{ current.name }}</text
-      ><text class="ui-type-body tool-content">{{ current.description }}</text><text v-if="!fields.length" class="description ui-section" :class="themeClass('description')">该工具无需输入参数</text
-      ><view v-for="field in fields" :key="field.name"
+      <view class="tool-toolbar ui-toolbar"
         ><FormField
+          v-model="keyword"
+          compact
+          stretch
+          hide-label
+          label="搜索工具"
+          placeholder="搜索名称或描述" /><MobileButton
+          v-if="keyword"
+          label="清除搜索"
+          icon="ant-design:close-outlined"
+          variant="ghost"
+          @click="keyword = ''"
+      /></view>
+      <scroll-view
+        direction="horizontal"
+        :scroll-x="true"
+        :show-scrollbar="false"
+        class="group-scroll"
+      >
+        <view class="group-tabs">
+          <button
+            v-for="group in groups"
+            :key="group.value"
+            role="button"
+            :aria-label="group.label"
+            :aria-pressed="activeGroup === group.value"
+            class="group-tab"
+            :class="[
+              { 'group-tab-active': activeGroup === group.value },
+              themeClass({ 'group-tab-active': activeGroup === group.value }),
+            ]"
+            @click="activeGroup = group.value"
+          >
+            <text
+              class="group-label"
+              :class="[
+                { 'group-label-active': activeGroup === group.value },
+                themeClass([
+                  'secondary-text',
+                  { 'group-label-active': activeGroup === group.value },
+                ]),
+              ]"
+              >{{ group.label }}</text
+            >
+          </button>
+        </view>
+      </scroll-view>
+      <view class="list-caption"
+        ><text class="caption" :class="themeClass('secondary-text')"
+          >工具目录</text
+        ><text class="caption" :class="themeClass('secondary-text')"
+          >{{ filtered.length }} 个工具</text
+        ></view
+      >
+      <PageState
+        skeleton="list"
+        :loading="loading"
+        :error="error"
+        :has-content="tools.length > 0"
+        :empty="!loading && !filtered.length"
+        :empty-text="tools.length ? '没有匹配的工具' : '暂无 MCP 工具'"
+        @retry="load"
+      >
+        <view
+          v-if="filtered.length"
+          class="tool-list"
+          :class="themeClass('surface')"
+        >
+          <button
+            v-for="(tool, index) in filtered"
+            :key="tool.name"
+            role="button"
+            :aria-label="'输入参数并调用 ' + tool.name"
+            class="tool-row"
+            :class="[{ 'tool-row-divided': index > 0 }, themeClass('tool-row')]"
+            hover-class="tool-row-pressed"
+            @click="open(tool)"
+          >
+            <view class="tool-icon"
+              ><AppIcon
+                :name="groupIcons[toolPresentation(tool).group]"
+                :size="20"
+                :color="isDark ? '#a7afbe' : '#657085'"
+            /></view>
+            <view class="tool-content">
+              <view class="tool-labels"
+                ><view class="tool-heading"
+                  ><text
+                    class="tool-title"
+                    :class="themeClass('primary-text')"
+                    >{{ toolPresentation(tool).title }}</text
+                  ><text
+                    class="parameter-count"
+                    :class="themeClass('secondary-text')"
+                    >{{
+                      Object.keys(tool.inputSchema?.properties || {}).length
+                        ? Object.keys(tool.inputSchema.properties).length +
+                          " 参数"
+                        : "无参数"
+                    }}</text
+                  ></view
+                >
+                <text class="tool-name" :class="themeClass('secondary-text')">{{
+                  tool.name
+                }}</text></view
+              >
+              <text
+                class="tool-description"
+                :class="themeClass('secondary-text')"
+                >{{ toolPresentation(tool).summary }}</text
+              >
+            </view>
+            <view class="tool-open"
+              ><AppIcon
+                name="ant-design:right-outlined"
+                :size="14"
+                color="#8792a5"
+            /></view>
+          </button>
+        </view>
+      </PageState>
+    </view>
+
+    <AdaptiveModal
+      v-if="guideOpen"
+      label="连接配置"
+      :max-width="600"
+      @close="guideOpen = false"
+    >
+      <view class="panel-heading"
+        ><text class="panel-title" :class="themeClass('primary-text')"
+          >连接 AIO Life</text
+        ><MobileButton
+          label="关闭配置"
+          icon="ant-design:close-outlined"
+          variant="ghost"
+          @click="guideOpen = false"
+      /></view>
+      <view class="config-block" :class="themeClass('config-block')"
+        ><view class="config-heading"
+          ><text class="caption" :class="themeClass('secondary-text')"
+            >服务地址</text
+          ><MobileButton
+            label="复制服务地址"
+            icon="ant-design:copy-outlined"
+            variant="ghost"
+            @click="copy(serviceAddress)" /></view
+        ><text
+          class="config-code"
+          :class="themeClass('primary-text')"
+          selectable
+          >{{ serviceAddress }}</text
+        ></view
+      >
+      <view class="config-facts"
+        ><text class="caption" :class="themeClass('secondary-text')"
+          >Streamable HTTP</text
+        ><text class="caption" :class="themeClass('secondary-text')"
+          >Bearer API Key</text
+        ></view
+      >
+      <view class="config-heading"
+        ><text class="section-title" :class="themeClass('primary-text')"
+          >客户端配置</text
+        ><MobileButton
+          label="复制客户端配置"
+          icon="ant-design:copy-outlined"
+          variant="ghost"
+          @click="copy(clientConfig)"
+      /></view>
+      <view class="config-block" :class="themeClass('config-block')"
+        ><text
+          class="config-code"
+          :class="themeClass('primary-text')"
+          selectable
+          >{{ clientConfig }}</text
+        ></view
+      >
+      <view class="panel-actions"
+        ><FormActions
+          ><MobileButton
+            label="管理 API Key"
+            @click="manageKeys" /></FormActions
+      ></view>
+    </AdaptiveModal>
+
+    <AdaptiveModal
+      v-if="current"
+      :label="current.name"
+      :busy="busy"
+      :max-width="640"
+      @close="close"
+    >
+      <view class="panel-heading"
+        ><text class="panel-title" :class="themeClass('primary-text')">{{
+          toolPresentation(current).title
+        }}</text
+        ><MobileButton
+          label="关闭工具"
+          icon="ant-design:close-outlined"
+          variant="ghost"
+          :disabled="busy"
+          @click="close"
+      /></view>
+      <text class="modal-tool-name" :class="themeClass('secondary-text')">{{
+        current.name
+      }}</text>
+      <text class="modal-description" :class="themeClass('secondary-text')">{{
+        current.description
+      }}</text>
+      <view class="section-heading"
+        ><text class="section-title" :class="themeClass('primary-text')"
+          >输入参数</text
+        ><text class="caption" :class="themeClass('secondary-text')">{{
+          fields.length
+        }}</text></view
+      >
+      <text
+        v-if="!fields.length"
+        class="no-params"
+        :class="themeClass('secondary-text')"
+        >无需填写参数，可直接调用。</text
+      >
+      <view v-for="field in fields" :key="field.name" class="parameter-field">
+        <FormField
+          compact
           :label="field.name"
           :required="field.isRequired"
+          :disabled="busy"
           :kind="
             field.enum || field.type === 'boolean'
               ? 'selector'
@@ -148,125 +449,416 @@ async function run() {
                 ? 'textarea'
                 : 'text'
           "
-          :options="field.enum?.map((value) => String(value)) || ['true', 'false']"
+          :options="
+            field.enum?.map((value) => String(value)) || ['true', 'false']
+          "
+          :placeholder="
+            field.type === 'object' || field.type === 'array'
+              ? '输入 JSON'
+              : '请输入'
+          "
           v-model="args[field.name]"
-        /><text v-if="field.description" class="description ui-section" :class="themeClass('description')">{{ field.description }}</text></view
-      ><text v-if="callError" class="error ui-py-section ui-type-body">{{ callError }}</text
-      ><MobileButton label="执行工具" :loading="busy" @click="run" /><view
-        v-if="result"
-        class="result ui-gap-md ui-mt-section"
-        ><text v-if="result.isError" class="error ui-py-section ui-type-body">工具返回错误</text
-        ><text class="ui-type-body tool-content" v-for="(item, index) in result.content" :key="index" selectable>{{
-          item.text || JSON.stringify(item)
-        }}</text></view
-      ></AdaptiveModal
-    ></MobilePage
-  >
+        />
+        <text class="field-description" :class="themeClass('secondary-text')"
+          >{{ field.type
+          }}{{ field.description ? " · " + field.description : "" }}</text
+        >
+      </view>
+      <text v-if="callError" class="error" role="alert">{{ callError }}</text>
+      <view v-if="result" class="result">
+        <view class="config-heading"
+          ><text class="section-title" :class="themeClass('primary-text')">{{
+            result.isError ? "调用失败" : "返回结果"
+          }}</text
+          ><MobileButton
+            label="复制返回结果"
+            icon="ant-design:copy-outlined"
+            variant="ghost"
+            @click="copy(resultText)"
+        /></view>
+        <view class="config-block" :class="themeClass('config-block')"
+          ><text
+            class="result-code"
+            :class="[
+              { error: result.isError },
+              themeClass({ 'primary-text': !result.isError }),
+            ]"
+            selectable
+            >{{ resultText }}</text
+          ></view
+        >
+      </view>
+      <view class="panel-actions"
+        ><FormActions
+          ><MobileButton
+            label="关闭"
+            variant="quiet"
+            :disabled="busy"
+            @click="close" /><MobileButton
+            label="执行工具"
+            icon="ant-design:play-circle-outlined"
+            :loading="busy"
+            @click="run" /></FormActions
+      ></view>
+    </AdaptiveModal>
+  </MobilePage>
 </template>
-<style scoped lang="scss">
-@use '../../styles/typography' as *;
-@use '../../styles/spacing.scss';
-@use '../../styles/spacing-tokens' as *;
-@use '../../styles/text-colors' as *;
-@include type-utilities('body');
 
+<style scoped lang="scss">
+@use "../../styles/typography" as *;
+@use "../../styles/spacing.scss";
+@use "../../styles/spacing-tokens" as *;
+@use "../../styles/text-colors" as *;
 .body {
   color: #263248;
 }
 .body-dark {
   color: #e7e9ee;
 }
-.tool-grid {
-
-/* #ifndef APP */
-display: grid;
-/* #endif */
-/* #ifdef APP */
-display: flex; flex-direction: row; flex-wrap: wrap; justify-content: space-between;
-/* #endif */
-
-/* #ifndef APP */
-grid-template-columns: minmax(0, 1fr);
-/* #endif */
-
-  gap: $space-section;
+.navigation-title {
+  flex: 1;
+  @include type-style("title");
+  color: #242428;
 }
-.tool-heading { align-items: flex-start; }
-.tool-identity { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: $space-detail; }
-.tool-name { font-family: type-family('mono'); @include type-style('body-strong');   color: #2563b8; overflow-wrap: anywhere; }
-.tool-name-dark { color: #8cb4fb; }
-.parameter-count { padding: $space-micro $space-detail; border-radius: 4px; @include type-style('badge'); color: #547092; background-color: #edf3fc; }
-.parameter-count-dark { color: #a8bfdf; background-color: #263448; }
-.tool-description { color: $text-secondary-light; @include type-style('label');  overflow-wrap: anywhere; }
-.tool-description-dark { color: $text-secondary-dark; }
-@media (min-width: 768px) { .tool-grid {
-/* #ifndef APP */
-grid-template-columns: repeat(2, minmax(0, 1fr));
-/* #endif */
- } }
-.tool {
-  min-width: 0;
-  margin-bottom: 0;
+.navigation-title-dark {
+  color: #eeeeef;
+}
+.connection {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
   gap: $space-inline;
   background-color: #ffffff;
-  border-radius: 14px;
+  border-radius: 12px;
+}
+.connection-icon {
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  border-radius: 10px;
+  background-color: #eef3fd;
+}
+.connection-icon-dark {
+  background-color: #252f41;
+}
+.connection-info {
+  flex: 1;
+  min-width: 0;
   display: flex;
   flex-direction: column;
+  gap: $space-detail;
 }
-.title {
-
-  @include type-style('title');
-
-/* #ifndef APP */
-display: block;
-/* #endif */
-/* #ifdef APP */
-display: flex;
-/* #endif */
-
+.connection-heading {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: $space-detail $space-inline;
 }
-.description {
+.connection-title {
+  @include type-style("body-strong");
+  color: #263248;
+}
+.protocol {
+  @include type-style("badge");
   color: $text-secondary-light;
-  @include type-style('label');
-
-/* #ifndef APP */
-display: block;
-/* #endif */
-/* #ifdef APP */
-display: flex;
-/* #endif */
-
 }
-.error {
-  color: #dc5454;
-
-/* #ifndef APP */
-display: block;
-/* #endif */
-/* #ifdef APP */
-display: flex;
-/* #endif */
-
+.connection-address {
+  @include type-style("caption");
+  font-family: type-family('mono');
+  color: $text-secondary-light;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.tool-toolbar {
+  margin-bottom: $space-inline;
+}
+.group-scroll {
+  width: 100%;
+  margin-top: $space-detail;
+}
+.group-tabs {
+  display: flex;
+  flex-direction: row;
+  gap: $space-detail;
+}
+.group-tab {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: $space-controlMin;
+  flex-shrink: 0;
+  padding: 0 $space-card;
+  margin: 0;
+  border: 0;
+  border-radius: 8px;
+  background-color: transparent;
+}
+.group-tab-active {
+  background-color: #e6eefc;
+}
+.group-tab-active-dark {
+  background-color: #253149;
+}
+.group-label {
+  @include type-style("label");
+  color: $text-secondary-light;
+  white-space: nowrap;
+}
+.group-label-active {
+  color: #245cb2;
+  @include type-style("label-strong");
+}
+.group-label-active-dark {
+  color: #a5c3ff;
+}
+.list-caption {
+  display: flex;
+  flex-direction: row;
+  justify-content: space-between;
+  margin-top: $space-section;
+  margin-bottom: $space-inline;
+}
+.caption {
+  @include type-style("caption");
+  color: $text-secondary-light;
+}
+.tool-list {
+  background-color: #ffffff;
+  border-radius: 12px;
+  overflow: hidden;
+}
+.tool-row {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: $space-inline;
+  width: 100%;
+  margin: 0;
+  padding: $space-card;
+  box-sizing: border-box;
+  background-color: transparent;
+  border: 0;
+  border-radius: 0;
+  text-align: left;
+}
+.tool-row-divided {
+  border-top: $space-hairline solid #edf0f4;
+}
+.tool-row-dark {
+  border-color: #2b2e35;
+}
+.tool-row-pressed {
+  opacity: 0.7;
+}
+.tool-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  align-self: flex-start;
+  padding-top: $space-micro;
+  width: 28px;
+  flex-shrink: 0;
+}
+.tool-content {
+  display: flex;
+  flex-direction: column;
+  gap: $space-detail;
+  flex: 1;
+  min-width: 0;
+}
+.tool-labels {
+  display: flex;
+  flex-direction: column;
+  gap: $space-detail;
+  min-width: 0;
+}
+.tool-heading {
+  display: flex;
+  flex-direction: row;
+  align-items: baseline;
+  gap: $space-inline;
+}
+.tool-title {
+  flex: 1;
+  min-width: 0;
+  @include type-style("body-strong");
+  color: #263248;
+  overflow-wrap: anywhere;
+}
+.parameter-count {
+  @include type-style("badge");
+  color: $text-secondary-light;
+  flex-shrink: 0;
+}
+.tool-name {
+  @include type-style("badge");
+  font-family: type-family('mono');
+  color: $text-secondary-light;
+  overflow-wrap: anywhere;
+}
+.tool-description {
+  @include type-style("label");
+  color: $text-secondary-light;
+  overflow-wrap: anywhere;
+}
+.tool-open {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  flex-shrink: 0;
+}
+.panel-heading {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: $space-inline;
+}
+.panel-title {
+  @include type-style("title");
+  color: #263248;
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.config-block {
+  display: flex;
+  flex-direction: column;
+  padding: $space-card;
+  background-color: #f1f3f7;
+  border-radius: 10px;
+}
+.config-block-dark {
+  background-color: #25282f;
+}
+.config-heading {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: $space-inline;
+}
+.config-code {
+  @include type-style("caption");
+  font-family: type-family('mono');
+  color: #263248;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.config-facts {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: $space-section;
+  margin: $space-section 0;
+}
+.section-title {
+  @include type-style("label-strong");
+  color: #263248;
+}
+.section-heading {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: $space-section;
+  margin-bottom: $space-inline;
+}
+.modal-tool-name {
+  @include type-style("caption");
+  font-family: type-family('mono');
+  color: $text-secondary-light;
+  overflow-wrap: anywhere;
+}
+.modal-description {
+  display: flex;
+  @include type-style("prose");
+  color: $text-secondary-light;
+  margin-top: $space-inline;
+  overflow-wrap: anywhere;
+}
+.no-params {
+  display: flex;
+  @include type-style("label");
+  color: $text-secondary-light;
+  padding: $space-inline 0;
+}
+.parameter-field {
+  display: flex;
+  flex-direction: column;
+  margin-bottom: $space-form;
+}
+.field-description {
+  @include type-style("caption");
+  color: $text-secondary-light;
+  margin-top: $space-detail;
+  overflow-wrap: anywhere;
 }
 .result {
-  display: flex;
-  flex-direction: column;
+  margin-top: $space-section;
 }
-.guide { background-color: #ffffff; border-radius: 14px; }
-.guide-heading { align-items: center; justify-content: space-between; }
-.guide-body { display: flex; flex-direction: column; }
-.guide-dark, .tool-dark { background-color: #1c1e22; }
-.config-code { font-family: type-family('mono'); @include type-style('caption'); overflow-wrap: anywhere; white-space: pre-wrap; }
-
-.description-dark { color: $text-secondary-dark; }
-.description { overflow-wrap: anywhere; }
-.tool-modal-name { @include type-style('title'); font-family: type-family('mono');
-/* #ifndef APP */
-display: block;
+.result-code {
+  @include type-style("caption");
+  font-family: type-family('mono');
+  color: #263248;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.error {
+  display: flex;
+  @include type-style("label");
+  color: #d14d55;
+  margin-top: $space-inline;
+  overflow-wrap: anywhere;
+}
+.panel-actions {
+  margin-top: $space-modal;
+}
+.surface-dark {
+  background-color: #1c1e22;
+}
+.primary-text-dark {
+  color: #e7e9ee;
+}
+.secondary-text-dark {
+  color: $text-secondary-dark;
+}
+@media (min-width: 768px) {
+  .tool-content {
+    flex-direction: row;
+    align-items: center;
+    gap: $space-section;
+  }
+  .tool-labels {
+    width: 54%;
+    flex-shrink: 0;
+  }
+  .tool-description {
+    flex: 1;
+    min-width: 0;
+  }
+  .tool-icon {
+    align-self: center;
+    padding-top: 0;
+  }
+}
+/* #ifdef WEB || MP-WEIXIN */
+.group-tab::after,
+.tool-row::after {
+  border: 0;
+}
 /* #endif */
-/* #ifdef APP */
-display: flex;
+/* #ifdef WEB */
+.group-tab:focus-visible,
+.tool-row:focus-visible {
+  outline: 2px solid #739feb;
+  outline-offset: -2px;
+}
 /* #endif */
- overflow-wrap: anywhere; }
-.tool-content { @include type-style('prose'); white-space: pre-wrap; overflow-wrap: anywhere; }
 </style>

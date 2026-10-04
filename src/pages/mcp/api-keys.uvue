@@ -1,0 +1,282 @@
+<script setup lang="ts">
+import { ref } from "vue";
+import MobilePage from "../../components/MobilePage.uvue";
+import PageHeader from "../../components/PageHeader.uvue";
+import MobileButton from "../../components/MobileButton.uvue";
+import PageState from "../../components/PageState.uvue";
+import FormField from "../../components/FormField.uvue";
+import FormActions from "../../components/FormActions.uvue";
+import ConfirmAction from "../../components/ConfirmAction.uvue";
+import AdaptiveModal from "../../components/AdaptiveModal.uvue";
+import { request } from "../../services/api.ts";
+import { session } from "../../services/session.ts";
+import { useDomainPage } from "../../services/domains/page-session.ts";
+import { isRequired, missingRequired } from "../../services/form-required.ts";
+import { themeClass } from "../../services/theme.ts";
+
+const items = ref<any[]>([]);
+const loading = ref(false);
+const ready = ref(false);
+const saving = ref(false);
+const error = ref("");
+const formError = ref("");
+const editing = ref(false);
+const generatedKey = ref("");
+const expiry = ["永不过期", "1 天", "7 天", "30 天"];
+const form = ref({ remark: "", expiry: expiry[0] });
+let revision = 0;
+let active = false;
+
+async function load() {
+  const version = ++revision;
+  const token = session.token;
+  loading.value = true;
+  error.value = "";
+  try {
+    const data: any = await request("/api-key/list");
+    if (!Array.isArray(data)) throw new Error("列表数据异常");
+    if (!active || version !== revision || token !== session.token) return;
+    items.value = data;
+    ready.value = true;
+  } catch (reason) {
+    if (active && version === revision && token === session.token)
+      error.value = reason.message;
+  } finally {
+    if (version === revision) loading.value = false;
+  }
+}
+useDomainPage(
+  () => {
+    active = true;
+    load();
+  },
+  () => {
+    active = false;
+    revision++;
+    items.value = [];
+    ready.value = false;
+    loading.value = false;
+    saving.value = false;
+    editing.value = false;
+    generatedKey.value = "";
+    form.value = { remark: "", expiry: expiry[0] };
+    error.value = "";
+    formError.value = "";
+  },
+);
+function edit() {
+  form.value = { remark: "", expiry: expiry[0] };
+  formError.value = "";
+  editing.value = true;
+}
+async function save() {
+  if (saving.value) return;
+  saving.value = true;
+  formError.value = "";
+  const token = session.token;
+  const version = revision;
+  try {
+    if (missingRequired("apiKey", form.value)) throw new Error("请输入备注");
+    const data: any = await request("/api-key/generate", "POST", {
+      remark: form.value.remark.trim(),
+      expireDays: [0, 1, 7, 30][expiry.indexOf(form.value.expiry)],
+    });
+    if (!data?.apiKey) throw new Error("生成结果异常");
+    if (!active || token !== session.token || version !== revision) return;
+    generatedKey.value = data.apiKey;
+    editing.value = false;
+    form.value = { remark: "", expiry: expiry[0] };
+    saving.value = false;
+    await load();
+  } catch (reason) {
+    if (active && token === session.token && version === revision)
+      formError.value = reason.message;
+  } finally {
+    if (version === revision) saving.value = false;
+  }
+}
+async function remove(row) {
+  const token = session.token;
+  const version = revision;
+  await request("/api-key/" + encodeURIComponent(row.id), "DELETE");
+  if (active && token === session.token && version === revision)
+    items.value = items.value.filter((item) => item.id !== row.id);
+}
+function mask(value) {
+  const key = String(value || "");
+  return key.length > 12 ? key.slice(0, 8) + "…" + key.slice(-4) : "••••••••";
+}
+function back() {
+  uni.navigateBack({ fail: () => uni.switchTab({ url: "/pages/life/index" }) });
+}
+</script>
+
+<template>
+  <MobilePage :refreshing="loading" :refresh-disabled="saving" @refresh="load">
+    <PageHeader title="API Key 管理" back @back="back">
+      <text class="key-heading" :class="themeClass('key-heading')"
+        >API Key 管理</text
+      >
+      <MobileButton
+        label="生成新 API Key"
+        icon="ant-design:plus-outlined"
+        variant="ghost"
+        :disabled="!ready"
+        @click="edit"
+      />
+    </PageHeader>
+    <view class="ui-page-body">
+      <PageState
+        skeleton="list"
+        :loading="loading && !ready"
+        :error="error"
+        :empty="ready && !items.length"
+        @retry="load"
+      >
+        <view class="key-list ui-page-body">
+          <view
+            v-for="item in items"
+            :key="item.id"
+            class="key-row ui-card"
+            :class="themeClass('key-row')"
+          >
+            <view class="key-content">
+              <text class="key-title" :class="themeClass('key-heading')">{{
+                item.remark
+              }}</text>
+              <text class="key-detail" :class="themeClass('key-detail')">{{
+                mask(item.apiKey)
+              }}</text>
+              <text class="key-detail" :class="themeClass('key-detail')">{{
+                item.expiredAt ? item.expiredAt + " 到期" : "永不过期"
+              }}</text>
+              <text class="key-detail" :class="themeClass('key-detail')"
+                >{{ item.createTime }} 创建</text
+              >
+            </view>
+            <ConfirmAction
+              label="删除 API Key"
+              :message="'删除 ' + item.remark + '？'"
+              :action="() => remove(item)"
+            />
+          </view>
+        </view>
+      </PageState>
+    </view>
+    <AdaptiveModal
+      v-if="editing"
+      label="生成新 API Key"
+      :busy="saving"
+      :max-width="520"
+      @close="editing = false"
+    >
+      <FormField
+        v-model="form.remark"
+        :required="isRequired('apiKey', 'remark')"
+        label="备注"
+        placeholder="请输入 API Key 备注"
+      />
+      <FormField
+        v-model="form.expiry"
+        label="有效期"
+        kind="selector"
+        :options="expiry"
+      />
+      <text v-if="formError" class="error-text" role="alert">{{
+        formError
+      }}</text>
+      <FormActions>
+        <MobileButton
+          label="取消"
+          variant="quiet"
+          :disabled="saving"
+          @click="editing = false"
+        />
+        <MobileButton label="生成" :loading="saving" @click="save" />
+      </FormActions>
+    </AdaptiveModal>
+    <AdaptiveModal
+      v-if="generatedKey"
+      label="新 API Key"
+      :max-width="520"
+      @close="generatedKey = ''"
+    >
+      <text class="key-detail" :class="themeClass('key-detail')"
+        >仅本次显示完整密钥，请妥善保存。</text
+      >
+      <text
+        class="key-secret ui-mb-section ui-mt-section"
+        :class="themeClass('key-heading')"
+        selectable
+        >{{ generatedKey }}</text
+      >
+      <FormActions>
+        <MobileButton label="关闭" variant="quiet" @click="generatedKey = ''" />
+        <MobileButton
+          label="复制 API Key"
+          icon="ant-design:copy-outlined"
+          @click="uni.setClipboardData({ data: generatedKey })"
+        />
+      </FormActions>
+    </AdaptiveModal>
+  </MobilePage>
+</template>
+
+<style scoped lang="scss">
+@use "../../styles/spacing.scss";
+@use "../../styles/spacing-tokens" as *;
+@use "../../styles/typography" as *;
+@use "../../styles/text-colors" as *;
+@include type-utilities("body");
+.key-heading {
+  flex: 1;
+  color: #27272a;
+  @include type-style("title");
+}
+.key-heading-dark {
+  color: #eeeeef;
+}
+.key-row {
+  flex-direction: row;
+  align-items: center;
+  gap: $space-inline;
+  border-radius: 14px;
+  background-color: #fff;
+}
+.key-row-dark {
+  background-color: #1c1e22;
+}
+.key-content {
+  flex: 1;
+  min-width: 0;
+  gap: $space-detail;
+}
+.key-title {
+  @include type-style("title");
+  word-break: break-all;
+}
+.key-detail {
+  @include type-style("label");
+  color: $text-secondary-light;
+  word-break: break-all;
+}
+.key-detail-dark {
+  color: $text-secondary-dark;
+}
+.key-secret {
+  @include type-style("body");
+  word-break: break-all;
+}
+@media (min-width: 768px) {
+  .key-list {
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: $space-section;
+  }
+  .key-row {
+    box-sizing: border-box;
+    width: calc((100% - #{$space-section}) / 2);
+    margin-bottom: 0;
+  }
+}
+</style>

@@ -13,10 +13,10 @@ async function setup(page) {
   if(path==='/api/notification/channels/feishu'){data={configured:true,enabled:true,appId:'fixture-app',receiverOpenId:'fixture-open'};if(method==='PUT')state.notifications.push(route.request().postDataJSON());}
   if(path==='/api/notification/preferences')data=[{bizType:'fixture-visible',visible:true,description:'通知事件',channels:[{channel:'EMAIL',enabled:true}]},{bizType:'fixture-hidden',visible:false,description:'隐藏事件',channels:[{channel:'STATION',enabled:true}]}];
   if(path==='/api/api-key/list'){
-   if(!state.unlock)return route.fulfill({json:{rscode:'2001',result:'需要二级密码验证',data:{menuPath:'/profile'}}});
+   if(!state.unlock)return route.fulfill({json:{rscode:'2001',result:'需要二级密码验证',data:{menuPath:'/mcp/api-keys'}}});
    data=[];
   }
-  if(path==='/api/auth/secondary-verify') {state.unlock=true;data={menuPath:'/profile'};}
+  if(path==='/api/auth/secondary-verify') {state.unlock=true;data={menuPath:'/mcp/api-keys'};}
   if(path==='/api/menu/preferences')data={menus:[{id:'root',title:'记录',children:[{id:'9223372036854775807',title:'笔记',children:[]}]}],hiddenMenuIds:[]};
   if(path==='/api/auth/change-password'){
    state.writes.push({path,body:route.request().postDataJSON()});
@@ -56,12 +56,13 @@ test('修改密码校验、失败保留和重试',async({page})=>{
 test('接口菜单锁解锁后重试一次，隐藏菜单保留长ID',async({page})=>{
  const state=await setup(page);
  await page.goto('/#/pages/profile/preferences?section=keys');
+ await expect(page).toHaveURL(/#\/pages\/mcp\/api-keys$/);
  const dialog=page.getByRole('dialog',{name:'解锁菜单',exact:true});
  await expect(dialog).toBeVisible();
  await dialog.locator('[aria-label="二级密码"] input').fill('fixture-secondary');
  await dialog.getByRole('button',{name:'解锁',exact:true}).click();
  await expect(dialog).toHaveCount(0);
- await expect(page.getByRole('button',{name:'新增',exact:true})).toBeEnabled();
+ await expect(page.getByRole('button',{name:'生成新 API Key',exact:true})).toBeEnabled();
  expect(state.unlock).toBe(true);
  await page.goto('/#/pages/profile/preferences?section=menus');
  await page.reload();
@@ -103,6 +104,7 @@ test('菜单锁使用完整字符串ID与二级密码；通知留空保留应用
 test('离开锁定页面取消等待，返回不保留二级密码',async({page})=>{
  await setup(page);
  await page.goto('/#/pages/profile/preferences?section=keys');
+ await expect(page).toHaveURL(/#\/pages\/mcp\/api-keys$/);
  const dialog=page.getByRole('dialog',{name:'解锁菜单',exact:true});
  await expect(dialog).toBeVisible();
  await dialog.locator('[aria-label="二级密码"] input').fill('temporary-secondary');
