@@ -58,6 +58,7 @@ const nativePages = {
   "/system/user-dict": "/pages/admin/index?kind=user-dict",
   "/system/feedback": "/pages/admin/index?kind=feedback",
   "/system/config": "/pages/admin/index?kind=config",
+  "/system/membership-providers": "/pages/admin/membership-providers",
   "/system/bank-card-covers": "/pages/admin/bank-card-covers",
   "/system/storage": "/pages/admin/storage",
   "/system/operation-log": "/pages/admin/index?kind=operation",

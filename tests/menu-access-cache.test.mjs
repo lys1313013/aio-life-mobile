@@ -10,17 +10,19 @@ const tree = [{ path: '/my-hub/memo', meta: { menuId: '9223372036854775807' } }]
 function setup() {
   const session = reactive({ token: 'account-a' })
   let now = 1000
+  let cleared = 0
   const module = { exports: {} }
   new Function('require', 'module', 'exports', 'Date', code)(
     (name) => {
       if (name === 'vue') return { watch }
       if (name === './session.ts') return { session }
+      if (name === './life-catalog-cache.ts') return { clearLifeCatalogCache: () => { cleared++ } }
       throw Error(name)
     }, module, module.exports, { now: () => now },
   )
   const calls = []
-  const fetch = async (path) => { calls.push(path); return path === '/menu/all' ? tree : ['9223372036854775807'] }
-  return { ...module.exports, session, calls, fetch, advance: (ms) => { now += ms } }
+  const fetch = async (path) => { calls.push(path); return path === '/menu/all?client=mobile' ? tree : ['9223372036854775807'] }
+  return { ...module.exports, session, calls, fetch, cleared: () => cleared, advance: (ms) => { now += ms } }
 }
 function deferred() {
   let resolve, reject
@@ -114,13 +116,23 @@ test('异常ID、菜单树及菜单树请求失败均不缓存', async () => {
   await assert.rejects(c.loadMenuAccess(async () => [123]), /数据异常/)
   assert.equal(c.cachedMenuAccess(), null)
   for (const invalid of [null, [null], [{ children: {} }]]) {
-    await assert.rejects(c.loadMenuAccess(async (path) => path === '/menu/all' ? invalid : ['1']), /数据异常/)
+    await assert.rejects(c.loadMenuAccess(async (path) => path === '/menu/all?client=mobile' ? invalid : ['1']), /数据异常/)
     assert.equal(c.cachedMenuAccess(), null)
   }
   await assert.rejects(c.loadMenuAccess(async (path) => {
-    if (path === '/menu/all') throw Error('菜单树失败')
+    if (path === '/menu/all?client=mobile') throw Error('菜单树失败')
     return ['1']
   }), /菜单树失败/)
   assert.equal(c.cachedMenuAccess(), null)
   await c.loadMenuAccess(c.fetch)
+})
+
+
+test('管理端切换任一端状态和个人菜单写入使目录失效，读取不清缓存', () => {
+  const c = setup()
+  c.invalidateMenuAccessAfterWrite('/menu/admin/7/mobile-status', 'PUT')
+  c.invalidateMenuAccessAfterWrite('/menu/admin/7/status', 'PUT')
+  c.invalidateMenuAccessAfterWrite('/menu/preferences?client=mobile', 'PUT')
+  c.invalidateMenuAccessAfterWrite('/menu/preferences?client=mobile', 'GET')
+  assert.equal(c.cleared(), 3)
 })

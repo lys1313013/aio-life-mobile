@@ -82,7 +82,7 @@ async function load() {
   error.value = '';
   try {
     if (mode.value === 'menus') {
-      const data: any = await request('/menu/preferences');
+      const data: any = await request('/menu/preferences?client=mobile');
       const flat = flattenMenuOptions(data.menus, [], false, data.hiddenMenuIds);
       if (!active || version !== revision || token !== session.token) return;
       menuItems.value = flat;
@@ -159,7 +159,7 @@ async function saveMenus() {
   error.value = '';
   try {
     const token = session.token;
-    await request('/menu/preferences', 'PUT', { menuIds: hidden.value });
+    await request('/menu/preferences?client=mobile', 'PUT', { menuIds: hidden.value });
     if (!active || token !== session.token) return;
     uni.showToast({ title: '已保存', icon: 'success' });
   } catch (reason) {
@@ -169,7 +169,7 @@ async function saveMenus() {
   }
 }
 async function resetMenus() {
-  await request('/menu/preferences', 'DELETE');
+  await request('/menu/preferences?client=mobile', 'DELETE');
   await load();
 }
 async function clearCache() {

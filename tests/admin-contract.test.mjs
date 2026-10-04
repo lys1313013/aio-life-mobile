@@ -88,3 +88,19 @@ test('菜单图标颜色作为独立字段保存、清空并校验，不写入me
  assert.equal(adminPayload('menus', {...form,iconColor:''}).iconColor, '')
  assert.throws(() => adminPayload('menus', {...form,iconColor:'red'}), /六位颜色/)
 })
+
+test('菜单分端状态保留零值并通过独立接口切换，不改变另一端', async () => {
+ const payload = adminPayload('menus', {title:'菜单',name:'Menu',path:'/sample',parentId:'0',status:'1',mobileStatus:'0',metaText:'{}'})
+ assert.equal(payload.status, 1); assert.equal(payload.mobileStatus, 0)
+ assert.throws(() => adminPayload('menus', {title:'菜单',name:'Menu',path:'/sample',parentId:'0',status:'1',mobileStatus:'2',metaText:'{}'}), /只能/)
+ const calls=[]
+ globalThis.__menuStatusMock=(...args)=>{calls.push(args); return Promise.resolve(true)}
+ const serviceSource=await readFile(new URL('../src/pages/admin/services/index.ts',import.meta.url),'utf8')
+ const service=await import(asModule(serviceSource.replace("import { request } from '../../../services/api.ts'","const request = globalThis.__menuStatusMock").replace("from './specs.ts'","from '"+asModule(specsSource)+"'").replace("from '../../../services/admin/contract.ts'","from '"+asModule(source)+"'")))
+ const row={id,path:'/sample',status:1,mobileStatus:0}
+ await service.setMenuStatus(row,true)
+ assert.deepEqual(calls.at(-1), ['/menu/admin/'+id+'/mobile-status','PUT',{status:1}])
+ await service.setMenuStatus(row)
+ assert.deepEqual(calls.at(-1), ['/menu/admin/'+id+'/status','PUT',{status:0}])
+ assert.deepEqual(row,{id,path:'/sample',status:1,mobileStatus:0})
+})

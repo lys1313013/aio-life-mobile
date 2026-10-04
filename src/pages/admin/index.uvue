@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { isRequired } from '../../services/form-required.ts';
 import MenuManager from '../../components/MenuManager.uvue';
+import DictDataPanel from './DictDataPanel.uvue';
 import { menuMoveChanges } from '../../services/admin/menu-tree.ts';
 import { computed, ref } from 'vue';
 import { onLoad, onShow, onUnload } from '@dcloudio/uni-app';
@@ -117,6 +118,14 @@ onShow(() => {
   }
   load(false);
 });
+function searchDictionary(value) {
+  keyword.value = value.keyword;
+  typeFilter.value = value.type;
+  rows.value = [];
+  total.value = 0;
+  pageEnded.value = false;
+  load();
+}
 function filters() {
   const result: any = { [spec.value.search]: keyword.value };
   if (typeFilter.value)
@@ -148,7 +157,10 @@ async function load(more = false, refresh = false) {
       !options.value.length ? adminOptions(kind.value) : Promise.resolve(options.value),
     ]);
     if (active && task.isCurrent(generation) && token === session.token) {
-      rows.value = more ? [...rows.value, ...result.items] : result.items;
+      const items = more ? [...rows.value, ...result.items] : result.items;
+      rows.value = kind.value === 'dict-data'
+        ? [...new Map(items.map(row => [row.dictCode, row])).values()]
+        : items;
       pageEnded.value = !result.items.length;
       total.value = result.total;
       page.value = nextPage;
@@ -201,11 +213,13 @@ function edit(row = null, parentId = '0') {
     : {
         role: 'user',
         status: kind.value === 'menus' ? '1' : '0',
+        mobileStatus: '1',
         isReadonly: 'N',
         dictSort: '0',
         sort: '0',
         parentId,
         dictType: typeFilter.value,
+        dictId: kind.value === 'dict-data' ? options.value.find(option => option.type === typeFilter.value)?.value || '' : undefined,
         color: '#427bea',
       };
   if (kind.value === 'menus') {
@@ -243,8 +257,14 @@ async function mutate(row, action) {
   error.value = '';
   const token = session.token;
   try {
-    await action();
-    if (active && token === session.token) await load();
+    const saved = await action();
+    if (active && token === session.token) {
+      if (kind.value === 'menus' && saved?.id) {
+        rows.value = rows.value.map(item => item.id === saved.id
+          ? { ...item, ...saved, title: saved.meta?.title || saved.name }
+          : item);
+      } else await load();
+    }
   } catch (reason) {
     if (active && token === session.token) error.value = reason.message || '操作失败';
   } finally {
@@ -456,12 +476,18 @@ async function download() {
 </script>
 <template>
   <view class="admin-page"
-    ><PageHeader :title="spec.title" back @back="uni.navigateBack()" /><MobilePage
+    ><PageHeader :title="spec.title" back @back="uni.navigateBack()">
+      <template v-if="kind === 'dict-data'" #default>
+        <text class="admin-dict-heading" :class="themeClass('admin-dict-heading')">{{ spec.title }}</text>
+        <MobileButton v-if="authorized" label="新增" icon="ant-design:plus-outlined" variant="ghost" :disabled="loading || !!busyId" @click="edit()" />
+      </template>
+    </PageHeader><MobilePage
       :refreshing="refreshing"
       @refresh="load(false, true)"
       @reachbottom="loadMore"
     >
-      <MenuManager v-if="kind === 'menus'" :rows="rows" :loading="loading" :error="error" :busy-id="busyId" :remove="remove" @edit="edit" @create-child="(id) => edit(null, id)" @status="(row) => mutate(row, () => setMenuStatus(row))" @move="move" @retry="load()" />
+      <MenuManager v-if="kind === 'menus'" :rows="rows" :loading="loading" :error="error" :busy-id="busyId" :remove="remove" @edit="edit" @create-child="(id) => edit(null, id)" @status="(row, mobile) => mutate(row, () => setMenuStatus(row, mobile))" @move="move" @retry="load()" />
+      <DictDataPanel v-else-if="kind === 'dict-data'" :rows="rows" :options="options" :total="total" :loading="loading" :error="error" :more-error="moreError" :has-more="!pageEnded && rows.length < total" :busy="!!busyId" :remove="remove" @search="searchDictionary" @edit="edit" @retry="load()" @more="load(true)" />
       <template v-else>
       <FormField :label="kind === 'dict-types' ? '字典名称' : kind === 'dict-data' ? '展示值' : kind === 'users' ? '用户名 / 昵称' : '关键词'" v-model="keyword" :disabled="loading" />
       <view class="admin-filters ui-field-row">
@@ -624,7 +650,7 @@ async function download() {
       </template>
       <template #fixed
         ><FloatingActionButton
-          v-if="!spec.readOnly && kind !== 'config' && authorized"
+          v-if="!spec.readOnly && kind !== 'config' && kind !== 'dict-data' && authorized"
           :disabled="loading || !!busyId"
           @click="edit()"
       /></template>
@@ -636,7 +662,7 @@ async function download() {
       :content-key="editorError + ':' + menuAdvanced"
       @close="opened = false"
       ><FormField
-        v-for="field in editorFields"
+        v-for="field in editorFields.filter(item => kind !== 'menus' || !['status', 'mobileStatus'].includes(item.key))"
         :key="field.key"
         :label="field.label"
         :required="field.required"
@@ -649,7 +675,12 @@ async function download() {
         v-if="kind === 'menus' && menuAdvanced && options.length"
         class="admin-muted ui-mb-section" :class="themeClass('admin-muted')"
         >{{ '可用角色：' + options.join('、') }}</text
-      ><text v-if="editorError" class="admin-error ui-mb-section ui-mt-section ui-type-body" role="alert">{{ editorError }}</text
+      ><view v-if="kind === 'menus'" class="ui-mb-section">
+        <view v-for="item in [{ key: 'status', label: 'Web 启用' }, { key: 'mobileStatus', label: '移动端启用' }]" :key="item.key" class="admin-menu-switch ui-mb-inline">
+          <text class="ui-type-label">{{ item.label }}</text>
+          <switch :aria-label="item.label" :checked="Number(form[item.key]) === 1" :disabled="saving || protectedMenu(original || form)" @change="form[item.key] = $event.detail.value ? 1 : 0" />
+        </view>
+      </view><text v-if="editorError" class="admin-error ui-mb-section ui-mt-section ui-type-body" role="alert">{{ editorError }}</text
       ><FormActions>
         <template #secondary>
           <MobileButton v-if="kind === 'menus'" :label="menuAdvanced ? '收起高级设置' : '高级设置'" variant="quiet" :disabled="saving" @click="menuAdvanced = !menuAdvanced" />
@@ -733,7 +764,12 @@ async function download() {
           :loading="saving"
           :disabled="uploading || detailLoading || !!detailError"
           @click="submitReply" /></view
-      ><text v-if="editorError" class="admin-error ui-mb-section ui-mt-section ui-type-body" role="alert">{{ editorError }}</text>
+      ><view v-if="kind === 'menus'" class="ui-mb-section">
+        <view v-for="item in [{ key: 'status', label: 'Web 启用' }, { key: 'mobileStatus', label: '移动端启用' }]" :key="item.key" class="admin-menu-switch ui-mb-inline">
+          <text class="ui-type-label">{{ item.label }}</text>
+          <switch :aria-label="item.label" :checked="Number(form[item.key]) === 1" :disabled="saving || protectedMenu(original || form)" @change="form[item.key] = $event.detail.value ? 1 : 0" />
+        </view>
+      </view><text v-if="editorError" class="admin-error ui-mb-section ui-mt-section ui-type-body" role="alert">{{ editorError }}</text>
     </AdaptiveModal></view
   >
 </template>
@@ -744,6 +780,8 @@ async function download() {
 @use '../../styles/text-colors' as *;
 @include type-utilities('body');
 
+.admin-dict-heading { @include type-style('title'); flex: 1; min-width: 0; color: #242428; }
+.admin-dict-heading-dark { color: #eeeeef; }
 .admin-page {
   flex: 1;
   height: 100%;
@@ -829,4 +867,5 @@ async function download() {
 .admin-label-dark, .admin-muted-dark { color: $text-secondary-dark; }
 .admin-comment-meta { flex-wrap: wrap; }
 .admin-comment-author { @include type-style('body-strong'); overflow-wrap: anywhere; }
+.admin-menu-switch { display: flex; align-items: center; justify-content: space-between; min-height: $space-controlMin; }
 </style>

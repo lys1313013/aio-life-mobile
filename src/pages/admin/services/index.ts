@@ -25,9 +25,10 @@ export function deleteAdmin(kind, row) {
   if (kind === 'user-dict' && row.userId !== '0') throw Error('只能删除基础值')
   return request(spec.base + '/' + stringId(row[spec.id]), 'DELETE')
 }
-export function setMenuStatus(row) {
+export function setMenuStatus(row, mobile = false) {
   if (protectedMenu(row)) throw Error('核心管理菜单必须启用')
-  return request('/menu/admin/' + stringId(row.id) + '/status','PUT',{ status: row.status === 1 ? 0 : 1 })
+  const field = mobile ? 'mobileStatus' : 'status'
+  return request('/menu/admin/' + stringId(row.id) + (mobile ? '/mobile-status' : '/status'),'PUT',{ status: row[field] === 1 ? 0 : 1 })
 }
 export function setMenuSort(row, sort) { return request('/menu/admin/' + stringId(row.id) + '/sort','PUT',{ sort }) }
 export function sortUserDict(row, target, delta) {

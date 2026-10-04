@@ -3,8 +3,8 @@ import { sha256 } from '@noble/hashes/sha256'
 import { bytesToHex } from '@noble/hashes/utils'
 import { session } from './session.ts'
 
-const storageKey = 'aio-life-mobile.life-catalog.v1'
-// 无定时过期；下拉刷新更新。只保存登录指纹，不额外持久化 Token。
+const storageKey = 'aio-life-mobile.life-catalog.v2'
+// 页面展示时重新校验。只保存登录指纹，不额外持久化 Token。
 let snapshot: any[] | null = null
 function owner() {
   // 固定 UTF-16 字节序生成指纹，兼容没有 TextEncoder 的小程序。

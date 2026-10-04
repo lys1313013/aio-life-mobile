@@ -8,16 +8,16 @@ import {
 
 export async function loadLifeCatalog() {
   const [candidates, preferences] = await Promise.all([
-    request("/quick-nav/candidates"),
-    request("/menu/preferences"),
+    request("/quick-nav/candidates?client=mobile"),
+    request("/menu/preferences?client=mobile"),
   ]);
   return buildCatalog(candidates, preferences);
 }
 export async function loadLifeQuickLinks() {
-  return readQuickLinks(await request("/quick-nav/my"));
+  return readQuickLinks(await request("/quick-nav/my?client=mobile"));
 }
 export async function saveLifeQuickLinks(items) {
   return readQuickLinks(
-    await request("/quick-nav/my", "POST", { items: quickLinkPayload(items) }),
+    await request("/quick-nav/my?client=mobile", "POST", { items: quickLinkPayload(items) }),
   );
 }

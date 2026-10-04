@@ -55,7 +55,7 @@ const details = computed(() =>
         ],
         ["角色", selected.value.roles || "不限"],
         ["排序", String(selected.value.sort ?? 0)],
-        ["状态", selected.value.status === 1 ? "启用" : "停用"],
+
       ]
     : [],
 );
@@ -207,7 +207,7 @@ async function removeSelected(row) {
                 rows.filter((child) => child.parentId === row.id).length
               }}</text
               ><AppIcon
-                v-if="row.status !== 1"
+                v-if="row.status !== 1 && row.mobileStatus !== 1"
                 name="ant-design:stop-outlined"
                 :size="14"
             /></view>
@@ -263,6 +263,13 @@ async function removeSelected(row) {
         ><text class="menu-detail-label">{{ item[0] }}</text
         ><text class="menu-detail-value">{{ item[1] }}</text></view
       >
+      <view v-for="item in [{ key: 'status', label: 'Web 启用' }, { key: 'mobileStatus', label: '移动端启用' }]" :key="item.key" class="menu-detail-row">
+        <text class="menu-detail-label">{{ item.label }}</text>
+        <view class="menu-status-control">
+          <AppIcon v-if="busyId === selected.id" class="menu-status-spinner" name="ant-design:loading-outlined" :size="18" />
+          <switch :key="item.key + ':' + selected[item.key] + ':' + busyId" :aria-label="selected.title + ' ' + item.label" :checked="selected[item.key] === 1" :disabled="busy || protectedMenu(selected)" @change="emit('status', selected, item.key === 'mobileStatus')" />
+        </view>
+      </view>
       <text v-if="error" class="menu-error" role="alert">{{ error }}</text>
       <view class="menu-detail-actions">
         <MobileButton
@@ -278,18 +285,6 @@ async function removeSelected(row) {
           variant="quiet"
           :disabled="busy"
           @click="createChild(selected)"
-        />
-        <MobileButton
-          :label="selected.status === 1 ? '停用菜单' : '启用菜单'"
-          :icon="
-            selected.status === 1
-              ? 'ant-design:stop-outlined'
-              : 'ant-design:check-outlined'
-          "
-          variant="quiet"
-          :loading="busyId === selected.id"
-          :disabled="busy || protectedMenu(selected)"
-          @click="emit('status', selected)"
         />
         <ConfirmAction
           v-if="!protectedMenu(selected)"
@@ -479,4 +474,7 @@ color: inherit;
 }
 /* #endif */
 
+.menu-status-control { display: flex; align-items: center; min-height: $space-controlMin; }
+.menu-status-spinner { animation: menu-status-rotate 1s linear infinite; }
+@keyframes menu-status-rotate { to { transform: rotate(360deg); } }
 </style>
