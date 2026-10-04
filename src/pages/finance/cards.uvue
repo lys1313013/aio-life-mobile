@@ -73,6 +73,7 @@ function coverFile(card: any) { return card.coverTemplateFileId || card.coverFil
 function clearCover() {
   draft.value.coverTemplateId = null;
   draft.value.coverTemplateFileId = null;
+  draft.value.coverTemplatePublicUrl = null;
   draft.value.coverTemplateName = null;
   draft.value.coverFileIds = [];
   draft.value.coverSourceUrl = '';
@@ -86,15 +87,18 @@ watch(() => [draft.value.bankId, draft.value.cardType], (value, old) => {
       (draft.value.bankId !== draft.value.templateBankId || draft.value.cardType !== draft.value.templateCardType)) clearCover();
 });
 async function loadTemplateImage(item: any, current: number) {
+  delete templateUrls.value[item.id];
   templateImageErrors.value[item.id] = '';
   templateImageLoading.value[item.id] = true;
+  await nextTick();
+  if (!alive || current !== templateStamp || !modal.value) return;
   try {
-    const url = await authFileUrl(String(item.fileId));
+    const url = item.publicUrl || await authFileUrl(String(item.fileId));
     if (alive && current === templateStamp && modal.value) templateUrls.value[item.id] = url;
   } catch (e) {
     if (alive && current === templateStamp) templateImageErrors.value[item.id] = e.message || '图片加载失败';
   } finally {
-    if (alive && current === templateStamp) templateImageLoading.value[item.id] = false;
+    if (alive && current === templateStamp && !templateUrls.value[item.id]) templateImageLoading.value[item.id] = false;
   }
 }
 async function openTemplates() {
@@ -121,6 +125,7 @@ function selectTemplate(item: any) {
   clearCover();
   draft.value.coverTemplateId = item.id;
   draft.value.coverTemplateFileId = item.fileId;
+  draft.value.coverTemplatePublicUrl = item.publicUrl;
   draft.value.coverTemplateName = item.name;
   draft.value.templateBankId = draft.value.bankId;
   draft.value.templateCardType = draft.value.cardType;
@@ -195,7 +200,7 @@ async function loadCover(card: any, current = stamp) {
   coverLoading.value[id] = true;
   coverErrors.value[id] = '';
   try {
-    const url = await authFileUrl(fileId);
+    const url = card.coverTemplatePublicUrl || await authFileUrl(fileId);
     if (alive && stamp === current && coverAttempts[id] === attempt)
       coverUrls.value[id] = url;
     // 下载完成不代表图片可见，交给 image 的 load/error 结束骨架。
@@ -810,8 +815,9 @@ async function removeTag(value: any) {
         <text v-if="!templateLoading && !templateError && templates.length === 0" class="ui-type-caption">暂无匹配卡面</text>
         <view class="template-grid">
           <view v-for="item in templates" :key="item.id" class="ui-stack ui-gap-xs">
-            <button role="button" class="template-choice" :aria-label="'选用' + item.name" :disabled="!templateUrls[item.id]" @click="selectTemplate(item)">
-              <image v-if="templateUrls[item.id]" :src="templateUrls[item.id]" class="template-image" mode="aspectFit" @error="templateImageErrors[item.id] = '图片加载失败'" />
+            <button role="button" class="template-choice" :aria-label="'选用' + item.name" :disabled="!templateUrls[item.id] || templateImageLoading[item.id] || !!templateImageErrors[item.id]" @click="selectTemplate(item)">
+              <image v-if="templateUrls[item.id]" :src="templateUrls[item.id]" class="template-image" mode="aspectFit" @load="templateImageLoading[item.id] = false" @error="templateImageErrors[item.id] = '图片加载失败'; templateImageLoading[item.id] = false" />
+              <CardFaceLoading v-if="templateImageLoading[item.id]" />
               <text class="ui-type-label">{{ item.name }}</text>
             </button>
             <MobileButton v-if="templateImageErrors[item.id]" label="重试图片" variant="quiet" :loading="templateImageLoading[item.id]" @click="loadTemplateImage(item, templateStamp)" />
@@ -1272,6 +1278,7 @@ async function removeTag(value: any) {
   gap: $space-inline;
 }
 .template-choice {
+  position: relative;
   padding: $space-detail;
   border: 0;
   background: transparent;

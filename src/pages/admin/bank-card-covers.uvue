@@ -132,7 +132,7 @@ onUnload(() => { alive = false; generation++; editorGeneration++; lifecycle++; }
           <view v-if="authorized" class="cover-grid">
             <view v-for="row in shown" :key="row.id" class="cover-item">
               <view class="cover-edit" role="button" :tabindex="busy[row.id] ? -1 : 0" :aria-label="'编辑' + row.name" :aria-disabled="!!busy[row.id]" @click="edit(row)" @keydown.enter.self.prevent="edit(row)" @keydown.space.self.prevent="edit(row)">
-                <BankCardCoverPreview :file-id="row.fileId" :name="row.name" />
+                <BankCardCoverPreview :file-id="row.fileId" :public-url="row.publicUrl" :name="row.name" />
               </view>
               <view class="cover-info ui-gap-sm">
                 <text class="cover-name">{{ row.name }}</text>
@@ -151,7 +151,7 @@ onUnload(() => { alive = false; generation++; editorGeneration++; lifecycle++; }
     <FloatingActionButton v-if="authorized" label="新增公共卡面" :disabled="!loaded || loading || !!error" @click="edit()" />
     <AdaptiveModal v-if="opened" :label="original ? '编辑公共卡面' : '新增公共卡面'" :max-width="560" :busy="locked" @close="close">
       <view class="cover-form">
-        <view class="cover-form-preview ui-mb-section"><BankCardCoverPreview :file-id="form.fileId" :name="form.name || '卡面预览'" /></view>
+        <view class="cover-form-preview ui-mb-section"><BankCardCoverPreview :file-id="form.fileId" :public-url="form.fileId === original?.fileId ? original?.publicUrl : undefined" :name="form.name || '卡面预览'" /></view>
         <FormField label="卡面图片" required><BankCardCoverUpload :file-id="form.fileId" :disabled="saving" @change="form.fileId = $event" @busy="uploading = $event" /></FormField>
         <FormField label="卡面名称" required v-model="form.name" :disabled="locked" />
         <view class="ui-field-row">
