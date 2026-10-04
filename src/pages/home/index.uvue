@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import ContentSkeleton from '../../components/ContentSkeleton.uvue';
+import TimeDonut from './TimeDonut.uvue'
 import AppIcon from '../../components/AppIcon.uvue'
 import SecondaryUnlock from "../../components/SecondaryUnlock.uvue";
 import { isDark, themeClass } from '../../services/theme.ts'
@@ -78,6 +79,7 @@ function sectionHeight(section: string) {
   return limit
 }
 const timeDate = ref('')
+const timeChartActive = ref(true)
 const nowMinutes = ref(0)
 let minuteTimer: ReturnType<typeof setInterval> | null = null
 function tickTime() {
@@ -167,6 +169,7 @@ function isCurrent(token: string) {
 }
 onShow(() => {
   active = true
+  timeChartActive.value = true
   tickTime()
   if (minuteTimer) clearInterval(minuteTimer)
   minuteTimer = setInterval(tickTime, 60000)
@@ -183,7 +186,7 @@ onShow(() => {
   }
   refresh()
 })
-onHide(() => { active = false; timeEditor.value = null; recordCreateKind.value = null; thoughtEditId.value = ''; watchedEditor.value = null; if (minuteTimer) clearInterval(minuteTimer); minuteTimer = null })
+onHide(() => { active = false; timeChartActive.value = false; timeEditor.value = null; recordCreateKind.value = null; thoughtEditId.value = ''; watchedEditor.value = null; if (minuteTimer) clearInterval(minuteTimer); minuteTimer = null })
 onUnload(() => {
   active = false
   if (minuteTimer) clearInterval(minuteTimer)
@@ -528,12 +531,13 @@ function trendLines(points) {
             ><DashboardSection
               title="时迹"
               :height="sectionHeight('time')"
-              :loading="states.time.loading && !refreshing"
-              :error="states.time.error"
+              :loading="states.time.loading && !refreshing && !timeDate"
+              :error="timeDate ? '' : states.time.error"
               @refresh="loadSection('time')"
             >
               <template #actions>
-                <DashboardAction label="新增时迹" :text="timeElapsed" :disabled="states.time.loading" @click="openTimeRecord()" />
+                <DashboardAction v-if="timeDate && states.time.error" label="时迹更新失败，点击重试" icon="ant-design:reload-outlined" @click="loadSection('time')" />
+                <DashboardAction v-else label="新增时迹" :text="timeElapsed" :loading="states.time.loading && !!timeDate" :disabled="states.time.loading" @click="openTimeRecord()" />
               </template>
               <template #loading>
                 <view class="time-loading" role="status" aria-label="正在加载时迹" aria-live="polite">
@@ -573,19 +577,8 @@ function trendLines(points) {
                   class="donut"
                   role="img"
                   :aria-label="'今日已记录 ' + time.total"
-                  ><view class="donut-ring" :class="themeClass('donut-ring')"></view
-                  ><view
-                    v-for="(segment, index) in time.segments"
-                    :key="index"
-                    class="donut-arm"
-                    :style="{ transform: segment.transform }"
-                    ><view
-                      class="donut-segment"
-                      :style="{ backgroundColor: segment.backgroundColor }"
-                    ></view></view
-                  ><text v-if="time.segments.length" class="donut-total" :class="themeClass('donut-total')">{{
-                    time.total
-                  }}</text>
+                  ><TimeDonut :groups="time.groups" :active="timeChartActive" />
+                  <text v-if="time.groups.length" class="donut-total" :class="themeClass('donut-total')">{{ time.total }}</text>
                   <view v-for="label in timeDonutLabels" :key="label.id" class="donut-annotation">
                     <view v-for="(line, index) in label.lines" :key="index" class="donut-leader" :style="line" />
                     <view class="donut-label" :class="['donut-label-' + label.side, themeClass('donut-label')]" :style="label.position">
@@ -1074,18 +1067,6 @@ function trendLines(points) {
   left: 34px;
   border: 19px solid #c9c9cc;
   border-radius: 54px;
-}
-.donut-arm {
-  position: absolute;
-  top: 34px;
-  left: 34px;
-  width: 108px;
-  height: 108px;
-  align-items: center;
-}
-.donut-segment {
-  width: 4px;
-  height: 19px;
 }
 .donut-total {
   color: #3f3f46;

@@ -1,0 +1,125 @@
+<script setup lang="ts">
+import { getCurrentInstance, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
+import { isDark } from '../../services/theme.ts'
+
+type Group = { id: string; color: string; minutes: number }
+type Sector = { id: string; color: string; start: number; end: number }
+const props = defineProps<{ groups: Group[]; active: boolean }>()
+const instance = getCurrentInstance()
+const canvasId = 'home-time-donut-' + instance?.uid
+const failed = ref(false)
+let context: any = null
+let frame: ReturnType<typeof setTimeout> | null = null
+let alive = true
+let current: Sector[] = []
+
+function sectors(): Sector[] {
+  const total = props.groups.reduce((sum, group) => sum + group.minutes, 0)
+  let angle = -Math.PI / 2
+  return props.groups.filter(group => group.minutes > 0).map(group => {
+    const start = angle
+    angle += group.minutes / total * Math.PI * 2
+    return { id: group.id, color: group.color, start, end: angle }
+  })
+}
+function stop() {
+  if (frame !== null) clearTimeout(frame)
+  frame = null
+}
+function paint(rows: Sector[], scale = 1) {
+  if (!context) return
+  context.clearRect(0, 0, 108, 108)
+  if (!rows.length) {
+    context.beginPath()
+    context.arc(54, 54, 44.5, 0, Math.PI * 2)
+    context.lineWidth = 19
+    context.strokeStyle = isDark.value ? '#45474d' : '#c9c9cc'
+    context.stroke()
+    return
+  }
+  for (const row of rows) {
+    if (row.end - row.start < 0.00001) continue
+    context.beginPath()
+    context.arc(54, 54, 44.5 * scale, row.start, row.end)
+    context.lineWidth = 19 * scale
+    context.strokeStyle = row.color
+    context.stroke()
+  }
+}
+function update() {
+  stop()
+  if (!context || !props.active) return
+  const target = sectors()
+  if (JSON.stringify(target) === JSON.stringify(current)) { paint(current); return }
+  let reduceMotion = false
+  // #ifdef WEB
+  reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+  // #endif
+  if (reduceMotion || !target.length) {
+    current = target
+    paint(current)
+    return
+  }
+  const entering = !current.length
+  // Keep each category's previous angles, including an interrupted animation.
+  const from = target.map(row => current.find(item => item.id === row.id) || { ...row, end: row.start })
+  const leaving = current.filter(row => !target.some(item => item.id === row.id))
+  const started = Date.now()
+  function tick() {
+    if (!alive || !props.active) return
+    const progress = Math.min(1, (Date.now() - started) / 550)
+    const eased = 1 - Math.pow(1 - progress, 3)
+    current = target.map((row, index) => ({ ...row,
+      start: from[index].start + (row.start - from[index].start) * eased,
+      end: from[index].end + (row.end - from[index].end) * eased,
+    })).concat(progress === 1 ? [] : leaving.map(row => ({ ...row, end: row.end + (row.start - row.end) * eased })))
+    paint(current, entering ? 0.82 + 0.18 * eased : 1)
+    if (progress < 1) frame = setTimeout(tick, 16)
+    else frame = null
+  }
+  tick()
+}
+async function initialize() {
+  failed.value = false
+  await nextTick()
+  if (!alive) return
+  uni.createCanvasContextAsync({
+    id: canvasId,
+    component: instance?.proxy,
+    success(canvas) {
+      if (!alive) return
+      try {
+        context = canvas.getContext('2d')
+        if (!context) throw new Error('Canvas unavailable')
+        const ratio = uni.getWindowInfo().pixelRatio || 1
+        context.canvas.width = 108 * ratio
+        context.canvas.height = 108 * ratio
+        context.scale(ratio, ratio)
+        update()
+      } catch (_) { failed.value = true }
+    },
+    fail() { if (alive) failed.value = true },
+  })
+}
+onMounted(initialize)
+watch(() => props.groups, update)
+watch(isDark, () => paint(current))
+watch(() => props.active, value => { if (value) update(); else stop() })
+onUnmounted(() => { alive = false; stop(); context = null })
+</script>
+
+<template>
+  <view class="time-donut-renderer">
+    <canvas :id="canvasId" :canvas-id="canvasId" type="2d" class="time-donut-canvas" aria-hidden="true" />
+    <button v-if="failed" class="time-donut-retry" aria-label="重试时迹图表" @click="initialize">重试</button>
+  </view>
+</template>
+
+<style scoped lang="scss">
+@use '../../styles/typography' as *;
+@use '../../styles/spacing-tokens' as *;
+// Geometry matches the existing 176px chart and its external labels.
+.time-donut-renderer { position: absolute; top: 34px; left: 34px; width: 108px; height: 108px; }
+.time-donut-canvas { width: 108px; height: 108px; }
+.time-donut-retry { position: absolute; top: 0; left: 0; min-height: $space-controlMin; min-width: $space-controlMin; margin: 0; padding: 0; @include type-style('caption'); }
+</style>
