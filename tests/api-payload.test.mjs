@@ -8,6 +8,20 @@ const code = (await transform(source, { loader: 'ts', format: 'esm' })).code
 const payloadUrl = 'data:text/javascript;base64,' + Buffer.from(code).toString('base64')
 const { minimalRequestPayload, pickQuery } = await import(payloadUrl)
 
+test('会员平台关联保留长 ID、明确解绑和停用，剔除只读派生字段', () => {
+  const id = '9007199254740993'
+  for (const providerId of [id, null]) {
+    assert.deepEqual(minimalRequestPayload('/membership', 'PUT', {
+      id, providerId, providerName: '腾讯视频', providerIconKey: 'tencent_video', providerIdProvided: true,
+    }), { id, providerId })
+  }
+  assert.deepEqual(minimalRequestPayload('/membership', 'PUT', { id, providerId: undefined }), { id })
+  assert.deepEqual(minimalRequestPayload('/system/membership-providers/' + id, 'PUT', {
+    name: '腾讯视频', code: 'tencent_video', category: 'video', iconKey: null,
+    sortOrder: 0, isEnabled: 0, id, createUser: '1',
+  }), { name: '腾讯视频', code: 'tencent_video', category: 'video', iconKey: null, sortOrder: 0, isEnabled: 0 })
+})
+
 test('动态路由创建、更新、排序保留业务字段和字符串 ID', () => {
   const row = { id: '9007199254740993', content: '任务', userId: '11', isDeleted: 1, sortOrder: 0, columnId: '2', unCompletedCount: 9 }
   assert.deepEqual(minimalRequestPayload('/tasks', 'POST', row), { content: '任务', columnId: '2', sortOrder: 0 })
@@ -51,5 +65,23 @@ test('实际 uni.request 边界执行筛选且不修改原对象', async () => {
     const data = await request('/movie/page','GET',{current:1,size:20,activeOnly:false,userId:'11'})
     assert.deepEqual(sent.data,{current:1,size:20,activeOnly:false})
     assert.deepEqual(data,{items:[],total:0})
+    for (const path of ['/goals', '/anniversaryRecords']) {
+      await request(path, 'POST', { title: '固定记录', isPinned: 1, pinnedSort: -99, userId: 'other' })
+      assert.deepEqual(sent.data, { title: '固定记录', isPinned: 1 })
+      await request(path, 'PUT', { id: row.id, isPinned: 0, pinnedSort: -99, userId: 'other' })
+      assert.deepEqual(sent.data, { id: row.id, isPinned: 0 })
+      await request(`${path}/${row.id}/pin`, 'PUT', { isPinned: 0, pinnedSort: -99, userId: 'other' })
+      assert.deepEqual(sent.data, { isPinned: 0 })
+      const ids = [row.id, '9223372036854775806']
+      await request(`${path}/pinned-order`, 'PUT', { ids, userId: 'other' })
+      assert.deepEqual(sent.data, { ids })
+      await request(path, 'GET', { isPinned: 1, userId: 'other' })
+      assert.deepEqual(sent.data, { isPinned: 1 })
+    }
+    for (const path of ['/read-record/page', '/movie/page']) {
+      const query = { current: 2, size: 20, activeOnly: true, inProgressFirst: true }
+      await request(path, 'GET', { ...query, userId: 'other' })
+      assert.deepEqual(sent.data, query)
+    }
   } finally { globalThis.uni = previous }
 })
