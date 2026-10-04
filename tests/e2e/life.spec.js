@@ -279,7 +279,7 @@ test("空目录不补默认项；未登录直接访问生活会跳转登录", as
 });
 
 for (const empty of [false, true]) {
-  test(`生活目录重新进入和整页刷新后复用缓存，空目录=${empty}`, async ({ page }) => {
+  test(`生活目录重新进入和整页刷新时重新校验启用状态，空目录=${empty}`, async ({ page }) => {
     const state = await setup(page, { empty });
     const content = empty
       ? page.getByText("暂无可用功能", { exact: true })
@@ -288,15 +288,18 @@ for (const empty of [false, true]) {
     expect(state.catalogCalls).toBe(1);
     await page.goto('/#/pages/home/index');
     await expect(page.locator('.dashboard-scroll')).toBeVisible();
+    const beforeReturn = state.catalogCalls;
     await page.locator('uni-tabbar').getByText('全部', { exact: true }).click();
     await expect(content).toBeVisible();
     await expect(page.locator('.life-page .content-skeleton')).toHaveCount(0);
-    expect(state.catalogCalls).toBe(1);
+    expect(state.catalogCalls).toBeGreaterThan(beforeReturn);
+    const beforeReload = state.catalogCalls;
     await page.reload();
     await expect(content).toBeVisible();
-    expect(state.catalogCalls).toBe(1);
+    expect(state.catalogCalls).toBeGreaterThan(beforeReload);
+    const beforeRefresh = state.catalogCalls;
     await pullDown(page, '.tab-scroll');
-    await expect.poll(() => state.catalogCalls).toBe(2);
+    await expect.poll(() => state.catalogCalls).toBeGreaterThan(beforeRefresh);
     await expect(content).toBeVisible();
   });
 }
@@ -406,7 +409,7 @@ test("离页后的目录结果不能覆盖再次进入的新结果", async ({ pa
     page.getByRole("button", { name: "运动", exact: true }),
   ).toBeVisible();
   const response = page.waitForResponse((r) =>
-    r.url().endsWith("/quick-nav/candidates"),
+    new URL(r.url()).pathname.endsWith("/quick-nav/candidates"),
   );
   release();
   await response;

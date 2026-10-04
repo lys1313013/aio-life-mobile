@@ -93,7 +93,7 @@ export interface TimeRecord {
 export const getOverview = () => request<OverviewCard[]>('/dashboard/tasks')
 export const getCard = (type: string) =>
   request<OverviewCard>('/dashboard/card/' + encodeURIComponent(type))
-export const getQuickLinks = () => request<QuickLink[]>('/quick-nav/my')
+export const getQuickLinks = () => request<QuickLink[]>('/quick-nav/my?client=mobile')
 export const getThoughts = () => request<Thought[]>('/thought/dashboard')
 export const getWatched = () => request<WatchedTask[]>('/taskDetails/watched')
 export const getExercises = (lastDate = '') =>

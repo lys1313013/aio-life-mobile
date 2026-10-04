@@ -11,8 +11,8 @@ for (const width of [320, 390, 768, 1440]) {
       page.on('pageerror', error => errors.push(error.message));
       const state = await setup(page);
       state.members[0] = { ...state.members[0], startDate: '2026-01-31', expiryDate: '2026-02-28', note: '模拟备注，折叠后必须保留', color: '#722ed1' };
-      await page.route('**/api/quick-nav/candidates', route => route.fulfill({ json: { rscode: '0', data: entries } }));
-      await page.route('**/api/menu/preferences', route => route.fulfill({ json: { rscode: '0', data: { menus: entries.map(e => ({ id: e.menuId, title: e.title, children: [] })), hiddenMenuIds: [] } } }));
+      await page.route('**/api/quick-nav/candidates?client=mobile', route => route.fulfill({ json: { rscode: '0', data: entries } }));
+      await page.route('**/api/menu/preferences?client=mobile', route => route.fulfill({ json: { rscode: '0', data: { menus: entries.map(e => ({ id: e.menuId, title: e.title, children: [] })), hiddenMenuIds: [] } } }));
       await page.locator('uni-tabbar').getByText('全部', { exact: true }).click();
       await page.getByRole('button', { name: '订阅', exact: true }).click();
       await page.getByRole('button', { name: '编辑订阅：模拟会员', exact: true }).click();

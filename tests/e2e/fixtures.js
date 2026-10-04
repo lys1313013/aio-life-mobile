@@ -1,3 +1,4 @@
+const { homeCardFixture } = require('./home-card-fixture');
 const tasks = [
   { type: 'LEETCODE', title: '每日一题', totalTitle: '今日提交' },
   { type: 'GITHUB', title: 'GitHub', totalTitle: '连续提交' },
@@ -5,6 +6,7 @@ const tasks = [
   { type: 'SHANBAY', title: '扇贝单词', totalTitle: '今日时长' },
 ];
 function dashboardFixture(path) {
+  if (path === '/api/home/cards') return homeCardFixture();
   if (path === '/api/auth/secondary-lock/menus') return [];
   if (path === '/api/dashboard/tasks') return tasks;
   if (path.startsWith('/api/dashboard/card/')) {
