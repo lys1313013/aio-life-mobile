@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { buttonLabelClasses } from '../../services/button-label.ts'
 import ContentSkeleton from '../../components/ContentSkeleton.uvue';
 import AppIcon from '../../components/AppIcon.uvue'
 import SecondaryUnlock from "../../components/SecondaryUnlock.uvue";
@@ -251,9 +252,7 @@ async function save() {
             role="button"
             class="life-retry ui-mt-sm ui-px-card"
             @click="loadPart('catalog')"
-          >
-            重试功能目录
-          </button></view
+          ><text :class="buttonLabelClasses(['life-retry ui-mt-sm ui-px-card'])">重试功能目录</text></button></view
         >
         <view
           v-if="!catalogLoading && !catalogError && !sections.length"
@@ -373,16 +372,14 @@ async function save() {
             :aria-disabled="saving || !canEdit"
             :loading="saving"
             @click="save"
-          >
-            保存
-          </button></view
+          ><text :class="buttonLabelClasses(['life-save ui-px-card'])">保存</text></button></view
         >
         <view v-if="catalogLoading || quickLoading" class="life-state ui-px-sm ui-py-card">
           <ContentSkeleton variant="grid" label="正在加载功能目录" />
         </view>
         <view v-else-if="catalogError || quickError" class="life-state ui-px-sm ui-py-card">
           <text class="life-error" role="alert">{{ catalogError || quickError }}</text>
-          <button role="button" class="life-retry ui-mt-sm ui-px-card" @click="loadPart(catalogError ? 'catalog' : 'quick')">重试加载</button>
+          <button role="button" class="life-retry ui-mt-sm ui-px-card" @click="loadPart(catalogError ? 'catalog' : 'quick')"><text :class="buttonLabelClasses(['life-retry ui-mt-sm ui-px-card'])">重试加载</text></button>
         </view>
         <view v-if="canEdit">
           <text v-if="saveError" class="life-error" role="alert">{{
@@ -661,4 +658,10 @@ async function save() {
 }
 /* #endif */
 
+
+/* 按钮文字独立声明样式，兼容 App 不继承容器排版。 */
+.app-button-label { @include type-style('body'); color: #27272a; }
+.app-button-label-dark { color: #eeeeef; }
+.life-retry-label { color: #5b8ff9; @include type-style('body'); }
+.life-save-label { color: #ffffff; @include type-style('body'); }
 </style>

@@ -11,6 +11,7 @@ import PageState from '../../components/PageState.uvue';
 import ConfirmAction from '../../components/ConfirmAction.uvue';
 import AdaptiveModal from '../../components/AdaptiveModal.uvue';
 import FormField from '../../components/FormField.uvue';
+import FormActions from '../../components/FormActions.uvue';
 import CategoryIcon from '../../components/CategoryIcon.uvue';
 import catalog from '../../services/icons/catalog.ts';
 import { themeClass } from '../../services/theme.ts';
@@ -308,7 +309,16 @@ function privateCategory(row) {
         :disabled="saving"
         @update:model-value="(value) => (form.sort = Number(value))"
       /><text v-if="editorError" class="category-error ui-mb-section ui-type-body" role="alert">{{ editorError }}</text
-      ><view class="category-actions ui-row ui-mb-section"><MobileButton v-if="original" label="上移分类" icon="ant-design:arrow-up-outlined" variant="quiet" :disabled="!!busyId || saving" @click="move(original, -1)" /><MobileButton v-if="original" label="下移分类" icon="ant-design:arrow-down-outlined" variant="quiet" :disabled="!!busyId || saving" @click="move(original, 1)" /></view><MobileButton label="保存" :loading="saving" @click="save" /> </AdaptiveModal
+      >
+      <FormActions>
+        <template v-if="original" #secondary>
+          <MobileButton label="上移分类" icon="ant-design:arrow-up-outlined" variant="quiet" :disabled="!!busyId || saving" @click="move(original, -1)" />
+          <MobileButton label="下移分类" icon="ant-design:arrow-down-outlined" variant="quiet" :disabled="!!busyId || saving" @click="move(original, 1)" />
+        </template>
+        <MobileButton label="取消" variant="quiet" :disabled="saving" @click="opened = false" />
+        <MobileButton label="保存" :loading="saving" @click="save" />
+      </FormActions>
+    </AdaptiveModal
   ></view>
 </template>
 <style scoped lang="scss">

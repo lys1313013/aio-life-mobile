@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { buttonLabelClasses } from '../services/button-label.ts'
 import ContentSkeleton from './ContentSkeleton.uvue';
 import CategoryIcon from './CategoryIcon.uvue'
 import { isDark, themeClass } from '../services/theme.ts'
@@ -20,9 +21,7 @@ defineEmits<{ refresh: [] }>()
         :aria-label="'重试' + title"
         :disabled="loading"
         @click="$emit('refresh')"
-       :class="themeClass('section-retry')">
-        重试
-      </button>
+       :class="themeClass('section-retry')"><text :class="buttonLabelClasses(['section-retry', themeClass('section-retry')])">重试</text></button>
     </view>
     <slot v-else-if="loading" name="loading"><view class="section-loading"><ContentSkeleton compact :variant="skeleton || 'list'" :rows="2" :label="'正在加载' + title" /></view></slot>
     <view v-else class="section-content" :class="{ 'section-content-flush-top': flushTop, 'section-content-auto': autoHeight }"><slot /></view>
@@ -106,4 +105,10 @@ defineEmits<{ refresh: [] }>()
   border: 0;
 }
 /* #endif */
+
+/* 按钮文字独立声明样式，兼容 App 不继承容器排版。 */
+.app-button-label { @include type-style('body'); color: #27272a; }
+.app-button-label-dark { color: #eeeeef; }
+.section-retry-label { @include type-style('caption'); color: #3662da; }
+.section-retry-dark-label { color: #a9bfff; }
 </style>

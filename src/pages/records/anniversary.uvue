@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import { appTextColor } from '../../services/app-layout.ts'
+
+import { buttonLabelClasses } from '../../services/button-label.ts'
 import FormActions from '../../components/FormActions.uvue';
 import { isRequired, missingRequired } from '../../services/form-required.ts';
 import ContentSkeleton from '../../components/ContentSkeleton.uvue';
@@ -149,12 +152,12 @@ async function remove(item) {
                 </button>
               </view>
               <view v-if="activeMenu === item.id" class="event-menu ui-pad-xs" :class="{ 'event-menu-dark': isDark }">
-                <button class="event-menu-item" role="button" aria-label="编辑纪念日" @click="open(item)">编辑</button>
+                <button :style="appTextColor()" class="event-menu-item" role="button" aria-label="编辑纪念日" @click="open(item)"><text :class="buttonLabelClasses(['event-menu-item'])">编辑</text></button>
                 <ConfirmAction label="删除纪念日" :message="'确定删除“' + item.title + '”？'"
                   :action="() => remove(item)" @success="activeMenu = ''">
                   <template #default="{ open: confirmDelete, busy }">
-                    <button class="event-menu-item event-menu-delete" role="button" aria-label="删除纪念日"
-                      :loading="busy" :disabled="busy" @click="confirmDelete">删除</button>
+                    <button :style="appTextColor()" class="event-menu-item event-menu-delete" role="button" aria-label="删除纪念日"
+                      :loading="busy" :disabled="busy" @click="confirmDelete"><text :class="buttonLabelClasses(['event-menu-item event-menu-delete'])">删除</text></button>
                   </template>
                 </ConfirmAction>
               </view>
@@ -179,7 +182,7 @@ async function remove(item) {
           <FormField :required="isRequired('anniversary', 'targetDate')" label="日期" kind="date" v-model="form.targetDate" />
           <text class="choice-label">选择图标</text>
           <view class="emoji-options ui-section">
-            <button v-for="icon in emoji" :key="icon" role="button" class="emoji-choice" :class="{ 'choice-active': form.icon === icon }" :aria-label="'图标 ' + icon" :aria-pressed="form.icon === icon" @click="form.icon = icon">{{ icon }}</button>
+            <button v-for="icon in emoji" :key="icon" role="button" class="emoji-choice" :class="{ 'choice-active': form.icon === icon }" :aria-label="'图标 ' + icon" :aria-pressed="form.icon === icon" @click="form.icon = icon"><text :class="buttonLabelClasses(['emoji-choice', { 'choice-active': form.icon === icon }])">{{ icon }}</text></button>
           </view>
           <text class="choice-label">选择主题色</text>
           <view class="color-options ui-section">
@@ -250,7 +253,7 @@ async function remove(item) {
   background-color: transparent;
 }
 .more-dot { width: 3px; height: 3px; border-radius: 2px; background-color: #ffffff; }
-.menu-dismiss { position: fixed; inset: 0; z-index: 100; }
+.menu-dismiss { position: fixed; top: 0; right: 0; bottom: 0; left: 0; z-index: 100; }
 .event-menu {
   position: absolute;
   top: 50px;
@@ -271,7 +274,11 @@ async function remove(item) {
   border: 0;
   border-radius: 8px;
   background-color: transparent;
-  color: inherit;
+
+/* #ifndef APP */
+color: inherit;
+/* #endif */
+
   @include type-style('body');
   line-height: $space-controlMin;
   text-align: left;
@@ -279,10 +286,24 @@ async function remove(item) {
 .event-menu-delete { color: #e05260; }
 .event-count { align-items: center; }
 .event-label { @include type-style('caption'); opacity: 0.9; }
-.count-row { flex-direction: row; align-items: baseline; justify-content: center; }
+.count-row { flex-direction: row;
+/* #ifndef APP */
+align-items: baseline;
+/* #endif */
+/* #ifdef APP */
+align-items: flex-end;
+/* #endif */
+ justify-content: center; }
 .day-count { font-variant-numeric: tabular-nums; letter-spacing: type-tracking('display'); @include type-style('display');   }
 .event-unit { @include type-style('label'); opacity: 0.8; }
-.event-title { word-break: break-word; @include type-style('title');   }
+.event-title {
+/* #ifndef APP */
+word-break: break-word;
+/* #endif */
+/* #ifdef APP */
+word-break: break-all;
+/* #endif */
+ @include type-style('title');   }
 .event-date { align-self: flex-start; border-radius: 4px; padding: $space-micro $space-detail; background-color: rgba(255,255,255,0.12); @include type-style('caption'); opacity: 0.9; }
 .event-note { @include type-style('caption');  opacity: 0.8; }
 .event-error { color: #e05252; }
@@ -307,4 +328,14 @@ async function remove(item) {
 /* #endif */
 @media (min-width: 1000px) { .event-card { width: calc((100% - #{$space-section * 3}) / 4); } }
 
+/* 按钮文字独立声明样式，兼容 App 不继承容器排版。 */
+.app-button-label { @include type-style('body'); color: #27272a; }
+.app-button-label-dark { color: #eeeeef; }
+.event-menu-item-label {
+/* #ifndef APP */
+color: inherit;
+/* #endif */
+ @include type-style('body'); text-align: left; }
+.event-menu-delete-label {  color: #e05260; }
+.emoji-choice-label { @include type-style('glyph-large'); }
 </style>

@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import { useAppLayout } from '../../services/app-layout.ts'
+const { appViewport } = useAppLayout()
+
 import { computed, reactive, ref } from 'vue';
 import { onHide, onShow, onUnload } from '@dcloudio/uni-app';
 import PageHeader from '../../components/PageHeader.uvue';
@@ -149,7 +152,7 @@ function modified(value) { return value ? value.replace('T', ' ').replace(/:\d{2
     </MobilePage>
     <AdaptiveModal v-if="preview" :label="'预览 ' + preview.key" :max-width="960" show-close @close="preview = null">
       <text class="storage-name" :class="themeClass('storage-name')">{{ preview.key }}</text>
-      <image class="storage-preview" :src="preview.url" mode="aspectFit" />
+      <image :style="appViewport(0.6, 'height')" class="storage-preview" :src="preview.url" mode="aspectFit" />
     </AdaptiveModal>
     <AdaptiveModal v-if="detail" label="文件详情" show-close @close="detail = null">
       <view class="storage-detail">
@@ -184,7 +187,11 @@ function modified(value) { return value ? value.replace('T', ' ').replace(/:\d{2
 .storage-caption-dark { color: $text-secondary-dark; }
 .storage-error { @include type-style('label'); color: #df4353; }
 .storage-actions { flex-direction: row; justify-content: flex-end; gap: $space-detail; }
-.storage-preview { width: 100%; height: 60vh; margin-top: $space-section; }
+.storage-preview { width: 100%;
+/* #ifndef APP */
+height: 60vh;
+/* #endif */
+ margin-top: $space-section; }
 .storage-detail { gap: $space-inline; }
 /* #ifdef WEB || MP-WEIXIN */
 .storage-cover-button::after, .storage-name-button::after { border: 0; }

@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import { useAppLayout } from '../../services/app-layout.ts'
+const { appGridItem } = useAppLayout()
+
 import ContentSkeleton from '../../components/ContentSkeleton.uvue';
 import { computed, onMounted, onUnmounted, ref } from 'vue';
 import MobilePage from '../../components/MobilePage.uvue';
@@ -166,9 +169,9 @@ const labels: Record<string, string> = { EASY: '简单', MEDIUM: '中等', HARD:
           @click="uni.navigateTo({ url: '/pages/profile/bindings' })" /></view
       ><PageState :has-content="!!profile || !!contest || days.length > 0 || daily.length > 0 || recent.length > 0" skeleton="dashboard" :loading="loading" :error="error" @retry="load"
         >
-<template #loading><view class="progress-surface ui-card" :class="themeClass('progress-surface')"><view class="metrics progress-metrics ui-row ui-section"><MetricCard v-for="label in ['已解题', '声望', '累计活跃天数', '最活跃的一天', '今日提交次数', '每日一题']" :key="label" :label="label" value="" loading /></view><text class="heading ui-section">做题进度</text><ContentSkeleton v-for="n in 3" :key="n" variant="goal-tile" compact /></view><ContentSkeleton variant="heatmap" /><ContentSkeleton variant="list" :rows="2" /></template>
-<view class="metrics ui-row ui-section"><MetricCard label="全站排名" :value="String(profile?.siteRanking || '—')" /><MetricCard label="竞赛分数" :value="String(Math.round(contest?.rating || 0))" /><MetricCard label="全球排名" :value="String(contest?.globalRanking || '—')" :unit="'/ ' + (contest?.globalTotalParticipants || '—')" /><MetricCard label="全国排名" :value="String(contest?.localRanking || '—')" :unit="'/ ' + (contest?.localTotalParticipants || '—')" /></view>
-        <view class="progress-surface ui-card" :class="themeClass('progress-surface')"><view class="metrics progress-metrics ui-row ui-section"><MetricCard label="已解题" :value="String(solved)" :unit="'/ ' + total" /><MetricCard label="声望" :value="String(profile?.profile?.reputation || 0)" /><MetricCard label="累计活跃天数" :value="String(calendar?.totalActiveDays || 0)" unit="天" /><MetricCard label="最活跃的一天" :value="String(peakDay.count)" :unit="'次 · ' + peakDay.date" /><MetricCard label="今日提交次数" :value="String(summary.today)" /><MetricCard value-kind="text" label="每日一题" :value="daily.some((item) => item.userStatus === 'FINISH') ? '已完成' : '未完成'" /></view><text class="heading ui-section">做题进度</text><view class="difficulty-list"><view v-for="row in difficultyProgress" :key="row.difficulty" class="difficulty-row"><view class="difficulty-head"><text class="difficulty-label" :class="'difficulty-' + row.difficulty">{{ labels[row.difficulty] }}</text><text class="muted" :class="themeClass('muted')">{{ row.accepted }} / {{ row.total }}</text></view><view class="progress-track"><view class="progress-fill" :class="'fill-' + row.difficulty" :style="{ width: (row.total ? Math.round(row.accepted / row.total * 100) : 0) + '%' }" /></view></view></view></view><text class="muted" :class="themeClass('muted')">过去一年共提交 {{ summary.total }} 次 · 连续提交 {{ calendar?.recentStreak || summary.streak }} 天</text
+<template #loading><view class="progress-surface ui-card" :class="themeClass('progress-surface')"><view class="metrics progress-metrics ui-row ui-section"><MetricCard :style="appGridItem(2, 'inline', [[768, 3]], false)" v-for="label in ['已解题', '声望', '累计活跃天数', '最活跃的一天', '今日提交次数', '每日一题']" :key="label" :label="label" value="" loading /></view><text class="heading ui-section">做题进度</text><ContentSkeleton v-for="n in 3" :key="n" variant="goal-tile" compact /></view><ContentSkeleton variant="heatmap" /><ContentSkeleton variant="list" :rows="2" /></template>
+<view class="metrics ui-row ui-section"><MetricCard :style="appGridItem(2, 'inline', [[768, 4]], false)" label="全站排名" :value="String(profile?.siteRanking || '—')" /><MetricCard :style="appGridItem(2, 'inline', [[768, 4]], false)" label="竞赛分数" :value="String(Math.round(contest?.rating || 0))" /><MetricCard :style="appGridItem(2, 'inline', [[768, 4]], false)" label="全球排名" :value="String(contest?.globalRanking || '—')" :unit="'/ ' + (contest?.globalTotalParticipants || '—')" /><MetricCard :style="appGridItem(2, 'inline', [[768, 4]], false)" label="全国排名" :value="String(contest?.localRanking || '—')" :unit="'/ ' + (contest?.localTotalParticipants || '—')" /></view>
+        <view class="progress-surface ui-card" :class="themeClass('progress-surface')"><view class="metrics progress-metrics ui-row ui-section"><MetricCard :style="appGridItem(2, 'inline', [[768, 3]], false)" label="已解题" :value="String(solved)" :unit="'/ ' + total" /><MetricCard :style="appGridItem(2, 'inline', [[768, 3]], false)" label="声望" :value="String(profile?.profile?.reputation || 0)" /><MetricCard :style="appGridItem(2, 'inline', [[768, 3]], false)" label="累计活跃天数" :value="String(calendar?.totalActiveDays || 0)" unit="天" /><MetricCard :style="appGridItem(2, 'inline', [[768, 3]], false)" label="最活跃的一天" :value="String(peakDay.count)" :unit="'次 · ' + peakDay.date" /><MetricCard :style="appGridItem(2, 'inline', [[768, 3]], false)" label="今日提交次数" :value="String(summary.today)" /><MetricCard :style="appGridItem(2, 'inline', [[768, 3]], false)" value-kind="text" label="每日一题" :value="daily.some((item) => item.userStatus === 'FINISH') ? '已完成' : '未完成'" /></view><text class="heading ui-section">做题进度</text><view class="difficulty-list"><view :style="appGridItem(1, 'section', [[768, 3]], false)" v-for="row in difficultyProgress" :key="row.difficulty" class="difficulty-row"><view class="difficulty-head"><text class="difficulty-label" :class="'difficulty-' + row.difficulty">{{ labels[row.difficulty] }}</text><text class="muted" :class="themeClass('muted')">{{ row.accepted }} / {{ row.total }}</text></view><view class="progress-track"><view class="progress-fill" :class="'fill-' + row.difficulty" :style="{ width: (row.total ? Math.round(row.accepted / row.total * 100) : 0) + '%' }" /></view></view></view></view><text class="muted" :class="themeClass('muted')">过去一年共提交 {{ summary.total }} 次 · 连续提交 {{ calendar?.recentStreak || summary.streak }} 天</text
         ><scroll-view scroll-x class="calendar-scroll ui-mt-section"
           ><view class="calendar ui-gap-xs"
             ><view
@@ -204,12 +207,26 @@ const labels: Record<string, string> = { EASY: '简单', MEDIUM: '中等', HARD:
 .actions {
 }
 .metrics {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+
+/* #ifndef APP */
+display: grid;
+/* #endif */
+/* #ifdef APP */
+display: flex; flex-direction: row; flex-wrap: wrap; justify-content: space-between;
+/* #endif */
+
+/* #ifndef APP */
+grid-template-columns: repeat(2, minmax(0, 1fr));
+/* #endif */
+
   gap: $space-inline;
 }
 @media (min-width: 768px) {
-  .metrics { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .metrics {
+/* #ifndef APP */
+grid-template-columns: repeat(4, minmax(0, 1fr));
+/* #endif */
+ }
 }
 .record {
   background-color: #ffffff;
@@ -228,7 +245,13 @@ const labels: Record<string, string> = { EASY: '简单', MEDIUM: '中等', HARD:
 .heading {
   @include type-style('title');
 
-  display: block;
+/* #ifndef APP */
+display: block;
+/* #endif */
+/* #ifdef APP */
+display: flex;
+/* #endif */
+
 }
 .calendar-scroll {
   width: 100%;
@@ -264,6 +287,9 @@ const labels: Record<string, string> = { EASY: '简单', MEDIUM: '中等', HARD:
 .description-dark, .muted-dark, .meta-item-dark, .repo-label-dark { color: $text-secondary-dark; }
 
 .difficulty-list { gap: $space-section; }
+/* #ifdef APP */
+.difficulty-list { display: flex; flex-direction: row; flex-wrap: wrap; justify-content: space-between; }
+/* #endif */
 .difficulty-row { gap: $space-detail; }
 .difficulty-head { flex-direction: row; justify-content: space-between; align-items: center; }
 .difficulty-label { @include type-style('label-strong');  }
@@ -278,6 +304,21 @@ const labels: Record<string, string> = { EASY: '简单', MEDIUM: '中等', HARD:
 .status-tag { @include type-style('badge'); padding: $space-micro $space-detail; border-radius: 4px; }
 .status-done { color: #3a9d78; background-color: rgba(58,157,120,.1); }
 .status-pending { color: #b58a30; background-color: rgba(181,138,48,.1); }
-@media (min-width: 768px) { .progress-metrics { grid-template-columns: repeat(3, minmax(0, 1fr)); } .difficulty-list { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (min-width: 768px) { .progress-metrics {
+/* #ifndef APP */
+grid-template-columns: repeat(3, minmax(0, 1fr));
+/* #endif */
+ } .difficulty-list {
+/* #ifndef APP */
+display: grid;
+/* #endif */
+/* #ifdef APP */
+display: flex; flex-direction: row; flex-wrap: wrap; justify-content: space-between;
+/* #endif */
+
+/* #ifndef APP */
+grid-template-columns: repeat(3, minmax(0, 1fr));
+/* #endif */
+ } }
 .day-dark { background-color: #2d3433; }
 </style>

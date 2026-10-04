@@ -1,4 +1,8 @@
 <script setup lang="ts">
+import { useAppLayout, appTextColor, appButtonTextColor } from '../../services/app-layout.ts'
+const { appGridItem } = useAppLayout()
+
+import { buttonLabelClasses } from '../../services/button-label.ts'
 import { isRequired } from '../../services/form-required.ts';
 import ContentSkeleton from '../../components/ContentSkeleton.uvue';
 import { computed, ref, onUnmounted, watch } from 'vue';
@@ -301,11 +305,11 @@ function chooseCategory(value) {
           icon="ant-design:plus-outlined"
           @click="section === '衣物' ? openItem() : openCategory()" /></view
       ><view class="metrics ui-row ui-section"
-        ><MetricCard :loading="loading && !items.length"
+        ><MetricCard :style="appGridItem(2, 'section', [[700, 3]], true)" :loading="loading && !items.length"
           class="metric-wide"
           label="总价值"
           :value="String(stats.totalValue || 0)"
-          unit="元" /><MetricCard :loading="loading && !items.length" label="衣物" :value="String(stats.totalCount || 0)" /><MetricCard :loading="loading && !items.length"
+          unit="元" /><MetricCard :style="appGridItem(2, 'section', [[700, 3]], false)" :loading="loading && !items.length" label="衣物" :value="String(stats.totalCount || 0)" /><MetricCard :style="appGridItem(2, 'section', [[700, 3]], false)" :loading="loading && !items.length"
           label="均价"
           :value="String(stats.avgPrice || 0)"
           unit="元" /></view
@@ -358,7 +362,7 @@ function chooseCategory(value) {
                 v-if="row.fileId && (photoBusy[row.fileId] || photoErrors[row.fileId])"
                 :label="photoErrors[row.fileId] ? '重试衣物照片' : '加载衣物照片'"
                 :loading="photoBusy[row.fileId]"
-                @click="photo(row.fileId)" /><button role="button" class="item-title-button ui-type-body" :aria-label="'编辑衣物' + row.name" :disabled="detailBusy === row.id" :aria-busy="detailBusy === row.id" @click="edit(row)"><text class="item-title">{{ row.name }}</text></button
+                @click="photo(row.fileId)" /><button :style="appTextColor()" role="button" class="item-title-button ui-type-body" :aria-label="'编辑衣物' + row.name" :disabled="detailBusy === row.id" :aria-busy="detailBusy === row.id" @click="edit(row)"><text class="item-title">{{ row.name }}</text></button
               ><text class="muted" :class="themeClass('secondary-text')">{{
                 [row.categoryName, row.color, row.brand, row.size, row.season]
                   .filter(Boolean)
@@ -410,7 +414,7 @@ function chooseCategory(value) {
               :label="'适用季节' + value"
               :variant="form.season.includes(value) ? 'primary' : 'quiet'"
               @click="toggleSeason(value)"
-              >{{ value }}</MobileButton
+              ><text :style="appButtonTextColor(form.season.includes(value))" :class="buttonLabelClasses([''])">{{ value }}</text></MobileButton
             ></view
           ><FormField
             label="购买日期"
@@ -494,10 +498,24 @@ function chooseCategory(value) {
   flex-wrap: wrap;
 }
 .metrics {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+
+/* #ifndef APP */
+display: grid;
+/* #endif */
+/* #ifdef APP */
+display: flex; flex-direction: row; flex-wrap: wrap; justify-content: space-between;
+/* #endif */
+
+/* #ifndef APP */
+grid-template-columns: repeat(2, minmax(0, 1fr));
+/* #endif */
+
 }
-.metric-wide { grid-column: 1 / -1; }
+.metric-wide {
+/* #ifndef APP */
+grid-column: 1 / -1;
+/* #endif */
+ }
 .item-grid {
   flex-direction: row;
   flex-wrap: wrap;
@@ -531,7 +549,14 @@ function chooseCategory(value) {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  max-width: 100%;
+
+/* #ifndef APP */
+max-width: 100%;
+/* #endif */
+/* #ifdef APP */
+flex-shrink: 1;
+/* #endif */
+
 }
 .muted {
   color: $text-secondary-light;
@@ -564,9 +589,17 @@ function chooseCategory(value) {
   }
 }
 @media (min-width: 700px) {
-  .metric-wide { grid-column: auto; }
+  .metric-wide {
+/* #ifndef APP */
+grid-column: auto;
+/* #endif */
+ }
   .metrics {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+
+/* #ifndef APP */
+grid-template-columns: repeat(3, minmax(0, 1fr));
+/* #endif */
+
   }
 }
 .section-tabs { align-items: center; }
@@ -587,7 +620,11 @@ function chooseCategory(value) {
   margin: 0;
   border: 0;
   background: transparent;
-  color: inherit;
+
+/* #ifndef APP */
+color: inherit;
+/* #endif */
+
   text-align: left;
   line-height: type-line('body');
 }
@@ -612,4 +649,9 @@ function chooseCategory(value) {
 }
 
 .secondary-text-dark { color: $text-secondary-dark; }
+
+/* 按钮文字独立声明样式，兼容 App 不继承容器排版。 */
+.app-button-label { @include type-style('body'); color: #27272a; }
+.app-button-label-dark { color: #eeeeef; }
+
 </style>

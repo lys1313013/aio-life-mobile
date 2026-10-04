@@ -1,4 +1,8 @@
 <script setup lang="ts">
+import { useAppLayout, appTextColor, appButtonTextColor } from '../../services/app-layout.ts'
+const { appGridItem } = useAppLayout()
+
+import { buttonLabelClasses } from '../../services/button-label.ts'
 import FormActions from '../../components/FormActions.uvue';
 import { isRequired, missingRequired } from '../../services/form-required.ts';
 import ContentSkeleton from '../../components/ContentSkeleton.uvue';
@@ -270,7 +274,7 @@ async function remove(item) {
         :show-scrollbar="false"
         class="device-type-scroll ui-section"
       ><view class="device-type-tabs" aria-label="设备类型筛选"
-        ><button
+        ><button :style="appTextColor()"
           v-for="label in ['全部类型', ...types.map((t) => t.dictLabel || t.label)]"
           :key="label"
           role="button"
@@ -278,13 +282,13 @@ async function remove(item) {
           :class="{ 'device-type-tab-active': typeFilter === label, 'device-type-tab-active-dark': typeFilter === label && isDark }"
           :aria-pressed="typeFilter === label"
           @click="typeFilter !== label && (typeFilter = label, load())"
-        >{{ label === '全部类型' ? '全部' : label }}</button
+        ><text :class="buttonLabelClasses(['device-type-tab', { 'device-type-tab-active': typeFilter === label, 'device-type-tab-active-dark': typeFilter === label && isDark }])">{{ label === '全部类型' ? '全部' : label }}</text></button
       ></view></scroll-view><view class="metrics ui-row ui-section"
-        ><MetricCard :loading="loading && !rows.length"
+        ><MetricCard :style="appGridItem(2, 'section', [[700, 3]], true)" :loading="loading && !rows.length"
           class="metric-wide"
           label="总资产"
           :value="amount"
-          unit="元" /><MetricCard :loading="loading && !rows.length" label="资产数量" :value="filtered.length" /><MetricCard :loading="loading && !rows.length" label="每日成本" :value="dailyCost" unit="元" /></view
+          unit="元" /><MetricCard :style="appGridItem(2, 'section', [[700, 3]], false)" :loading="loading && !rows.length" label="资产数量" :value="filtered.length" /><MetricCard :style="appGridItem(2, 'section', [[700, 3]], false)" :loading="loading && !rows.length" label="每日成本" :value="dailyCost" unit="元" /></view
       ><view class="status-summary ui-row ui-section"
         ><text
           v-for="entry in statusCounts"
@@ -324,7 +328,7 @@ async function remove(item) {
               ><text class="goods-badge status-tag" :class="'status-' + item.status">{{
                 statusName(item.status)
               }}</text></view
-            ><button role="button" class="goods-title-button ui-type-body" aria-label="编辑设备" @click="open(item)"><text class="goods-title">{{ item.name }}</text></button
+            ><button :style="appTextColor()" role="button" class="goods-title-button ui-type-body" aria-label="编辑设备" @click="open(item)"><text class="goods-title">{{ item.name }}</text></button
             ><text v-if="item.spec" class="goods-content" :class="{ 'secondary-text-dark': isDark }">{{ item.spec }}</text
             ><text class="goods-price">¥ {{ item.purchasePrice || 0 }}</text
             ><text class="goods-secondary" :class="{ 'secondary-text-dark': isDark }">{{ item.purchaseDate || '—' }} · {{ usageDays(item) }} 天</text
@@ -397,11 +401,11 @@ async function remove(item) {
             label="取消"
             variant="quiet"
             :disabled="saving || deleting || attachmentBusy"
-            @click="form = null"><text class="device-editor-action">取消</text></MobileButton><MobileButton
+            @click="form = null"><text :style="appButtonTextColor(false)" class="device-editor-action">取消</text></MobileButton><MobileButton
             :label="created ? '重新读取' : '保存'"
             :loading="saving"
             :disabled="deleting || attachmentBusy"
-            @click="save"><text class="device-editor-action">{{ created ? '重新读取' : '保存' }}</text></MobileButton>
+            @click="save"><text :style="appButtonTextColor()" class="device-editor-action">{{ created ? '重新读取' : '保存' }}</text></MobileButton>
         </FormActions></AdaptiveModal> </view
   ></MobilePage>
 </template>
@@ -432,7 +436,14 @@ async function remove(item) {
 .device-type-tabs {
   display: flex;
   // 内容按全部标签撑开，避免 view 将超出视口的标签裁掉。
-  width: max-content;
+
+/* #ifndef APP */
+width: max-content;
+/* #endif */
+/* #ifdef APP */
+flex-shrink: 0;
+/* #endif */
+
   flex-direction: row;
   flex-wrap: nowrap;
   gap: $space-inline;
@@ -450,7 +461,11 @@ async function remove(item) {
   border-bottom: 2px solid transparent;
   border-radius: 0;
   background: transparent;
-  color: inherit;
+
+/* #ifndef APP */
+color: inherit;
+/* #endif */
+
   @include type-style('body');
 
   white-space: nowrap;
@@ -464,10 +479,24 @@ async function remove(item) {
   border-bottom-color: #6c9cff;
 }
 .metrics {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+
+/* #ifndef APP */
+display: grid;
+/* #endif */
+/* #ifdef APP */
+display: flex; flex-direction: row; flex-wrap: wrap; justify-content: space-between;
+/* #endif */
+
+/* #ifndef APP */
+grid-template-columns: repeat(2, minmax(0, 1fr));
+/* #endif */
+
 }
-.metric-wide { grid-column: 1 / -1; }
+.metric-wide {
+/* #ifndef APP */
+grid-column: 1 / -1;
+/* #endif */
+ }
 .goods-grid {
   display: flex;
   flex-direction: row;
@@ -561,9 +590,17 @@ async function remove(item) {
   color: #e05252;
 }
 @media (min-width: 700px) {
-  .metric-wide { grid-column: auto; }
+  .metric-wide {
+/* #ifndef APP */
+grid-column: auto;
+/* #endif */
+ }
   .metrics {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+
+/* #ifndef APP */
+grid-template-columns: repeat(3, minmax(0, 1fr));
+/* #endif */
+
   }
 }
 .goods-title-button {
@@ -577,7 +614,11 @@ async function remove(item) {
   padding: 0;
   border: 0;
   background: transparent;
-  color: inherit;
+
+/* #ifndef APP */
+color: inherit;
+/* #endif */
+
   text-align: left;
   line-height: type-line('body');
 }
@@ -587,4 +628,15 @@ async function remove(item) {
 /* #endif */
 
 .secondary-text-dark { color: $text-secondary-dark; }
+
+/* 按钮文字独立声明样式，兼容 App 不继承容器排版。 */
+.app-button-label { @include type-style('body'); color: #27272a; }
+.app-button-label-dark { color: #eeeeef; }
+.device-type-tab-label {
+/* #ifndef APP */
+color: inherit;
+/* #endif */
+ @include type-style('body'); }
+.device-type-tab-active-label { color: #2563eb; }
+.device-type-tab-active-dark-label { color: #6c9cff; }
 </style>

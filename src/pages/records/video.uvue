@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { appTextColor } from '../../services/app-layout.ts'
+
 import VideoCover from './components/VideoCover.uvue';
 import FormActions from '../../components/FormActions.uvue';
 import { isRequired, missingRequired } from '../../services/form-required.ts';
@@ -291,11 +293,11 @@ function play(url) {
     ><view class="video-page ui-page-body" :class="{ 'video-page-dark': isDark }"
       ><PageHeader title="视频观看" :back="true" @back="uni.navigateBack()" /><view class="ui-toolbar"
         ><FormField compact stretch hide-label label="搜索视频" placeholder="搜索视频、UP主或笔记" v-model="keyword" /></view
-      ><view class="video-summary ui-row ui-section"><view class="summary-panel ui-card" :class="{ 'summary-panel-dark': isDark }"><ContentSkeleton v-if="loading && !rows.length" variant="summary" /><template v-else><text class="secondary" :class="{ 'record-secondary-dark': isDark }">学习总数</text><text class="summary-number">{{ Object.values(counts).reduce((sum, count) => sum + Number(count), 0) }}</text><text class="secondary" :class="{ 'record-secondary-dark': isDark }">{{ counts.completed || 0 }} 已完成 · {{ counts.in_progress || 0 }} 进行中 · {{ counts.not_started || 0 }} 未开始</text></template></view><view class="summary-panel ui-card" :class="{ 'summary-panel-dark': isDark }"><ContentSkeleton v-if="loading && !rows.length" variant="summary" /><template v-else><text class="secondary" :class="{ 'record-secondary-dark': isDark }">已学时长</text><text class="summary-number summary-duration">{{ formatSeconds(statistics.studiedSeconds) }}</text><text class="secondary" :class="{ 'record-secondary-dark': isDark }">剩余预估 {{ formatSeconds(statistics.unstudiedSeconds) }}</text></template></view></view><scroll-view :scroll-x="true" direction="horizontal" class="status-scroll ui-section"><view class="status-tabs ui-row"><button v-for="label in ['未开始', '进行中', '已暂停', '已完成', '全部状态']" :key="label" role="button" class="status-tab" :class="{ 'status-tab-dark': isDark, 'status-active': status === label }" :aria-pressed="status === label" @click="status = label; load()"><text class="status-label">{{ label === '全部状态' ? '全部' : label }}</text><text class="status-count" v-if="!loading || rows.length">{{ label === '全部状态' ? Object.values(counts).reduce((sum, count) => sum + Number(count), 0) : counts[statuses.find((code) => statusLabels[code] === label)] || 0 }}</text></button></view></scroll-view>
+      ><view class="video-summary ui-row ui-section"><view class="summary-panel ui-card" :class="{ 'summary-panel-dark': isDark }"><ContentSkeleton v-if="loading && !rows.length" variant="summary" /><template v-else><text class="secondary" :class="{ 'record-secondary-dark': isDark }">学习总数</text><text class="summary-number">{{ Object.values(counts).reduce((sum, count) => sum + Number(count), 0) }}</text><text class="secondary" :class="{ 'record-secondary-dark': isDark }">{{ counts.completed || 0 }} 已完成 · {{ counts.in_progress || 0 }} 进行中 · {{ counts.not_started || 0 }} 未开始</text></template></view><view class="summary-panel ui-card" :class="{ 'summary-panel-dark': isDark }"><ContentSkeleton v-if="loading && !rows.length" variant="summary" /><template v-else><text class="secondary" :class="{ 'record-secondary-dark': isDark }">已学时长</text><text class="summary-number summary-duration">{{ formatSeconds(statistics.studiedSeconds) }}</text><text class="secondary" :class="{ 'record-secondary-dark': isDark }">剩余预估 {{ formatSeconds(statistics.unstudiedSeconds) }}</text></template></view></view><scroll-view :scroll-x="true" direction="horizontal" class="status-scroll ui-section"><view class="status-tabs ui-row"><button v-for="label in ['未开始', '进行中', '已暂停', '已完成', '全部状态']" :key="label" role="button" class="status-tab" :class="{ 'status-tab-dark': isDark, 'status-active': status === label }" :aria-pressed="status === label" @click="status = label; load()"><text :style="appTextColor(status === label)" class="status-label">{{ label === '全部状态' ? '全部' : label }}</text><text :style="appTextColor(status === label)" class="status-count" v-if="!loading || rows.length">{{ label === '全部状态' ? Object.values(counts).reduce((sum, count) => sum + Number(count), 0) : counts[statuses.find((code) => statusLabels[code] === label)] || 0 }}</text></button></view></scroll-view>
       <PageState skeleton="media" :loading="loading" :error="error" :empty="!filtered.length" @retry="load"
         >
 <template #loading><view class="video-grid"><view v-for="n in 6" :key="n" class="video-card" :class="{ 'video-card-dark': isDark }"><view class="video-poster"><ContentSkeleton variant="cover" /></view><view class="video-body"><ContentSkeleton variant="goal-tile" /></view></view></view></template>
-<view class="video-grid"><view v-for="item in filtered" :key="item.id" class="video-card" :class="{ 'video-card-dark': isDark }" role="button" tabindex="0" :aria-label="'编辑视频：' + item.title" @click="open(item)" @keydown.enter="open(item)" @keydown.space.prevent="open(item)"><view class="video-poster" :class="{ 'video-poster-dark': isDark }"><VideoCover :file-id="item.coverFileId" :state="item.coverState" :title="item.title" @retry="retryCover(item)" /><text class="video-status" :class="'video-status-' + item.status">{{ statusLabels[item.status] }}</text><text class="video-duration">{{ clockDuration(item.duration) }}</text></view><view class="video-body"><text class="video-title">{{ item.title }}</text><view class="video-meta ui-row"><text class="video-meta-text" :class="{ 'record-secondary-dark': isDark }">{{ item.ownerName || '' }}</text><text class="episode">{{ item.currentEpisode || 1 }}/{{ item.episodes || 1 }}</text></view><view class="video-meta ui-row"><text class="video-meta-text" :class="{ 'record-secondary-dark': isDark }">{{ clockDuration(item.watchedDuration) }} / {{ clockDuration(item.duration) }}</text><text class="episode">{{ videoProgress(item) }}%</text></view><view class="progress-track" :class="{ 'progress-track-dark': isDark }"><view class="progress-fill" :style="{ width: (videoProgress(item)) + '%' }" /></view></view></view></view></PageState
+<view class="video-grid"><view v-for="item in filtered" :key="item.id" class="video-card" :class="{ 'video-card-dark': isDark }" role="button" tabindex="0" :aria-label="'编辑视频：' + item.title" @click="open(item)" @keydown.enter="open(item)" @keydown.space.prevent="open(item)"><view class="video-poster" :class="{ 'video-poster-dark': isDark }"><VideoCover :file-id="item.coverFileId" :state="item.coverState" :title="item.title" @retry="retryCover(item)" /><text class="video-status" :class="'video-status-' + item.status">{{ statusLabels[item.status] }}</text><text class="video-duration">{{ clockDuration(item.duration) }}</text></view><view class="video-body"><text :max-lines="2" class="video-title">{{ item.title }}</text><view class="video-meta ui-row"><text class="video-meta-text" :class="{ 'record-secondary-dark': isDark }">{{ item.ownerName || '' }}</text><text class="episode">{{ item.currentEpisode || 1 }}/{{ item.episodes || 1 }}</text></view><view class="video-meta ui-row"><text class="video-meta-text" :class="{ 'record-secondary-dark': isDark }">{{ clockDuration(item.watchedDuration) }} / {{ clockDuration(item.duration) }}</text><text class="episode">{{ videoProgress(item) }}%</text></view><view class="progress-track" :class="{ 'progress-track-dark': isDark }"><view class="progress-fill" :style="{ width: (videoProgress(item)) + '%' }" /></view></view></view></view></PageState
       ><AdaptiveModal
         v-if="form"
         label="编辑学习视频"
@@ -412,11 +414,26 @@ function play(url) {
 .summary-panel-dark { background-color: #1c1e22; }
 .summary-number { @include type-style('metric');  }
 .status-scroll { width: 100%; }
-.status-tabs { flex-direction: row; width: max-content; }
+.status-tabs { flex-direction: row;
+/* #ifndef APP */
+width: max-content;
+/* #endif */
+/* #ifdef APP */
+flex-shrink: 0;
+/* #endif */
+ }
 .status-tab::after { border: 0; }
 .status-tab { display: flex; flex-direction: row; align-items: center; justify-content: center; gap: $space-detail; margin: 0; padding: 0 $space-inline; background-color: transparent; @include type-style('label'); min-height: $space-controlMin; flex-shrink: 0; color: $text-secondary-light; border-radius: 0; }
-.status-label { @include type-style('label'); color: inherit; }
-.status-count { @include type-style('caption'); color: inherit; }
+.status-label { @include type-style('label');
+/* #ifndef APP */
+color: inherit;
+/* #endif */
+ }
+.status-count { @include type-style('caption');
+/* #ifndef APP */
+color: inherit;
+/* #endif */
+ }
 .status-tab-dark { color: $text-secondary-dark; }
 .status-active { color: #427bea; border-bottom: 2px solid #427bea; }
 .video-grid { display: flex; flex-direction: row; flex-wrap: wrap; gap: $space-section; }
@@ -427,7 +444,22 @@ function play(url) {
 .video-status { top: $space-detail; left: $space-detail; border-radius: 4px; }
 .video-duration { bottom: $space-detail; right: $space-detail; background-color: #0008; }
 .video-body { padding: $space-card; display: flex; flex-direction: column; gap: $space-inline; }
-.video-title {  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; @include type-style('body-strong'); min-height: 42px; }
+.video-title {
+/* #ifndef APP */
+display: -webkit-box;
+/* #endif */
+/* #ifdef APP */
+text-overflow: ellipsis;
+/* #endif */
+
+/* #ifndef APP */
+-webkit-line-clamp: 2;
+/* #endif */
+
+/* #ifndef APP */
+-webkit-box-orient: vertical;
+/* #endif */
+ overflow: hidden; @include type-style('body-strong'); min-height: 42px; }
 .video-meta { justify-content: space-between; gap: $space-detail; }
 .video-meta-text { color: $text-secondary-light; @include type-style('caption'); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .episode { flex-shrink: 0; color: #427bea; @include type-style('badge'); }

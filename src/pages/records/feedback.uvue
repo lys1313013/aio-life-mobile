@@ -220,7 +220,7 @@ async function cancel(item) {
               <text v-if="item.feedbackType" class="feedback-tag" :class="[{ 'feedback-tag-dark': isDark }, 'feedback-type-' + item.feedbackType + (isDark ? '-dark' : '')]">{{ typeLabels[types.indexOf(item.feedbackType)] || item.feedbackType }}</text>
               <text class="feedback-tag" :class="[{ 'feedback-tag-dark': isDark }, 'feedback-status-' + item.status + (isDark ? '-dark' : '')]">{{ statusLabels[statuses.indexOf(item.status)] || item.status }}</text>
             </view>
-            <text v-if="item.summary" class="feedback-content feedback-summary">{{ item.summary }}</text>
+            <text :max-lines="2" v-if="item.summary" class="feedback-content feedback-summary">{{ item.summary }}</text>
             <view class="feedback-footer ui-row">
               <view class="feedback-meta">
                 <view class="feedback-meta-item ui-row"><AppIcon name="ant-design:clock-circle-outlined" :size="13" :color="isDark ? '#9ca5b4' : '#748094'" /><text class="feedback-secondary" :class="{ 'record-secondary-dark': isDark }">{{ item.createTime }}</text></view>
@@ -348,7 +348,22 @@ async function cancel(item) {
 .feedback-type-QUESTION-dark { color: #c6a6ef; background-color: #352b45; }
 .feedback-status-PENDING-dark { color: #e9c17c; background-color: #3b3325; }
 .feedback-status-RESOLVED-dark { color: #82cfaa; background-color: #263c32; }
-.feedback-summary { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.feedback-summary {
+/* #ifndef APP */
+display: -webkit-box;
+/* #endif */
+/* #ifdef APP */
+text-overflow: ellipsis;
+/* #endif */
+
+/* #ifndef APP */
+-webkit-line-clamp: 2;
+/* #endif */
+
+/* #ifndef APP */
+-webkit-box-orient: vertical;
+/* #endif */
+ overflow: hidden; }
 .feedback-footer { align-items: center; justify-content: space-between; }
 .feedback-meta { flex: 1; min-width: 0; display: flex; flex-wrap: wrap; column-gap: $space-inline; row-gap: $space-detail; }
 .feedback-meta-item { gap: $space-detail; align-items: center; }

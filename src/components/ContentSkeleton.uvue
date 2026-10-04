@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import { useAppLayout } from '../services/app-layout.ts'
+const { appGridItem } = useAppLayout()
+
 import { themeClass } from '../services/theme.ts';
 withDefaults(defineProps<{ variant?: string; rows?: number; label?: string; compact?: boolean; metrics?: number }>(), { variant: 'list', rows: 3, label: '正在加载内容', metrics: 4 });
 </script>
@@ -18,12 +21,12 @@ withDefaults(defineProps<{ variant?: string; rows?: number; label?: string; comp
       <view v-if="variant === 'summary'" class="skeleton-copy"><view :class="themeClass('skeleton-shape')" class="skeleton-shape skeleton-title" /><view :class="themeClass('skeleton-shape')" class="skeleton-shape skeleton-value" /><view :class="themeClass('skeleton-shape')" class="skeleton-shape skeleton-short" /></view>
       <view v-if="variant === 'profile'" class="skeleton-profile"><view :class="themeClass('skeleton-shape')" class="skeleton-shape skeleton-avatar" /><view :class="themeClass('skeleton-shape')" class="skeleton-shape skeleton-title" /><view :class="themeClass('skeleton-shape')" class="skeleton-shape skeleton-short" /></view>
       <view v-if="['metrics', 'dashboard', 'calendar', 'overview', 'articles'].includes(variant)" class="skeleton-metrics" :style="metrics < 3 ? { gridTemplateColumns: 'repeat(' + metrics + ', minmax(0, 1fr))' } : {}">
-        <view v-for="n in metrics" :key="n" class="skeleton-card" :class="themeClass('skeleton-card')"><view :class="themeClass('skeleton-shape')" class="skeleton-shape skeleton-label" /><view :class="themeClass('skeleton-shape')" class="skeleton-shape skeleton-value" /></view>
+        <view :style="appGridItem(2, 'inline', [[768, 4]], false)" v-for="n in metrics" :key="n" class="skeleton-card" :class="themeClass('skeleton-card')"><view :class="themeClass('skeleton-shape')" class="skeleton-shape skeleton-label" /><view :class="themeClass('skeleton-shape')" class="skeleton-shape skeleton-value" /></view>
       </view>
       <view v-if="variant === 'calendar' || variant === 'heatmap'" class="skeleton-card skeleton-calendar" :class="themeClass('skeleton-card')"><view v-for="n in 420" :key="n" :class="themeClass('skeleton-shape')" class="skeleton-shape skeleton-day" /></view>
       <view v-if="['chart', 'dashboard', 'overview'].includes(variant)" class="skeleton-card" :class="themeClass('skeleton-card')"><view :class="themeClass('skeleton-shape')" class="skeleton-shape skeleton-title" /><view class="skeleton-chart"><view v-for="(height, n) in [36, 58, 45, 76, 60, 92, 70, 85]" :key="n" :class="themeClass('skeleton-shape')" class="skeleton-shape skeleton-bar" :style="{ height: height + '%' }" /></view></view>
-      <view v-if="variant === 'media'" class="skeleton-media"><view v-for="n in 6" :key="n" class="skeleton-media-item"><view :class="themeClass('skeleton-shape')" class="skeleton-shape skeleton-poster" /><view :class="themeClass('skeleton-shape')" class="skeleton-shape skeleton-line" /></view></view>
-      <view v-else-if="variant === 'grid'" class="skeleton-menu"><view v-for="n in 8" :key="n" class="skeleton-menu-item"><view :class="themeClass('skeleton-shape')" class="skeleton-shape skeleton-icon" /><view :class="themeClass('skeleton-shape')" class="skeleton-shape skeleton-label" /></view></view>
+      <view v-if="variant === 'media'" class="skeleton-media"><view :style="appGridItem(3, 'section', [[768, 6]], false)" v-for="n in 6" :key="n" class="skeleton-media-item"><view :class="themeClass('skeleton-shape')" class="skeleton-shape skeleton-poster" /><view :class="themeClass('skeleton-shape')" class="skeleton-shape skeleton-line" /></view></view>
+      <view v-else-if="variant === 'grid'" class="skeleton-menu"><view :style="appGridItem(4, 'section', [], false)" v-for="n in 8" :key="n" class="skeleton-menu-item"><view :class="themeClass('skeleton-shape')" class="skeleton-shape skeleton-icon" /><view :class="themeClass('skeleton-shape')" class="skeleton-shape skeleton-label" /></view></view>
       <view v-else-if="variant === 'graph'" class="skeleton-graph"><view class="skeleton-connection" :class="themeClass('skeleton-connection')" /><view v-for="n in 5" :key="n" class="skeleton-shape skeleton-node" :class="[themeClass('skeleton-shape'), 'skeleton-node-' + n]" /></view>
       <view v-else-if="variant === 'form'" class="skeleton-fields"><view v-for="n in rows" :key="n" class="skeleton-field"><view :class="themeClass('skeleton-shape')" class="skeleton-shape skeleton-label" /><view :class="themeClass('skeleton-shape')" class="skeleton-shape skeleton-input" /></view></view>
       <view v-else-if="!['metrics', 'calendar', 'heatmap', 'chart', 'profile', 'summary', 'overview', 'cover', 'caption', 'tile', 'goal-tile', 'date-tile', 'distribution'].includes(variant)" class="skeleton-list">
@@ -40,7 +43,18 @@ withDefaults(defineProps<{ variant?: string; rows?: number; label?: string; comp
 .skeleton-shape-dark { background-color: #30343c; }
 .skeleton-card, .skeleton-row { padding: $space-card; background-color: #fff; border-radius: 14px; gap: $space-inline; }
 .skeleton-card-dark, .skeleton-row-dark { background-color: #1c1e22; border-left-color: #3b4658; }
-.skeleton-metrics { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: $space-inline; }
+.skeleton-metrics {
+/* #ifndef APP */
+display: grid;
+/* #endif */
+/* #ifdef APP */
+display: flex; flex-direction: row; flex-wrap: wrap; justify-content: space-between;
+/* #endif */
+
+/* #ifndef APP */
+grid-template-columns: repeat(2, minmax(0, 1fr));
+/* #endif */
+ gap: $space-inline; }
 .skeleton-label { width: 46%; height: 12px; }
 .skeleton-title { width: 58%; height: 16px; }
 .skeleton-value { width: 38%; height: 27px; }
@@ -55,10 +69,32 @@ withDefaults(defineProps<{ variant?: string; rows?: number; label?: string; comp
 .skeleton-copy { flex: 1; gap: $space-inline; }
 .skeleton-time { width: 38px; height: 12px; margin-right: $space-inline; }
 .skeleton-timeline-row { border-left: 2px solid #d9e3f1; }
-.skeleton-media { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: $space-section; }
+.skeleton-media {
+/* #ifndef APP */
+display: grid;
+/* #endif */
+/* #ifdef APP */
+display: flex; flex-direction: row; flex-wrap: wrap; justify-content: space-between;
+/* #endif */
+
+/* #ifndef APP */
+grid-template-columns: repeat(3, minmax(0, 1fr));
+/* #endif */
+ gap: $space-section; }
 .skeleton-media-item { gap: $space-inline; }
 .skeleton-poster { width: 100%; aspect-ratio: 2 / 3; border-radius: 8px; }
-.skeleton-menu { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: $space-section; }
+.skeleton-menu {
+/* #ifndef APP */
+display: grid;
+/* #endif */
+/* #ifdef APP */
+display: flex; flex-direction: row; flex-wrap: wrap; justify-content: space-between;
+/* #endif */
+
+/* #ifndef APP */
+grid-template-columns: repeat(4, minmax(0, 1fr));
+/* #endif */
+ gap: $space-section; }
 .skeleton-menu-item { align-items: center; padding: $space-inline 0; gap: $space-inline; }
 .skeleton-icon { width: 40px; height: 40px; border-radius: 12px; }
 .skeleton-field { gap: $space-inline; }
@@ -78,14 +114,29 @@ withDefaults(defineProps<{ variant?: string; rows?: number; label?: string; comp
 .skeleton-connection-dark { border-color: #30343c; }
 .skeleton-cover-root { position: absolute; left: 0; right: 0; top: 0; bottom: 0; height: 100%; }
 .skeleton-cover-content, .skeleton-cover { height: 100%; width: 100%; }
-.skeleton-cover { border-radius: inherit; }
+.skeleton-cover {
+/* #ifndef APP */
+border-radius: inherit;
+/* #endif */
+/* #ifdef APP */
+border-radius: 8px;
+/* #endif */
+ }
 .skeleton-tile { gap: $space-section; min-height: 96px; }
 .skeleton-date-value { width: 48%; height: 36px; }
 .skeleton-progress { width: 100%; height: 5px; margin-top: auto; }
 .skeleton-ring { width: 132px; height: 132px; border-radius: 50%; border: 20px solid #e8ecf1; align-self: center; margin: $space-section 0; box-sizing: border-box; }
 .skeleton-ring-dark { border-color: #30343c; }
 @keyframes skeleton-breathe { 0%, 100% { opacity: 1; } 50% { opacity: .45; } }
-@media (min-width: 768px) { .skeleton-metrics { grid-template-columns: repeat(4, minmax(0, 1fr)); } .skeleton-media { grid-template-columns: repeat(6, minmax(0, 1fr)); } }
+@media (min-width: 768px) { .skeleton-metrics {
+/* #ifndef APP */
+grid-template-columns: repeat(4, minmax(0, 1fr));
+/* #endif */
+ } .skeleton-media {
+/* #ifndef APP */
+grid-template-columns: repeat(6, minmax(0, 1fr));
+/* #endif */
+ } }
 /* #ifdef WEB */
 @media (prefers-reduced-motion: reduce) { .skeleton-content { animation: none; } }
 /* #endif */

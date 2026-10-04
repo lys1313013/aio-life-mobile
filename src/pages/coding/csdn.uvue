@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import { useAppLayout } from '../../services/app-layout.ts'
+const { appGridItem } = useAppLayout()
+
 import ContentSkeleton from '../../components/ContentSkeleton.uvue';
 import AppIcon from '../../components/AppIcon.uvue';
 import { onMounted, onUnmounted, ref } from 'vue';
@@ -90,17 +93,17 @@ useDomainPage(
           @click="uni.navigateTo({ url: '/pages/profile/bindings' })" /></view
       ><PageState :has-content="!!stats || articles.length > 0" skeleton="articles" :loading="loading" :error="error" @retry="load"
         >
-<template #loading><view class="metrics ui-row ui-section"><MetricCard v-for="label in ['总访问量', '原创数', '全站排名', '粉丝数', '获赞数', '评论']" :key="label" :label="label" value="" loading /></view><text class="heading ui-section">近期文章</text><view v-for="n in 3" :key="n" class="article ui-card" :class="themeClass('article')"><ContentSkeleton variant="tile" /></view></template>
+<template #loading><view class="metrics ui-row ui-section"><MetricCard :style="appGridItem(2, 'inline', [[768, 3]], false)" v-for="label in ['总访问量', '原创数', '全站排名', '粉丝数', '获赞数', '评论']" :key="label" :label="label" value="" loading /></view><text class="heading ui-section">近期文章</text><view v-for="n in 3" :key="n" class="article ui-card" :class="themeClass('article')"><ContentSkeleton variant="tile" /></view></template>
 <view v-if="stats" class="metrics ui-row ui-section"
-          ><MetricCard label="总访问量" :value="String(stats.viewCount)" /><MetricCard
+          ><MetricCard :style="appGridItem(2, 'inline', [[768, 3]], false)" label="总访问量" :value="String(stats.viewCount)" /><MetricCard :style="appGridItem(2, 'inline', [[768, 3]], false)"
             label="原创数"
-            :value="String(stats.originalCount)" /><MetricCard
+            :value="String(stats.originalCount)" /><MetricCard :style="appGridItem(2, 'inline', [[768, 3]], false)"
             label="全站排名"
-            :value="String(stats.rank)" /><MetricCard
+            :value="String(stats.rank)" /><MetricCard :style="appGridItem(2, 'inline', [[768, 3]], false)"
             label="粉丝数"
-            :value="String(stats.fansCount)" /><MetricCard
+            :value="String(stats.fansCount)" /><MetricCard :style="appGridItem(2, 'inline', [[768, 3]], false)"
             label="获赞数"
-            :value="String(stats.likeCount)" /><MetricCard
+            :value="String(stats.likeCount)" /><MetricCard :style="appGridItem(2, 'inline', [[768, 3]], false)"
             label="评论"
             :value="String(stats.commentCount || 0)" /></view
         ><text class="heading ui-section">近期文章</text><view v-if="!articles.length" class="article empty ui-card" :class="themeClass('article')"><text class="muted" :class="themeClass('muted')">暂无近期文章</text></view><view v-for="item in articles" :key="item.id" class="article ui-card" :class="themeClass('article')"
@@ -123,12 +126,26 @@ useDomainPage(
 .actions {
 }
 .metrics {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+
+/* #ifndef APP */
+display: grid;
+/* #endif */
+/* #ifdef APP */
+display: flex; flex-direction: row; flex-wrap: wrap; justify-content: space-between;
+/* #endif */
+
+/* #ifndef APP */
+grid-template-columns: repeat(2, minmax(0, 1fr));
+/* #endif */
+
   gap: $space-inline;
 }
 @media (min-width: 768px) {
-  .metrics { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .metrics {
+/* #ifndef APP */
+grid-template-columns: repeat(3, minmax(0, 1fr));
+/* #endif */
+ }
 }
 .article {
   background-color: #ffffff;
@@ -145,7 +162,14 @@ useDomainPage(
   color: $text-secondary-light;
 }
 .record-dark, .article-dark { background-color: #1c1e22; }
-.heading { display: block; @include type-style('title');  }
+.heading {
+/* #ifndef APP */
+display: block;
+/* #endif */
+/* #ifdef APP */
+display: flex;
+/* #endif */
+ @include type-style('title');  }
 .empty { min-height: 88px; align-items: center; justify-content: center; }
 
 .actions { align-items: center; justify-content: space-between; }

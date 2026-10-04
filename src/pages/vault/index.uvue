@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import { useAppLayout } from '../../services/app-layout.ts'
+const { appGridItem } = useAppLayout()
+
 import { isRequired, missingRequired } from '../../services/form-required.ts';
 import { computed, ref, watch } from 'vue';
 import { onShow, onHide, onUnload } from '@dcloudio/uni-app';
@@ -387,7 +390,7 @@ function back() {
               label="锁定"
               variant="quiet"
               @click="lock" /></view></view
-        ><view class="vault-grid ui-gap-section"><view
+        ><view class="vault-grid ui-gap-section"><view :style="appGridItem(1, 'section', [[768, 2]], false)"
           v-for="row in filtered"
           :key="row.id"
           class="vault-card ui-card"
@@ -491,8 +494,23 @@ function back() {
 @use '../../styles/text-colors' as *;
 .vault-tools {
 }
-.vault-grid { display: grid; grid-template-columns: minmax(0, 1fr); }
-@media (min-width: 768px) { .vault-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.vault-grid {
+/* #ifndef APP */
+display: grid;
+/* #endif */
+/* #ifdef APP */
+display: flex; flex-direction: row; flex-wrap: wrap; justify-content: space-between;
+/* #endif */
+
+/* #ifndef APP */
+grid-template-columns: minmax(0, 1fr);
+/* #endif */
+ }
+@media (min-width: 768px) { .vault-grid {
+/* #ifndef APP */
+grid-template-columns: repeat(2, minmax(0, 1fr));
+/* #endif */
+ } }
 .vault-card {
   margin-bottom: 0;
   background-color: #fff;

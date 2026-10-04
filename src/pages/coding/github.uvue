@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import { useAppLayout } from '../../services/app-layout.ts'
+const { appGridItem } = useAppLayout()
+
 import LoadingIndicator from '../../components/LoadingIndicator.uvue';
 import AppIcon from '../../components/AppIcon.uvue'
 import { computed, onUnmounted, reactive, ref } from 'vue';
@@ -221,15 +224,15 @@ useDomainPage(
           @click="uni.navigateTo({ url: '/pages/profile/bindings' })" /></view
       ><PageState v-if="error" :error="error" @retry="load()" />
       <template v-if="!error || username"><view class="metrics ui-row ui-section"
-          ><MetricCard label="过去一年提交" :value="sections.calendar.error && !sections.calendar.loaded ? '—' : String(total)" :loading="sections.calendar.loading && !sections.calendar.loaded" /><MetricCard
+          ><MetricCard :style="appGridItem(2, 'inline', [[768, 3]], false)" label="过去一年提交" :value="sections.calendar.error && !sections.calendar.loaded ? '—' : String(total)" :loading="sections.calendar.loading && !sections.calendar.loaded" /><MetricCard :style="appGridItem(2, 'inline', [[768, 3]], false)"
             label="今日提交次数"
-            :value="sections.calendar.error && !sections.calendar.loaded ? '—' : String(summary.today)" :loading="sections.calendar.loading && !sections.calendar.loaded" /><MetricCard
+            :value="sections.calendar.error && !sections.calendar.loaded ? '—' : String(summary.today)" :loading="sections.calendar.loading && !sections.calendar.loaded" /><MetricCard :style="appGridItem(2, 'inline', [[768, 3]], false)"
             label="连续提交"
             :value="sections.calendar.error && !sections.calendar.loaded ? '—' : String(summary.streak)" :loading="sections.calendar.loading && !sections.calendar.loaded"
-            unit="天" /><MetricCard label="活跃天数" :value="sections.calendar.error && !sections.calendar.loaded ? '—' : String(summary.active)" :loading="sections.calendar.loading && !sections.calendar.loaded" unit="天" /><MetricCard
+            unit="天" /><MetricCard :style="appGridItem(2, 'inline', [[768, 3]], false)" label="活跃天数" :value="sections.calendar.error && !sections.calendar.loaded ? '—' : String(summary.active)" :loading="sections.calendar.loading && !sections.calendar.loaded" unit="天" /><MetricCard :style="appGridItem(2, 'inline', [[768, 3]], false)"
             label="总 Star 数"
             :value="sections.repos.error && !sections.repos.loaded ? '—' : String(totalStars)"
-            :loading="sections.repos.loading && !sections.repos.loaded" /><MetricCard
+            :loading="sections.repos.loading && !sections.repos.loaded" /><MetricCard :style="appGridItem(2, 'inline', [[768, 3]], false)"
             label="最长连续"
             :value="sections.calendar.error && !sections.calendar.loaded ? '—' : String(longestStreak)"
             :loading="sections.calendar.loading && !sections.calendar.loaded"
@@ -294,12 +297,26 @@ useDomainPage(
 .actions {
 }
 .metrics {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+
+/* #ifndef APP */
+display: grid;
+/* #endif */
+/* #ifdef APP */
+display: flex; flex-direction: row; flex-wrap: wrap; justify-content: space-between;
+/* #endif */
+
+/* #ifndef APP */
+grid-template-columns: repeat(2, minmax(0, 1fr));
+/* #endif */
+
   gap: $space-inline;
 }
 @media (min-width: 768px) {
-  .metrics { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .metrics {
+/* #ifndef APP */
+grid-template-columns: repeat(3, minmax(0, 1fr));
+/* #endif */
+ }
 }
 .record {
   background-color: #ffffff;
@@ -318,7 +335,13 @@ useDomainPage(
 .heading {
   @include type-style('title');
 
-  display: block;
+/* #ifndef APP */
+display: block;
+/* #endif */
+/* #ifdef APP */
+display: flex;
+/* #endif */
+
 }
 .calendar-scroll {
   width: 100%;

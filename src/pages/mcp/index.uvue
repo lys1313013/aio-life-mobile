@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import { useAppLayout } from '../../services/app-layout.ts'
+const { appGridItem } = useAppLayout()
+
 import { computed, onMounted, onUnmounted, ref } from 'vue';
 import MobilePage from '../../components/MobilePage.uvue';
 import PageHeader from '../../components/PageHeader.uvue';
@@ -119,7 +122,7 @@ async function run() {
       <text class="description ui-section" :class="themeClass('description')">{{ keyword ? filtered.length + ' / ' : '' }}{{ tools.length }} 个工具</text>
       <PageState skeleton="list" :loading="loading" :error="error" :empty="!loading && !filtered.length" @retry="load">
         <view class="tool-grid">
-          <view v-for="tool in filtered" :key="tool.name" class="tool ui-card" :class="themeClass('tool')">
+          <view :style="appGridItem(1, 'section', [[768, 2]], false)" v-for="tool in filtered" :key="tool.name" class="tool ui-card" :class="themeClass('tool')">
             <view class="tool-heading ui-row">
               <view class="tool-identity">
                 <text class="tool-name" :class="themeClass('tool-name')">{{ tool.name }}</text>
@@ -174,8 +177,18 @@ async function run() {
   color: #e7e9ee;
 }
 .tool-grid {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
+
+/* #ifndef APP */
+display: grid;
+/* #endif */
+/* #ifdef APP */
+display: flex; flex-direction: row; flex-wrap: wrap; justify-content: space-between;
+/* #endif */
+
+/* #ifndef APP */
+grid-template-columns: minmax(0, 1fr);
+/* #endif */
+
   gap: $space-section;
 }
 .tool-heading { align-items: flex-start; }
@@ -186,7 +199,11 @@ async function run() {
 .parameter-count-dark { color: #a8bfdf; background-color: #263448; }
 .tool-description { color: $text-secondary-light; @include type-style('label');  overflow-wrap: anywhere; }
 .tool-description-dark { color: $text-secondary-dark; }
-@media (min-width: 768px) { .tool-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (min-width: 768px) { .tool-grid {
+/* #ifndef APP */
+grid-template-columns: repeat(2, minmax(0, 1fr));
+/* #endif */
+ } }
 .tool {
   min-width: 0;
   margin-bottom: 0;
@@ -199,16 +216,37 @@ async function run() {
 .title {
 
   @include type-style('title');
-  display: block;
+
+/* #ifndef APP */
+display: block;
+/* #endif */
+/* #ifdef APP */
+display: flex;
+/* #endif */
+
 }
 .description {
   color: $text-secondary-light;
   @include type-style('label');
-  display: block;
+
+/* #ifndef APP */
+display: block;
+/* #endif */
+/* #ifdef APP */
+display: flex;
+/* #endif */
+
 }
 .error {
   color: #dc5454;
-  display: block;
+
+/* #ifndef APP */
+display: block;
+/* #endif */
+/* #ifdef APP */
+display: flex;
+/* #endif */
+
 }
 .result {
   display: flex;
@@ -222,6 +260,13 @@ async function run() {
 
 .description-dark { color: $text-secondary-dark; }
 .description { overflow-wrap: anywhere; }
-.tool-modal-name { @include type-style('title'); font-family: type-family('mono'); display: block; overflow-wrap: anywhere; }
+.tool-modal-name { @include type-style('title'); font-family: type-family('mono');
+/* #ifndef APP */
+display: block;
+/* #endif */
+/* #ifdef APP */
+display: flex;
+/* #endif */
+ overflow-wrap: anywhere; }
 .tool-content { @include type-style('prose'); white-space: pre-wrap; overflow-wrap: anywhere; }
 </style>

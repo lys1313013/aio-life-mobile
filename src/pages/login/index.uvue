@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { buttonLabelClasses } from '../../services/button-label.ts'
 import AppIcon from '../../components/AppIcon.uvue'
 import FormField from '../../components/FormField.uvue'
 import PageHeader from '../../components/PageHeader.uvue'
@@ -192,14 +193,14 @@ async function setPassword() {
         <view class="login-form">
           <!-- #ifdef MP-WEIXIN -->
           <view v-if="mode === 'wechat'">
-            <button class="primary-button" :loading="busy" :disabled="busy" @click="wechatLogin">微信登录</button>
-            <button class="text-button muted ui-pad-sm ui-mt-section" :disabled="busy" @click="switchMode('password')" :class="themeClass('muted')">账号密码登录</button>
+            <button class="primary-button" :loading="busy" :disabled="busy" @click="wechatLogin"><text :class="buttonLabelClasses(['primary-button'])">微信登录</text></button>
+            <button class="text-button muted ui-pad-sm ui-mt-section" :disabled="busy" @click="switchMode('password')" :class="themeClass('muted')"><text :class="buttonLabelClasses(['text-button muted ui-pad-sm ui-mt-section', themeClass('muted')])">账号密码登录</text></button>
           </view>
           <view v-if="mode === 'phone'">
-            <button class="primary-button" :open-type="busy ? '' : 'getPhoneNumber'" :loading="busy" :disabled="busy" @getphonenumber="phoneAuthorized">授权手机号并注册</button>
+            <button class="primary-button" :open-type="busy ? '' : 'getPhoneNumber'" :loading="busy" :disabled="busy" @getphonenumber="phoneAuthorized"><text :class="buttonLabelClasses(['primary-button'])">授权手机号并注册</text></button>
             <text class="phone-note muted ui-mt-section" :class="themeClass('muted')">首次使用将创建账号，已有账号请先登录绑定。</text>
-            <button class="text-button muted ui-pad-sm ui-mt-section" :disabled="busy" @click="switchMode('bind')" :class="themeClass('muted')">已有账号，登录并绑定</button>
-            <button class="text-button muted ui-pad-sm ui-mt-section" :disabled="busy" @click="switchMode('wechat')" :class="themeClass('muted')">返回微信登录</button>
+            <button class="text-button muted ui-pad-sm ui-mt-section" :disabled="busy" @click="switchMode('bind')" :class="themeClass('muted')"><text :class="buttonLabelClasses(['text-button muted ui-pad-sm ui-mt-section', themeClass('muted')])">已有账号，登录并绑定</text></button>
+            <button class="text-button muted ui-pad-sm ui-mt-section" :disabled="busy" @click="switchMode('wechat')" :class="themeClass('muted')"><text :class="buttonLabelClasses(['text-button muted ui-pad-sm ui-mt-section', themeClass('muted')])">返回微信登录</text></button>
           </view>
           <view v-if="mode === 'set-password'">
             <text class="field-label ink" :class="themeClass('ink')">设置登录密码</text>
@@ -216,8 +217,8 @@ async function setPassword() {
                 <AppIcon :name="confirmPasswordVisible ? 'ant-design:eye-outlined' : 'ant-design:eye-invisible-outlined'" color="#8b8f99" />
               </button>
             </view>
-            <button class="primary-button password-label ui-mt-section" :loading="busy" :disabled="busy" @click="setPassword">设置并进入</button>
-            <button class="text-button muted ui-pad-sm ui-mt-section" :disabled="busy" @click="goHome" :class="themeClass('muted')">暂不设置</button>
+            <button class="primary-button password-label ui-mt-section" :loading="busy" :disabled="busy" @click="setPassword"><text :class="buttonLabelClasses(['primary-button password-label ui-mt-section'])">设置并进入</text></button>
+            <button class="text-button muted ui-pad-sm ui-mt-section" :disabled="busy" @click="goHome" :class="themeClass('muted')"><text :class="buttonLabelClasses(['text-button muted ui-pad-sm ui-mt-section', themeClass('muted')])">暂不设置</text></button>
           </view>
           <!-- #endif -->
           <view v-if="mode === 'password' || mode === 'bind'">
@@ -233,16 +234,16 @@ async function setPassword() {
               </view>
             </FormField>
             <view class="recovery-row">
-              <button role="button" class="text-button auth-link" :class="themeClass('auth-link')" :disabled="busy" @click="openAuth('reset')">忘记密码</button>
+              <button role="button" class="text-button auth-link" :class="themeClass('auth-link')" :disabled="busy" @click="openAuth('reset')"><text :class="buttonLabelClasses(['text-button auth-link', themeClass('auth-link')])">忘记密码</text></button>
             </view>
-            <button class="ui-type-body" role="button" :class="['primary-button', busy ? 'primary-disabled' : '']" :loading="busy" :disabled="busy" :aria-disabled="busy" @click="submit">{{ busy ? '正在登录' : (mode === 'bind' ? '登录并绑定微信' : '登录') }}</button>
+            <button class="ui-type-body" role="button" :class="['primary-button', busy ? 'primary-disabled' : '']" :loading="busy" :disabled="busy" :aria-disabled="busy" @click="submit"><text :class="buttonLabelClasses(['ui-type-body', ['primary-button', busy ? 'primary-disabled' : '']])">{{ busy ? '正在登录' : (mode === 'bind' ? '登录并绑定微信' : '登录') }}</text></button>
             <view class="register-row">
               <text class="register-note muted" :class="themeClass('muted')">还没有账号？</text>
-              <button role="button" class="text-button auth-link" :class="themeClass('auth-link')" :disabled="busy" @click="openAuth('register')">注册账号</button>
+              <button role="button" class="text-button auth-link" :class="themeClass('auth-link')" :disabled="busy" @click="openAuth('register')"><text :class="buttonLabelClasses(['text-button auth-link', themeClass('auth-link')])">注册账号</text></button>
             </view>
             <!-- #ifdef MP-WEIXIN -->
-            <button v-if="wechatCapabilityFailed" class="text-button muted ui-pad-sm ui-mt-section" :disabled="busy" @click="loadWechatCapabilities" :class="themeClass('muted')">重试微信登录</button>
-            <button v-if="wechatEnabled" class="text-button muted ui-pad-sm ui-mt-section" :disabled="busy" @click="switchMode('wechat')" :class="themeClass('muted')">微信登录</button>
+            <button v-if="wechatCapabilityFailed" class="text-button muted ui-pad-sm ui-mt-section" :disabled="busy" @click="loadWechatCapabilities" :class="themeClass('muted')"><text :class="buttonLabelClasses(['text-button muted ui-pad-sm ui-mt-section', themeClass('muted')])">重试微信登录</text></button>
+            <button v-if="wechatEnabled" class="text-button muted ui-pad-sm ui-mt-section" :disabled="busy" @click="switchMode('wechat')" :class="themeClass('muted')"><text :class="buttonLabelClasses(['text-button muted ui-pad-sm ui-mt-section', themeClass('muted')])">微信登录</text></button>
             <!-- #endif -->
           </view>
           <view v-if="errorText" class="form-message">
@@ -262,7 +263,11 @@ async function setPassword() {
 @use '../../styles/spacing-tokens' as *;
 @include type-utilities('body');
 
-.login-page { display: flex; flex-direction: column; min-height: 100vh; box-sizing: border-box; background-color: #fafafa; }
+.login-page { display: flex; flex-direction: column;
+/* #ifndef APP */
+min-height: 100vh;
+/* #endif */
+ box-sizing: border-box; background-color: #fafafa; }
 .login-page-dark { background-color: #111215; }
 .login-header { padding: $space-modal $space-page; padding-top: calc($space-modal + env(safe-area-inset-top)); }
 .login-brand { display: flex; flex-direction: row; align-items: center; gap: $space-inline; }
@@ -307,4 +312,19 @@ async function setPassword() {
 .text-button:focus-visible, .password-toggle:focus-visible, .primary-button:focus-visible { outline: 2px solid #427bea; outline-offset: 2px; }
 /* #endif */
 
+/* 按钮文字独立声明样式，兼容 App 不继承容器排版。 */
+.app-button-label { @include type-style('body'); color: #27272a; }
+.app-button-label-dark { color: #eeeeef; }
+.muted-label {  color: #75847a; }
+.primary-button-label { color: #ffffff; @include type-style('body'); }
+.muted-dark-label {  color: #a0afa5; }
+.muted-label {  color: #71717a; }
+.muted-dark-label {  color: #a1a1aa; }
+.primary-button-label { @include type-style('body'); }
+.auth-link-label {  color: #356bd4; }
+.auth-link-dark-label {  color: #80aaff; }
+.text-button-label { @include type-style('body'); }
+.auth-link-label {  color: #356bd4 !important; }
+.auth-link-dark-label {  color: #80aaff !important; }
+.primary-button-label { color: #ffffff !important; }
 </style>

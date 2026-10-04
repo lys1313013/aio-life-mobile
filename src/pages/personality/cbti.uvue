@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { appButtonTextColor } from '../../services/app-layout.ts'
+import { buttonLabelClasses } from '../../services/button-label.ts'
 import { isRequired } from '../../services/form-required.ts';
 import { computed, ref } from 'vue';
 import { onShow, onUnload } from '@dcloudio/uni-app';
@@ -365,7 +367,7 @@ function preview(url) {
               :key="option.value"
               :label="option.label"
               :variant="answers[current.id] === option.value ? 'primary' : 'quiet'"
-              @click="choose(option.value)"><text class="cbti-option-label">{{ option.label }}</text></MobileButton></view
+              @click="choose(option.value)"><text :style="appButtonTextColor(answers[current.id] === option.value)" class="cbti-option-label">{{ option.label }}</text></MobileButton></view
           ><view class="cbti-actions ui-row"
             ><MobileButton
               label="上一题"
@@ -382,7 +384,7 @@ function preview(url) {
               :label="'第' + (i + 1) + '题'"
               :variant="answers[question.id] === undefined ? 'quiet' : 'primary'"
               @click="index = i"
-              >{{ i + 1 }}</MobileButton
+              ><text :style="appButtonTextColor(answers[question.id] !== undefined)" :class="buttonLabelClasses([''])">{{ i + 1 }}</text></MobileButton
             ></view
           ></view
         >
@@ -651,5 +653,10 @@ function preview(url) {
 }
 .test-intro { background-color: #ffffff; border-radius: 14px; align-items: center; gap: $space-inline; }
 .test-intro-dark { background-color: #1c1e22; }
+
+
+/* 按钮文字独立声明样式，兼容 App 不继承容器排版。 */
+.app-button-label { @include type-style('body'); color: #27272a; }
+.app-button-label-dark { color: #eeeeef; }
 
 </style>

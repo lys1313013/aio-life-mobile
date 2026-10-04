@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { useWindowResize } from '../../services/window-resize.ts'
+useWindowResize(resizeGraph)
 import { isRequired, missingRequired } from '../../services/form-required.ts';
 import LoadingIndicator from '../../components/LoadingIndicator.uvue';
 import { computed, onUnmounted, ref, watch } from 'vue';
@@ -86,8 +88,6 @@ function resizeGraph() {
   viewport.value = uni.getWindowInfo();
   resetGraph();
 }
-uni.onWindowResize(resizeGraph);
-onUnmounted(() => uni.offWindowResize(resizeGraph));
 watch([category, canvasWidth, canvasHeight], resetGraph);
 function graphStart(event: any) {
   const touch = event.touches?.[0];
@@ -508,7 +508,14 @@ function nodeName(id: string) {
 /* 节点尺寸属于画布几何约束，与布局函数共享 68 × 44 的碰撞边界。 */
 .graph-node-button { position: absolute; width: 68px; height: 44px; margin: 0; padding: 0 $space-detail; display: flex; flex-direction: row; align-items: center; justify-content: center; gap: $space-detail; border: 1px solid; border-radius: 22px; background-color: #ffffff; color: #263248; }
 .graph-node-button-dark { background-color: #252830; color: #e7e9ee; }
-.node-name { flex: 1; width: 100%; display: block; min-width: 0; text-align: center; @include type-style('caption');  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.node-name { flex: 1; width: 100%;
+/* #ifndef APP */
+display: block;
+/* #endif */
+/* #ifdef APP */
+display: flex;
+/* #endif */
+ min-width: 0; text-align: center; @include type-style('caption');  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .graph-arrow { position: absolute; right: 0; top: -3px; width: 0; height: 0; border-top: 3px solid transparent; border-bottom: 3px solid transparent; border-left: 5px solid; }
 .graph-arrow-start { right: auto; left: 0; transform: rotate(180deg); }
 .graph-edge-label { position: absolute; @include type-style('badge');  white-space: nowrap; transform: translate(-50%, -50%); padding: 0 $space-detail; border-radius: 4px; background-color: #ffffff; pointer-events: none; }
@@ -540,7 +547,14 @@ function nodeName(id: string) {
 
 }
 .detail {
-  display: block;
+
+/* #ifndef APP */
+display: block;
+/* #endif */
+/* #ifdef APP */
+display: flex;
+/* #endif */
+
   @include type-style('body');
   overflow-wrap: anywhere;
 }
@@ -549,7 +563,14 @@ function nodeName(id: string) {
 .detail-caption-dark, .graph-summary-dark, .relation-description-dark, .relation-direction-dark { color: $text-secondary-dark; }
 .error {
   color: #dc5454;
-  display: block;
+
+/* #ifndef APP */
+display: block;
+/* #endif */
+/* #ifdef APP */
+display: flex;
+/* #endif */
+
 }
 
 </style>

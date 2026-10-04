@@ -1,0 +1,23 @@
+import SVG from 'com.caverock.androidsvg.SVG'
+import Bitmap from 'android.graphics.Bitmap'
+import Canvas from 'android.graphics.Canvas'
+import Base64 from 'android.util.Base64'
+import ByteArrayOutputStream from 'java.io.ByteArrayOutputStream'
+import { RenderIcon } from '../interface.uts'
+
+export const renderIcon: RenderIcon = (svg: string, pixels: number): string => {
+  if (svg.length > 200000 || pixels < 1 || pixels > 512) return ''
+  const image = SVG.getFromString(svg)
+  image.setDocumentWidth('100%')
+  image.setDocumentHeight('100%')
+  const bitmap = Bitmap.createBitmap(pixels.toInt(), pixels.toInt(), Bitmap.Config.ARGB_8888)
+  const output = new ByteArrayOutputStream()
+  try {
+    image.renderToCanvas(new Canvas(bitmap))
+    bitmap.compress(Bitmap.CompressFormat.PNG, 100, output)
+    return 'data:image/png;base64,' + Base64.encodeToString(output.toByteArray(), Base64.NO_WRAP)
+  } finally {
+    output.close()
+    bitmap.recycle()
+  }
+}

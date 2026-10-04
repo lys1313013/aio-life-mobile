@@ -198,7 +198,7 @@ function categoryName(item) {
             </view>
             <text class="honor-title">{{ item.title }}</text>
             <text v-if="item.issuer" class="honor-secondary" :class="{ 'secondary-text-dark': isDark }">{{ item.issuer }}</text>
-            <text v-if="item.description" class="honor-content" :class="[{ 'honor-content-dark': isDark }, { 'secondary-text-dark': isDark }]">{{ item.description }}</text>
+            <text :max-lines="3" v-if="item.description" class="honor-content" :class="[{ 'honor-content-dark': isDark }, { 'secondary-text-dark': isDark }]">{{ item.description }}</text>
             <view v-if="item.tags" class="honor-tags"><text v-for="tag in textTags(item.tags).split(/[,，]/).filter(Boolean)" :key="tag" class="honor-tag" :class="{ 'secondary-text-dark': isDark }">{{ tag }}</text></view>
             <view class="honor-date ui-row"><AppIcon name="ant-design:calendar-outlined" :size="13" color="#8b8f99" /><text class="honor-secondary" :class="{ 'secondary-text-dark': isDark }">{{ item.honorDate?.slice(0, 10) }}</text><view class="footer-spacer" /><AppIcon v-if="item.isPublic !== 1" name="ant-design:lock-outlined" :size="13" color="#b77927" aria-label="私密" /></view>
           </view>
@@ -305,13 +305,42 @@ function categoryName(item) {
 .honor-badges { flex-wrap: wrap; align-items: center; }
 .honor-badge { @include type-style('badge');  color: #4177c1; background-color: rgba(74,144,226,0.12); border-radius: 4px; padding: 0 $space-detail; }
 .level-badge { color: #b77927; background-color: rgba(229,173,66,0.12); }
-.honor-title { flex: none; line-height: type-line('title'); word-break: break-word; }
+.honor-title { flex: none; line-height: type-line('title');
+/* #ifndef APP */
+word-break: break-word;
+/* #endif */
+/* #ifdef APP */
+word-break: break-all;
+/* #endif */
+ }
 .honor-date { align-items: center; margin-top: auto; padding-top: $space-inline; }
 @media (min-width: 600px) { .honor-card { box-sizing: border-box; width: calc((100% - #{$space-section * 2}) / 3); } }
 .footer-spacer { flex: 1; }
 .honor-tags { flex-direction: row; flex-wrap: wrap; gap: $space-detail; }
 .honor-tag { @include type-style('badge');  color: $text-secondary-light; border-radius: 4px; padding: 0 $space-detail; background-color: rgba(128,138,153,0.1); }
-.honor-content { color: $text-secondary-light; word-break: break-word; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.honor-content { color: $text-secondary-light;
+/* #ifndef APP */
+word-break: break-word;
+/* #endif */
+/* #ifdef APP */
+word-break: break-all;
+/* #endif */
+
+/* #ifndef APP */
+display: -webkit-box;
+/* #endif */
+/* #ifdef APP */
+text-overflow: ellipsis;
+/* #endif */
+
+/* #ifndef APP */
+-webkit-line-clamp: 3;
+/* #endif */
+
+/* #ifndef APP */
+-webkit-box-orient: vertical;
+/* #endif */
+ overflow: hidden; }
 .honor-content-dark { color: $text-secondary-dark; }
 @media (min-width: 1000px) { .honor-card { width: calc((100% - #{$space-section * 3}) / 4); } }
 /* #ifdef WEB */

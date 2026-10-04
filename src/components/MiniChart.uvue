@@ -1,4 +1,8 @@
 <script setup lang="ts">
+import { useWindowResize } from '../services/window-resize.ts'
+useWindowResize(measure)
+import { appTextColor, appButtonTextColor } from '../services/app-layout.ts'
+
 import {
   computed,
   getCurrentInstance,
@@ -188,12 +192,10 @@ async function measure() {
 }
 onMounted(() => {
   measure();
-  uni.onWindowResize(measure);
 });
 onUpdated(measure);
 onUnmounted(() => {
   active = false;
-  uni.offWindowResize(measure);
 });
 function toggle(name) {
   hidden.value = hidden.value.includes(name)
@@ -224,7 +226,7 @@ function barStyle(point, index, seriesIndex) {
       ><slot name="actions" /></view
     ><text v-else class="mini-chart-title">{{ label }}</text
     ><view v-if="compact && series.length > 1" class="chart-legend-compact">
-      <button
+      <button :style="appTextColor()"
         v-for="item in coloredSeries"
         :key="item.name"
         class="chart-legend-button"
@@ -237,7 +239,7 @@ function barStyle(point, index, seriesIndex) {
         <view
           class="chart-legend-swatch"
           :style="{ backgroundColor: item.color }"
-        /><text class="ui-type-caption">{{ item.name }}</text>
+        /><text :style="appButtonTextColor(!hidden.includes(item.name))" class="ui-type-caption">{{ item.name }}</text>
       </button> </view
     ><view v-else-if="!compact && series.length > 1" class="mini-chart-legend"
       ><MobileButton
@@ -245,7 +247,7 @@ function barStyle(point, index, seriesIndex) {
         :key="item.name"
         :label="item.name"
         :variant="hidden.includes(item.name) ? 'quiet' : 'primary'"
-        @click="toggle(item.name)"><text class="ui-type-caption">{{ item.name }}</text></MobileButton></view
+        @click="toggle(item.name)"><text :style="appButtonTextColor(!hidden.includes(item.name))" class="ui-type-caption">{{ item.name }}</text></MobileButton></view
     ><text v-if="geometry.error" class="mini-chart-error" role="alert">{{
       geometry.error
     }}</text
@@ -473,7 +475,11 @@ function barStyle(point, index, seriesIndex) {
   padding: 0;
   margin: 0;
   background-color: transparent;
-  color: inherit;
+
+/* #ifndef APP */
+color: inherit;
+/* #endif */
+
   border: 0;
   border-radius: 0;
   @include type-style('caption');
@@ -524,7 +530,14 @@ function barStyle(point, index, seriesIndex) {
   @include type-style('chart-label');
   position: absolute;
   right: 0;
-  max-width: 100%;
+
+/* #ifndef APP */
+max-width: 100%;
+/* #endif */
+/* #ifdef APP */
+flex-shrink: 1;
+/* #endif */
+
   text-align: right;
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
@@ -541,7 +554,14 @@ function barStyle(point, index, seriesIndex) {
 .chart-month-selected { color: #427bea; }
 .mini-chart-period { margin-bottom: 0; }
 .chart-period-controls { display: flex; flex-direction: row; align-items: center; justify-content: space-between; gap: $space-inline; margin-top: $space-inline; }
-.chart-period-value { flex: 1; min-width: 0; flex-direction: row; justify-content: center; align-items: baseline; gap: $space-inline; }
+.chart-period-value { flex: 1; min-width: 0; flex-direction: row; justify-content: center;
+/* #ifndef APP */
+align-items: baseline;
+/* #endif */
+/* #ifdef APP */
+align-items: flex-end;
+/* #endif */
+ gap: $space-inline; }
 .chart-period-label { @include type-style('caption'); }
 .chart-period-amount { @include type-style('title'); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
 </style>

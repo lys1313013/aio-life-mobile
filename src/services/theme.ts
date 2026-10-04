@@ -10,6 +10,9 @@ let initialized = false
 
 function applyNativeTheme() {
   const dark = isDark.value
+  // #ifdef APP
+  uni.setAppTheme({ theme: theme.mode === 'system' ? 'auto' : theme.mode })
+  // #endif
   // #ifdef WEB
   // 当前 H5 的 useTabBar 在 darkmode 下复制主题状态，setTabBarStyle 未同步到渲染实例。
   // 仅 Web 用 CSS 变量同步底栏，其他平台仍使用原生 API。
@@ -47,6 +50,9 @@ export function initializeTheme() {
   if (initialized) return
   initialized = true
   theme.system = uni.getAppBaseInfo().theme === 'dark' ? 'dark' : 'light'
+  // #ifdef APP
+  theme.system = uni.getDeviceInfo().osTheme === 'dark' ? 'dark' : 'light'
+  // #endif
   try {
     const saved = uni.getStorageSync(storageKey)
     if (saved === 'light' || saved === 'dark' || saved === 'system')
@@ -55,10 +61,18 @@ export function initializeTheme() {
     /* 存储不可读时仍可跟随系统 */
   }
   applyNativeTheme()
+  // #ifndef APP
   uni.onThemeChange((event) => {
     theme.system = event.theme
     applyNativeTheme()
   })
+  // #endif
+  // #ifdef APP
+  uni.onOsThemeChange((event) => {
+    theme.system = event.osTheme
+    applyNativeTheme()
+  })
+  // #endif
 }
 
 export function setThemeMode(mode: ThemeMode) {

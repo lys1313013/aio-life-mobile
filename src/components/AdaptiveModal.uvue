@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { useWindowResize } from '../services/window-resize.ts'
+useWindowResize(resize)
 import spacing from '../styles/spacing.json'
 import MobileButton from './MobileButton.uvue'
 import { modalAvailableHeight } from '../services/mobile-ui.ts'
@@ -28,6 +30,9 @@ const instance = getCurrentInstance()
 const contentHeight = ref(160)
 const windowHeight = ref(uni.getWindowInfo().windowHeight)
 const keyboardHeight = ref(0)
+// #ifdef APP
+let keyboardListenerId: number | null = null
+// #endif
 const safeTop = ref(uni.getWindowInfo().safeAreaInsets?.top || 0)
 const safeBottom = ref(uni.getWindowInfo().safeAreaInsets?.bottom || 0)
 const verticalInset = computed(() => props.verticalInset ?? spacing.overlayBlock)
@@ -90,8 +95,11 @@ onMounted(() => {
     }
   })
   // #endif
-  uni.onWindowResize(resize)
-  // #ifdef APP || MP-WEIXIN
+
+  // #ifdef APP
+  keyboardListenerId = uni.onKeyboardHeightChange(keyboard)
+  // #endif
+  // #ifdef MP-WEIXIN
   uni.onKeyboardHeightChange(keyboard)
   // #endif
 })
@@ -103,8 +111,12 @@ onUnmounted(() => {
   contentObserver?.disconnect()
   contentObserver = null
   // #endif
-  uni.offWindowResize(resize)
-  // #ifdef APP || MP-WEIXIN
+
+  // #ifdef APP
+  if (keyboardListenerId !== null) uni.offKeyboardHeightChange(keyboardListenerId)
+  keyboardListenerId = null
+  // #endif
+  // #ifdef MP-WEIXIN
   uni.offKeyboardHeightChange(keyboard)
   // #endif
 })
@@ -130,6 +142,7 @@ onUnmounted(() => {
         @scrolltolower="emit('reachbottom')"
         direction="vertical"
         :scroll-y="true"
+        :show-scrollbar="false"
         class="modal-scroll"
         :style="{ height: height + 'px' }"
       >

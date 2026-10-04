@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import { useAppLayout } from '../../services/app-layout.ts'
+const { appGridItem } = useAppLayout()
+
 import FormActions from '../../components/FormActions.uvue';
 import { isRequired, missingRequired } from '../../services/form-required.ts';
 import ContentSkeleton from '../../components/ContentSkeleton.uvue';
@@ -249,10 +252,10 @@ function toggle(id) {
       ><text v-if="startDate && endDate && startDate > endDate" class="error ui-section ui-type-body"
         >开始日期不能晚于结束日期</text
       ><view class="metrics ui-row ui-section"
-        ><MetricCard :loading="loading && !rows.length" label="运动次数" :value="counts" /><MetricCard :loading="loading && !rows.length"
+        ><MetricCard :style="appGridItem(2, 'inline', [[600, 3]], false)" :loading="loading && !rows.length" label="运动次数" :value="counts" /><MetricCard :style="appGridItem(2, 'inline', [[600, 3]], false)" :loading="loading && !rows.length"
           v-if="typeFilter !== '全部类型'"
           label="运动量"
-          :value="quantity" /><MetricCard :loading="loading && !rows.length" label="记录" :value="filtered.length" /></view
+          :value="quantity" /><MetricCard :style="appGridItem(2, 'inline', [[600, 3]], false)" :loading="loading && !rows.length" label="记录" :value="filtered.length" /></view
       ><PageState skeleton="list" :loading="loading" :error="error" :empty="!filtered.length" @retry="load"
         >
 <template #loading><view class="ui-gap-md"><ContentSkeleton v-for="n in 2" :key="n" variant="chart" /><ContentSkeleton variant="list" :rows="2" /></view></template>
@@ -398,8 +401,23 @@ function toggle(id) {
 .record-quantity { @include type-style('metric-compact');  color: #469d95; }
 .record-description { @include type-style('label');  color: $text-secondary-light; overflow-wrap: anywhere; }
 .date-filters { align-items: flex-end; }
-.metrics { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: $space-inline; }
-@media (min-width: 600px) { .metrics { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+.metrics {
+/* #ifndef APP */
+display: grid;
+/* #endif */
+/* #ifdef APP */
+display: flex; flex-direction: row; flex-wrap: wrap; justify-content: space-between;
+/* #endif */
+
+/* #ifndef APP */
+grid-template-columns: repeat(2, minmax(0, 1fr));
+/* #endif */
+ gap: $space-inline; }
+@media (min-width: 600px) { .metrics {
+/* #ifndef APP */
+grid-template-columns: repeat(3, minmax(0, 1fr));
+/* #endif */
+ } }
 
 .record-secondary-dark { color: $text-secondary-dark; }
 </style>

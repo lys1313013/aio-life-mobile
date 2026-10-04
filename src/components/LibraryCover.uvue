@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { appTextColor } from '../services/app-layout.ts'
+
 import LoadingIndicator from './LoadingIndicator.uvue';
 import AppIcon from './AppIcon.uvue'
 import { onUnmounted, ref, watch } from 'vue';
@@ -69,7 +71,7 @@ onUnmounted(() => {
       <AppIcon :name="kind === 'movie' ? 'lucide:clapperboard' : 'lucide:book-open'" :size="28" color="#8b8f99" />
       <text v-if="!compact" class="library-cover-title">{{ title }}</text>
       <LoadingIndicator v-if="loading" compact label="正在加载封面" />
-      <button
+      <button :style="appTextColor()"
         role="button"
         v-if="failed"
         class="library-cover-retry"
@@ -136,7 +138,11 @@ onUnmounted(() => {
   @include type-style('glyph-medium');
   line-height: $space-controlMin;
   background-color: transparent;
-  color: inherit;
+
+/* #ifndef APP */
+color: inherit;
+/* #endif */
+
 }
 /* #ifdef WEB || MP-WEIXIN */
 .library-cover-retry::after {
