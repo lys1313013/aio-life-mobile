@@ -8,7 +8,7 @@ import { isDark, themeClass } from '../services/theme.ts'
 const props = withDefaults(defineProps<{ value: number; min?: number; max?: number; label?: string; showNow?: boolean }>(), {
   min: 0, max: 1439, label: '结束时间', showNow: true,
 })
-const emit = defineEmits(['change', 'close'])
+const emit = defineEmits(['change', 'close', 'preview'])
 const selected = ref(props.min <= props.max ? clampTimeSelection(props.value, props.min, props.max) : props.value)
 // 分钟列使用当天绝对分钟，00/59 两侧天然相邻，小时跟随选中分钟。
 const selection = ref([Math.floor(selected.value / 60), selected.value])
@@ -30,6 +30,7 @@ async function change(event) {
   const previous = selected.value
   selection.value = raw
   selected.value = resolveTimeWheelSelection(previous, raw, props.min, props.max)
+  if (available.value) emit('preview', selected.value)
   // 先接收原生位置，再回弹到合法值；同值赋值也能纠正原生滚轮。
   await nextTick()
   selection.value = [Math.floor(selected.value / 60), selected.value]

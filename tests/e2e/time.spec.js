@@ -88,7 +88,7 @@ async function setup(page, options = {}) {
 async function closeEditor(page) {
   await page.locator('.modal-mask').last().click({ position: { x: 8, y: 8 } });
 }
-async function previousMinute(page, label, delta = -1) {
+async function previousMinute(page, label, delta = -1, confirm = true) {
   const cdp = await page.context().newCDPSession(page);
   await cdp.send('Emulation.setTouchEmulationEnabled', { enabled: true });
   await page.locator(`[aria-label="${label}"]`).click();
@@ -105,7 +105,7 @@ async function previousMinute(page, label, delta = -1) {
   await page.waitForTimeout(200);
   await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
   await page.waitForTimeout(350);
-  await page.locator('.uni-picker-action-confirm:visible, .time-end-confirm:visible').click();
+  if (confirm) await page.locator('.uni-picker-action-confirm:visible, .time-end-confirm:visible').click();
   await cdp.detach();
 }
 
@@ -151,14 +151,24 @@ for (const width of [390, 768, 1440]) for (const colorScheme of ['light', 'dark'
     await page.getByRole('button', { name: '编辑记录 晨间运动' }).click();
     const editor = page.getByRole('dialog', { name: '编辑时迹', exact: true });
     await expect(editor.getByText('此刻', { exact: true })).toHaveCount(0);
-    await editor.getByRole('button', { name: '结束时间', exact: true }).click();
+    await previousMinute(page, '结束时间', 1, false);
     const picker = page.getByRole('dialog', { name: '选择结束时间', exact: true });
     await expect(picker).toBeVisible();
+    await expect(editor.locator('[aria-label="记录时长"]')).toHaveText('1小时1分');
+    await expect(editor.locator('.compact-time-number').nth(1)).toHaveText('09:59');
+    expect(state.updates).toHaveLength(0);
     await page.screenshot({ path: `artifacts/time-end-picker/${width}-${colorScheme}.png` });
     await picker.getByRole('button', { name: '取消', exact: true }).click();
     await expect(editor.locator('.compact-time-number').nth(1)).toHaveText('09:59');
+    await expect(editor.locator('[aria-label="记录时长"]')).toHaveText('1小时');
+    await previousMinute(page, '开始时间', 1, false);
+    await expect(editor.locator('[aria-label="记录时长"]')).toHaveText('59分');
+    await page.locator('.time-end-mask').click({ position: { x: 8, y: 8 } });
+    await expect(editor.locator('[aria-label="记录时长"]')).toHaveText('1小时');
+    await expect(editor.locator('.compact-time-number').nth(0)).toHaveText('09:00');
     await previousMinute(page, '结束时间');
     await expect(editor.locator('.compact-time-number').nth(1)).toHaveText('09:58');
+    await expect(editor.locator('[aria-label="记录时长"]')).toHaveText('59分');
     await editor.getByRole('button', { name: '结束时间', exact: true }).click();
     // 点击时读取当前分钟，不能使用打开弹层时的旧时间。
     await page.clock.setFixedTime(new Date(`${today}T11:23:00`));

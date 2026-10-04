@@ -59,6 +59,8 @@ const form = ref<TimeRecord>({
 })
 const choosingCategory = ref(false)
 const choosingTime = ref('')
+const previewTime = ref<number | null>(null)
+watch(choosingTime, () => { previewTime.value = null })
 const pickerBounds = computed(() => timeSelectionBounds(form.value, existing.value, choosingTime.value))
 const categoryOptions = computed(() =>
   categories.value.filter((category) => category.isEnabled !== 0),
@@ -71,7 +73,11 @@ const categoryName = computed(() =>
 const selectedCategory = computed(() =>
   categories.value.find((item) => item.id === form.value.categoryId),
 )
-const duration = computed(() => recordMinutes(form.value))
+const duration = computed(() => recordMinutes(
+  choosingTime.value && previewTime.value !== null
+    ? { ...form.value, [choosingTime.value]: previewTime.value }
+    : form.value,
+))
 const displayDate = computed(() => {
   const [year, month, day] = date.value.split('-').map(Number)
   const weekday = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'][new Date(year, month - 1, day).getDay()]
@@ -147,6 +153,7 @@ function report(error) {
   return error.message || '操作失败，请重试'
 }
 async function initialize() {
+  choosingTime.value = ''
   const serial = ++generation,
     token = session.token
   loading.value = true
@@ -821,7 +828,7 @@ function closeSelection() {
     :min="pickerBounds.min" :max="pickerBounds.max"
     :label="choosingTime === 'startTime' ? '开始时间' : '结束时间'"
     :show-now="choosingTime === 'endTime'"
-    @change="changeTime" @close="choosingTime = ''" />
+    @preview="previewTime = $event" @change="changeTime" @close="choosingTime = ''" />
 </template>
 
 <style scoped lang="scss">
