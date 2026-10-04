@@ -6,7 +6,7 @@ async function setup(page, options = {}) {
   const state = { queries: 0, ranges: [], creates: [], updates: [], updateIds: [], deletes: 0, profiles: 0, relatedQueries: [], relatedUpdates: [], coverAuth: [], failRefresh: false, failSave: false, failDelete: false, detailFailure: false, full: false,
     records: [{ id: '9223372036854775807', date: today, categoryId: '2', startTime: 540, endTime: 599, title: '晨间运动', description: '保留原有备注', exercises: [{ exerciseTypeId: '9223372036854775806', exerciseCount: 20, description: '三组' }], relateId: '9223372036854775805', relateType: 1 }] };
   Object.assign(state, options);
-  await page.route('http://127.0.0.1:5180/api/**', async route => {
+  await page.route(`${test.info().project.use.baseURL}/api/**`, async route => {
     const req = route.request(), url = new URL(req.url()), path = url.pathname, method = req.method();
     let data = dashboardFixture(path);
     if (path === '/api/timeTrackerCategory/list' && state.categories) data = state.categories;
@@ -132,7 +132,12 @@ test('时迹分钟滚轮跨小时并停在相邻记录边界，起止均支持�
   await expect(values.nth(0)).toHaveText('09:19');
   await editor.getByRole('button', { name: '结束时间', exact: true }).click();
   const picker = page.getByRole('dialog', { name: '选择结束时间', exact: true });
-  await expect(picker.getByRole('button', { name: '结束时间设为此刻' })).toBeDisabled();
+  const nowButton = picker.getByRole('button', { name: '结束时间设为此刻' });
+  // H5 renders uni-button, whose disabled attribute is not a native HTML state.
+  await expect(nowButton).toHaveAttribute('disabled', 'true');
+  await nowButton.click({ force: true });
+  await expect(picker).toBeVisible();
+  await expect(values.nth(1)).toHaveText('09:59');
   await picker.getByRole('button', { name: '取消', exact: true }).click();
   expect(state.updates).toHaveLength(0);
 });

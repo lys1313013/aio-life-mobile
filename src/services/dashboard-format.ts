@@ -65,7 +65,7 @@ export function timeSummary(categories, records) {
     total: durationLabel(total),
     groups,
     segments,
-    recent: recent.slice(0, 6),
+    recent,
     timeline: recent.map((item) => ({
       id: item.id,
       top: (item.startTime / 1440) * 100 + '%',

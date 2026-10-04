@@ -1,4 +1,5 @@
 import { request } from './api.ts'
+import { readDateRecords } from './time-response.ts'
 
 export interface OverviewCard {
   titleClickUrl?: string
@@ -120,6 +121,6 @@ export async function getTime(date = todayDate()) {
   return { categories, records }
 }
 /** 单日接口一次返回完整列表；失败继续交由调用端显示重试。 */
-export function getDateRecords(date: string): Promise<TimeRecord[]> {
-  return request<TimeRecord[]>('/timeRecord/query?date=' + encodeURIComponent(date))
+export async function getDateRecords(date: string): Promise<TimeRecord[]> {
+  return readDateRecords(await request('/timeRecord/query?date=' + encodeURIComponent(date)))
 }

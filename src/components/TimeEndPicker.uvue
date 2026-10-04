@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { buttonLabelClasses } from '../services/button-label.ts'
 import { computed, nextTick, onUnmounted, ref, watch } from 'vue'
 import { clampTimeSelection, resolveTimeWheelSelection } from '../services/time-selection.ts'
 import spacing from '../styles/spacing.json'
@@ -56,11 +57,11 @@ function useCurrentTime() {
       role="dialog" :aria-label="'选择' + label" aria-modal="true" @click.stop>
       <view class="time-end-toolbar" :class="themeClass('time-end-toolbar')">
         <button role="button" class="time-end-action" :class="themeClass('time-end-action')"
-          @click="emit('close')">取消</button>
+          @click="emit('close')"><text :class="buttonLabelClasses(['time-end-action', themeClass('time-end-action')])">取消</text></button>
         <button v-if="showNow" role="button" class="time-end-action time-end-primary" :class="[themeClass('time-end-primary'), { 'time-option-disabled': nowDisabled }]"
-          :aria-label="label + '设为此刻'" :disabled="nowDisabled" @click="useCurrentTime">此刻</button>
+          :aria-label="label + '设为此刻'" :disabled="nowDisabled" @click="useCurrentTime"><text :class="buttonLabelClasses(['time-end-action time-end-primary', [themeClass('time-end-primary'), { 'time-option-disabled': nowDisabled }]])">此刻</text></button>
         <button role="button" class="time-end-action time-end-primary time-end-confirm" :class="themeClass('time-end-primary')"
-          :disabled="!available || isDisabled(selected)" @click="confirm">完成</button>
+          :disabled="!available || isDisabled(selected)" @click="confirm"><text :class="buttonLabelClasses(['time-end-action time-end-primary time-end-confirm', themeClass('time-end-primary')])">完成</text></button>
       </view>
       <picker-view class="time-end-wheel" :value="selection"
         :indicator-style="'height: ' + spacing.controlMin + 'px;'" :mask-style="maskStyle"
@@ -148,4 +149,11 @@ function useCurrentTime() {
 .time-end-number-dark { color: #eeeeef; }
 .time-option-disabled { opacity: 0.3; }
 
+
+/* 按钮文字独立声明样式，兼容 App 不继承容器排版。 */
+.app-button-label { @include type-style('body'); color: #27272a; }
+.app-button-label-dark { color: #eeeeef; }
+.time-end-action-label { @include type-style('body'); color: #27272a; }
+.time-end-primary-label {  color: #1d4ed8; }
+.time-end-primary-dark-label {  color: #9bbcff; }
 </style>

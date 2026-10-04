@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { buttonLabelClasses } from '../services/button-label.ts'
 import LoadingIndicator from './LoadingIndicator.uvue';
 import spacing from '../styles/spacing.json'
 import AppIcon from './AppIcon.uvue'
@@ -456,13 +457,11 @@ function closeSelection() {
       >
       <view v-if="!ready && errorText" class="state-card"
          :class="themeClass('state-card')"><text class="error-text" role="alert" :class="themeClass('error-text')">{{ errorText }}</text
-        ><button role="button" class="text-action" @click="initialize">
-          重试加载
-        </button></view
+        ><button role="button" class="text-action" @click="initialize"><text :class="buttonLabelClasses(['text-action'])">重试加载</text></button></view
       >
       <view v-if="ready" class="editor-form">
         <view v-if="compact" class="compact-fields">
-          <picker mode="date" :value="date" :disabled="!!id || saving || deleting"
+          <picker class="compact-date" mode="date" :value="date" :disabled="!!id || saving || deleting"
             aria-label="记录日期" @change="changeDate">
             <view class="compact-row" :class="themeClass('compact-row')">
               <AppIcon name="ant-design:calendar-outlined" :size="22" color="#8b8f99" />
@@ -513,7 +512,7 @@ function closeSelection() {
             :disabled="!!id || saving || deleting"
             @change="changeDate"
             ><view class="field-row"
-              ><text class="field-label"><text class="required-mark">*</text>日期</text
+              ><view class="required-field-label"><text class="required-mark">*</text><text class="field-label">日期</text></view
               ><text class="field-value" :class="themeClass('field-value')">{{ date }}</text></view
             ></picker
           >
@@ -537,7 +536,7 @@ function closeSelection() {
             :aria-disabled="saving || deleting"
             @click="choosingCategory = true"
           >
-            <text class="field-label"><text class="required-mark">*</text>分类</text
+            <view class="required-field-label"><text class="required-mark">*</text><text class="field-label">分类</text></view
             ><view class="category-value"
               ><CategoryIcon
                 v-if="selectedCategory"
@@ -557,7 +556,7 @@ function closeSelection() {
               :key="field"
               class="time-column"
             >
-              <text class="field-label"><text class="required-mark">*</text>{{ field === 'startTime' ? '开始时间' : '结束时间' }}</text>
+              <view class="required-field-label"><text class="required-mark">*</text><text class="field-label">{{ field === 'startTime' ? '开始时间' : '结束时间' }}</text></view>
               <view class="time-control" :class="themeClass('time-control')">
                 <button
                   role="button"
@@ -655,9 +654,7 @@ function closeSelection() {
         </view>
         <view v-if="relatedError" class="form-error"
           ><text class="error-text" :class="themeClass('error-text')">{{ relatedError }}</text
-          ><button role="button" class="small-action" @click="retryOptions" :class="themeClass('small-action')">
-            重试关联选项
-          </button></view
+          ><button role="button" class="small-action" @click="retryOptions" :class="themeClass('small-action')"><text :class="buttonLabelClasses(['small-action', themeClass('small-action')])">重试关联选项</text></button></view
         >
         <view v-if="isExercise" class="form-card"
           ><view class="exercise-heading">
@@ -669,9 +666,7 @@ function closeSelection() {
           </view><LoadingIndicator v-if="exerciseLoading" label="正在加载运动项目" />
           <view v-if="exerciseError"
             ><text class="error-text" :class="themeClass('error-text')">{{ exerciseError }}</text
-            ><button role="button" class="small-action" @click="loadExercises" :class="themeClass('small-action')">
-              重试运动类型
-            </button></view
+            ><button role="button" class="small-action" @click="loadExercises" :class="themeClass('small-action')"><text :class="buttonLabelClasses(['small-action', themeClass('small-action')])">重试运动类型</text></button></view
           ><view
             v-for="(item, index) in form.exercises"
             :key="index"
@@ -712,9 +707,7 @@ function closeSelection() {
             :disabled="saving || deleting"
             :aria-disabled="saving || deleting"
             @click="addExercise"
-           :class="themeClass('small-action')">
-            添加运动
-          </button></view
+           :class="themeClass('small-action')"><text :class="buttonLabelClasses(['small-action', themeClass('small-action')])">添加运动</text></button></view
         >
         <view v-if="compact" class="compact-notes">
           <input v-model="form.title" class="compact-title" :class="themeClass('compact-title')"
@@ -748,8 +741,7 @@ function closeSelection() {
                   :disabled="deleting"
                   :aria-disabled="deleting"
                   @click="confirmDelete = false"
-                 :class="themeClass('small-action')">
-                  取消</button
+                 :class="themeClass('small-action')"><text :class="buttonLabelClasses(['small-action', themeClass('small-action')])">取消</text></button
                 ><button
                   role="button"
                   class="delete-button"
@@ -757,9 +749,7 @@ function closeSelection() {
                   :aria-disabled="deleting"
                   :loading="deleting"
                   @click="remove"
-                 :class="themeClass('delete-button')">
-                  确认删除
-                </button></view
+                 :class="themeClass('delete-button')"><text :class="buttonLabelClasses(['delete-button', themeClass('delete-button')])">确认删除</text></button></view
               ></view
             ></view
           >
@@ -831,7 +821,7 @@ function closeSelection() {
     <LoadingIndicator v-if="exerciseLoading" label="正在加载运动项目" />
     <view v-else-if="exerciseError" class="form-error">
       <text class="error-text" :class="themeClass('error-text')">{{ exerciseError }}</text>
-      <button role="button" class="small-action" :class="themeClass('small-action')" @click="loadExercises">重试运动类型</button>
+      <button role="button" class="small-action" :class="themeClass('small-action')" @click="loadExercises"><text :class="buttonLabelClasses(['small-action', themeClass('small-action')])">重试运动类型</text></button>
     </view>
     <view v-else class="category-grid">
       <button v-for="item in exerciseTypes" :key="item.id" role="button" class="category-option ui-type-body"
@@ -891,6 +881,7 @@ function closeSelection() {
   margin-right: $space-inline;
   flex-shrink: 0;
 }
+.required-field-label { display: flex; flex-direction: row; align-items: center; }
 .required-mark {
   margin-right: $space-detail;
   @include type-style('label');
@@ -1457,6 +1448,12 @@ function closeSelection() {
   line-height: type-line('body');
   padding: $space-inline $space-section;
 }
+/* #ifdef APP */
+// 原生渲染器不支持 gap，使用同一组间距 token 给实际相邻项留白。
+.compact-date, .compact-category, .compact-title { margin-bottom: $space-form; }
+.compact-value { margin-left: $space-section; margin-right: $space-section; }
+.compact-duration { margin-bottom: $space-detail; }
+/* #endif */
 .compact-save { flex: 1; @include type-style('body'); border-radius: 10px; }
 .compact-row-dark,
 .compact-time-range-dark,
@@ -1543,4 +1540,13 @@ function closeSelection() {
 
 .compact-time-label-dark,
 .compact-duration-dark { color: $text-secondary-dark; }
+
+/* 按钮文字独立声明样式，兼容 App 不继承容器排版。 */
+.app-button-label { @include type-style('body'); color: #27272a; }
+.app-button-label-dark { color: #eeeeef; }
+.text-action-label { @include type-style('body'); color: #5b8ff9; }
+.small-action-label { @include type-style('label'); color: #4e7ee3; }
+.delete-button-label { color: #c65353; @include type-style('body'); }
+.small-action-dark-label { color: #8eb1fb; }
+.delete-button-dark-label { color: #ed9191; }
 </style>

@@ -13,7 +13,7 @@ async function setup(page) {
   const state = { pending: gate(), failLinks: false, empty: false, profiles: 0, watched: [{ id: '1', content: '模拟待办：整理本周记录', taskName: '生活计划', isCompleted: 0 }] };
   pendingRequests.set(page, state);
   await page.addInitScript(() => localStorage.setItem('aio-life-mobile.access-token.v1', 'height-fixture'));
-  await page.route('http://127.0.0.1:5180/api/**', async route => {
+  await page.route(`${test.info().project.use.baseURL}/api/**`, async route => {
     const path = new URL(route.request().url()).pathname;
     if (path === '/api/user/info') {
       state.profiles++;

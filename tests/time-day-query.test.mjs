@@ -4,7 +4,8 @@ import { readFile } from 'node:fs/promises'
 import { transform } from 'esbuild'
 
 const source = await readFile(new URL('../src/services/dashboard.ts', import.meta.url), 'utf8')
-const code = (await transform(source.replace(/^import .*$/gm, '')
+const responseSource = await readFile(new URL('../src/services/time-response.ts', import.meta.url), 'utf8')
+const code = (await transform(responseSource + '\n' + source.replace(/^import .*$/gm, '')
   + '\nconst request = (...args) => globalThis.__timeDayRequest(...args);', { loader: 'ts', format: 'esm' })).code
 const { getDateRecords } = await import('data:text/javascript;base64,' + Buffer.from(code).toString('base64'))
 

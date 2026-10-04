@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { useWindowResize } from '../services/window-resize.ts'
+useWindowResize(resize)
 import { createDaySwipe, daySwipeStyle } from '../services/day-swipe.ts'
 import LoadingIndicator from './LoadingIndicator.uvue'
 import AppIcon from './AppIcon.uvue'
@@ -85,11 +87,11 @@ function resize() {
 }
 onMounted(() => {
   measureViewport()
-  uni.onWindowResize(resize)
+
   clock = setInterval(() => { now.value = new Date() }, 60000)
 })
 onUnmounted(() => {
-  uni.offWindowResize(resize)
+
   if (clock) clearInterval(clock)
 })
 const hours = computed(() =>
@@ -313,9 +315,23 @@ function edit(record: TimeRecord) {
 .event-info { flex-direction: row; align-items: center; justify-content: center; width: 100%; gap: $space-detail; }
 /* Dense timeline labels and multi-day event insets follow chart geometry. */
 .event-info-column { flex-direction: column; gap: 1px; }
-.event-title { min-width: 0; max-width: 100%; color: #ffffff; @include type-style('timeline');   overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.event-title { min-width: 0;
+/* #ifndef APP */
+max-width: 100%;
+/* #endif */
+/* #ifdef APP */
+flex-shrink: 1;
+/* #endif */
+ color: #ffffff; @include type-style('timeline');   overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .event-title-small { @include type-style('timeline-small');  }
-.event-time { flex-shrink: 0; max-width: 100%; color: #ffffff; opacity: 0.9; @include type-style('chart-detail');  overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.event-time { flex-shrink: 0;
+/* #ifndef APP */
+max-width: 100%;
+/* #endif */
+/* #ifdef APP */
+flex-shrink: 1;
+/* #endif */
+ color: #ffffff; opacity: 0.9; @include type-style('chart-detail');  overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .event-compact { border-radius: 3px; }
 .event-tiny { border-radius: 2px; }
 .event-highlighted { outline: 1px solid #5b8ff9; box-shadow: 0 0 5px #5b8ff980; z-index: 1; }

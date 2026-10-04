@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import { appTextColor } from '../../services/app-layout.ts'
+
+import { buttonLabelClasses } from '../../services/button-label.ts'
 import ContentSkeleton from '../../components/ContentSkeleton.uvue';
 import TimeDonut from './TimeDonut.uvue'
 import AppIcon from '../../components/AppIcon.uvue'
@@ -74,8 +77,8 @@ function sectionInset(section: string) {
 }
 function sectionHeight(section: string) {
   const limit = viewportWidth.value >= 1024 ? 280 : viewportWidth.value >= 640 ? 250 : 240
-  // 窄屏图表与记录分两行，记录区域最多显示两行，保持 44px 点击区。
-  if (section === 'time' && viewportWidth.value < 375) return sectionInset(section) + 164 + spacing.controlMin * 2
+  // 五条明细同时完整可见，每条保留标准触控高度。
+  if (section === 'time') return Math.max(limit, sectionInset(section) + spacing.controlMin * 5)
   return limit
 }
 const timeDate = ref('')
@@ -396,9 +399,6 @@ function cardIcon(item: OverviewCard) {
   }
   return icons[item.type] || item.icon || 'lucide:layout-dashboard'
 }
-function openFeatureSearch() {
-  uni.switchTab({ url: '/pages/life/index' })
-}
 function linkIcon(link: QuickLink) {
   if (iconCatalog.icons[link.icon || ''] || link.icon?.startsWith('svg:')) return link.icon
   const icons = [
@@ -450,28 +450,18 @@ function trendLines(points) {
 <template>
   <view class="dashboard-page" :class="themeClass('dashboard-page')">
     <!-- #ifndef WEB -->
-    <PageHeader title="">
-      <button role="button" class="home-search ui-row ui-px-card ui-type-body" :class="themeClass('home-search')" aria-label="查找功能" @click="openFeatureSearch">
-        <AppIcon name="lucide:search" :size="20" color="#8b8f99" />
-        <text class="home-search-label">搜索功能</text>
-      </button>
-    </PageHeader>
+    <!-- 保留状态栏与微信胶囊的安全空间。 -->
+    <PageHeader title="" />
     <!-- #endif -->
     <scroll-view scroll-y :show-scrollbar="false" class="dashboard-scroll" :refresher-enabled="true" :refresher-triggered="refreshing" refresher-background="transparent" :refresher-default-style="refreshTheme" @refresherrefresh="pullRefresh"
       ><view class="dashboard-content ui-page-inset ui-tab-page-inset">
         <view v-if="errorText" class="global-error" role="alert"
           ><text class="failure-text" :class="themeClass('failure-text')">{{ errorText }}</text
-          ><button role="button" class="text-button ui-pad-sm" @click="refresh">
-            重新加载
-          </button></view
-        >
-        <view v-if="overview.error" class="global-error" role="alert"
+          ><button role="button" class="text-button ui-pad-sm" @click="refresh"><text :class="buttonLabelClasses(['text-button ui-pad-sm'])">重新加载</text></button></view
+        ><view v-if="overview.error" class="global-error" role="alert"
           ><text class="failure-text" :class="themeClass('failure-text')">{{ overview.error }}</text
-          ><button role="button" class="text-button ui-pad-sm" @click="loadOverview">
-            重试统计卡片
-          </button></view
-        >
-        <view class="overview-grid">
+          ><button role="button" class="text-button ui-pad-sm" @click="loadOverview"><text :class="buttonLabelClasses(['text-button ui-pad-sm'])">重试统计卡片</text></button></view
+        ><view class="overview-grid">
           <view
             v-if="(loading || overview.loading) && cards.length === 0"
             v-for="n in 4"
@@ -480,8 +470,7 @@ function trendLines(points) {
             ><view class="overview-card placeholder-card ui-pad-card"
                :class="themeClass('overview-card')"><ContentSkeleton variant="summary" label="正在加载概览" /></view
             ></view
-          >
-          <view
+          ><view
             v-for="item in visibleCards"
             :key="item.type"
             class="overview-cell ui-pad-xs"
@@ -500,8 +489,7 @@ function trendLines(points) {
              :class="themeClass('overview-card')">
               <view v-if="item.loading" class="card-progress"
                 ><view class="card-progress-bar"></view
-              ></view>
-              <view class="stat-top"
+              ></view><view class="stat-top"
                 ><view class="stat-name"
                   ><button role="button" class="stat-icon stat-link ui-type-body" :aria-label="item.title + '图标'" @click.stop="openOverviewLink(item, item.iconClickUrl)"><LifeMenuIcon :icon="cardIcon(item)" :size="18" :color="isDark ? '#d4d4d8' : '#52525b'" /></button><button role="button" class="stat-title stat-link" :aria-label="item.title + '标题'" @click.stop="openOverviewLink(item, item.titleClickUrl)"><text class="stat-title-text" :class="themeClass('stat-title-text')">{{ item.title }}</text></button></view
                 ><text
@@ -511,8 +499,7 @@ function trendLines(points) {
                     item.value == null || item.value === '' ? '—' : item.value
                   }}</text
                 ></view
-              >
-              <view class="stat-bottom"
+              ><view class="stat-bottom"
                 ><text class="stat-caption" :class="themeClass('stat-caption')">{{
                   item.error
                     ? '加载失败，点击重试'
@@ -523,10 +510,8 @@ function trendLines(points) {
                 }}</text></view
               >
             </view>
-          </view>
-        <SecondaryUnlock />
-  </view>
-        <view class="section-grid">
+          </view><SecondaryUnlock />
+  </view><view class="section-grid">
           <view class="section-cell ui-pad-xs"
             ><DashboardSection
               title="时迹"
@@ -536,32 +521,22 @@ function trendLines(points) {
               @refresh="loadSection('time')"
             >
               <template #actions>
-                <DashboardAction v-if="timeDate && states.time.error" label="时迹更新失败，点击重试" icon="ant-design:reload-outlined" @click="loadSection('time')" />
-                <DashboardAction v-else label="新增时迹" :text="timeElapsed" :loading="states.time.loading && !!timeDate" :disabled="states.time.loading" @click="openTimeRecord()" />
-              </template>
-              <template #loading>
+                <DashboardAction v-if="timeDate && states.time.error" label="时迹更新失败，点击重试" icon="ant-design:reload-outlined" @click="loadSection('time')" /><DashboardAction v-else label="新增时迹" :text="timeElapsed" :loading="states.time.loading && !!timeDate" :disabled="states.time.loading" @click="openTimeRecord()" />
+              </template><template #loading>
                 <view class="time-loading" role="status" aria-label="正在加载时迹" aria-live="polite">
                   <view class="time-layout time-skeleton" aria-hidden="true">
                     <view class="timeline-labels">
-                      <text class="axis-label">0</text>
-                      <view class="timeline time-skeleton-fill" :class="themeClass('time-skeleton-fill')" />
-                      <text class="axis-label">24</text>
-                    </view>
-                    <view class="donut-stage"><view class="donut">
-                      <view class="donut-ring time-skeleton-ring" :class="themeClass('time-skeleton-ring')" />
-                      <view class="time-skeleton-fill time-skeleton-total" :class="themeClass('time-skeleton-fill')" />
-                    </view></view>
-                    <view class="recent-times ui-ml-sm"><view class="recent-time-list">
-                      <view v-for="n in 3" :key="n" class="time-record">
-                        <view class="time-skeleton-fill time-skeleton-clock" :class="themeClass('time-skeleton-fill')" />
-                        <view class="time-skeleton-fill time-skeleton-duration record-duration" :class="themeClass('time-skeleton-fill')" />
-                        <view class="time-skeleton-fill time-skeleton-name record-name" :class="themeClass('time-skeleton-fill')" />
+                      <text class="axis-label">0</text><view class="timeline time-skeleton-fill" :class="themeClass('time-skeleton-fill')" /><text class="axis-label">24</text>
+                    </view><view class="donut-stage"><view class="donut">
+                      <view class="donut-ring time-skeleton-ring" :class="themeClass('time-skeleton-ring')" /><view class="time-skeleton-fill time-skeleton-total" :class="themeClass('time-skeleton-fill')" />
+                    </view></view><view class="recent-times ui-ml-sm"><view class="recent-time-list">
+                      <view v-for="n in 5" :key="n" class="time-record">
+                        <view class="time-skeleton-fill time-skeleton-clock" :class="themeClass('time-skeleton-fill')" /><view :style="appTextColor()" class="time-skeleton-fill time-skeleton-duration record-duration" :class="themeClass('time-skeleton-fill')" /><view :style="appTextColor()" class="time-skeleton-fill time-skeleton-name record-name" :class="themeClass('time-skeleton-fill')" />
                       </view>
                     </view></view>
                   </view>
                 </view>
-              </template>
-              <view class="time-layout">
+              </template><view class="time-layout">
                 <view class="timeline-labels"
                   ><text class="axis-label">0</text
                   ><view class="timeline"
@@ -572,22 +547,16 @@ function trendLines(points) {
                       :style="block"
                     ></view></view
                   ><text class="axis-label">24</text></view
-                >
-                <view class="donut-stage"><view
+                ><view class="donut-stage"><view
                   class="donut"
                   role="img"
                   :aria-label="'今日已记录 ' + time.total"
-                  ><TimeDonut :groups="time.groups" :active="timeChartActive" />
-                  <text v-if="time.groups.length" class="donut-total" :class="themeClass('donut-total')">{{ time.total }}</text>
-                  <view v-for="label in timeDonutLabels" :key="label.id" class="donut-annotation">
-                    <view v-for="(line, index) in label.lines" :key="index" class="donut-leader" :style="line" />
-                    <view class="donut-label" :class="['donut-label-' + label.side, themeClass('donut-label')]" :style="label.position">
-                      <text class="donut-label-name">{{ label.name }}</text>
-                      <text class="donut-label-duration">{{ label.duration }}</text>
+                  ><TimeDonut :groups="time.groups" :active="timeChartActive" /><text v-if="time.groups.length" class="donut-total" :class="themeClass('donut-total')">{{ time.total }}</text><view v-for="label in timeDonutLabels" :key="label.id" class="donut-annotation">
+                    <view v-for="(line, index) in label.lines" :key="index" class="donut-leader" :style="line" /><view class="donut-label" :class="['donut-label-' + label.side, themeClass('donut-label')]" :style="label.position">
+                      <text class="donut-label-name" :class="themeClass('donut-label-text')">{{ label.name }}</text><text class="donut-label-duration" :class="themeClass('donut-label-text')">{{ label.duration }}</text>
                     </view>
                   </view>
-                </view></view>
-                <scroll-view scroll-y :show-scrollbar="false" class="recent-times ui-ml-sm"><view class="recent-time-list"
+                </view></view><scroll-view scroll-y :show-scrollbar="false" class="recent-times ui-ml-sm"><view class="recent-time-list"
                   ><text v-if="time.recent.length === 0" class="empty-label"
                      :class="themeClass('empty-label')">今日暂无记录</text
                   ><button role="button"
@@ -595,14 +564,11 @@ function trendLines(points) {
                     :key="record.id"
                     class="time-record" :aria-label="'编辑时迹 ' + record.name" @click="openTimeRecord(record.id)"
                     :style="{ color: record.color }"
-                    ><text class="record-clock">{{ record.startLabel }}</text>
-                    <text class="record-duration">{{ record.durationLabel }}</text>
-                    <text class="record-name">{{ record.shortName }}</text></button
+                    ><view class="time-record-content"><text :style="{ color: record.color }" class="record-clock">{{ record.startLabel }}</text><text :style="{ color: record.color }" class="record-duration">{{ record.durationLabel }}</text><text :style="{ color: record.color }" class="record-name">{{ record.shortName }}</text></view></button
                   ></view></scroll-view>
               </view>
             </DashboardSection></view
-          >
-          <view class="section-cell ui-pad-xs"
+          ><view class="section-cell ui-pad-xs"
             ><DashboardSection
               title="快捷导航" skeleton="grid"
               :height="sectionHeight('links')"
@@ -612,18 +578,14 @@ function trendLines(points) {
             >
               <template #actions>
                 <DashboardAction label="管理快捷导航" icon="lucide:settings-2" @click="openQuickNavEditor" />
-              </template>
-              <view v-if="links.length === 0" class="empty-state ui-pad-card"
+              </template><view v-if="links.length === 0" class="empty-state ui-pad-card"
                 ><AppIcon name="ant-design:appstore-outlined" :size="32" color="#8b8f99" /><text class="empty-label" :class="themeClass('empty-label')">暂无快捷方式</text
                 ><button
                   role="button"
                   class="text-button ui-pad-sm"
                   @click="openQuickNavEditor"
-                >
-                  添加常用功能
-                </button></view
-              >
-              <scroll-view v-else scroll-y :show-scrollbar="false" class="quick-scroll"><view class="quick-grid"
+                ><text :class="buttonLabelClasses(['text-button ui-pad-sm'])">添加常用功能</text></button></view
+              ><scroll-view v-else scroll-y :show-scrollbar="false" class="quick-scroll"><view class="quick-grid"
                 ><button
                   v-for="link in links"
                   :key="link.menuId"
@@ -635,8 +597,7 @@ function trendLines(points) {
                   <LifeMenuIcon :icon="linkIcon(link)" :size="quickIconSize" :color="isDark ? '#e4e4e7' : '#27272a'" /><text class="quick-title" :class="themeClass('quick-title')">{{ link.title }}</text><text v-if="!nativeDestination(link.path)" class="quick-platform">网页版</text>
                 </button></view></scroll-view>
             </DashboardSection></view
-          >
-          <view
+          ><view
             v-if="
               states.watched.loading || states.watched.error || watched.length
             "
@@ -654,14 +615,12 @@ function trendLines(points) {
                   :key="task.id"
                   class="list-row task-row ui-pad-sm"
                   ><button role="button" class="task-check ui-type-body" :aria-label="task.isCompleted === 1 ? '标记未完成' : '完成待办'" :aria-busy="taskBusy === task.id" :loading="taskBusy === task.id" :disabled="!!taskBusy" @click="completeWatched(task)"><CategoryIcon v-if="taskBusy !== task.id" :icon="task.isCompleted === 1 ? 'lucide:circle-check' : 'lucide:circle'" :size="20" :color="task.isCompleted === 1 ? '#5b8ff9' : isDark ? '#a1a1aa' : '#71717a'" /></button><view class="task-copy" role="button" :aria-label="'编辑待办 '+task.content" @click="openWatched(task)"
-                    ><view class="task-main"><text v-if="task.priority === 1 || task.priority === 10 || task.priority === 20" class="task-priority" :class="task.priority === 1 ? 'priority-high' : task.priority === 10 ? 'priority-medium' : 'priority-low'">{{ task.priority === 1 ? '高' : task.priority === 10 ? '中' : '低' }}</text><text class="body-text" :class="[{ completed: task.isCompleted === 1 }, themeClass('body-text')]">{{ task.content }}</text></view>
-                    <text v-if="task.taskName" class="tag" :class="themeClass('tag')">{{ task.taskName }}</text></view
+                    ><view class="task-main"><text v-if="task.priority === 1 || task.priority === 10 || task.priority === 20" class="task-priority" :class="task.priority === 1 ? 'priority-high' : task.priority === 10 ? 'priority-medium' : 'priority-low'">{{ task.priority === 1 ? '高' : task.priority === 10 ? '中' : '低' }}</text><text class="body-text" :class="[{ completed: task.isCompleted === 1 }, themeClass('body-text')]">{{ task.content }}</text></view><text v-if="task.taskName" class="tag" :class="themeClass('tag')">{{ task.taskName }}</text></view
                   ></view
                 ></scroll-view
               ></DashboardSection
             ></view
-          >
-          <view class="section-cell ui-pad-xs"
+          ><view class="section-cell ui-pad-xs"
             ><DashboardSection
               title="闪念"
               compact
@@ -676,7 +635,7 @@ function trendLines(points) {
                   v-for="thought in thoughts"
                   :key="thought.id"
                   class="list-row thought-row ui-pad-sm" role="button" :aria-label="'编辑闪念'" @click="openThought(thought)"
-                  ><text class="thought-text" :class="themeClass('thought-text')">{{
+                  ><text :max-lines="2" class="thought-text" :class="themeClass('thought-text')">{{
                     thought.hiddenContent ? '内容已隐藏' : thought.content
                   }}</text
                   ><text class="list-date ui-ml-section">{{
@@ -685,8 +644,7 @@ function trendLines(points) {
                 ></scroll-view
               ></DashboardSection
             ></view
-          >
-          <view
+          ><view
             v-if="
               states.exercise.loading ||
               states.exercise.error ||
@@ -711,10 +669,8 @@ function trendLines(points) {
                     v-for="(item, itemIndex) in day.items"
                     :key="item.exerciseTypeId"
                     class="exercise-item"
-                    ><view class="exercise-date"><text v-if="itemIndex === 0" class="day-label" :class="themeClass('day-label')">{{ day.date.slice(5) }}</text><text v-if="itemIndex === 0" class="weekday">{{ weekday(day.date) }}</text></view>
-                    <view class="exercise-details">
-                      <view class="exercise-main"><CategoryIcon :icon="item.icon || 'mdi:run'" :size="14" :color="item.color || '#5b8ff9'" /><text class="exercise-name" :class="themeClass('exercise-name')">{{ item.typeLabel }}</text><text class="exercise-count" :class="themeClass('exercise-count')">{{ item.count }}</text></view>
-                      <text v-if="item.deltaCount != null" class="exercise-delta" :class="item.deltaCount > 0 ? 'delta-up' : item.deltaCount < 0 ? 'delta-down' : ''">{{ item.deltaCount > 0 ? '↑ +' + item.deltaCount : item.deltaCount < 0 ? '↓ ' + item.deltaCount : '—' }}</text>
+                    ><view class="exercise-date"><text v-if="itemIndex === 0" class="day-label" :class="themeClass('day-label')">{{ day.date.slice(5) }}</text><text v-if="itemIndex === 0" class="weekday">{{ weekday(day.date) }}</text></view><view class="exercise-details">
+                      <view class="exercise-main"><CategoryIcon :icon="item.icon || 'mdi:run'" :size="14" :color="item.color || '#5b8ff9'" /><text class="exercise-name" :class="themeClass('exercise-name')">{{ item.typeLabel }}</text><text class="exercise-count" :class="themeClass('exercise-count')">{{ item.count }}</text></view><text v-if="item.deltaCount != null" class="exercise-delta" :class="item.deltaCount > 0 ? 'delta-up' : item.deltaCount < 0 ? 'delta-down' : ''">{{ item.deltaCount > 0 ? '↑ +' + item.deltaCount : item.deltaCount < 0 ? '↓ ' + item.deltaCount : '—' }}</text>
                     </view
                     ><view
                       v-if="item.trend && item.trend.length"
@@ -745,14 +701,12 @@ function trendLines(points) {
                           backgroundColor: item.color || '#3b82f6',
                         }"
                       ></view></view></view></view
-                > <view v-if="moreExercise || moreErrors.exercise" class="pagination-status">
-                  <view v-if="moreExercise" class="pagination-spinner" role="status" aria-label="正在加载更多运动" />
-                  <button v-else role="button" class="pagination-retry ui-type-body" aria-label="加载失败，重试更多运动" @click="loadMore('exercise')"><CategoryIcon icon="lucide:rotate-cw" :size="16" :color="isDark ? '#a9bfff' : '#5879ce'" /></button>
+                ><view v-if="moreExercise || moreErrors.exercise" class="pagination-status">
+                  <view v-if="moreExercise" class="pagination-spinner" role="status" aria-label="正在加载更多运动" /><button v-else role="button" class="pagination-retry ui-type-body" aria-label="加载失败，重试更多运动" @click="loadMore('exercise')"><CategoryIcon icon="lucide:rotate-cw" :size="16" :color="isDark ? '#a9bfff' : '#5879ce'" /></button>
                 </view></scroll-view
               ></DashboardSection
             ></view
-          >
-          <view v-if="githubBound" class="section-cell ui-pad-xs"
+          ><view v-if="githubBound" class="section-cell ui-pad-xs"
             ><DashboardSection
               title="最近提交"
               icon="simple-icons:github"
@@ -775,19 +729,15 @@ function trendLines(points) {
                   ><text class="commit-message" :class="themeClass('commit-message')">{{
                     commit.message
                   }}</text></view
-                > <view v-if="moreCommits || moreErrors.commits" class="pagination-status">
-                  <view v-if="moreCommits" class="pagination-spinner" role="status" aria-label="正在加载更多提交" />
-                  <button v-else role="button" class="pagination-retry ui-type-body" aria-label="加载失败，重试更多提交" @click="loadMore('commits')"><CategoryIcon icon="lucide:rotate-cw" :size="16" :color="isDark ? '#a9bfff' : '#5879ce'" /></button>
+                ><view v-if="moreCommits || moreErrors.commits" class="pagination-status">
+                  <view v-if="moreCommits" class="pagination-spinner" role="status" aria-label="正在加载更多提交" /><button v-else role="button" class="pagination-retry ui-type-body" aria-label="加载失败，重试更多提交" @click="loadMore('commits')"><CategoryIcon icon="lucide:rotate-cw" :size="16" :color="isDark ? '#a9bfff' : '#5879ce'" /></button>
                 </view></scroll-view
               ></DashboardSection
             ></view
           >
         </view>
       </view></scroll-view
-    >
-    <TimeRecordEditor v-if="timeEditor" :record-id="timeEditor.recordId" @close="closeTimeEditor" />
-    <RecordCreateModal v-if="recordCreateKind" :kind="recordCreateKind" :thought-id="recordCreateKind === 'think' ? thoughtEditId : ''" @close="recordCreateKind = null" @saved="handleRecordCreated" @deleted="handleThoughtDeleted" />
-    <WatchedTaskEditModal v-if="watchedEditor" :task="watchedEditor" @close="watchedEditor = null" @saved="handleWatchedSaved" />
+    ><TimeRecordEditor v-if="timeEditor" :record-id="timeEditor.recordId" @close="closeTimeEditor" /><RecordCreateModal v-if="recordCreateKind" :kind="recordCreateKind" :thought-id="recordCreateKind === 'think' ? thoughtEditId : ''" @close="recordCreateKind = null" @saved="handleRecordCreated" @deleted="handleThoughtDeleted" /><WatchedTaskEditModal v-if="watchedEditor" :task="watchedEditor" @close="watchedEditor = null" @saved="handleWatchedSaved" />
   </view>
 </template>
 
@@ -805,23 +755,6 @@ function trendLines(points) {
 /* H5 的实际滚动节点在内置组件内部，避免滚到底后把手势传给整页。 */
 .exercise-scroll :deep(.uni-scroll-view),
 .commits-scroll :deep(.uni-scroll-view) { overscroll-behavior-y: contain; }
-/* #endif */
-.home-search {
-  display: flex;
-  width: 100%;
-  max-width: 360px;
-  height: $space-controlMin;
-  align-items: center;
-  margin: 0;
-  border: 0;
-  border-radius: 14px;
-  background-color: #ffffff;
-  box-sizing: border-box;
-}
-.home-search-label { @include type-style('body'); color: #8b8f99; }
-.home-search-dark { background-color: #1c1e22; }
-/* #ifdef MP-WEIXIN */
-.home-search::after { border: 0; }
 /* #endif */
 .dashboard-page {
   flex: 1;
@@ -953,10 +886,23 @@ function trendLines(points) {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  /* #ifdef APP */
+  max-lines: 1;
+  height: $space-controlMin;
+  line-height: $space-controlMin;
+  /* #endif */
 }
 .stat-value {
   margin-left: $space-fieldLabel;
-  max-width: 50%;
+
+/* #ifndef APP */
+max-width: 50%;
+/* #endif */
+/* #ifdef APP */
+flex-shrink: 0;
+max-lines: 1;
+/* #endif */
+
   color: #27272a;
 
   @include type-style('metric-inline');
@@ -1096,32 +1042,53 @@ function trendLines(points) {
 .donut-label-left { left: 0; align-items: flex-end; text-align: right; }
 .donut-label-right { right: 0; align-items: flex-start; }
 .donut-label-name {
-  max-width: 100%;
+
+/* #ifndef APP */
+max-width: 100%;
+/* #endif */
+/* #ifdef APP */
+flex-shrink: 1;
+/* #endif */
+
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 .donut-label-name, .donut-label-duration {
   @include type-style('chart-label');
+  color: #52525b;
 
   white-space: nowrap;
 }
 .donut-label-dark { color: #d0d0d6; }
+.donut-label-text-dark { color: #d0d0d6; }
 .recent-times {
   width: 112px;
-  height: 100%;
+  height: $space-controlMin * 5;
   min-height: 0;
   flex-shrink: 0;
 }
 .recent-time-list {
-  min-height: 100%;
+
+/* #ifndef APP */
+min-height: 100%;
+/* #endif */
+/* #ifdef APP */
+flex-grow: 1;
+/* #endif */
+
   align-items: flex-end;
   justify-content: center;
 }
 .time-record {
   display: flex;
+  padding: 0;
+  margin: 0;
+  background-color: transparent;
+  border: 0;
+  border-radius: 0;
   width: 100%;
-  height: 44px;
+  height: $space-controlMin;
   flex-shrink: 0;
   flex-direction: row;
   align-items: center;
@@ -1131,12 +1098,22 @@ function trendLines(points) {
   font-family: type-family('mono');
 
 }
+.time-record-content {
+  flex-direction: row;
+  align-items: center;
+  justify-content: flex-end;
+  width: 100%;
+  height: $space-controlMin;
+}
 .record-clock { flex-shrink: 0; }
 .record-duration { flex-shrink: 0; margin-left: $space-detail; }
 .record-clock, .record-duration, .record-name {
   @include type-style('badge');
 
-  color: inherit;
+/* #ifndef APP */
+color: inherit;
+/* #endif */
+
   white-space: nowrap;
 }
 .record-name {
@@ -1149,13 +1126,8 @@ function trendLines(points) {
   text-overflow: ellipsis;
 }
 @media (max-width: 374px) {
-  .time-layout { flex-wrap: wrap; }
-  .timeline-labels { height: 148px; }
-  .donut-stage { height: 164px; }
-  .donut { transform: scale(0.94); }
-  .recent-times { height: $space-controlMin * 2; width: 100%; margin-left: 0; }
-  .recent-time-list { flex-direction: row; flex-wrap: wrap; }
-  .time-record { width: 50%; justify-content: center; }
+  .donut { transform: scale(0.8); }
+  .recent-times { width: 100px; }
 }
 .quick-grid {
   flex-direction: row;
@@ -1200,13 +1172,42 @@ function trendLines(points) {
 .priority-medium { background-color: #cc8736; }
 .priority-low { background-color: #9299a6; }
 .thought-text, .body-text { flex: 1; min-width: 0; color: #3f3f46; @include type-style('body');  }
-.thought-text { overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.thought-text { overflow: hidden;
+/* #ifndef APP */
+display: -webkit-box;
+/* #endif */
+/* #ifdef APP */
+text-overflow: ellipsis;
+/* #endif */
+
+/* #ifndef APP */
+-webkit-line-clamp: 2;
+/* #endif */
+
+/* #ifndef APP */
+-webkit-box-orient: vertical;
+/* #endif */
+ }
 .list-date { flex-shrink: 0; color: #92929b; @include type-style('chart-label');   }
 .completed { text-decoration: line-through; opacity: 0.6; }
-.tag { align-self: flex-start; max-width: 100%; background-color: #f4f4f5; color: #71717a; border-radius: 4px; padding: 0 $space-fieldLabel; @include type-style('chart-label');  margin-top: $space-tight; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tag { align-self: flex-start;
+/* #ifndef APP */
+max-width: 100%;
+/* #endif */
+/* #ifdef APP */
+flex-shrink: 1;
+/* #endif */
+ background-color: #f4f4f5; color: #71717a; border-radius: 4px; padding: 0 $space-fieldLabel; @include type-style('chart-label');  margin-top: $space-tight; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .exercise-day { padding: 0; }
 .exercise-item { min-height: 40px; padding: $space-tight 0; flex-direction: row; align-items: center; }
-.exercise-date { width: 64px; flex-shrink: 0; margin-right: $space-inline; flex-direction: row; align-items: baseline; }
+.exercise-date { width: 64px; flex-shrink: 0; margin-right: $space-inline; flex-direction: row;
+/* #ifndef APP */
+align-items: baseline;
+/* #endif */
+/* #ifdef APP */
+align-items: flex-end;
+/* #endif */
+ }
 .day-label { @include type-style('badge');  color: #71717a; }
 .weekday { margin-left: $space-detail; @include type-style('chart-label');  color: #92929b; }
 .exercise-details { flex: 1; min-width: 0; flex-direction: row; align-items: center; }
@@ -1395,4 +1396,8 @@ function trendLines(points) {
 }
 /* #endif */
 
+/* 按钮文字独立声明样式，兼容 App 不继承容器排版。 */
+.app-button-label { @include type-style('body'); color: #27272a; }
+.app-button-label-dark { color: #eeeeef; }
+.text-button-label { color: #5879ce; @include type-style('caption'); }
 </style>

@@ -34,11 +34,11 @@ test('圆环标注保留分类累计时长，集中扇区的标签不会重叠�
   assert.deepEqual(summaryDonutLabels([]), []);
   assert.deepEqual(summaryDonutLabels([{ id: 'zero', minutes: 0 }]), []);
 });
-test('六条最近记录使用独立的开始时间、时长和分类名，重复分类仍分别保留', () => {
+test('最近记录保留全部明细供滚动查看，重复分类仍分别保留', () => {
   const records = Array.from({ length: 8 }, (_, i) => ({ id: String(i), categoryId: '1', startTime: i * 10, endTime: i * 10 + 9 }));
   const result = timeSummary([{ id: '1', name: '阅读', color: '#faad14' }], records);
-  assert.equal(result.recent.length, 6);
-  assert.deepEqual(result.recent.map(x => x.id), ['7', '6', '5', '4', '3', '2']);
+  assert.equal(result.recent.length, 8);
+  assert.deepEqual(result.recent.map(x => x.id), ['7', '6', '5', '4', '3', '2', '1', '0']);
   assert.equal(result.recent[0].startLabel, '01:10');
   assert.equal(result.recent[0].durationLabel, '10m');
   assert.equal(result.recent[0].shortName, '阅读');

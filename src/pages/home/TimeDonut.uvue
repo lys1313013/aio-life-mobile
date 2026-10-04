@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { buttonLabelClasses } from '../../services/button-label.ts'
 import { getCurrentInstance, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { isDark } from '../../services/theme.ts'
 
@@ -12,6 +13,7 @@ let context: any = null
 let frame: ReturnType<typeof setTimeout> | null = null
 let alive = true
 let current: Sector[] = []
+let growth: number[] = []
 
 function sectors(): Sector[] {
   const total = props.groups.reduce((sum, group) => sum + group.minutes, 0)
@@ -26,7 +28,7 @@ function stop() {
   if (frame !== null) clearTimeout(frame)
   frame = null
 }
-function paint(rows: Sector[], scale = 1) {
+function paint(rows: Sector[]) {
   if (!context) return
   context.clearRect(0, 0, 108, 108)
   if (!rows.length) {
@@ -37,11 +39,14 @@ function paint(rows: Sector[], scale = 1) {
     context.stroke()
     return
   }
-  for (const row of rows) {
-    if (row.end - row.start < 0.00001) continue
+  for (let index = 0; index < rows.length; index++) {
+    const row = rows[index]
+    const thickness = 19 * (growth[index] ?? 1)
+    if (row.end - row.start < 0.00001 || thickness <= 0) continue
     context.beginPath()
-    context.arc(54, 54, 44.5 * scale, row.start, row.end)
-    context.lineWidth = 19 * scale
+    // ECharts pie scale: inner radius stays at 35; only the outer radius grows.
+    context.arc(54, 54, 35 + thickness / 2, row.start, row.end)
+    context.lineWidth = thickness
     context.strokeStyle = row.color
     context.stroke()
   }
@@ -49,32 +54,33 @@ function paint(rows: Sector[], scale = 1) {
 function update() {
   stop()
   if (!context || !props.active) return
-  const target = sectors()
-  if (JSON.stringify(target) === JSON.stringify(current)) { paint(current); return }
+  current = sectors()
   let reduceMotion = false
   // #ifdef WEB
   reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
   // #endif
-  if (reduceMotion || !target.length) {
-    current = target
+  if (reduceMotion || !current.length) {
+    growth = current.map(() => 1)
     paint(current)
     return
   }
-  const entering = !current.length
-  // Keep each category's previous angles, including an interrupted animation.
-  const from = target.map(row => current.find(item => item.id === row.id) || { ...row, end: row.start })
-  const leaving = current.filter(row => !target.some(item => item.id === row.id))
+  // Web clears and re-renders after saving, including unchanged proportions.
+  // Match its 1000ms exponentialInOut radial reveal with a slight sector stagger.
+  // Keep angles final throughout: no clockwise sweep or whole-ring zoom.
   const started = Date.now()
   function tick() {
     if (!alive || !props.active) return
-    const progress = Math.min(1, (Date.now() - started) / 550)
-    const eased = 1 - Math.pow(1 - progress, 3)
-    current = target.map((row, index) => ({ ...row,
-      start: from[index].start + (row.start - from[index].start) * eased,
-      end: from[index].end + (row.end - from[index].end) * eased,
-    })).concat(progress === 1 ? [] : leaving.map(row => ({ ...row, end: row.end + (row.start - row.end) * eased })))
-    paint(current, entering ? 0.82 + 0.18 * eased : 1)
-    if (progress < 1) frame = setTimeout(tick, 16)
+    const elapsed = Date.now() - started
+    growth = current.map((_, index) => {
+      const delay = current.length > 1 ? index / (current.length - 1) * 80 : 0
+      const progress = Math.min(1, Math.max(0, (elapsed - delay) / 1000))
+      if (progress === 0 || progress === 1) return progress
+      return progress < 0.5
+        ? Math.pow(2, 20 * progress - 10) / 2
+        : (2 - Math.pow(2, -20 * progress + 10)) / 2
+    })
+    paint(current)
+    if (growth.some(value => value < 1)) frame = setTimeout(tick, 16)
     else frame = null
   }
   tick()
@@ -104,14 +110,18 @@ async function initialize() {
 onMounted(initialize)
 watch(() => props.groups, update)
 watch(isDark, () => paint(current))
-watch(() => props.active, value => { if (value) update(); else stop() })
+watch(() => props.active, value => {
+  stop()
+  // A hidden tab resumes at the final state instead of replaying a save animation.
+  if (value) { current = sectors(); growth = current.map(() => 1); paint(current) }
+})
 onUnmounted(() => { alive = false; stop(); context = null })
 </script>
 
 <template>
   <view class="time-donut-renderer">
     <canvas :id="canvasId" :canvas-id="canvasId" type="2d" class="time-donut-canvas" aria-hidden="true" />
-    <button v-if="failed" class="time-donut-retry" aria-label="重试时迹图表" @click="initialize">重试</button>
+    <button v-if="failed" class="time-donut-retry" aria-label="重试时迹图表" @click="initialize"><text :class="buttonLabelClasses(['time-donut-retry'])">重试</text></button>
   </view>
 </template>
 
@@ -122,4 +132,9 @@ onUnmounted(() => { alive = false; stop(); context = null })
 .time-donut-renderer { position: absolute; top: 34px; left: 34px; width: 108px; height: 108px; }
 .time-donut-canvas { width: 108px; height: 108px; }
 .time-donut-retry { position: absolute; top: 0; left: 0; min-height: $space-controlMin; min-width: $space-controlMin; margin: 0; padding: 0; @include type-style('caption'); }
+
+/* 按钮文字独立声明样式，兼容 App 不继承容器排版。 */
+.app-button-label { @include type-style('body'); color: #27272a; }
+.app-button-label-dark { color: #eeeeef; }
+.time-donut-retry-label { @include type-style('caption'); }
 </style>

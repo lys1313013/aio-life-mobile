@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { buttonLabelClasses } from '../../services/button-label.ts'
 import ContentSkeleton from '../../components/ContentSkeleton.uvue';
 import LoadingIndicator from '../../components/LoadingIndicator.uvue';
 import AppIcon from '../../components/AppIcon.uvue'
@@ -242,10 +243,6 @@ function closeEditor() {
   editor.value = null
   applyRecordChange()
 }
-function goToday() {
-  date.value = todayDate()
-  changePeriod()
-}
 </script>
 
 <template>
@@ -268,7 +265,7 @@ function goToday() {
     >
       <view class="tab-content time-content ui-page-inset ui-tab-page-inset">
         <scroll-view direction="horizontal" :scroll-x="true" :show-scrollbar="false" class="time-toolbar-scroll ui-section">
-        <view class="time-toolbar ui-toolbar" :class="{ 'time-toolbar-with-today': date !== todayDate() }">
+        <view class="time-toolbar ui-toolbar">
           <view class="toolbar-date-group ui-row">
             <button role="button" class="filter-trigger" hover-class="control-pressed" :hover-stay-time="100" :class="[themeClass(['filter-trigger', { 'filter-active': selectedCategories.length > 0 }]), { 'filter-active': selectedCategories.length > 0 }]" aria-label="筛选分类" :aria-description="filterLabel" @click="openFilters">
               <AppIcon name="ant-design:filter-outlined" :color="selectedCategories.length ? (isDark ? '#a9c3ff' : '#427bea') : (isDark ? '#a4a8b2' : '#737985')" />
@@ -277,13 +274,12 @@ function goToday() {
           </view>
           <view class="toolbar-view-group ui-row">
             <view class="period-tabs" :class="themeClass('period-tabs')">
-              <button v-for="item in modeOptions" :key="item.key" role="button" :aria-label="item.label + '视图'" :aria-pressed="mode === item.key" class="period-tab" hover-class="control-pressed" :hover-stay-time="100" :class="[{ 'period-active': mode === item.key }, themeClass(['period-tab', { 'period-active': mode === item.key }])]" @click="selectMode(item.key)">{{ item.label }}</button>
+              <button v-for="item in modeOptions" :key="item.key" role="button" :aria-label="item.label + '视图'" :aria-pressed="mode === item.key" class="period-tab" hover-class="control-pressed" :hover-stay-time="100" :class="[{ 'period-active': mode === item.key }, themeClass(['period-tab', { 'period-active': mode === item.key }])]" @click="selectMode(item.key)"><text :class="buttonLabelClasses(['period-tab', [{ 'period-active': mode === item.key }, themeClass(['period-tab', { 'period-active': mode === item.key }])]])">{{ item.label }}</text></button>
             </view>
             <view class="view-tabs" :class="themeClass('view-tabs')">
               <button role="button" class="view-tab" hover-class="control-pressed" :hover-stay-time="100" :class="[{ 'view-active': viewMode === 'timeline' }, themeClass({ 'view-active': viewMode === 'timeline' })]" aria-label="时间轴视图" :aria-pressed="viewMode === 'timeline'" @click="selectView('timeline')"><AppIcon name="ant-design:clock-circle-outlined" :color="viewMode === 'timeline' ? (isDark ? '#a9c3ff' : '#427bea') : (isDark ? '#a4a8b2' : '#737985')" /></button>
               <button role="button" class="view-tab" hover-class="control-pressed" :hover-stay-time="100" :class="[{ 'view-active': viewMode === 'card' }, themeClass({ 'view-active': viewMode === 'card' })]" aria-label="卡片视图" :aria-pressed="viewMode === 'card'" @click="selectView('card')"><AppIcon name="ant-design:appstore-outlined" :color="viewMode === 'card' ? (isDark ? '#a9c3ff' : '#427bea') : (isDark ? '#a4a8b2' : '#737985')" /></button>
             </view>
-            <button v-if="date !== todayDate()" role="button" class="today-button today-surface" :class="themeClass('today-surface')" hover-class="control-pressed" :hover-stay-time="100" aria-label="回到今天" @click="goToday"><AppIcon name="ant-design:calendar-outlined" color="#5b8ff9" /></button>
           </view>
         </view>
         </scroll-view>
@@ -296,15 +292,9 @@ function goToday() {
             role="alert"
             :class="themeClass('error-text')"
             >{{ errorText }}</text
-          ><button role="button" class="text-action" @click="load">
-            重试时迹记录
-          </button></view
+          ><button role="button" class="text-action" @click="load"><text :class="buttonLabelClasses(['text-action'])">重试时迹记录</text></button></view
         >
-        <template
-          v-if="
-            !errorText || records.length > 0
-          "
-        >
+        <view v-if="!errorText || records.length > 0" class="time-body">
           <view class="time-layout ui-gap-md">
           <view class="time-main-panel" :aria-busy="loading">
           <LoadingIndicator v-if="loading && !refreshing && records.length" floating label="正在更新时迹" />
@@ -336,7 +326,7 @@ function goToday() {
               <ContentSkeleton variant="chart" />
               <ContentSkeleton variant="distribution" :rows="2" />
             </view>
-            <template v-else><view class="summary-grid ui-row ui-mb-section">
+            <view v-else class="time-statistics-content"><view class="summary-grid ui-row ui-mb-section">
               <view class="summary-card ui-pad-card" :class="themeClass('summary-card')"><text class="summary-label" :class="themeClass('summary-label')">时长</text><text class="summary-value" :class="themeClass('summary-value')">{{ durationLabel(total) }}</text></view>
               <view v-if="!selectedCategories.length" class="summary-card ui-pad-card" :class="themeClass('summary-card')"><text class="summary-label" :class="themeClass('summary-label')">空闲</text><text class="summary-value" :class="themeClass('summary-value')">{{ durationLabel(unrecorded) }}</text></view>
               <view v-else-if="mode !== 'day'" class="summary-card ui-pad-card" :class="themeClass('summary-card')"><text class="summary-label" :class="themeClass('summary-label')">平均</text><text class="summary-value" :class="themeClass('summary-value')">{{ durationLabel(average) }}</text></view>
@@ -345,7 +335,7 @@ function goToday() {
                 <text class="summary-value" :class="themeClass('summary-value')">{{ durationLabel(item.minutes) }}</text>
               </view>
             </view>
-            <TimeStatistics :records="records" :categories="categories" :selected="selectedCategories" :date="date" :mode="mode" :revision="revision" /></template>
+            <TimeStatistics :records="records" :categories="categories" :selected="selectedCategories" :date="date" :mode="mode" :revision="revision" /></view>
           </view>
           </view>
           <view
@@ -359,7 +349,7 @@ function goToday() {
             }}</text
             ><text class="muted-text">点击右下角，记下你的时间</text></view
           >
-        </template>
+        </view>
       </view>
     </scroll-view>
     <SecondaryUnlock />
@@ -381,9 +371,7 @@ function goToday() {
           role="button"
           class="today-button"
           @click="draftCategories = []"
-        >
-          重置
-        </button></view
+        ><text :class="buttonLabelClasses(['today-button'])">重置</text></button></view
       >
       <text v-if="!categories.length" class="muted-text">暂无分类</text>
       <view class="filter-grid">
@@ -410,8 +398,8 @@ function goToday() {
       </view>
       <view class="ui-mt-section">
         <FormActions>
-          <button role="button" class="filter-cancel" @click="showFilters = false">取消</button>
-          <button role="button" class="filter-apply" @click="applyFilters">应用筛选</button>
+          <button role="button" class="filter-cancel" @click="showFilters = false"><text :class="buttonLabelClasses(['filter-cancel'])">取消</text></button>
+          <button role="button" class="filter-apply" @click="applyFilters"><text :class="buttonLabelClasses(['filter-apply'])">应用筛选</text></button>
         </FormActions>
       </view>
     </AdaptiveModal>
@@ -432,10 +420,18 @@ function goToday() {
 @include type-utilities('body');
 
 .time-content { max-width: $space-contentMax; }
+// 条件内容使用可参与原生布局的容器，避免 Vapor 多根模板块丢失正文。
+.time-body, .time-statistics-content { width: 100%; }
 .time-toolbar-scroll { width: 100%; }
-// 保留触控尺寸，分段底座内缩；非今日的窄屏工具栏仍可横向滚动。
+/* #ifdef APP */
+// 横向工具栏在原生滚动容器中使用确定高度，正文按内容自然展开。
+.time-toolbar-scroll { height: $space-controlMin + 2 * $space-tight; flex-shrink: 0; }
+.time-layout { width: 100%; flex-direction: column; }
+.time-main-panel, .time-stats-panel { width: 100%; flex-grow: 0; flex-shrink: 0; flex-basis: auto; }
+.time-stats-panel { margin-top: $space-section; }
+/* #endif */
+// 保留触控尺寸，分段底座内缩；窄屏工具栏仍可横向滚动。
 .time-toolbar { width: 100%; min-width: 6 * $space-controlMin + 2 * $space-inline + 4 * $space-tight; flex-direction: row; flex-wrap: nowrap; align-items: center; justify-content: space-between; margin-bottom: 0; }
-.time-toolbar-with-today { min-width: 7 * $space-controlMin + 3 * $space-inline + 4 * $space-tight; }
 .toolbar-date-group, .toolbar-view-group { flex-direction: row; flex-wrap: nowrap; flex-shrink: 0; align-items: center; }
 .date-switch, .period-tabs, .view-tabs { flex-direction: row; flex-shrink: 0; align-items: center; background-color: #e7eaef; border-radius: 15px; }
 .period-tabs, .view-tabs { padding: $space-tight; }
@@ -443,7 +439,7 @@ function goToday() {
 .date-step, .period-tab, .view-tab, .filter-trigger, .today-button { display: flex; flex-direction: row; align-items: center; justify-content: center; flex-shrink: 0; width: $space-controlMin; height: $space-controlMin; line-height: $space-controlMin; margin: 0; padding: 0; border: 0; border-radius: 12px; background-color: transparent; color: #737985; @include type-style('body'); }
 .date-picker { width: 88px; min-height: $space-controlMin; box-sizing: border-box; align-items: center; justify-content: center; padding: 0 $space-micro; }
 .date-value { @include type-style('label-strong');  color: #343944; }
-.filter-trigger, .today-surface { position: relative; border-radius: 14px; background-color: #e7eaef; }
+.filter-trigger { position: relative; border-radius: 14px; background-color: #e7eaef; }
 .filter-active { background-color: #e3ecff; }
 .filter-dot { position: absolute; top: $space-inline; right: $space-inline; width: 5px; height: 5px; border-radius: 3px; background-color: #5b8ff9; }
 .period-active, .view-active { color: #427bea; font-weight: type-weight('medium'); background-color: #ffffff; box-shadow: 0 1px 4px rgba(28, 39, 61, 0.1); }
@@ -469,15 +465,17 @@ function goToday() {
 .diff-down { color: #20a574; }
 .date-value-dark, .summary-value-dark { color: #eeeeef; }
 .summary-card-dark { background-color: #1c1e22; }
-.date-switch-dark, .period-tabs-dark, .view-tabs-dark, .filter-trigger-dark, .today-surface-dark { background-color: #202228; }
+.date-switch-dark, .period-tabs-dark, .view-tabs-dark, .filter-trigger-dark { background-color: #202228; }
 .period-tab-dark { color: #a4a8b2; }
 .period-active-dark, .view-active-dark { background-color: #363b46; color: #a9c3ff; box-shadow: 0 1px 4px rgba(0, 0, 0, 0.22); }
 .filter-active-dark { background-color: #2c3953; }
+/* #ifndef APP */
 @media (min-width: 1025px) {
   .time-layout { flex-direction: row; align-items: flex-start; }
   .time-main-panel { flex: 1; }
   .time-stats-panel { flex: 1; }
 }
+/* #endif */
 .filter-heading {
   flex-direction: row;
   align-items: center;
@@ -568,4 +566,16 @@ function goToday() {
 }
 /* #endif */
 
+
+/* 按钮文字独立声明样式，兼容 App 不继承容器排版。 */
+.app-button-label { @include type-style('body'); color: #27272a; }
+.app-button-label-dark { color: #eeeeef; }
+.text-action-label { @include type-style('body'); color: #5b8ff9; }
+.period-tab-label, .today-button-label { color: #737985; @include type-style('body'); }
+.period-active-label {  color: #427bea; }
+.period-tab-dark-label {  color: #a4a8b2; }
+.period-active-dark-label { color: #a9c3ff; }
+.filter-cancel-label, .filter-apply-label { @include type-style('body'); }
+.filter-cancel-label { color: #8b8f99; }
+.filter-apply-label { color: #ffffff; }
 </style>
