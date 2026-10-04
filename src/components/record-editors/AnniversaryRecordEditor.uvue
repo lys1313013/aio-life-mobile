@@ -1,0 +1,147 @@
+<script setup lang="ts">
+import { computed, ref, watch } from 'vue';
+import { session } from '../../services/session.ts';
+import AdaptiveModal from '../AdaptiveModal.uvue';
+import FormField from '../FormField.uvue';
+import FormActions from '../FormActions.uvue';
+import MobileButton from '../MobileButton.uvue';
+import ConfirmAction from '../ConfirmAction.uvue';
+import { isRequired, missingRequired } from '../../services/form-required.ts';
+import { createRecordScope } from '../../services/records/page-scope.ts';
+import { request } from '../../services/api.ts';
+import { buttonLabelClasses } from '../../services/button-label.ts';
+import { isDark } from '../../services/theme.ts';
+const props = defineProps<{ record?: any; home?: boolean }>();
+const emit = defineEmits(['close', 'saved', 'deleted']);
+const form = ref<any>(null), saving = ref(false), deleting = ref(false), formError = ref('');
+const scope = createRecordScope(() => emit('close'));
+watch(() => session.token, () => emit('close'), { flush: 'sync' });
+const colorLabels = ['浪漫粉', '清新蓝', '活力橙', '神秘紫', '自然绿', '暗夜黑'];
+const colors = [
+  'from-pink-400 to-rose-500',
+  'from-cyan-400 to-blue-500',
+  'from-orange-400 to-red-500',
+  'from-purple-400 to-indigo-500',
+  'from-emerald-400 to-teal-500',
+  'from-gray-700 to-gray-900',
+];
+const gradients = [
+  ['#f472b6', '#f43f5e'],
+  ['#22d3ee', '#3b82f6'],
+  ['#fb923c', '#ef4444'],
+  ['#c084fc', '#6366f1'],
+  ['#34d399', '#14b8a6'],
+  ['#374151', '#111827'],
+];
+function cardStyle(color) {
+  const palette = gradients[colors.indexOf(color)] || gradients[0];
+  return { backgroundColor: palette[1], backgroundImage: `linear-gradient(135deg, ${palette[0]}, ${palette[1]})` };
+}
+const emoji = ['🎉', '🎂', '❤️', '💍', '🎓', '👶', '🏠', '🚗', '✈️', '💼', '💪', '🌟'];
+function open(item = null) {
+  formError.value = '';
+  form.value = item
+    ? { ...item, isPinned: item.isPinned === 1 ? 1 : 0 }
+    : {
+        title: '',
+        isPinned: props.home ? 1 : 0,
+        targetDate: new Date().toLocaleDateString('sv-SE'),
+        note: '',
+        color: colors[0],
+        icon: emoji[0],
+      };
+}
+async function save() {
+  if (saving.value || deleting.value) return;
+  if (missingRequired('anniversary', form.value)) {
+    formError.value = '请输入标题和日期';
+    return;
+  }
+  const payload = {
+    ...form.value,
+    title: form.value.title.trim(),
+    type: daysFromToday(form.value.targetDate) > 0 ? 'countdown' : 'anniversary',
+  };
+  saving.value = true;
+  formError.value = '';
+  try {
+    const saved = await scope.wait(saveEvent('anniversary', payload));
+    const row = { ...payload, ...saved };
+    emit('saved', row);
+  } catch (e) {
+    if (e.name === 'PageInactiveError') return;
+    formError.value = e.message;
+  } finally {
+    saving.value = false;
+  }
+}
+
+function daysFromToday(date) {
+  const [year, month, day] = date.slice(0, 10).split('-').map(Number), now = new Date();
+  return Math.round((Date.UTC(year, month - 1, day) - Date.UTC(now.getFullYear(), now.getMonth(), now.getDate())) / 86400000);
+}
+function saveEvent(kind, payload) { return request<any>('/anniversaryRecords', payload.id ? 'PUT' : 'POST', payload); }
+open(props.record?.id ? props.record : null);
+if (!props.record?.id && props.record) Object.assign(form.value, props.record);
+async function remove(item) {
+  if (saving.value || deleting.value) return;
+  deleting.value = true;
+  try { await scope.wait(request('/anniversaryRecords/batchDelete', 'POST', { idList: [item.id] })); emit('deleted', item.id); }
+  finally { deleting.value = false; }
+}
+
+</script>
+<template>
+<AdaptiveModal v-if="form" label="编辑纪念日" :busy="deleting || saving" @close="emit('close')"
+          ><view class="anniversary-preview ui-section" :style="cardStyle(form.color)"><text class="preview-emoji">{{ form.icon }}</text></view>
+          <FormField :required="isRequired('anniversary', 'title')" label="标题" v-model="form.title" />
+          <FormField :required="isRequired('anniversary', 'targetDate')" label="日期" kind="date" v-model="form.targetDate" />
+          <text class="choice-label" :class="{ 'choice-label-dark': isDark }">选择图标</text>
+          <view class="emoji-options ui-section">
+            <button v-for="icon in emoji" :key="icon" role="button" class="emoji-choice" :class="{ 'choice-active': form.icon === icon }" :aria-label="'图标 ' + icon" :aria-pressed="form.icon === icon" @click="form.icon = icon"><text :class="buttonLabelClasses(['emoji-choice', { 'choice-active': form.icon === icon }])">{{ icon }}</text></button>
+          </view>
+          <text class="choice-label" :class="{ 'choice-label-dark': isDark }">选择主题色</text>
+          <view class="color-options ui-section">
+            <button v-for="(color, index) in colors" :key="color" role="button" class="color-choice" :aria-label="colorLabels[index]" :aria-pressed="form.color === color" @click="form.color = color">
+              <view class="color-swatch" :class="{ 'swatch-active': form.color === color }" :style="cardStyle(color)" />
+            </button>
+          </view>
+          <FormField label="备注" kind="textarea" v-model="form.note" />
+          <FormField label="添加到首页"><switch :checked="form.isPinned === 1" :disabled="deleting || saving" aria-label="添加到首页" @change="form.isPinned = $event.detail.value ? 1 : 0" /></FormField><text
+            v-if="formError"
+            class="event-error ui-section ui-type-body"
+            >{{ formError }}</text
+          ><FormActions><template #secondary><ConfirmAction v-if="form.id && !saving" label="删除纪念日" :action="() => remove(form)" /></template>
+          <MobileButton
+              label="取消"
+              variant="quiet"
+              :disabled="deleting || saving"
+              @click="emit('close')" /><MobileButton
+              label="保存"
+              :loading="saving" :disabled="deleting"
+              @click="save" />
+        </FormActions></AdaptiveModal>
+</template>
+<style scoped lang="scss">
+@use '../../styles/typography' as *;
+@use '../../styles/spacing.scss';
+@use '../../styles/spacing-tokens' as *;
+@include type-utilities('body');
+.anniversary-preview { height: 96px; align-items: center; justify-content: center; border-radius: 12px; }
+.preview-emoji { @include type-style('emoji-preview'); }
+.choice-label { @include type-style('label'); color: #27272a; margin-bottom: $space-fieldLabel; }
+.choice-label-dark { color: #eeeeef; }
+.emoji-options, .color-options { flex-direction: row; flex-wrap: wrap; gap: $space-detail; }
+.emoji-choice, .color-choice { display: flex; align-items: center; justify-content: center; width: $space-controlMin; height: $space-controlMin; margin: 0; padding: 0; border: 0; border-radius: 8px; background-color: transparent; @include type-style('glyph-large'); }
+.choice-active { background-color: rgba(65,124,232,0.13); }
+.color-swatch { width: 32px; height: 32px; border-radius: 16px; }
+.swatch-active { border: 2px solid #ffffff; outline: 2px solid #417ce8; }
+/* #ifdef WEB || MP-WEIXIN */
+.emoji-choice::after, .color-choice::after { border: 0; }
+/* #endif */
+.event-error { color: #e05252; }
+.app-button-label { @include type-style('body'); color: #27272a; }
+.app-button-label-dark { color: #eeeeef; }
+.emoji-choice-label { @include type-style('glyph-large'); }
+
+</style>

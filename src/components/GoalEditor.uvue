@@ -1,0 +1,135 @@
+<script setup lang="ts">
+import { ref, watch } from 'vue';
+import AdaptiveModal from './AdaptiveModal.uvue';
+import ConfirmAction from './ConfirmAction.uvue';
+import FormActions from './FormActions.uvue';
+import FormField from './FormField.uvue';
+import MobileButton from './MobileButton.uvue';
+import { isRequired } from '../services/form-required.ts';
+import { createRecordScope } from '../services/records/page-scope.ts';
+import { session } from '../services/session.ts';
+import { dateTime, goalDateRange, goalPayload, goalTypes, statuses, statusLabels, textTags } from '../services/records/contracts.ts';
+const props = defineProps<{ saveRecord: (payload: any) => Promise<any>; deleteRecord: (id: string) => Promise<unknown> }>();
+const emit = defineEmits(['saved', 'deleted']);
+const form = ref<any>(null), saving = ref(false), formError = ref('');
+const scope = createRecordScope(() => { form.value = null; });
+watch(() => session.token, () => { form.value = null; });
+function open(item = null, pinned = false) {
+  if (saving.value) return;
+  formError.value = '';
+  form.value = item
+    ? { ...item, isPinned: item.isPinned === 1 ? 1 : 0, tags: textTags(item.tags) }
+    : {
+        title: '',
+        isPinned: pinned ? 1 : 0,
+        type: 1,
+        status: 'in_progress',
+        description: '',
+        content: '',
+        tags: '',
+        currentValue: '',
+        targetValue: '',
+        startDate: null,
+        endDate: null,
+      };
+}
+function setType(label) {
+  const type = goalTypes.indexOf(label) + 1;
+  form.value.type = type;
+  Object.assign(form.value, goalDateRange(type));
+}
+function setDate(key, date) {
+  form.value[key] = dateTime(date, form.value[key]?.slice(11, 16) || '00:00');
+}
+function setTime(key, time) {
+  form.value[key] = dateTime(
+    form.value[key]?.slice(0, 10) || new Date().toISOString().slice(0, 10),
+    time,
+  );
+}
+async function save() {
+  if (saving.value || !form.value) return;
+  let payload;
+  try { payload = goalPayload(form.value); }
+  catch (error) { formError.value = error.message; return; }
+  saving.value = true;
+  formError.value = '';
+  try {
+    const saved = await scope.wait(props.saveRecord(payload));
+    emit('saved', { ...payload, ...saved, id: payload.id || saved.id });
+    form.value = null;
+  } catch (error) {
+    if (error.name !== 'PageInactiveError') formError.value = error.message;
+  } finally { saving.value = false; }
+}
+async function remove(item) {
+  if (saving.value) return;
+  saving.value = true;
+  try {
+    await scope.wait(props.deleteRecord(item.id));
+    emit('deleted', item.id);
+    form.value = null;
+  } finally { saving.value = false; }
+}
+defineExpose({ open });
+</script>
+<template>
+      <AdaptiveModal v-if="form" label="编辑目标" :show-close="false" :busy="saving" @close="form = null">
+        <view class="goal-title-row ui-field-row"><FormField :required="isRequired('goal', 'title')" appearance="soft" compact stretch label="标题" v-model="form.title" /><MobileButton label="关闭" icon="ant-design:close-outlined" variant="quiet" :disabled="saving" @click="form = null" /></view>
+        <view class="filters ui-field-row">
+          <FormField :required="isRequired('goal', 'type')" appearance="soft" compact stretch label="类型" kind="selector" :model-value="goalTypes[form.type - 1]" :options="goalTypes" @update:model-value="setType($event)" />
+          <FormField :required="isRequired('goal', 'status')" appearance="soft" compact stretch label="状态" kind="selector" :model-value="statusLabels[statuses.indexOf(form.status)]" :options="statusLabels" @update:model-value="form.status = statuses[statusLabels.indexOf($event)]" />
+        </view>
+        <view class="filters ui-field-row">
+          <FormField appearance="soft" compact stretch label="当前值" input-type="number" v-model="form.currentValue" />
+          <FormField appearance="soft" compact stretch label="目标值" input-type="number" v-model="form.targetValue" />
+        </view>
+        <view class="filters ui-field-row"
+          ><FormField appearance="soft" compact stretch
+            label="开始日期"
+            kind="date"
+            :model-value="form.startDate?.slice(0, 10) || ''"
+            @update:model-value="setDate('startDate', $event)" /><FormField appearance="soft" compact stretch
+            label="开始时间"
+            kind="time"
+            :model-value="form.startDate?.slice(11, 16) || ''"
+            @update:model-value="setTime('startDate', $event)"
+        /></view>
+        <view class="filters ui-field-row"
+          ><FormField appearance="soft" compact stretch
+            label="结束日期"
+            kind="date"
+            :model-value="form.endDate?.slice(0, 10) || ''"
+            @update:model-value="setDate('endDate', $event)" /><FormField appearance="soft" compact stretch
+            label="结束时间"
+            kind="time"
+            :model-value="form.endDate?.slice(11, 16) || ''"
+            @update:model-value="setTime('endDate', $event)"
+        /></view>
+        <FormField appearance="soft" label="描述" kind="textarea" v-model="form.description" /><FormField appearance="soft"
+          label="行动计划"
+          kind="textarea"
+          v-model="form.content"
+        /><FormField appearance="soft" label="标签" v-model="form.tags" />
+        <FormField appearance="soft" label="添加到首页"><switch :checked="form.isPinned === 1" :disabled="saving" aria-label="添加到首页" @change="form.isPinned = $event.detail.value ? 1 : 0" /></FormField>
+        <text v-if="formError" class="record-error ui-section ui-type-body">{{ formError }}</text
+        ><FormActions>
+          <template #secondary><ConfirmAction v-if="form.id" label="删除目标" :action="() => remove(form)" /></template>
+          <MobileButton
+            label="取消"
+            variant="quiet"
+            :disabled="saving"
+            @click="form = null" /><MobileButton label="保存" :loading="saving" @click="save"
+        />
+        </FormActions>
+      </AdaptiveModal>
+</template>
+<style scoped lang="scss">
+@use '../styles/typography' as *;
+@use '../styles/spacing.scss';
+@use '../styles/spacing-tokens' as *;
+@include type-utilities('body');
+.filters { flex-direction: row; flex-wrap: wrap; }
+.goal-title-row { align-items: flex-end; }
+.record-error { color: #e05252; }
+</style>

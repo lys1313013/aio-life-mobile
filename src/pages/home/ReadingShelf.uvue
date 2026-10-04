@@ -1,0 +1,84 @@
+<script setup lang="ts">
+import { computed, ref } from 'vue'
+import LibraryCover from '../../components/LibraryCover.uvue'
+import LoadingIndicator from '../../components/LoadingIndicator.uvue'
+import AppIcon from '../../components/AppIcon.uvue'
+import { isDark } from '../../services/theme.ts'
+import spacing from '../../styles/spacing.json'
+import typography from '../../styles/typography.json'
+
+const props = defineProps<{ rows: any[]; loading: boolean; moreLoading: boolean; error: string }>()
+const emit = defineEmits<{ edit: [item: any]; more: []; retry: [] }>()
+// 两排书架共用卡片高度，封面保持 2:3；普通间距来自全局配置。
+const coverWidth = 66
+const coverHeight = 99
+const labelWidth = typography.roles.title.lineHeight
+const statuses = [
+  { status: 'in_progress', first: '在', second: '读', label: '在读' },
+  { status: 'not_started', first: '想', second: '读', label: '想读' },
+]
+const pending = computed(() => props.loading && props.rows.length === 0)
+const groups = computed(() => statuses.map(group => ({ ...group, items: props.rows.filter(item => item.status === group.status) })).filter(group => pending.value || group.items.length > 0))
+const activeStatus = ref('in_progress')
+function showStatus(group) { return (props.moreLoading || props.error) && group.status === activeStatus.value }
+function trackWidth(group) {
+  const count = pending.value ? 3 : group.items.length
+  return count * coverWidth + Math.max(0, count - 1) * spacing.section + (showStatus(group) ? spacing.controlMin + spacing.section : 0)
+}
+function loadMore(group) {
+  if (pending.value || props.moreLoading || props.error) return
+  activeStatus.value = group.status
+  emit('more')
+}
+</script>
+
+<template>
+  <view class="reading-inset">
+    <view v-for="group in groups" :key="group.status" class="reading-status-group" :aria-label="group.label">
+      <view class="reading-label" :style="{ width: labelWidth + 'px' }" :aria-label="group.label">
+        <text class="reading-label-text" :class="{ 'reading-label-dark': isDark }">{{ group.first }}</text>
+        <text class="reading-label-text" :class="{ 'reading-label-dark': isDark }">{{ group.second }}</text>
+      </view>
+      <scroll-view direction="horizontal" :scroll-x="true" :scroll-y="false" :show-scrollbar="false" :lower-threshold="40" class="reading-scroll" :style="{ height: coverHeight + 'px' }" :aria-label="group.label + '书架'" @scrolltolower="loadMore(group)">
+        <view class="reading-track" :style="{ width: trackWidth(group) + 'px', height: coverHeight + 'px' }">
+          <template v-if="pending">
+            <view v-for="index in 3" :key="index" class="reading-placeholder" :class="{ 'reading-placeholder-dark': isDark }" :style="{ width: coverWidth + 'px', height: coverHeight + 'px' }" aria-label="加载中" />
+          </template>
+          <template v-else>
+            <view v-for="item in group.items" :key="item.id" class="reading-book" :style="{ width: coverWidth + 'px', height: coverHeight + 'px' }" role="button" tabindex="0" :aria-label="'编辑' + (item.title || '未命名')" @click="emit('edit', item)" @keydown.enter="emit('edit', item)" @keydown.space.prevent="emit('edit', item)">
+              <LibraryCover :file-id="item.fileId || ''" :url="item.coverImgUrl || ''" :title="item.title || '未命名'" kind="read" compact tiny />
+            </view>
+            <view v-if="showStatus(group)" class="reading-status" :style="{ width: spacing.controlMin + 'px' }">
+              <LoadingIndicator v-if="moreLoading" compact label="正在加载更多" />
+              <button v-else role="button" class="reading-retry" aria-label="重试阅读" @click="emit('retry')"><AppIcon name="lucide:rotate-cw" :size="18" :color="isDark ? '#9bbcff' : '#5879ce'" /></button>
+            </view>
+          </template>
+        </view>
+      </scroll-view>
+    </view>
+  </view>
+</template>
+
+<style scoped lang="scss">
+@use '../../styles/typography' as *;
+@use '../../styles/spacing.scss';
+@use '../../styles/spacing-tokens' as *;
+.reading-inset { display: flex; flex-direction: column; gap: $space-section; padding: $space-inline $space-card 0; }
+.reading-scroll { flex: 1; min-width: 0; width: 0; }
+.reading-track { display: flex; flex-direction: row; align-items: center; gap: $space-section; }
+.reading-status-group { display: flex; flex-direction: row; align-items: center; flex-shrink: 0; gap: $space-section; }
+.reading-label { display: flex; flex-direction: column; align-items: center; justify-content: center; flex-shrink: 0; }
+.reading-label-text { @include type-style('body'); line-height: type-line('label'); letter-spacing: type-tracking('normal'); color: #71717a; }
+.reading-label-dark { color: #a6a6b0; }
+.reading-book { position: relative; flex-shrink: 0; border-radius: $space-inline; overflow: hidden; }
+.reading-placeholder { flex-shrink: 0; border-radius: $space-inline; background-color: #e8ecf1; }
+.reading-placeholder-dark { background-color: #30343b; }
+.reading-status { flex-shrink: 0; align-items: center; justify-content: center; }
+.reading-retry { display: flex; align-items: center; justify-content: center; width: $space-controlMin; height: $space-controlMin; padding: 0; margin: 0; background-color: transparent; }
+/* #ifdef WEB || MP-WEIXIN */
+.reading-retry::after { border: 0; }
+/* #endif */
+/* #ifdef WEB */
+.reading-scroll :deep(.uni-scroll-view) { overscroll-behavior-x: contain; }
+/* #endif */
+</style>

@@ -3,7 +3,7 @@ const {test,expect}=require('@playwright/test');
 const fs=require('node:fs'); const {setup,admin}=require('./qa-platform-fixtures');
 const out='artifacts/spacing-audit/11';fs.mkdirSync(out,{recursive:true});
 async function click(p,n){
- if (p.url().includes('kind=dict-data') && ['编辑','删除'].includes(n) && await p.getByRole('dialog').count() === 0) {
+ if (['dict-data','dict-types'].some(kind => p.url().includes('kind=' + kind)) && ['编辑','删除'].includes(n) && await p.getByRole('dialog').count() === 0) {
   await p.getByRole('button',{name:/更多操作$/}).first().click();
  }
  if (p.url().includes('/pages/profile/index') && ['账号绑定','修改密码','菜单锁'].includes(n)) {

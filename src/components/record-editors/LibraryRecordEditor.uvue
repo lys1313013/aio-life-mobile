@@ -1,0 +1,264 @@
+<script setup lang="ts">
+import { computed, ref, watch } from 'vue';
+import { session } from '../../services/session.ts';
+import AdaptiveModal from '../AdaptiveModal.uvue';
+import FormField from '../FormField.uvue';
+import FormActions from '../FormActions.uvue';
+import MobileButton from '../MobileButton.uvue';
+import ConfirmAction from '../ConfirmAction.uvue';
+import { isRequired, missingRequired } from '../../services/form-required.ts';
+import { createRecordScope } from '../../services/records/page-scope.ts';
+import { request } from '../../services/api.ts';
+import AttachmentField from '../AttachmentField.uvue';
+import { statuses, dateTime } from '../../services/records/contracts.ts';
+const props = defineProps<{ kind: string; record?: any }>();
+const kind = computed(() => props.kind);
+const title = computed(() => (kind.value === 'movie' ? '观影' : '阅读记录')),
+  typeLabels = computed(() =>
+    kind.value === 'movie'
+      ? ['电影', '剧集', '动漫', '纪录片', '其他']
+      : ['书籍', '文章/网页'],
+  );
+const statusLabels = computed(() =>
+  kind.value === 'movie'
+    ? ['想看', '在看', '看过', '搁置']
+    : ['想读', '在读', '读完', '搁置'],
+);
+const emit = defineEmits(['close', 'saved', 'deleted']);
+const form = ref<any>(null), saving = ref(false), deleting = ref(false), formError = ref('');
+const scope = createRecordScope(() => emit('close'));
+watch(() => session.token, () => emit('close'), { flush: 'sync' });
+
+const parsing = ref(false), attachmentBusy = ref(false), created = ref(false);
+function base() { return kind.value === 'movie' ? '/movie' : '/read-record'; }
+function parseDouban(kind, url) { return request<any>(base() + '/parse-douban', 'GET', { url }); }
+function saveLibrary(kind, payload) { return request(base(), payload.id ? 'PUT' : 'POST', payload); }
+function fetchLibraryDetail(kind, id) { return request<any>(base() + '/' + encodeURIComponent(id)); }
+function setEditForm(detail) {
+  if (!detail?.id) throw Error('记录不存在或已删除');
+  formError.value = '';
+  created.value = false;
+  form.value = {
+    ...detail,
+    files: detail.fileId
+      ? [{ id: detail.fileId, fileName: detail.title + ' 封面' }]
+      : [],
+  };
+}
+
+function initialize() {
+  if (props.record?.id) { setEditForm(props.record); return; }
+form.value = {
+      title: '',
+      type: 1,
+      status: 'not_started',
+      director: '',
+      author: '',
+      url: '',
+      coverImgUrl: '',
+      fileId: '',
+      files: [],
+      totalProgress: 0,
+      currentProgress: 0,
+      startTime: null,
+      finishTime: null,
+      rating: null,
+      remark: '',
+    };
+}
+initialize();
+function setDate(key, date) {
+  form.value[key] = dateTime(date, form.value[key]?.slice(11, 16) || '00:00');
+}
+async function parse() {
+  if (saving.value || deleting.value || parsing.value || !form.value.url?.trim()) return;
+  parsing.value = true;
+  formError.value = '';
+  const id = form.value.id;
+  try {
+    const result = await scope.wait(
+      parseDouban(kind.value, form.value.url.trim()),
+    );
+    if (form.value?.id === id)
+      Object.assign(form.value, result, {
+        id,
+        coverImgUrl: result.coverImgUrl || '',
+        fileId: result.fileId || '',
+        files: result.fileId
+          ? [{ id: result.fileId, fileName: (result.title || form.value.title) + ' 封面' }]
+          : [],
+      });
+  } catch (e) {
+    if (e.name === 'PageInactiveError') return;
+    formError.value = e.message;
+  } finally {
+    parsing.value = false;
+  }
+}
+async function save() {
+  if (saving.value || deleting.value || parsing.value || attachmentBusy.value) return;
+  if (missingRequired('library', form.value)) {
+    formError.value = '请输入名称';
+    return;
+  }
+  const payload = {
+    ...form.value,
+    title: form.value.title.trim(),
+    fileId: form.value.files.at(-1)?.id || '',
+  };
+  delete payload.files;
+  for (const key of ['totalProgress', 'currentProgress']) {
+    const value = Number(payload[key] || 0);
+    if (!Number.isInteger(value) || value < 0) {
+      formError.value = '进度必须为非负整数';
+      return;
+    }
+    payload[key] = value;
+  }
+  if (
+    payload.startTime &&
+    payload.finishTime &&
+    payload.finishTime < payload.startTime
+  ) {
+    formError.value = '完成日期不能早于开始日期';
+    return;
+  }
+  if (
+    kind.value === 'movie' &&
+    payload.rating != null &&
+    payload.rating !== ''
+  ) {
+    const rating = Number(payload.rating);
+    if (!Number.isInteger(rating) || rating < 1 || rating > 5) {
+      formError.value = '评分必须为1至5';
+      return;
+    }
+    payload.rating = rating;
+  }
+  saving.value = true;
+  formError.value = '';
+  try {
+    if (!created.value) {
+      await scope.wait(saveLibrary(kind.value, payload));
+      created.value = true;
+    }
+    const updated = payload.id ? await scope.wait(fetchLibraryDetail(kind.value, payload.id)) : null;
+    emit('saved', updated);
+
+  } catch (e) {
+    if (e.name === 'PageInactiveError') return;
+    formError.value = e.message;
+  } finally {
+    saving.value = false;
+  }
+}
+
+async function remove(item) {
+  if (saving.value || deleting.value || parsing.value || attachmentBusy.value) return;
+  deleting.value = true;
+  try { await scope.wait(request(base() + '/' + encodeURIComponent(item.id), 'DELETE')); emit('deleted', item.id); }
+  finally { deleting.value = false; }
+}
+
+</script>
+<template>
+<AdaptiveModal
+        v-if="form"
+        :label="'编辑' + title"
+        :busy="deleting || saving || parsing || attachmentBusy"
+        @close="emit('close')"
+        ><view class="library-link-row ui-field-row"
+          ><view class="library-link-field"
+            ><FormField compact stretch label="豆瓣链接" v-model="form.url" /></view
+          ><MobileButton
+            label="解析豆瓣链接"
+            icon="ant-design:import-outlined"
+            :loading="parsing"
+            @click="parse" /></view
+        ><FormField :required="isRequired('library', 'title')" label="名称" v-model="form.title" /><FormField
+          label="类型"
+          kind="selector"
+          :model-value="typeLabels[form.type - 1]"
+          :options="typeLabels"
+          @update:model-value="
+            form.type = typeLabels.indexOf($event) + 1
+          " /><FormField
+          label="状态"
+          kind="selector"
+          :model-value="statusLabels[statuses.indexOf(form.status)]"
+          :options="statusLabels"
+          @update:model-value="
+            form.status = statuses[statusLabels.indexOf($event)]
+          " /><FormField
+          v-if="kind === 'movie'"
+          label="导演/演员"
+          v-model="form.director" /><FormField
+          v-else-if="form.type === 1"
+          label="作者"
+          v-model="form.author" /><FormField
+          :label="kind === 'movie' ? '当前集数/时长' : '当前页数/进度'"
+          input-type="number"
+          v-model="form.currentProgress" /><FormField
+          :label="kind === 'movie' ? '总集数/时长' : '总页数/进度'"
+          input-type="number"
+          v-model="form.totalProgress" /><FormField
+          label="开始日期"
+          kind="date"
+          :model-value="form.startTime?.slice(0, 10) || ''"
+          @update:model-value="setDate('startTime', $event)" /><FormField
+          label="完成日期"
+          kind="date"
+          :model-value="form.finishTime?.slice(0, 10) || ''"
+          @update:model-value="setDate('finishTime', $event)" /><FormField
+          v-if="kind === 'movie'"
+          label="评分"
+          kind="selector"
+          :model-value="form.rating ? String(form.rating) : '未评分'"
+          :options="['未评分', '1', '2', '3', '4', '5']"
+          @update:model-value="
+            form.rating = $event === '未评分' ? null : Number($event)
+          " /><FormField
+          :label="kind === 'movie' ? '短评/备注' : '书评'"
+          kind="textarea"
+          v-model="form.remark" /><AttachmentField
+          :files="form.files"
+          images-only
+          upload-path="/file/upload"
+          :form-data="{ bizType: kind === 'movie' ? 'movie' : 'read' }"
+          :disabled="deleting || saving || parsing"
+          @update:files="
+            form.files = $event.slice(-1);
+            form.fileId = form.files.at(-1)?.id || '';
+            form.coverImgUrl = '';
+          "
+          @busy-change="attachmentBusy = $event" /><text
+          v-if="formError"
+          class="library-error ui-section ui-type-body"
+          >{{ formError }}</text
+        ><FormActions>
+          <template #secondary><ConfirmAction
+            v-if="form.id && !saving && !parsing && !attachmentBusy"
+            label="删除记录"
+            :message="'确定删除“' + form.title + '”？'"
+            :action="() => remove(form)" /></template>
+          <MobileButton
+            label="取消"
+            variant="quiet"
+            :disabled="deleting || saving || parsing || attachmentBusy"
+            @click="emit('close')" /><MobileButton
+            :label="created ? '重新读取' : '保存'"
+            :loading="saving"
+            :disabled="deleting || parsing || attachmentBusy"
+            @click="save" />
+        </FormActions></AdaptiveModal>
+</template>
+<style scoped lang="scss">
+@use '../../styles/typography' as *;
+@use '../../styles/spacing.scss';
+@use '../../styles/spacing-tokens' as *;
+@include type-utilities('body');
+.library-link-row { flex-direction: row; align-items: center; }
+.library-link-field { flex: 1; min-width: 0; }
+.library-error { color: #e05252; }
+
+</style>

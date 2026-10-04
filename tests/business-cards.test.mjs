@@ -74,13 +74,18 @@ test('离页/会话失效版本变化后旧请求不再写回', async () => {
   assert.deepEqual(state.rows, []); assert.equal(state.loaded, false)
 })
 
-test('会员全部保留：有效按到期临近排序，过期放末尾且最近过期优先', () => {
+test('首页会员过滤过期和缺失到期日，保留今天到期并按到期日与完整 ID 排序', () => {
   const rows = [
-    { id: '9', expiryDate: '2026-09-01' }, { id: '8', expiryDate: '2026-10-03' },
-    { id: '7', expiryDate: null }, { id: '9223372036854775807', expiryDate: '2026-10-04' },
+    { id: '9', expiryDate: '2026-09-01', status: 'expired' }, { id: '8', expiryDate: '2026-10-03', status: 'active' },
+    { id: '7', expiryDate: null }, { id: '4', expiryDate: '2026-10-04', status: 'expiring' },
     { id: '6', expiryDate: '2026-10-05' }, { id: '5', expiryDate: '2026-10-05' },
+    { id: '9007199254740992', expiryDate: '2026-10-05' }, { id: '9007199254740993', expiryDate: '2026-10-05' },
+    { id: '3', expiryDate: '2026-10-06', status: 'expired' },
   ]
-  const result = sortMemberships(rows, new Date(2026, 9, 4))
-  assert.deepEqual(result.map(item => item.id), ['9223372036854775807', '6', '5', '7', '8', '9'])
-  assert.equal(rows[0].id, '9')
+  const original = structuredClone(rows)
+  const today = new Date(2026, 9, 4, 23, 59, 59)
+  const result = sortMemberships(rows, today)
+  assert.deepEqual(result.map(item => item.id), ['4', '9007199254740993', '9007199254740992', '6', '5'])
+  assert.deepEqual(sortMemberships([rows[0], rows[1], rows[8]], today), [])
+  assert.deepEqual(rows, original)
 })

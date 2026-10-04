@@ -1,0 +1,64 @@
+<script setup lang="ts">
+import { getCurrentInstance, nextTick, onMounted, onUnmounted, watch } from 'vue'
+import { isDark } from '../../services/theme.ts'
+import { goalProgressColor } from './services/business-cards.ts'
+
+const props = defineProps<{ percent: number; label: string }>()
+const instance = getCurrentInstance()
+const canvasId = 'home-goal-progress-' + instance?.uid
+let context: any = null
+let alive = true
+
+function paint() {
+  if (!context) return
+  context.clearRect(0, 0, 56, 56)
+  if (props.percent <= 0) return
+  context.beginPath()
+  context.arc(28, 28, 25, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * props.percent / 100)
+  context.lineWidth = 4
+  context.lineCap = 'round'
+  context.strokeStyle = goalProgressColor(props.percent)
+  context.stroke()
+}
+
+onMounted(async () => {
+  await nextTick()
+  if (!alive) return
+  uni.createCanvasContextAsync({
+    id: canvasId,
+    component: instance?.proxy,
+    success(canvas) {
+      if (!alive) return
+      context = canvas.getContext('2d')
+      if (!context) return
+      const ratio = uni.getWindowInfo().pixelRatio || 1
+      context.canvas.width = 56 * ratio
+      context.canvas.height = 56 * ratio
+      context.scale(ratio, ratio)
+      paint()
+    },
+  })
+})
+watch(() => props.percent, paint)
+watch(isDark, paint)
+onUnmounted(() => { alive = false; context = null })
+</script>
+
+<template>
+  <view class="goal-progress" role="progressbar" :aria-label="label" :aria-valuenow="percent" :aria-valuemin="0" :aria-valuemax="100">
+    <view class="goal-progress-track" :class="{ 'goal-progress-track-dark': isDark }" />
+    <canvas :id="canvasId" :canvas-id="canvasId" type="2d" class="goal-progress-canvas" aria-hidden="true" />
+    <text class="goal-progress-value" :class="{ 'goal-progress-value-dark': isDark }">{{ percent }}%</text>
+  </view>
+</template>
+
+<style scoped lang="scss">
+@use '../../styles/typography' as *;
+// 圆环几何与 Web 的 56px 进度环一致，文字始终使用客户端排版配置。
+.goal-progress { position: relative; display: flex; width: 56px; height: 56px; flex-shrink: 0; align-items: center; justify-content: center; }
+.goal-progress-track { position: absolute; top: 1px; left: 1px; width: 54px; height: 54px; box-sizing: border-box; border: 4px solid #e4e4e7; border-radius: 50%; }
+.goal-progress-track-dark { border-color: #3f3f46; }
+.goal-progress-canvas { position: absolute; top: 0; left: 0; width: 56px; height: 56px; }
+.goal-progress-value { @include type-style('caption-strong'); color: #3f3f46; }
+.goal-progress-value-dark { color: #ececf0; }
+</style>

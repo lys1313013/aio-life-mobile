@@ -18,6 +18,7 @@ import AdaptiveModal from '../../components/AdaptiveModal.uvue';
 import FloatingActionButton from '../../components/FloatingActionButton.uvue';
 import { isDark } from '../../services/theme.ts';
 import { createRecordScope } from '../../services/records/page-scope.ts';
+import { useTabSwipe } from '../../services/tab-swipe.ts';
 import {
   statuses,
   statusLabels as statusNames,
@@ -52,6 +53,19 @@ const statusLabels = {
   completed: statusNames[2],
   on_hold: '已暂停',
 };
+const statusTabs = ['未开始', '进行中', '已暂停', '已完成', '全部状态'];
+const statusIndex = computed(() => statusTabs.indexOf(status.value));
+const { swipe: tabSwipe, style: tabSwipeStyle, dragging: tabSwipeDragging } = useTabSwipe(
+  () => statusIndex.value,
+  () => statusTabs.length,
+  () => loading.value || !!form.value,
+  (index) => selectStatus(statusTabs[index]),
+);
+function selectStatus(label: string) {
+  if (!label || label === status.value || form.value) return;
+  status.value = label;
+  load();
+}
 let generation = 0,
   formRevision = 0;
 const scope = createRecordScope((clear) => {
@@ -89,6 +103,7 @@ function pollCovers() {
   }, 3000);
 }
 async function retryCover(item) {
+  if (tabSwipe.ignoreClick()) return;
   if (item.coverState !== 'FAILED') return;
   item.coverState = 'PENDING';
   try { await scope.wait(retryVideoCover(item.id)); pollCovers(); }
@@ -123,18 +138,21 @@ function videoProgress(item) {
 async function load() {
   stopCoverPolling();
   const current = ++generation;
+  const selectedStatus = statuses.find((code) => statusLabels[code] === status.value) || '';
   loading.value = true;
   error.value = '';
   try {
     const [statusCounts, stats] = await scope.wait(
       Promise.all([fetchVideoCounts(), fetchVideoStatistics()]),
     );
+    if (current !== generation) return;
     const data = [];
     let page = 1;
     while (true) {
       const result = await scope.wait(
-        fetchVideoPage(page++, statuses.find((code) => statusLabels[code] === status.value) || ''),
+        fetchVideoPage(page++, selectedStatus),
       );
+      if (current !== generation) return;
       data.push(...result.items);
       if (data.length >= result.total || result.items.length < 100) break;
     }
@@ -151,6 +169,7 @@ async function load() {
   }
 }
 function open(item = null) {
+  if (loading.value || tabSwipe.ignoreClick()) return;
   formRevision++;
   saved.value = false;
   formError.value = '';
@@ -289,16 +308,18 @@ function play(url) {
 }
 </script>
 <template>
-  <MobilePage :refreshing="loading" @refresh="load"
+  <MobilePage :refreshing="loading" :refresh-disabled="tabSwipeDragging" @refresh="load"
     ><view class="video-page ui-page-body" :class="{ 'video-page-dark': isDark }"
       ><PageHeader title="视频观看" :back="true" @back="uni.navigateBack()" /><view class="ui-toolbar"
         ><FormField compact stretch hide-label label="搜索视频" placeholder="搜索视频、UP主或笔记" v-model="keyword" /></view
-      ><view class="video-summary ui-row ui-section"><view class="summary-panel ui-card" :class="{ 'summary-panel-dark': isDark }"><ContentSkeleton v-if="loading && !rows.length" variant="summary" /><template v-else><text class="secondary" :class="{ 'record-secondary-dark': isDark }">学习总数</text><text class="summary-number">{{ Object.values(counts).reduce((sum, count) => sum + Number(count), 0) }}</text><text class="secondary" :class="{ 'record-secondary-dark': isDark }">{{ counts.completed || 0 }} 已完成 · {{ counts.in_progress || 0 }} 进行中 · {{ counts.not_started || 0 }} 未开始</text></template></view><view class="summary-panel ui-card" :class="{ 'summary-panel-dark': isDark }"><ContentSkeleton v-if="loading && !rows.length" variant="summary" /><template v-else><text class="secondary" :class="{ 'record-secondary-dark': isDark }">已学时长</text><text class="summary-number summary-duration">{{ formatSeconds(statistics.studiedSeconds) }}</text><text class="secondary" :class="{ 'record-secondary-dark': isDark }">剩余预估 {{ formatSeconds(statistics.unstudiedSeconds) }}</text></template></view></view><scroll-view :scroll-x="true" direction="horizontal" class="status-scroll ui-section"><view class="status-tabs ui-row"><button v-for="label in ['未开始', '进行中', '已暂停', '已完成', '全部状态']" :key="label" role="button" class="status-tab" :class="{ 'status-tab-dark': isDark, 'status-active': status === label }" :aria-pressed="status === label" @click="status = label; load()"><text :style="appTextColor(status === label)" class="status-label">{{ label === '全部状态' ? '全部' : label }}</text><text :style="appTextColor(status === label)" class="status-count" v-if="!loading || rows.length">{{ label === '全部状态' ? Object.values(counts).reduce((sum, count) => sum + Number(count), 0) : counts[statuses.find((code) => statusLabels[code] === label)] || 0 }}</text></button></view></scroll-view>
+      ><view class="video-summary ui-row ui-section"><view class="summary-panel ui-card" :class="{ 'summary-panel-dark': isDark }"><ContentSkeleton v-if="loading && !rows.length" variant="summary" /><template v-else><text class="secondary" :class="{ 'record-secondary-dark': isDark }">学习总数</text><text class="summary-number">{{ Object.values(counts).reduce((sum, count) => sum + Number(count), 0) }}</text><text class="secondary" :class="{ 'record-secondary-dark': isDark }">{{ counts.completed || 0 }} 已完成 · {{ counts.in_progress || 0 }} 进行中 · {{ counts.not_started || 0 }} 未开始</text></template></view><view class="summary-panel ui-card" :class="{ 'summary-panel-dark': isDark }"><ContentSkeleton v-if="loading && !rows.length" variant="summary" /><template v-else><text class="secondary" :class="{ 'record-secondary-dark': isDark }">已学时长</text><text class="summary-number summary-duration">{{ formatSeconds(statistics.studiedSeconds) }}</text><text class="secondary" :class="{ 'record-secondary-dark': isDark }">剩余预估 {{ formatSeconds(statistics.unstudiedSeconds) }}</text></template></view></view><scroll-view :scroll-x="true" direction="horizontal" :show-scrollbar="false" :scroll-into-view="'video-status-' + statusIndex" :scroll-with-animation="true" class="status-scroll ui-section"><view class="status-tabs ui-row"><button v-for="(label, index) in statusTabs" :key="label" :id="'video-status-' + index" role="button" class="status-tab" :class="{ 'status-tab-dark': isDark, 'status-active': status === label }" :aria-pressed="status === label" @click="selectStatus(label)"><text :style="appTextColor(status === label)" class="status-label">{{ label === '全部状态' ? '全部' : label }}</text><text :style="appTextColor(status === label)" class="status-count" v-if="!loading || rows.length">{{ label === '全部状态' ? Object.values(counts).reduce((sum, count) => sum + Number(count), 0) : counts[statuses.find((code) => statusLabels[code] === label)] || 0 }}</text></button></view></scroll-view>
+      <view class="tab-swipe-viewport" @touchstart="tabSwipe.touchStart" @touchmove="tabSwipe.touchMove" @touchend="tabSwipe.touchEnd" @touchcancel="tabSwipe.cancel">
+      <view class="tab-swipe-surface" :style="tabSwipeStyle">
       <PageState skeleton="media" :loading="loading" :error="error" :empty="!filtered.length" @retry="load"
         >
 <template #loading><view class="video-grid"><view v-for="n in 6" :key="n" class="video-card" :class="{ 'video-card-dark': isDark }"><view class="video-poster"><ContentSkeleton variant="cover" /></view><view class="video-body"><ContentSkeleton variant="goal-tile" /></view></view></view></template>
 <view class="video-grid"><view v-for="item in filtered" :key="item.id" class="video-card" :class="{ 'video-card-dark': isDark }" role="button" tabindex="0" :aria-label="'编辑视频：' + item.title" @click="open(item)" @keydown.enter="open(item)" @keydown.space.prevent="open(item)"><view class="video-poster" :class="{ 'video-poster-dark': isDark }"><VideoCover :file-id="item.coverFileId" :state="item.coverState" :title="item.title" @retry="retryCover(item)" /><text class="video-status" :class="'video-status-' + item.status">{{ statusLabels[item.status] }}</text><text class="video-duration">{{ clockDuration(item.duration) }}</text></view><view class="video-body"><text :max-lines="2" class="video-title">{{ item.title }}</text><view class="video-meta ui-row"><text class="video-meta-text" :class="{ 'record-secondary-dark': isDark }">{{ item.ownerName || '' }}</text><text class="episode">{{ item.currentEpisode || 1 }}/{{ item.episodes || 1 }}</text></view><view class="video-meta ui-row"><text class="video-meta-text" :class="{ 'record-secondary-dark': isDark }">{{ clockDuration(item.watchedDuration) }} / {{ clockDuration(item.duration) }}</text><text class="episode">{{ videoProgress(item) }}%</text></view><view class="progress-track" :class="{ 'progress-track-dark': isDark }"><view class="progress-fill" :style="{ width: (videoProgress(item)) + '%' }" /></view></view></view></view></PageState
-      ><AdaptiveModal
+      ></view></view><AdaptiveModal
         v-if="form"
         label="编辑学习视频"
         :busy="saving || parsing"
@@ -364,6 +385,7 @@ function play(url) {
 @use '../../styles/typography' as *;
 @use '../../styles/text-colors' as *;
 @use '../../styles/spacing.scss';
+@use '../../styles/tab-swipe.scss';
 @use '../../styles/spacing-tokens' as *;
 .video-page {
   color: #27272a;

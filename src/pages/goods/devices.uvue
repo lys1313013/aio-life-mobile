@@ -21,6 +21,7 @@ import { authFileUrl } from '../../services/attachments.ts';
 import { session } from '../../services/session.ts';
 import { isDark } from '../../services/theme.ts';
 import { createRecordScope } from '../../services/records/page-scope.ts';
+import { useTabSwipe } from '../../services/tab-swipe.ts';
 import {
   fetchDevicePage,
   fetchDictionary,
@@ -44,6 +45,19 @@ const form = ref<any>(null),
   formError = ref(''),
   attachmentBusy = ref(false),
   created = ref(false);
+const typeLabels = computed(() => ['全部类型', ...types.value.map((t) => t.dictLabel || t.label)]);
+const typeIndex = computed(() => typeLabels.value.indexOf(typeFilter.value));
+const { swipe: tabSwipe, style: tabSwipeStyle, dragging: tabSwipeDragging } = useTabSwipe(
+  () => typeIndex.value,
+  () => typeLabels.value.length,
+  () => loading.value || !!form.value,
+  (index) => selectType(typeLabels.value[index]),
+);
+function selectType(label: string) {
+  if (!label || label === typeFilter.value || form.value) return;
+  typeFilter.value = label;
+  load();
+}
 const scope = createRecordScope((clear) => {
   form.value = null;
   photos.value = {};
@@ -81,6 +95,7 @@ onUnmounted(() => {
 onShow(() => load());
 async function load(refresh = false) {
   const current = ++generation;
+  const selectedType = typeFilter.value;
   loading.value = true;
   refreshing.value = refresh;
   error.value = '';
@@ -91,14 +106,16 @@ async function load(refresh = false) {
         fetchDictionary('device_status'),
       ]),
     );
+    if (!alive || current !== generation) return;
     const typeId =
       (typeDict.dictDetailList || []).find(
-        (item) => (item.dictLabel || item.label) === typeFilter.value,
+        (item) => (item.dictLabel || item.label) === selectedType,
       )?.id || '';
     const data = [];
     let page = 1;
     while (true) {
       const response = await scope.wait(fetchDevicePage(page++, typeId));
+      if (!alive || current !== generation) return;
       data.push(...response.items);
       if (data.length >= response.total || response.items.length < 100) break;
     }
@@ -164,6 +181,7 @@ function statusName(value) {
   );
 }
 function open(item = null) {
+  if (loading.value || tabSwipe.ignoreClick()) return;
   created.value = false;
   formError.value = '';
   form.value = item
@@ -259,7 +277,7 @@ async function remove(item) {
 }
 </script>
 <template>
-  <MobilePage :refreshing="refreshing" @refresh="load(true)"
+  <MobilePage :refreshing="refreshing" :refresh-disabled="tabSwipeDragging" @refresh="load(true)"
     ><view class="goods-page ui-page-body" :class="{ 'goods-page-dark': isDark }"
       ><PageHeader title="设备" :back="true" @back="uni.navigateBack()" /><view
         class="ui-toolbar"
@@ -272,18 +290,24 @@ async function remove(item) {
         direction="horizontal"
         :scroll-x="true"
         :show-scrollbar="false"
+        :scroll-into-view="'device-type-' + typeIndex"
+        :scroll-with-animation="true"
         class="device-type-scroll ui-section"
       ><view class="device-type-tabs" aria-label="设备类型筛选"
         ><button :style="appTextColor()"
-          v-for="label in ['全部类型', ...types.map((t) => t.dictLabel || t.label)]"
+          v-for="(label, index) in typeLabels"
           :key="label"
+          :id="'device-type-' + index"
           role="button"
           class="device-type-tab"
           :class="{ 'device-type-tab-active': typeFilter === label, 'device-type-tab-active-dark': typeFilter === label && isDark }"
           :aria-pressed="typeFilter === label"
-          @click="typeFilter !== label && (typeFilter = label, load())"
+          @click="selectType(label)"
         ><text :class="buttonLabelClasses(['device-type-tab', { 'device-type-tab-active': typeFilter === label, 'device-type-tab-active-dark': typeFilter === label && isDark }])">{{ label === '全部类型' ? '全部' : label }}</text></button
-      ></view></scroll-view><view class="metrics ui-row ui-section"
+      ></view></scroll-view>
+      <view class="tab-swipe-viewport" @touchstart="tabSwipe.touchStart" @touchmove="tabSwipe.touchMove" @touchend="tabSwipe.touchEnd" @touchcancel="tabSwipe.cancel">
+      <view class="tab-swipe-surface" :style="tabSwipeStyle">
+      <view class="metrics ui-row ui-section"
         ><MetricCard :style="appGridItem(2, 'section', [[700, 3]], true)" :loading="loading && !rows.length"
           class="metric-wide"
           label="总资产"
@@ -324,7 +348,7 @@ async function remove(item) {
                   v-if="photoErrors[item.id]"
                   label="重试设备图片"
                   variant="quiet"
-                  @click="loadPhoto(item)" /></view
+                  @click="!tabSwipe.ignoreClick() && loadPhoto(item)" /></view
               ><text class="goods-badge status-tag" :class="'status-' + item.status">{{
                 statusName(item.status)
               }}</text></view
@@ -339,6 +363,7 @@ async function remove(item) {
           ></view
         ></PageState
       >
+      </view></view>
       <AdaptiveModal
         v-if="form"
         label="编辑设备"
@@ -413,6 +438,7 @@ async function remove(item) {
 @use '../../styles/typography' as *;
 @use '../../styles/text-colors' as *;
 @use '../../styles/spacing.scss';
+@use '../../styles/tab-swipe.scss';
 @use '../../styles/spacing-tokens' as *;
 @include type-utilities('body');
 

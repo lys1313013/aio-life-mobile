@@ -21,11 +21,10 @@ export function dateDistance(date, today = new Date()) {
   return Math.round((Date.UTC(year, month - 1, day) - Date.UTC(today.getFullYear(), today.getMonth(), today.getDate())) / 86400000)
 }
 export function sortMemberships(rows, today = new Date()) {
-  return [...rows].sort((a, b) => {
-    const da = dateDistance(a.expiryDate, today), db = dateDistance(b.expiryDate, today)
-    const ea = da != null && da < 0, eb = db != null && db < 0
-    return Number(ea) - Number(eb) || (ea ? db - da : (da ?? Infinity) - (db ?? Infinity)) || compareId(String(b.id), String(a.id))
-  })
+  return rows.filter(row => {
+    const days = dateDistance(row.expiryDate, today)
+    return row.status !== 'expired' && days != null && days >= 0
+  }).sort((a, b) => a.expiryDate.localeCompare(b.expiryDate) || compareId(String(b.id), String(a.id)))
 }
 export function cardPath(card, page = 1) {
   if (card.pinned) return card.endpoint + '?isPinned=1'
@@ -68,6 +67,12 @@ export async function loadBusinessCard(card, state, fetch, more = false) {
     if (state.version === version) { state.loading = false; state.moreLoading = false }
   }
 }
+// 配色 A：按完成进度分段，Web 与 mobile 保持一致。
+export function goalProgressColor(percent) {
+  if (percent <= 33) return '#788faf'
+  if (percent <= 66) return '#618f9d'
+  return '#69957a'
+}
 export function cardProgress(card, item) {
   if (card.key === 'goal') return item.targetValue > 0 ? Math.max(0, Math.min(100, Math.round((item.currentValue || 0) / item.targetValue * 100))) : item.status === 'completed' ? 100 : 0
   if ((card.key === 'read' || card.key === 'movie') && item.totalProgress > 0) return Math.max(0, Math.min(100, Math.round((item.currentProgress || 0) / item.totalProgress * 100)))
@@ -84,10 +89,8 @@ export function cardCaption(card, item) {
   }
   const statuses = card.key === 'goal' ? { in_progress: '进行中', completed: '已完成', on_hold: '已搁置', shelved: '已搁置', paused: '已搁置', not_started: '未开始' } : card.key === 'read' ? { in_progress: '在读', not_started: '想读' } : { in_progress: '在看', not_started: '想看' }
   const parts = [statuses[item.status] || item.status || '']
-  if (card.key === 'goal') {
-    parts.push(item.targetValue > 0 ? (item.currentValue || 0) + ' / ' + item.targetValue + (item.unit || '') : cardProgress(card, item) + '%')
-    if (item.endDate) parts.push(item.endDate.slice(0, 10))
-  } else if (item.totalProgress > 0) parts.push((item.currentProgress || 0) + ' / ' + item.totalProgress)
+  if (card.key === 'goal') return parts[0]
+  if (item.totalProgress > 0) parts.push((item.currentProgress || 0) + ' / ' + item.totalProgress)
   else if (item.currentProgress > 0) parts.push(String(item.currentProgress))
   return parts.filter(Boolean).join(' · ')
 }

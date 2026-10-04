@@ -1,9 +1,8 @@
 <script setup lang="ts">
+import AnniversaryRecordEditor from '../../components/record-editors/AnniversaryRecordEditor.uvue';
 import { appTextColor } from '../../services/app-layout.ts'
 
 import { buttonLabelClasses } from '../../services/button-label.ts'
-import FormActions from '../../components/FormActions.uvue';
-import { isRequired, missingRequired } from '../../services/form-required.ts';
 import ContentSkeleton from '../../components/ContentSkeleton.uvue';
 import { computed, onUnmounted, ref } from 'vue';
 import { onLoad, onShow } from '@dcloudio/uni-app';
@@ -11,16 +10,13 @@ import MobilePage from '../../components/MobilePage.uvue';
 import PageHeader from '../../components/PageHeader.uvue';
 import MobileButton from '../../components/MobileButton.uvue';
 import AppIcon from '../../components/AppIcon.uvue';
-import FormField from '../../components/FormField.uvue';
 import FloatingActionButton from '../../components/FloatingActionButton.uvue';
 import ConfirmAction from '../../components/ConfirmAction.uvue';
 import PageState from '../../components/PageState.uvue';
-import AdaptiveModal from '../../components/AdaptiveModal.uvue';
 import { createRecordScope } from '../../services/records/page-scope.ts';
 import { isDark } from '../../services/theme.ts';
 import {
   fetchEvents,
-  saveEvent,
   deleteEvent,
   setAnniversaryPinned,
   daysFromToday,
@@ -29,10 +25,7 @@ const rows = ref<any[]>([]),
   loading = ref(false),
   refreshing = ref(false),
   error = ref(''),
-  form = ref<any>(null),
-  saving = ref(false),
-  formError = ref('');
-const colorLabels = ['浪漫粉', '清新蓝', '活力橙', '神秘紫', '自然绿', '暗夜黑'];
+  form = ref<any>(null);
 const colors = [
   'from-pink-400 to-rose-500',
   'from-cyan-400 to-blue-500',
@@ -108,7 +101,6 @@ async function load(refresh = false) {
 function open(item = null) {
   if (pinningId.value) return;
   activeMenu.value = '';
-  formError.value = '';
   form.value = item
     ? { ...item, isPinned: item.isPinned === 1 ? 1 : 0 }
     : {
@@ -120,32 +112,15 @@ function open(item = null) {
         icon: emoji[0],
       };
 }
-async function save() {
-  if (saving.value) return;
-  if (missingRequired('anniversary', form.value)) {
-    formError.value = '请输入标题和日期';
-    return;
-  }
-  const payload = {
-    ...form.value,
-    title: form.value.title.trim(),
-    type: daysFromToday(form.value.targetDate) > 0 ? 'countdown' : 'anniversary',
-  };
-  saving.value = true;
-  formError.value = '';
-  try {
-    const saved = await scope.wait(saveEvent('anniversary', payload));
-    const row = { ...payload, ...saved };
-    const index = rows.value.findIndex((r) => r.id === row.id);
-    if (index >= 0) rows.value[index] = row;
-    else rows.value.push(row);
-    form.value = null;
-  } catch (e) {
-    if (e.name === 'PageInactiveError') return;
-    formError.value = e.message;
-  } finally {
-    saving.value = false;
-  }
+function saved(row) {
+  const index = rows.value.findIndex(item => item.id === row.id);
+  if (index >= 0) rows.value[index] = row;
+  else rows.value.push(row);
+  form.value = null;
+}
+function deleted(id) {
+  rows.value = rows.value.filter(row => row.id !== id);
+  form.value = null;
 }
 async function togglePinned(item) {
   if (pinningId.value) return;
@@ -210,35 +185,7 @@ async function remove(item) {
             </view>
           </view>
         </PageState>
-        <AdaptiveModal v-if="form" label="编辑纪念日" :busy="saving" @close="form = null"
-          ><view class="anniversary-preview ui-section" :style="cardStyle(form.color)"><text class="preview-emoji">{{ form.icon }}</text></view>
-          <FormField :required="isRequired('anniversary', 'title')" label="标题" v-model="form.title" />
-          <FormField :required="isRequired('anniversary', 'targetDate')" label="日期" kind="date" v-model="form.targetDate" />
-          <text class="choice-label">选择图标</text>
-          <view class="emoji-options ui-section">
-            <button v-for="icon in emoji" :key="icon" role="button" class="emoji-choice" :class="{ 'choice-active': form.icon === icon }" :aria-label="'图标 ' + icon" :aria-pressed="form.icon === icon" @click="form.icon = icon"><text :class="buttonLabelClasses(['emoji-choice', { 'choice-active': form.icon === icon }])">{{ icon }}</text></button>
-          </view>
-          <text class="choice-label">选择主题色</text>
-          <view class="color-options ui-section">
-            <button v-for="(color, index) in colors" :key="color" role="button" class="color-choice" :aria-label="colorLabels[index]" :aria-pressed="form.color === color" @click="form.color = color">
-              <view class="color-swatch" :class="{ 'swatch-active': form.color === color }" :style="cardStyle(color)" />
-            </button>
-          </view>
-          <FormField label="备注" kind="textarea" v-model="form.note" />
-          <FormField label="添加到首页"><switch :checked="form.isPinned === 1" :disabled="saving" aria-label="添加到首页" @change="form.isPinned = $event.detail.value ? 1 : 0" /></FormField><text
-            v-if="formError"
-            class="event-error ui-section ui-type-body"
-            >{{ formError }}</text
-          ><FormActions>
-          <MobileButton
-              label="取消"
-              variant="quiet"
-              :disabled="saving"
-              @click="form = null" /><MobileButton
-              label="保存"
-              :loading="saving"
-              @click="save" />
-        </FormActions></AdaptiveModal>
+        <AnniversaryRecordEditor v-if="form" :record="form"  @close="form = null" @saved="saved" @deleted="deleted" />
       </view>
       <template #fixed><FloatingActionButton label="新增纪念日" @click="open()" /></template>
     </MobilePage>
@@ -350,17 +297,6 @@ word-break: break-all;
   .event-card { width: calc((100% - #{$space-section * 2}) / 3); }
   .day-count { font-variant-numeric: tabular-nums; letter-spacing: type-tracking('display'); @include type-style('display-wide');  }
 }
-.anniversary-preview { height: 96px; align-items: center; justify-content: center; border-radius: 12px; }
-.preview-emoji { @include type-style('emoji-preview'); }
-.choice-label { @include type-style('label'); margin-bottom: $space-fieldLabel; }
-.emoji-options, .color-options { flex-direction: row; flex-wrap: wrap; gap: $space-detail; }
-.emoji-choice, .color-choice { display: flex; align-items: center; justify-content: center; width: $space-controlMin; height: $space-controlMin; margin: 0; padding: 0; border: 0; border-radius: 8px; background-color: transparent; @include type-style('glyph-large'); }
-.choice-active { background-color: rgba(65,124,232,0.13); }
-.color-swatch { width: 32px; height: 32px; border-radius: 16px; }
-.swatch-active { border: 2px solid #ffffff; outline: 2px solid #417ce8; }
-/* #ifdef WEB || MP-WEIXIN */
-.emoji-choice::after, .color-choice::after { border: 0; }
-/* #endif */
 @media (min-width: 1000px) { .event-card { width: calc((100% - #{$space-section * 3}) / 4); } }
 
 /* 按钮文字独立声明样式，兼容 App 不继承容器排版。 */
@@ -372,5 +308,4 @@ color: inherit;
 /* #endif */
  @include type-style('body'); text-align: left; }
 .event-menu-delete-label {  color: #e05260; }
-.emoji-choice-label { @include type-style('glyph-large'); }
 </style>

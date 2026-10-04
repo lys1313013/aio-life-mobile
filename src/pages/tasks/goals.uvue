@@ -1,24 +1,18 @@
 <script setup lang="ts">
-import FormActions from '../../components/FormActions.uvue';
-import { isRequired } from '../../services/form-required.ts';
 import ContentSkeleton from '../../components/ContentSkeleton.uvue';
-import { onUnmounted, ref } from 'vue';
+import { onMounted, onUnmounted, ref } from 'vue';
 import { onLoad, onShow } from '@dcloudio/uni-app';
+import GoalEditor from '../../components/GoalEditor.uvue';
 import MobilePage from '../../components/MobilePage.uvue';
 import PageHeader from '../../components/PageHeader.uvue';
 import MobileButton from '../../components/MobileButton.uvue';
 import FormField from '../../components/FormField.uvue';
-import ConfirmAction from '../../components/ConfirmAction.uvue';
 import PageState from '../../components/PageState.uvue';
-import AdaptiveModal from '../../components/AdaptiveModal.uvue';
 import FloatingActionButton from '../../components/FloatingActionButton.uvue';
 import { createRecordScope } from '../../services/records/page-scope.ts';
 import { isDark } from '../../services/theme.ts';
 import { fetchGoals, saveGoal, deleteGoal, setGoalPinned } from './services/tasks.ts';
 import {
-  dateTime,
-  goalDateRange,
-  goalPayload,
   goalTypes,
   statuses,
   statusLabels,
@@ -32,19 +26,17 @@ const goals = ref<any[]>([]),
   typeFilter = ref('全部类型'),
   statusFilter = ref('全部状态');
 const pinningId = ref('');
-let pendingEditId = '';
+const editor = ref<any>(null);
+let pendingEditId = '', pendingCreate = false, pendingPinned = false;
+onMounted(() => { if (pendingCreate) open(null, pendingPinned); });
 onLoad((query) => {
   pendingEditId = String(query?.editId || '');
   if (query?.create === '1') {
-    open();
-    form.value.isPinned = query?.home === '1' ? 1 : 0;
+    pendingCreate = true;
+    pendingPinned = query?.home === '1';
   }
 });
-const form = ref<any>(null),
-  saving = ref(false),
-  formError = ref('');
 const scope = createRecordScope((clearData) => {
-  form.value = null;
   if (clearData) goals.value = [];
 });
 let generation = 0,
@@ -91,72 +83,21 @@ onShow(() => load());
 function goalTags(value) { return textTags(value).split(/[,，]/).map((tag) => tag.trim()).filter(Boolean); }
 function shortDate(value) { return value ? String(value).slice(5, 10) : ''; }
 function resetFilters() { keyword.value = ''; typeFilter.value = '全部类型'; statusFilter.value = '全部状态'; load(); }
-function open(item = null) {
-  if (pinningId.value) return;
-  formError.value = '';
-  form.value = item
-    ? { ...item, isPinned: item.isPinned === 1 ? 1 : 0, tags: textTags(item.tags) }
-    : {
-        title: '',
-        isPinned: 0,
-        type: 1,
-        status: 'in_progress',
-        description: '',
-        content: '',
-        tags: '',
-        currentValue: '',
-        targetValue: '',
-        startDate: null,
-        endDate: null,
-      };
+function open(item = null, pinned = false) {
+  if (!pinningId.value) editor.value?.open(item, pinned);
 }
-function setType(label) {
-  const type = goalTypes.indexOf(label) + 1;
-  form.value.type = type;
-  Object.assign(form.value, goalDateRange(type));
+function saved(row) {
+  const index = goals.value.findIndex(item => item.id === row.id);
+  if (index >= 0) goals.value[index] = row;
+  else goals.value.unshift(row);
 }
-function setDate(key, date) {
-  form.value[key] = dateTime(date, form.value[key]?.slice(11, 16) || '00:00');
-}
-function setTime(key, time) {
-  form.value[key] = dateTime(
-    form.value[key]?.slice(0, 10) || new Date().toISOString().slice(0, 10),
-    time,
-  );
-}
+function deleted(id) { goals.value = goals.value.filter(item => item.id !== id); }
 function progress(item) {
   return item.targetValue > 0
     ? Math.min(100, Math.round(((item.currentValue || 0) / item.targetValue) * 100))
     : item.status === 'completed'
       ? 100
       : 0;
-}
-async function save() {
-  if (saving.value) return;
-  let payload;
-  try {
-    payload = goalPayload(form.value);
-  } catch (e) {
-    if (e.name === 'PageInactiveError') return;
-    formError.value = e.message;
-    return;
-  }
-  saving.value = true;
-  formError.value = '';
-  try {
-    const saved = await scope.wait(saveGoal(payload));
-    const id = payload.id || saved.id;
-    const row = { ...payload, ...saved, id };
-    const index = goals.value.findIndex((g) => g.id === id);
-    if (index >= 0) goals.value[index] = row;
-    else goals.value.unshift(row);
-    form.value = null;
-  } catch (e) {
-    if (e.name === 'PageInactiveError') return;
-    formError.value = e.message;
-  } finally {
-    saving.value = false;
-  }
 }
 async function togglePinned(item) {
   if (pinningId.value) return;
@@ -170,11 +111,6 @@ async function togglePinned(item) {
   } finally {
     pinningId.value = '';
   }
-}
-async function remove(item) {
-  await scope.wait(deleteGoal(item.id));
-  goals.value = goals.value.filter((g) => g.id !== item.id);
-  if (form.value?.id === item.id) form.value = null;
 }
 </script>
 <template>
@@ -218,55 +154,7 @@ async function remove(item) {
           </view>
         </view>
       </PageState>
-      <AdaptiveModal v-if="form" label="编辑目标" :show-close="false" :busy="saving" @close="form = null">
-        <view class="goal-title-row ui-field-row"><FormField :required="isRequired('goal', 'title')" appearance="soft" compact stretch label="标题" v-model="form.title" /><MobileButton label="关闭" icon="ant-design:close-outlined" variant="quiet" :disabled="saving" @click="form = null" /></view>
-        <view class="filters ui-field-row">
-          <FormField :required="isRequired('goal', 'type')" appearance="soft" compact stretch label="类型" kind="selector" :model-value="goalTypes[form.type - 1]" :options="goalTypes" @update:model-value="setType($event)" />
-          <FormField :required="isRequired('goal', 'status')" appearance="soft" compact stretch label="状态" kind="selector" :model-value="statusLabels[statuses.indexOf(form.status)]" :options="statusLabels" @update:model-value="form.status = statuses[statusLabels.indexOf($event)]" />
-        </view>
-        <view class="filters ui-field-row">
-          <FormField appearance="soft" compact stretch label="当前值" input-type="number" v-model="form.currentValue" />
-          <FormField appearance="soft" compact stretch label="目标值" input-type="number" v-model="form.targetValue" />
-        </view>
-        <view class="filters ui-field-row"
-          ><FormField appearance="soft" compact stretch
-            label="开始日期"
-            kind="date"
-            :model-value="form.startDate?.slice(0, 10) || ''"
-            @update:model-value="setDate('startDate', $event)" /><FormField appearance="soft" compact stretch
-            label="开始时间"
-            kind="time"
-            :model-value="form.startDate?.slice(11, 16) || ''"
-            @update:model-value="setTime('startDate', $event)"
-        /></view>
-        <view class="filters ui-field-row"
-          ><FormField appearance="soft" compact stretch
-            label="结束日期"
-            kind="date"
-            :model-value="form.endDate?.slice(0, 10) || ''"
-            @update:model-value="setDate('endDate', $event)" /><FormField appearance="soft" compact stretch
-            label="结束时间"
-            kind="time"
-            :model-value="form.endDate?.slice(11, 16) || ''"
-            @update:model-value="setTime('endDate', $event)"
-        /></view>
-        <FormField appearance="soft" label="描述" kind="textarea" v-model="form.description" /><FormField appearance="soft"
-          label="行动计划"
-          kind="textarea"
-          v-model="form.content"
-        /><FormField appearance="soft" label="标签" v-model="form.tags" />
-        <FormField appearance="soft" label="添加到首页"><switch :checked="form.isPinned === 1" :disabled="saving" aria-label="添加到首页" @change="form.isPinned = $event.detail.value ? 1 : 0" /></FormField>
-        <text v-if="formError" class="record-error ui-section ui-type-body">{{ formError }}</text
-        ><FormActions>
-          <template #secondary><ConfirmAction v-if="form.id" label="删除目标" :action="() => remove(form)" /></template>
-          <MobileButton
-            label="取消"
-            variant="quiet"
-            :disabled="saving"
-            @click="form = null" /><MobileButton label="保存" :loading="saving" @click="save"
-        />
-        </FormActions>
-      </AdaptiveModal>
+      <GoalEditor ref="editor" :save-record="saveGoal" :delete-record="deleteGoal" @saved="saved" @deleted="deleted" />
     </view>
     <template #fixed><FloatingActionButton label="新增目标" @click="open()" /></template>
   </MobilePage>

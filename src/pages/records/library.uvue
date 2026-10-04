@@ -1,6 +1,5 @@
 <script setup lang="ts">
-import FormActions from '../../components/FormActions.uvue';
-import { isRequired, missingRequired } from '../../services/form-required.ts';
+import LibraryRecordEditor from '../../components/record-editors/LibraryRecordEditor.uvue';
 import ContentSkeleton from '../../components/ContentSkeleton.uvue';
 import LoadingIndicator from '../../components/LoadingIndicator.uvue';
 import AppIcon from '../../components/AppIcon.uvue'
@@ -10,25 +9,20 @@ import MobilePage from '../../components/MobilePage.uvue';
 import PageHeader from '../../components/PageHeader.uvue';
 import MobileButton from '../../components/MobileButton.uvue';
 import FormField from '../../components/FormField.uvue';
-import ConfirmAction from '../../components/ConfirmAction.uvue';
 import PageState from '../../components/PageState.uvue';
 import LoadMore from '../../components/LoadMore.uvue';
 import AdaptiveModal from '../../components/AdaptiveModal.uvue';
-import AttachmentField from '../../components/AttachmentField.uvue';
 import LibraryCover from '../../components/LibraryCover.uvue';
 import FloatingActionButton from '../../components/FloatingActionButton.uvue';
 import MetricCard from '../../components/MetricCard.uvue';
 import { isDark } from '../../services/theme.ts';
 import { createRecordScope } from '../../services/records/page-scope.ts';
-import { statuses, dateTime } from '../../services/records/contracts.ts';
+import { statuses } from '../../services/records/contracts.ts';
 import { chooseImportFile } from './services/import-file.ts';
 import { parseDoubanWorkbook } from './services/douban-import.ts';
 import {
   fetchLibrary,
   fetchLibraryDetail,
-  saveLibrary,
-  deleteLibrary,
-  parseDouban,
   previewDoubanImport,
   importDouban,
 } from './services/media.ts';
@@ -55,12 +49,7 @@ const rows = ref<any[]>([]),
   entryLoading = ref(false),
   error = ref(''),
   editing = ref('');
-const form = ref<any>(null),
-  saving = ref(false),
-  parsing = ref(false),
-  formError = ref(''),
-  attachmentBusy = ref(false),
-  created = ref(false);
+const form = ref<any>(null);
 const importingOpen = ref(false),
   importRequest = ref<any>(null),
   preview = ref<any>(null),
@@ -158,8 +147,6 @@ async function load(refresh = false, more = false) {
 }
 function setEditForm(detail) {
   if (!detail?.id) throw Error('记录不存在或已删除');
-  formError.value = '';
-  created.value = false;
   form.value = {
     ...detail,
     files: detail.fileId
@@ -169,8 +156,6 @@ function setEditForm(detail) {
 }
 async function open(item = null) {
   if (editing.value || entryLoading.value) return;
-  formError.value = '';
-  created.value = false;
   if (!item) {
     form.value = {
       title: '',
@@ -202,110 +187,19 @@ async function open(item = null) {
     editing.value = '';
   }
 }
-function setDate(key, date) {
-  form.value[key] = dateTime(date, form.value[key]?.slice(11, 16) || '00:00');
-}
-async function parse() {
-  if (parsing.value || !form.value.url.trim()) return;
-  parsing.value = true;
-  formError.value = '';
-  const id = form.value.id;
-  try {
-    const result = await scope.wait(
-      parseDouban(kind.value, form.value.url.trim()),
-    );
-    if (form.value?.id === id)
-      Object.assign(form.value, result, {
-        id,
-        coverImgUrl: result.coverImgUrl || '',
-        fileId: result.fileId || '',
-        files: result.fileId
-          ? [{ id: result.fileId, fileName: (result.title || form.value.title) + ' 封面' }]
-          : [],
-      });
-  } catch (e) {
-    if (e.name === 'PageInactiveError') return;
-    formError.value = e.message;
-  } finally {
-    parsing.value = false;
+function saved(updated) {
+  form.value = null;
+  if (updated) {
+    const index = rows.value.findIndex(row => row.id === updated.id);
+    if (index >= 0) rows.value[index] = updated;
+  } else {
+    keyword.value = ''; typeFilter.value = '全部类型'; statusFilter.value = '全部状态';
+    void load();
   }
 }
-async function save() {
-  if (saving.value || parsing.value || attachmentBusy.value) return;
-  if (missingRequired('library', form.value)) {
-    formError.value = '请输入名称';
-    return;
-  }
-  const payload = {
-    ...form.value,
-    title: form.value.title.trim(),
-    fileId: form.value.files.at(-1)?.id || '',
-  };
-  delete payload.files;
-  for (const key of ['totalProgress', 'currentProgress']) {
-    const value = Number(payload[key] || 0);
-    if (!Number.isInteger(value) || value < 0) {
-      formError.value = '进度必须为非负整数';
-      return;
-    }
-    payload[key] = value;
-  }
-  if (
-    payload.startTime &&
-    payload.finishTime &&
-    payload.finishTime < payload.startTime
-  ) {
-    formError.value = '完成日期不能早于开始日期';
-    return;
-  }
-  if (
-    kind.value === 'movie' &&
-    payload.rating != null &&
-    payload.rating !== ''
-  ) {
-    const rating = Number(payload.rating);
-    if (!Number.isInteger(rating) || rating < 1 || rating > 5) {
-      formError.value = '评分必须为1至5';
-      return;
-    }
-    payload.rating = rating;
-  }
-  saving.value = true;
-  formError.value = '';
-  try {
-    if (!created.value) {
-      await scope.wait(saveLibrary(kind.value, payload));
-      created.value = true;
-    }
-    if (payload.id) {
-      const updated = await scope.wait(
-        fetchLibraryDetail(kind.value, payload.id),
-      );
-      const index = rows.value.findIndex((row) => row.id === payload.id);
-      if (index >= 0) rows.value[index] = updated;
-    } else {
-      const data = await scope.wait(
-        fetchLibrary(kind.value, { current: 1, size: 30 }),
-      );
-      rows.value = data.items;
-      page.value = 1;
-      total.value = data.total;
-      keyword.value = '';
-      typeFilter.value = '全部类型';
-      statusFilter.value = '全部状态';
-    }
-    form.value = null;
-  } catch (e) {
-    if (e.name === 'PageInactiveError') return;
-    formError.value = e.message;
-  } finally {
-    saving.value = false;
-  }
-}
-async function remove(item) {
-  await scope.wait(deleteLibrary(kind.value, item.id));
-  rows.value = rows.value.filter((r) => r.id !== item.id);
-  total.value--;
+function deleted(id) {
+  rows.value = rows.value.filter(row => row.id !== id);
+  total.value = Math.max(0, total.value - 1);
   form.value = null;
 }
 function openImport() {
@@ -528,95 +422,7 @@ async function submitImport() {
         :has-more="!pageEnded && rows.length < total"
         @load="load(false, true)"
       />
-      <AdaptiveModal
-        v-if="form"
-        :label="'编辑' + title"
-        :busy="saving || parsing || attachmentBusy"
-        @close="form = null"
-        ><view class="library-link-row ui-field-row"
-          ><view class="library-link-field"
-            ><FormField compact stretch label="豆瓣链接" v-model="form.url" /></view
-          ><MobileButton
-            label="解析豆瓣链接"
-            icon="ant-design:import-outlined"
-            :loading="parsing"
-            @click="parse" /></view
-        ><FormField :required="isRequired('library', 'title')" label="名称" v-model="form.title" /><FormField
-          label="类型"
-          kind="selector"
-          :model-value="typeLabels[form.type - 1]"
-          :options="typeLabels"
-          @update:model-value="
-            form.type = typeLabels.indexOf($event) + 1
-          " /><FormField
-          label="状态"
-          kind="selector"
-          :model-value="statusLabels[statuses.indexOf(form.status)]"
-          :options="statusLabels"
-          @update:model-value="
-            form.status = statuses[statusLabels.indexOf($event)]
-          " /><FormField
-          v-if="kind === 'movie'"
-          label="导演/演员"
-          v-model="form.director" /><FormField
-          v-else-if="form.type === 1"
-          label="作者"
-          v-model="form.author" /><FormField
-          :label="kind === 'movie' ? '当前集数/时长' : '当前页数/进度'"
-          input-type="number"
-          v-model="form.currentProgress" /><FormField
-          :label="kind === 'movie' ? '总集数/时长' : '总页数/进度'"
-          input-type="number"
-          v-model="form.totalProgress" /><FormField
-          label="开始日期"
-          kind="date"
-          :model-value="form.startTime?.slice(0, 10) || ''"
-          @update:model-value="setDate('startTime', $event)" /><FormField
-          label="完成日期"
-          kind="date"
-          :model-value="form.finishTime?.slice(0, 10) || ''"
-          @update:model-value="setDate('finishTime', $event)" /><FormField
-          v-if="kind === 'movie'"
-          label="评分"
-          kind="selector"
-          :model-value="form.rating ? String(form.rating) : '未评分'"
-          :options="['未评分', '1', '2', '3', '4', '5']"
-          @update:model-value="
-            form.rating = $event === '未评分' ? null : Number($event)
-          " /><FormField
-          :label="kind === 'movie' ? '短评/备注' : '书评'"
-          kind="textarea"
-          v-model="form.remark" /><AttachmentField
-          :files="form.files"
-          images-only
-          upload-path="/file/upload"
-          :form-data="{ bizType: kind === 'movie' ? 'movie' : 'read' }"
-          :disabled="saving || parsing"
-          @update:files="
-            form.files = $event.slice(-1);
-            form.fileId = form.files.at(-1)?.id || '';
-            form.coverImgUrl = '';
-          "
-          @busy-change="attachmentBusy = $event" /><text
-          v-if="formError"
-          class="library-error ui-section ui-type-body"
-          >{{ formError }}</text
-        ><FormActions>
-          <template #secondary><ConfirmAction
-            v-if="form.id && !saving && !parsing && !attachmentBusy"
-            label="删除记录"
-            :message="'确定删除“' + form.title + '”？'"
-            :action="() => remove(form)" /></template>
-          <MobileButton
-            label="取消"
-            variant="quiet"
-            :disabled="saving || parsing || attachmentBusy"
-            @click="form = null" /><MobileButton
-            :label="created ? '重新读取' : '保存'"
-            :loading="saving"
-            :disabled="parsing || attachmentBusy"
-            @click="save" />
-        </FormActions></AdaptiveModal>
+      <LibraryRecordEditor v-if="form" :record="form" :kind="kind" @close="form = null" @saved="saved" @deleted="deleted" />
       <AdaptiveModal
         v-if="importingOpen"
         label="豆瓣观影导入"

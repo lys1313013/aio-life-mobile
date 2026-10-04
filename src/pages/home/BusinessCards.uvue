@@ -1,9 +1,21 @@
 <script setup lang="ts">
-import { computed, reactive, watch, onUnmounted } from 'vue'
+import { computed, reactive, ref, watch, onUnmounted } from 'vue'
 import AppIcon from '../../components/AppIcon.uvue'
+import DashboardAction from '../../components/DashboardAction.uvue'
 import LibraryCover from '../../components/LibraryCover.uvue'
+import ReadingShelf from './ReadingShelf.uvue'
+import AdaptiveModal from '../../components/AdaptiveModal.uvue'
+import FormActions from '../../components/FormActions.uvue'
+import MobileButton from '../../components/MobileButton.uvue'
+import LibraryRecordEditor from '../../components/record-editors/LibraryRecordEditor.uvue'
+import AnniversaryRecordEditor from '../../components/record-editors/AnniversaryRecordEditor.uvue'
+import MembershipRecordEditor from '../../components/record-editors/MembershipRecordEditor.uvue'
 import ContentSkeleton from '../../components/ContentSkeleton.uvue'
 import LoadingIndicator from '../../components/LoadingIndicator.uvue'
+import GoalEditor from '../../components/GoalEditor.uvue'
+import { recordId } from '../../services/records/contracts.ts'
+import { useGoalOrder } from './services/use-goal-order.ts'
+import GoalProgressRing from './GoalProgressRing.uvue'
 import { isDark } from '../../services/theme.ts'
 import { request } from '../../services/api.ts'
 import { session } from '../../services/session.ts'
@@ -12,16 +24,33 @@ import { lockedMenuPaths, matchesNativeMenu } from '../../services/life-catalog.
 import { isMenuUnlocked } from '../../services/secondary-lock.ts'
 import spacing from '../../styles/spacing.json'
 import { businessCards as allBusinessCards, businessCardMaxHeight, businessCardRowHeight, cardState, loadBusinessCard, cardCaption, cardProgress } from './services/business-cards.ts'
-const props = defineProps<{ active: boolean; only?: string }>()
+const props = defineProps<{ active: boolean; preparing?: boolean; only?: string }>()
 const businessCards = allBusinessCards.filter(card => !props.only || ({ read: 'reading', member: 'membership' }[card.key] || card.key) === props.only)
 const states = reactive(Object.fromEntries(businessCards.map(card => [card.key, cardState()])))
+const selection = ref<any>(null)
+let detailVersion = 0
+const goalEditor = ref<any>(null)
+const goalOrder = useGoalOrder({
+  rows: () => states.goal?.rows || [],
+  disabled: () => !props.active || !states.goal || states.goal.busy || states.goal.loading || states.goal.locked,
+  save: reorderGoals,
+})
+const { dragging: goalDragging, scrollTop: goalScrollTop } = goalOrder
 const shown = computed(() => businessCards.filter(card => {
   const state = states[card.key]
-  return state.available && (!state.loaded || state.loading || !!state.error || state.locked || state.rows.length > 0)
+  return (props.active || props.preparing) && state.available && (!state.loaded || state.loading || !!state.error || state.locked || state.rows.length > 0)
 }))
 let epoch = 0
+let refreshTask: Promise<void> | null = null
+function cardLoading(card) {
+  const state = states[card.key]
+  return state.loading || (!state.loaded && !state.error && !state.locked)
+}
 function invalidate(clear = false) {
+  goalOrder.cancel()
   epoch++
+  refreshTask = null
+  if (clear) closeDetail()
   for (const card of businessCards) {
     const state = states[card.key]
     state.version++; state.loading = false; state.moreLoading = false; state.busy = false
@@ -30,10 +59,17 @@ function invalidate(clear = false) {
 }
 watch(() => session.token, () => invalidate(true), { flush: 'sync' })
 onUnmounted(() => invalidate(true))
-watch(() => props.active, active => { if (!active) invalidate(true) }, { flush: 'sync' })
+// 组件晚挂载或 H5 热更新后也主动加载，不能只依赖父页面一次性的 ref 调用。
+watch(() => props.active, active => { if (active) void refreshAll(); else invalidate(true) }, { flush: 'sync', immediate: true })
 defineExpose({ refresh: refreshAll })
-async function refreshAll() {
-  if (!props.active || !session.token) return
+function refreshAll() {
+  if (!props.active || !session.token) return Promise.resolve()
+  if (refreshTask) return refreshTask
+  const operation = loadAll().finally(() => { if (refreshTask === operation) refreshTask = null })
+  refreshTask = operation
+  return operation
+}
+async function loadAll() {
   invalidate()
   const current = epoch
   for (const card of businessCards) states[card.key].loading = true
@@ -70,9 +106,78 @@ function load(card, more = false) {
 }
 function nextPage(card) { if (!states[card.key].moreError) void load(card, true) }
 function open(card, item = null, create = false) {
-  if (!props.active || !states[card.key].available) return
-  const suffix = item ? 'editId=' + encodeURIComponent(item.id) : create ? 'create=1&home=1' : ''
+  if (!props.active || !states[card.key].available || states[card.key].busy) return
+  if (card.key === 'goal' && (item || create)) {
+    if (states.goal.locked || goalOrder.clickBlocked()) return
+    goalEditor.value?.open(item, true)
+    return
+  }
+  if (item) {
+    if (states[card.key].locked) return
+    selection.value = { card, id: item.id, record: null, loading: false, error: '' }
+    void loadDetail()
+    return
+  }
+  const suffix = create ? 'create=1&home=1' : ''
   uni.navigateTo({ url: card.route + (suffix ? (card.route.includes('?') ? '&' : '?') + suffix : '') })
+}
+function closeDetail() { detailVersion++; selection.value = null }
+async function loadDetail() {
+  const selected = selection.value
+  if (!selected || selected.loading) return
+  const version = ++detailVersion, owner = session.token
+  selected.loading = true; selected.error = ''
+  try {
+    // 卡片列表可能只含摘要，编辑前读取完整详情，避免覆盖未展示的字段。
+    const record = await request<any>(selected.card.endpoint + '/' + encodeURIComponent(recordId(selected.id)))
+    if (version !== detailVersion || !props.active || session.token !== owner) return
+    if (!record || typeof record.id !== 'string' || record.id !== selected.id) throw new Error('记录已删除或不可访问')
+    selected.record = record
+  } catch (error) {
+    if (version === detailVersion && session.token === owner) selected.error = error.message || '详情加载失败，请重试'
+  } finally { if (version === detailVersion) selected.loading = false }
+}
+function detailChanged() {
+  const card = selection.value?.card
+  closeDetail()
+  if (card) void load(card)
+}
+// 共享轻量编辑器；首页不引用 tasks 分包或加载整个业务页面。
+function saveGoal(payload) { return request('/goals', payload.id ? 'PUT' : 'POST', payload) }
+function deleteGoal(id) { return request('/goals/batchDelete', 'POST', { idList: [recordId(id)] }) }
+function goalSaved(row) {
+  const state = states.goal
+  if (!props.active || !state) return
+  state.version++
+  state.loading = state.moreLoading = false
+  goalOrder.cancel()
+  const index = state.rows.findIndex(item => item.id === row.id)
+  if (row.isPinned !== 1) state.rows = state.rows.filter(item => item.id !== row.id)
+  else if (index >= 0) state.rows[index] = row
+  else state.rows.unshift(row)
+}
+function goalDeleted(id) {
+  if (!states.goal || !props.active) return
+  states.goal.version++
+  states.goal.loading = states.goal.moreLoading = false
+  goalOrder.cancel()
+  states.goal.rows = states.goal.rows.filter(item => item.id !== id)
+}
+async function reorderGoals(from, to) {
+  const state = states.goal
+  if (!props.active || state.busy || state.loading || state.locked || !state.rows[from] || !state.rows[to]) return
+  const version = state.version, before = [...state.rows]
+  const ordered = [...before], item = ordered.splice(from, 1)[0]
+  ordered.splice(to, 0, item)
+  state.rows = ordered; state.busy = true; state.error = ''
+  try {
+    await request('/goals/pinned-order', 'PUT', { ids: ordered.map(row => row.id) }, true, null, true)
+  } catch (error) {
+    if (!props.active || state.version !== version) return
+    state.rows = before
+    if (error.name === 'SecondaryLockRequiredError') { state.rows = []; state.locked = true; state.more = false }
+    else state.error = error.message || '排序失败，请重试'
+  } finally { if (state.version === version) state.busy = false }
 }
 function listHeight(card) {
   const state = states[card.key]
@@ -114,36 +219,70 @@ async function menu(card, item, index) {
 }
 </script>
 <template>
-    <view v-for="card in shown" :key="card.key" class="business-cell">
-      <view class="business-card" :class="{ 'business-card-dark': isDark }" :style="{ maxHeight: businessCardMaxHeight + 'px' }" :aria-label="card.title + '首页卡片'" :aria-busy="states[card.key].loading || states[card.key].busy">
+  <view v-show="shown.length > 0" class="business-group" :class="{ 'business-group-single': !!only }">
+    <view v-for="card in shown" :key="card.key" class="business-cell" :style="only ? { width: '100%' } : {}">
+      <view class="business-card" :class="{ 'business-card-dark': isDark }" :style="{ maxHeight: businessCardMaxHeight + 'px' }" :aria-label="card.title + '首页卡片'" :aria-busy="cardLoading(card) || states[card.key].busy">
         <view class="business-heading">
           <button role="button" class="heading-link" :aria-label="'查看全部' + card.title" @click="open(card)"><AppIcon :name="card.icon" :size="16" :color="isDark ? '#d4d4d8' : '#52525b'" /><text class="heading-text" :class="{ 'text-dark': isDark }">{{ card.title }}</text></button>
-          <LoadingIndicator v-if="states[card.key].loading || states[card.key].busy" compact :label="'正在加载' + card.title" />
-          <button role="button" class="icon-action" :aria-label="'新增' + card.title" @click="open(card, null, true)"><AppIcon name="lucide:plus" :size="18" :color="isDark ? '#d4d4d8' : '#52525b'" /></button>
+          <LoadingIndicator v-if="cardLoading(card) || states[card.key].busy" compact :label="'正在加载' + card.title" />
+          <DashboardAction :label="'新增' + card.title" @click="open(card, null, true)" />
         </view>
         <view v-if="states[card.key].locked" class="card-placeholder"><button role="button" class="lock-action" :aria-label="'解锁' + card.title" @click="open(card)"><AppIcon name="ant-design:lock-outlined" :size="18" color="#8b8f99" /><text class="caption">点击解锁</text></button></view>
-        <view v-else-if="!states[card.key].rows.length && states[card.key].loading" class="card-placeholder"><ContentSkeleton compact :rows="2" :label="'正在加载' + card.title" /></view>
+        <ReadingShelf v-else-if="card.key === 'read' && (states[card.key].rows.length || cardLoading(card))" :rows="states[card.key].rows" :loading="cardLoading(card)" :more-loading="states[card.key].moreLoading" :error="states[card.key].moreError || states[card.key].error" @edit="open(card, $event)" @more="nextPage(card)" @retry="states[card.key].moreError ? load(card, true) : load(card)" />
+        <view v-else-if="!states[card.key].rows.length && cardLoading(card)" class="card-placeholder"><ContentSkeleton compact :rows="2" :label="'正在加载' + card.title" /></view>
         <view v-else-if="!states[card.key].rows.length && states[card.key].error" class="card-placeholder"><text class="error-text">{{ states[card.key].error }}</text><button role="button" class="icon-action" :aria-label="'重试' + card.title" @click="refreshAll"><AppIcon name="lucide:rotate-cw" :size="18" color="#5879ce" /></button></view>
-        <scroll-view v-else-if="states[card.key].rows.length" scroll-y :show-scrollbar="false" :lower-threshold="40" class="business-scroll" :style="{ height: listHeight(card) + 'px' }" @scrolltolower="nextPage(card)">
-          <view v-for="(item, index) in states[card.key].rows" :key="item.id" class="business-row" :style="{ height: businessCardRowHeight + 'px' }">
+        <scroll-view v-else-if="states[card.key].rows.length" :scroll-y="card.key !== 'goal' || !goalDragging" :scroll-top="card.key === 'goal' ? goalScrollTop : undefined" :show-scrollbar="false" :lower-threshold="40" class="business-scroll" :class="{ 'goal-scroll': card.key === 'goal' }" @scroll="card.key === 'goal' && goalOrder.scrolled($event)" :style="{ height: listHeight(card) + 'px' }" @scrolltolower="nextPage(card)">
+          <view v-for="(item, index) in states[card.key].rows" :key="item.id" class="business-row" :class="[card.key === 'goal' ? goalOrder.classes(item.id) : {}, { 'goal-dragging-dark': isDark && goalDragging === item.id }]" :style="[{ height: businessCardRowHeight + 'px' }, card.key === 'goal' ? goalOrder.style(item.id) : {}]"
+            @touchstart="card.key === 'goal' && goalOrder.start(item.id, $event)" @touchmove="card.key === 'goal' && goalOrder.move($event)" @touchend="card.key === 'goal' && goalOrder.finish($event)" @touchcancel="card.key === 'goal' && goalOrder.cancel()"
+            @mousedown="card.key === 'goal' && goalOrder.mouseStart(item.id, $event)"
+            @keydown.alt.up.prevent="card.key === 'goal' && goalOrder.keyboard(item.id, -1)" @keydown.alt.down.prevent="card.key === 'goal' && goalOrder.keyboard(item.id, 1)">
             <view class="record-link" role="button" tabindex="0" :aria-label="'编辑' + title(item)" @click="open(card, item)" @keydown.enter="open(card, item)" @keydown.space.prevent="open(card, item)">
-              <view v-if="card.paged" class="record-cover"><LibraryCover :file-id="item.fileId || ''" :url="item.coverImgUrl || ''" :title="title(item)" :kind="card.key" compact tiny /></view>
+              <GoalProgressRing v-if="card.key === 'goal'" :percent="cardProgress(card, item) ?? 0" :label="title(item) + '进度'" />
+              <view v-else-if="card.paged" class="record-cover"><LibraryCover :file-id="item.fileId || ''" :url="item.coverImgUrl || ''" :title="title(item)" :kind="card.key" compact tiny /></view>
               <text v-else-if="card.key === 'anniversary'" class="record-emoji">{{ item.icon || '🎉' }}</text>
               <AppIcon v-else-if="card.key === 'member'" name="lucide:crown" :size="22" :color="item.color || '#5879ce'" />
-              <view class="record-copy"><text class="record-title" :class="{ 'text-dark': isDark }">{{ title(item) }}</text><text class="caption record-caption" :class="{ 'caption-dark': isDark }">{{ cardCaption(card, item) }}</text><view v-if="cardProgress(card, item) != null" class="progress-track" :class="{ 'progress-track-dark': isDark }"><view class="progress-fill" :style="{ width: cardProgress(card, item) + '%' }" /></view></view>
+              <view class="record-copy">
+                <text class="record-title" :class="{ 'text-dark': isDark }">{{ title(item) }}</text>
+                <view v-if="card.key === 'goal'" class="goal-meta">
+                  <text class="caption" :class="{ 'caption-dark': isDark }">{{ cardCaption(card, item) }}</text>
+                  <view v-if="item.endDate" class="goal-due" :aria-label="'截止 ' + item.endDate.slice(0, 10)">
+                    <text class="caption" :class="{ 'caption-dark': isDark }" aria-hidden="true">·</text>
+                    <AppIcon name="ant-design:calendar-outlined" :size="14" :color="isDark ? '#a6a6b0' : '#71717a'" />
+                    <text class="caption" :class="{ 'caption-dark': isDark }">{{ item.endDate.slice(0, 10) }}</text>
+                  </view>
+                </view>
+                <text v-else class="caption record-caption" :class="{ 'caption-dark': isDark }">{{ cardCaption(card, item) }}</text>
+                <view v-if="card.key !== 'goal' && cardProgress(card, item) != null" class="progress-track" :class="{ 'progress-track-dark': isDark }"><view class="progress-fill" :style="{ width: cardProgress(card, item) + '%' }" /></view>
+              </view>
               <AppIcon v-if="card.key === 'member' && item.autoRenew === 1" name="lucide:rotate-cw" :size="14" color="#8b8f99" aria-label="自动续费" />
             </view>
-            <button role="button" v-if="card.pinned" class="icon-action" :disabled="states[card.key].busy || states[card.key].loading" :aria-label="title(item) + '固定操作'" @click="menu(card, item, index)"><AppIcon name="lucide:ellipsis" :size="18" color="#8b8f99" /></button>
+            <button role="button" v-if="card.pinned && card.key !== 'goal'" class="icon-action" :disabled="states[card.key].busy || states[card.key].loading" :aria-label="title(item) + '固定操作'" @click="menu(card, item, index)"><AppIcon name="lucide:ellipsis" :size="18" color="#8b8f99" /></button>
           </view>
           <view v-if="states[card.key].moreLoading || states[card.key].moreError || states[card.key].error" class="list-status"><LoadingIndicator v-if="states[card.key].moreLoading" compact label="正在加载更多" /><template v-else><text class="error-text status-error">{{ states[card.key].moreError || states[card.key].error }}</text><button role="button" class="icon-action" :aria-label="'重试' + card.title" @click="states[card.key].moreError ? load(card, true) : load(card)"><AppIcon name="lucide:rotate-cw" :size="18" color="#5879ce" /></button></template></view>
         </scroll-view>
       </view>
     </view>
+  </view>
+    <GoalEditor v-if="props.active && states.goal" ref="goalEditor" :save-record="saveGoal" :delete-record="deleteGoal" @saved="goalSaved" @deleted="goalDeleted" />
+    <AdaptiveModal v-if="selection && !selection.record" :label="selection.card.title + '详情'" :content-key="selection.error + String(selection.loading)" @close="closeDetail">
+      <LoadingIndicator v-if="selection.loading" label="正在加载记录详情" />
+      <text v-if="selection.error" class="error-text" role="alert">{{ selection.error }}</text>
+      <FormActions>
+        <MobileButton label="取消" variant="quiet" @click="closeDetail" />
+        <MobileButton v-if="selection.error" label="重试加载详情" icon="lucide:rotate-cw" @click="loadDetail" />
+      </FormActions>
+    </AdaptiveModal>
+    <template v-if="selection && selection.record">
+      <LibraryRecordEditor v-if="selection.card.paged" :kind="selection.card.key" :record="selection.record" @close="closeDetail" @saved="detailChanged" @deleted="detailChanged" />
+      <AnniversaryRecordEditor v-if="selection.card.key === 'anniversary'" :record="selection.record" @close="closeDetail" @saved="detailChanged" @deleted="detailChanged" />
+      <MembershipRecordEditor v-if="selection.card.key === 'member'" :record="selection.record" @close="closeDetail" @saved="detailChanged" @deleted="detailChanged" />
+    </template>
 </template>
 <style scoped lang="scss">
 @use '../../styles/typography' as *;
 @use '../../styles/spacing.scss';
 @use '../../styles/spacing-tokens' as *;
+.business-group { width: 100%; display: flex; flex-direction: row; flex-wrap: wrap; }
 .business-grid { display: flex; flex-direction: row; flex-wrap: wrap; align-items: flex-start; margin-left: -$space-detail; margin-right: -$space-detail; }
 .business-cell { width: 100%; box-sizing: border-box; padding: $space-detail; }
 .business-card { box-sizing: border-box; background-color: #ffffff; border: 1px solid #e8e8ed; border-radius: 14px; overflow: hidden; padding-bottom: $space-card; }
@@ -155,10 +294,16 @@ async function menu(card, item, index) {
 .icon-action { width: $space-controlMin; flex-shrink: 0; }
 .business-scroll { width: 100%; min-height: 0; }
 .business-row { box-sizing: border-box; display: flex; flex-direction: row; align-items: center; padding: $space-detail $space-card; }
+.goal-dragging { position: relative; background-color: #f1f3f6; box-shadow: 0 4px 14px rgba(0, 0, 0, 0.12); }
+.goal-dragging-dark { background-color: #292d33; }
+.goal-drop-before { box-shadow: inset 0 2px 0 #618f9d; }
+.goal-drop-after { box-shadow: inset 0 -2px 0 #618f9d; }
 .record-link { display: flex; flex-direction: row; flex: 1; min-width: 0; align-items: center; gap: $space-inline; min-height: $space-controlMin; }
 .record-cover { width: 32px; height: 48px; flex-shrink: 0; border-radius: 4px; overflow: hidden; }
 .record-emoji { @include type-style('glyph-display'); }
 .record-copy { flex: 1; min-width: 0; gap: $space-detail; }
+.goal-meta { display: flex; flex-direction: row; flex-wrap: wrap; align-items: center; column-gap: $space-detail; }
+.goal-due { display: flex; flex-direction: row; align-items: center; gap: $space-detail; flex-shrink: 0; }
 .record-title { @include type-style('label-strong'); color: #3f3f46; overflow: hidden;
 /* #ifndef APP */
 display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
@@ -179,12 +324,13 @@ max-lines: 2; text-overflow: ellipsis;
 .list-status { height: $space-controlMin; flex-direction: row; align-items: center; padding: 0 $space-card; }
 .error-text { @include type-style('caption'); color: #c26161; }
 .status-error { flex: 1; min-width: 0; }
-@media (min-width: 768px) { .business-cell { width: 50%; } }
-@media (min-width: 1200px) { .business-cell { width: 33.3333%; } }
+@media (min-width: 768px) { .business-group-single { width: 50%; } .business-cell { width: 50%; } }
+@media (min-width: 1200px) { .business-group-single { width: 33.3333%; } .business-cell { width: 33.3333%; } }
 /* #ifdef WEB || MP-WEIXIN */
 .heading-link::after, .icon-action::after, .lock-action::after { border: 0; }
 /* #endif */
 /* #ifdef WEB */
+.goal-scroll { user-select: none; -webkit-touch-callout: none; }
 .business-scroll :deep(.uni-scroll-view) { overscroll-behavior-y: contain; }
 /* #endif */
 </style>

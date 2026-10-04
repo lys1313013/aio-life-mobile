@@ -18,7 +18,7 @@ async function pageHarness(kind) {
   };
   const fixture = {
     ref: value => ({ value }), computed: fn => ({ get value() { return fn(); } }),
-    onLoad: fn => { hooks.load = fn; }, onShow: () => {}, onUnmounted: () => {},
+    onMounted: fn => { hooks.mount = fn; }, onLoad: fn => { hooks.load = fn; }, onShow: () => {}, onUnmounted: () => {},
     createRecordScope: () => ({ wait: promise => promise }),
     fetchGoals: async () => records, fetchEvents: async () => records,
     setGoalPinned: pin, setAnniversaryPinned: pin,
@@ -26,7 +26,11 @@ async function pageHarness(kind) {
     textTags: value => value || '', daysFromToday: () => 0,
     uni: { showToast: value => toasts.push(value) },
   };
-  const api = new Function(...Object.keys(fixture), `${js}\nreturn { load, open, togglePinned, form, pinningId, rows: ${kind === 'goal' ? 'goals' : 'rows'} };`)(...Object.values(fixture));
+  const api = new Function(...Object.keys(fixture), `${js}\nreturn { load, open, togglePinned, ${kind === 'goal' ? 'editor' : 'form'}, pinningId, rows: ${kind === 'goal' ? 'goals' : 'rows'} };`)(...Object.values(fixture));
+  if (kind === 'goal') {
+    api.form = { value: null };
+    api.editor.value = { open: (item = null, pinned = false) => { api.form.value = item ? { ...item } : { isPinned: pinned ? 1 : 0 }; } };
+  }
   return { ...api, hooks, records, writes, toasts, failPin: (value = true) => { failPin = value; } };
 }
 
@@ -34,6 +38,7 @@ for (const kind of ['goal', 'anniversary']) {
   test(`${kind} 首页新增默认固定，编辑深链只打开一次并保留字符串 ID`, async () => {
     const page = await pageHarness(kind);
     page.hooks.load({ create: '1', home: '1' });
+    page.hooks.mount?.();
     assert.equal(page.form.value.isPinned, 1);
     page.open();
     assert.equal(page.form.value.isPinned, 0);
