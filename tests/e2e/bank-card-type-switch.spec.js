@@ -66,6 +66,7 @@ test('切换类型取消旧卡号读取，旧响应不能覆盖新卡的加载�
   await expect(numberDialog.locator('.card-number-detail')).toHaveText('4333 0000 5678');
   await numberDialog.getByRole('button', { name: '关闭', exact: true }).click();
   await debit.click();
+  await expect(page.locator('.card-browser-moving')).toHaveCount(0);
   await page.locator('.card-face').click({ position: { x: 40, y: 24 } });
   await expect(numberDialog).toHaveCount(0);
   await expect(page.locator('.card').getByText(/6222|4333|1234|5678/)).toHaveCount(0);

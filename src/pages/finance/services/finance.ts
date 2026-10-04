@@ -37,3 +37,5 @@ export const saveCardTag = (data: Record<string, any>, id: string = '') => reque
 export const deleteCardTag = (id: string) => request('/bank-cards/tags/' + encodeURIComponent(id), 'DELETE')
 
 export const fetchCardCoverTemplates = (bankId: string, cardType: string) => request<any[]>(queryPath('/bank-cards/cover-templates', {bankId, cardType}))
+
+export const moveCardOrder = (data: { id: string; targetId: string; after: boolean }) => request<any[]>('/bank-cards/order', 'PUT', data)

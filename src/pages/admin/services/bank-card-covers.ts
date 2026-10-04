@@ -78,3 +78,5 @@ export function coverPlacement(width, height, mode, zoom = 1) {
   const scale = mode === 'cover' ? Math.max(960 / width, 605 / height) * Math.min(3, Math.max(1, zoom)) : Math.min(960 / width, 605 / height)
   return { x: (960 - width * scale) / 2, y: (605 - height * scale) / 2, width: width * scale, height: height * scale }
 }
+
+export const moveCoverOrder = (data) => request(path + '/order', 'PUT', data)

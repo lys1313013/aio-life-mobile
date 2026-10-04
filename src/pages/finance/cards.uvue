@@ -1,11 +1,14 @@
 <script setup lang="ts">
 import { useWindowResize } from '../../services/window-resize.ts'
-useWindowResize(measureStackFace)
+useWindowResize(() => { measureStackFace(); measureCardLayers(); })
 import { useAppLayout, appTextColor } from '../../services/app-layout.ts'
 const { appGridItem } = useAppLayout()
 
 import FormActions from '../../components/FormActions.uvue';
 import { isRequired, missingRequired } from '../../services/form-required.ts';
+import LoadingIndicator from '../../components/LoadingIndicator.uvue';
+import { useCardOrder } from '../../services/use-card-order.ts';
+import { compareCardOrder } from '../../services/card-order.ts';
 import CardFaceLoading from './components/CardFaceLoading.uvue';
 import BankSelector from './components/BankSelector.uvue';
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
@@ -19,6 +22,7 @@ import MobileButton from '../../components/MobileButton.uvue';
 import ConfirmAction from '../../components/ConfirmAction.uvue';
 import AdaptiveModal from '../../components/AdaptiveModal.uvue';
 import {
+  moveCardOrder,
   fetchCards,
   fetchCardCoverTemplates,
   fetchBanks,
@@ -143,6 +147,7 @@ function selectTemplate(item: any) {
 }
 const menuLeft = ref(0), menuTop = ref(0);
 function toggleMenu(card: any) {
+  if (order.clickBlocked()) return;
   if (cardSwitchPhase.value !== 'idle') return;
   if (menuCardId.value === card.id) { menuCardId.value = ''; return; }
   uni.createSelectorQuery().select('#card-more-' + card.id).boundingClientRect((rect) => {
@@ -161,6 +166,7 @@ let alive = true,
   stamp = 0;
 onUnmounted(() => {
   alive = false;
+  order.reset();
   finishStackDrag();
   stopStackRebound();
   stopCardSwitch();
@@ -168,6 +174,7 @@ onUnmounted(() => {
   revealed.value = {};
 });
 async function load() {
+  if (orderDragging.value || orderSaving.value) { refreshing.value = false; return; }
   const current = ++stamp;
   loading.value = true;
   error.value = '';
@@ -239,6 +246,7 @@ useDomainPage(
   },
   () => {
     alive = false;
+    order.reset();
     stamp++;
     cards.value = [];
     finishStackDrag();
@@ -274,24 +282,55 @@ const statusMap: Record<string, string> = {
   closed: '已注销',
 };
 const selectedCardType = ref<'debit' | 'credit'>('debit');
-const cardSwitchPhase = ref<'idle' | 'out' | 'prepare' | 'in'>('idle');
-const cardSwitchDirection = ref(1), cardSwipePreview = ref(0);
+const cardTypes: Array<'debit' | 'credit'> = ['debit', 'credit'];
+const cardSwitchPhase = ref<'idle' | 'prepare' | 'in'>('idle');
+const cardSwitchTarget = ref<'debit' | 'credit'>('debit');
+const cardSwipePreview = ref(0), cardViewportWidth = ref(420);
+const cardLayerHeights = ref({ debit: 0, credit: 0 });
+const cardLayersMoving = computed(() => cardSwitchPhase.value !== 'idle' || cardSwipePreview.value !== 0);
+const activeCardType = computed(() => cardSwitchPhase.value === 'idle' ? selectedCardType.value : cardSwitchTarget.value);
+const cardLayerProgress = computed(() => (selectedCardType.value === 'credit' ? 1 : 0) - cardSwipePreview.value / cardViewportWidth.value);
 let cardSwitchTimer: ReturnType<typeof setTimeout> | undefined;
 let cardSwitchRevision = 0;
 let queuedCardType: 'debit' | 'credit' | null = null;
-const cardBrowserStyle = computed(() => {
-  const phase = cardSwitchPhase.value;
-  if (phase === 'idle' && cardSwipePreview.value === 0) return {};
-  const distance = spacing.controlMin * 2 * cardSwitchDirection.value;
-  const offset = phase === 'out' ? -distance : phase === 'prepare' ? distance : phase === 'idle' ? cardSwipePreview.value : 0;
-  const fading = phase === 'out' || phase === 'prepare';
+function cardLayerStyle(type: 'debit' | 'credit') {
+  if (!cardLayersMoving.value) return {};
+  const offset = (type === 'credit' ? 1 : 0) - cardLayerProgress.value;
+  const depth = Math.min(1, Math.abs(offset));
   return {
-    transform: 'translateX(' + offset + 'px) scale(' + (fading ? 0.985 : 1) + ')',
-    opacity: fading ? 0 : 1,
-    transition: phase === 'out' ? 'transform 130ms cubic-bezier(0.4, 0, 1, 1), opacity 130ms ease-out' :
-      phase === 'in' ? 'transform 240ms cubic-bezier(0.22, 1, 0.36, 1), opacity 180ms ease-out' : 'none',
+    transform: 'translateX(' + offset * (cardViewportWidth.value + spacing.card) + 'px) translateY(' + depth * spacing.inline + 'px) scale(' + (1 - depth * 0.025) + ')',
+    opacity: 1 - depth * 0.04,
+    zIndex: Math.round((1 - depth) * 100),
+    transition: cardSwitchPhase.value === 'in' ? 'transform 360ms cubic-bezier(0.22, 1, 0.36, 1), opacity 360ms ease-out' : 'none',
+  };
+}
+const cardViewportStyle = computed(() => {
+  if (!cardLayersMoving.value) return {};
+  const progress = Math.max(0, Math.min(1, cardLayerProgress.value));
+  const currentHeight = cardLayerHeights.value[selectedCardType.value];
+  const debitHeight = cardLayerHeights.value.debit || currentHeight;
+  const creditHeight = cardLayerHeights.value.credit || currentHeight;
+  if (!currentHeight) return {};
+  return {
+    height: (debitHeight * (1 - progress) + creditHeight * progress) + 'px',
+    transition: cardSwitchPhase.value === 'in' ? 'height 360ms cubic-bezier(0.22, 1, 0.36, 1)' : 'none',
   };
 });
+function measureCardLayers() {
+  nextTick(() => {
+    if (!alive) return;
+    const query = uni.createSelectorQuery();
+    query.select('.card-browser-viewport').boundingClientRect((rect) => {
+      if (alive && rect && !Array.isArray(rect) && rect.width > 0) cardViewportWidth.value = rect.width;
+    });
+    for (const type of cardTypes) query.select('#card-layer-' + type).boundingClientRect((rect) => {
+      if (!alive || !rect || Array.isArray(rect) || rect.height <= 0) return;
+      const depth = cardLayersMoving.value ? Math.min(1, Math.abs((type === 'credit' ? 1 : 0) - cardLayerProgress.value)) : 0;
+      cardLayerHeights.value = { ...cardLayerHeights.value, [type]: rect.height / (1 - depth * 0.025) };
+    });
+    query.exec();
+  });
+}
 function stopCardSwitch() {
   cardSwitchRevision++;
   if (cardSwitchTimer !== undefined) clearTimeout(cardSwitchTimer);
@@ -302,16 +341,23 @@ function stopCardSwitch() {
 }
 function finishCardSwitch() {
   const nextType = queuedCardType;
+  selectCardType(cardSwitchTarget.value, true);
   stopCardSwitch();
-  if (alive && nextType && nextType !== selectedCardType.value) switchCardType(nextType);
+  measureCardLayers();
+  if (alive && nextType && nextType !== selectedCardType.value) nextTick(() => switchCardType(nextType));
 }
 function settleCardSwipe() {
   if (!alive || cardSwipePreview.value === 0) { cardSwipePreview.value = 0; return; }
+  cardSwitchTarget.value = selectedCardType.value;
   cardSwitchPhase.value = 'in';
-  cardSwitchTimer = setTimeout(finishCardSwitch, 240);
+  cardSwipePreview.value = 0;
+  cardSwitchTimer = setTimeout(finishCardSwitch, 360);
 }
 function switchCardType(type: 'debit' | 'credit') {
+  if (orderDragging.value || orderSaving.value) return;
+  order.cancel();
   cardTypeInitialized = true;
+  if (!alive) return;
   if (cardSwitchPhase.value !== 'idle') { queuedCardType = type; return; }
   if (selectedCardType.value === type) { settleCardSwipe(); return; }
   finishStackDrag();
@@ -323,22 +369,19 @@ function switchCardType(type: 'debit' | 'credit') {
   revealed.value = {};
   revealBusy.value = '';
   numberCardId.value = '';
-  cardSwitchDirection.value = type === 'credit' ? 1 : -1;
-  cardSwitchPhase.value = 'out';
-  cardSwitchTimer = setTimeout(() => {
+  cardSwitchTarget.value = type;
+  cardSwitchPhase.value = 'prepare';
+  measureCardLayers();
+  nextTick(() => {
     if (!alive || revision !== cardSwitchRevision) return;
-    selectCardType(type, true);
-    cardSwitchPhase.value = 'prepare';
-    // 先提交新卡包的入场位置，再开启过渡，避免首帧直接跳到终点。
-    nextTick(() => {
-      if (!alive || revision !== cardSwitchRevision || cardSwitchPhase.value !== 'prepare') return;
-      cardSwitchTimer = setTimeout(() => {
-        if (!alive || revision !== cardSwitchRevision || cardSwitchPhase.value !== 'prepare') return;
-        cardSwitchPhase.value = 'in';
-        cardSwitchTimer = setTimeout(finishCardSwitch, 240);
-      }, 16);
-    });
-  }, 130);
+    // 两个卡包先保持各自起始位置，再同时滑动，避免切换时重建单层画面。
+    cardSwitchTimer = setTimeout(() => {
+      if (!alive || revision !== cardSwitchRevision) return;
+      cardSwitchPhase.value = 'in';
+      cardSwipePreview.value = (type === 'credit' ? -1 : 1) * cardViewportWidth.value;
+      cardSwitchTimer = setTimeout(finishCardSwitch, 360);
+    }, 16);
+  });
 }
 const cardTypeCounts = computed(() => ({
   debit: cards.value.filter((card) => card.cardType === 'debit').length,
@@ -349,10 +392,11 @@ const displayedCardNumber = computed(() =>
 );
 let cardTypeInitialized = false;
 let cardTypeRevision = 0;
-const sortedCards = computed(() =>
-  cards.value.filter((card) => card.cardType === selectedCardType.value)
-    .sort((a, b) => a.sortOrder - b.sortOrder),
-);
+const cardsByType = computed(() => ({
+  debit: cards.value.filter((card) => card.cardType === 'debit').sort((a, b) => compareCardOrder(a, b, true)),
+  credit: cards.value.filter((card) => card.cardType === 'credit').sort((a, b) => compareCardOrder(a, b, true)),
+}));
+const sortedCards = computed(() => cardsByType.value[selectedCardType.value]);
 let savedView = 'stack';
 try {
   if (uni.getStorageSync('bank-card-view-mode') === 'grid') savedView = 'grid';
@@ -370,15 +414,34 @@ const stackFaceHeight = ref(184);
 // 露出高度属于卡包几何约束：默认 120px，可手动收紧到 50px。
 const stackDefaultPeek = spacing.controlMin * 2 + spacing.card * 2 + spacing.inline;
 const stackPeek = spacing.controlMin + spacing.detail + spacing.micro;
-let savedStackHeight = stackDefaultPeek;
-try {
-  const value = uni.getStorageSync('bank-card-stack-height');
-  if (typeof value === 'number' && Number.isFinite(value) && value >= stackPeek) savedStackHeight = value;
-} catch (_) { /* 存储不可用时使用默认露出高度 */ }
-const stackHeight = ref(savedStackHeight);
+function readStackHeight(type: 'debit' | 'credit') {
+  try {
+    const value = uni.getStorageSync('bank-card-stack-height-' + type);
+    if (typeof value === 'number' && Number.isFinite(value) && value >= stackPeek) return value;
+    // 旧的单一高度只迁移到储蓄卡，信用卡仍保持独立默认值。
+    if (type === 'debit') {
+      const previous = uni.getStorageSync('bank-card-stack-height');
+      if (typeof previous === 'number' && Number.isFinite(previous) && previous >= stackPeek) return previous;
+    }
+  } catch (_) { /* 存储不可用时使用默认露出高度 */ }
+  return stackDefaultPeek;
+}
+const debitStackHeight = ref(readStackHeight('debit'));
+const creditStackHeight = ref(readStackHeight('credit'));
+const stackHeight = computed({
+  get: () => selectedCardType.value === 'credit' ? creditStackHeight.value : debitStackHeight.value,
+  set: (value: number) => {
+    if (selectedCardType.value === 'credit') creditStackHeight.value = value;
+    else debitStackHeight.value = value;
+  },
+});
 const stackRange = computed(() => Math.max(1, stackFaceHeight.value + spacing.section - stackPeek));
 const stackPosition = computed(() => Math.max(0, Math.min(stackRange.value, stackHeight.value - stackPeek)));
-const stackFoldedStyle = computed(() => ({ height: (stackPeek + stackPosition.value + stackElastic.value) + 'px' }));
+function stackFoldedStyle(type: 'debit' | 'credit') {
+  const height = type === 'credit' ? creditStackHeight.value : debitStackHeight.value;
+  const elastic = type === selectedCardType.value ? stackElastic.value : 0;
+  return { height: (Math.max(stackPeek, Math.min(stackFaceHeight.value + spacing.section, height)) + elastic) + 'px' };
+}
 // 回弹几何上限保留至少 44px 的卡片可点选区域，避免卡数多时过度拉伸。
 const stackElasticLimit = (stackPeek - spacing.controlMin) * 0.75;
 function stopStackRebound(reset = true) {
@@ -412,17 +475,31 @@ let stackTouchInput = false, ignoreStackMouseUntil = 0;
 function measureStackFace() {
   nextTick(() => {
     if (!alive || viewMode.value !== 'stack') return;
-    uni.createSelectorQuery().select('.card-stack .card-face').boundingClientRect((rect) => {
-      if (alive && rect && !Array.isArray(rect) && rect.height > 0) stackFaceHeight.value = rect.height;
+    uni.createSelectorQuery().select('#card-layer-' + selectedCardType.value + ' .card-face').boundingClientRect((rect) => {
+      if (alive && rect && !Array.isArray(rect) && rect.height > 0) {
+        const offset = (selectedCardType.value === 'credit' ? 1 : 0) - cardLayerProgress.value;
+        const depth = cardLayersMoving.value ? Math.min(1, Math.abs(offset)) : 0;
+        stackFaceHeight.value = rect.height / (1 - depth * 0.025);
+      }
     }).exec();
   });
 }
-onMounted(() => { measureStackFace(); ; });
-watch(() => [viewMode.value, selectedCardType.value, sortedCards.value.length, loading.value], measureStackFace);
-function stackCardStyle(card: any, index: number) {
-  if (viewMode.value !== 'stack' || cardExpanded(card) || index === sortedCards.value.length - 1) return {};
-  return stackFoldedStyle.value;
+onMounted(() => { measureStackFace(); measureCardLayers(); });
+watch(() => [viewMode.value, selectedCardType.value, cardsByType.value.debit.length, cardsByType.value.credit.length, loading.value], () => { measureStackFace(); measureCardLayers(); });
+watch(() => cardLayersMoving.value, measureCardLayers);
+function stackCardStyle(card: any, index: number, type: 'debit' | 'credit') {
+  if (viewMode.value !== 'stack' || cardExpanded(card) || index === cardsByType.value[type].length - 1) return {};
+  return stackFoldedStyle(type);
 }
+const order = useCardOrder({
+  rows: cards,
+  visible: () => sortedCards.value,
+  descending: true,
+  disabled: () => !alive || loading.value || saving.value || modal.value || tagModal.value || !!menuCardId.value || !!numberCardId.value || cardSwitchPhase.value !== 'idle',
+  save: moveCardOrder,
+  activated: () => { finishStackDrag(); stopStackRebound(); revealed.value = {}; },
+});
+const { dragging: orderDragging, saving: orderSaving, scrollTop: orderScrollTop } = order;
 function finishStackDrag(event: any = null) {
   const horizontal = stackTouchId !== null && stackGestureAxis === 'horizontal';
   const point = event?.changedTouches?.[0] || event;
@@ -433,8 +510,9 @@ function finishStackDrag(event: any = null) {
   if (stackGestureMoved || event?.type === 'touchcancel') suppressStackClickUntil = Date.now() + 450;
   if (stackHolding.value) {
     stackHeight.value = Math.round(stackPeek + stackPosition.value);
-    try { uni.setStorageSync('bank-card-stack-height', stackHeight.value); }
+    try { uni.setStorageSync('bank-card-stack-height-' + selectedCardType.value, stackHeight.value); }
     catch (_) { /* 存储不可用不影响当前卡包大小 */ }
+    measureCardLayers();
   }
   stackHolding.value = false;
   stackTracking.value = false;
@@ -455,6 +533,7 @@ function finishStackDrag(event: any = null) {
   else if (horizontal) settleCardSwipe();
 }
 function startStackDrag(event: any) {
+  if (orderDragging.value || orderSaving.value) return;
   if (cardSwitchPhase.value !== 'idle' || menuCardId.value || modal.value || tagModal.value || numberCardId.value || loading.value) return;
   if (event.type === 'mousedown' && Date.now() < ignoreStackMouseUntil) return;
   if (event.type === 'mousedown' && event.button != null && event.button !== 0) return;
@@ -478,6 +557,7 @@ function startStackDrag(event: any) {
   stackStartY = stackLastY = point.clientY;
   suppressStackClickUntil = 0;
   measureStackFace();
+  measureCardLayers();
   // #ifdef WEB
   if (event.type === 'mousedown') {
     window.addEventListener('mousemove', moveStackDrag);
@@ -487,6 +567,7 @@ function startStackDrag(event: any) {
   // #endif
 }
 function moveStackDrag(event: any) {
+  if (orderDragging.value || orderSaving.value) return;
   if (stackTouchId === null) return;
   if (event.touches && event.touches.length !== 1) { finishStackDrag(); return; }
   const point = event.touches ? event.touches[0] : event;
@@ -519,7 +600,7 @@ function moveStackDrag(event: any) {
     stackSwipeOffset = point.clientX - stackStartX;
     stackSwipeDy = point.clientY - stackStartY;
     const canSwitch = stackSwipeOffset < 0 ? selectedCardType.value === 'debit' : selectedCardType.value === 'credit';
-    cardSwipePreview.value = Math.max(-spacing.controlMin, Math.min(spacing.controlMin, stackSwipeOffset * (canSwitch ? 0.32 : 0.1)));
+    cardSwipePreview.value = Math.max(-cardViewportWidth.value, Math.min(cardViewportWidth.value, stackSwipeOffset * (canSwitch ? 1 : 0.16)));
     return;
   }
   const delta = point.clientY - stackLastY;
@@ -532,6 +613,8 @@ function moveStackDrag(event: any) {
     (1 - Math.exp(-Math.abs(overshoot) * 0.35 / stackElasticLimit));
 }
 function toggleView() {
+  if (orderDragging.value || orderSaving.value) return;
+  order.cancel();
   finishStackDrag();
   stopStackRebound();
   stopCardSwitch();
@@ -561,12 +644,14 @@ function cardExpanded(card: any) {
   return viewMode.value === 'grid' || expandedCardId.value === card.id;
 }
 function activateCard(card: any) {
-  if (cardSwitchPhase.value !== 'idle' || viewMode.value !== 'stack' || Date.now() < suppressStackClickUntil) return;
+  if (order.clickBlocked()) return;
+  if (card.cardType !== selectedCardType.value || cardSwitchPhase.value !== 'idle' || viewMode.value !== 'stack' || Date.now() < suppressStackClickUntil) return;
   finishStackDrag();
   stopStackRebound();
   menuCardId.value = '';
   revealed.value = {};
   expandedCardId.value = cardExpanded(card) ? '' : card.id;
+  measureCardLayers();
 }
 function cardActionLabel(card: any) {
   const action = viewMode.value === 'grid' ? '' : cardExpanded(card) ? '收起' : '展开';
@@ -599,6 +684,7 @@ async function uploadCover() {
   }
 }
 function edit(card: any = null) {
+  if (order.clickBlocked()) return;
   menuCardId.value = "";
   moreInfo.value = false;
   paletteOpen.value = false;
@@ -731,6 +817,7 @@ async function save() {
   }
 }
 async function remove(card: any) {
+  if (orderDragging.value || orderSaving.value) throw Error('排序保存中，请稍后重试');
   const mutationStamp = stamp;
   await deleteCard(String(card.id));
   if (!alive || stamp !== mutationStamp) return;
@@ -807,8 +894,10 @@ async function removeTag(value: any) {
 <template>
   <MobilePage
     :refreshing="refreshing"
-    :scroll-locked="stackTracking"
-    :refresh-disabled="cardTouchActive"
+    :scroll-locked="stackTracking || !!orderDragging"
+    :scroll-top="orderScrollTop" :drag-scrolling="!!orderDragging"
+    @scroll="order.scrolled"
+    :refresh-disabled="cardTouchActive || !!orderDragging || !!orderSaving"
     @refresh="
       refreshing = true;
       load();
@@ -833,46 +922,55 @@ async function removeTag(value: any) {
       :class="themeClass('body')"
       >
       <view class="card-type-switch" :class="{ 'card-type-switch-stack': viewMode === 'stack' }" role="group" aria-label="银行卡类型">
-        <button v-for="type in ['debit', 'credit']" :key="type" class="card-type-button" role="button"
-          :aria-label="type === 'credit' ? '信用卡' : '储蓄卡'" :aria-pressed="selectedCardType === type"
+        <button v-for="type in cardTypes" :key="type" class="card-type-button" role="button"
+          :aria-label="type === 'credit' ? '信用卡' : '储蓄卡'" :aria-pressed="activeCardType === type"
           hover-class="card-type-pressed" @click="switchCardType(type)">
-          <text class="card-type-label" :class="[themeClass('card-type-label'), { 'card-type-label-active': selectedCardType === type }, themeClass({ 'card-type-label-active': selectedCardType === type })]">{{ type === 'credit' ? '信用卡' : '储蓄卡' }} {{ cardTypeCounts[type] }}</text>
+          <text class="card-type-label" :class="[themeClass('card-type-label'), { 'card-type-label-active': activeCardType === type }, themeClass({ 'card-type-label-active': activeCardType === type })]">{{ type === 'credit' ? '信用卡' : '储蓄卡' }} {{ cardTypeCounts[type] }}</text>
         </button>
       </view>
-      <view class="card-browser-viewport" :class="{ 'card-browser-viewport-moving': cardSwitchPhase !== 'idle' || cardSwipePreview !== 0 }">
-      <view class="card-browser" :style="cardBrowserStyle" :class="{ 'card-browser-moving': cardSwitchPhase !== 'idle' }" :aria-busy="cardSwitchPhase !== 'idle'"
+      <view class="card-browser-viewport" :style="cardViewportStyle" :class="{ 'card-browser-viewport-stack': viewMode === 'stack', 'card-browser-viewport-moving': cardLayersMoving }">
+      <template v-for="layerType in cardTypes" :key="layerType">
+      <view v-if="layerType === selectedCardType || cardLayersMoving" :id="'card-layer-' + layerType" class="card-browser card-layer" :class="{ 'card-layer-positioned': cardLayersMoving, 'card-browser-moving': cardSwitchPhase !== 'idle' }" :style="cardLayerStyle(layerType)" :aria-hidden="layerType !== selectedCardType" :aria-busy="cardSwitchPhase !== 'idle'"
         @touchstart="startStackDrag" @touchmove="moveStackDrag"
         @touchend="finishStackDrag" @touchcancel="finishStackDrag"
         @mousedown="startStackDrag">
       <PageState skeleton="list"
         :loading="loading"
         :error="error"
-        :empty="!loading && !sortedCards.length"
-        :empty-text="selectedCardType === 'credit' ? '暂无信用卡' : '暂无储蓄卡'"
+        :empty="!loading && !cardsByType[layerType].length"
+        :empty-text="layerType === 'credit' ? '暂无信用卡' : '暂无储蓄卡'"
         @retry="load"
         >
-<template #loading><view class="card-grid ui-gap-md" :class="{ 'card-stack': viewMode === 'stack' }"><view :style="[appGridItem(1, 'section', viewMode === 'stack' ? [] : [[600, 2]], false), viewMode === 'stack' && n < 4 ? stackFoldedStyle : {}]" v-for="n in 4" :key="n" class="card ui-gap-sm" :class="[themeClass('card'), { 'card-stack-folded': viewMode === 'stack' && n < 4 }]"><view class="card-face ui-pad-card ui-gap-sm"><CardFaceLoading :layer="n - 1" /></view></view></view></template>
+<template #loading><view class="card-grid ui-gap-md" :class="{ 'card-stack': viewMode === 'stack' }"><view :style="[appGridItem(1, 'section', viewMode === 'stack' ? [] : [[600, 2]], false), viewMode === 'stack' && n < 4 ? stackFoldedStyle(layerType) : {}]" v-for="n in 4" :key="n" class="card ui-gap-sm" :class="[themeClass('card'), { 'card-stack-folded': viewMode === 'stack' && n < 4 }]"><view class="card-face ui-pad-card ui-gap-sm"><CardFaceLoading :layer="n - 1" /></view></view></view></template>
 <view class="card-grid ui-gap-md" :class="{ 'card-stack': viewMode === 'stack', 'card-stack-rebounding': stackRebounding }"
           ><view
-            v-for="(card, cardIndex) in sortedCards"
+            v-for="(card, cardIndex) in cardsByType[layerType]"
             :key="card.id"
-            class="card ui-gap-sm"
-            :style="[stackCardStyle(card, cardIndex), appGridItem(1, 'section', viewMode === 'stack' ? [] : [[600, 2]], false)]"
-            :class="[themeClass('card'), { 'card-stack-folded': viewMode === 'stack' && !cardExpanded(card) && cardIndex < sortedCards.length - 1, 'card-stack-expanded': viewMode === 'stack' && cardExpanded(card) }]"
+            class="card card-sort-item ui-gap-sm"
+            :data-card-id="card.id"
+            :aria-busy="orderSaving === card.id"
+            :style="[order.style(card.id), stackCardStyle(card, cardIndex, layerType), appGridItem(1, 'section', viewMode === 'stack' ? [] : [[600, 2]], false)]"
+            :class="[order.classes(card.id), themeClass('card'), { 'card-stack-folded': viewMode === 'stack' && !cardExpanded(card) && cardIndex < cardsByType[layerType].length - 1, 'card-stack-expanded': viewMode === 'stack' && cardExpanded(card) }]"
             ><view class="card-face-shell"><view
               class="card-face ui-pad-card ui-gap-sm"
-              :class="[themeClass('card-face'), { 'card-face-image': !!coverFile(card), 'card-face-draggable': viewMode === 'stack' && sortedCards.length > 1, 'card-face-dragging': stackHolding }]"
+              :class="[themeClass('card-face'), { 'card-face-image': !!coverFile(card), 'card-face-draggable': viewMode === 'stack' && cardsByType[layerType].length > 1, 'card-face-dragging': stackHolding }]"
               :style="coverFile(card) ? {} : { backgroundColor: cardColor(card) }"
               :aria-busy="!!coverLoading[card.id]"
               :role="viewMode === 'stack' ? 'button' : undefined"
               :tabindex="viewMode === 'stack' ? 0 : undefined"
               :aria-label="cardActionLabel(card)"
               :aria-expanded="viewMode === 'stack' ? cardExpanded(card) : undefined"
+              @touchstart="order.start(card.id, $event)"
+              @touchmove="order.move"
+              @touchend="order.finish"
+              @touchcancel="order.cancel"
+              @keydown.up.self.prevent="order.keyboard(card.id, -1)"
+              @keydown.down.self.prevent="order.keyboard(card.id, 1)"
               @contextmenu.prevent
               @click="activateCard(card)"
               @keydown.enter.self.prevent="activateCard(card)"
               @keydown.space.self.prevent="activateCard(card)"
-              ><view v-if="!coverFile(card)" class="face-orbit" aria-hidden="true" />
+              ><LoadingIndicator v-if="orderSaving === card.id" floating label="保存中" /><view v-if="!coverFile(card)" class="face-orbit" aria-hidden="true" />
               <image
                 v-for="source in coverUrls[card.id] ? [coverUrls[card.id]] : []"
                 :key="source"
@@ -931,7 +1029,7 @@ async function removeTag(value: any) {
             ><view v-if="cardExpanded(card) && card.tags?.length" class="card-tags ui-row"><text v-for="item in card.tags" :key="item.id" class="card-tag" :class="themeClass('secondary-text')">{{ item.name }}</text></view
             ><text v-if="cardExpanded(card) && card.remark" class="card-meta" :class="themeClass('secondary-text')">{{ card.remark }}</text
             ></view></view></PageState
-      ></view></view><view class="tags ui-mt-section"
+      ></view></template></view><view class="tags ui-mt-section"
         ><view v-for="item in tags" :key="item.id" class="actions ui-toolbar"
           ><text class="ui-type-body">{{ item.name }}</text
           ><MobileButton
@@ -1074,6 +1172,7 @@ async function removeTag(value: any) {
 @use '../../styles/typography' as *;
 @use '../../styles/text-colors' as *;
 @use '../../styles/spacing.scss';
+@use '../../styles/card-order.scss';
 @use '../../styles/spacing-tokens' as *;
 @include type-utilities('body', 'caption');
 
@@ -1436,8 +1535,11 @@ grid-template-columns: repeat(2, minmax(0, 1fr));
 .card-stack-expanded {
   margin-bottom: $space-section;
 }
-.card-browser-viewport { width: 100%; }
+.card-browser-viewport { position: relative; width: 100%; }
+.card-browser-viewport-stack { max-width: 420px; margin-left: auto; margin-right: auto; }
 .card-browser-viewport-moving { overflow: hidden; }
+.card-layer { position: relative; }
+.card-layer-positioned { position: absolute; top: 0; left: 0; }
 .card-browser { width: 100%; transform-origin: center top; }
 /* #ifdef WEB */
 .card-browser-moving { pointer-events: none; }

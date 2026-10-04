@@ -1,6 +1,9 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue';
 import { onHide, onShow, onUnload } from '@dcloudio/uni-app';
+import LoadingIndicator from '../../components/LoadingIndicator.uvue';
+import { useCardOrder } from '../../services/use-card-order.ts';
+import { compareCardOrder } from '../../services/card-order.ts';
 import PageHeader from '../../components/PageHeader.uvue';
 import MobilePage from '../../components/MobilePage.uvue';
 import PageState from '../../components/PageState.uvue';
@@ -15,7 +18,7 @@ import BankCardCoverUpload from './components/BankCardCoverUpload.uvue';
 import { themeClass } from '../../services/theme.ts';
 import { fetchUser } from '../../services/api.ts';
 import { restoreSession, session } from '../../services/session.ts';
-import { listCoverTemplates, listCoverBanks, saveCoverTemplate, setCoverEnabled, deleteCoverTemplate, createCoverMutations } from './services/bank-card-covers.ts';
+import { moveCoverOrder, listCoverTemplates, listCoverBanks, saveCoverTemplate, setCoverEnabled, deleteCoverTemplate, createCoverMutations } from './services/bank-card-covers.ts';
 const rows = ref<any[]>([]), banks = ref<any[]>([]);
 const loading = ref(false), refreshing = ref(false), loaded = ref(false), error = ref('');
 const keyword = ref(''), bankFilter = ref(''), typeFilter = ref('全部类型'), statusFilter = ref('全部状态');
@@ -33,12 +36,22 @@ const shown = computed(() => rows.value.filter(row =>
   (!bankFilter.value || row.bankId === bankFilter.value) &&
   (typeFilter.value === '全部类型' || row.cardType === (typeFilter.value === '信用卡' ? 'credit' : 'debit')) &&
   (statusFilter.value === '全部状态' || row.isEnabled === (statusFilter.value === '启用' ? 1 : 0))
-).slice().sort((a, b) => a.sortOrder - b.sortOrder || a.id.localeCompare(b.id)));
+).slice().sort((a, b) => compareCardOrder(a, b)));
+const order = useCardOrder({
+  rows,
+  visible: () => shown.value,
+  disabled: () => !alive || !authorized.value || loading.value || !loaded.value || opened.value || Object.values(busy.value).some(Boolean),
+  save: moveCoverOrder,
+  changed: items => items.forEach(item => mutations.record(item.id, item)),
+});
+const { dragging: orderDragging, saving: orderSaving, scrollTop: orderScrollTop } = order;
+watch([keyword, bankFilter, typeFilter, statusFilter], () => order.cancel());
 function current(token) { return alive && token === session.token; }
 function bankLabel(bank) { return bank.name + (bank.enabled ? '' : '（已停用）'); }
 function changeBank(value) { form.value.bankId = editableBanks.value.find(bank => bankLabel(bank) === value)?.id || ''; }
 function back() { uni.navigateBack({ fail: () => uni.switchTab({ url: '/pages/profile/index' }) }); }
 async function load(refresh = false) {
+  if (orderDragging.value || orderSaving.value) return;
   const version = ++generation, mutationVersion = mutations.version(), token = session.token;
   loading.value = true; refreshing.value = refresh; error.value = '';
   try {
@@ -55,6 +68,7 @@ async function load(refresh = false) {
   }
 }
 function edit(row = null) {
+  if (order.clickBlocked()) return;
   if (!authorized.value || !loaded.value || locked.value || (row && busy.value[row.id])) return;
   original.value = row ? { ...row } : null;
   form.value = row ? { name: row.name, bankId: row.bankId, cardType: row.cardType, sourceUrl: row.sourceUrl || '', fileId: row.fileId, isEnabled: row.isEnabled, sortOrder: String(row.sortOrder) } : empty();
@@ -77,6 +91,7 @@ async function save() {
   } finally { if (current(token) && editor === editorGeneration) saving.value = false; }
 }
 async function toggle(row) {
+  if (order.clickBlocked()) return;
   if (!authorized.value || busy.value[row.id]) return;
   const token = session.token, version = lifecycle;
   busy.value[row.id] = true; rowErrors.value[row.id] = '';
@@ -85,6 +100,7 @@ async function toggle(row) {
   finally { if (current(token) && version === lifecycle) busy.value[row.id] = false; }
 }
 async function remove(row) {
+  if (orderDragging.value || orderSaving.value) throw Error('排序保存中，请稍后重试');
   if (!authorized.value) throw Error('当前账号没有管理员权限');
   if (busy.value[row.id]) throw Error('操作进行中，请稍后重试');
   const token = session.token, version = lifecycle;
@@ -95,6 +111,7 @@ async function remove(row) {
   } finally { if (current(token) && version === lifecycle) busy.value[row.id] = false; }
 }
 watch(() => session.token, () => {
+  order.reset();
   generation++; editorGeneration++; rows.value = []; banks.value = []; loaded.value = false; opened.value = false;
   loading.value = false; refreshing.value = false; saving.value = false; uploading.value = false; busy.value = {}; rowErrors.value = {}; mutations.clear();
 }, { flush: 'sync' });
@@ -105,20 +122,21 @@ onShow(() => {
   load();
 });
 onHide(() => {
+  order.cancel();
   nextTick(() => {
     // 打开系统图片选择器不代表离开当前路由；实际切页才废弃编辑和异步响应。
     const pages = getCurrentPages();
     if (pages[pages.length - 1]?.route === 'pages/admin/bank-card-covers') return;
-    alive = false; generation++; editorGeneration++; lifecycle++; opened.value = false;
+    alive = false; order.reset(); generation++; editorGeneration++; lifecycle++; opened.value = false;
     saving.value = false; uploading.value = false; loading.value = false; refreshing.value = false; busy.value = {};
   });
 });
-onUnload(() => { alive = false; generation++; editorGeneration++; lifecycle++; });
+onUnload(() => { alive = false; order.reset(); generation++; editorGeneration++; lifecycle++; });
 </script>
 <template>
   <view class="cover-page" :class="themeClass('cover-page')">
     <PageHeader title="银行卡卡面" back @back="back" />
-    <MobilePage :refreshing="refreshing" @refresh="load(true)">
+    <MobilePage :scroll-locked="!!orderDragging" :scroll-top="orderScrollTop" :drag-scrolling="!!orderDragging" :refresh-disabled="!!orderSaving" @scroll="order.scrolled" :refreshing="refreshing" @refresh="load(true)">
       <view class="ui-page-body">
         <template v-if="authorized">
           <FormField label="搜索卡面" v-model="keyword" placeholder="名称 / 银行" />
@@ -130,8 +148,9 @@ onUnload(() => { alive = false; generation++; editorGeneration++; lifecycle++; }
         </template>
         <PageState :loading="loading" :error="error" :empty="authorized && !shown.length" :has-content="rows.length > 0" empty-text="暂无卡面" @retry="load()">
           <view v-if="authorized" class="cover-grid">
-            <view v-for="row in shown" :key="row.id" class="cover-item">
-              <view class="cover-edit" role="button" :tabindex="busy[row.id] ? -1 : 0" :aria-label="'编辑' + row.name" :aria-disabled="!!busy[row.id]" @click="edit(row)" @keydown.enter.self.prevent="edit(row)" @keydown.space.self.prevent="edit(row)">
+            <view v-for="row in shown" :key="row.id" class="cover-item card-sort-item" :data-card-id="row.id" :aria-busy="orderSaving === row.id" :class="order.classes(row.id)" :style="order.style(row.id)">
+              <LoadingIndicator v-if="orderSaving === row.id" floating label="保存中" />
+              <view class="cover-edit" @touchstart="order.start(row.id, $event)" @touchmove="order.move" @touchend="order.finish" @touchcancel="order.cancel" @contextmenu.prevent @keydown.up.self.prevent="order.keyboard(row.id, -1)" @keydown.down.self.prevent="order.keyboard(row.id, 1)" role="button" :tabindex="busy[row.id] ? -1 : 0" :aria-label="'编辑' + row.name" :aria-disabled="!!busy[row.id]" @click="edit(row)" @keydown.enter.self.prevent="edit(row)" @keydown.space.self.prevent="edit(row)">
                 <BankCardCoverPreview :file-id="row.fileId" :public-url="row.publicUrl" :name="row.name" />
               </view>
               <view class="cover-info ui-gap-sm">
@@ -171,6 +190,7 @@ onUnload(() => { alive = false; generation++; editorGeneration++; lifecycle++; }
 </template>
 <style scoped lang="scss">
 @use '../../styles/spacing.scss';
+@use '../../styles/card-order.scss';
 @use '../../styles/spacing-tokens' as *;
 @use '../../styles/typography' as *;
 .cover-page { height: 100%; min-height: 0; color: #27272a; }
@@ -178,7 +198,7 @@ onUnload(() => { alive = false; generation++; editorGeneration++; lifecycle++; }
 // 底部为56px悬浮按钮预留点击区。
 .cover-grid { display: flex; flex-direction: row; flex-wrap: wrap; align-items: flex-start; gap: $space-section; padding-bottom: calc(56px + #{$space-page} + #{$space-section}); }
 // 卡面保持实体卡比例与可读尺寸，平板和桌面不无限拉伸。
-.cover-item { width: 100%; max-width: 360px; min-width: 0; }
+.cover-item { position: relative; width: 100%; max-width: 360px; min-width: 0; }
 .cover-edit { width: 100%; min-height: 44px; border-radius: 14px; }
 .cover-info { display: flex; flex-direction: row; align-items: center; margin-top: $space-detail; }
 .cover-name { @include type-style('label'); flex: 1; min-width: 0; overflow-wrap: anywhere; }
@@ -187,6 +207,6 @@ onUnload(() => { alive = false; generation++; editorGeneration++; lifecycle++; }
 .cover-error { @include type-style('caption'); color: #d44756; }
 .cover-row-error { align-items: center; }
 .cover-form-preview { width: 100%; max-width: 320px; align-self: center; }
-@media (min-width: 640px) { .cover-item { width: calc((100% - #{$space-section}) / 2); } }
-@media (min-width: 1100px) { .cover-item { width: calc((100% - #{$space-section} * 2) / 3); } }
+@media (min-width: 640px) { .cover-item { position: relative; width: calc((100% - #{$space-section}) / 2); } }
+@media (min-width: 1100px) { .cover-item { position: relative; width: calc((100% - #{$space-section} * 2) / 3); } }
 </style>

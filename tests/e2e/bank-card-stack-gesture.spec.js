@@ -156,8 +156,9 @@ for (const width of [390, 768, 1440]) for (const theme of ['light', 'dark']) {
     await touch(cdp, 'touchEnd');
     const lowerRebound = await sampleRebound(page);
     await settled(page);
-    expect(await gap(page)).toBeCloseTo(initial, 0);
-    expect(Math.max(...lowerRebound)).toBeGreaterThan(initial + 0.2);
+    // 默认露出120px与收拢下限50px不同，回弹应落在收拢下限。
+    expect(await gap(page)).toBeCloseTo(50, 0);
+    expect(Math.max(...lowerRebound)).toBeGreaterThan(50 + 0.2);
     await page.getByRole('button', { name: '切换为平铺视图' }).click();
     await expect(page.getByRole('button', { name: '银行卡更多操作', exact: true })).toHaveCount(7);
     expect(cardRequests).toBe(0); // 卡包拖动未误触下拉刷新。
