@@ -30,6 +30,8 @@ async function setup(page) {
 }
 async function bottom(page) {
   const scroller=page.locator('.mobile-page-scroll .uni-scroll-view').last();
+  // uni-app H5 的首次 scrolltolower 有 200ms 节流，避免在页面初始化窗口内滚到底。
+  await expect.poll(() => page.evaluate(() => performance.now())).toBeGreaterThan(200);
   await scroller.evaluate(el=>{el.scrollTop=el.scrollHeight});
 }
 test('搜索即时查询、旧请求隔离、重置及新增',async({page})=>{
