@@ -1,12 +1,16 @@
 <script setup lang="ts">
+import { inject } from 'vue'
 import AppIcon from './AppIcon.uvue'
 import CategoryIcon from './CategoryIcon.uvue'
 import { isDark, themeClass } from '../services/theme.ts'
 defineProps<{ label: string; icon?: string; text?: string; loading?: boolean; disabled?: boolean }>()
 defineEmits<{ click: [] }>()
+// 微信的 touchstart.stop 会影响后续 tap；直接通知卡片跳过排序起点。
+const skipCardSortStart = inject<(() => void) | null>('home-card-action-touch', null)
+function actionTouchStart() { skipCardSortStart?.() }
 </script>
 <template>
-  <button role="button" class="dashboard-action ui-type-body" :class="{ 'dashboard-action-pill': !!text, 'dashboard-action-disabled': loading || disabled }" :aria-label="label" :aria-busy="loading" :loading="loading" :disabled="loading || disabled" :hover-class="isDark ? 'dashboard-action-pressed-dark' : 'dashboard-action-pressed'" @touchstart.stop @mousedown.stop @click="$emit('click')">
+  <button role="button" class="dashboard-action ui-type-body" :class="{ 'dashboard-action-pill': !!text, 'dashboard-action-disabled': loading || disabled }" :aria-label="label" :aria-busy="loading" :loading="loading" :disabled="loading || disabled" :hover-class="isDark ? 'dashboard-action-pressed-dark' : 'dashboard-action-pressed'" @touchstart="actionTouchStart" @mousedown.stop @click="$emit('click')">
     <view v-if="!loading" class="action-content" :class="[{ 'action-pill': !!text }, text ? themeClass('action-pill') : '']">
       <text v-if="text" class="action-text" :class="themeClass('action-text')">{{ text }}</text>
       <view v-if="!icon || icon === 'lucide:plus'" class="action-plus" :class="{ 'action-plus-small': !!text }">

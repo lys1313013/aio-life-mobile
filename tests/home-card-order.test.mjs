@@ -5,6 +5,30 @@ import { transform } from 'esbuild'
 const source = await readFile(new URL('../src/pages/home/services/home-card-order.ts', import.meta.url), 'utf8')
 const { mergeVisibleCardOrder, closestCard, cardDropIndex, projectCardLayout } = await import('data:text/javascript;base64,' + Buffer.from(source).toString('base64'))
 const items = ['time', 'links', 'goal', 'reading', 'movie'].map((key, sortOrder) => ({ cardKey: 'section.' + key, group: 'section', enabled: key !== 'links', sortOrder }))
+test('加号触摸跳过整卡排序，释放或取消后卡片仍可正常长按', async () => {
+  const cell = await readFile(new URL('../src/pages/home/HomeCardSortCell.uvue', import.meta.url), 'utf8')
+  const script = cell.match(/<script setup lang="ts">([\s\S]*?)<\/script>/)[1]
+    .replace(/import[^\n]+\n/g, '')
+    .replace(/\/\/ #ifdef WEB\n[\s\S]*?\/\/ #endif/g, '')
+  const js = (await transform(script, { loader: 'ts' })).code
+  const provided = new Map(), calls = []
+  const props = { cardKey: 'section.time', group: 'section', disabled: false, order: {
+    start: (...args) => calls.push(['start', ...args]),
+    finish: event => calls.push(['finish', event]),
+    cancel: () => calls.push(['cancel']),
+  } }
+  const handlers = new Function('defineProps', 'withDefaults', 'provide', js + '\nreturn { start, finish, cancel }')(
+    () => props, value => value, (key, value) => provided.set(key, value),
+  )
+  const touch = { touches: [{ clientX: 300, clientY: 100 }] }
+  const actionTouch = provided.get('home-card-action-touch')
+  actionTouch(); handlers.start(touch); handlers.finish(touch)
+  assert.deepEqual(calls, [['finish', touch]])
+  handlers.start(touch)
+  assert.deepEqual(calls.at(-1), ['start', 'section', 'section.time', touch])
+  actionTouch(); handlers.cancel(); handlers.start(touch)
+  assert.deepEqual(calls.slice(-2), [['cancel'], ['start', 'section', 'section.time', touch]])
+})
 test('首页排序完整覆盖分组，关闭与空卡片留在原位，不改开关', () => {
   const before = structuredClone(items)
   assert.deepEqual(mergeVisibleCardOrder(items, 'section', ['section.reading', 'section.time', 'section.goal']), ['section.reading', 'section.links', 'section.time', 'section.goal', 'section.movie'])

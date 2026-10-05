@@ -1,10 +1,14 @@
 <script setup lang="ts">
+import { provide } from 'vue'
 import { isDark } from '../../services/theme.ts'
 const props = withDefaults(defineProps<{ cardKey: string; title: string; group: string; order: any; disabled: boolean; visible?: boolean }>(), { visible: true })
+let actionTouch = false
+provide('home-card-action-touch', () => { actionTouch = true })
 function blockClick(event) {
   if (props.order.clickBlocked()) { event.stopPropagation?.(); event.preventDefault?.() }
 }
 function start(event, mouse = false) {
+  if (actionTouch) { actionTouch = false; return }
   if (props.disabled) return
   // #ifdef WEB
   // 主内容点击区可以长按拖动；编辑、删除等独立操作按钮仍不参与排序。
@@ -13,13 +17,15 @@ function start(event, mouse = false) {
   if (mouse) props.order.mouseStart(props.group, props.cardKey, event)
   else props.order.start(props.group, props.cardKey, event)
 }
+function finish(event) { actionTouch = false; props.order.finish(event) }
+function cancel() { actionTouch = false; props.order.cancel() }
 // Read high-frequency offsets here; card content and charts stay in the parent slot.
 function style() { return props.order.style(props.cardKey) }
 </script>
 <template>
   <view v-show="visible !== false" class="home-sort-cell"  :data-card-key="cardKey" :id="'home-order-' + cardKey" :style="style()" :class="[group === 'overview' ? 'overview-cell home-order-overview ui-pad-xs' : 'section-cell home-order-section', { 'home-sort-lifted': order.dragging.value === cardKey, 'home-sort-target': order.dragging.value && order.target.value === cardKey && order.dragging.value !== cardKey, 'home-sort-dark': isDark }]"
     tabindex="0" :aria-label="title + '卡片，长按拖动排序'"
-    @touchstart="start($event)" @touchmove="order.move" @touchend="order.finish" @touchcancel="order.cancel" @mousedown="start($event, true)"
+    @touchstart="start($event)" @touchmove="order.move" @touchend="finish" @touchcancel="cancel" @mousedown="start($event, true)"
     @click.capture="blockClick" @contextmenu.prevent
     @keydown.alt.up.prevent.self="order.keyboard(group, cardKey, -1)" @keydown.alt.down.prevent.self="order.keyboard(group, cardKey, 1)">
     <view v-if="order.dragging.value === cardKey" class="home-sort-placeholder" :class="{ 'home-sort-placeholder-dark': isDark }" />
