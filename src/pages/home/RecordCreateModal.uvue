@@ -3,7 +3,6 @@ import FormActions from '../../components/FormActions.uvue';
 import { isRequired, missingRequired } from '../../services/form-required.ts';
 import { computed, onMounted, onUnmounted, ref } from 'vue';
 import AdaptiveModal from '../../components/AdaptiveModal.uvue';
-import AppIcon from '../../components/AppIcon.uvue';
 import FormField from '../../components/FormField.uvue';
 import LoadingIndicator from '../../components/LoadingIndicator.uvue';
 import MobileButton from '../../components/MobileButton.uvue';
@@ -11,11 +10,13 @@ import ConfirmAction from '../../components/ConfirmAction.uvue';
 import { request } from '../../services/api.ts';
 import { todayDate } from '../../services/dashboard.ts';
 import { session } from '../../services/session.ts';
+import spacing from '../../styles/spacing.json';
 
 const props = defineProps<{ kind: 'think' | 'exercise'; thoughtId?: string }>();
 const emit = defineEmits(['close', 'saved', 'deleted']);
 const saving = ref(false), loading = ref(false), error = ref('');
 const thoughtReady = ref(!props.thoughtId);
+const thoughtLoading = computed(() => props.kind === 'think' && loading.value && !thoughtReady.value);
 const types = ref<any[]>([]);
 const thought = ref({ content: '', isPinned: 0, hiddenContent: false, events: [] as { id?: string; content: string; create_time?: string; createTime?: string }[] });
 const exercise = ref({ exerciseTypeId: '', exerciseDate: todayDate(), exerciseCount: '', description: '' });
@@ -126,15 +127,18 @@ async function save() {
 </script>
 
 <template>
-  <AdaptiveModal :label="kind === 'think' ? (thoughtId ? '编辑闪念' : '新增闪念') : '新增运动记录'" :show-close="false" :busy="saving" :content-key="contentKey" @close="emit('close')">
-    <LoadingIndicator v-if="kind === 'think' && loading" label="正在加载闪念" />
+  <AdaptiveModal v-if="thoughtLoading" label="正在加载闪念" bare :show-close="false" :max-width="spacing.controlMin" @close="emit('close')">
+    <LoadingIndicator ring label="正在加载闪念" />
+  </AdaptiveModal>
+  <AdaptiveModal v-else :label="kind === 'think' ? (thoughtId ? '编辑闪念' : '新增闪念') : '新增运动记录'" :show-close="false" :busy="saving" :content-key="contentKey" @close="emit('close')">
     <template v-if="kind === 'think' && thoughtReady">
-      <FormField :required="isRequired('thought', 'content')" label="内容" kind="textarea" placeholder="记录此刻的想法…" v-model="thought.content" :disabled="saving" />
+      <FormField :required="isRequired('thought', 'content')" label="内容" kind="textarea" appearance="soft" textarea-size="regular" placeholder="记录此刻的想法…" v-model="thought.content" :disabled="saving" />
       <view v-for="(event, index) in thought.events" :key="index" class="event-fields">
-        <FormField :label="'关联事件 ' + (index + 1)" kind="textarea" v-model="event.content" :disabled="saving" />
-        <button class="remove-event" role="button" aria-label="移除此事件" :disabled="saving" @click="thought.events.splice(index, 1)">
-          <AppIcon name="ant-design:close-outlined" :size="20" />
-        </button>
+        <FormField :label="'关联事件 ' + (index + 1)" kind="textarea" appearance="soft" textarea-size="compact" placeholder="记录相关事件…" v-model="event.content" :disabled="saving">
+          <template #labelAction>
+            <MobileButton label="移除此事件" icon="ant-design:close-outlined" variant="ghost" :disabled="saving" @click="thought.events.splice(index, 1)" />
+          </template>
+        </FormField>
       </view>
     </template>
     <template v-if="kind === 'exercise'">
@@ -142,16 +146,17 @@ async function save() {
       <FormField v-for="field in exerciseFields" :key="field.key" :required="isRequired('exercise', field.key)" :label="field.label" :kind="field.kind" :input-type="field.inputType" :model-value="field.key === 'exerciseTypeId' ? typeName : exercise[field.key]" :options="field.key === 'exerciseTypeId' ? types.map(type => type.dictLabel) : []" :disabled="saving || (field.key === 'exerciseTypeId' && !types.length)" @update:model-value="updateExercise(field.key, $event)" />
     </template>
     <text v-if="error" class="form-error" role="alert">{{ error }}</text>
-    <FormActions>
+    <FormActions :stacked="kind === 'think' && thoughtReady">
       <template #secondary>
-      <template v-if="kind === 'think' && thoughtReady">
+      <!-- 显式横排容器，避免微信具名插槽包装层挤压图标布局。 -->
+      <view v-if="kind === 'think' && thoughtReady" class="thought-tools">
         <ConfirmAction v-if="thoughtId" label="删除闪念" :action="removeThought">
           <template #default="{ open }"><MobileButton label="删除闪念" icon="ant-design:delete-outlined" variant="ghost" :disabled="saving" @click="open" /></template>
         </ConfirmAction>
         <MobileButton label="新增关联事件" icon="ant-design:plus-outlined" variant="ghost" :disabled="saving" @click="thought.events.push({ content: '' })" />
         <MobileButton v-if="thoughtId" :label="thought.hiddenContent ? '显示内容' : '隐藏内容'" :icon="thought.hiddenContent ? 'ant-design:eye-outlined' : 'ant-design:eye-invisible-outlined'" variant="ghost" :disabled="saving" @click="thought.hiddenContent = !thought.hiddenContent" />
         <MobileButton :label="thought.isPinned === 1 ? '取消看板展示' : '展示到看板'" :icon="thought.isPinned === 1 ? 'ant-design:star-filled' : 'ant-design:star-outlined'" variant="ghost" :disabled="saving" @click="thought.isPinned = thought.isPinned === 1 ? 0 : 1" />
-      </template>
+      </view>
       <MobileButton v-if="kind === 'think' && !thoughtReady && !loading" label="重试加载闪念" icon="ant-design:reload-outlined" @click="loadThought" />
       <MobileButton v-if="kind === 'exercise' && !types.length" label="重试运动类型" icon="ant-design:reload-outlined" :loading="loading" @click="loadTypes" />
       </template>
@@ -164,10 +169,6 @@ async function save() {
 <style scoped lang="scss">
 @use '../../styles/spacing-tokens' as *;
 @use '../../styles/typography' as *;
-.event-fields { gap: $space-inline; margin-bottom: $space-section; }
+.thought-tools { display: flex; flex-direction: row; align-items: center; flex-wrap: wrap; gap: $space-inline; }
 .form-error { @include type-style('body'); color: #e05252; margin-bottom: $space-section; }
-.remove-event { display: flex; align-items: center; justify-content: center; width: $space-controlMin; height: $space-controlMin; padding: 0; margin: 0; border: 0; background-color: transparent; }
-/* #ifdef WEB || MP-WEIXIN */
-.remove-event::after { border: 0; }
-/* #endif */
 </style>

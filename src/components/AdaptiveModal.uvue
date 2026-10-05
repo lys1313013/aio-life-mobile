@@ -22,12 +22,13 @@ const props = withDefaults(defineProps<{
   label: string
   busy?: boolean
   showClose?: boolean
+  bare?: boolean
   contentKey?: string
-}>(), { showClose: false })
+}>(), { showClose: false, bare: false })
 const emit = defineEmits(['close', 'reachbottom'])
 provide('mobile-modal', true)
 const instance = getCurrentInstance()
-const contentHeight = ref(160)
+const contentHeight = ref(props.bare ? spacing.controlMin : 160)
 const windowHeight = ref(uni.getWindowInfo().windowHeight)
 const keyboardHeight = ref(0)
 // #ifdef APP
@@ -122,10 +123,10 @@ onUnmounted(() => {
 })
 </script>
 <template>
-  <view class="modal-mask ui-modal-mask" :class="themeClass('modal-mask')" :style="{ paddingTop: (verticalInset + safeTop) + 'px', paddingBottom: (verticalInset + safeBottom + keyboardHeight) + 'px' }" @click="!busy && emit('close')">
+  <view class="modal-mask ui-modal-mask" :class="[themeClass('modal-mask'), { 'modal-mask-loading': bare }, themeClass({ 'modal-mask-loading': bare })]" :style="{ paddingTop: (verticalInset + safeTop) + 'px', paddingBottom: (verticalInset + safeBottom + keyboardHeight) + 'px' }" @click="!busy && emit('close')">
     <!-- 模糊层独立于内容，避免改变内嵌确认框 / picker 的 fixed 定位参照。 -->
     <!-- #ifdef WEB || MP-WEIXIN -->
-    <view class="modal-backdrop" aria-hidden="true" />
+    <view v-if="!bare" class="modal-backdrop" aria-hidden="true" />
     <!-- #endif -->
     <view
       class="modal-panel"
@@ -134,9 +135,9 @@ onUnmounted(() => {
       :aria-label="label"
       aria-modal="true"
       @click.stop
-      :class="themeClass('modal-panel')">
+      :class="[themeClass('modal-panel'), { 'modal-panel-bare': bare }]">
       <!-- #ifdef WEB || MP-WEIXIN -->
-      <view class="modal-surface" :class="themeClass('modal-surface')" aria-hidden="true" />
+      <view v-if="!bare" class="modal-surface" :class="themeClass('modal-surface')" aria-hidden="true" />
       <!-- #endif -->
       <scroll-view
         @scrolltolower="emit('reachbottom')"
@@ -146,7 +147,7 @@ onUnmounted(() => {
         class="modal-scroll"
         :style="{ height: height + 'px' }"
       >
-        <view class="modal-content ui-modal-content"><view v-if="showClose !== false" class="modal-close ui-mb-sm"><MobileButton label="关闭" icon="ant-design:close-outlined" variant="ghost" :disabled="busy" @click="emit('close')" /></view><slot /></view>
+        <view class="modal-content ui-modal-content" :class="{ 'modal-content-bare': bare }"><view v-if="showClose !== false" class="modal-close ui-mb-sm"><MobileButton label="关闭" icon="ant-design:close-outlined" variant="ghost" :disabled="busy" @click="emit('close')" /></view><slot /></view>
       </scroll-view>
     </view>
   </view>
@@ -184,6 +185,7 @@ onUnmounted(() => {
   padding-top: $space-modalTop;
 }
 .modal-close { align-items: flex-end;  }
+.modal-content-bare { padding: 0; }
 .modal-mask-dark {
   background-color: rgba(0, 0, 0, 0.48);
 }
@@ -232,4 +234,7 @@ onUnmounted(() => {
   }
 }
 /* #endif */
+.modal-panel-bare { background-color: transparent; border-radius: 0; box-shadow: none; outline: none; }
+.modal-mask-loading { background-color: rgba(18, 24, 38, 0.08); }
+.modal-mask-loading-dark { background-color: rgba(0, 0, 0, 0.16); }
 </style>

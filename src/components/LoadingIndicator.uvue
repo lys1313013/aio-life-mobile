@@ -1,10 +1,10 @@
 <script setup lang="ts">
 import { themeClass } from '../services/theme.ts';
-withDefaults(defineProps<{ label?: string; compact?: boolean; floating?: boolean }>(), { label: '正在加载', compact: false, floating: false });
+withDefaults(defineProps<{ label?: string; compact?: boolean; floating?: boolean; ring?: boolean }>(), { label: '正在加载', compact: false, floating: false, ring: false });
 </script>
 <template>
-  <view class="loading-indicator" :class="[{ 'loading-indicator-compact': compact, 'loading-indicator-floating': floating }, themeClass({ 'loading-indicator-floating': floating })]" role="status" :aria-label="label" aria-live="polite">
-    <view v-if="floating" class="loading-spinner" :class="themeClass('loading-spinner')" />
+  <view class="loading-indicator" :class="[{ 'loading-indicator-compact': compact, 'loading-indicator-floating': floating, 'loading-indicator-ring': ring }, themeClass({ 'loading-indicator-floating': floating })]" role="status" :aria-label="label" aria-live="polite">
+    <view v-if="floating || ring" class="loading-spinner" :class="[{ 'loading-spinner-ring': ring }, themeClass('loading-spinner')]" />
     <view v-else class="loading-track" :class="themeClass('loading-track')"><view class="loading-runner" :class="themeClass('loading-runner')" /></view>
   </view>
 </template>
@@ -21,6 +21,8 @@ withDefaults(defineProps<{ label?: string; compact?: boolean; floating?: boolean
 .loading-indicator-floating-dark { background-color: #1c1e22; }
 .loading-spinner { width: 18px; height: 18px; box-sizing: border-box; border: 2px solid #e8edf5; border-top-color: #7198df; border-radius: 50%; animation: loading-spin 0.8s linear infinite; }
 .loading-spinner-dark { border-color: #2a303a; border-top-color: #91b4ff; }
+.loading-indicator-ring { height: $space-controlMin; padding: 0; align-items: center; justify-content: center; }
+.loading-spinner-ring { width: 26px; height: 26px; }
 @keyframes loading-spin { to { transform: rotate(360deg); } }
 @keyframes loading-slide { from { transform: translateX(-100%); } to { transform: translateX(386%); } }
 /* #ifdef WEB */

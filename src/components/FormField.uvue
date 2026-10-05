@@ -23,6 +23,7 @@ const props = withDefaults(
     revealable?: boolean;
     inputType?: string;
     appearance?: 'soft';
+    textareaSize?: 'regular' | 'compact';
   }>(),
   { modelValue: '', kind: 'text', options: () => [], hideLabel: false },
 );
@@ -30,7 +31,7 @@ const inputClasses = computed(() => [
   themeClass('form-field-input'),
   {
     'form-field-input-soft': props.appearance === 'soft',
-    'form-field-textarea-soft': props.appearance === 'soft' && props.kind === 'textarea',
+    'form-field-textarea-compact': props.kind === 'textarea' && (props.textareaSize === 'compact' || (props.appearance === 'soft' && props.textareaSize !== 'regular')),
   },
   themeClass({ 'form-field-input-soft': props.appearance === 'soft' }),
 ]);
@@ -60,6 +61,7 @@ function change(event) {
     <view v-if="!hideLabel" class="form-field-heading ui-field-label">
       <RequiredMark v-if="required" />
       <text :style="appearance === 'soft' ? {} : appTextColor()" class="form-field-label" :class="[{ 'form-field-label-soft': appearance === 'soft' }, themeClass({ 'form-field-label-soft': appearance === 'soft' })]">{{ label }}</text>
+      <view v-if="$slots.labelAction" class="form-field-label-action"><slot name="labelAction" /></view>
     </view>
     <slot>
       <picker
@@ -154,10 +156,12 @@ function change(event) {
 
 }
 .form-field-heading {
+  display: flex;
   flex-direction: row;
   align-items: center;
   gap: $space-detail;
 }
+.form-field-label-action { margin-left: auto; flex-shrink: 0; }
 .form-field-input {
   min-height: $space-controlMin;
 
@@ -228,9 +232,11 @@ color: inherit;
   flex-shrink: 0;
 }
 .form-field-textarea {
+  box-sizing: border-box;
   height: 120px;
   width: 100%;
-
+  // 多行文本从顶部输入，不继承单行控件的垂直居中。
+  justify-content: flex-start;
 }
 .form-field-error {
   color: #e05260;
@@ -249,7 +255,7 @@ color: inherit;
 }
 .form-field-placeholder { color: $text-secondary-light; }
 .form-field-placeholder-dark { color: $text-secondary-dark; }
-.form-field-textarea-soft {
+.form-field-textarea-compact {
   // 两行短备注；长内容仍可在输入框内滚动。
   height: 64px;
 }
