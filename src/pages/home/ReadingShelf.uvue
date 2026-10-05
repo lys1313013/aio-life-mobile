@@ -53,6 +53,7 @@ function loadMore(group) {
           <template v-else>
             <view v-for="item in group.items" :key="coverKey(item)" class="reading-book" :style="{ width: bookWidth(item) + 'px', height: coverHeight + 'px' }" role="button" tabindex="0" :aria-label="'编辑' + (item.title || '未命名')" @click="emit('edit', item)" @keydown.enter="emit('edit', item)" @keydown.space.prevent="emit('edit', item)">
               <LibraryCover :file-id="item.fileId || ''" :url="item.coverImgUrl || ''" :title="item.title || '未命名'" kind="read" compact tiny natural-ratio @ratio="setCoverRatio(item, $event)" />
+              <view class="reading-cover-frame" :class="{ 'reading-cover-frame-dark': isDark }" aria-hidden="true" />
             </view>
             <view v-if="showStatus(group)" class="reading-status" :style="{ width: spacing.controlMin + 'px' }">
               <LoadingIndicator v-if="moreLoading" compact label="正在加载更多" />
@@ -77,6 +78,8 @@ function loadMore(group) {
 .reading-label-text { @include type-style('body'); line-height: type-line('label'); letter-spacing: type-tracking('normal'); color: #71717a; }
 .reading-label-dark { color: #a6a6b0; }
 .reading-book { position: relative; flex-shrink: 0; border-radius: 1px; overflow: hidden; }
+.reading-cover-frame { position: absolute; top: 0; right: 0; bottom: 0; left: 0; box-sizing: border-box; border: 1px solid #e4e4e7; border-radius: 1px; pointer-events: none; }
+.reading-cover-frame-dark { border-color: #3f3f46; }
 .reading-placeholder { flex-shrink: 0; border-radius: 1px; background-color: #e8ecf1; }
 .reading-placeholder-dark { background-color: #30343b; }
 .reading-status { flex-shrink: 0; align-items: center; justify-content: center; }
