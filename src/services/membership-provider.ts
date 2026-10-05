@@ -1,7 +1,7 @@
 // 会员页与系统平台管理共用的小型展示契约，不包含业务请求或静态 Logo 资源。
-export const memberCategories = ['video', 'music', 'shopping', 'cloud', 'study', 'game', 'AI', 'other'];
-export const memberCategoryLabels = ['视频', '音乐', '购物', '云盘', '学习', '游戏', 'AI', '其他'];
-export const memberCategoryIcons = ['ant-design:video-camera-outlined', 'ant-design:customer-service-outlined', 'ant-design:shopping-outlined', 'ant-design:cloud-outlined', 'ant-design:read-outlined', 'ant-design:trophy-outlined', 'lucide:sparkle', 'ant-design:appstore-outlined'];
+export const memberCategories = ['AI', 'video', 'music', 'shopping', 'cloud', 'study', 'game', 'other'];
+export const memberCategoryLabels = ['AI', '视频', '音乐', '购物', '云盘', '学习', '游戏', '其他'];
+export const memberCategoryIcons = ['lucide:sparkle', 'ant-design:video-camera-outlined', 'ant-design:customer-service-outlined', 'ant-design:shopping-outlined', 'ant-design:cloud-outlined', 'ant-design:read-outlined', 'ant-design:trophy-outlined', 'ant-design:appstore-outlined'];
 export function providerIconPath(key, dark = false) {
   return typeof key === 'string' && /^[a-z0-9][a-z0-9_-]{0,63}$/.test(key) ? '/membership/provider-icons/' + key + (dark ? '?dark=true' : '') : '';
 }
