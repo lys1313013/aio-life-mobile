@@ -2487,6 +2487,7 @@ const queryFields: Record<string, string[]> = {
   ],
   '/userDictType/dictTypeEnum': [],
   '/userDictType/getByDictType': ['dictType'],
+  '/weread/recent': ['cursor', 'size'],
   '/weread/connection': [],
   '/weread/stats': ['baseTime', 'mode'],
   '/weread/notes': ['bookId'],

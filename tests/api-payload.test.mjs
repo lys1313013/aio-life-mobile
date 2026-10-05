@@ -54,9 +54,9 @@ test('实际 uni.request 边界执行筛选且不修改原对象', async () => {
   const apiCode = (await transform(apiSource
     .replace("'./api-payload.ts'", JSON.stringify(payloadUrl))
     .replace("'./home-refresh.ts'", JSON.stringify(refreshUrl))
-    .replace(/^import .* from '\.\/(contract|session|secondary-lock|menu-access-cache)\.ts'\n/gm, '')
+    .replace(/^import .* from '\.\/(contract|session|secondary-lock|menu-access-cache|menu-visuals|page-refresh-state)\.ts'\n/gm, '')
     .replaceAll('import.meta.env', '{}')
-    + '\nconst session = {token:"fixture"}; const unlockNavigationRevision=()=>0; const readResponse=(_status,data)=>{if(_status>=400)throw Error("失败");return data.data}; const readUser=v=>v; const clearSession=()=>{}; const saveToken=()=>{}; const requestUnlock=()=>Promise.resolve(); const invalidateMenuAccessAfterWrite=()=>{}; const invalidateMenuAccessCache=()=>{};', { loader: 'ts', format: 'esm' })).code
+    + '\nconst menuVisuals={afterWrite:()=>{}}; const invalidatePageAfterWrite=()=>{}; const session = {token:"fixture"}; const unlockNavigationRevision=()=>0; const readResponse=(_status,data)=>{if(_status>=400)throw Error("失败");return data.data}; const readUser=v=>v; const clearSession=()=>{}; const saveToken=()=>{}; const requestUnlock=()=>Promise.resolve(); const invalidateMenuAccessAfterWrite=()=>{}; const invalidateMenuAccessCache=()=>{};', { loader: 'ts', format: 'esm' })).code
   const { request } = await import('data:text/javascript;base64,' + Buffer.from(apiCode).toString('base64'))
   const previous = globalThis.uni
   let sent
@@ -69,6 +69,9 @@ test('实际 uni.request 边界执行筛选且不修改原对象', async () => {
     assert.equal(homeDataRevision('watched'), watchedRevision + 1)
     assert.deepEqual(sent.data,{content:'任务'})
     assert.deepEqual(row,original)
+    const cursor = '1791163200:9007199254740993'
+    await request('/weread/recent', 'GET', { cursor, size: 6, userId: 'other' })
+    assert.deepEqual(sent.data, { cursor, size: 6 })
     const data = await request('/movie/page','GET',{current:1,size:20,activeOnly:false,userId:'11'})
     assert.deepEqual(sent.data,{current:1,size:20,activeOnly:false})
     assert.deepEqual(data,{items:[],total:0})
