@@ -23,22 +23,35 @@ export function chartAxisLabel(value: number) {
   if (magnitude >= 10000) return Number((value / 10000).toFixed(1)) + '万'
   return String(Number(value.toFixed(4)))
 }
+// Reserve both endpoint labels before filling the axis with labels that fit.
+export function layoutChartAxisLabels(labels: string[], points: number[], width: number, labelWidths: number[]) {
+  const candidates = labels.flatMap((label, index) => {
+    const x = points[index]
+    if (!Number.isFinite(x)) return []
+    const labelWidth = Math.min(width, Math.ceil(labelWidths[index] ?? label.length * typography.roles.caption.size))
+    return [{ label, index, left: Math.max(0, Math.min(width - labelWidth, x - labelWidth / 2)), width: labelWidth }]
+  })
+  if (candidates.length <= 1) return candidates
+  const last = candidates[candidates.length - 1]
+  const visible = [candidates[0]]
+  for (const item of candidates.slice(1, -1)) {
+    const previous = visible[visible.length - 1]
+    if (item.left >= previous.left + previous.width + spacing.detail && item.left + item.width + spacing.detail <= last.left) visible.push(item)
+  }
+  if (last.left >= visible[visible.length - 1].left + visible[visible.length - 1].width + spacing.detail) visible.push(last)
+  return visible
+}
 export function buildChartOption(labels: string[], series: ChartSeries[], settings: {
   dark: boolean; kind: string; selected: number; selectionActive: boolean; showScale: boolean; width: number
 }) {
   validateChartData(labels, series)
   const axisColor = settings.dark ? '#737985' : '#c9cdd5'
   const gridColor = settings.dark ? '#34373d' : '#e8eaef'
-  const max = Math.max(0, ...series.flatMap(item => item.values.map(value => Math.abs(value))))
-  // Left gutter covers signed tick labels. Ordinary spacing still comes from tokens.
-  const longestTick = Math.max(chartAxisLabel(max).length, chartAxisLabel(-max).length)
-  const left = settings.showScale
-    ? Math.max(36, Math.min(64, longestTick * typography.roles.caption.size * 0.6 + spacing.inline * 2))
-    : spacing.detail
   return {
     animation: false,
     textStyle: { fontFamily: typography.families.canvas, fontSize: typography.roles.caption.size },
-    grid: { left, right: spacing.inline, top: spacing.section, bottom: typography.roles.caption.lineHeight + spacing.section },
+    // ChartCanvas measures the actual formatted Y ticks before flushing the canvas.
+    grid: { left: spacing.detail, right: spacing.inline, top: spacing.section, bottom: typography.roles.caption.lineHeight + spacing.section },
     xAxis: {
       type: 'category', data: labels, boundaryGap: settings.kind === 'bar',
       axisLine: { show: true, onZero: false, lineStyle: { color: axisColor } },

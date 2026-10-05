@@ -3,7 +3,7 @@ import { computed, ref, watch } from 'vue'
 import ChartCanvas from './ChartCanvas.uvue'
 import { appTextColor } from '../services/app-layout.ts'
 import { isDark, themeClass } from '../services/theme.ts'
-import { buildChartOption, colorChartSeries, validateChartData } from '../services/chart-options.ts'
+import { buildChartOption, colorChartSeries, layoutChartAxisLabels, validateChartData } from '../services/chart-options.ts'
 import type { ChartSeries } from '../services/chart-options.ts'
 import typography from '../styles/typography.json'
 import spacing from '../styles/spacing.json'
@@ -12,7 +12,7 @@ const props = withDefaults(defineProps<{
   label: string; labels: string[]; series: ChartSeries[]; kind?: string; unit?: string;
   compact?: boolean; periodControls?: boolean; selectable?: boolean;
   hidePeriodSelector?: boolean; hideLegend?: boolean; hideScale?: boolean; hideTitle?: boolean;
-  hideValues?: boolean; showEndValues?: boolean;
+  hideValues?: boolean; showEndValues?: boolean; xLabels?: string[]; loading?: boolean;
 }>(), { kind: 'line', unit: '' })
 const selected = ref(0), hidden = ref<string[]>([]), touched = ref(false), width = ref(280)
 const layout = ref<any>({ axisTicks: [], points: [], series: [], left: 0, axisTop: 0 })
@@ -25,7 +25,7 @@ const error = computed(() => {
   try { validateChartData(props.labels, props.series); return '' }
   catch (reason) { return reason.message }
 })
-const option = computed(() => buildChartOption(props.labels, visible.value, {
+const option = computed(() => buildChartOption(props.xLabels ?? props.labels, visible.value, {
   dark: isDark.value, kind: props.kind, selected: selected.value,
   selectionActive: interactive.value && (touched.value || props.kind === 'bar'),
   showScale: showScale.value, width: width.value,
@@ -37,7 +37,7 @@ watch(() => props.labels.join('|'), (_, previous) => {
   touched.value = false
 }, { immediate: true })
 function select(index: number) {
-  if (!interactive.value || !props.labels.length) return
+  if (props.loading || !interactive.value || !props.labels.length) return
   selected.value = Math.max(0, Math.min(props.labels.length - 1, index))
   touched.value = true
 }
@@ -50,18 +50,9 @@ function displayNumber(value: number) {
 }
 const selectionText = computed(() => props.labels[selected.value] + ' ' + visible.value
   .map(item => item.name + displayNumber(item.values[selected.value] ?? 0) + props.unit).join('，'))
-const axisLabels = computed(() => {
-  const count = props.labels.length
-  const slots = Math.max(2, Math.floor((width.value - layout.value.left) / 72))
-  const step = Math.max(1, Math.ceil((count - 1) / (slots - 1)))
-  return props.labels.flatMap((label, index) => {
-    if (index !== count - 1 && index % step !== 0) return []
-    const x = layout.value.points[index]
-    if (!Number.isFinite(x)) return []
-    const labelWidth = Math.min(width.value, label.length * typography.roles.caption.size)
-    return [{ label, index, left: Math.max(0, Math.min(width.value - labelWidth, x - labelWidth / 2)), width: labelWidth }]
-  })
-})
+const axisLabels = computed(() => layoutChartAxisLabels(
+  props.xLabels ?? props.labels, layout.value.points, width.value, layout.value.labelWidths ?? [],
+))
 const endLabels = computed(() => {
   if (!props.showEndValues || props.kind === 'bar') return []
   const rows = layout.value.series.filter(item => item.points.length).map(item => {
@@ -98,22 +89,23 @@ const extremeLabels = computed(() => {
     <view v-if="!hideLegend && series.length > 1" class="chart-legend-compact">
       <button v-for="item in colored" :key="item.name" class="chart-legend-button" role="button"
         :class="{ 'chart-legend-hidden': hidden.includes(item.name) }" :aria-label="item.name"
-        :aria-pressed="!hidden.includes(item.name)" @click="toggle(item.name)">
+        :disabled="loading" :aria-pressed="!hidden.includes(item.name)" @click="toggle(item.name)">
         <view class="chart-legend-swatch" :style="{ backgroundColor: item.color }" />
         <text class="chart-legend-name" :style="appTextColor()">{{ item.name }}</text>
       </button>
     </view>
     <text v-if="error" class="mini-chart-error" role="alert">{{ error }}</text>
-    <template v-else-if="labels.length">
+    <template v-else-if="loading || labels.length">
       <view class="mini-chart-plot" :role="interactive ? 'slider' : undefined" :tabindex="interactive ? 0 : undefined"
         :aria-label="interactive ? label + '，点击图表查看数值' : undefined" :aria-valuemin="interactive ? 0 : undefined"
         :aria-valuemax="interactive ? labels.length - 1 : undefined" :aria-valuenow="interactive ? selected : undefined"
         :aria-valuetext="interactive ? selectionText : undefined"
         @keydown.left.prevent="select(selected - 1)" @keydown.right.prevent="select(selected + 1)">
-        <ChartCanvas :option="option" :label="label" @layout="layout = $event" @width="width = $event" @select="select" />
+        <view v-if="loading" class="chart-loading-plot" :class="themeClass('chart-loading-plot')" aria-busy="true"><text class="mini-chart-empty" :class="themeClass('mini-chart-empty')">正在加载图表</text></view>
+        <ChartCanvas v-else :option="option" :label="label" @layout="layout = $event" @width="width = $event" @select="select" />
         <view v-if="showScale" class="chart-y-axis" :style="{ width: layout.left + 'px' }" :aria-label="'Y 轴，单位 ' + unit">
           <text v-for="tick in layout.axisTicks" :key="tick.value" class="chart-y-tick" :class="themeClass('chart-y-tick')"
-            :style="{ top: tick.top + 'px', width: Math.max(0, layout.left - spacing.inline) + 'px' }">{{ tick.label }}</text>
+            :style="{ top: tick.top + 'px', width: Math.max(0, layout.left - spacing.micro) + 'px' }">{{ tick.label }}</text>
         </view>
         <text v-for="item in axisLabels" :key="item.index" class="chart-x-label" :class="themeClass('chart-x-label')"
           :style="{ top: layout.axisTop + 'px', left: item.left + 'px', width: item.width + 'px' }">{{ item.label }}</text>
@@ -124,15 +116,15 @@ const extremeLabels = computed(() => {
       </view>
       <view v-if="periodControls" class="chart-period-value" aria-live="polite">
         <text class="chart-period-label" :style="appTextColor()">{{ labels[selected] }}{{ visible.map(item => item.name).join(' / ') }}</text>
-        <text v-for="item in visible" :key="item.name" class="chart-period-amount" :style="appTextColor()">{{ displayNumber(item.values[selected] ?? 0) }}{{ unit }}</text>
+        <text v-for="item in visible" :key="item.name" class="chart-period-amount" :style="appTextColor()">{{ loading ? '—' : displayNumber(item.values[selected] ?? 0) + unit }}</text>
       </view>
       <template v-else-if="!hideValues">
-        <text v-if="interactive && (touched || compact)" class="chart-selected-label" :class="themeClass('chart-selected-label')" aria-live="polite">{{ labels[selected] }}</text>
+        <text v-if="interactive && (touched || compact)" class="chart-selected-label" :class="themeClass('chart-selected-label')" aria-live="polite">{{ loading ? '—' : labels[selected] }}</text>
         <view class="mini-chart-values" :class="{ 'chart-values-compact': compact }" aria-live="polite">
           <view v-for="item in visible" :key="item.name" class="chart-value-item" :class="{ 'chart-value-inline': !compact }">
             <view v-if="!compact" class="chart-legend-swatch" :style="{ backgroundColor: item.color }" />
             <text class="chart-value-label" :class="themeClass('chart-value-label')">{{ item.name }}</text>
-            <text class="chart-value-number" :class="themeClass('chart-value-number')">{{ displayNumber(item.values[selected] ?? 0) }}{{ unit }}</text>
+            <text class="chart-value-number" :class="themeClass('chart-value-number')">{{ loading ? '—' : displayNumber(item.values[selected] ?? 0) + unit }}</text>
           </view>
         </view>
       </template>
@@ -149,22 +141,24 @@ const extremeLabels = computed(() => {
 .mini-chart { min-width: 0; padding: $space-card; border-radius: 16px; background-color: #ffffff; margin-bottom: $space-section; }
 .mini-chart-dark { background-color: #1c1e22; }
 .mini-chart-period { margin-bottom: 0; }
-.mini-chart-header { flex-direction: row; align-items: center; gap: $space-inline; }
+.mini-chart-header { display: flex; flex-direction: row; align-items: center; gap: $space-inline; }
 .chart-header-title-hidden { justify-content: flex-end; }
 .mini-chart-title { flex: 1; @include type-style('body-strong'); }
 .chart-unit { @include type-style('caption'); color: $text-secondary-light; }
 .mini-chart-plot { position: relative; width: 100%; height: 228px; margin-top: $space-inline; }
+.chart-loading-plot { height: 228px; display: flex; align-items: center; justify-content: center; background-color: #f4f6fa; border-radius: 8px; }
+.chart-loading-plot-dark { background-color: #252a33; }
 .chart-y-axis { position: absolute; left: 0; top: 0; height: 228px; pointer-events: none; }
-.chart-y-tick { position: absolute; left: 0; text-align: right; @include type-style('caption'); color: $text-secondary-light; }
-.chart-x-label { position: absolute; text-align: center; @include type-style('caption'); color: $text-secondary-light; pointer-events: none; }
-.chart-legend-compact { flex-direction: row; flex-wrap: wrap; gap: $space-inline; }
-.chart-legend-button { flex-direction: row; align-items: center; gap: $space-detail; min-width: $space-controlMin; min-height: $space-controlMin; padding: 0; margin: 0; border: 0; background-color: transparent; }
+.chart-y-tick { position: absolute; left: 0; text-align: right; white-space: nowrap; font-family: type-family('canvas'); @include type-style('caption'); color: $text-secondary-light; }
+.chart-x-label { position: absolute; text-align: center; white-space: nowrap; font-family: type-family('canvas'); @include type-style('caption'); color: $text-secondary-light; pointer-events: none; }
+.chart-legend-compact { display: flex; flex-direction: row; flex-wrap: wrap; gap: $space-inline; }
+.chart-legend-button { display: flex; flex-direction: row; align-items: center; gap: $space-detail; min-width: $space-controlMin; min-height: $space-controlMin; padding: 0; margin: 0; border: 0; background-color: transparent; }
 .chart-legend-name { @include type-style('caption'); }
 .chart-legend-hidden { opacity: 0.4; }
 .chart-legend-swatch { width: 6px; height: 6px; border-radius: 3px; }
-.mini-chart-values { flex-direction: row; flex-wrap: wrap; gap: $space-inline; margin-top: $space-inline; }
+.mini-chart-values { display: flex; flex-direction: row; flex-wrap: wrap; gap: $space-inline; margin-top: $space-inline; }
 .chart-values-compact { flex-wrap: nowrap; }
-.chart-value-item { min-width: 0; flex: 1; gap: $space-detail; }
+.chart-value-item { display: flex; flex-direction: column; min-width: 0; flex: 1; gap: $space-detail; }
 .chart-value-inline { flex: none; flex-direction: row; align-items: center; }
 .chart-value-label { @include type-style('caption'); color: $text-secondary-light; }
 .chart-value-number { @include type-style('caption-strong'); color: #27272a; font-variant-numeric: tabular-nums; }

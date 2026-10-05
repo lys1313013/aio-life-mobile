@@ -98,15 +98,18 @@ export function summaryDonutLabels(groups) {
     }
   }
   return labels.map(label => {
-    const endX = label.right ? 143 : 33
-    const bendX = label.right ? 138 : 38
-    const dx = bendX - label.x, dy = label.labelY - label.y
+    // 先沿半径向外离开圆环，再在外侧转向标签；避让文字不能让线穿过扇区。
+    const outerX = 88 + (label.x - 88) * 60 / 54
+    const outerY = 88 + (label.y - 88) * 60 / 54
+    const railX = label.right ? 143 : 33
     return { id: label.id, name: label.name, duration: durationLabel(label.minutes),
-      side: label.right ? 'right' : 'left',
+      side: label.right ? 'right' : 'left', color: label.color,
       position: { top: (label.labelY - 12) + 'px' },
-      lines: [
-        { left: label.x + 'px', top: label.y + 'px', width: Math.hypot(dx, dy) + 'px', transform: 'rotate(' + Math.atan2(dy, dx) * 180 / Math.PI + 'deg)', backgroundColor: label.color },
-        { left: Math.min(bendX, endX) + 'px', top: label.labelY + 'px', width: '5px', backgroundColor: label.color },
+      points: [
+        { x: label.x, y: label.y },
+        { x: outerX, y: outerY },
+        { x: railX, y: outerY },
+        { x: railX, y: label.labelY },
       ],
     }
   })

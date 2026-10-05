@@ -4,7 +4,7 @@ import { readFile } from 'node:fs/promises'
 import { build, transform } from 'esbuild'
 
 const bundle = await build({ entryPoints: [new URL('../src/services/chart-options.ts', import.meta.url).pathname], bundle: true, write: false, format: 'esm', platform: 'node' })
-const { buildChartOption, chartAxisLabel, colorChartSeries, createChartSurface } = await import(`data:text/javascript;base64,${Buffer.from(bundle.outputFiles[0].text).toString('base64')}`)
+const { buildChartOption, chartAxisLabel, colorChartSeries, createChartSurface, layoutChartAxisLabels } = await import(`data:text/javascript;base64,${Buffer.from(bundle.outputFiles[0].text).toString('base64')}`)
 const settings = { dark: false, kind: 'line', selected: 1, selectionActive: true, showScale: true, width: 300 }
 
 test('公共 ECharts 配置保留负值、单点和全零，非法数据不能被画成零', () => {
@@ -61,3 +61,16 @@ test('微信图表引擎并发加载去重，加载失败后可以重试', async
   assert.deepEqual(await retry, { init: 'fixture' })
   assert.equal(loadChartEngine(), retry)
 })
+
+test('横轴保留首尾并避免末尾标签重叠，短月份可以完整显示', () => {
+  const labels = Array.from({ length: 63 }, (_, i) => '2021-' + i);
+  const points = labels.map((_, i) => 30 + i * 280 / 62);
+  const visible = layoutChartAxisLabels(labels, points, 318, labels.map(() => 48));
+  assert.equal(visible[0].index, 0);
+  assert.equal(visible.at(-1).index, 62);
+  for (let i = 1; i < visible.length; i++) assert.ok(visible[i].left >= visible[i - 1].left + visible[i - 1].width + 4);
+  const months = Array.from({ length: 12 }, (_, i) => String(i + 1).padStart(2, '0'));
+  assert.equal(layoutChartAxisLabels(months, months.map((_, i) => 32 + i * 208 / 11), 248, months.map(() => 14)).length, 12);
+  assert.deepEqual(layoutChartAxisLabels(['01'], [120], 248, [14]).map(item => item.label), ['01']);
+  assert.deepEqual(layoutChartAxisLabels([], [], 248, []), []);
+});

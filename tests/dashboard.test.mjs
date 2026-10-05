@@ -44,3 +44,21 @@ test('最近记录保留全部明细供滚动查看，重复分类仍分别保�
   assert.equal(result.recent[0].shortName, '阅读');
   assert.equal(result.groups[0].minutes, 80);
 });
+
+test('首页圆环的密集标签引导线始终绕行圆环外侧，不穿过其他分类', () => {
+  const groups = [
+    ['休息', 476], ['项目', 437], ['吃饭', 145], ['娱乐', 62], ['交通', 15], ['卫生', 11],
+  ].map(([name, minutes], index) => ({ id: String(index), name, minutes, color: '#427bea' }));
+  for (const rows of [groups, groups.slice().reverse(), [{ id: 'single', name: '全天', minutes: 1440 }]]) {
+    for (const label of summaryDonutLabels(rows)) {
+      for (let index = 1; index < label.points.length; index++) {
+        const from = label.points[index - 1], to = label.points[index];
+        for (let step = 0; step <= 100; step++) {
+          const x = from.x + (to.x - from.x) * step / 100;
+          const y = from.y + (to.y - from.y) * step / 100;
+          assert.ok(Math.hypot(x - 88, y - 88) >= 54 - 1e-8, label.name + ' 引导线穿环');
+        }
+      }
+    }
+  }
+});

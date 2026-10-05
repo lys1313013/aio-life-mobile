@@ -126,7 +126,7 @@ for (const kind of ['全零', '单点', '负结余']) {
       return route.fulfill({ json: { rscode: '0', data } });
     });
     await page.goto('/#/pages/finance/index');
-    const chart = page.getByRole('figure', { name: '月度收支趋势', exact: true });
+    const chart = page.getByRole('figure', { name: '年度收支趋势', exact: true });
     await expect(chart.locator('.chart-y-tick').first()).toBeVisible();
     const ticks = await chart.locator('.chart-y-tick').allTextContents();
     expect(ticks.length).toBeGreaterThanOrEqual(4);

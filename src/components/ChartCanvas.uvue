@@ -14,6 +14,7 @@ const instance = getCurrentInstance()
 const canvasId = 'aio-chart-' + instance?.uid
 const loading = ref(true), error = ref('')
 let chart: any = null, alive = true, generation = 0, scheduled = false
+let canvasContext: any = null
 let width = 0
 let touchStart: any = null, lastTouch = 0
 function rect(): Promise<any> {
@@ -34,22 +35,37 @@ function paint() {
   if (!chart || !alive) return
   try {
     chart.setOption(props.option, { notMerge: true })
+    const yAxis = chart.getModel().getComponent('yAxis').axis
+    const ticks = yAxis.scale.getTicks()
+    let left = props.option.grid.left
+    if (props.option.yAxis.axisLine.show) {
+      // Measure displayed ticks (e.g. -1万), rather than an unrounded data maximum.
+      // Keep only the micro gap between the widest label and the axis.
+      canvasContext.save()
+      canvasContext.font = `${typography.roles.caption.weight} ${typography.roles.caption.size}px ${typography.families.canvas}`
+      left = Math.ceil(Math.max(0, ...ticks.map(tick => canvasContext.measureText(chartAxisLabel(tick.value)).width))) + spacing.micro
+      canvasContext.restore()
+      chart.setOption({ grid: { left } })
+    }
     // SSR disables the browser event proxy and animation loop, not Canvas rendering.
     chart.getZr().flush()
-    const yAxis = chart.getModel().getComponent('yAxis').axis
-    const axisTicks = yAxis.scale.getTicks().map(tick => ({
+    const axisTicks = ticks.map(tick => ({
       value: tick.value, label: chartAxisLabel(tick.value),
       top: chart.convertToPixel({ yAxisIndex: 0 }, tick.value) - typography.roles.caption.lineHeight / 2,
     }))
     const labels = props.option.xAxis.data
     const points = labels.map((_, index) => chart.convertToPixel({ xAxisIndex: 0 }, index))
+    canvasContext.save()
+    canvasContext.font = `${typography.roles.caption.weight} ${typography.roles.caption.size}px ${typography.families.canvas}`
+    const labelWidths = labels.map(label => canvasContext.measureText(label).width)
+    canvasContext.restore()
     const annotations = props.option.series.map(item => {
       const values = item.data.map(row => row.value)
       return { name: item.name, color: item.itemStyle.color, points: values.map((value, index) => ({
         x: points[index], y: chart.convertToPixel({ yAxisIndex: 0 }, value), value,
       })) }
     })
-    emit('layout', { axisTicks, points, series: annotations, left: props.option.grid.left,
+    emit('layout', { axisTicks, points, labelWidths, series: annotations, left,
       axisTop: chartHeight - props.option.grid.bottom + spacing.detail })
     error.value = ''
   } catch (_) { error.value = '图表加载失败' }
@@ -73,6 +89,7 @@ async function initialize() {
     const ctx = await context()
     if (!alive || id !== generation) return
     chart?.dispose()
+    canvasContext = ctx
     chart = engine.init(createChartSurface(ctx), null, {
       renderer: 'canvas', width, height: chartHeight,
       devicePixelRatio: uni.getWindowInfo().pixelRatio || 1, ssr: true,
@@ -126,7 +143,7 @@ function click(event) {
 useWindowResize(resize)
 onMounted(initialize)
 watch(() => props.option, queuePaint, { deep: true })
-onUnmounted(() => { alive = false; generation++; chart?.dispose(); chart = null })
+onUnmounted(() => { alive = false; generation++; chart?.dispose(); chart = null; canvasContext = null })
 </script>
 
 <template>
