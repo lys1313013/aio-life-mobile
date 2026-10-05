@@ -26,7 +26,7 @@ AIO Life 的独立跨端客户端，采用 **uni-app x + Vapor 蒸汽模式**。
 
 本次源码与验证范围：
 
-- 共用 `MobileButton`、`ConfirmAction`、`FormField`、`MobilePage`、`PageState`、`AttachmentField`、`MiniChart`，编辑弹窗统一使用 `AdaptiveModal`；确认靠近操作按钮、错误保留表单、加载与再次提交有状态。
+- 共用 `MobileButton`、`ConfirmAction`、`FormField`、`MobilePage`、`PageState`、`AttachmentField`、`AioChart`，编辑弹窗统一使用 `AdaptiveModal`；确认靠近操作按钮、错误保留表单、加载与再次提交有状态。
 - 新业务页面按目录配置 `subPackages`，底部四栏保留主包；微信启用按需组件加载。包体最终以构建结果为准，编译成功不代表可直接发布。
 - 个人设置覆盖菜单显示/菜单锁、API Key、模型配置、通知、MBTI/CBTI、注册与密码找回。菜单2001先验证二级密码，再重试被拦截的请求一次；普通写入失败不自动重复发送。
 - Mobile 跳转检查复用当前登录的菜单锁配置和菜单树，内存缓存 12 小时（空锁列表也缓存），并发检查合并请求；命中缓存不显示检查遮罩。切换账号、成功修改菜单锁/二级密码/管理菜单或接口返回 2001 时清除缓存；过期后重新加载，失败不放行，业务接口仍由服务端校验，密码解锁时长保持不变。其他客户端修改配置后，本地导航配置最迟在缓存过期时刷新，服务端仍按最新配置校验业务访问。
@@ -190,7 +190,7 @@ npm run check:weixin-size:only  # 只检查已有 dist/build/mp-weixin，适合�
 }
 ```
 
-项目 npm 编译器统一固定为 **5.31 Alpha 对应版本 `3.0.0-alpha-5030120260930001`**，使用同版本 HBuilderX 5.31 Alpha，按下文准备并导入独立 App 工程。页面使用组合式 API，`.ts` 中使用 JS/TS 业务逻辑；只有打开网页版链接的 `window.open` 放在 `WEB` 条件编译内，App / 小程序采用 `uni.*`。图表使用基础 `view`，未引入 Web ECharts。该版本属于 Alpha 通道，升级编译器时须重新执行跨端验证。2026-10-04 本机已安装 HBuilderX 5.31 Alpha（保留原 5.26 正式版），Android 原生编译和云打包通过，iOS App 资源编译通过。未安装完整 Xcode，未生成签名 IPA；资源编译不能代替 iOS 原生联编和真机验证。
+项目 npm 编译器统一固定为 **5.31 Alpha 对应版本 `3.0.0-alpha-5030120260930001`**，使用同版本 HBuilderX 5.31 Alpha，按下文准备并导入独立 App 工程。页面使用组合式 API，`.ts` 中使用 JS/TS 业务逻辑；只有打开网页版链接的 `window.open` 放在 `WEB` 条件编译内，App / 小程序采用 `uni.*`。统计折线图和柱状图统一使用 `AioChart.uvue`，内部由 ECharts 6.0.0 绘制；页面只提供数据、单位和交互选项。Canvas 获取、尺寸变化与触摸处理集中在 `ChartCanvas.uvue`，深浅主题、坐标轴和数值格式统一管理。微信图表引擎由构建插件按需裁剪后放入 `chart-runtime` 共享分包，通过 `require.async` 加载；加载失败可重试，不静态进入主包。该分包登记的空 `bootstrap` 页面仅满足微信分包规则，没有业务导航入口。Web 和 App 使用同一套 ECharts 配置与 Canvas 适配。该版本属于 Alpha 通道，升级编译器时须重新执行跨端验证。2026-10-04 本机已安装 HBuilderX 5.31 Alpha（保留原 5.26 正式版），Android 原生编译和云打包通过，iOS App 资源编译通过。未安装完整 Xcode，未生成签名 IPA；资源编译不能代替 iOS 原生联编和真机验证。
 
 执行 `npm run prepare:app` 生成 `artifacts/android/AIO-Life-App`，再用匹配版本的 HBuilderX 打开这个工程。该步骤复制当前源码、保留本地 DCloud AppID，并提供 App 专用依赖转换和生产 API 配置；生成物全部被 Git 忽略。首次在生成工程的 manifest 可视化界面获取自己的 DCloud AppID，或通过本地环境变量 `AIO_DCLOUD_APP_ID` 配置，再选择「发行 → 原生 App 云打包」。Android 可使用云端证书；iOS 需自己的 Bundle ID、Apple 签名证书和描述文件。不要提交证书、私钥或真实 AppID；源码 manifest 保持空 AppID。
 
@@ -312,7 +312,9 @@ tests/                契约测试与 Web E2E
 
 ## 全部导航（2026-10-01）
 
-“全部”目录采用内存与 `uni` 本地存储两层缓存（Web 使用 localStorage），不设自动过期时间。同一登录状态下，整页刷新或重启应用后复用本地目录，下拉刷新重新请求并更新两层缓存；退出登录、切换 Token 或在系统设置清除缓存时清理。缓存仅保存登录指纹与目录，不额外保存 Token；存储异常时仍可使用内存和接口加载。
+“全部”目录采用内存与 `uni` 本地存储两层缓存（Web 使用 localStorage），保留旧目录供即时展示，成功更新后的 60 分钟内不重复请求。同一登录状态下，整页刷新或重启应用后复用本地目录，超过 60 分钟后台更新；下拉刷新强制重新请求并更新两层缓存；退出登录、切换 Token 或在系统设置清除缓存时清理。缓存仅保存登录指纹与目录，不额外保存 Token；存储异常时仍可使用内存和接口加载。
+
+首页在同一页面实例内复用 1 分钟内的数据，短时间返回不重新请求整页；成功的新增、编辑、删除按业务区域标记失效，返回后只更新相关区域。后台更新保留已加载内容（包括空结果），失败提供局部重试；首页业务卡片返回时重新检查二级锁有效期，失效立即撤下旧内容。业务数据不写入持久化缓存。
 
 保留四栏：首页 / 时迹 / 全部 / 我。待办、目标与全部已知业务菜单进入移动端页面；分组、名称及顺序随服务端菜单树配置同步，嵌套目录可逐级打开和返回，顶层叶子不附加组名，搜索直达授权叶子菜单。移动端例外：首页不进入“全部”目录，关于从“我”进入。分类及管理员配置同样遵循授权菜单树；服务端新增而尚未映射的自定义菜单保留网页版回退。菜单映射由 migration-routes 契约测试覆盖。
 
@@ -328,6 +330,9 @@ tests/                契约测试与 Web E2E
 微信开发工具 2.01.2510290 已只读验证首页、“全部”目录、衣柜分包；ES2017 微信构建目标避免 IDE 二次 Babel 转换引用缺失 helper。App 工具链不匹配、签名包和真机未验，不能由上述结果替代。
 
 ### 图标维护
+
+会员品牌图标统一保存在后端 `aio-life-server/src/main/resources/static/membership-icons/`，映射清单为 `membership-icons.json`，通过 `/api/membership/provider-icons/{key}` 加载，深色主题使用 `?dark=true`。移动端 `MembershipLogo.uvue` 在订阅卡片、订阅平台选择列表和「系统管理 → 会员平台」中复用，品牌 PNG 不重复打包到移动客户端。后台平台的 `icon_key` 需关联清单中的 key；缺失或加载失败时显示分类图标。新增 OpenCode Go 并补齐 AI 图标执行后端 `sql/2_ini_data/2026-10-05_membership_opencode_go.sql`；同时部署新版后端资源和客户端。
+
 
 操作图标使用 Web 同款 Ant Design / Lucide 本地 SVG，通过 `AppIcon` 和 `MobileButton` 展示，支持深浅色；不要使用 emoji 或字符代替操作图标。纪念日的用户自选 emoji 与 Web 保持一致。新增图标后运行 `node scripts/sync-action-icons.mjs`，从相邻 Web 仓库已生成的图标集合提取资源；底栏图标同步使用 `node scripts/sync-action-icons.mjs --tabs`（需要本地 Chrome，CI 使用 Playwright Chromium）。生成的 `action-icons.json` 和底栏 PNG 随 mobile 仓库保存，正常构建不依赖 Web 仓库或在线图标服务。
 
