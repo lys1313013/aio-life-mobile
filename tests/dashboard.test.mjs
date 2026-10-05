@@ -2,7 +2,7 @@ import { readFile } from 'node:fs/promises';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 const source = await readFile(new URL('../src/services/dashboard-format.ts', import.meta.url), 'utf8');
-const { timeSummary, summaryDonutLabels, webLink } = await import(`data:text/javascript;base64,${Buffer.from(source).toString('base64')}`);
+const { timeSummary, summaryDonutLabels, summaryDonutRotation, webLink } = await import(`data:text/javascript;base64,${Buffer.from(source).toString('base64')}`);
 test('时迹闭区间含末分钟，按父类聚合，保留字符串 ID 与最近记录顺序', () => {
   const result = timeSummary([{ id: '9223372036854775807', name: '学习', color: '#00f' }, { id: '2', parentId: '9223372036854775807', name: '阅读' }], [{ id: 'a', categoryId: '2', startTime: 0, endTime: 59 }, { id: 'b', categoryId: '2', startTime: 90, endTime: 90 }]);
   assert.equal(result.total, '1h1m');
@@ -20,7 +20,7 @@ test('业务链接只接受 HTTPS 或站内路径，拒绝脚本与协议相对 
 
 test('圆环标注保留分类累计时长，集中扇区的标签不会重叠或越界', () => {
   const groups = [{ id: 'large', name: '休息', minutes: 430, color: '#faad14' },
-    ...Array.from({ length: 5 }, (_, i) => ({ id: String(i), name: '分类' + i, minutes: 10, color: '#00f' }))];
+    ...Array.from({ length: 5 }, (_, i) => ({ id: String(i), name: '分类' + i, minutes: 30, color: '#00f' }))];
   const labels = summaryDonutLabels(groups);
   assert.equal(labels.length, 6);
   assert.equal(labels.find(x => x.id === 'large').duration, '7h10m');
@@ -49,6 +49,21 @@ test('首页圆环的密集标签引导线始终绕行圆环外侧，不穿过�
   const groups = [
     ['休息', 476], ['项目', 437], ['吃饭', 145], ['娱乐', 62], ['交通', 15], ['卫生', 11],
   ].map(([name, minutes], index) => ({ id: String(index), name, minutes, color: '#427bea' }));
+  const labels = summaryDonutLabels(groups);
+  assert.equal(labels.length, 4);
+  assert.equal(labels.filter(label => label.side === 'left').length, 2);
+  assert.equal(labels.filter(label => label.side === 'right').length, 2);
+  let elapsed = 0;
+  const total = groups.reduce((sum, group) => sum + group.minutes, 0);
+  for (const group of groups) {
+    const label = labels.find(item => item.id === group.id);
+    const angle = (elapsed + group.minutes / 2) / total * Math.PI * 2 + summaryDonutRotation(groups);
+    if (label) {
+      assert.ok(Math.abs(label.points[0].x - (88 + Math.sin(angle) * 54)) < 1e-8);
+      assert.ok(Math.abs(label.points[0].y - (88 - Math.cos(angle) * 54)) < 1e-8);
+    }
+    elapsed += group.minutes;
+  }
   for (const rows of [groups, groups.slice().reverse(), [{ id: 'single', name: '全天', minutes: 1440 }]]) {
     for (const label of summaryDonutLabels(rows)) {
       for (let index = 1; index < label.points.length; index++) {

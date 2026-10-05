@@ -74,15 +74,54 @@ export function timeSummary(categories, records) {
     })),
   }
 }
-// 与圆环扇区使用同一顺序；每侧分别避让，最多标注六个主要分类。
+// 与 Web 一致，小于 30 分钟只保留扇区；最多标注六个主要分类。
+function visibleDonutGroups(groups) {
+  return [...groups].filter(group => group.minutes >= 30)
+    .sort((a, b) => b.minutes - a.minutes).slice(0, 6)
+}
+// 保留扇区顺序和占比，只调整整个圆环朝向，让标签尽量均分且减少同侧拥挤。
+// 返回相对十二点方向的旋转角；圆环与标签必须共用。
+export function summaryDonutRotation(groups) {
+  const total = groups.reduce((sum, group) => sum + group.minutes, 0)
+  const visible = visibleDonutGroups(groups)
+  if (total <= 0 || visible.length < 2) return 0
+  let elapsed = 0
+  const angles = groups.map(group => {
+    const angle = ((elapsed + group.minutes / 2) / total) * Math.PI * 2
+    elapsed += group.minutes
+    return { id: group.id, angle }
+  }).filter(group => visible.some(item => item.id === group.id))
+  let bestRotation = 0
+  let bestScore = Infinity
+  // 3° 精度足以平衡 176px 图表；相同布局优先选择最小旋转。
+  for (let step = -60; step <= 60; step++) {
+    const rotation = step * Math.PI / 60
+    const sides = [[], []]
+    for (const { angle } of angles) {
+      sides[Math.sin(angle + rotation) >= 0 ? 1 : 0].push(88 - Math.cos(angle + rotation) * 72)
+    }
+    let crowding = 0
+    for (const side of sides) {
+      side.sort((a, b) => a - b)
+      for (let index = 1; index < side.length; index++) {
+        crowding += Math.pow(Math.max(0, 27 - (side[index] - side[index - 1])), 2)
+      }
+    }
+    const score = Math.abs(sides[0].length - sides[1].length) * 10000
+      + crowding + Math.abs(rotation) / Math.PI
+    if (score < bestScore) { bestScore = score; bestRotation = rotation }
+  }
+  return bestRotation
+}
+// 与圆环扇区使用同一顺序与旋转角；每侧分别避让。
 export function summaryDonutLabels(groups) {
   const total = groups.reduce((sum, group) => sum + group.minutes, 0)
   if (total <= 0) return []
-  const visible = [...groups].filter(group => group.minutes > 0)
-    .sort((a, b) => b.minutes - a.minutes).slice(0, 6)
+  const visible = visibleDonutGroups(groups)
+  const rotation = summaryDonutRotation(groups)
   let elapsed = 0
   const labels = groups.map(group => {
-    const angle = ((elapsed + group.minutes / 2) / total) * Math.PI * 2
+    const angle = ((elapsed + group.minutes / 2) / total) * Math.PI * 2 + rotation
     elapsed += group.minutes
     const right = Math.sin(angle) >= 0
     return { ...group, right, x: 88 + Math.sin(angle) * 54,

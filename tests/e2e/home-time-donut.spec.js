@@ -1,5 +1,10 @@
 const { test, expect } = require('@playwright/test');
 const { homeCardFixture } = require('./home-card-fixture');
+const { readFileSync } = require('node:fs');
+const { resolve } = require('node:path');
+const formatSource = readFileSync(resolve(__dirname, '../../src/services/dashboard-format.ts'), 'utf8');
+const donutRotation = import(`data:text/javascript;base64,${Buffer.from(formatSource).toString('base64')}`)
+  .then(({ summaryDonutRotation }) => summaryDonutRotation(groups.map((group, index) => ({ ...group, id: String(index) }))));
 
 // 与问题截图相同的六分类比例，尤其覆盖聚集在左上角的小扇区。
 const groups = [
@@ -36,15 +41,16 @@ async function setup(page) {
 }
 
 async function ringPixels(canvas) {
-  return canvas.evaluate((node, groups) => {
+  return canvas.evaluate((node, { groups, rotation }) => {
     const ctx = node.getContext('2d'), scale = node.width / 176;
     const total = groups.reduce((sum, row) => sum + row.minutes, 0);
-    let start = -Math.PI / 2, wrong = 0, gaps = 0;
+    let start = -Math.PI / 2 + rotation, wrong = 0, gaps = 0;
     for (const group of groups) {
       const end = start + group.minutes / total * Math.PI * 2;
-      // 按分类检查内部像素，包含小于一个旧矩形分段的分类。
-      for (let sample = 1; sample <= 5; sample++) {
-        const angle = start + (end - start) * sample / 6;
+      // 小扇区仅数像素宽，检查中点以避开边缘抗锯齿；主要分类检查多个内部像素。
+      const samples = group.minutes < 30 ? [0.5] : [1 / 6, 2 / 6, 3 / 6, 4 / 6, 5 / 6];
+      for (const sample of samples) {
+        const angle = start + (end - start) * sample;
         const pixel = ctx.getImageData(Math.floor((88 + Math.cos(angle) * 44.5) * scale), Math.floor((88 + Math.sin(angle) * 44.5) * scale), 1, 1).data;
         const hex = '#' + [...pixel].slice(0, 3).map(value => value.toString(16).padStart(2, '0')).join('');
         if (hex !== group.color) wrong++;
@@ -57,7 +63,7 @@ async function ringPixels(canvas) {
       if (pixel[3] < 254) gaps++;
     }
     return { wrong, gaps };
-  }, groups);
+  }, { groups, rotation: await donutRotation });
 }
 
 for (const width of [390, 820, 1440]) for (const theme of ['light', 'dark']) {
@@ -69,7 +75,9 @@ for (const width of [390, 820, 1440]) for (const theme of ['light', 'dark']) {
     const canvas = page.locator('.time-donut-canvas canvas');
     await expect.poll(() => ringPixels(canvas)).toEqual({ wrong: 0, gaps: 0 });
     await page.locator('.donut').screenshot({ path: info.outputPath('donut.png') });
-    await expect(page.locator('.donut-label')).toHaveCount(6);
+    await expect(page.locator('.donut-label')).toHaveCount(4);
+    await expect(page.locator('.donut-label-left')).toHaveCount(2);
+    await expect(page.locator('.donut-label-right')).toHaveCount(2);
     await expect(page.locator('.time-donut-retry')).toHaveCount(0);
     // 离页再返回不残留半环；随后空态使用同一几何和主题。
     await page.locator('uni-tabbar').getByText('我', { exact: true }).click();

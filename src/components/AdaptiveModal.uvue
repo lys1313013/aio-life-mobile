@@ -5,6 +5,9 @@ import spacing from '../styles/spacing.json'
 import MobileButton from './MobileButton.uvue'
 import { modalAvailableHeight } from '../services/mobile-ui.ts'
 import { themeClass } from '../services/theme.ts'
+// #ifdef MP-WEIXIN
+import { registerModal } from '../services/modal-presence.ts'
+// #endif
 import {
   computed,
   getCurrentInstance,
@@ -27,6 +30,10 @@ const props = withDefaults(defineProps<{
 }>(), { showClose: false, bare: false })
 const emit = defineEmits(['close', 'reachbottom'])
 provide('mobile-modal', true)
+// #ifdef MP-WEIXIN
+const releaseModal = registerModal()
+onUnmounted(releaseModal)
+// #endif
 const instance = getCurrentInstance()
 const contentHeight = ref(props.bare ? spacing.controlMin : 160)
 const windowHeight = ref(uni.getWindowInfo().windowHeight)
