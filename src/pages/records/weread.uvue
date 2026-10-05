@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { usePageRefresh } from '../../services/page-refresh.ts'
 import { appTextColor, useAppLayout } from '../../services/app-layout.ts'
 
 import { buttonLabelClasses } from '../../services/button-label.ts'
@@ -18,7 +19,7 @@ import AioChart from '../../components/AioChart.uvue';
 import { isDark } from '../../services/theme.ts';
 import { dateLabel, parseDate } from '../../services/time-format.ts';
 import { createRecordScope } from '../../services/records/page-scope.ts';
-import { isMobileBrowser, wereadAppLink, wereadBrowserLink, wereadWebLink } from './services/weread-links.ts';
+import { isMobileBrowser, wereadAppLink, wereadBrowserLink, wereadWebLink } from '../../services/weread-links.ts';
 // #ifdef APP-ANDROID
 import { openWereadBook, openWereadWeb } from '../../uni_modules/aio-weread-launcher';
 // #endif
@@ -149,7 +150,8 @@ const scope = createRecordScope((clear) => {
     showWebFallback.value = {};
   }
 });
-onShow(() => initialize());
+const refreshOnShow = usePageRefresh(() => initialize(), { loading: () => loading.value, error: () => error.value, keys: () => ['weread', 'userbinds'] })
+onShow(() => refreshOnShow());
 const notebooks = computed(() => snapshot.value?.notebooks?.books || []);
 const notebookMap = computed(() => new Map(notebooks.value.map((notebook) => [notebook.bookId, notebook])));
 const books = computed(() =>

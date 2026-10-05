@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import { computed, reactive, ref, watch, onUnmounted } from 'vue'
+import { computed, reactive, ref, watch, onUnmounted, provide } from 'vue'
 import AppIcon from '../../components/AppIcon.uvue'
+import BusinessIcon from '../../components/BusinessIcon.uvue'
 import DashboardAction from '../../components/DashboardAction.uvue'
-import LibraryCover from '../../components/LibraryCover.uvue'
 import ReadingShelf from './ReadingShelf.uvue'
+import MovieList from './MovieList.uvue'
 import AdaptiveModal from '../../components/AdaptiveModal.uvue'
 import FormActions from '../../components/FormActions.uvue'
 import MobileButton from '../../components/MobileButton.uvue'
@@ -14,8 +15,8 @@ import BusinessCardSkeleton from './BusinessCardSkeleton.uvue'
 import LoadingIndicator from '../../components/LoadingIndicator.uvue'
 import GoalEditor from '../../components/GoalEditor.uvue'
 import { recordId } from '../../services/records/contracts.ts'
-import { useGoalOrder } from './services/use-goal-order.ts'
-import GoalProgressRing from './GoalProgressRing.uvue'
+import { useBusinessOrder } from './services/use-business-order.ts'
+import BusinessCardRow from './BusinessCardRow.uvue'
 import { isDark } from '../../services/theme.ts'
 import { request } from '../../services/api.ts'
 import { session } from '../../services/session.ts'
@@ -24,26 +25,30 @@ import { homeDataRevision } from '../../services/home-refresh.ts'
 import { lockedMenuPaths, matchesNativeMenu } from '../../services/life-catalog.ts'
 import { isMenuUnlocked } from '../../services/secondary-lock.ts'
 import spacing from '../../styles/spacing.json'
-import { businessCards as allBusinessCards, businessCardMaxHeight, businessCardRowHeight, cardState, failBusinessAccess, loadBusinessCard, cardCaption, cardProgress } from './services/business-cards.ts'
-const props = defineProps<{ active: boolean; preparing?: boolean; only?: string }>()
+import { businessCards as allBusinessCards, businessCardMaxHeight, businessCardRowHeight, cardState, failBusinessAccess, loadBusinessCard } from './services/business-cards.ts'
+const emit = defineEmits(['sorting', 'visibility'])
+const props = defineProps<{ active: boolean; preparing?: boolean; only?: string; embedded?: boolean }>()
 const businessCards = allBusinessCards.filter(card => !props.only || ({ read: 'reading', member: 'membership' }[card.key] || card.key) === props.only)
 const states = reactive(Object.fromEntries(businessCards.map(card => [card.key, cardState()])))
 const selection = ref<any>(null)
 let detailVersion = 0
 const goalEditor = ref<any>(null)
-const goalOrder = useGoalOrder({
-  rows: () => states.goal?.rows || [],
-  disabled: () => !props.active || !states.goal || states.goal.busy || states.goal.loading || states.goal.locked,
-  save: reorderGoals,
-})
-const { dragging: goalDragging, scrollTop: goalScrollTop } = goalOrder
+const recordOrders = Object.fromEntries(businessCards.filter(card => card.pinned).map(card => [card.key, useBusinessOrder({
+  selector: '.business-order-scroll-' + card.key,
+  rows: () => states[card.key].rows,
+  disabled: () => !props.active || states[card.key].busy || states[card.key].loading || states[card.key].locked,
+  save: (from, to) => reorderPinned(card, from, to),
+})]))
+provide('home-business-orders', recordOrders)
+watch(() => Object.values(recordOrders).some(order => !!order.dragging.value), sorting => emit('sorting', sorting), { flush: 'sync' })
 const shown = computed(() => businessCards.filter(card => {
   const state = states[card.key]
   return (props.active || props.preparing) && state.available && (!state.loaded || !!state.error || state.locked || state.rows.length > 0)
 }))
+watch(() => shown.value.length > 0, visible => emit('visibility', visible), { immediate: true })
 let epoch = 0
 let refreshTask: Promise<void> | null = null
-const REFRESH_INTERVAL_MS = 60 * 1000
+const REFRESH_INTERVAL_MS = 60 * 60 * 1000
 const freshness: Record<string, { at: number; revision: number }> = {}
 let candidatesCache: any[] | null = null
 let candidatesAt = 0
@@ -53,7 +58,7 @@ function cardLoading(card) {
   return state.loading || (!state.loaded && !state.error && !state.locked)
 }
 function invalidate(clear = false) {
-  goalOrder.cancel()
+  Object.values(recordOrders).forEach(order => order.cancel())
   epoch++
   refreshTask = null
   if (clear) closeDetail()
@@ -68,7 +73,7 @@ function invalidate(clear = false) {
   if (clear) { candidatesCache = null; candidatesAt = 0; accessRevision = -1 }
 }
 watch(() => session.token, () => invalidate(true), { flush: 'sync' })
-onUnmounted(() => invalidate(true))
+onUnmounted(() => { invalidate(true); emit('sorting', false) })
 // 准备阶段也可能展示旧内容，必须在等待用户信息前撤下过期解锁的数据。
 watch(() => props.active || props.preparing, visible => {
   if (visible) {
@@ -153,8 +158,9 @@ async function load(card, more = false) {
 function nextPage(card) { if (!states[card.key].moreError) void load(card, true) }
 function open(card, item = null, create = false) {
   if (!props.active || !states[card.key].available || states[card.key].busy) return
+  if ((item || create) && recordOrders[card.key]?.clickBlocked()) return
   if (card.key === 'goal' && (item || create)) {
-    if (states.goal.locked || goalOrder.clickBlocked()) return
+    if (states.goal.locked) return
     goalEditor.value?.open(item, true)
     return
   }
@@ -196,7 +202,7 @@ function goalSaved(row) {
   if (!props.active || !state) return
   state.version++
   state.loading = state.moreLoading = false
-  goalOrder.cancel()
+  recordOrders.goal?.cancel()
   const index = state.rows.findIndex(item => item.id === row.id)
   if (row.isPinned !== 1) state.rows = state.rows.filter(item => item.id !== row.id)
   else if (index >= 0) state.rows[index] = row
@@ -206,18 +212,18 @@ function goalDeleted(id) {
   if (!states.goal || !props.active) return
   states.goal.version++
   states.goal.loading = states.goal.moreLoading = false
-  goalOrder.cancel()
+  recordOrders.goal?.cancel()
   states.goal.rows = states.goal.rows.filter(item => item.id !== id)
 }
-async function reorderGoals(from, to) {
-  const state = states.goal
+async function reorderPinned(card, from, to) {
+  const state = states[card.key]
   if (!props.active || state.busy || state.loading || state.locked || !state.rows[from] || !state.rows[to]) return
   const version = state.version, before = [...state.rows]
   const ordered = [...before], item = ordered.splice(from, 1)[0]
   ordered.splice(to, 0, item)
   state.rows = ordered; state.busy = true; state.error = ''
   try {
-    await request('/goals/pinned-order', 'PUT', { ids: ordered.map(row => row.id) }, true, null, true)
+    await request(card.endpoint + '/pinned-order', 'PUT', { ids: ordered.map(row => row.id) }, true, null, true)
   } catch (error) {
     if (!props.active || state.version !== version) return
     state.rows = before
@@ -232,83 +238,35 @@ function listHeight(card) {
   const status = state.moreLoading || state.moreError ? spacing.controlMin : 0
   return Math.min(businessCardMaxHeight - inset, rows + status)
 }
-function title(item) { return item.title || item.name || '未命名' }
-async function menu(card, item, index) {
-  const state = states[card.key]
-  if (state.busy || state.loading) return
-  const actions = ['取消固定']
-  if (index > 0) actions.push('上移')
-  if (index < state.rows.length - 1) actions.push('下移')
-  const version = state.version
-  uni.showActionSheet({ itemList: actions, success: async result => {
-    if (!props.active || state.version !== version || state.busy) return
-    state.busy = true
-    state.error = ''
-    try {
-      const action = actions[result.tapIndex]
-      if (action === '取消固定') {
-        await request(card.endpoint + '/' + encodeURIComponent(item.id) + '/pin', 'PUT', { isPinned: 0 }, true, null, true)
-        if (state.version === version) state.rows = state.rows.filter(row => row.id !== item.id)
-      } else {
-        const ids = state.rows.map(row => row.id)
-        const target = action === '上移' ? index - 1 : index + 1
-        ;[ids[index], ids[target]] = [ids[target], ids[index]]
-        await request(card.endpoint + '/pinned-order', 'PUT', { ids }, true, null, true)
-        if (state.version === version) state.rows = ids.map(id => state.rows.find(row => row.id === id))
-      }
-    } catch (error) {
-      if (state.version !== version) return
-      if (error.name === 'SecondaryLockRequiredError') { state.rows = []; state.locked = true; state.more = false }
-      else state.error = error.message || '操作失败，请重试'
-    } finally { if (state.version === version) state.busy = false }
-  } })
+function placeholderHeight(card) {
+  if (card.key === 'movie') return businessCardMaxHeight - spacing.controlMin - spacing.card - spacing.hairline * 2
+  return card.key === 'read' ? 99 : businessCardRowHeight
 }
 </script>
 <template>
-  <view v-show="shown.length > 0" class="business-group" :class="{ 'business-group-single': !!only }">
+  <view v-show="shown.length > 0" class="business-group" :class="{ 'business-group-single': !!only && !embedded }">
     <view v-for="card in shown" :key="card.key" class="business-cell" :style="only ? { width: '100%' } : {}">
       <view class="business-card" :class="{ 'business-card-dark': isDark }" :style="{ maxHeight: businessCardMaxHeight + 'px' }" :aria-label="card.title + '首页卡片'" :aria-busy="cardLoading(card) || states[card.key].busy">
         <view class="business-heading">
-          <button role="button" class="heading-link" :aria-label="'查看全部' + card.title" @click="open(card)"><AppIcon :name="card.icon" :size="16" :color="isDark ? '#d4d4d8' : '#52525b'" /><text class="heading-text" :class="{ 'text-dark': isDark }">{{ card.title }}</text></button>
+          <button role="button" class="heading-link" :aria-label="'查看全部' + card.title" @click="open(card)"><BusinessIcon :card-key="card.cardKey" :size="16" /><text class="heading-text" :class="{ 'text-dark': isDark }">{{ card.title }}</text></button>
           <LoadingIndicator v-if="cardLoading(card) || states[card.key].busy" class="business-updating" compact :label="'正在加载' + card.title" />
           <button v-if="states[card.key].rows.length && states[card.key].error && !states[card.key].moreError" role="button" class="icon-action" :aria-label="'重试' + card.title + '：' + states[card.key].error" @click="load(card)"><AppIcon name="lucide:rotate-cw" :size="18" color="#5879ce" /></button><DashboardAction :label="'新增' + card.title" @click="open(card, null, true)" />
         </view>
-        <view v-if="states[card.key].locked" class="card-placeholder" :style="{ minHeight: (card.key === 'read' ? 99 : businessCardRowHeight) + 'px' }"><button role="button" class="lock-action" :aria-label="'解锁' + card.title" @click="open(card)"><AppIcon name="ant-design:lock-outlined" :size="18" color="#8b8f99" /><text class="caption">点击解锁</text></button></view>
+        <view v-if="states[card.key].locked" class="card-placeholder" :style="{ minHeight: placeholderHeight(card) + 'px' }"><button role="button" class="lock-action" :aria-label="'解锁' + card.title" @click="open(card)"><AppIcon name="ant-design:lock-outlined" :size="18" color="#8b8f99" /><text class="caption">点击解锁</text></button></view>
         <ReadingShelf v-else-if="card.key === 'read' && (states[card.key].rows.length || cardLoading(card))" :rows="states[card.key].rows" :loading="cardLoading(card)" :more-loading="states[card.key].moreLoading" :error="states[card.key].moreError || states[card.key].error" @edit="open(card, $event)" @more="nextPage(card)" @retry="states[card.key].moreError ? load(card, true) : load(card)" />
+        <MovieList v-else-if="card.key === 'movie' && (states[card.key].rows.length || cardLoading(card))" :rows="states[card.key].rows" :loading="cardLoading(card)" :more-loading="states[card.key].moreLoading" :error="states[card.key].moreError" @edit="open(card, $event)" @more="nextPage(card)" @retry="load(card, true)" />
         <BusinessCardSkeleton v-else-if="!states[card.key].rows.length && cardLoading(card)" :kind="card.key" :label="'正在加载' + card.title" />
-        <view v-else-if="!states[card.key].rows.length && states[card.key].error" class="card-placeholder" :style="{ minHeight: (card.key === 'read' ? 99 : businessCardRowHeight) + 'px' }"><text class="error-text">{{ states[card.key].error }}</text><button role="button" class="icon-action" :aria-label="'重试' + card.title" @click="refreshAll"><AppIcon name="lucide:rotate-cw" :size="18" color="#5879ce" /></button></view>
-        <scroll-view v-else-if="states[card.key].rows.length" :scroll-y="card.key !== 'goal' || !goalDragging" :scroll-top="card.key === 'goal' ? goalScrollTop : undefined" :show-scrollbar="false" :lower-threshold="40" class="business-scroll" :class="{ 'goal-scroll': card.key === 'goal' }" @scroll="card.key === 'goal' && goalOrder.scrolled($event)" :style="{ height: listHeight(card) + 'px' }" @scrolltolower="nextPage(card)">
-          <view v-for="(item, index) in states[card.key].rows" :key="item.id" class="business-row" :class="[card.key === 'goal' ? goalOrder.classes(item.id) : {}, { 'goal-dragging-dark': isDark && goalDragging === item.id }]" :style="[{ height: businessCardRowHeight + 'px' }, card.key === 'goal' ? goalOrder.style(item.id) : {}]"
-            @touchstart="card.key === 'goal' && goalOrder.start(item.id, $event)" @touchmove="card.key === 'goal' && goalOrder.move($event)" @touchend="card.key === 'goal' && goalOrder.finish($event)" @touchcancel="card.key === 'goal' && goalOrder.cancel()"
-            @mousedown="card.key === 'goal' && goalOrder.mouseStart(item.id, $event)"
-            @keydown.alt.up.prevent="card.key === 'goal' && goalOrder.keyboard(item.id, -1)" @keydown.alt.down.prevent="card.key === 'goal' && goalOrder.keyboard(item.id, 1)">
-            <view class="record-link" role="button" tabindex="0" :aria-label="'编辑' + title(item)" @click="open(card, item)" @keydown.enter="open(card, item)" @keydown.space.prevent="open(card, item)">
-              <GoalProgressRing v-if="card.key === 'goal'" :percent="cardProgress(card, item) ?? 0" :label="title(item) + '进度'" />
-              <view v-else-if="card.paged" class="record-cover"><LibraryCover :file-id="item.fileId || ''" :url="item.coverImgUrl || ''" :title="title(item)" :kind="card.key" compact tiny /></view>
-              <text v-else-if="card.key === 'anniversary'" class="record-emoji">{{ item.icon || '🎉' }}</text>
-              <AppIcon v-else-if="card.key === 'member'" name="lucide:crown" :size="22" :color="item.color || '#5879ce'" />
-              <view class="record-copy">
-                <text class="record-title" :class="{ 'text-dark': isDark }">{{ title(item) }}</text>
-                <view v-if="card.key === 'goal'" class="goal-meta">
-                  <text class="caption" :class="{ 'caption-dark': isDark }">{{ cardCaption(card, item) }}</text>
-                  <view v-if="item.endDate" class="goal-due" :aria-label="'截止 ' + item.endDate.slice(0, 10)">
-                    <text class="caption" :class="{ 'caption-dark': isDark }" aria-hidden="true">·</text>
-                    <AppIcon name="ant-design:calendar-outlined" :size="14" :color="isDark ? '#a6a6b0' : '#71717a'" />
-                    <text class="caption" :class="{ 'caption-dark': isDark }">{{ item.endDate.slice(0, 10) }}</text>
-                  </view>
-                </view>
-                <text v-else class="caption record-caption" :class="{ 'caption-dark': isDark }">{{ cardCaption(card, item) }}</text>
-                <view v-if="card.key !== 'goal' && cardProgress(card, item) != null" class="progress-track" :class="{ 'progress-track-dark': isDark }"><view class="progress-fill" :style="{ width: cardProgress(card, item) + '%' }" /></view>
-              </view>
-              <AppIcon v-if="card.key === 'member' && item.autoRenew === 1" name="lucide:rotate-cw" :size="14" color="#8b8f99" aria-label="自动续费" />
-            </view>
-            <button role="button" v-if="card.pinned && card.key !== 'goal'" class="icon-action" :disabled="states[card.key].busy || states[card.key].loading" :aria-label="title(item) + '固定操作'" @click="menu(card, item, index)"><AppIcon name="lucide:ellipsis" :size="18" color="#8b8f99" /></button>
+        <view v-else-if="!states[card.key].rows.length && states[card.key].error" class="card-placeholder" :style="{ minHeight: placeholderHeight(card) + 'px' }"><text class="error-text">{{ states[card.key].error }}</text><button role="button" class="icon-action" :aria-label="'重试' + card.title" @click="refreshAll"><AppIcon name="lucide:rotate-cw" :size="18" color="#5879ce" /></button></view>
+        <scroll-view v-else-if="states[card.key].rows.length" :scroll-y="!recordOrders[card.key] || recordOrders[card.key].scrollEnabled()" :scroll-top="recordOrders[card.key] ? recordOrders[card.key].scrollTop.value : undefined" :show-scrollbar="false" :lower-threshold="40" class="business-scroll" :class="card.pinned ? ['business-order-scroll', 'business-order-scroll-' + card.key] : []" @scroll="recordOrders[card.key]?.scrolled($event)" :style="{ height: listHeight(card) + 'px' }" @scrolltolower="nextPage(card)">
+          <view class="business-list">
+            <BusinessCardRow v-for="item in states[card.key].rows" :key="item.id" :card="card" :item="item" @edit="open(card, item)"  />
           </view>
           <view v-if="states[card.key].moreLoading || states[card.key].moreError" class="list-status"><LoadingIndicator v-if="states[card.key].moreLoading" compact label="正在加载更多" /><template v-else><text class="error-text status-error">{{ states[card.key].moreError || states[card.key].error }}</text><button role="button" class="icon-action" :aria-label="'重试' + card.title" @click="states[card.key].moreError ? load(card, true) : load(card)"><AppIcon name="lucide:rotate-cw" :size="18" color="#5879ce" /></button></template></view>
         </scroll-view>
       </view>
     </view>
   </view>
+    <view class="business-dialogs" @touchstart.stop @mousedown.stop>
     <GoalEditor v-if="props.active && states.goal" ref="goalEditor" :save-record="saveGoal" :delete-record="deleteGoal" @saved="goalSaved" @deleted="goalDeleted" />
     <AdaptiveModal v-if="selection && selection.loading" label="正在加载记录详情" bare :show-close="false" :max-width="spacing.controlMin" @close="closeDetail">
       <LoadingIndicator ring label="正在加载记录详情" />
@@ -325,6 +283,7 @@ async function menu(card, item, index) {
       <AnniversaryRecordEditor v-if="selection.card.key === 'anniversary'" :record="selection.record" @close="closeDetail" @saved="detailChanged" @deleted="detailChanged" />
       <MembershipRecordEditor v-if="selection.card.key === 'member'" :record="selection.record" @close="closeDetail" @saved="detailChanged" @deleted="detailChanged" />
     </template>
+    </view>
 </template>
 <style scoped lang="scss">
 @use '../../styles/typography' as *;
@@ -342,32 +301,9 @@ async function menu(card, item, index) {
 .heading-text { @include type-style('title'); color: #18181b; }
 .icon-action { width: $space-controlMin; flex-shrink: 0; }
 .business-scroll { width: 100%; min-height: 0; }
-.business-row { box-sizing: border-box; display: flex; flex-direction: row; align-items: center; padding: $space-detail $space-card; }
-.goal-dragging { position: relative; background-color: #f1f3f6; box-shadow: 0 4px 14px rgba(0, 0, 0, 0.12); }
-.goal-dragging-dark { background-color: #292d33; }
-.goal-drop-before { box-shadow: inset 0 2px 0 #618f9d; }
-.goal-drop-after { box-shadow: inset 0 -2px 0 #618f9d; }
-.record-link { display: flex; flex-direction: row; flex: 1; min-width: 0; align-items: center; gap: $space-inline; min-height: $space-controlMin; }
-.record-cover { width: 32px; height: 48px; flex-shrink: 0; border-radius: 4px; overflow: hidden; }
-.record-emoji { @include type-style('glyph-display'); }
-.record-copy { flex: 1; min-width: 0; gap: $space-detail; }
-.goal-meta { display: flex; flex-direction: row; flex-wrap: wrap; align-items: center; column-gap: $space-detail; }
-.goal-due { display: flex; flex-direction: row; align-items: center; gap: $space-detail; flex-shrink: 0; }
-.record-title { @include type-style('label-strong'); color: #3f3f46; overflow: hidden;
-/* #ifndef APP */
-display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
-/* #endif */
-/* #ifdef APP */
-max-lines: 2; text-overflow: ellipsis;
-/* #endif */
-}
+.business-list { display: flex; flex-direction: column; }
 .caption { @include type-style('caption'); color: #71717a; }
-.record-caption { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .text-dark { color: #ececf0; }
-.caption-dark { color: #a6a6b0; }
-.progress-track { height: 3px; border-radius: 3px; background-color: #eef0f3; overflow: hidden; }
-.progress-track-dark { background-color: #30343b; }
-.progress-fill { height: 3px; background-color: #5879ce; }
 .card-placeholder { box-sizing: border-box; justify-content: center; padding: $space-inline $space-card;  }
 .lock-action { gap: $space-inline; }
 .list-status { height: $space-controlMin; flex-direction: row; align-items: center; padding: 0 $space-card; }
@@ -379,7 +315,7 @@ max-lines: 2; text-overflow: ellipsis;
 .heading-link::after, .icon-action::after, .lock-action::after { border: 0; }
 /* #endif */
 /* #ifdef WEB */
-.goal-scroll { user-select: none; -webkit-touch-callout: none; }
+.business-order-scroll { user-select: none; -webkit-touch-callout: none; }
 .business-scroll :deep(.uni-scroll-view) { overscroll-behavior-y: contain; }
 /* #endif */
 </style>

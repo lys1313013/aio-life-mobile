@@ -27,23 +27,40 @@ export function createHomeCardPreferences(state, fetch, identity) {
     pending = task
     return task
   }
-  async function mutate(key, path, method, body = null) {
+  async function mutate(key, path, method, body = null, optimisticItems = null) {
     if (!state.ready || state.loading || state.busy) return false
     const version = ++generation, owner = identity()
+    const previousItems = state.items
     state.busy = key
     try {
+      if (optimisticItems) state.items = optimisticItems
       const items = await fetch(path, method, body)
       if (!current(version, owner)) return false
       state.items = items
       return true
+    } catch (error) {
+      if (optimisticItems && current(version, owner)) state.items = previousItems
+      throw error
     } finally { if (current(version, owner)) state.busy = '' }
+  }
+  async function reorder(group, keys) {
+    if (!state.ready || state.loading || state.busy) return false
+    const rows = state.items.filter(item => item.group === group)
+    const byKey = new Map(rows.map(item => [item.cardKey, item]))
+    if (keys.length !== rows.length || new Set(keys).size !== keys.length || keys.some(key => !byKey.has(key))) {
+      throw new Error('卡片列表已变化，请重试')
+    }
+    const ordered = keys.map((key, sortOrder) => ({ ...byKey.get(key), sortOrder }))
+    let index = 0
+    const optimisticItems = state.items.map(item => item.group === group ? ordered[index++] : item)
+    return mutate(group, '/home/cards/order', 'PUT', { group, keys }, optimisticItems)
   }
   return {
     clear, load,
     enabled: key => state.ready && state.items.some(item => item.cardKey === key && item.enabled),
     order: key => state.items.find(item => item.cardKey === key)?.sortOrder ?? 9999,
     toggle: (key, enabled) => mutate(key, '/home/cards/' + encodeURIComponent(key), 'PUT', { enabled }),
-    reorder: (group, keys) => mutate(group, '/home/cards/order', 'PUT', { group, keys }),
+    reorder,
     reset: () => mutate('reset', '/home/cards', 'DELETE'),
   }
 }

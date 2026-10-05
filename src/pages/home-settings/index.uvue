@@ -1,9 +1,12 @@
 <script setup lang="ts">
+import { usePageRefresh } from '../../services/page-refresh.ts'
 import { computed, getCurrentInstance, onUnmounted, ref } from 'vue'
 import { onShow, onHide } from '@dcloudio/uni-app'
 import PageHeader from '../../components/PageHeader.uvue'
 import PageState from '../../components/PageState.uvue'
-import LifeMenuIcon from '../../components/LifeMenuIcon.uvue'
+import BusinessIcon from '../../components/BusinessIcon.uvue'
+import { menuVisuals } from '../../services/menu-visuals.ts'
+import { request } from '../../services/api.ts'
 import LoadingIndicator from '../../components/LoadingIndicator.uvue'
 import ConfirmAction from '../../components/ConfirmAction.uvue'
 import { isDark } from '../../services/theme.ts'
@@ -24,7 +27,8 @@ let visible = true
 let gesture = 0
 const instance = getCurrentInstance()
 function back() { uni.navigateBack({ fail: () => uni.switchTab({ url: '/pages/profile/index' }) }) }
-onShow(() => { visible = true; void homeCards.load() })
+const refreshOnShow = usePageRefresh(() => homeCards.load(), { loading: () => state.loading, error: () => state.error, keys: () => ['home'] })
+onShow(() => { visible = true; void refreshOnShow(); void menuVisuals.load(request) })
 onHide(() => { visible = false; cancel() })
 onUnmounted(cancel)
 function report(error) { if (visible) uni.showToast({ title: error.message || '保存失败，请重试', icon: 'none' }) }
@@ -120,7 +124,7 @@ function rowStyle(item) {
               <view role="button" tabindex="0" class="drag-handle" :aria-label="'拖动调整' + item.title + '顺序'" @touchstart="start(group.key, item, index, $event)" @touchmove.stop.prevent="move" @touchend="finish" @touchcancel="cancel" @keydown.up.prevent="keyboard(group.key, index, -1)" @keydown.down.prevent="keyboard(group.key, index, 1)">
                 <view class="grip"><view v-for="dot in 6" :key="dot" class="grip-dot" :class="{ 'grip-dot-dark': isDark }" /></view>
               </view>
-              <LifeMenuIcon :icon="item.icon" :size="20" />
+              <BusinessIcon :card-key="item.cardKey" :size="20" />
               <text class="card-name" :class="{ 'text-dark': isDark }">{{ item.title }}</text>
               <LoadingIndicator v-if="state.busy === item.cardKey" compact />
               <switch v-else :key="item.cardKey + ':' + switchVersion" :checked="item.enabled" :disabled="busy || !!dragging" :aria-label="'显示' + item.title" color="#5879ce" @change="toggle(item, $event)" />

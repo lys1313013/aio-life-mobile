@@ -5,6 +5,10 @@ import { buttonLabelClasses } from '../../services/button-label.ts'
 import ContentSkeleton from '../../components/ContentSkeleton.uvue';
 import TimeDonut from './TimeDonut.uvue'
 import BusinessCards from './BusinessCards.uvue'
+import WereadRecentCard from './WereadRecentCard.uvue'
+import HomeCardSortCell from './HomeCardSortCell.uvue'
+import { useHomeCardOrder } from './services/use-home-card-order.ts'
+import { mergeVisibleCardOrder } from './services/home-card-order.ts'
 import AppIcon from '../../components/AppIcon.uvue'
 import SecondaryUnlock from "../../components/SecondaryUnlock.uvue";
 import { isDark, themeClass } from '../../services/theme.ts'
@@ -17,7 +21,7 @@ import { cachedMenuAccess } from '../../services/menu-access-cache.ts'
 import { isMenuUnlocked } from '../../services/secondary-lock.ts'
 import { onShow, onHide, onUnload, onResize } from '@dcloudio/uni-app'
 import DashboardAction from '../../components/DashboardAction.uvue'
-import iconCatalog from '../../services/icons/catalog.ts'
+import { menuVisuals } from '../../services/menu-visuals.ts'
 import DashboardSection from '../../components/DashboardSection.uvue'
 // #ifndef WEB
 import PageHeader from '../../components/PageHeader.uvue'
@@ -57,9 +61,28 @@ import spacing from '../../styles/spacing.json'
 
 const viewportWidth = ref(uni.getWindowInfo().windowWidth)
 const quickIconSize = computed(() => viewportWidth.value < 640 ? 20 : 24)
-onResize(event => { viewportWidth.value = event.size.windowWidth })
+onResize(event => { viewportWidth.value = event.size.windowWidth; cardOrder.cancel() })
+const businessSorting = ref(false)
+const businessVisibility = reactive<Record<string, boolean>>({})
+const orderDisabled = computed(() => !active || homeCardPreferences.loading || !!homeCardPreferences.busy || loading.value || businessSorting.value)
+const orderSignature = () => homeCardPreferences.items.map(item => item.cardKey + ':' + item.enabled + ':' + item.sortOrder).join('|')
+const cardOrder = useHomeCardOrder({
+  rows: group => group === 'section' ? homeSections.value.filter(sectionVisible) : overviewOrderRows.value,
+  disabled: () => orderDisabled.value,
+  signature: orderSignature,
+  save: async (group, visibleKeys) => {
+    try { await homeCards.reorder(group, mergeVisibleCardOrder(homeCardPreferences.items, group, visibleKeys)) }
+    catch (error) { if (active) uni.showToast({ title: error.message || '排序保存失败，请重试', icon: 'none' }) }
+  },
+})
+watch(orderSignature, () => cardOrder.cancel())
+function sectionVisible(section) {
+  if (section.cardKey === 'section.watched') return (states.watched.loading && !states.watched.loaded) || !!states.watched.error || watched.value.length > 0
+  if (section.cardKey === 'section.exercise') return (states.exercise.loading && !states.exercise.loaded) || !!states.exercise.error || exercise.value.days.length > 0
+  return (section.cardKey !== 'section.github' || githubBound.value) && businessVisibility[section.cardKey] !== false
+}
 const businessCardRefs = ref<Record<string, any>>({})
-const homeSections = computed(() => homeCardPreferences.items.filter(item => item.group === 'section' && item.enabled))
+const homeSections = computed(() => cardOrder.ordered('section', homeCardPreferences.items.filter(item => item.group === 'section' && item.enabled)))
 const sectionEnabled = (key: string) => homeCards.enabled('section.' + (key === 'commits' ? 'github' : key))
 const businessActive = ref(false)
 const loading = ref(false)
@@ -129,11 +152,13 @@ const states = reactive({
 const watchedAutoHeight = computed(() => viewportWidth.value < 768)
 const githubBound = ref(false)
 const visibleCards = computed(() =>
-  cards.value.filter(
+  cardOrder.ordered('overview', cards.value.filter(
     (item) =>
       homeCards.enabled('overview.' + item.type.toLowerCase()) && (item.loading || item.error || (item.value !== '' && item.value != null)),
-  ).sort((a, b) => homeCards.order('overview.' + a.type.toLowerCase()) - homeCards.order('overview.' + b.type.toLowerCase())),
+  ).sort((a, b) => homeCards.order('overview.' + a.type.toLowerCase()) - homeCards.order('overview.' + b.type.toLowerCase())), item => 'overview.' + item.type.toLowerCase()),
 )
+const overviewOrderRows = computed(() => !overview.loaded ? homeCardPreferences.items.filter(item => item.group === 'overview' && item.enabled) : visibleCards.value.map(item => ({ cardKey: 'overview.' + item.type.toLowerCase() })))
+watch(() => visibleCards.value.map(item => item.type).sort().join('|') + homeSections.value.filter(sectionVisible).map(item => item.cardKey).sort().join('|'), () => cardOrder.cancel())
 const moreExercise = ref(false)
 const moreCommits = ref(false)
 const moreErrors = reactive({ exercise: '', commits: '' })
@@ -156,7 +181,7 @@ function maybeLoadMore(key: string) {
   if (!moreErrors[key]) loadMore(key)
 }
 let refreshTask: Promise<void> | null = null
-const HOME_REFRESH_INTERVAL_MS = 60 * 1000
+const HOME_REFRESH_INTERVAL_MS = 60 * 60 * 1000
 let refreshedAt = 0
 let preferencesRevision = -1
 let profileRevision = -1
@@ -166,6 +191,7 @@ let homeGeneration = 0
 let active = true
 let redirecting = false
 watch(() => session.token, () => {
+  cardOrder.cancel()
   homeGeneration++; refreshTask = null; cards.value = []; githubBound.value = false
   businessActive.value = false; overview.loading = false; overview.loaded = false
   refreshedAt = 0; timeDate.value = ''; loading.value = false
@@ -239,6 +265,7 @@ onShow(() => {
     void refresh()
     return
   }
+  void menuVisuals.load(request)
   businessActive.value = true
   if (profileRevision !== homeDataRevision('profile')) {
     const revision = homeDataRevision('profile'), token = session.token
@@ -257,6 +284,7 @@ onShow(() => {
   }
 })
 onHide(() => {
+  cardOrder.cancel()
   homeGeneration++; refreshTask = null; loading.value = false; overview.loading = false
   for (const key of Object.keys(states)) states[key].loading = false
   for (const card of cards.value) card.loading = false
@@ -267,13 +295,14 @@ onHide(() => {
   minuteTimer = null
 })
 onUnload(() => {
+  cardOrder.cancel()
   homeGeneration++; refreshTask = null
   businessActive.value = false
   active = false
   if (minuteTimer) clearInterval(minuteTimer)
 })
 
-watch(() => homeCardPreferences.items.map(item => item.cardKey + ':' + item.enabled + ':' + item.sortOrder).join('|'), () => {
+watch(() => homeCardPreferences.items.map(item => item.cardKey + ':' + item.enabled).sort().join('|'), () => {
   // Saving may finish after navigating back from preferences. Reload newly enabled cards then.
   if (active && refreshedAt && homeCardPreferences.ready && !loading.value) void refresh()
 })
@@ -293,7 +322,7 @@ async function loadHome() {
   const token = session.token
   try {
     const profileVersion = homeDataRevision('profile'), preferenceVersion = homeDataRevision('preferences')
-    await Promise.all([fetchUser(), homeCards.load()])
+    await Promise.all([fetchUser(), homeCards.load(), menuVisuals.load(request, true)])
     if (!homeCardPreferences.ready || homeCardPreferences.error) throw new Error(homeCardPreferences.error || '首页设置加载失败')
     if (!isCurrent(token) || generation !== homeGeneration) return
     profileRevision = profileVersion; preferencesRevision = preferenceVersion
@@ -508,26 +537,11 @@ async function completeWatched(task) {
   finally {taskBusy.value=''}
 }
 
-function cardIcon(item: OverviewCard) {
-  const icons = {
-    LEETCODE: isDark.value ? 'platform:leetcode' : 'devicon:leetcode', GITHUB: 'simple-icons:github',
-    EXERCISE: 'mdi:run', TIME_TRACKER: 'lucide:clock',
-    READ: 'svg:weread', WEREAD: 'svg:weread', SHANBAY: 'svg:shanbay',
-  }
-  return icons[item.type] || item.icon || 'lucide:layout-dashboard'
+function overviewVisual(item: OverviewCard) {
+  return menuVisuals.visual('overview.' + item.type.toLowerCase())
 }
-function linkIcon(link: QuickLink) {
-  if (iconCatalog.icons[link.icon || ''] || link.icon?.startsWith('svg:')) return link.icon
-  const icons = [
-    ['待办', 'lucide:list-checks'], ['目标', 'lucide:crosshair'],
-    ['时', 'lucide:clock'], ['运动', 'lucide:activity'],
-    ['闪念', 'lucide:lightbulb'], ['github', 'simple-icons:github'],
-    ['设备', 'lucide:monitor'], ['关系', 'lucide:users'],
-    ['用户', 'lucide:users'], ['支出', 'lucide:banknote'],
-    ['笔记', 'lucide:file-text'], ['备忘', 'lucide:file-text'],
-    ['密码', 'lucide:key-round'],
-  ]
-  return icons.find(([name]) => link.title.toLowerCase().includes(name))?.[1] || 'lucide:layout-dashboard'
+function linkVisual(link: QuickLink) {
+  return menuVisuals.menuVisual(link.menuId, { icon: link.icon, iconColor: link.color })
 }
 function weekday(date: string) {
   return (
@@ -570,7 +584,7 @@ function trendLines(points) {
     <!-- 保留状态栏与微信胶囊的安全空间。 -->
     <PageHeader title="" />
     <!-- #endif -->
-    <scroll-view scroll-y :show-scrollbar="false" class="dashboard-scroll" :refresher-enabled="true" :refresher-triggered="refreshing" refresher-background="transparent" :refresher-default-style="refreshTheme" @refresherrefresh="pullRefresh"
+    <scroll-view :scroll-y="!businessSorting && cardOrder.scrollEnabled()" :direction="businessSorting || !cardOrder.scrollEnabled() ? 'none' : 'vertical'" :scroll-top="cardOrder.scrollTop.value" @scroll="cardOrder.scrolled" :show-scrollbar="false" class="dashboard-scroll" :refresher-enabled="!businessSorting && !cardOrder.dragging.value" :refresher-triggered="refreshing" refresher-background="transparent" :refresher-default-style="refreshTheme" @refresherrefresh="pullRefresh"
       ><view class="dashboard-content ui-page-inset ui-tab-page-inset">
         <view v-if="errorText" class="global-error" role="alert"
           ><text class="failure-text" :class="themeClass('failure-text')">{{ errorText }}</text
@@ -579,19 +593,14 @@ function trendLines(points) {
           ><text class="failure-text" :class="themeClass('failure-text')">{{ overview.error }}</text
           ><button role="button" class="text-button ui-pad-sm" @click="loadOverview"><text :class="buttonLabelClasses(['text-button ui-pad-sm'])">重试统计卡片</text></button></view
         ><view v-if="homeCardPreferences.ready" class="overview-grid">
-          <view
+          <HomeCardSortCell
             v-if="(loading || overview.loading) && !overview.loaded"
             v-for="item in homeCardPreferences.items.filter(item => item.group === 'overview' && item.enabled)"
-            :key="item.cardKey"
-            class="overview-cell ui-pad-xs"
+            :key="item.cardKey" :card-key="item.cardKey" :title="item.title" group="overview" :order="cardOrder" :disabled="orderDisabled"
             ><view class="overview-card placeholder-card ui-pad-card"
-               :class="themeClass('overview-card')"><ContentSkeleton variant="summary" label="正在加载概览" /></view
-            ></view
-          ><view
-            v-for="item in visibleCards"
-            :key="item.type"
-            class="overview-cell ui-pad-xs"
-          >
+               :class="themeClass('overview-card')"><ContentSkeleton variant="summary" label="正在加载概览" /></view>
+            </HomeCardSortCell>
+          <HomeCardSortCell v-for="item in visibleCards" :key="item.type" :card-key="'overview.' + item.type.toLowerCase()" :title="item.title" group="overview" :order="cardOrder" :disabled="orderDisabled">
             <view
               role="button"
               tabindex="0"
@@ -608,7 +617,7 @@ function trendLines(points) {
                 ><view class="card-progress-bar"></view
               ></view><view class="stat-top"
                 ><view class="stat-name"
-                  ><button role="button" class="stat-icon stat-link ui-type-body" :aria-label="item.title + '图标'" @click.stop="openOverviewLink(item, item.iconClickUrl)"><LifeMenuIcon :icon="cardIcon(item)" :size="18" :color="isDark ? '#d4d4d8' : '#52525b'" /></button><button role="button" class="stat-title stat-link" :aria-label="item.title + '标题'" @click.stop="openOverviewLink(item, item.titleClickUrl)"><text class="stat-title-text" :class="themeClass('stat-title-text')">{{ item.title }}</text></button></view
+                  ><button role="button" class="stat-icon stat-link ui-type-body" :aria-label="item.title + '图标'" @click.stop="openOverviewLink(item, item.iconClickUrl)"><LifeMenuIcon :icon="overviewVisual(item).icon" :size="18" :color="overviewVisual(item).iconColor" /></button><button role="button" class="stat-title stat-link" :aria-label="item.title + '标题'" @click.stop="openOverviewLink(item, item.titleClickUrl)"><text class="stat-title-text" :class="themeClass('stat-title-text')">{{ item.title }}</text></button></view
                 ><text
                   class="stat-value"
                   :style="{ color: item.valueColor || '' }"
@@ -627,11 +636,11 @@ function trendLines(points) {
                 }}</text></view
               >
             </view>
-          </view><SecondaryUnlock />
-  </view><view v-if="homeCardPreferences.ready" class="section-grid"><template v-for="section in homeSections" :key="section.cardKey">
-          <view v-if="section.cardKey === 'section.time'" class="section-cell ui-pad-xs"
+          </HomeCardSortCell><SecondaryUnlock />
+  </view><view v-if="homeCardPreferences.ready" class="section-grid"><HomeCardSortCell v-for="section in homeSections" :key="section.cardKey" :visible="sectionVisible(section)" :card-key="section.cardKey" :title="section.title" group="section" :order="cardOrder" :disabled="orderDisabled">
+          <view v-if="section.cardKey === 'section.time'" class="section-content ui-pad-xs"
             ><DashboardSection
-              title="时迹"
+              title="时迹" :icon="menuVisuals.visual('section.time').icon" :icon-color="menuVisuals.visual('section.time').iconColor"
               :height="sectionHeight('time')"
               :loading="states.time.loading && !refreshing && !states.time.loaded"
               :retain-content="states.time.loaded"
@@ -670,7 +679,7 @@ function trendLines(points) {
                   role="img"
                   :aria-label="'今日已记录 ' + time.total"
                   ><TimeDonut :groups="time.groups" :active="timeChartActive" /><text v-if="time.groups.length" class="donut-total" :class="themeClass('donut-total')">{{ time.total }}</text><view v-for="label in timeDonutLabels" :key="label.id" class="donut-annotation">
-                    <view v-for="(line, index) in label.lines" :key="index" class="donut-leader" :style="line" /><view class="donut-label" :class="['donut-label-' + label.side, themeClass('donut-label')]" :style="label.position">
+                    <view class="donut-label" :class="['donut-label-' + label.side, themeClass('donut-label')]" :style="label.position">
                       <text class="donut-label-name" :class="themeClass('donut-label-text')">{{ label.name }}</text><text class="donut-label-duration" :class="themeClass('donut-label-text')">{{ label.duration }}</text>
                     </view>
                   </view>
@@ -686,9 +695,9 @@ function trendLines(points) {
                   ></view></scroll-view>
               </view>
             </DashboardSection></view
-          ><view v-if="section.cardKey === 'section.links'" class="section-cell ui-pad-xs"
+          ><view v-if="section.cardKey === 'section.links'" class="section-content ui-pad-xs"
             ><DashboardSection
-              title="快捷导航" skeleton="grid"
+              title="快捷导航" :icon="menuVisuals.visual('section.links').icon" :icon-color="menuVisuals.visual('section.links').iconColor" skeleton="grid"
               :height="sectionHeight('links')"
               :loading="states.links.loading && !refreshing && !states.links.loaded"
               :updating="states.links.loading && !refreshing && states.links.loaded"
@@ -714,14 +723,14 @@ function trendLines(points) {
                   :aria-label="link.title + (nativeDestination(link.path) ? '' : '（网页版）')"
                   @click="openLink(link.path)"
                 >
-                  <LifeMenuIcon :icon="linkIcon(link)" :size="quickIconSize" :color="isDark ? '#e4e4e7' : '#27272a'" /><text class="quick-title" :class="themeClass('quick-title')">{{ link.title }}</text><text v-if="!nativeDestination(link.path)" class="quick-platform">网页版</text>
+                  <LifeMenuIcon :icon="linkVisual(link).icon" :size="quickIconSize" :color="linkVisual(link).iconColor" /><text class="quick-title" :class="themeClass('quick-title')">{{ link.title }}</text><text v-if="!nativeDestination(link.path)" class="quick-platform">网页版</text>
                 </button></view></scroll-view>
             </DashboardSection></view
           ><view
             v-if="section.cardKey === 'section.watched' && ((states.watched.loading && !states.watched.loaded) || states.watched.error || watched.length)"
-            class="section-cell ui-pad-xs"
+            class="section-content ui-pad-xs"
             ><DashboardSection
-              title="待办"
+              title="待办" :icon="menuVisuals.visual('section.watched').icon" :icon-color="menuVisuals.visual('section.watched').iconColor"
               :height="sectionHeight('watched')"
               :auto-height="watchedAutoHeight"
               :loading="states.watched.loading && !refreshing && !states.watched.loaded"
@@ -740,9 +749,9 @@ function trendLines(points) {
                 ></scroll-view
               ></DashboardSection
             ></view
-          ><view v-if="section.cardKey === 'section.thoughts'" class="section-cell ui-pad-xs"
+          ><view v-if="section.cardKey === 'section.thoughts'" class="section-content ui-pad-xs"
             ><DashboardSection
-              title="闪念"
+              title="闪念" :icon="menuVisuals.visual('section.thoughts').icon" :icon-color="menuVisuals.visual('section.thoughts').iconColor"
               compact
               :height="sectionHeight('thoughts')"
               :loading="states.thoughts.loading && !refreshing && !states.thoughts.loaded"
@@ -768,10 +777,9 @@ function trendLines(points) {
             ></view
           ><view
             v-if="section.cardKey === 'section.exercise' && ((states.exercise.loading && !states.exercise.loaded) || states.exercise.error || exercise.days.length)"
-            class="section-cell ui-pad-xs"
+            class="section-content ui-pad-xs"
             ><DashboardSection
-              title="运动"
-              icon="mdi:run"
+              title="运动" :icon="menuVisuals.visual('section.exercise').icon" :icon-color="menuVisuals.visual('section.exercise').iconColor"
               compact
               flush-top
               :height="sectionHeight('exercise')"
@@ -826,10 +834,9 @@ function trendLines(points) {
                 </view></scroll-view
               ></DashboardSection
             ></view
-          ><view v-if="section.cardKey === 'section.github' && githubBound" class="section-cell ui-pad-xs"
+          ><view v-if="section.cardKey === 'section.github' && githubBound" class="section-content ui-pad-xs"
             ><DashboardSection
-              title="最近提交"
-              icon="simple-icons:github"
+              title="最近提交" :icon="menuVisuals.visual('section.github').icon" :icon-color="menuVisuals.visual('section.github').iconColor"
               :height="sectionHeight('commits')"
               :loading="states.commits.loading && !refreshing && !states.commits.loaded"
               :updating="states.commits.loading && !refreshing && states.commits.loaded"
@@ -857,8 +864,9 @@ function trendLines(points) {
               ></DashboardSection
             ></view
           >
-        <BusinessCards v-if="['section.goal', 'section.anniversary', 'section.reading', 'section.membership', 'section.movie'].includes(section.cardKey)" :ref="el => { businessCardRefs[section.cardKey] = el }" :only="section.cardKey.slice(8)" :active="businessActive" :preparing="loading && !businessActive" />
-        </template></view>
+        <view v-if="section.cardKey === 'section.weread'" class="section-content ui-pad-xs"><WereadRecentCard :ref="el => { businessCardRefs[section.cardKey] = el }" :active="businessActive" :preparing="loading && !businessActive" @visibility="businessVisibility[section.cardKey] = $event" /></view>
+        <BusinessCards v-if="['section.goal', 'section.anniversary', 'section.reading', 'section.membership', 'section.movie'].includes(section.cardKey)" :ref="el => { businessCardRefs[section.cardKey] = el }" :only="section.cardKey.slice(8)" embedded @visibility="businessVisibility[section.cardKey] = $event" :active="businessActive" :preparing="loading && !businessActive" @sorting="businessSorting = $event" />
+        </HomeCardSortCell></view>
       </view></scroll-view
     ><TimeRecordEditor v-if="timeEditor" :record-id="timeEditor.recordId" @close="closeTimeEditor" /><RecordCreateModal v-if="recordCreateKind" :kind="recordCreateKind" :thought-id="recordCreateKind === 'think' ? thoughtEditId : ''" @close="recordCreateKind = null" @saved="handleRecordCreated" @deleted="handleThoughtDeleted" /><WatchedTaskEditModal v-if="watchedEditor" :task="watchedEditor" @close="watchedEditor = null" @saved="handleWatchedSaved" />
   </view>
@@ -901,8 +909,10 @@ function trendLines(points) {
 }
 .overview-cell,
 .section-cell {
+  position: relative;
   box-sizing: border-box;
 }
+.section-content { width: 100%; box-sizing: border-box; }
 .overview-cell {
   width: 50%;
 
@@ -1149,11 +1159,6 @@ max-lines: 1;
   width: 176px;
   height: 176px;
   pointer-events: none;
-}
-.donut-leader {
-  position: absolute;
-  height: 1px;
-  transform-origin: left center;
 }
 .donut-label {
   position: absolute;

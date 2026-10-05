@@ -1,10 +1,10 @@
 // 首页仅依赖轻量接口与展示规则，不同步引用业务分包。
 export const businessCards = [
-  { key: 'goal', title: '目标', icon: 'lucide:crosshair', route: '/pages/tasks/goals', endpoint: '/goals', pinned: true },
-  { key: 'anniversary', title: '纪念日', icon: 'mdi:calendar-heart', route: '/pages/records/anniversary', endpoint: '/anniversaryRecords', pinned: true },
-  { key: 'read', title: '阅读', icon: 'lucide:book-open', route: '/pages/records/library?kind=read', endpoint: '/read-record', paged: true },
-  { key: 'member', title: '会员', icon: 'lucide:crown', route: '/pages/member/index', endpoint: '/membership' },
-  { key: 'movie', title: '观影', icon: 'lucide:clapperboard', route: '/pages/records/library?kind=movie', endpoint: '/movie', paged: true },
+  { key: 'goal', title: '目标', cardKey: 'section.goal', route: '/pages/tasks/goals', endpoint: '/goals', pinned: true },
+  { key: 'anniversary', title: '纪念日', cardKey: 'section.anniversary', route: '/pages/records/anniversary', endpoint: '/anniversaryRecords', pinned: true },
+  { key: 'read', title: '阅读', cardKey: 'section.reading', route: '/pages/records/library?kind=read', endpoint: '/read-record', paged: true },
+  { key: 'member', title: '会员', cardKey: 'section.membership', route: '/pages/member/index', endpoint: '/membership' },
+  { key: 'movie', title: '观影', cardKey: 'section.movie', route: '/pages/records/library?kind=movie', endpoint: '/movie', paged: true },
 ]
 // 卡片整体的几何上限，包括标题、内边距和列表。
 export const businessCardMaxHeight = 280

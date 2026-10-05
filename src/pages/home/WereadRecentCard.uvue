@@ -1,0 +1,205 @@
+<script setup lang="ts">
+import { computed, onUnmounted, ref, watch } from 'vue'
+import BusinessIcon from '../../components/BusinessIcon.uvue'
+import AppIcon from '../../components/AppIcon.uvue'
+import LoadingIndicator from '../../components/LoadingIndicator.uvue'
+import { request } from '../../services/api.ts'
+import { session } from '../../services/session.ts'
+import { menuVisuals, menuVisualState } from '../../services/menu-visuals.ts'
+import { loadMenuAccess, cachedMenuAccess } from '../../services/menu-access-cache.ts'
+import { lockedMenuPaths } from '../../services/life-catalog.ts'
+import { isMenuUnlocked } from '../../services/secondary-lock.ts'
+import { homeDataRevision } from '../../services/home-refresh.ts'
+import { isDark } from '../../services/theme.ts'
+import { wereadAppLink, wereadWebLink, wereadBrowserLink, isMobileBrowser } from '../../services/weread-links.ts'
+// #ifdef APP-ANDROID
+import { openWereadBook, openWereadWeb } from '../../uni_modules/aio-weread-launcher'
+// #endif
+const props = defineProps<{ active: boolean; preparing?: boolean }>()
+const emit = defineEmits(['visibility'])
+const books = ref<any[]>([]), connected = ref<boolean | null>(null)
+const loaded = ref(false), loading = ref(false), error = ref(''), locked = ref(false)
+const opening = ref(''), openingError = ref(''), webFallback = ref('')
+let generation = 0, updatedAt = 0, revision = -1, pending: Promise<void> | null = null
+const route = '/pages/records/weread'
+const available = computed(() => !!menuVisualState.cards['section.weread']?.menuId)
+const visible = computed(() => (props.active || props.preparing) && available.value && (connected.value !== false || !!error.value || locked.value))
+watch(visible, value => emit('visibility', value), { immediate: true })
+function invalidate(clear = false) {
+  generation++; pending = null; loading.value = false; opening.value = ''; openingError.value = ''; webFallback.value = ''
+  if (clear) { books.value = []; connected.value = null; loaded.value = false; error.value = ''; updatedAt = 0; revision = -1 }
+}
+watch(() => session.token, () => invalidate(true), { flush: 'sync' })
+watch(() => [props.active, available.value, session.token], () => {
+  if (!available.value) { invalidate(true); return }
+  if (!props.active) { invalidate(); return }
+  const config = cachedMenuAccess()
+  if (config && lockedMenuPaths(route, config.menus, config.ids).some(path => !isMenuUnlocked(path))) {
+    invalidate(true); locked.value = true
+  }
+  if (available.value) void refresh(false)
+}, { immediate: true, flush: 'sync' })
+onUnmounted(() => invalidate(true))
+defineExpose({ refresh })
+function refresh(force = true) {
+  if (!props.active || !session.token || !available.value) return Promise.resolve()
+  if (pending) return pending
+  const current = ++generation, owner = session.token
+  const valid = () => props.active && current === generation && session.token === owner
+  loading.value = true; error.value = ''
+  const task = (async () => {
+    try {
+      const config = await loadMenuAccess(path => request(path, 'GET', null, true, null, true))
+      if (!valid()) return
+      if (lockedMenuPaths(route, config.menus, config.ids).some(path => !isMenuUnlocked(path))) {
+        books.value = []; connected.value = null; locked.value = true; loaded.value = false; return
+      }
+      locked.value = false
+      if (!force && loaded.value && revision === homeDataRevision('weread') && Date.now() - updatedAt < 300000) return
+      const data = await request<any>('/weread/recent', 'GET', null, true, null, true, 120000)
+      if (!valid()) return
+      if (typeof data?.connected !== 'boolean' || !Array.isArray(data.books)) throw Error('微信读书数据异常，请重试')
+      books.value = data.books; connected.value = data.connected; loaded.value = true
+      updatedAt = Date.now(); revision = homeDataRevision('weread')
+    } catch (e) {
+      if (!valid()) return
+      if (e.name === 'SecondaryLockRequiredError') { books.value = []; connected.value = null; locked.value = true; loaded.value = false }
+      else error.value = e.message || '加载失败，点击空白处重试'
+    } finally { if (valid()) { loading.value = false; pending = null } }
+  })()
+  pending = task
+  return task
+}
+function openPage() { uni.navigateTo({ url: route }) }
+function readingDate(value) {
+  const date = new Date(Number(value) * 1000), now = new Date()
+  const day = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime()
+  const bookDay = new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime()
+  const pad = number => String(number).padStart(2, '0')
+  const prefix = bookDay === day ? '今天' : bookDay === day - 86400000 ? '昨天' : (date.getFullYear() !== now.getFullYear() ? date.getFullYear() + '-' : '') + pad(date.getMonth() + 1) + '-' + pad(date.getDate())
+  return prefix + ' ' + pad(date.getHours()) + ':' + pad(date.getMinutes())
+}
+async function openBook(book, webOnly = false) {
+  if (opening.value || locked.value || !props.active) return
+  const owner = session.token, version = generation
+  const valid = () => props.active && owner === session.token && version === generation
+  const scheme = wereadAppLink(book.bookId)
+  openingError.value = ''
+  // #ifdef WEB
+  if (!webOnly && scheme && isMobileBrowser(navigator.userAgent, navigator.maxTouchPoints)) {
+    webFallback.value = book.bookId
+    window.location.assign(wereadBrowserLink(book.bookId, navigator.userAgent, book.deepLink)); return
+  }
+  // #endif
+  // #ifdef APP-ANDROID
+  if (!webOnly && scheme) {
+    webFallback.value = book.bookId
+    if (openWereadBook(book.bookId)) return
+  }
+  // #endif
+  opening.value = book.bookId
+  // #ifdef WEB
+  const target = window.open('about:blank', '_blank')
+  if (target) target.opener = null
+  // #endif
+  try {
+    let link = wereadWebLink(book.deepLink)
+    if (!link) {
+      const data = await request<any>('/weread/book-link', 'GET', { bookId: book.bookId }, true, null, true, 30000)
+      link = wereadWebLink(data.deepLink)
+    }
+    if (!valid()) {
+      // #ifdef WEB
+      target?.close()
+      // #endif
+      return
+    }
+    if (!link) throw Error('暂无可用链接，点击重试')
+    book.deepLink = link
+    // #ifdef WEB
+    if (target && !target.closed) target.location.replace(link)
+    else throw Error('请允许打开阅读窗口后重试')
+    // #endif
+    // #ifdef APP-ANDROID
+    if (!openWereadWeb(link)) throw Error('无法打开阅读链接')
+    // #endif
+    // #ifdef APP-IOS
+    plus.runtime.openURL(link)
+    // #endif
+    // #ifdef MP-WEIXIN
+    uni.setClipboardData({ data: link })
+    // #endif
+  } catch (e) {
+    // #ifdef WEB
+    target?.close()
+    // #endif
+    if (valid()) openingError.value = e.message || '打开失败，点击重试'
+  } finally { if (valid()) opening.value = '' }
+}
+</script>
+<template>
+  <view v-if="visible" class="weread-card" :class="{ 'weread-card-dark': isDark }" aria-label="微信读书首页卡片" :aria-busy="loading" @click="refresh()">
+    <view class="weread-heading">
+      <button class="heading-link" role="button" aria-label="查看微信读书" @click.stop="openPage"><BusinessIcon card-key="section.weread" :size="16" /><text class="card-title" :class="{ 'text-dark': isDark }">微信读书</text></button>
+      <LoadingIndicator v-if="loading" class="updating" compact label="正在加载最近阅读" />
+      <text v-else-if="error && books.length" class="error-text" role="alert">刷新失败</text>
+    </view>
+    <view v-if="locked" class="placeholder"><button class="heading-link" role="button" aria-label="解锁微信读书" @click.stop="openPage"><text class="caption">点击解锁</text></button></view>
+    <view v-else-if="!loaded && (loading || preparing || !error)" class="book-list" role="status" aria-label="正在加载最近阅读">
+      <view v-for="index in 3" :key="index" class="book-row"><view class="book-cover skeleton" /><view class="book-content"><view class="skeleton skeleton-title" /><view class="skeleton skeleton-author" /><view class="skeleton skeleton-progress" /></view></view>
+    </view>
+    <view v-else-if="books.length" class="book-list">
+      <view v-for="book in books" :key="book.bookId" class="book-row-wrap">
+        <button class="book-row book-button home-card-drag-area" role="button" :aria-label="'在微信读书打开：' + book.title" :disabled="!!opening" @click.stop="openBook(book)">
+          <image v-if="book.cover" class="book-cover" :src="book.cover" mode="aspectFit" /><view v-else class="book-cover cover-fallback"><BusinessIcon card-key="section.weread" :size="20" /></view>
+          <view class="book-content"><text class="book-title" :class="{ 'text-dark': isDark }">{{ book.title }}</text><view class="book-meta"><text class="book-author caption">{{ book.author }}</text><text class="reading-date caption">{{ readingDate(book.readUpdateTime) }}</text></view><view class="progress-line"><view class="progress-track" role="progressbar" :aria-label="book.title + '阅读进度'" :aria-valuenow="book.progress == null ? undefined : book.progress" :aria-valuemin="0" :aria-valuemax="100"><view class="progress-fill" :style="{ width: (book.progress == null ? 0 : book.progress) + '%', backgroundColor: menuVisuals.visual('section.weread').iconColor || undefined }" /></view><text class="progress-value" :class="{ 'text-dark': isDark }">{{ book.progress == null ? '—' : book.progress + '%' }}</text></view></view>
+        </button>
+        <view class="book-action"><LoadingIndicator v-if="opening === book.bookId" compact label="正在打开书籍" /><AppIcon v-else-if="webFallback !== book.bookId" name="ant-design:right-outlined" :size="16" color="#8b8f99" /></view>
+        <button v-if="webFallback === book.bookId" class="web-fallback" role="button" aria-label="网页版阅读" @click.stop="openBook(book, true)"><AppIcon name="ant-design:export-outlined" :size="16" color="#5879ce" /></button>
+      </view>
+    </view>
+    <view v-else class="placeholder"><text class="caption" :class="{ 'error-text': !!error }" role="status">{{ error ? '加载失败，点击空白处重试' : '暂无最近阅读' }}</text></view>
+    <text v-if="openingError" class="open-error error-text" role="alert">{{ openingError }}</text>
+  </view>
+</template>
+<style scoped lang="scss">
+@use '../../styles/typography' as *;
+@use '../../styles/spacing.scss';
+@use '../../styles/spacing-tokens' as *;
+.weread-card { position: relative; background-color: #ffffff; border: 1px solid #e8e8ed; border-radius: 14px; padding-bottom: $space-card; overflow: hidden; }
+.weread-card-dark { background-color: #1c1e22; border-color: #303238; }
+.weread-heading { position: relative; height: $space-controlMin; padding: 0 $space-card; flex-direction: row; align-items: center; }
+.heading-link { min-height: $space-controlMin; margin: 0; padding: 0; border: 0; background-color: transparent; display: flex; flex-direction: row; align-items: center; gap: $space-inline; }
+.card-title { @include type-style('title'); color: #18181b; }
+.updating { position: absolute; right: $space-card; }
+.book-list { padding: 0 $space-card; }
+.book-row-wrap { position: relative; }
+/* 封面及行高为与 Web 共用的书籍比例几何约束。 */
+.book-row { min-height: 72px; box-sizing: border-box; flex-direction: row; align-items: center; gap: $space-inline; padding: $space-detail 0; }
+.book-button { display: flex; width: 100%; margin: 0; padding-right: calc($space-controlMin + $space-inline); border: 0; background-color: transparent; text-align: left; }
+.book-cover { width: 42px; height: 64px; border-radius: 3px; flex-shrink: 0; }
+.cover-fallback { align-items: center; justify-content: center; background-color: #88888822; }
+.book-content { flex: 1; min-width: 0; gap: $space-micro; }
+.book-title { @include type-style('body-strong'); color: #27272a; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.book-meta { flex-direction: row; gap: $space-detail; }
+.book-author { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.reading-date { flex-shrink: 0; }
+.caption { @include type-style('caption'); color: #8b8f99; }
+.progress-line { flex-direction: row; align-items: center; gap: $space-inline; }
+.progress-track { flex: 1; height: 4px; background-color: #88888833; border-radius: 2px; overflow: hidden; }
+.progress-fill { height: 4px; border-radius: 2px; background-color: #5879ce; }
+.progress-value { @include type-style('caption'); width: 36px; color: #27272a; text-align: right; }
+.text-dark { color: #ececf0; }
+.placeholder { min-height: 216px; align-items: center; justify-content: center; padding: 0 $space-card; }
+.skeleton { background-color: #88888822; border-radius: 3px; }
+.skeleton-title { width: 60%; height: 14px; }
+.skeleton-author { width: 40%; height: 12px; }
+.skeleton-progress { width: 100%; height: 4px; }
+.error-text { @include type-style('caption'); color: #c26161; }
+.open-error { position: absolute; right: $space-card; bottom: $space-detail; }
+.book-action { position: absolute; right: 0; top: 0; width: $space-controlMin; height: 72px; align-items: center; justify-content: center; pointer-events: none; }
+.web-fallback { position: absolute; right: 0; top: 0; width: $space-controlMin; height: 72px; padding: 0; margin: 0; display: flex; align-items: center; justify-content: center; background-color: transparent; border: 0; }
+/* #ifdef WEB || MP-WEIXIN */
+.heading-link::after, .book-button::after, .web-fallback::after { border: 0; }
+/* #endif */
+</style>

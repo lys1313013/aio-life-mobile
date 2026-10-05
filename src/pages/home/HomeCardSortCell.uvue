@@ -1,0 +1,47 @@
+<script setup lang="ts">
+import { isDark } from '../../services/theme.ts'
+const props = withDefaults(defineProps<{ cardKey: string; title: string; group: string; order: any; disabled: boolean; visible?: boolean }>(), { visible: true })
+function blockClick(event) {
+  if (props.order.clickBlocked()) { event.stopPropagation?.(); event.preventDefault?.() }
+}
+function start(event, mouse = false) {
+  if (props.disabled) return
+  // #ifdef WEB
+  // 主内容点击区可以长按拖动；编辑、删除等独立操作按钮仍不参与排序。
+  if (event.target?.closest?.('button:not(.heading-link):not(.stat-link):not(.home-card-drag-area), uni-button:not(.heading-link):not(.stat-link):not(.home-card-drag-area), a, input, textarea, select, [contenteditable=true]')) return
+  // #endif
+  if (mouse) props.order.mouseStart(props.group, props.cardKey, event)
+  else props.order.start(props.group, props.cardKey, event)
+}
+// Read high-frequency offsets here; card content and charts stay in the parent slot.
+function style() { return props.order.style(props.cardKey) }
+</script>
+<template>
+  <view v-show="visible !== false" class="home-sort-cell"  :data-card-key="cardKey" :id="'home-order-' + cardKey" :style="style()" :class="[group === 'overview' ? 'overview-cell home-order-overview ui-pad-xs' : 'section-cell home-order-section', { 'home-sort-lifted': order.dragging.value === cardKey, 'home-sort-target': order.dragging.value && order.target.value === cardKey && order.dragging.value !== cardKey, 'home-sort-dark': isDark }]"
+    tabindex="0" :aria-label="title + '卡片，长按拖动排序'"
+    @touchstart="start($event)" @touchmove="order.move" @touchend="order.finish" @touchcancel="order.cancel" @mousedown="start($event, true)"
+    @click.capture="blockClick" @contextmenu.prevent
+    @keydown.alt.up.prevent.self="order.keyboard(group, cardKey, -1)" @keydown.alt.down.prevent.self="order.keyboard(group, cardKey, 1)">
+    <view v-if="order.dragging.value === cardKey" class="home-sort-placeholder" :class="{ 'home-sort-placeholder-dark': isDark }" />
+    <view class="home-sort-content" :class="{ 'home-sort-content-lifted-overview': group === 'overview' && order.dragging.value === cardKey, 'home-sort-content-lifted': order.dragging.value === cardKey }" :style="order.contentStyle(cardKey)"><slot /></view>
+  </view>
+</template>
+<style scoped lang="scss">
+@use '../../styles/spacing.scss';
+@use '../../styles/spacing-tokens' as *;
+.home-sort-cell { overflow: visible; align-self: flex-start; position: relative; box-sizing: border-box; }
+.home-sort-content { width: 100%; overflow: visible; }
+.home-sort-content-lifted { position: absolute; left: 0; right: 0; top: 0; width: auto; border-radius: 14px; overflow: hidden; opacity: .96; box-shadow: 0 $space-detail $space-inline rgba(0,0,0,.10); }
+.home-sort-content-lifted-overview { left: $space-detail; right: $space-detail; top: $space-detail; }
+.home-sort-placeholder { position: absolute; top: $space-detail; right: $space-detail; bottom: $space-detail; left: $space-detail; border-radius: 14px; background-color: rgba(113,113,122,.06); border: $space-hairline solid rgba(113,113,122,.12); }
+.home-sort-placeholder-dark { background-color: rgba(161,161,170,.08); border-color: rgba(161,161,170,.15); }
+.home-sort-dark { color: #ececf0; }
+/* #ifdef WEB */
+.home-sort-lifted { cursor: grabbing; user-select: none; }
+.home-sort-cell { -webkit-touch-callout: none; }
+/* #endif */
+.overview-cell { width: 50%; }
+.section-cell { width: 100%; }
+@media (min-width: 768px) { .overview-cell { width: 25%; } .section-cell { width: 50%; } }
+@media (min-width: 1200px) { .overview-cell { width: 20%; flex-grow: 1; } .section-cell { width: 33.3333%; } }
+</style>

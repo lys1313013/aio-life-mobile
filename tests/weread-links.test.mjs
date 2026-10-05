@@ -8,7 +8,7 @@ async function load(source) {
   const code = transformSync(source, { loader: 'ts', format: 'esm' }).code;
   return import('data:text/javascript;base64,' + Buffer.from(code).toString('base64'));
 }
-const links = await load(fs.readFileSync(new URL('../src/pages/records/services/weread-links.ts', import.meta.url), 'utf8'));
+const links = await load(fs.readFileSync(new URL('../src/services/weread-links.ts', import.meta.url), 'utf8'));
 
 test('微信读书书籍 ID 与网页 hash 分离，保留长 ID，拒绝注入', () => {
   assert.equal(links.wereadAppLink('9223372036854775807'), 'weread://reading?bId=9223372036854775807&style=1');
@@ -62,12 +62,13 @@ async function pageRuntime(platform, ua = '') {
     if (line.includes('// #endif')) { active.pop(); return false; }
     return active.at(-1);
   }).join('\n').replace(/^import[\s\S]*?from ['"][^'"]+['"];?/gm, '');
-  const helper = fs.readFileSync(new URL('../src/pages/records/services/weread-links.ts', import.meta.url), 'utf8').replace(/export /g, '');
+  const helper = fs.readFileSync(new URL('../src/services/weread-links.ts', import.meta.url), 'utf8').replace(/export /g, '');
   const dates = fs.readFileSync(new URL('../src/services/time-format.ts', import.meta.url), 'utf8').replace(/export /g, '');
   const mocks = `
     export const calls = []; export const state = { nativeOK: true };
     const ref = value => ({ value }), computed = get => ({ get value() { return get(); } });
     const useAppLayout = () => ({ appGridItem: () => ({}) });
+    const usePageRefresh = load => load;
     const onShow = () => {}, createRecordScope = () => ({ wait: value => value });
     const navigator = { userAgent: ${JSON.stringify(ua)}, maxTouchPoints: 0 };
     const window = { location: { assign: url => calls.push(['scheme', url]) }, open: url => { calls.push(['window', url]); return { location: { replace: link => calls.push(['replace', link]) }, close: () => {} }; } };

@@ -2,10 +2,11 @@ const { test, expect } = require('@playwright/test');
 const { homeCardFixture } = require('./home-card-fixture');
 const { pullDown } = require('./gestures');
 
-async function setup(page, { locked = false, failMore = false, readAccess = true, twoGoals = false, navigate = true, requests = [] } = {}) {
+async function setup(page, { locked = false, failMore = false, readAccess = true, twoGoals = false, goalCount = 0, anniversaryCount = 0, navigate = true, requests = [] } = {}) {
   const calls = [];
   const fixtures = {
     '/home/cards': homeCardFixture(),
+    '/menu/visuals': { menus: [], cards: {} },
     '/user/info': { id: 'fixture-user', nickname: '测试用户' },
     '/auth/secondary-lock/menus': locked ? ['read-menu'] : [],
     '/menu/all': [{ path: '/my-hub/read-record', meta: { menuId: 'read-menu' } }],
@@ -17,6 +18,8 @@ async function setup(page, { locked = false, failMore = false, readAccess = true
   };
   if (!readAccess) fixtures['/quick-nav/candidates'] = fixtures['/quick-nav/candidates'].filter(item => item.path !== '/my-hub/read-record');
   if (twoGoals) fixtures['/goals'].push({ id: '9223372036854775802', title: '第二个目标', type: 1, status: 'in_progress', isPinned: 1 });
+  if (goalCount) fixtures['/goals'] = Array.from({ length: goalCount }, (_, i) => ({ id: '922337203685477580' + i, title: '模拟目标 ' + (i + 1), type: 1, status: 'in_progress', isPinned: 1, targetValue: 100, currentValue: 27, endDate: '2029-09-06' }));
+  if (anniversaryCount) fixtures['/anniversaryRecords'] = Array.from({ length: anniversaryCount }, (_, i) => ({ id: '922337203685477570' + i, title: '模拟纪念日 ' + (i + 1), isPinned: 1, icon: '🎉', targetDate: '2027-01-01' }));
   for (const [path, data] of Object.entries(fixtures)) {
     const respond = route => { requests.push(route.request().method() + ' ' + path); return route.fulfill({ json: { rscode: '0', data } }); };
     await page.route('**/api' + path, respond);
@@ -33,7 +36,7 @@ async function setup(page, { locked = false, failMore = false, readAccess = true
   await page.addInitScript(() => localStorage.setItem('aio-life-mobile.access-token.v1', JSON.stringify({ type: 'string', data: 'fixture-home-business' })));
   if (!navigate) return calls;
   await page.goto('/#/pages/home/index');
-  await expect(page.locator('[aria-label="目标首页卡片"]')).toContainText('固定目标');
+  await expect(page.locator('[aria-label="目标首页卡片"]')).toContainText(goalCount ? '模拟目标 1' : '固定目标');
   return calls;
 }
 
@@ -150,14 +153,14 @@ test('没有授权菜单的卡片不发业务请求', async ({ page }) => {
   expect(calls).toEqual([]);
 });
 
-async function dragGoal(page, card, from, to, { hold = true, cancel = false } = {}) {
+async function dragPinned(page, card, from, to, { hold = true, cancel = false } = {}) {
   const start = await card.locator('.business-row').nth(from).boundingBox();
   const end = await card.locator('.business-row').nth(to).boundingBox();
   const client = await page.context().newCDPSession(page);
   const x = start.x + start.width / 2, y = start.y + start.height / 2;
   await client.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y }] });
   if (hold) {
-    await expect(card.locator('.goal-dragging')).toHaveCount(1);
+    await expect(card.locator('.business-dragging')).toHaveCount(1);
   }
   await client.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x, y: end.y + end.height / 2 }] });
   await client.send('Input.dispatchTouchEvent', { type: cancel ? 'touchCancel' : 'touchEnd', touchPoints: [] });
@@ -174,12 +177,12 @@ test('首页目标长按拖动保存字符串顺序，短滑和取消不排序�
   const card = page.locator('[aria-label="目标首页卡片"]');
   await card.scrollIntoViewIfNeeded();
   await expect(card.getByRole('button', { name: /固定操作/ })).toHaveCount(0);
-  await dragGoal(page, card, 0, 1, { hold: false });
+  await dragPinned(page, card, 0, 1, { hold: false });
   await expect(page.getByRole('dialog')).toHaveCount(0);
   expect(orders).toEqual([]);
-  await dragGoal(page, card, 0, 1, { cancel: true });
+  await dragPinned(page, card, 0, 1, { cancel: true });
   expect(orders).toEqual([]);
-  await dragGoal(page, card, 1, 0);
+  await dragPinned(page, card, 1, 0);
   await expect.poll(() => orders).toEqual([{ ids: ['9223372036854775802', '9223372036854775801'] }]);
   await expect(card.locator('.record-title').first()).toHaveText('第二个目标');
   await expect(page.getByRole('dialog')).toHaveCount(0);
@@ -195,11 +198,11 @@ test('首页目标排序失败恢复原顺序，可再次拖动保存', async ({
   });
   const card = page.locator('[aria-label="目标首页卡片"]');
   await card.scrollIntoViewIfNeeded();
-  await dragGoal(page, card, 1, 0);
+  await dragPinned(page, card, 1, 0);
   await expect(card.getByRole('button', { name: '重试目标：模拟排序失败', exact: true })).toBeVisible();
   await expect(card.locator('.record-title').first()).toHaveText('固定目标');
   fail = false;
-  await dragGoal(page, card, 1, 0);
+  await dragPinned(page, card, 1, 0);
   await expect(card.locator('.record-title').first()).toHaveText('第二个目标');
   await expect.poll(() => requests).toBe(2);
 });
@@ -343,4 +346,168 @@ test('菜单依赖刷新失败保留已展示目标和阅读，局部重试恢�
   await goal.getByRole('button',{name:/^重试目标：/}).click();
   await expect(goal.getByRole('button',{name:/^重试目标：/})).toHaveCount(0);
   await expect(goal).toContainText('固定目标');
+});
+
+
+// 真实触摸连续移动、越界及取消，检查截图中空白/裁切对应的行距和滚动范围。
+for (const width of [390, 820, 1440]) for (const theme of ['light', 'dark']) {
+  test(`目标连续拖动和纪念日滑动后布局稳定 ${width} ${theme}`, async ({ page }, info) => {
+    await page.setViewportSize({ width, height: 1000 });
+    await page.emulateMedia({ colorScheme: theme });
+    await setup(page, { twoGoals: true, anniversaryCount: 5 });
+    const orders = [];
+    await page.route('**/api/goals/pinned-order', route => {
+      orders.push(route.request().postDataJSON());
+      return route.fulfill({ json: { rscode: '0', data: null } });
+    });
+    const goal = page.locator('[aria-label="目标首页卡片"]');
+    const anniversary = page.locator('[aria-label="纪念日首页卡片"]');
+    await goal.scrollIntoViewIfNeeded();
+    const size = await goal.boundingBox();
+    const scroll = goal.locator('.uni-scroll-view-scrollbar-hidden').first();
+    const cdp = await page.context().newCDPSession(page);
+    const box = await goal.locator('.business-row').last().boundingBox();
+    const x = box.x + box.width / 2, y = box.y + box.height / 2;
+    for (const cancel of [true, false]) {
+      await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y }] });
+      await expect(goal.locator('.business-dragging')).toHaveCount(1);
+      for (let i = 1; i <= 12; i++) {
+        await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x, y: y - i * 20 }] });
+      }
+      await expect.poll(() => goal.locator('.business-dragging').evaluate(el => Number(new DOMMatrix(getComputedStyle(el).transform).m42))).toBe(-76);
+      expect((await goal.boundingBox()).height).toBe(size.height);
+      expect(await scroll.evaluate(el => el.scrollHeight - el.clientHeight)).toBe(0);
+      await page.screenshot({ path: info.outputPath(cancel ? 'drag-cancel.png' : 'drag.png') });
+      await cdp.send('Input.dispatchTouchEvent', { type: cancel ? 'touchCancel' : 'touchEnd', touchPoints: [] });
+      await expect(goal.locator('.business-dragging')).toHaveCount(0);
+      const rows = await goal.locator('.business-row').evaluateAll(nodes => nodes.map(el => ({ y: el.getBoundingClientRect().y, height: el.getBoundingClientRect().height, offset: new DOMMatrix(getComputedStyle(el).transform).m42 })));
+      expect(rows.every(row => row.height === 76 && row.offset === 0)).toBe(true);
+      expect(rows[1].y - rows[0].y).toBe(76);
+      expect((await goal.boundingBox()).height).toBe(size.height);
+      if (cancel) expect(orders).toEqual([]);
+    }
+    await expect.poll(() => orders.length).toBe(1);
+    await expect(goal.locator('.record-title').first()).toHaveText('第二个目标');
+    await anniversary.scrollIntoViewIfNeeded();
+    const anniversarySize = await anniversary.boundingBox();
+    const a = await anniversary.locator('.business-row').nth(1).boundingBox();
+    const ax = a.x + a.width / 2, ay = a.y + a.height / 2;
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: ax, y: ay }] });
+    for (let i = 1; i <= 8; i++) await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: ax, y: ay - i * 10 }] });
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+    const anniversaryScroll = anniversary.locator('.uni-scroll-view-scrollbar-hidden').first();
+    await expect.poll(() => anniversaryScroll.evaluate(el => el.scrollTop)).toBeGreaterThan(0);
+    expect((await anniversary.boundingBox()).height).toBe(anniversarySize.height);
+    const rowYs = await anniversary.locator('.business-row').evaluateAll(nodes => nodes.map(el => el.getBoundingClientRect().y));
+    expect(rowYs.slice(1).every((y, i) => y - rowYs[i] === 76)).toBe(true);
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    await page.screenshot({ path: info.outputPath('settled.png') });
+    await cdp.detach();
+  });
+}
+
+test('目标拖动到边缘自动滚动，移动到末项只保存一次且松手后恢复滚动范围', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 1000 });
+  await setup(page, { goalCount: 6, anniversaryCount: 1 });
+  const orders = [];
+  await page.route('**/api/goals/pinned-order', route => {
+    orders.push(route.request().postDataJSON());
+    return route.fulfill({ json: { rscode: '0', data: null } });
+  });
+  const goal = page.locator('[aria-label="目标首页卡片"]');
+  await goal.scrollIntoViewIfNeeded();
+  const scroll = goal.locator('.uni-scroll-view-scrollbar-hidden').first();
+  const viewport = await goal.locator('.business-scroll').boundingBox();
+  const first = await goal.locator('.business-row').first().boundingBox();
+  const cdp = await page.context().newCDPSession(page);
+  const x = first.x + first.width / 2;
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y: first.y + first.height / 2 }] });
+  await expect(goal.locator('.business-dragging')).toHaveCount(1);
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x, y: viewport.y + viewport.height - 5 }] });
+  await expect.poll(() => scroll.evaluate(el => el.scrollTop), { timeout: 5000 }).toBe(234);
+  expect(orders).toEqual([]);
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+  await expect.poll(() => orders.length).toBe(1);
+  expect(orders[0].ids).toEqual(['9223372036854775801', '9223372036854775802', '9223372036854775803', '9223372036854775804', '9223372036854775805', '9223372036854775800']);
+  expect(await scroll.evaluate(el => el.scrollHeight)).toBe(456);
+  await expect(goal.locator('.record-title').last()).toHaveText('模拟目标 1');
+  await cdp.detach();
+});
+
+
+for (const width of [390, 820, 1440]) for (const theme of ['light', 'dark']) {
+  test(`纪念日长按排序支持取消、失败恢复且不干扰目标 ${width} ${theme}`, async ({ page }, info) => {
+    await page.setViewportSize({ width, height: 1000 });
+    await page.emulateMedia({ colorScheme: theme });
+    await setup(page, { twoGoals: true, anniversaryCount: 2 });
+    let fail = true;
+    const orders = [], goalOrders = [];
+    await page.route('**/api/anniversaryRecords/pinned-order', route => {
+      orders.push(route.request().postDataJSON());
+      return route.fulfill({ json: fail ? { rscode: '1', result: '模拟纪念日排序失败' } : { rscode: '0', data: null } });
+    });
+    await page.route('**/api/goals/pinned-order', route => {
+      goalOrders.push(route.request().postDataJSON());
+      return route.fulfill({ json: { rscode: '0', data: null } });
+    });
+    const card = page.locator('[aria-label="纪念日首页卡片"]');
+    await card.scrollIntoViewIfNeeded();
+    const initialHeight = (await card.boundingBox()).height;
+    await dragPinned(page, card, 1, 0, { hold: false });
+    expect(orders).toEqual([]);
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    await dragPinned(page, card, 1, 0, { cancel: true });
+    expect(orders).toEqual([]);
+    await expect(card.locator('.record-title').first()).toHaveText('模拟纪念日 1');
+    await dragPinned(page, card, 1, 0);
+    await expect(card.getByRole('button', { name: '重试纪念日：模拟纪念日排序失败', exact: true })).toBeVisible();
+    await expect(card.locator('.record-title').first()).toHaveText('模拟纪念日 1');
+    fail = false;
+    await dragPinned(page, card, 1, 0);
+    await expect(card.locator('.record-title').first()).toHaveText('模拟纪念日 2');
+    await expect.poll(() => orders.length).toBe(2);
+    expect(orders.every(order => JSON.stringify(order.ids) === JSON.stringify(['9223372036854775701', '9223372036854775700']))).toBe(true);
+    expect(goalOrders).toEqual([]);
+    await expect(page.locator('[aria-label="目标首页卡片"] .record-title').first()).toHaveText('固定目标');
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    const geometry = await card.locator('.business-row').evaluateAll(nodes => nodes.map(el => ({ y: el.getBoundingClientRect().y, height: el.getBoundingClientRect().height, offset: new DOMMatrix(getComputedStyle(el).transform).m42 })));
+    expect(geometry.every(row => row.height === 76 && row.offset === 0)).toBe(true);
+    expect(geometry[1].y - geometry[0].y).toBe(76);
+    expect((await card.boundingBox()).height).toBe(initialHeight);
+    await page.screenshot({ path: info.outputPath('anniversary-sorted.png') });
+    // 拖动的误点抑制结束后仍可正常轻点编辑。
+    await page.waitForTimeout(460);
+    await page.route('**/api/anniversaryRecords/9223372036854775701', route => route.fulfill({ json: { rscode: '0', data: { id: '9223372036854775701', title: '模拟纪念日 2', isPinned: 1, targetDate: '2027-01-01', icon: '🎉' } } }));
+    await card.getByRole('button', { name: '编辑模拟纪念日 2', exact: true }).click();
+    await expect(page.getByRole('dialog', { name: '编辑纪念日', exact: true })).toBeVisible();
+    await page.getByRole('button', { name: '取消', exact: true }).click();
+  });
+}
+
+test('纪念日拖动到边缘自动滚动，松手仅保存纪念日顺序', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 1000 });
+  await setup(page, { twoGoals: true, anniversaryCount: 6 });
+  const orders = [];
+  await page.route('**/api/anniversaryRecords/pinned-order', route => {
+    orders.push(route.request().postDataJSON());
+    return route.fulfill({ json: { rscode: '0', data: null } });
+  });
+  const card = page.locator('[aria-label="纪念日首页卡片"]');
+  await card.scrollIntoViewIfNeeded();
+  const viewport = await card.locator('.business-scroll').boundingBox();
+  const first = await card.locator('.business-row').first().boundingBox();
+  const scroll = card.locator('.uni-scroll-view-scrollbar-hidden').first();
+  const cdp = await page.context().newCDPSession(page);
+  const x = first.x + first.width / 2;
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y: first.y + first.height / 2 }] });
+  await expect(card.locator('.business-dragging')).toHaveCount(1);
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x, y: viewport.y + viewport.height - 5 }] });
+  await expect.poll(() => scroll.evaluate(el => el.scrollTop), { timeout: 5000 }).toBe(234);
+  expect(orders).toEqual([]);
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+  await expect.poll(() => orders.length).toBe(1);
+  expect(orders[0].ids).toEqual(['9223372036854775701', '9223372036854775702', '9223372036854775703', '9223372036854775704', '9223372036854775705', '9223372036854775700']);
+  expect(await scroll.evaluate(el => el.scrollHeight)).toBe(456);
+  await expect(card.locator('.record-title').last()).toHaveText('模拟纪念日 1');
+  await cdp.detach();
 });

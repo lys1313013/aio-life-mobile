@@ -16,8 +16,8 @@ export function invalidateHomeAfterWrite(path: string, method: string) {
     'read-record': ['read'], movie: ['movie'], membership: ['member'],
     home: ['preferences'], menu: ['preferences', 'access', 'links'],
     github: ['commits', 'overview.GITHUB'], leetcode: ['overview.LEETCODE'],
-    weread: ['overview.READ', 'overview.WEREAD'], shanbay: ['overview.SHANBAY'],
-    user: ['profile'], userbinds: ['profile', 'overview'],
+    weread: ['weread', 'overview.READ', 'overview.WEREAD'], shanbay: ['overview.SHANBAY'],
+    user: ['profile'], userbinds: ['profile', 'overview', 'weread'],
     auth: ['access'],
   }
   for (const key of keys[root] || []) revisions[key] = homeDataRevision(key) + 1
