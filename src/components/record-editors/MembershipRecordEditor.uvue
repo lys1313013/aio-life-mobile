@@ -10,23 +10,26 @@ import { isRequired, missingRequired } from '../../services/form-required.ts';
 import { createRecordScope } from '../../services/records/page-scope.ts';
 import { request } from '../../services/api.ts';
 import AppIcon from '../AppIcon.uvue';
+import MembershipLogo from '../MembershipLogo.uvue';
 import { appTextColor } from '../../services/app-layout.ts';
 import { isDark } from '../../services/theme.ts';
-import { editableProviders, readMemberProviders } from '../../services/membership-provider.ts';
+import { editableProviders, readMemberProviders, memberCategories as categories, memberCategoryLabels as categoryLabels } from '../../services/membership-provider.ts';
 import { memberPayload, addMonthsClamped } from '../../services/records/contracts.ts';
 const props = defineProps<{ record?: any }>();
 const emit = defineEmits(['close', 'saved', 'deleted']);
 const form = ref<any>(null), saving = ref(false), deleting = ref(false), formError = ref('');
 const scope = createRecordScope(() => emit('close'));
 watch(() => session.token, () => emit('close'), { flush: 'sync' });
-const showDetails = ref(false);
+const showDetails = ref(false), choosingProvider = ref(false);
+let autoName = '';
 function fetchMemberProviders() { return request('/membership/providers').then(readMemberProviders); }
 function saveMember(payload) { return request<any>('/membership', payload.id ? 'PUT' : 'POST', payload); }
 const originalProviderRecord = ref<any>(null);
 const providers = ref<any[]>([]), providersLoading = ref(false), providersError = ref('');
 let providersGeneration = 0;
-const providerOptions = computed(() => editableProviders(providers.value, originalProviderRecord.value));
+const providerOptions = computed(() => editableProviders(providers.value, form.value?.providerId === originalProviderRecord.value?.providerId ? originalProviderRecord.value : null, form.value?.category));
 const providerLabel = (row) => row.name + (row.name === '自定义平台' || providerOptions.value.filter(item => item.name === row.name).length > 1 ? '（' + (row.code || row.id) + '）' : '') + (row.isEnabled === 0 ? '（已停用）' : '');
+const selectedProvider = computed(() => providerOptions.value.find(item => item.id === form.value?.providerId));
 const selectedProviderLabel = computed(() => { const row = providerOptions.value.find(item => item.id === form.value?.providerId); return row ? providerLabel(row) : '自定义平台'; });
 async function loadProviders() {
   const version = ++providersGeneration;
@@ -40,10 +43,25 @@ function changeProvider(label) {
   form.value.providerId = row?.id || null;
   form.value.providerName = row?.name || '';
   form.value.providerIconKey = row?.iconKey || null;
-  if (row) { form.value.provider = row.name; form.value.category = row.category; }
+  if (row) {
+    if (!form.value.name.trim() || form.value.name === autoName) { form.value.name = row.name; autoName = row.name; }
+    form.value.provider = row.name; form.value.category = row.category;
+  }
+  choosingProvider.value = false;
 }
-const categories = ['video', 'music', 'shopping', 'cloud', 'study', 'game', 'other'],
-  categoryLabels = ['视频', '音乐', '购物', '云盘', '学习', '游戏', '其他'];
+function changeCategory(label) {
+  const category = categories[categoryLabels.indexOf(label)];
+  const selected = editableProviders(providers.value, originalProviderRecord.value).find(row => row.id === form.value.providerId);
+  form.value.category = category;
+  if (selected && selected.category !== category) {
+    form.value.providerId = null;
+    form.value.provider = '';
+    form.value.providerName = '';
+    form.value.providerIconKey = null;
+    if (form.value.name === autoName) form.value.name = '';
+    autoName = '';
+  }
+}
 const cycles = ['week', 'two_weeks', 'month', 'quarter', 'half_year', 'year'],
   cycleLabels = ['周', '两周', '月', '季', '半年', '年'];
 const colors = [
@@ -59,6 +77,9 @@ const colors = [
   colorLabels = ['蓝', '绿', '橙', '红', '紫', '青', '粉', '灰'];
 function open(item = null) {
   originalProviderRecord.value = item ? { ...item } : null;
+  const providerName = item?.providerName || item?.provider || '';
+  autoName = item?.providerId && item.name === providerName ? providerName : '';
+  choosingProvider.value = false;
   formError.value = '';
   showDetails.value = false;
   form.value = item
@@ -122,26 +143,28 @@ if (!props.record?.id && props.record) Object.assign(form.value, props.record);
 <AdaptiveModal
         v-if="form"
         :label="form.id ? '编辑订阅' : '新增订阅'"
-        :busy="deleting || saving"
+        :busy="deleting || saving || choosingProvider"
         :content-key="String(showDetails) + formError + selectedProviderLabel + providersError"
         @close="emit('close')"
       >
         <FormField :required="isRequired('member', 'name')" appearance="soft" label="名称" placeholder="请输入订阅名称" v-model="form.name" />
         <view class="ui-field-row">
-          <FormField v-if="form.providerId" appearance="soft" compact stretch label="平台" kind="selector" :model-value="providersLoading ? '加载中…' : selectedProviderLabel" :options="['自定义平台', ...providerOptions.map(providerLabel)]" :disabled="providersLoading || !!providersError || saving" @update:model-value="changeProvider" />
-          <FormField v-else appearance="soft" compact stretch label="平台">
-            <view class="custom-provider" :class="{ 'custom-provider-dark': isDark }">
+          <FormField appearance="soft" compact stretch label="平台">
+            <button v-if="form.providerId" class="provider-trigger" :class="{ 'provider-trigger-dark': isDark }" role="button" aria-label="选择会员平台" :disabled="providersLoading || !!providersError || saving || deleting" @click="choosingProvider = true">
+              <MembershipLogo :icon-key="selectedProvider?.iconKey" :category="form.category" :name="selectedProvider?.name" :size="24" />
+              <text class="provider-trigger-name">{{ providersLoading ? '加载中…' : selectedProviderLabel }}</text>
+              <AppIcon name="ant-design:down-outlined" :size="14" />
+            </button>
+            <view v-else class="custom-provider" :class="{ 'custom-provider-dark': isDark }">
               <input class="custom-provider-input" :style="appTextColor()" aria-label="自定义平台" :value="form.provider" :disabled="deleting || saving" placeholder="自定义平台" @input="form.provider = $event.detail.value" />
-              <picker class="custom-provider-picker" mode="selector" aria-label="选择会员平台" :range="['自定义平台', ...providerOptions.map(providerLabel)]" :value="0" :disabled="providersLoading || !!providersError || saving" @change="changeProvider(['自定义平台', ...providerOptions.map(providerLabel)][$event.detail.value])">
-                <view class="custom-provider-trigger"><AppIcon :name="providersLoading ? 'ant-design:loading-outlined' : 'ant-design:down-outlined'" :size="14" /></view>
-              </picker>
+              <button class="custom-provider-trigger" role="button" aria-label="选择会员平台" :disabled="providersLoading || !!providersError || saving || deleting" @click="choosingProvider = true"><AppIcon :name="providersLoading ? 'ant-design:loading-outlined' : 'ant-design:down-outlined'" :size="14" /></button>
             </view>
           </FormField>
           <FormField appearance="soft"
             compact stretch label="分类" kind="selector"
             :model-value="categoryLabels[categories.indexOf(form.category)] || form.category"
             :options="categoryLabels"
-            @update:model-value="form.category = categories[categoryLabels.indexOf($event)]"
+            @update:model-value="changeCategory"
           />
         </view>
         <view v-if="providersError" class="ui-row ui-section"><text class="member-error ui-type-body">{{ providersError }}</text><MobileButton label="重试平台加载" icon="ant-design:reload-outlined" variant="quiet" :loading="providersLoading" @click="loadProviders" /></view>
@@ -199,6 +222,12 @@ if (!props.record?.id && props.record) Object.assign(form.value, props.record);
           <MobileButton label="保存" :loading="saving" :disabled="deleting" @click="save" />
         </FormActions>
       </AdaptiveModal>
+      <AdaptiveModal v-if="choosingProvider" label="选择会员平台" :max-width="480" :show-close="true" @close="choosingProvider = false">
+        <view class="provider-options">
+          <button class="provider-option" :class="{ 'provider-option-dark': isDark, 'provider-option-selected': !form.providerId }" role="button" aria-label="选择自定义平台" :aria-pressed="!form.providerId" @click="changeProvider('自定义平台')"><MembershipLogo :category="form.category" :size="28" /><text class="provider-option-name">自定义平台</text><AppIcon v-if="!form.providerId" name="ant-design:check-outlined" :size="18" /></button>
+          <button v-for="row in providerOptions" :key="row.id" class="provider-option" :class="{ 'provider-option-dark': isDark, 'provider-option-selected': form.providerId === row.id }" role="button" :aria-label="'选择平台：' + providerLabel(row)" :aria-pressed="form.providerId === row.id" :disabled="row.isEnabled === 0" @click="changeProvider(providerLabel(row))"><MembershipLogo :icon-key="row.iconKey" :category="row.category" :name="row.name" :size="28" /><text class="provider-option-name">{{ providerLabel(row) }}</text><AppIcon v-if="form.providerId === row.id" name="ant-design:check-outlined" :size="18" /></button>
+        </view>
+      </AdaptiveModal>
 </template>
 <style scoped lang="scss">
 @use '../../styles/typography' as *;
@@ -209,7 +238,15 @@ if (!props.record?.id && props.record) Object.assign(form.value, props.record);
 .custom-provider-dark { background-color: #272a30; }
 .custom-provider-input { flex: 1; min-width: 0; height: $space-controlMin; padding-left: $space-card; @include type-style('body'); }
 .custom-provider-picker { width: $space-controlMin; flex-shrink: 0; }
-.custom-provider-trigger { height: $space-controlMin; width: $space-controlMin; align-items: center; justify-content: center; }
+.custom-provider-trigger { display: flex; flex-direction: row; margin: 0; padding: 0; border: 0; background-color: transparent; height: $space-controlMin; width: $space-controlMin; align-items: center; justify-content: center; }
+.provider-trigger { display: flex; flex-direction: row; align-items: center; gap: $space-inline; width: 100%; min-height: $space-controlMin; margin: 0; padding: 0 $space-card; background-color: #f2f4f7; border: 0; border-radius: 10px; color: #27272a; }
+.provider-trigger-dark { background-color: #272a30; color: #eeeeef; }
+.provider-trigger-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; @include type-style('body'); }
+.provider-options { gap: $space-detail; }
+.provider-option { display: flex; flex-direction: row; align-items: center; gap: $space-inline; width: 100%; min-height: $space-controlMin; margin: 0; padding: $space-inline $space-card; border: 0; border-radius: 10px; background-color: transparent; color: #27272a; text-align: left; }
+.provider-option-dark { color: #eeeeef; }
+.provider-option-selected { background-color: rgba(66, 133, 237, 0.12); }
+.provider-option-name { flex: 1; min-width: 0; @include type-style('body'); }
 .member-error { color: #e05252; }
 .quick-dates { flex-direction: row; flex-wrap: wrap; }
 .details-toggle { display: flex; flex-direction: row; align-items: center; gap: $space-inline; width: 100%; min-height: $space-controlMin; margin: 0; padding: 0; border: 0; background-color: transparent;
@@ -220,6 +257,6 @@ color: inherit;
 .action-spacer { flex: 1; }
 
 /* #ifdef WEB || MP-WEIXIN */
-.details-toggle::after { border: 0; }
+.details-toggle::after, .provider-trigger::after, .provider-option::after, .custom-provider-trigger::after { border: 0; }
 /* #endif */
 </style>

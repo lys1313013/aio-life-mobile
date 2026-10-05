@@ -11,6 +11,7 @@ import FloatingActionButton from '../../components/FloatingActionButton.uvue';
 import PageState from '../../components/PageState.uvue';
 import AppIcon from '../../components/AppIcon.uvue';
 import MembershipLogo from '../../components/MembershipLogo.uvue';
+import { memberCategories as categories, memberCategoryLabels as categoryLabels, memberCategoryIcons as categoryIcons } from '../../services/membership-provider.ts';
 import { createRecordScope } from '../../services/records/page-scope.ts';
 import { isDark } from '../../services/theme.ts';
 import {
@@ -25,8 +26,6 @@ const rows = ref<any[]>([]),
   error = ref(''),
   statsError = ref(''),
   form = ref<any>(null);
-const categories = ['video', 'music', 'shopping', 'cloud', 'study', 'game', 'other'],
-  categoryLabels = ['视频', '音乐', '购物', '云盘', '学习', '游戏', '其他'];
 const cycles = ['week', 'two_weeks', 'month', 'quarter', 'half_year', 'year'],
   cycleLabels = ['周', '两周', '月', '季', '半年', '年'];
 const statusCodes = ['active', 'expiring', 'expired'],
@@ -42,7 +41,6 @@ const metrics = computed(() => [
   { label: '本月到期', value: stats.value.expiringThisMonthCount || 0 },
   { label: '即将到期', value: stats.value.expiringCount || 0, alert: true },
 ]);
-const categoryIcons = ['ant-design:video-camera-outlined', 'ant-design:customer-service-outlined', 'ant-design:shopping-outlined', 'ant-design:cloud-outlined', 'ant-design:read-outlined', 'ant-design:trophy-outlined', 'ant-design:appstore-outlined'];
 const scope = createRecordScope((clearData) => {
   form.value = null;
   if (clearData) {
@@ -157,7 +155,7 @@ function deleted(id) {
             <text v-if="item.providerName || item.provider" class="member-provider" :class="{ 'secondary-text-dark': isDark }">{{ item.providerName || item.provider }}</text>
             <view class="member-tags">
               <text class="member-status" :class="'member-status-' + item.status">{{ statusLabels[statusCodes.indexOf(item.status)] || item.status }}</text>
-              <view class="category-tag" :class="{ 'category-tag-dark': isDark }"><AppIcon :name="categoryIcons[categories.indexOf(item.category)] || categoryIcons[6]" :size="12" /><text class="category-label">{{ categoryLabels[categories.indexOf(item.category)] || '其他' }}</text></view>
+              <view class="category-tag" :class="{ 'category-tag-dark': isDark }"><AppIcon :name="categoryIcons[categories.indexOf(item.category)] || categoryIcons[categoryIcons.length - 1]" :size="12" /><text class="category-label">{{ categoryLabels[categories.indexOf(item.category)] || '其他' }}</text></view>
             </view>
             <view class="expiry-row">
               <view class="expiry-date" :class="{ 'secondary-text-dark': isDark }"><AppIcon name="ant-design:calendar-outlined" :size="12" /><text class="expiry-date-text" :class="{ 'secondary-text-dark': isDark }">{{ item.expiryDate }}</text></view>

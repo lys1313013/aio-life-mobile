@@ -28,6 +28,17 @@ test('会员修改区分保留平台和显式解除平台，拒绝数字ID', () 
   assert.equal(memberPayload({ ...form, providerId: null }).providerId, null);
   assert.throws(() => memberPayload({ ...form, providerId: 123 }), /ID/);
 });
+test('分类筛选只保留对应平台，原停用关联只在原分类保留', () => {
+  const ai = { ...provider, id: '9223372036854775806', name: 'Claude', code: 'claude', category: 'AI' };
+  const rows = [provider, ai];
+  assert.deepEqual(editableProviders(rows, null, 'AI'), [ai]);
+  assert.deepEqual(editableProviders(rows, null, 'video'), [provider]);
+  assert.deepEqual(editableProviders(rows, null, 'cloud'), []);
+  assert.deepEqual(editableProviders(rows, null), rows);
+  const original = { providerId: '9223372036854775805', providerName: '原AI平台', category: 'AI' };
+  assert.equal(editableProviders(rows, original, 'AI').at(-1).isEnabled, 0);
+  assert.deepEqual(editableProviders(rows, original, 'video'), [provider]);
+});
 test('图标仅允许受限内置key，不能变成任意URL或路径', () => {
   assert.equal(providerIconPath('tencent-video'), '/membership/provider-icons/tencent-video');
   for (const key of ['https://bad.test/a', '../file', '/file', 'a?x', 'a.svg', '', null]) assert.equal(providerIconPath(key), '');
@@ -39,6 +50,11 @@ test('管理保存只发送平台字段，启停0/1、空图标null并验证排�
   assert.deepEqual(calls[0], ['/system/membership-providers/' + id, 'PUT', { name: provider.name, code: provider.code, category: 'video', iconKey: null, sortOrder: 2, isEnabled: 0 }]);
   assert.throws(() => admin.membershipProviderPayload({ ...provider, sortOrder: '' }), /排序/);
   assert.throws(() => admin.membershipProviderPayload({ ...provider, isEnabled: true }), /启用/);
+  const aiProvider = { ...provider, name: '阿里云百炼', code: 'aliyun_bailian', category: 'AI', iconKey: null };
+  assert.deepEqual(readMemberProviders([aiProvider]), [aiProvider]);
+  await admin.saveMembershipProvider(aiProvider);
+  assert.equal(calls.at(-1)[2].category, 'AI');
+  assert.throws(() => readMemberProviders([{ ...aiProvider, category: 'unknown' }]), /数据异常/);
   await admin.deleteMembershipProvider(id);
   assert.deepEqual(calls.at(-1), ['/system/membership-providers/' + id, 'DELETE']);
   delete globalThis.__membershipRequest;

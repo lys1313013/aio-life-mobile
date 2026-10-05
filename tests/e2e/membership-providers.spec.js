@@ -4,18 +4,28 @@ const { test, expect } = require('@playwright/test');
 const { picker } = require('./qa-domains-ui');
 const { setup, id } = require('./qa-records-fixtures');
 const entries = [{ menuId: 'member', path: '/membership', title: '订阅' }, { menuId: 'platforms', path: '/system/membership-providers', title: '会员平台' }];
-const providers = [{ id: '9007199254740993', name: '腾讯视频', code: 'tencent_video', category: 'video', iconKey: 'tencent_video', sortOrder: 0, isEnabled: 1 }, { id: '9007199254740994', name: '网易云音乐', code: 'netease_music', category: 'music', iconKey: 'netease_music', sortOrder: 1, isEnabled: 1 }];
+const providers = [{ id: '9007199254740993', name: '腾讯视频', code: 'tencent_video', category: 'video', iconKey: 'tencent_video', sortOrder: 0, isEnabled: 1 }, { id: '9007199254740994', name: '网易云音乐', code: 'netease_music', category: 'music', iconKey: 'netease_music', sortOrder: 1, isEnabled: 1 }, { id: '9007199254740995', name: 'Claude', code: 'claude', category: 'AI', iconKey: 'claude', sortOrder: 2, isEnabled: 1 }, { id: '195034', name: 'OpenCode Go', code: 'opencode_go', category: 'AI', iconKey: 'opencode_go', sortOrder: 3, isEnabled: 1 }];
+async function customProvider(page, choice, options, screenshot) {
+  await page.getByRole('button', { name: '选择会员平台', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: '选择会员平台', exact: true });
+  await expect(dialog.locator('.provider-option-name')).toHaveText(options);
+  if (screenshot) await page.screenshot({ path: screenshot });
+  await dialog.getByRole('button', { name: choice === '自定义平台' ? '选择自定义平台' : '选择平台：' + choice, exact: true }).click();
+  await expect(dialog).toHaveCount(0);
+}
 async function prepare(page) {
   const state = await setup(page);
   state.members[0] = { ...state.members[0], providerId: providers[0].id, providerName: providers[0].name, providerIconKey: providers[0].iconKey };
   await page.route('**/api/quick-nav/candidates?client=mobile', route => route.fulfill({ json: { rscode: '0', data: entries } }));
   await page.route('**/api/menu/preferences?client=mobile', route => route.fulfill({ json: { rscode: '0', data: { menus: entries.map(e => ({ id: e.menuId, title: e.title, children: [] })), hiddenMenuIds: [] } } }));
   await page.route('**/api/membership/providers', route => route.fulfill({ json: state.providersFail ? { rscode: '1', result: '模拟平台加载失败' } : { rscode: '0', data: providers } }));
-  const catalog = process.env.MEMBERSHIP_LOGO_DIR ? JSON.parse(fs.readFileSync(path.join(process.env.MEMBERSHIP_LOGO_DIR, 'manifest.json'), 'utf8')) : providers.map(row => ({ key: row.iconKey, name: row.name }));
+  const catalog = process.env.MEMBERSHIP_LOGO_DIR ? JSON.parse(fs.readFileSync(path.join(process.env.MEMBERSHIP_LOGO_DIR, 'membership-icons.json'), 'utf8')) : providers.filter(row => row.iconKey).map(row => ({ key: row.iconKey, name: row.name }));
   await page.route('**/api/membership/provider-icons', route => route.fulfill({ json: { rscode: '0', data: catalog.map(row => ({ key: row.key, name: row.name, url: '/api/membership/provider-icons/' + row.key })) } }));
   await page.route('**/api/membership/provider-icons/*', route => {
-    const key = new URL(route.request().url()).pathname.split('/').at(-1).replaceAll('-', '_');
-    const logo = process.env.MEMBERSHIP_LOGO_DIR && path.join(process.env.MEMBERSHIP_LOGO_DIR, key + '.png');
+    const url = new URL(route.request().url()); const key = url.pathname.split('/').at(-1).replaceAll('-', '_');
+    const icon = catalog.find(row => row.key === key);
+    const file = url.searchParams.get('dark') === 'true' && icon?.darkFile ? icon.darkFile : icon?.file || key + '.png';
+    const logo = process.env.MEMBERSHIP_LOGO_DIR && path.join(process.env.MEMBERSHIP_LOGO_DIR, file);
     return logo && fs.existsSync(logo) ? route.fulfill({ path: logo, contentType: 'image/png' }) : route.fulfill({ status: 404, body: '' });
   });
   state.providers = providers.map(row => ({ ...row }));
@@ -37,9 +47,12 @@ for (const width of [390, 768, 1440]) for (const theme of ['light', 'dark']) {
     await page.getByRole('button', { name: '订阅', exact: true }).click();
     await expect(page.locator('.member-provider')).toContainText('腾讯视频');
     await page.getByRole('button', { name: '编辑订阅：模拟会员', exact: true }).click();
-    await expect(page.locator('uni-picker[aria-label="平台"]')).toContainText('腾讯视频');
+    await expect(page.getByRole('button', { name: '选择会员平台', exact: true })).toContainText('腾讯视频');
     await page.screenshot({ path: `artifacts/membership-providers/member-${width}-${theme}.png` });
-    await picker(page, '平台', '网易云音乐');
+    await picker(page, '分类', 'AI');
+    await customProvider(page, '自定义平台', ['自定义平台', 'Claude', 'OpenCode Go'], `artifacts/membership-providers/category-AI-${width}-${theme}.png`);
+    await picker(page, '分类', '音乐');
+    await customProvider(page, '网易云音乐', ['自定义平台', '网易云音乐']);
     await expect(page.locator('uni-picker[aria-label="分类"]')).toContainText('音乐');
     await page.getByRole('button', { name: '保存', exact: true }).click();
     await expect(page.getByRole('dialog')).toHaveCount(0);
@@ -78,8 +91,7 @@ test('平台加载失败可重试，解除平台显式发送null，旧文本保�
   state.providersFail = false;
   await page.getByRole('button', { name: '重试平台加载', exact: true }).click();
   await expect(page.getByText('模拟平台加载失败', { exact: true })).toHaveCount(0);
-  await page.locator('uni-picker[aria-label="平台"]').click();
-  await page.locator('.uni-picker-select .uni-picker-item:visible').getByText('自定义平台', { exact: true }).click();
+  await customProvider(page, '自定义平台', ['自定义平台', '腾讯视频']);
   await expect(page.getByRole('textbox', { name: '平台', exact: true })).toHaveValue('模拟平台');
   await page.getByRole('button', { name: '保存', exact: true }).click();
   await expect(page.getByRole('dialog')).toHaveCount(0);
