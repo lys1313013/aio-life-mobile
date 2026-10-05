@@ -37,6 +37,7 @@ async function setup(page, theme, state = {}) {
     if (p === "/api/user/info")
       data = { id: "1", nickname: "模拟用户", roles: ["admin"] };
     if (p.endsWith("/statisticsByMonth")) {
+      if (state.wait) await state.wait;
       if (state.fail)
         return route.fulfill({ json: { rscode: "1", result: "模拟统计失败" } });
       data = state.empty ? [] : statistics(p.includes("/expense/"));
@@ -53,21 +54,27 @@ async function screenshot(page, name) {
   fs.mkdirSync(dir, { recursive: true });
   await page.screenshot({ path: path.join(dir, name + ".png") });
 }
-for (const width of [390, 768, 1440])
+for (const width of [320, 390, 768, 1440])
   for (const theme of ["light", "dark"]) {
     test(`财务概览 ${width} ${theme}`, async ({ page }) => {
       const errors = [];
       page.on("pageerror", (error) => errors.push(error.message));
       await page.setViewportSize({ width, height: 1000 });
-      await setup(page, theme);
+      let finish;
+      const wait = new Promise(resolve => { finish = resolve; });
+      await setup(page, theme, { wait });
+      const placeholders = page.locator('.chart-grid').first().locator('.aio-chart');
+      await expect(placeholders.locator('.chart-loading-plot')).toHaveCount(2);
+      const loadingHeights = await placeholders.evaluateAll(nodes => nodes.map(node => node.getBoundingClientRect().height));
+      finish();
       const monthly = page.locator(".ledger").first();
       const trend = page.getByRole("figure", {
-        name: "月度收支趋势",
+        name: "年度收支趋势",
         exact: true,
       });
       await expect(monthly.locator(".ledger-row")).toHaveCount(6);
       await expect(monthly.locator(".ledger-period").first()).toHaveText(
-        "2026-09",
+        "2026",
       );
       await expect(page.locator(".overview-tools")).toHaveCount(0);
       await expect(trend.locator("uni-picker")).toHaveCount(0);
@@ -75,6 +82,7 @@ for (const width of [390, 768, 1440])
         name: "累计结余趋势",
         exact: true,
       });
+      expect(await page.locator('.chart-grid').first().locator('.aio-chart').evaluateAll(nodes => nodes.map(node => node.getBoundingClientRect().height))).toEqual(loadingHeights);
       await expect(cumulative.locator("uni-picker")).toHaveCount(0);
       await expect(cumulative.locator(".chart-y-tick").first()).toBeVisible();
       await expect.poll(() => cumulative.locator(".aio-chart-canvas canvas").evaluate(canvas => {
@@ -83,12 +91,19 @@ for (const width of [390, 768, 1440])
         for (let i = 0; i < pixels.length; i += 4) if (pixels[i + 3] > 0 && Math.max(pixels[i], pixels[i + 1], pixels[i + 2]) - Math.min(pixels[i], pixels[i + 1], pixels[i + 2]) > 50) colored++;
         return colored;
       })).toBeGreaterThan(500);
+      for (const chart of [trend, cumulative]) expect(await chart.locator(".chart-y-tick").evaluateAll(nodes =>
+        nodes.every(node => node.getBoundingClientRect().height <= parseFloat(getComputedStyle(node).lineHeight) + 1 && node.scrollWidth <= node.clientWidth + 1),
+      )).toBe(true);
       await expect(cumulative.locator(".mini-chart-values")).toHaveCount(0);
       await expect(cumulative.locator(".mini-chart-scale")).toHaveCount(0);
       await expect(cumulative.getByLabel("累计结余总金额")).toHaveText("676,041.25元");
       await expect(cumulative.locator(".chart-end-label")).toHaveCount(3);
       await expect(cumulative.locator(".mini-chart-header .chart-end-label")).toHaveCount(0);
       await screenshot(page, `${width}-${theme}-overview`);
+      await expect(page.locator(".ledger")).toHaveCount(1);
+      await expect(trend.locator(".chart-x-label")).toHaveText(["2021", "2022", "2023", "2024", "2025", "2026"]);
+      await expect(trend.locator(".chart-selected-label")).toHaveText("2026");
+      await expect(trend.locator(".chart-value-number").first()).toHaveText("164,704.50元");
       // Legend toggles stay identifiable and retain the series color.
       const expense = trend
         .locator(".chart-value-item")
@@ -100,16 +115,6 @@ for (const width of [390, 768, 1440])
         color,
       );
       await trend.getByRole("button", { name: "收入", exact: true }).click();
-      await monthly.scrollIntoViewIfNeeded();
-      await monthly.getByRole("button", { name: "2026-09累计结余" }).click();
-      await expect(monthly.locator(".ledger-detail")).toContainText(
-        "676,041.25 元",
-      );
-      await screenshot(page, `${width}-${theme}-ledger`);
-      await monthly.getByRole("button", { name: "更多月份" }).click();
-      await expect(monthly.locator(".ledger-row")).toHaveCount(18);
-      await monthly.getByRole("button", { name: "收起明细" }).click();
-      await expect(monthly.locator(".ledger-row")).toHaveCount(6);
       const category = page.locator(".category-panel").last();
       // Both instances must paint independently; duplicate canvas IDs can hide one chart.
       for (const chart of await page.locator(".category-panel").all()) {
@@ -131,7 +136,7 @@ for (const width of [390, 768, 1440])
       await expect(
         page.getByRole("figure", { name: "月度收支对比", exact: true }),
       ).toBeVisible();
-      await expect(monthly.locator(".ledger-row")).toHaveCount(6);
+      await expect(monthly.locator(".ledger-row")).toHaveCount(9);
       await expect(monthly.locator(".ledger-detail")).toHaveCount(0);
       await expect(page.locator(".summary-number").first()).toHaveText(
         "164,704.50",
@@ -141,6 +146,25 @@ for (const width of [390, 768, 1440])
       await expect(monthly.locator(".ledger-detail")).toContainText(
         "81,578.75 元",
       );
+      await selectYear(page, "2025");
+      const monthTrend = page.getByRole("figure", { name: "月度收支趋势", exact: true });
+      await expect(monthly.locator(".ledger-row")).toHaveCount(12);
+      await expect(monthly.getByRole("button", { name: "更多月份" })).toHaveCount(0);
+      for (const chart of [monthTrend, cumulative, page.getByRole("figure", { name: "月度收支对比", exact: true })]) {
+        await expect(chart.locator(".chart-x-label")).toHaveText(Array.from({ length: 12 }, (_, i) => String(i + 1).padStart(2, "0")));
+        expect(await chart.locator(".chart-x-label").evaluateAll(nodes => nodes.every((node, i) =>
+          !i || node.getBoundingClientRect().left >= nodes[i - 1].getBoundingClientRect().right + 3,
+        ))).toBe(true);
+      }
+      const plot = monthTrend.getByRole("slider");
+      await plot.scrollIntoViewIfNeeded();
+      const axis = await monthTrend.locator(".chart-y-axis").boundingBox();
+      await plot.click({ position: { x: axis.width + 1, y: 20 } });
+      await expect(plot).toHaveAttribute("aria-valuenow", "0");
+      await expect(monthTrend.locator(".chart-selected-label")).toHaveText("2025-01");
+      await plot.press("ArrowRight");
+      await expect(monthTrend.locator(".chart-selected-label")).toHaveText("2025-02");
+      await screenshot(page, `${width}-${theme}-monthly`);
       await page
         .locator(".comparison-tabs")
         .getByRole("button", { name: "结余率" })

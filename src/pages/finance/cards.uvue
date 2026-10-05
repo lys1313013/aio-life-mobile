@@ -240,15 +240,16 @@ function finishCover(id: string, source: string, failed = false) {
   }
 }
 useDomainPage(
-  () => {
+  (refresh) => {
     alive = true;
-    load();
+    if (refresh) return load();
+    cards.value.forEach(card => { if (coverFile(card) && !coverUrls.value[card.id] && !coverLoading.value[card.id] && !coverErrors.value[card.id]) void loadCover(card); });
   },
-  () => {
+  (clear) => {
     alive = false;
     order.reset();
     stamp++;
-    cards.value = [];
+    if (clear) cards.value = [];
     finishStackDrag();
     stopStackRebound();
     stopCardSwitch();
@@ -257,9 +258,9 @@ useDomainPage(
     menuCardId.value = "";
     revealed.value = {};
     numberCardId.value = '';
-    for (const id of Object.keys(coverFileIds.value)) clearCardCover(id);
-    coverUrls.value = {};
-    coverErrors.value = {};
+    if (clear) for (const id of Object.keys(coverFileIds.value)) clearCardCover(id);
+    if (clear) coverUrls.value = {};
+    if (clear) coverErrors.value = {};
     coverLoading.value = {};
     coverPreview.value = '';
     coverBusy.value = false;
@@ -274,6 +275,7 @@ useDomainPage(
     loading.value = false;
     refreshing.value = false;
   },
+  { loading: () => loading.value, error: () => error.value, keys: () => ['bank-cards', 'userDictData', 'userDictType'] },
 );
 const statusMap: Record<string, string> = {
   normal: '正常',

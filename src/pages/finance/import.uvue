@@ -52,21 +52,23 @@ async function initialize() {
   }
 }
 useDomainPage(
-  () => {
+  (refresh) => {
     alive = true;
-    initialize();
+    if (refresh) return initialize();
   },
-  () => {
+  (clear) => {
     alive = false;
     stamp++;
-    rows.value = [];
-    text.value = '';
+    if (clear) rows.value = [];
+    if (clear) text.value = '';
     draft.value = {};
     modal.value = false;
     selected.value = [];
-    ready.value = false;
+    if (clear) ready.value = false;
     busy.value = false;
+    initializing.value = false;
   },
+  { loading: () => initializing.value, error: () => error.value, keys: () => ['userDictData', 'userDictType'] },
 );
 const categoryFilter = ref('全部'),
   sort = ref('日期降序');

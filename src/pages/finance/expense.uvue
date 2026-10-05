@@ -1,18 +1,19 @@
 <script setup lang="ts">
-import { ref } from 'vue';
-import { useDomainPage } from '../../services/domains/page-session.ts';
-import Ledger from './ledger.uvue';
-const visible = ref(false);
+import { nextTick, ref } from 'vue'
+import { useDomainPage } from '../../services/domains/page-session.ts'
+import Ledger from './ledger.uvue'
+const mounted = ref(false), visible = ref(false), ledger = ref<any>(null)
 useDomainPage(
-  () => {
-    visible.value = true;
+  async refresh => {
+    mounted.value = true; visible.value = true
+    await nextTick()
+    return ledger.value?.resume(refresh)
   },
-  () => {
-    visible.value = false;
-  },
-);
+  clear => { visible.value = false; ledger.value?.suspend(clear) },
+  { loading: () => !!ledger.value?.loading, error: () => ledger.value?.error || '', keys: () => ['expense', 'userDictData', 'userDictType'] },
+)
 </script>
-<template><Ledger v-if="visible" kind="expense" /></template>
+<template><Ledger v-if="mounted" v-show="visible" ref="ledger" kind="expense" /></template>
 
 <style scoped lang="scss">
 @use '../../styles/spacing.scss';

@@ -2,7 +2,6 @@
 import { useAppLayout } from '../../services/app-layout.ts'
 const { appGridItem } = useAppLayout()
 
-import ContentSkeleton from "../../components/ContentSkeleton.uvue";
 import { computed, onUnmounted, ref } from "vue";
 import MobilePage from "../../components/MobilePage.uvue";
 import PageHeader from "../../components/PageHeader.uvue";
@@ -51,18 +50,19 @@ async function load() {
   }
 }
 useDomainPage(
-  () => {
+  (refresh) => {
     alive = true;
-    load();
+    if (refresh) return load();
   },
-  () => {
+  (clear) => {
     alive = false;
     generation++;
-    income.value = [];
-    expense.value = [];
+    if (clear) income.value = [];
+    if (clear) expense.value = [];
     loading.value = false;
     refreshing.value = false;
   },
+  { loading: () => loading.value, error: () => error.value, keys: () => ['income', 'expense', 'userDictData', 'userDictType'] },
 );
 const years = computed(() => [
   "全部",
@@ -153,6 +153,10 @@ const comparisonMode = ref("收支");
 const comparisonRows = computed(() =>
   year.value === "全部" ? annual.value : months.value,
 );
+const trendTitle = computed(() => year.value === "全部" ? "年度收支趋势" : "月度收支趋势");
+const trendAxisLabels = computed(() => comparisonRows.value.map((row) =>
+  year.value === "全部" ? row.key : row.key.slice(5),
+));
 const comparisonTitle = computed(
   () =>
     (year.value === "全部" ? "年度" : "月度") +
@@ -245,7 +249,21 @@ const categoryGroups = computed(() => [
               loading
             />
           </view>
-          <ContentSkeleton v-for="n in 2" :key="n" variant="chart" />
+          <view class="chart-grid">
+            <AioChart :style="appGridItem(1, 'section', [[700, 2]], false)"
+              v-for="(names, index) in [['收入', '支出', '结余'], ['累计收入', '累计支出', '累计结余']]"
+              :key="index"
+              loading
+              compact
+              hide-period-selector
+              :selectable="index === 0"
+              :hide-values="index === 1"
+              :label="index === 0 ? trendTitle : '累计结余趋势'"
+              :labels="[]"
+              :series="names.map((name) => ({ name, values: [] }))"
+              unit="元"
+            />
+          </view>
         </template>
         <template v-if="income.length || expense.length">
           <view class="metrics ui-section">
@@ -267,24 +285,26 @@ const categoryGroups = computed(() => [
           <view class="chart-grid">
             <AioChart :style="appGridItem(1, 'section', [[700, 2]], false)"
               compact
-              label="月度收支趋势"
+              :label="trendTitle"
+              selectable
               hide-period-selector
-              :labels="months.map((row) => row.key)"
+              :labels="comparisonRows.map((row) => row.key)"
+              :x-labels="trendAxisLabels"
               :series="[
                 {
                   name: '收入',
                   color: colors.income,
-                  values: months.map((row) => row.income),
+                  values: comparisonRows.map((row) => row.income),
                 },
                 {
                   name: '支出',
                   color: colors.expense,
-                  values: months.map((row) => row.expense),
+                  values: comparisonRows.map((row) => row.expense),
                 },
                 {
                   name: '结余',
                   color: colors.balance,
-                  values: months.map((row) => row.balance),
+                  values: comparisonRows.map((row) => row.balance),
                 },
               ]"
               unit="元"
@@ -295,22 +315,23 @@ const categoryGroups = computed(() => [
               hide-period-selector
               hide-values
               show-end-values
-              :labels="months.map((row) => row.key)"
+              :labels="comparisonRows.map((row) => row.key)"
+              :x-labels="trendAxisLabels"
               :series="[
                 {
                   name: '累计收入',
                   color: colors.income,
-                  values: months.map((row) => row.cumulativeIncome),
+                  values: comparisonRows.map((row) => row.cumulativeIncome),
                 },
                 {
                   name: '累计支出',
                   color: colors.expense,
-                  values: months.map((row) => row.cumulativeExpense),
+                  values: comparisonRows.map((row) => row.cumulativeExpense),
                 },
                 {
                   name: '累计结余',
                   color: colors.balance,
-                  values: months.map((row) => row.deposit),
+                  values: comparisonRows.map((row) => row.deposit),
                 },
               ]"
               unit="元"
@@ -327,7 +348,9 @@ const categoryGroups = computed(() => [
             />
           </view>
           <FinanceLedger
+            v-if="year !== '全部'"
             :key="year"
+            :initial-limit="12"
             title="月度明细"
             :rows="months"
             show-cumulative
@@ -339,6 +362,7 @@ const categoryGroups = computed(() => [
             kind="bar"
             selectable
             :labels="comparisonRows.map((row) => row.key)"
+            :x-labels="trendAxisLabels"
             :series="
               comparisonMode === '收支'
                 ? [
@@ -386,7 +410,8 @@ const categoryGroups = computed(() => [
             </template>
           </AioChart>
           <FinanceLedger
-            :title="year === '全部' ? '年度明细' : '历年明细'"
+            v-if="year === '全部'"
+            title="年度明细"
             :rows="annual"
           />
         </template>

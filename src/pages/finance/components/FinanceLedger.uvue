@@ -6,7 +6,7 @@ import { computed, ref, watch } from "vue";
 import MobileButton from "../../../components/MobileButton.uvue";
 import AppIcon from "../../../components/AppIcon.uvue";
 import { themeClass } from "../../../services/theme.ts";
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   title: string;
   rows: {
     key: string;
@@ -16,8 +16,9 @@ const props = defineProps<{
     deposit: number;
   }[];
   showCumulative?: boolean;
-}>();
-const limit = ref(6),
+  initialLimit?: number;
+}>(), { initialLimit: 6 });
+const limit = ref(props.initialLimit),
   selected = ref("");
 const sorted = computed(() => [...props.rows].reverse());
 const visible = computed(() => sorted.value.slice(0, limit.value));
@@ -25,7 +26,7 @@ watch(
   () => props.rows,
   () => {
     selected.value = "";
-    limit.value = 6;
+    limit.value = props.initialLimit;
   },
 );
 function money(value: number) {
@@ -99,7 +100,7 @@ function money(value: number) {
         ><text class="ledger-number ui-type-caption">{{ money(row.deposit) }} 元</text>
       </view>
     </view>
-    <view v-if="rows.length > 6" class="ledger-footer">
+    <view v-if="rows.length > initialLimit" class="ledger-footer">
       <MobileButton
         v-if="limit < rows.length"
         compact
@@ -108,12 +109,12 @@ function money(value: number) {
         @click="limit += 12"
       />
       <MobileButton
-        v-if="limit > 6"
+        v-if="limit > initialLimit"
         compact
         variant="quiet"
         label="收起明细"
         @click="
-          limit = 6;
+          limit = initialLimit;
           selected = '';
         "
       />

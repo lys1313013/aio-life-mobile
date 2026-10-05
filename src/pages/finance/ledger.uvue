@@ -5,7 +5,7 @@ const { appGridItem } = useAppLayout()
 import FormActions from '../../components/FormActions.uvue';
 import { isRequired } from '../../services/form-required.ts';
 import ContentSkeleton from '../../components/ContentSkeleton.uvue';
-import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
+import { computed, onUnmounted, ref, watch } from 'vue';
 import PageHeader from '../../components/PageHeader.uvue';
 import MobilePage from '../../components/MobilePage.uvue';
 import MobileButton from '../../components/MobileButton.uvue';
@@ -256,7 +256,23 @@ async function initialize() {
     }
   }
 }
-onMounted(initialize);
+function suspend(clear = false) {
+  alive = false; version++; statisticsSequence++; refreshSequence++;
+  loading.value = false; statisticsBusy.value = false; refreshing.value = false;
+  modal.value = false; selected.value = []; openedRow.value = '';
+  draft.value = {}; formError.value = '';
+  if (clear) {
+    rows.value = []; types.value = []; payments.value = [];
+    statistics.value = []; overviewRows.value = [];
+    page.value = 1; total.value = 0; pageEnded.value = false; needsReset = false;
+    error.value = ''; moreError.value = ''; statisticsError.value = '';
+  }
+}
+function resume(refresh = false) {
+  alive = true;
+  if (refresh) return initialize();
+}
+defineExpose({ resume, suspend, loading, error });
 async function refresh() {
   if (!alive || mutationBusy.value) return;
   const current = ++refreshSequence;
