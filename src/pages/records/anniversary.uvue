@@ -1,14 +1,10 @@
 <script setup lang="ts">
 import AnniversaryRecordEditor from '../../components/record-editors/AnniversaryRecordEditor.uvue';
-import { appTextColor } from '../../services/app-layout.ts'
-
-import { buttonLabelClasses } from '../../services/button-label.ts'
 import ContentSkeleton from '../../components/ContentSkeleton.uvue';
 import { computed, onUnmounted, ref } from 'vue';
 import { onLoad, onShow } from '@dcloudio/uni-app';
 import MobilePage from '../../components/MobilePage.uvue';
 import PageHeader from '../../components/PageHeader.uvue';
-import MobileButton from '../../components/MobileButton.uvue';
 import AppIcon from '../../components/AppIcon.uvue';
 import FloatingActionButton from '../../components/FloatingActionButton.uvue';
 import ConfirmAction from '../../components/ConfirmAction.uvue';
@@ -160,13 +156,13 @@ async function remove(item) {
                   <view class="more-dot" /><view class="more-dot" /><view class="more-dot" />
                 </button></view>
               </view>
-              <view v-if="activeMenu === item.id" class="event-menu ui-pad-xs" :class="{ 'event-menu-dark': isDark }">
-                <button :style="appTextColor()" class="event-menu-item" role="button" aria-label="编辑纪念日" @click="open(item)"><text :class="buttonLabelClasses(['event-menu-item'])">编辑</text></button>
-                <ConfirmAction label="删除纪念日" :message="'确定删除“' + item.title + '”？'"
+              <view v-if="activeMenu === item.id" class="event-menu" :class="{ 'event-menu-dark': isDark }">
+                <button class="event-menu-item" role="button" aria-label="编辑纪念日" @click="open(item)"><AppIcon name="ant-design:edit-outlined" :size="20" :color="isDark ? '#eeeeef' : '#334155'" /><text class="event-menu-label" :class="{ 'event-menu-label-dark': isDark }">编辑</text></button>
+                <ConfirmAction label="删除纪念日" confirm-label="删除" compact :message="'确定删除“' + item.title + '”？'"
                   :action="() => remove(item)" @success="activeMenu = ''">
                   <template #default="{ open: confirmDelete, busy }">
-                    <button :style="appTextColor()" class="event-menu-item event-menu-delete" role="button" aria-label="删除纪念日"
-                      :loading="busy" :disabled="busy" @click="confirmDelete"><text :class="buttonLabelClasses(['event-menu-item event-menu-delete'])">删除</text></button>
+                    <button class="event-menu-item" role="button" aria-label="删除纪念日"
+                      :loading="busy" :disabled="busy" @click="confirmDelete"><AppIcon v-if="!busy" name="ant-design:delete-outlined" :size="20" :color="isDark ? '#fb7185' : '#dc3545'" /><text class="event-menu-label event-menu-label-danger" :class="{ 'event-menu-label-danger-dark': isDark }">删除</text></button>
                   </template>
                 </ConfirmAction>
               </view>
@@ -241,7 +237,11 @@ async function remove(item) {
   top: 50px;
   right: $space-inline;
   z-index: 102;
+  box-sizing: border-box;
   width: 128px;
+  flex-direction: column;
+  align-items: stretch;
+  padding: $space-detail;
   border-radius: 12px;
   background-color: #ffffff;
   color: #27272a;
@@ -249,10 +249,15 @@ async function remove(item) {
 }
 .event-menu-dark { background-color: #292c32; color: #eeeeef; }
 .event-menu-item {
-  width: 120px;
-  min-height: 44px;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: flex-start;
+  gap: $space-inline;
+  width: 100%;
+  height: $space-controlMin;
   margin: 0;
-  padding: 0 $space-card;
+  padding: 0 $space-inline;
   border: 0;
   border-radius: 8px;
   background-color: transparent;
@@ -262,10 +267,11 @@ color: inherit;
 /* #endif */
 
   @include type-style('body');
-  line-height: $space-controlMin;
-  text-align: left;
 }
-.event-menu-delete { color: #e05260; }
+.event-menu-label { @include type-style('title'); color: #334155; }
+.event-menu-label-dark { color: #eeeeef; }
+.event-menu-label-danger { color: #dc3545; }
+.event-menu-label-danger-dark { color: #fb7185; }
 .event-count { align-items: center; }
 .event-label { @include type-style('caption'); opacity: 0.9; }
 .count-row { flex-direction: row;
@@ -299,13 +305,4 @@ word-break: break-all;
 }
 @media (min-width: 1000px) { .event-card { width: calc((100% - #{$space-section * 3}) / 4); } }
 
-/* 按钮文字独立声明样式，兼容 App 不继承容器排版。 */
-.app-button-label { @include type-style('body'); color: #27272a; }
-.app-button-label-dark { color: #eeeeef; }
-.event-menu-item-label {
-/* #ifndef APP */
-color: inherit;
-/* #endif */
- @include type-style('body'); text-align: left; }
-.event-menu-delete-label {  color: #e05260; }
 </style>
