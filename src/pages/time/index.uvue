@@ -273,12 +273,13 @@ function closeEditor() {
             </button>
           </view>
           <view class="toolbar-view-group ui-row">
-            <view class="period-tabs" :class="themeClass('period-tabs')">
+            <view class="period-tabs" :class="themeClass('period-tabs')" role="group" aria-label="统计周期">
               <button v-for="item in modeOptions" :key="item.key" role="button" :aria-label="item.label + '视图'" :aria-pressed="mode === item.key" class="period-tab" hover-class="control-pressed" :hover-stay-time="100" :class="[{ 'period-active': mode === item.key }, themeClass(['period-tab', { 'period-active': mode === item.key }])]" @click="selectMode(item.key)"><text :class="buttonLabelClasses(['period-tab', [{ 'period-active': mode === item.key }, themeClass(['period-tab', { 'period-active': mode === item.key }])]])">{{ item.label }}</text></button>
             </view>
-            <view class="view-tabs" :class="themeClass('view-tabs')">
-              <button role="button" class="view-tab" hover-class="control-pressed" :hover-stay-time="100" :class="[{ 'view-active': viewMode === 'timeline' }, themeClass({ 'view-active': viewMode === 'timeline' })]" aria-label="时间轴视图" :aria-pressed="viewMode === 'timeline'" @click="selectView('timeline')"><AppIcon name="ant-design:clock-circle-outlined" :color="viewMode === 'timeline' ? (isDark ? '#a9c3ff' : '#427bea') : (isDark ? '#a4a8b2' : '#737985')" /></button>
-              <button role="button" class="view-tab" hover-class="control-pressed" :hover-stay-time="100" :class="[{ 'view-active': viewMode === 'card' }, themeClass({ 'view-active': viewMode === 'card' })]" aria-label="卡片视图" :aria-pressed="viewMode === 'card'" @click="selectView('card')"><AppIcon name="ant-design:appstore-outlined" :color="viewMode === 'card' ? (isDark ? '#a9c3ff' : '#427bea') : (isDark ? '#a4a8b2' : '#737985')" /></button>
+            <view class="toolbar-divider" :class="themeClass('toolbar-divider')" aria-hidden="true" />
+            <view class="view-tabs" :class="themeClass('view-tabs')" role="group" aria-label="记录展示方式">
+              <button role="button" class="view-tab" hover-class="control-pressed" :hover-stay-time="100" :class="[{ 'view-active': viewMode === 'timeline' }, themeClass({ 'view-active': viewMode === 'timeline' })]" aria-label="时间轴视图" :aria-pressed="viewMode === 'timeline'" @click="selectView('timeline')"><AppIcon name="lucide:clock" :size="22" :color="viewMode === 'timeline' ? (isDark ? '#64b5f6' : '#427bea') : (isDark ? '#c6ced8' : '#737985')" /></button>
+              <button role="button" class="view-tab" hover-class="control-pressed" :hover-stay-time="100" :class="[{ 'view-active': viewMode === 'card' }, themeClass({ 'view-active': viewMode === 'card' })]" aria-label="卡片视图" :aria-pressed="viewMode === 'card'" @click="selectView('card')"><AppIcon name="lucide:layout-grid" :size="22" :color="viewMode === 'card' ? (isDark ? '#64b5f6' : '#427bea') : (isDark ? '#c6ced8' : '#737985')" /></button>
             </view>
           </view>
         </view>
@@ -425,16 +426,19 @@ function closeEditor() {
 .time-toolbar-scroll { width: 100%; }
 /* #ifdef APP */
 // 横向工具栏在原生滚动容器中使用确定高度，正文按内容自然展开。
-.time-toolbar-scroll { height: $space-controlMin + 2 * $space-tight; flex-shrink: 0; }
+.time-toolbar-scroll { height: $space-controlMin + 2 * $space-tight + 2 * $space-hairline; flex-shrink: 0; }
 .time-layout { width: 100%; flex-direction: column; }
 .time-main-panel, .time-stats-panel { width: 100%; flex-grow: 0; flex-shrink: 0; flex-basis: auto; }
 .time-stats-panel { margin-top: $space-section; }
 /* #endif */
 // 保留触控尺寸，分段底座内缩；窄屏工具栏仍可横向滚动。
-.time-toolbar { width: 100%; min-width: 6 * $space-controlMin + 2 * $space-inline + 4 * $space-tight; flex-direction: row; flex-wrap: nowrap; align-items: center; justify-content: space-between; margin-bottom: 0; }
+.time-toolbar { width: 100%; min-width: 6 * $space-controlMin + $space-inline + 2 * $space-section + 4 * $space-tight + 5 * $space-hairline; flex-direction: row; flex-wrap: nowrap; align-items: center; justify-content: space-between; margin-bottom: 0; }
 .toolbar-date-group, .toolbar-view-group { flex-direction: row; flex-wrap: nowrap; flex-shrink: 0; align-items: center; }
+.toolbar-view-group { gap: $space-section; }
+.toolbar-divider { width: $space-hairline; height: $space-controlMin - 2 * $space-inline; flex-shrink: 0; background-color: #dce1e8; }
+.toolbar-divider-dark { background-color: #303944; }
 .date-switch, .period-tabs, .view-tabs { flex-direction: row; flex-shrink: 0; align-items: center; background-color: #e7eaef; border-radius: 15px; }
-.period-tabs, .view-tabs { padding: $space-tight; }
+.period-tabs, .view-tabs { padding: $space-tight; border: $space-hairline solid #e1e5eb; background-color: #e9edf2; }
 .date-switch { background-color: #ffffff; border-radius: 14px; }
 .date-step, .period-tab, .view-tab, .filter-trigger, .today-button { display: flex; flex-direction: row; align-items: center; justify-content: center; flex-shrink: 0; width: $space-controlMin; height: $space-controlMin; line-height: $space-controlMin; margin: 0; padding: 0; border: 0; border-radius: 12px; background-color: transparent; color: #737985; @include type-style('body'); }
 .date-picker { width: 88px; min-height: $space-controlMin; box-sizing: border-box; align-items: center; justify-content: center; padding: 0 $space-micro; }
@@ -442,7 +446,9 @@ function closeEditor() {
 .filter-trigger { position: relative; border-radius: 14px; background-color: #e7eaef; }
 .filter-active { background-color: #e3ecff; }
 .filter-dot { position: absolute; top: $space-inline; right: $space-inline; width: 5px; height: 5px; border-radius: 3px; background-color: #5b8ff9; }
-.period-active, .view-active { color: #427bea; font-weight: type-weight('medium'); background-color: #ffffff; box-shadow: 0 1px 4px rgba(28, 39, 61, 0.1); }
+.period-active, .view-active { font-weight: type-weight('medium'); background-color: #ffffff; box-shadow: 0 1px 3px rgba(28, 39, 61, 0.08); }
+.period-active { color: #343944; }
+.view-active { color: #427bea; }
 .control-pressed { opacity: 0.65; }
 /* #ifdef WEB */
 .date-step, .period-tab, .view-tab, .filter-trigger, .today-button { transition: background-color 160ms ease, color 160ms ease, box-shadow 160ms ease, opacity 120ms ease; }
@@ -466,8 +472,11 @@ function closeEditor() {
 .date-value-dark, .summary-value-dark { color: #eeeeef; }
 .summary-card-dark { background-color: #1c1e22; }
 .date-switch-dark, .period-tabs-dark, .view-tabs-dark, .filter-trigger-dark { background-color: #202228; }
-.period-tab-dark { color: #a4a8b2; }
-.period-active-dark, .view-active-dark { background-color: #363b46; color: #a9c3ff; box-shadow: 0 1px 4px rgba(0, 0, 0, 0.22); }
+.period-tabs-dark, .view-tabs-dark { background-color: #202831; border-color: #2d3742; }
+.period-tab-dark { color: #aeb8c5; }
+.period-active-dark, .view-active-dark { background-color: #3a4755; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.16); }
+.period-active-dark { color: #eef2f6; }
+.view-active-dark { color: #64b5f6; }
 .filter-active-dark { background-color: #2c3953; }
 /* #ifndef APP */
 @media (min-width: 1025px) {
@@ -572,9 +581,9 @@ function closeEditor() {
 .app-button-label-dark { color: #eeeeef; }
 .text-action-label { @include type-style('body'); color: #5b8ff9; }
 .period-tab-label, .today-button-label { color: #737985; @include type-style('body'); }
-.period-active-label {  color: #427bea; }
-.period-tab-dark-label {  color: #a4a8b2; }
-.period-active-dark-label { color: #a9c3ff; }
+.period-active-label { color: #343944; font-weight: type-weight('medium'); }
+.period-tab-dark-label { color: #aeb8c5; }
+.period-active-dark-label { color: #eef2f6; }
 .filter-cancel-label, .filter-apply-label { @include type-style('body'); }
 .filter-cancel-label { color: #8b8f99; }
 .filter-apply-label { color: #ffffff; }

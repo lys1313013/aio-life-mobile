@@ -502,6 +502,32 @@ for (const width of [390, 768, 1440]) for (const colorScheme of ['light', 'dark'
 
 
 for (const width of [390, 768, 1440]) for (const colorScheme of ['light', 'dark']) {
+  test(`时迹编辑保持时间轴高度与底部导航 ${width}px ${colorScheme}`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 900 });
+    await page.emulateMedia({ colorScheme });
+    await setup(page, { records: timelineRecords(), categories: categoryPalette });
+    const track = page.locator('.day-track');
+    const tabbar = page.locator('uni-tabbar');
+    const add = page.getByRole('button', { name: '新增时迹', exact: true });
+    const before = { track: await track.boundingBox(), tabbar: await tabbar.boundingBox(), add: await add.boundingBox() };
+    for (const entry of ['编辑记录 一分钟回顾', '新增时迹']) {
+      await page.getByRole('button', { name: entry, exact: true }).click();
+      const dialog = page.getByRole('dialog', { name: entry === '新增时迹' ? '记录时间' : '编辑时迹', exact: true });
+      await expect(dialog.getByRole('button', { name: '保存', exact: true })).toBeVisible();
+      await expect(tabbar).toBeVisible();
+      expect(await track.boundingBox()).toEqual(before.track);
+      expect(await tabbar.boundingBox()).toEqual(before.tabbar);
+      await expect.poll(() => add.boundingBox()).toEqual(before.add);
+      await page.screenshot({ path: `artifacts/time-editor-stable/${width}-${colorScheme}-${entry === '新增时迹' ? 'create' : 'edit'}.png` });
+      await closeEditor(page);
+      await expect(tabbar).toBeVisible();
+      expect(await track.boundingBox()).toEqual(before.track);
+      await expect.poll(() => add.boundingBox()).toEqual(before.add);
+    }
+    await tabbar.getByText('首页', { exact: true }).click();
+    await expect(page.getByText('记录想法，让行动更清晰。')).toBeVisible();
+  });
+
   test(`视图切换、多选筛选与通用新增按钮 ${width}px ${colorScheme}`, async ({ page }) => {
     await page.setViewportSize({ width, height: 900 });
     await page.emulateMedia({ colorScheme });
