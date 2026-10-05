@@ -1,0 +1,152 @@
+<script setup lang="ts">
+import { getCurrentInstance, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
+import { useWindowResize } from '../services/window-resize.ts'
+import { loadChartEngine } from '../services/chart-engine.ts'
+import { chartAxisLabel, chartHeight, createChartSurface } from '../services/chart-options.ts'
+import { themeClass } from '../services/theme.ts'
+import MobileButton from './MobileButton.uvue'
+import typography from '../styles/typography.json'
+import spacing from '../styles/spacing.json'
+
+const props = defineProps<{ option: any; label: string }>()
+const emit = defineEmits(['layout', 'select', 'width'])
+const instance = getCurrentInstance()
+const canvasId = 'aio-chart-' + instance?.uid
+const loading = ref(true), error = ref('')
+let chart: any = null, alive = true, generation = 0, scheduled = false
+let width = 0
+let touchStart: any = null, lastTouch = 0
+function rect(): Promise<any> {
+  return new Promise(resolve => uni.createSelectorQuery().in(instance?.proxy)
+    .select('.aio-chart-canvas').boundingClientRect(value => resolve(value)).exec())
+}
+function context(): Promise<any> {
+  return new Promise((resolve, reject) => uni.createCanvasContextAsync({
+    id: canvasId, component: instance?.proxy,
+    success(canvas) {
+      const ctx = canvas.getContext('2d')
+      if (ctx) resolve(ctx)
+      else reject(new Error('画布初始化失败'))
+    }, fail: reject,
+  }))
+}
+function paint() {
+  if (!chart || !alive) return
+  try {
+    chart.setOption(props.option, { notMerge: true })
+    // SSR disables the browser event proxy and animation loop, not Canvas rendering.
+    chart.getZr().flush()
+    const yAxis = chart.getModel().getComponent('yAxis').axis
+    const axisTicks = yAxis.scale.getTicks().map(tick => ({
+      value: tick.value, label: chartAxisLabel(tick.value),
+      top: chart.convertToPixel({ yAxisIndex: 0 }, tick.value) - typography.roles.caption.lineHeight / 2,
+    }))
+    const labels = props.option.xAxis.data
+    const points = labels.map((_, index) => chart.convertToPixel({ xAxisIndex: 0 }, index))
+    const annotations = props.option.series.map(item => {
+      const values = item.data.map(row => row.value)
+      return { name: item.name, color: item.itemStyle.color, points: values.map((value, index) => ({
+        x: points[index], y: chart.convertToPixel({ yAxisIndex: 0 }, value), value,
+      })) }
+    })
+    emit('layout', { axisTicks, points, series: annotations, left: props.option.grid.left,
+      axisTop: chartHeight - props.option.grid.bottom + spacing.detail })
+    error.value = ''
+  } catch (_) { error.value = '图表加载失败' }
+}
+async function initialize() {
+  const id = ++generation
+  loading.value = true
+  error.value = ''
+  try {
+    await nextTick()
+    const bounds = await rect()
+    if (!alive || id !== generation) return
+    if (!bounds || Array.isArray(bounds) || bounds.width <= 0) {
+      loading.value = false
+      return // Hidden tabs resume after a resize/data update.
+    }
+    width = bounds.width
+    emit('width', width)
+    const engine = await loadChartEngine()
+    if (!alive || id !== generation) return
+    const ctx = await context()
+    if (!alive || id !== generation) return
+    chart?.dispose()
+    chart = engine.init(createChartSurface(ctx), null, {
+      renderer: 'canvas', width, height: chartHeight,
+      devicePixelRatio: uni.getWindowInfo().pixelRatio || 1, ssr: true,
+    })
+    paint()
+  } catch (_) { if (alive && id === generation) error.value = '图表加载失败' }
+  finally { if (alive && id === generation) loading.value = false }
+}
+async function resize() {
+  await nextTick()
+  const bounds = await rect()
+  if (!alive || !bounds || Array.isArray(bounds) || bounds.width <= 0) return
+  if (!chart) { initialize(); return }
+  if (width !== bounds.width) {
+    width = bounds.width
+    emit('width', width)
+    chart.resize({ width, height: chartHeight, silent: true })
+    paint()
+  }
+}
+function queuePaint() {
+  if (scheduled) return
+  scheduled = true
+  nextTick(() => { scheduled = false; if (chart) paint(); else initialize() })
+}
+async function select(event) {
+  if (!chart || !alive || error.value) return
+  const touch = event.changedTouches?.[0]
+  const clientX = touch?.clientX ?? event.detail?.x ?? event.clientX
+  if (typeof clientX !== 'number') return
+  const bounds = await rect()
+  if (!alive || !bounds || Array.isArray(bounds)) return
+  const index = chart.convertFromPixel({ xAxisIndex: 0 }, clientX - bounds.left)
+  if (Number.isFinite(index)) emit('select', Math.max(0, Math.min(props.option.xAxis.data.length - 1, Math.round(index))))
+}
+function beginTouch(event) {
+  touchStart = event.touches?.[0] || null
+  lastTouch = Date.now()
+}
+function endTouch(event) {
+  lastTouch = Date.now()
+  const end = event.changedTouches?.[0]
+  if (!touchStart || !end) return
+  const distance = Math.hypot(end.clientX - touchStart.clientX, end.clientY - touchStart.clientY)
+  touchStart = null
+  if (distance <= spacing.inline) select(event)
+}
+function click(event) {
+  if (Date.now() - lastTouch > 350) select(event)
+}
+useWindowResize(resize)
+onMounted(initialize)
+watch(() => props.option, queuePaint, { deep: true })
+onUnmounted(() => { alive = false; generation++; chart?.dispose(); chart = null })
+</script>
+
+<template>
+  <view class="aio-chart-renderer" :aria-busy="loading">
+    <canvas :id="canvasId" :canvas-id="canvasId" type="2d" class="aio-chart-canvas"
+      aria-hidden="true" @click="click" @touchstart="beginTouch" @touchend="endTouch" />
+    <view v-if="loading || error" class="chart-render-state">
+      <text class="chart-render-message" :class="themeClass('chart-render-message')">{{ error || '正在加载图表' }}</text>
+      <MobileButton v-if="error" label="重试图表" icon="ant-design:reload-outlined" variant="quiet" @click="initialize" />
+    </view>
+  </view>
+</template>
+
+<style scoped lang="scss">
+@use '../styles/typography' as *;
+@use '../styles/spacing-tokens' as *;
+@use '../styles/text-colors' as *;
+.aio-chart-renderer { position: relative; width: 100%; height: 228px; }
+.aio-chart-canvas { width: 100%; height: 228px; }
+.chart-render-state { position: absolute; left: 0; right: 0; top: 0; bottom: 0; justify-content: center; align-items: center; gap: $space-inline; }
+.chart-render-message { @include type-style('caption'); color: $text-secondary-light; }
+.chart-render-message-dark { color: $text-secondary-dark; }
+</style>

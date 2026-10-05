@@ -23,9 +23,9 @@ for (const width of [390, 768, 1440]) {
       await page.goto('/#/pages/records/exercise');
       await expectRole(page.locator('.form-field-label'), 'label');
       await expectRole(page.locator('.form-field-picker-value'), 'body');
-      await expectRole(page.locator('.mini-chart-scale > *'), 'caption');
-      await expectRole(page.locator('.mini-chart-axis > *'), 'caption');
-      await expectRole(page.locator('.mini-chart-values > .ui-type-body'), 'body');
+      await expectRole(page.locator('.chart-y-tick'), 'caption');
+      await expectRole(page.locator('.chart-x-label'), 'caption');
+      await expectRole(page.locator('.chart-value-number'), 'caption-strong');
 
       // soft 外观使用相同的表单尺度；标题/按钮保留各自语义。
       await page.goto('/#/pages/goods/devices');

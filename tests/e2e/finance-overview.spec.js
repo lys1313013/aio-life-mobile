@@ -76,7 +76,13 @@ for (const width of [390, 768, 1440])
         exact: true,
       });
       await expect(cumulative.locator("uni-picker")).toHaveCount(0);
-      await expect(cumulative.locator(".mini-chart-series")).toHaveCount(3);
+      await expect(cumulative.locator(".chart-y-tick").first()).toBeVisible();
+      await expect.poll(() => cumulative.locator(".aio-chart-canvas canvas").evaluate(canvas => {
+        const pixels = canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height).data;
+        let colored = 0;
+        for (let i = 0; i < pixels.length; i += 4) if (pixels[i + 3] > 0 && Math.max(pixels[i], pixels[i + 1], pixels[i + 2]) - Math.min(pixels[i], pixels[i + 1], pixels[i + 2]) > 50) colored++;
+        return colored;
+      })).toBeGreaterThan(500);
       await expect(cumulative.locator(".mini-chart-values")).toHaveCount(0);
       await expect(cumulative.locator(".mini-chart-scale")).toHaveCount(0);
       await expect(cumulative.getByLabel("累计结余总金额")).toHaveText("676,041.25元");

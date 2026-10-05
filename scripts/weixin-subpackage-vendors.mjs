@@ -8,8 +8,9 @@ const slash = value => value.replaceAll('\\', '/');
 /**
  * uni's default npm vendor is in the main package, even for subpackage-only imports.
  * Bundle a private ESM copy per declared owner, then let Rollup keep it inside that
- * owner's vendor. No node_modules patches, checked-in vendor copies or async cross-
- * package require are needed. Web and App retain their normal dependency resolution.
+ * owner's vendor. The shared chart runtime uses its own asynchronous package.
+ * No node_modules patches or checked-in vendor copies are needed.
+ * Web and App retain their normal dependency resolution.
  */
 export function weixinSubpackageVendors() {
   let root;
@@ -17,6 +18,7 @@ export function weixinSubpackageVendors() {
   const virtual = new Map();
   const bundles = new Map();
   let roots = [];
+  let chartRuntime;
   const owner = file => roots.find(root => file.startsWith(root + '/')) || '';
   return {
     name: 'aio-weixin-subpackage-vendors',
@@ -33,12 +35,27 @@ export function weixinSubpackageVendors() {
         }
       }
     },
-    buildStart() {
+    async buildStart() {
       virtual.clear();
       bundles.clear();
       for (const name of ['report.json', 'report.txt', 'chunks.json']) {
         rmSync(path.join(root, 'artifacts/weixin-size', name), { force: true });
       }
+      // Shared Cartesian engine is fetched with require.async, never synchronously
+      // imported from the main package or another business subpackage.
+      chartRuntime = await build({
+        absWorkingDir: root,
+        entryPoints: [policy.chartRuntime.entry],
+        bundle: true, write: false, format: 'cjs', platform: 'browser',
+        target: 'es2017', minify: true, legalComments: 'eof', metafile: true,
+        define: { 'process.env.NODE_ENV': '"production"' },
+      });
+      this.emitFile({ type: 'asset', fileName: `${policy.chartRuntime.root}/echarts.js`, source: chartRuntime.outputFiles[0].text });
+      // WeChat requires one page even for a JS runtime package. This empty bootstrap
+      // registration has no business navigation entry; require.async only loads JS.
+      for (const [extension, source] of Object.entries({
+        js: 'Page({});', json: '{"navigationStyle":"custom"}', wxml: '<view />', wxss: '',
+      })) this.emitFile({ type: 'asset', fileName: `${policy.chartRuntime.root}/bootstrap.${extension}`, source });
     },
     resolveId(source, importer) {
       const rule = policy.scopedDependencies[source];
@@ -94,6 +111,16 @@ export function weixinSubpackageVendors() {
     generateBundle: {
       order: 'post',
       handler(_options, output) {
+        const app = output['app.json'];
+        if (!app || app.type !== 'asset') this.error('缺少微信 app.json，无法登记图表引擎分包。');
+        const config = JSON.parse(String(app.source));
+        const packages = config.subPackages || config.subpackages || [];
+        if (!packages.some(pkg => pkg.root === policy.chartRuntime.root)) {
+          packages.push({ root: policy.chartRuntime.root, pages: ['bootstrap'] });
+        }
+        config.subPackages = packages;
+        app.source = JSON.stringify(config, null, 2);
+        roots.push(policy.chartRuntime.root);
         const chunks = Object.values(output).filter(file => file.type === 'chunk');
         const runtimeImports = new Map();
         // A subpackage may synchronously depend on itself or the main package only.
@@ -115,7 +142,7 @@ export function weixinSubpackageVendors() {
             if (entry && from !== entry.packageRoot) this.error(`分包依赖泄漏：${entry.source} -> ${chunk.fileName}`);
             // Detect alternate paths bypassing the scoped entry, e.g. xlsx/xlsx.mjs.
             const npmPath = slash(id).split('/node_modules/').at(-1);
-            if (!from && /^(xlsx|jszip|gm-crypto)(\/|$)/.test(npmPath)) {
+            if (!from && /^(xlsx|jszip|gm-crypto|echarts|zrender)(\/|$)/.test(npmPath)) {
               this.error(`重量依赖进入主包：${npmPath} -> ${chunk.fileName}`);
             }
           }
@@ -131,6 +158,11 @@ export function weixinSubpackageVendors() {
             bytes: info.renderedLength,
           })).sort((a, b) => b.bytes - a.bytes),
         })).sort((a, b) => b.bytes - a.bytes);
+        report.push({
+          file: `${policy.chartRuntime.root}/echarts.js`, bytes: chartRuntime.outputFiles[0].contents.length,
+          imports: [], rollupImports: [], dynamicImports: [],
+          modules: Object.entries(chartRuntime.metafile.inputs).map(([id, info]) => ({ id, bytes: info.bytes })).sort((a, b) => b.bytes - a.bytes),
+        });
         const directory = path.join(root, 'artifacts/weixin-size');
         mkdirSync(directory, { recursive: true });
         writeFileSync(path.join(directory, 'chunks.json'), JSON.stringify(report, null, 2) + '\n');

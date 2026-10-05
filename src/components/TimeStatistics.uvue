@@ -2,7 +2,7 @@
 import PageState from './PageState.uvue';
 import { themeClass } from '../services/theme.ts'
 import { computed, ref, watch, onUnmounted } from 'vue'
-import MiniChart from './MiniChart.uvue'
+import AioChart from './AioChart.uvue'
 import type { Category, TimeRecord } from '../services/dashboard.ts'
 import { request } from '../services/api.ts'
 import { distributionStats, matchesCategories, recordMinutes, periodRange, periodStatistics, shiftDate, trendPeriods } from '../services/time-format.ts'
@@ -48,7 +48,9 @@ const periods = computed(() => {
 const daily = computed(() => periodStatistics(props.records, props.categories, props.selected, periods.value))
 const maximum = computed(() => Math.max(1, ...daily.value.map(item => item.minutes)))
 const trendData = computed(() => periodStatistics(trend.value, props.categories, props.selected, trendPeriods(props.date, props.mode), props.mode !== 'day'))
-const trendLegend = computed(() => distributionStats(trend.value, props.categories, props.selected))
+const trendLegend = computed(() => distributionStats(trend.value, props.categories, props.selected)
+  .filter(item => item.minutes > 0)
+  .slice(0, 5))
 const trendSeries = computed(() => trendLegend.value.map(item => ({ name: item.name, color: item.color, values: trendData.value.map(period => Math.round((period.segments.find(segment => segment.id === item.id)?.minutes || 0) / 60 * 100) / 100) })))
 const trendLabels = computed(() => trendData.value.map(item => props.mode === 'month' ? item.start.slice(0, 7) : item.start.slice(5)))
 const trendTitle = computed(() => '近 10 ' + (props.mode === 'day' ? '天' : props.mode === 'week' ? '周 · 记录日均' : '个月 · 记录日均'))
@@ -72,8 +74,8 @@ onUnmounted(() => generation++)
 <template>
   <view class="time-statistics">
     <PageState skeleton="chart" :loading="loading" :error="error" :has-content="trend.length > 0" @retry="loadTrend">
-      <MiniChart v-if="trendSeries.length" :label="trendTitle" :labels="trendLabels" :series="trendSeries" unit="h" hide-period-selector />
-      <view v-else class="stats-card" :class="themeClass('stats-card')"><text class="stats-caption" :class="themeClass('stats-caption')">{{ trendTitle }}</text><text class="stats-empty" :class="themeClass('stats-empty')">暂无记录</text></view>
+      <AioChart v-if="trendSeries.length" :label="trendTitle" :labels="trendLabels" :series="trendSeries" unit="h" selectable hide-period-selector hide-legend hide-title />
+      <view v-else class="stats-card" :class="themeClass('stats-card')" :aria-label="trendTitle"><text class="stats-empty" :class="themeClass('stats-empty')">暂无记录</text></view>
     </PageState>
     <view v-for="panel in panels" :key="panel.id" class="stats-card" :class="themeClass('stats-card')" role="figure" :aria-label="panel.title">
       <text class="stats-caption" :class="themeClass('stats-caption')">{{ panel.title }}</text>

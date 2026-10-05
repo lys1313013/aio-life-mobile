@@ -38,16 +38,3 @@ export function pickerValue(kind, value, options = []) {
 export function modalAvailableHeight(windowHeight, keyboardHeight, safeTop = 0, safeBottom = 0, verticalInset = spacing.overlayBlock) {
   return Math.max(80, windowHeight - keyboardHeight - safeTop - safeBottom - verticalInset * 2)
 }
-
-export function chartGeometry(labels, series, width, height = 180) {
-  if (!Array.isArray(labels) || !labels.length) return { min: 0, max: 1, zero: height, series: [] }
-  for (const item of series) if (!Array.isArray(item.values) || item.values.length !== labels.length || item.values.some(value => typeof value !== 'number' || !Number.isFinite(value))) throw new Error('图表数据与标签不一致')
-  const values = series.flatMap(item => item.values)
-  const min = Math.min(0,...values), max = Math.max(0,...values) || (min === 0 ? 1 : 0), span = max - min || 1
-  const y = value => height - (value-min)/span*height
-  return { min,max,zero:y(0),series:series.map(item => {
-    const points=item.values.map((value,index)=>({x: labels.length === 1 ? width/2 : index*width/(labels.length-1),y:y(value),value}))
-    const segments=points.slice(1).map((point,index)=>{const previous=points[index],dx=point.x-previous.x,dy=point.y-previous.y;return {left:previous.x,top:previous.y,length:Math.sqrt(dx*dx+dy*dy),angle:Math.atan2(dy,dx)*180/Math.PI}})
-    return {...item,points,segments}
-  }) }
-}

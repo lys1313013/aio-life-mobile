@@ -31,7 +31,7 @@ for (const width of [390, 768, 1440]) for (const theme of ['light', 'dark']) {
     await plot.click({ position: { x: box.width / 2, y: 8 } });
     await expect(page.locator('.chart-period-label')).toHaveText('2月支出');
     await expect(page.locator('.chart-period-amount')).toHaveText('350.00元');
-    await page.locator('.mini-chart-bar').first().click();
+    await plot.click({ position: { x: box.width * 0.1, y: box.height / 2 } });
     await expect(page.locator('.chart-period-label')).toHaveText('1月支出');
     await expect(page.getByRole('button', { name: /上个月|下个月/ })).toHaveCount(0);
     await expect(plot).toHaveAttribute('aria-valuenow', '0');
@@ -80,7 +80,9 @@ test('全年月份、年份切换与饼图重绘', async ({ page }) => {
   ] }));
   await openExpense(page, [...fullYear, { year: year - 1, month: 2, detail: [{ typeName: '日用', amt: 888 }] }]);
   await expect(page.locator('.chart-period-label')).toHaveText('12月支出');
-  await expect(page.locator('.chart-month-label')).toHaveCount(12);
+  await expect(page.locator('.chart-x-label').first()).toHaveText('1月');
+  await expect(page.locator('.chart-x-label').last()).toHaveText('12月');
+  await expect(page.getByRole('slider', { name: '月度支出趋势，点击图表查看数值' })).toHaveAttribute('aria-valuemax', '11');
   await page.screenshot({ path: 'artifacts/expense-charts/full-year-mobile.png', fullPage: true });
   await page.setViewportSize({ width: 768, height: 1000 });
   await page.locator('uni-picker[aria-label="选择年份"]').click();
