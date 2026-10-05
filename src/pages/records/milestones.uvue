@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { usePageRefresh } from '../../services/page-refresh.ts'
 import FormActions from '../../components/FormActions.uvue';
 import { isRequired, missingRequired } from '../../services/form-required.ts';
 import ContentSkeleton from '../../components/ContentSkeleton.uvue';
@@ -58,7 +59,8 @@ onUnmounted(() => {
   alive = false;
   generation++;
 });
-onShow(() => load());
+const refreshOnShow = usePageRefresh(() => load(), { loading: () => loading.value, error: () => error.value, keys: () => ['milestones'] })
+onShow(() => refreshOnShow());
 async function load(refresh = false) {
   const current = ++generation;
   loading.value = true;
@@ -175,26 +177,32 @@ function clear() {
           ></template
         > </PageState
       ><AdaptiveModal v-if="form" label="编辑里程碑" :busy="saving" @close="form = null"
-        ><FormField :required="isRequired('milestone', 'title')" label="标题" v-model="form.title" /><FormField
+        ><FormField :required="isRequired('milestone', 'title')" label="标题" v-model="form.title" /><view class="ui-field-row">
+          <FormField compact stretch
           label="开始日期" :required="isRequired('milestone', 'date')"
           kind="date"
-          v-model="form.date" /><FormField
+          v-model="form.date" />
+          <FormField compact stretch
           label="结束日期"
           kind="date"
-          v-model="form.end_date" /><MobileButton
+          v-model="form.end_date" />
+        </view><MobileButton
           v-if="form.end_date"
           label="清空结束日期"
           icon="ant-design:close-outlined"
           variant="quiet"
-          @click="form.end_date = ''" /><FormField
+          @click="form.end_date = ''" /><view class="ui-field-row">
+          <FormField compact stretch
           label="类型"
           kind="selector"
           :model-value="labels[types.indexOf(form.type)] || form.type"
           :options="labels"
-          @update:model-value="form.type = types[labels.indexOf($event)]" /><FormField
+          @update:model-value="form.type = types[labels.indexOf($event)]" />
+          <FormField compact stretch label="标签" v-model="form.tags" />
+        </view><FormField
           label="描述"
-          kind="textarea"
-          v-model="form.description" /><FormField label="标签" v-model="form.tags" /><text
+          kind="textarea" textarea-size="compact"
+          v-model="form.description" /><text
           v-if="formError"
           class="event-error ui-section ui-type-body"
           >{{ formError }}</text

@@ -26,6 +26,8 @@ const exerciseFields = [
   { key: 'exerciseCount', label: '运动数量', kind: 'text', inputType: 'number' },
   { key: 'description', label: '备注', kind: 'textarea', inputType: 'text' },
 ];
+// 首页与运动页一致：日期和数量并排，类型和备注保留整行。
+const exerciseRows = [exerciseFields.slice(0, 1), exerciseFields.slice(1, 3), exerciseFields.slice(3)];
 function updateExercise(key: string, value: string) {
   exercise.value[key] = key === 'exerciseTypeId'
     ? types.value.find(type => type.dictLabel === value)?.id || '' : value;
@@ -143,7 +145,9 @@ async function save() {
     </template>
     <template v-if="kind === 'exercise'">
       <LoadingIndicator v-if="loading" label="正在加载运动类型" />
-      <FormField v-for="field in exerciseFields" :key="field.key" :required="isRequired('exercise', field.key)" :label="field.label" :kind="field.kind" :input-type="field.inputType" :model-value="field.key === 'exerciseTypeId' ? typeName : exercise[field.key]" :options="field.key === 'exerciseTypeId' ? types.map(type => type.dictLabel) : []" :disabled="saving || (field.key === 'exerciseTypeId' && !types.length)" @update:model-value="updateExercise(field.key, $event)" />
+      <view v-for="(row, index) in exerciseRows" :key="index" class="ui-field-row">
+        <FormField v-for="field in row" :key="field.key" compact stretch textarea-size="compact" :required="isRequired('exercise', field.key)" :label="field.label" :kind="field.kind" :input-type="field.inputType" :model-value="field.key === 'exerciseTypeId' ? typeName : exercise[field.key]" :options="field.key === 'exerciseTypeId' ? types.map(type => type.dictLabel) : []" :disabled="saving || (field.key === 'exerciseTypeId' && !types.length)" @update:model-value="updateExercise(field.key, $event)" />
+      </view>
     </template>
     <text v-if="error" class="form-error" role="alert">{{ error }}</text>
     <FormActions :stacked="kind === 'think' && thoughtReady">
@@ -167,6 +171,7 @@ async function save() {
 </template>
 
 <style scoped lang="scss">
+@use '../../styles/spacing.scss';
 @use '../../styles/spacing-tokens' as *;
 @use '../../styles/typography' as *;
 .thought-tools { display: flex; flex-direction: row; align-items: center; flex-wrap: wrap; gap: $space-inline; }

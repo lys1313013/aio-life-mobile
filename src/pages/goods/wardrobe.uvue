@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { usePageRefresh } from '../../services/page-refresh.ts'
 import { useAppLayout, appTextColor, appButtonTextColor } from '../../services/app-layout.ts'
 const { appGridItem } = useAppLayout()
 
@@ -13,6 +14,7 @@ import PageState from '../../components/PageState.uvue';
 import MobileButton from '../../components/MobileButton.uvue';
 import ConfirmAction from '../../components/ConfirmAction.uvue';
 import FormField from '../../components/FormField.uvue';
+import FormActions from '../../components/FormActions.uvue';
 import AdaptiveModal from '../../components/AdaptiveModal.uvue';
 import MetricCard from '../../components/MetricCard.uvue';
 import AppIcon from '../../components/AppIcon.uvue';
@@ -71,7 +73,10 @@ function clearPrivate() {
 }
 onHide(() => {
   visible = false;
-  clearPrivate();
+  sequence++; photoSequence++;
+  loading.value = false;
+  photoBusy.value = {};
+  modal.value = ''; form.value = {}; original.value = null;
 });
 watch(
   () => session.token,
@@ -147,9 +152,11 @@ async function load() {
     if (alive && task === sequence) loading.value = false;
   }
 }
+const refreshOnShow = usePageRefresh(() => load(), { loading: () => loading.value, error: () => error.value, keys: () => ['wardrobe'] })
 onShow(() => {
   visible = true;
-  load();
+  refreshOnShow();
+  items.value.forEach(row => { if (row.fileId && !photos.value[row.fileId] && !photoErrors.value[row.fileId]) void photo(row.fileId); });
 });
 function blank() {
   return {
@@ -340,7 +347,7 @@ function chooseCategory(value) {
               (value) =>
                 (category = categories[categoryNames.indexOf(value) - 1]?.id || '')
             " /><view class="tabs ui-row ui-section"
-            ><MobileButton
+            ><MobileButton compact
               v-for="value in seasons"
               :key="value"
               :label="value"
@@ -402,13 +409,22 @@ function chooseCategory(value) {
               ] || '全部分类'
             "
             :options="categoryNames"
-            @update:model-value="chooseCategory" /><FormField
+            @update:model-value="chooseCategory" /><view class="ui-field-row">
+          <FormField compact stretch
             label="颜色"
-            v-model="form.color" /><FormField
+            v-model="form.color" />
+          <FormField compact stretch
             label="品牌"
-            v-model="form.brand" /><FormField label="尺码" v-model="form.size" /><view
+            v-model="form.brand" />
+        </view><view class="ui-field-row">
+          <FormField compact stretch label="尺码" v-model="form.size" />
+          <FormField compact stretch
+            label="价格"
+            input-type="digit"
+            v-model="form.price" />
+        </view><view
             class="tabs ui-row ui-section"
-            ><MobileButton
+            ><MobileButton compact
               v-for="value in seasons"
               :key="value"
               :label="'适用季节' + value"
@@ -420,11 +436,8 @@ function chooseCategory(value) {
             label="购买日期"
             kind="date"
             v-model="form.purchaseDate" /><FormField
-            label="价格"
-            input-type="digit"
-            v-model="form.price" /><FormField
             label="备注"
-            kind="textarea"
+            kind="textarea" textarea-size="compact"
             v-model="form.memo" /><image
             v-if="form.fileId"
             class="edit-photo ui-section"
@@ -448,7 +461,8 @@ function chooseCategory(value) {
               :disabled="busy || uploading"
               @click="form.fileId = ''" /></view></template
         ><template v-else
-          ><FormField label="分类图标" v-model="form.icon" /><FormField
+          ><FormField label="分类图标" v-model="form.icon" /><view class="ui-field-row">
+          <FormField compact stretch
             label="父分类"
             kind="selector"
             :model-value="
@@ -466,18 +480,19 @@ function chooseCategory(value) {
               (value) =>
                 (form.parentId =
                   parentOptions.find((row) => categoryLabel(row) === value)?.id || '')
-            " /><FormField
+            " />
+          <FormField compact stretch
             label="分类排序"
             input-type="number"
-            v-model="form.sort" /></template
+            v-model="form.sort" />
+        </view></template
         ><text v-if="formError" class="error ui-section" role="alert">{{
           formError
         }}</text
-        ><MobileButton
-          label="保存衣柜内容"
-          :loading="busy"
-          :disabled="uploading"
-          @click="save" /></AdaptiveModal></template
+        ><FormActions>
+          <MobileButton label="取消" variant="quiet" :disabled="busy || uploading" @click="close" />
+          <MobileButton label="保存衣柜内容" :loading="busy" :disabled="uploading" @click="save" />
+        </FormActions></AdaptiveModal></template
   ></MobilePage>
 </template>
 <style scoped lang="scss">

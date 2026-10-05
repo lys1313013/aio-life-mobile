@@ -131,14 +131,14 @@ async function load() {
   }
 }
 useDomainPage(
-  () => {
+  (refresh) => {
     alive = true;
-    load();
+    if (refresh) return load();
   },
-  () => {
+  (clear) => {
     alive = false;
     stamp++;
-    graph.value = { nodes: [], edges: [] };
+    if (clear) graph.value = { nodes: [], edges: [] };
     person.value = null;
     draft.value = null;
     relation.value = null;
@@ -146,6 +146,7 @@ useDomainPage(
     loading.value = false;
     refreshing.value = false;
   },
+  { loading: () => loading.value, error: () => error.value, keys: () => ['relationships'] },
 );
 const people = computed(() =>
   (results.value || graph.value.nodes).filter(
@@ -412,24 +413,30 @@ function nodeName(id: string) {
             label="删除关系"
             :action="() => removeRel(item)" /></view></view></AdaptiveModal
     ><AdaptiveModal v-if="draft" label="人物" :busy="busy" @close="draft = null"
-      ><FormField :required="isRequired('person', 'name')" label="姓名" v-model="draft.name" /><FormField
+      ><view class="ui-field-row">
+          <FormField compact stretch :required="isRequired('person', 'name')" label="姓名" v-model="draft.name" />
+          <FormField compact stretch
         label="分类"
         kind="selector"
         :options="['亲属', '社会', '情感', '其他']"
-        v-model="draft.category" /><FormField label="头像URL" v-model="draft.avatar" /><FormField
+        v-model="draft.category" />
+        </view><FormField label="头像URL" v-model="draft.avatar" /><FormField
         label="介绍"
         kind="textarea"
-        v-model="draft.description" /><FormField label="标签" v-model="draft.tags" /><FormField
+        v-model="draft.description" /><FormField label="标签" v-model="draft.tags" /><view class="ui-field-row">
+          <FormField compact stretch
         label="生日"
         kind="date"
-        v-model="draft.birthday" /><FormField label="电话" v-model="draft.phone" /><FormField
+        v-model="draft.birthday" />
+          <FormField compact stretch label="电话" v-model="draft.phone" />
+        </view><FormField
         label="邮箱"
         v-model="draft.email" /><FormField label="学校" v-model="draft.school" /><FormField
         label="社交链接"
         kind="textarea"
         v-model="draft.socialLinks" /><FormField
         label="备注"
-        kind="textarea"
+        kind="textarea" textarea-size="compact"
         v-model="draft.notes" /><text v-if="formError" class="error ui-py-section ui-type-body">{{ formError }}</text
       ><MobileButton label="保存" :loading="busy" @click="save" /></AdaptiveModal
     ><AdaptiveModal v-if="relation" label="关系" :busy="busy" @close="relation = null"
@@ -439,7 +446,8 @@ function nodeName(id: string) {
         :options="
           graph.nodes.filter((item) => item.id !== person.id).map((item) => targetLabel(item))
         "
-        v-model="targetName" /><FormField
+        v-model="targetName" /><view class="ui-field-row">
+          <FormField compact stretch
         label="关系类型"
         kind="selector"
         :options="[
@@ -461,13 +469,15 @@ function nodeName(id: string) {
           '暗恋',
           '其他',
         ]"
-        v-model="relation.relationType" /><FormField
+        v-model="relation.relationType" />
+          <FormField compact stretch
         label="方向"
         kind="selector"
         :options="['单向', '双向']"
-        v-model="relation.direction" /><FormField
+        v-model="relation.direction" />
+        </view><FormField
         label="说明"
-        kind="textarea"
+        kind="textarea" textarea-size="compact"
         v-model="relation.description" /><FormField label="标签" v-model="relation.tags" /><text
         v-if="formError"
         class="error ui-py-section ui-type-body"

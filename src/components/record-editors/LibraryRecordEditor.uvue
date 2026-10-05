@@ -175,51 +175,61 @@ async function remove(item) {
             icon="ant-design:import-outlined"
             :loading="parsing"
             @click="parse" /></view
-        ><FormField :required="isRequired('library', 'title')" label="名称" v-model="form.title" /><FormField
+        ><FormField :required="isRequired('library', 'title')" label="名称" v-model="form.title" /><view class="ui-field-row">
+          <FormField compact stretch
           label="类型"
           kind="selector"
           :model-value="typeLabels[form.type - 1]"
           :options="typeLabels"
           @update:model-value="
             form.type = typeLabels.indexOf($event) + 1
-          " /><FormField
+          " />
+          <FormField compact stretch
           label="状态"
           kind="selector"
           :model-value="statusLabels[statuses.indexOf(form.status)]"
           :options="statusLabels"
           @update:model-value="
             form.status = statuses[statusLabels.indexOf($event)]
-          " /><FormField
-          v-if="kind === 'movie'"
+          " />
+        </view><view v-if="kind === 'movie'" class="ui-field-row">
+          <FormField compact stretch
           label="导演/演员"
-          v-model="form.director" /><FormField
-          v-else-if="form.type === 1"
-          label="作者"
-          v-model="form.author" /><FormField
-          :label="kind === 'movie' ? '当前集数/时长' : '当前页数/进度'"
-          input-type="number"
-          v-model="form.currentProgress" /><FormField
-          :label="kind === 'movie' ? '总集数/时长' : '总页数/进度'"
-          input-type="number"
-          v-model="form.totalProgress" /><FormField
-          label="开始日期"
-          kind="date"
-          :model-value="form.startTime?.slice(0, 10) || ''"
-          @update:model-value="setDate('startTime', $event)" /><FormField
-          label="完成日期"
-          kind="date"
-          :model-value="form.finishTime?.slice(0, 10) || ''"
-          @update:model-value="setDate('finishTime', $event)" /><FormField
-          v-if="kind === 'movie'"
+          v-model="form.director" />
+          <FormField compact stretch
           label="评分"
           kind="selector"
           :model-value="form.rating ? String(form.rating) : '未评分'"
           :options="['未评分', '1', '2', '3', '4', '5']"
           @update:model-value="
             form.rating = $event === '未评分' ? null : Number($event)
-          " /><FormField
+          " />
+        </view><FormField
+          v-if="kind !== 'movie' && form.type === 1"
+          label="作者"
+          v-model="form.author" /><view class="ui-field-row">
+          <FormField compact stretch
+          :label="kind === 'movie' ? '当前集数/时长' : '当前页数/进度'"
+          input-type="number"
+          v-model="form.currentProgress" />
+          <FormField compact stretch
+          :label="kind === 'movie' ? '总集数/时长' : '总页数/进度'"
+          input-type="number"
+          v-model="form.totalProgress" />
+        </view><view class="ui-field-row">
+          <FormField compact stretch
+          label="开始日期"
+          kind="date"
+          :model-value="form.startTime?.slice(0, 10) || ''"
+          @update:model-value="setDate('startTime', $event)" />
+          <FormField compact stretch
+          label="完成日期"
+          kind="date"
+          :model-value="form.finishTime?.slice(0, 10) || ''"
+          @update:model-value="setDate('finishTime', $event)" />
+        </view><FormField
           :label="kind === 'movie' ? '短评/备注' : '书评'"
-          kind="textarea"
+          kind="textarea" textarea-size="compact"
           v-model="form.remark" /><AttachmentField
           :files="form.files"
           images-only
@@ -257,7 +267,7 @@ async function remove(item) {
 @use '../../styles/spacing.scss';
 @use '../../styles/spacing-tokens' as *;
 @include type-utilities('body');
-.library-link-row { flex-direction: row; align-items: center; }
+.library-link-row { flex-direction: row; align-items: flex-end; }
 .library-link-field { flex: 1; min-width: 0; }
 .library-error { color: #e05252; }
 
