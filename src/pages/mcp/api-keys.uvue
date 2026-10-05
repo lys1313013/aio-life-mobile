@@ -46,15 +46,15 @@ async function load() {
   }
 }
 useDomainPage(
-  () => {
+  (refresh) => {
     active = true;
-    load();
+    if (refresh) return load();
   },
-  () => {
+  (clear) => {
     active = false;
     revision++;
-    items.value = [];
-    ready.value = false;
+    if (clear) items.value = [];
+    if (clear) ready.value = false;
     loading.value = false;
     saving.value = false;
     editing.value = false;
@@ -63,6 +63,7 @@ useDomainPage(
     error.value = "";
     formError.value = "";
   },
+  { loading: () => loading.value, error: () => error.value, keys: () => ['api-key'] },
 );
 function edit() {
   form.value = { remark: "", expiry: expiry[0] };

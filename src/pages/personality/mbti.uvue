@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { usePageRefresh } from '../../services/page-refresh.ts'
 import { ref, computed } from 'vue';
 import { onShow, onHide, onUnload } from '@dcloudio/uni-app';
 import PageHeader from '../../components/PageHeader.uvue';
@@ -72,6 +73,7 @@ onHide(() => {
   visible = false;
   stop();
 });
+const refreshOnShow = usePageRefresh(() => load(), { loading: () => loading.value, error: () => error.value, keys: () => ['mbti'] })
 onShow(async () => {
   visible = true;
   restoreSession();
@@ -79,7 +81,7 @@ onShow(async () => {
     uni.reLaunch({ url: '/pages/login/index' });
     return;
   }
-  await load();
+  await refreshOnShow();
   if (testId.value && !result.value) check();
 });
 async function load(refresh = false) {

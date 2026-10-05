@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { usePageRefresh } from '../../services/page-refresh.ts'
 import { buttonLabelClasses } from '../../services/button-label.ts'
 import ContentSkeleton from '../../components/ContentSkeleton.uvue';
 import SecondaryUnlock from "../../components/SecondaryUnlock.uvue";
@@ -32,23 +33,28 @@ function clearPage() {
   errorText.value = ''
   form.value = { nickname: '', introduction: '', avatarFileId: null, avatarUrl: '' }
 }
-function suspend() { active = false; clearPage() }
+function suspend() {
+  active = false; revision++
+  loading.value = false; saving.value = false; uploading.value = false
+  // #ifdef MP-WEIXIN
+  wechatAvatarSelection = null
+  // #endif
+}
 watch(() => session.token, () => {
   clearPage()
   if (active && session.token) load()
 }, { flush: 'sync' })
 onHide(suspend)
-onUnload(suspend)
+onUnload(() => { suspend(); clearPage() })
+const refreshOnShow = usePageRefresh(load, { loading: () => loading.value, error: () => errorText.value, keys: () => ['users', 'user'] })
 onShow(() => {
-  active = false
-  clearPage()
   restoreSession()
   active = true
   if (!session.token) {
     uni.reLaunch({ url: '/pages/login/index' })
     return
   }
-  load()
+  refreshOnShow()
 })
 function current(token, version) { return active && token === session.token && version === revision }
 function failure(error) {

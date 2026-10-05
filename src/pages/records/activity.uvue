@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { usePageRefresh } from '../../services/page-refresh.ts'
 import FormActions from '../../components/FormActions.uvue';
 import { isRequired, missingRequired } from '../../services/form-required.ts';
 import ContentSkeleton from '../../components/ContentSkeleton.uvue';
@@ -42,7 +43,8 @@ const scope = createRecordScope((clear) => {
     types.value = [];
   }
 });
-onShow(() => load());
+const refreshOnShow = usePageRefresh(() => load(), { loading: () => loading.value, error: () => error.value, keys: () => ['performance', 'userDictData', 'userDictType'] })
+onShow(() => refreshOnShow());
 const filtered = computed(() =>
   rows.value
     .filter(
@@ -198,7 +200,7 @@ async function remove(item) {
         <view v-if="showMore" class="ui-mt-section">
           <FormField label="座位" v-model="form.seatInfo" />
           <view class="ui-field-row"><FormField compact stretch label="时长（分钟）" input-type="number" v-model="form.duration" /><FormField compact stretch label="评分" kind="selector" v-model="form.rating" :options="['', '1', '2', '3', '4', '5']" /></view>
-          <FormField label="评价" kind="textarea" v-model="form.review" />
+          <FormField label="评价" kind="textarea" textarea-size="compact" v-model="form.review" />
           <FormField label="购票平台" v-model="form.purchasePlatform" /><FormField label="订单号" v-model="form.orderNumber" />
         </view>
         <AttachmentField images-only

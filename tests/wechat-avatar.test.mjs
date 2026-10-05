@@ -13,7 +13,7 @@ const contract = await readFile(new URL('../src/services/contract.ts', import.me
 const { readResponse } = await import(`data:text/javascript;base64,${Buffer.from(contract).toString('base64')}`);
 const compile = source => transformSync(source, { loader: 'ts' }).code;
 const createUpload = new Function('uni', 'session', 'clearSession', 'readResponse', 'baseURL', compile('function uploadAvatar' + apiSource) + '\nreturn uploadAvatar;');
-const createPage = new Function('ref', 'computed', 'watch', 'onShow', 'onHide', 'onUnload', 'fetchUser', 'request', 'uploadAvatar', 'restoreSession', 'session', 'uni', compile(pageSource) + '\nreturn { form, ready, uploading, saving, errorText, chooseAvatar, beginWechatAvatarSelection, chooseWechatAvatar, wechatAvatarError, save };');
+const createPage = new Function('ref', 'computed', 'watch', 'onShow', 'onHide', 'onUnload', 'fetchUser', 'request', 'uploadAvatar', 'restoreSession', 'session', 'uni', compile('const usePageRefresh = load => load;\n' + pageSource) + '\nreturn { form, ready, uploading, saving, errorText, chooseAvatar, beginWechatAvatarSelection, chooseWechatAvatar, wechatAvatarError, save };');
 const oldId = '11111111111111111111111111111111', newId = '22222222222222222222222222222222';
 const tick = () => new Promise(resolve => setImmediate(resolve));
 async function fixture(t) {

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { usePageRefresh } from '../../services/page-refresh.ts'
 import { appTextColor } from '../../services/app-layout.ts'
 
 import FormActions from '../../components/FormActions.uvue';
@@ -112,7 +113,8 @@ async function load(refresh = false) {
     }
   }
 }
-onShow(() => load());
+const refreshOnShow = usePageRefresh(() => load(), { loading: () => loading.value, error: () => error.value, keys: () => ['tasks', 'taskColumn', 'taskDetails'] })
+onShow(() => refreshOnShow());
 const visibleTasks = computed(() =>
   tasks.value.filter(
     (t) =>

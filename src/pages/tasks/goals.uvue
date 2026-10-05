@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { usePageRefresh } from '../../services/page-refresh.ts'
 import ContentSkeleton from '../../components/ContentSkeleton.uvue';
 import { onMounted, onUnmounted, ref } from 'vue';
 import { onLoad, onShow } from '@dcloudio/uni-app';
@@ -79,7 +80,8 @@ async function load(refresh = false) {
     }
   }
 }
-onShow(() => load());
+const refreshOnShow = usePageRefresh(() => load(), { loading: () => loading.value, error: () => error.value, keys: () => ['goals'] })
+onShow(() => refreshOnShow());
 function goalTags(value) { return textTags(value).split(/[,，]/).map((tag) => tag.trim()).filter(Boolean); }
 function shortDate(value) { return value ? String(value).slice(5, 10) : ''; }
 function resetFilters() { keyword.value = ''; typeFilter.value = '全部类型'; statusFilter.value = '全部状态'; load(); }

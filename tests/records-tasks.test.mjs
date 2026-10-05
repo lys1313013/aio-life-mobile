@@ -51,7 +51,7 @@ test('页面请求在离页或跨账号后失效，回页仍可再次操作', as
   const hooks = {}, session = { token: 'mock-account-a' }
   globalThis.__scopeFixture = { hooks, session }
   scopeSource = scopeSource.replace(/^import .*$/gm, '')
-  scopeSource = 'const session = globalThis.__scopeFixture.session; const onHide = fn => globalThis.__scopeFixture.hooks.hide = fn; const onShow = fn => globalThis.__scopeFixture.hooks.show = fn; const onUnmounted = fn => globalThis.__scopeFixture.hooks.unmount = fn;\n' + scopeSource
+  scopeSource = 'const currentPageAccess = () => ({ expired: false }); const session = globalThis.__scopeFixture.session; const onHide = fn => globalThis.__scopeFixture.hooks.hide = fn; const onShow = fn => globalThis.__scopeFixture.hooks.show = fn; const onUnmounted = fn => globalThis.__scopeFixture.hooks.unmount = fn;\n' + scopeSource
   const { createRecordScope } = await importSource(transformSync(scopeSource, { loader: 'ts', format: 'esm' }).code)
   const cleared = [], scope = createRecordScope(data => cleared.push(data))
   let resolve

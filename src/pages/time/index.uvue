@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { usePageRefresh } from '../../services/page-refresh.ts'
 import { buttonLabelClasses } from '../../services/button-label.ts'
 import ContentSkeleton from '../../components/ContentSkeleton.uvue';
 import LoadingIndicator from '../../components/LoadingIndicator.uvue';
@@ -128,6 +129,7 @@ const average = computed(() =>
   Math.round(total.value / Math.max(1, recordedDays.value)),
 )
 let generation = 0
+const refreshOnShow = usePageRefresh(() => load(), { loading: () => loading.value, error: () => errorText.value, keys: () => ['timeRecord', 'timeTrackerCategory', 'exerciseRecord'], context: () => todayDate() })
 onShow(() => {
   restoreSession()
   if (!session.token) {
@@ -135,7 +137,7 @@ onShow(() => {
     return
   }
   if (applyRecordChange()) return
-  load()
+  refreshOnShow()
 })
 onHide(() => {
   editor.value = null

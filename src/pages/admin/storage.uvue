@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { usePageRefresh } from '../../services/page-refresh.ts'
 import { useAppLayout } from '../../services/app-layout.ts'
 const { appViewport } = useAppLayout()
 
@@ -47,7 +48,12 @@ async function initialize() {
   } catch (reason) { if (current(version)) authError.value = reason instanceof Error ? reason.message : '读取账号权限失败'; }
   finally { if (current(version)) checking.value = false; }
 }
-onShow(initialize);
+const refreshOnShow = usePageRefresh(initialize, { loading: () => checking.value || data.loading, error: () => authError.value || data.error, keys: () => ['system', 'user', 'users'] })
+onShow(() => {
+  restoreSession(); shown.value = true; browser.resume();
+  if (!session.token) { uni.reLaunch({ url: '/pages/login/index' }); return; }
+  refreshOnShow();
+});
 function pause() {
   shown.value = false;
   lifecycle++;

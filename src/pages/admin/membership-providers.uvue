@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { usePageRefresh } from '../../services/page-refresh.ts'
 import { computed, ref, watch } from 'vue';
 import { onHide, onShow, onUnload } from '@dcloudio/uni-app';
 import PageHeader from '../../components/PageHeader.uvue';
@@ -66,7 +67,8 @@ async function remove() {
 }
 function deactivate() { active = false; revision++; generation++; editorRevision++; form.value = null; saving.value = false; loading.value = false; refreshing.value = false; }
 watch(() => session.token, () => { deactivate(); rows.value = []; icons.value = []; loaded.value = false; }, { flush: 'sync' });
-onShow(() => { restoreSession(); active = true; if (!session.token) { uni.reLaunch({ url: '/pages/login/index' }); return; } load(); });
+const refreshOnShow = usePageRefresh(() => load(), { loading: () => loading.value, error: () => error.value, keys: () => ['system'] })
+onShow(() => { restoreSession(); active = true; if (!session.token) { uni.reLaunch({ url: '/pages/login/index' }); return; } refreshOnShow(); });
 onHide(deactivate);
 onUnload(deactivate);
 </script>

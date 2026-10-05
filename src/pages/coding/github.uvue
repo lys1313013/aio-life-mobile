@@ -185,23 +185,25 @@ async function more() {
   }
 }
 useDomainPage(
-  () => {
+  (refresh) => {
     alive = true;
-    load();
+    if (refresh) return load();
   },
-  () => {
+  (clear) => {
     alive = false;
     stamp++;
-    token = '';
-    repos.value = [];
-    commits.value = [];
-    days.value = [];
-    hasMore.value = false;
+    if (clear) token = '';
+    if (clear) repos.value = [];
+    if (clear) commits.value = [];
+    if (clear) days.value = [];
+    if (clear) hasMore.value = false;
     moreError.value = '';
-    Object.values(sections).forEach(section => { section.loading = false; section.error = ''; section.loaded = false; });
+    Object.values(sections).forEach(section => { section.loading = false; if (clear) { section.error = ''; section.loaded = false; } });
+    moreBusy.value = false;
     loading.value = false;
     refreshing.value = false;
   },
+  { loading: () => loading.value, error: () => error.value || Object.values(sections).map(section => section.error).join(''), keys: () => ['github', 'userbinds'] },
 );
 </script>
 <template>

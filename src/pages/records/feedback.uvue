@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { usePageRefresh } from '../../services/page-refresh.ts'
 import FormActions from '../../components/FormActions.uvue';
 import { isRequired, missingRequired } from '../../services/form-required.ts';
 import { computed, onUnmounted, ref } from 'vue';
@@ -69,7 +70,8 @@ onUnmounted(() => {
   generation++;
   detailGeneration++;
 });
-onShow(() => load());
+const refreshOnShow = usePageRefresh(() => load(), { loading: () => loading.value, error: () => error.value, keys: () => ['feedback'] })
+onShow(() => refreshOnShow());
 const moreError = ref(''), pageEnded = ref(false);
 function loadMore() {
   if (loading.value || error.value || moreError.value) return;

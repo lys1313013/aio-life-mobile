@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { usePageRefresh } from '../../services/page-refresh.ts'
 import { appTextColor } from '../../services/app-layout.ts'
 
 import VideoCover from './components/VideoCover.uvue';
@@ -82,7 +83,8 @@ let coverRevision = 0;
 function stopCoverPolling() { coverRevision++; clearTimeout(coverTimer); }
 onHide(stopCoverPolling);
 onUnmounted(stopCoverPolling);
-onShow(() => load());
+const refreshOnShow = usePageRefresh(() => load(), { loading: () => loading.value, error: () => error.value, keys: () => ['b-video', 'userDictData', 'userDictType'] })
+onShow(() => { refreshOnShow(); pollCovers(); });
 function pollCovers() {
   clearTimeout(coverTimer);
   const ids = rows.value.filter(item => item.coverState === 'PENDING').map(item => item.id);

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { usePageRefresh } from '../../services/page-refresh.ts'
 import { isRequired } from '../../services/form-required.ts';
 import MenuManager from '../../components/MenuManager.uvue';
 import DictDataPanel from './DictDataPanel.uvue';
@@ -111,13 +112,14 @@ onUnload(() => {
   task.invalidate();
   detailTask.invalidate();
 });
+const refreshOnShow = usePageRefresh(() => load(false), { loading: () => loading.value, error: () => error.value, keys: () => [spec.value.base.split('/')[1], 'userDictData', 'userDictType'] })
 onShow(() => {
   restoreSession();
   if (!session.token) {
     uni.reLaunch({ url: '/pages/login/index' });
     return;
   }
-  load(false);
+  refreshOnShow();
 });
 function searchDictionary(value) {
   keyword.value = value.keyword;

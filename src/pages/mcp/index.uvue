@@ -68,15 +68,15 @@ async function load() {
   }
 }
 useDomainPage(
-  () => {
+  (refresh) => {
     alive = true;
-    load();
+    if (refresh) return load();
   },
-  () => {
+  (clear) => {
     alive = false;
     stamp++;
     callStamp++;
-    tools.value = [];
+    if (clear) tools.value = [];
     current.value = null;
     guideOpen.value = false;
     args.value = {};
@@ -85,6 +85,7 @@ useDomainPage(
     loading.value = false;
     refreshing.value = false;
   },
+  { loading: () => loading.value, error: () => error.value, keys: () => ['mcp'] },
 );
 const groups = computed(() =>
   toolGroups.filter(

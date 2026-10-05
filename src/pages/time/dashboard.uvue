@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { usePageRefresh } from '../../services/page-refresh.ts'
 import ContentSkeleton from '../../components/ContentSkeleton.uvue';
 import { computed, ref } from 'vue';
 import { onShow, onUnload } from '@dcloudio/uni-app';
@@ -70,13 +71,14 @@ onUnload(() => {
   active = false;
   task.invalidate();
 });
+const refreshOnShow = usePageRefresh(() => load(), { loading: () => loading.value, error: () => error.value, keys: () => ['timeRecord', 'timeTrackerCategory'] })
 onShow(() => {
   restoreSession();
   if (!session.token) {
     uni.reLaunch({ url: '/pages/login/index' });
     return;
   }
-  load();
+  refreshOnShow();
 });
 async function load(refresh = false) {
   const generation = task.begin(),

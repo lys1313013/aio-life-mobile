@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { usePageRefresh } from '../../services/page-refresh.ts'
 import LibraryRecordEditor from '../../components/record-editors/LibraryRecordEditor.uvue';
 import ContentSkeleton from '../../components/ContentSkeleton.uvue';
 import LoadingIndicator from '../../components/LoadingIndicator.uvue';
@@ -86,7 +87,8 @@ onLoad((options) => {
   requestedEdit = options?.editId || '';
   requestedCreate = options?.create === '1';
 });
-onShow(() => load());
+const refreshOnShow = usePageRefresh(() => load(), { loading: () => loading.value, error: () => error.value, keys: () => ['read-record', 'movie', 'userDictData', 'userDictType'] })
+onShow(() => refreshOnShow());
 onUnmounted(() => {
   alive = false;
   generation++;

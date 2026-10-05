@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { usePageRefresh } from '../../services/page-refresh.ts'
 import { isRequired } from '../../services/form-required.ts';
 import AppIcon from '../../components/AppIcon.uvue'
 import { computed, ref } from 'vue';
@@ -68,13 +69,14 @@ onUnload(() => {
   active = false;
   task.invalidate();
 });
+const refreshOnShow = usePageRefresh(() => load(), { loading: () => loading.value, error: () => error.value, keys: () => ['timeTrackerCategory'] })
 onShow(() => {
   restoreSession();
   if (!session.token) {
     uni.reLaunch({ url: '/pages/login/index' });
     return;
   }
-  load();
+  refreshOnShow();
 });
 async function load(refresh = false) {
   const generation = task.begin(),

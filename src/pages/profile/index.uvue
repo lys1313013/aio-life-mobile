@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { usePageRefresh } from '../../services/page-refresh.ts'
 import { buttonLabelClasses } from '../../services/button-label.ts'
 import ContentSkeleton from '../../components/ContentSkeleton.uvue';
 import AppIcon from '../../components/AppIcon.uvue'
@@ -58,6 +59,7 @@ const confirmLogout = ref(false)
 const errorText = ref('')
 let loadTask: Promise<void> | null = null
 let visible = false
+const refreshOnShow = usePageRefresh(() => load(), { loading: () => loading.value, error: () => errorText.value, keys: () => ['user', 'users', 'userbinds', 'message'] })
 onShow(() => {
   visible = true
   restoreSession()
@@ -65,7 +67,7 @@ onShow(() => {
     uni.reLaunch({ url: '/pages/login/index' })
     return
   }
-  load()
+  refreshOnShow()
 })
 onHide(() => {
   visible = false

@@ -60,18 +60,19 @@ async function load() {
   }
 }
 useDomainPage(
-  () => {
+  (refresh) => {
     alive = true;
-    load();
+    if (refresh) return load();
   },
-  () => {
+  (clear) => {
     alive = false;
     stamp++;
-    stats.value = null;
-    articles.value = [];
+    if (clear) stats.value = null;
+    if (clear) articles.value = [];
     loading.value = false;
     refreshing.value = false;
   },
+  { loading: () => loading.value, error: () => error.value, keys: () => ['csdn', 'userbinds'] },
 );
 </script>
 <template>

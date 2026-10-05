@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { usePageRefresh } from '../../services/page-refresh.ts'
 import { isRequired } from '../../services/form-required.ts';
 import { computed, ref, watch } from 'vue';
 import { onLoad, onHide, onShow } from '@dcloudio/uni-app';
@@ -58,6 +59,7 @@ onLoad((options) => {
   }
   mode.value = Object.keys(titles).includes(options?.section || '') ? options.section : 'password';
 });
+const refreshOnShow = usePageRefresh(() => load(), { loading: () => loading.value, error: () => error.value, keys: () => ['menu', 'user', 'users'] })
 onShow(() => {
   if (legacyKeys) return;
   active = true;
@@ -66,14 +68,14 @@ onShow(() => {
     uni.reLaunch({ url: '/pages/login/index' });
     return;
   }
-  load();
+  refreshOnShow();
 });
 onHide(() => {
   active = false;
   revision++;
   editing.value = false;
   form.value = {};
-  ready.value = false;
+  loading.value = false;
 });
 async function load() {
   const version = ++revision,

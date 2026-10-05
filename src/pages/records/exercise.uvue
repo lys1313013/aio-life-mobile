@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { usePageRefresh } from '../../services/page-refresh.ts'
 import { useAppLayout } from '../../services/app-layout.ts'
 const { appGridItem } = useAppLayout()
 
@@ -51,7 +52,8 @@ const scope = createRecordScope((clear) => {
 onLoad((query) => {
   autoCreate = query?.create === '1';
 });
-onShow(() => load());
+const refreshOnShow = usePageRefresh(() => load(), { loading: () => loading.value, error: () => error.value, keys: () => ['exerciseRecord', 'exerciseType', 'timeRecord', 'userDictData', 'userDictType'] })
+onShow(() => refreshOnShow());
 const filtered = computed(() =>
   rows.value.filter(
     (item) =>
@@ -305,12 +307,15 @@ function toggle(id) {
           :options="types.map((t) => t.dictLabel || t.label)"
           @update:model-value="
             form.exerciseTypeId = types.find((t) => (t.dictLabel || t.label) === $event)?.id || ''
-          " /><FormField :required="isRequired('exercise', 'exerciseDate')" label="运动日期" kind="date" v-model="form.exerciseDate" /><FormField
+          " /><view class="ui-field-row">
+          <FormField compact stretch :required="isRequired('exercise', 'exerciseDate')" label="运动日期" kind="date" v-model="form.exerciseDate" />
+          <FormField compact stretch
           label="运动数量"
           input-type="number"
-          v-model="form.exerciseCount" /><FormField
+          v-model="form.exerciseCount" />
+        </view><FormField
           label="备注"
-          kind="textarea"
+          kind="textarea" textarea-size="compact"
           v-model="form.description" /><text v-if="formError" class="error ui-section ui-type-body">{{ formError }}</text
         ><FormActions>
           <MobileButton

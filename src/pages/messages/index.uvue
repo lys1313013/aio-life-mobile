@@ -139,30 +139,31 @@ async function load(more = false) {
   }
 }
 useDomainPage(
-  () => {
+  (refresh) => {
     alive = true;
-    load();
+    if (refresh) return load();
   },
-  () => {
+  (clear) => {
     alive = false;
     stamp++;
-    messages.value = [];
-    adminRows.value = [];
-    receiver.value = '';
-    draftReceiver.value = '';
-    chatDraft.value = '';
+    if (clear) messages.value = [];
+    if (clear) adminRows.value = [];
+    if (clear) receiver.value = '';
+    if (clear) draftReceiver.value = '';
+    if (clear) chatDraft.value = '';
     chatError.value = '';
     selectedMessage.value = '';
     readBusy.value = false;
-    content.value = '';
-    title.value = '';
-    adminUser.value = '';
-    userInfo.value = {};
+    if (clear) content.value = '';
+    if (clear) title.value = '';
+    if (clear) adminUser.value = '';
+    if (clear) userInfo.value = {};
     modal.value = false;
     loading.value = false;
     refreshing.value = false;
     sending.value = false;
   },
+  { loading: () => loading.value, error: () => error.value, keys: () => ['message', 'userbinds'] },
 );
 async function loadUserInfo(rows: any[], current: number) {
   const ids = Array.from(

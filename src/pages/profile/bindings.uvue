@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { usePageRefresh } from '../../services/page-refresh.ts'
 import { buttonLabelClasses } from '../../services/button-label.ts'
 import RequiredMark from '../../components/RequiredMark.uvue';
 import { isRequired } from '../../services/form-required.ts';
@@ -58,6 +59,7 @@ let active = true
 let visible = false
 let verification = 0
 let loadTask: Promise<void> | null = null
+const refreshOnShow = usePageRefresh(() => load(), { loading: () => loading.value, error: () => errorText.value, keys: () => ['userbinds'] })
 onShow(() => {
   visible = true
   restoreSession()
@@ -65,7 +67,7 @@ onShow(() => {
     uni.reLaunch({ url: '/pages/login/index' })
     return
   }
-  load()
+  refreshOnShow()
 })
 onHide(() => {
   visible = false

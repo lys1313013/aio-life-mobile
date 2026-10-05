@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { usePageRefresh } from '../../services/page-refresh.ts'
 import { computed, nextTick, ref, watch } from 'vue';
 import { onHide, onShow, onUnload } from '@dcloudio/uni-app';
 import LoadingIndicator from '../../components/LoadingIndicator.uvue';
@@ -115,11 +116,12 @@ watch(() => session.token, () => {
   generation++; editorGeneration++; rows.value = []; banks.value = []; loaded.value = false; opened.value = false;
   loading.value = false; refreshing.value = false; saving.value = false; uploading.value = false; busy.value = {}; rowErrors.value = {}; mutations.clear();
 }, { flush: 'sync' });
+const refreshOnShow = usePageRefresh(() => load(), { loading: () => loading.value, error: () => error.value, keys: () => ['system'] })
 onShow(() => {
   alive = true;
   restoreSession();
   if (!session.token) { uni.reLaunch({ url: '/pages/login/index' }); return; }
-  load();
+  refreshOnShow();
 });
 onHide(() => {
   order.cancel();

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { usePageRefresh } from '../../services/page-refresh.ts'
 import { ref } from 'vue';
 import { onShow, onHide } from '@dcloudio/uni-app';
 import PageHeader from '../../components/PageHeader.uvue';
@@ -27,6 +28,7 @@ function collect(nodes, parents = []) {
         : [];
   });
 }
+const refreshOnShow = usePageRefresh(() => load(), { loading: () => loading.value, error: () => error.value, keys: () => ['menu'] })
 onShow(() => {
   active = true;
   restoreSession();
@@ -34,11 +36,12 @@ onShow(() => {
     uni.reLaunch({ url: '/pages/login/index' });
     return;
   }
-  load();
+  refreshOnShow();
 });
 onHide(() => {
   active = false;
   version++;
+  loading.value = false;
 });
 async function load() {
   const v = ++version,

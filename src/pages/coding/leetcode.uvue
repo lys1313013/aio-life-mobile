@@ -130,23 +130,24 @@ async function load() {
   }
 }
 useDomainPage(
-  () => {
+  (refresh) => {
     alive = true;
-    load();
+    if (refresh) return load();
   },
-  () => {
+  (clear) => {
     alive = false;
     stamp++;
-    profile.value = null;
-    progress.value = null;
-    contest.value = null;
-    calendar.value = null;
-    daily.value = [];
-    recent.value = [];
-    days.value = [];
+    if (clear) profile.value = null;
+    if (clear) progress.value = null;
+    if (clear) contest.value = null;
+    if (clear) calendar.value = null;
+    if (clear) daily.value = [];
+    if (clear) recent.value = [];
+    if (clear) days.value = [];
     loading.value = false;
     refreshing.value = false;
   },
+  { loading: () => loading.value, error: () => error.value, keys: () => ['leetcode', 'userbinds'] },
 );
 const labels: Record<string, string> = { EASY: '简单', MEDIUM: '中等', HARD: '困难' };
 </script>

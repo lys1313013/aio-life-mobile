@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { usePageRefresh } from '../../services/page-refresh.ts'
 import FormActions from '../../components/FormActions.uvue';
 import { isRequired, missingRequired } from '../../services/form-required.ts';
 import ContentSkeleton from '../../components/ContentSkeleton.uvue';
@@ -68,7 +69,8 @@ onUnmounted(() => {
   alive = false;
   generation++;
 });
-onShow(() => load());
+const refreshOnShow = usePageRefresh(() => load(), { loading: () => loading.value, error: () => error.value, keys: () => ['honorRecords', 'honorCategories'] })
+onShow(() => refreshOnShow());
 async function load(refresh = false) {
   const current = ++generation;
   loading.value = true;

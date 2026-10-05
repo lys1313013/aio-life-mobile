@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { usePageRefresh } from '../../services/page-refresh.ts'
 import { computed, ref, watch } from 'vue';
 import { onShow, onHide, onUnload } from '@dcloudio/uni-app';
 import AppIcon from '../../components/AppIcon.uvue';
@@ -34,6 +35,7 @@ watch(() => session.token, () => {
 }, { flush: 'sync' });
 onHide(suspend);
 onUnload(suspend);
+const refreshOnShow = usePageRefresh(() => load(), { loading: () => loading.value, error: () => error.value, keys: () => ['user', 'users', 'userbinds'] })
 onShow(() => {
   restoreSession();
   active = true;
@@ -41,7 +43,7 @@ onShow(() => {
     uni.reLaunch({ url: '/pages/login/index' });
     return;
   }
-  load();
+  refreshOnShow();
 });
 async function load() {
   if (loading.value) return;

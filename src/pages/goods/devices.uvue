@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { usePageRefresh } from '../../services/page-refresh.ts'
 import { useAppLayout, appTextColor, appButtonTextColor } from '../../services/app-layout.ts'
 const { appGridItem } = useAppLayout()
 
@@ -60,10 +61,10 @@ function selectType(label: string) {
 }
 const scope = createRecordScope((clear) => {
   form.value = null;
-  photos.value = {};
   photoBusy.value = {};
-  photoErrors.value = {};
   if (clear) {
+    photos.value = {};
+    photoErrors.value = {};
     rows.value = [];
     types.value = [];
     statuses.value = [];
@@ -92,7 +93,11 @@ onUnmounted(() => {
   alive = false;
   generation++;
 });
-onShow(() => load());
+const refreshOnShow = usePageRefresh(() => load(), { loading: () => loading.value, error: () => error.value, keys: () => ['device', 'userDictData', 'userDictType'] })
+onShow(() => {
+  refreshOnShow();
+  rows.value.forEach(item => { if (item.fileId && !photos.value[item.id] && !photoBusy.value[item.id] && !photoErrors.value[item.id]) void loadPhoto(item); });
+});
 async function load(refresh = false) {
   const current = ++generation;
   const selectedType = typeFilter.value;

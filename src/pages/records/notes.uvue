@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { usePageRefresh } from '../../services/page-refresh.ts'
 import { useWindowResize } from '../../services/window-resize.ts'
 useWindowResize(resizeNotes)
 import FormActions from '../../components/FormActions.uvue';
@@ -63,7 +64,8 @@ onLoad((options) => {
   requestedEdit = options?.editId || '';
   requestedCreate = options?.create === '1';
 });
-onShow(() => load());
+const refreshOnShow = usePageRefresh(() => load(), { loading: () => loading.value, error: () => error.value, keys: () => ['memo', 'thought'] })
+onShow(() => refreshOnShow());
 onUnmounted(() => {
   alive = false;
   generation++;

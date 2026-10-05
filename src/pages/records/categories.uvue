@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { usePageRefresh } from '../../services/page-refresh.ts'
 import FormActions from '../../components/FormActions.uvue';
 import { isRequired, missingRequired } from '../../services/form-required.ts';
 import { computed, ref } from 'vue';
@@ -43,7 +44,8 @@ const scope = createRecordScope((clear) => {
     types.value = [];
   }
 });
-onShow(() => load());
+const refreshOnShow = usePageRefresh(() => load(), { loading: () => loading.value, error: () => error.value, keys: () => ['userDictData', 'userDictType'] })
+onShow(() => refreshOnShow());
 async function load() {
   const current = ++generation;
   loading.value = true;

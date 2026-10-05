@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { usePageRefresh } from '../../services/page-refresh.ts'
 import { appButtonTextColor } from '../../services/app-layout.ts'
 import { buttonLabelClasses } from '../../services/button-label.ts'
 import { isRequired } from '../../services/form-required.ts';
@@ -85,13 +86,14 @@ onUnload(() => {
   active = false;
   task.invalidate();
 });
+const refreshOnShow = usePageRefresh(() => load(), { loading: () => loading.value, error: () => error.value, keys: () => ['cbti'] })
 onShow(() => {
   restoreSession();
   if (!session.token) {
     uni.reLaunch({ url: '/pages/login/index' });
     return;
   }
-  load();
+  refreshOnShow();
 });
 async function load(refresh = false) {
   const generation = task.begin(),
