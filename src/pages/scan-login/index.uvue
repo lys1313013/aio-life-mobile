@@ -17,6 +17,12 @@ const error = ref('')
 const remaining = ref(0)
 const result = ref('')
 const user = computed(() => session.user)
+const accountLabel = computed(() => {
+  const name = user.value?.name?.trim() || ''
+  const username = user.value?.username?.trim() || ''
+  if (name && username && name !== username) return name + ' · ' + username
+  return name || username || '正在读取账号'
+})
 const requestTime = computed(() => {
   if (!info.value) return ''
   const date = new Date(info.value.requestedAt)
@@ -114,11 +120,9 @@ async function decide(approve: boolean) {
             <text v-if="result" class="login-title" :class="themeClass('login-title')" role="status">{{ result }}</text>
             <template v-else-if="info">
               <text class="login-title" :class="themeClass('login-title')">确认登录 AIO Life 网页版</text>
-              <text class="login-text" :class="themeClass('login-text')">{{ user?.name || '正在读取账号' }}{{ user?.username ? ' · ' + user.username : '' }}</text>
+              <text class="login-text" :class="themeClass('login-text')">{{ accountLabel }}</text>
               <text class="login-text" :class="themeClass('login-text')">{{ info.browser }}</text>
               <text class="login-note" :class="themeClass('login-note')">请求时间 {{ requestTime }}</text>
-              <text class="login-code" :class="themeClass('login-code')">{{ info.verificationCode }}</text>
-              <text class="login-note" :class="themeClass('login-note')">仅确认本人发起、且网页核对码一致的登录</text>
               <text class="login-note" :class="themeClass('login-note')">{{ remaining > 0 ? remaining + ' 秒后过期' : '二维码已过期，请刷新网页后重新扫码' }}</text>
               <FormActions v-if="remaining > 0">
                 <MobileButton label="取消" variant="quiet" :disabled="busy || !user" @click="decide(false)" />
@@ -149,10 +153,8 @@ async function decide(approve: boolean) {
 .login-title { @include type-style('title'); color: #27272a; }
 .login-text { @include type-style('body'); color: #27272a; }
 .login-note { @include type-style('caption'); color: #71717a; }
-.login-code { @include type-style('metric'); color: #27272a; }
 .login-title-dark { color: #eeeeef; }
 .login-text-dark { color: #eeeeef; }
-.login-code-dark { color: #eeeeef; }
 .login-note-dark { color: #9c9ca6; }
 .login-error { @include type-style('body'); color: #c65353; }
 .login-error-dark { color: #ed9191; }
