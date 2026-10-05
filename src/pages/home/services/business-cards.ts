@@ -94,3 +94,12 @@ export function cardCaption(card, item) {
   else if (item.currentProgress > 0) parts.push(String(item.currentProgress))
   return parts.filter(Boolean).join(' · ')
 }
+
+// 依赖菜单请求的普通失败保留内容；服务端明确要求解锁时清除受保护数据。
+export function failBusinessAccess(state, error) {
+  state.version++
+  state.loading = false; state.moreLoading = false
+  if (error.name === 'SecondaryLockRequiredError') {
+    state.rows = []; state.more = false; state.locked = true; state.loaded = true; state.error = ''
+  } else state.error = error.message || '权限检查失败，请重试'
+}

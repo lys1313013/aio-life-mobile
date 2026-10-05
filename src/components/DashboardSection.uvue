@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import { buttonLabelClasses } from '../services/button-label.ts'
 import ContentSkeleton from './ContentSkeleton.uvue';
+import LoadingIndicator from './LoadingIndicator.uvue';
 import CategoryIcon from './CategoryIcon.uvue'
 import { isDark, themeClass } from '../services/theme.ts'
-defineProps<{ title: string; icon?: string; height?: number; autoHeight?: boolean; loading?: boolean; error?: string; compact?: boolean; flushTop?: boolean; skeleton?: string }>()
+defineProps<{ title: string; icon?: string; height?: number; autoHeight?: boolean; loading?: boolean; updating?: boolean; retainContent?: boolean; error?: string; compact?: boolean; flushTop?: boolean; skeleton?: string }>()
 defineEmits<{ refresh: [] }>()
 </script>
 <template>
@@ -11,9 +12,10 @@ defineEmits<{ refresh: [] }>()
     <view class="section-heading" :class="{ 'section-heading-compact': compact }">
       <view class="section-label"><CategoryIcon v-if="icon" :icon="icon" :size="16" :color="isDark ? '#d4d4d8' : '#52525b'" /><text class="section-title" :class="[{ 'section-title-with-icon': !!icon }, themeClass('section-title')]">{{ title }}</text></view>
       <slot name="actions" />
-
+      <LoadingIndicator v-if="updating" class="section-updating" compact :label="'正在更新' + title" />
+      <button v-else-if="error && retainContent" role="button" class="section-update-retry" :aria-label="'重试' + title + '：' + error" @click="$emit('refresh')"><CategoryIcon icon="lucide:rotate-cw" :size="18" :color="isDark ? '#a9bfff' : '#5879ce'" /></button>
     </view>
-    <view v-if="error" class="section-error" role="alert">
+    <view v-if="error && !retainContent" class="section-error" role="alert">
       <text class="section-error-text" :class="themeClass('section-error-text')">{{ error }}</text>
       <button
         role="button"
@@ -38,7 +40,9 @@ defineEmits<{ refresh: [] }>()
   border-radius: 14px;
   overflow: hidden;
 }
+.section-updating { position: absolute; right: $space-card + $space-controlMin; }
 .section-heading {
+  position: relative;
   flex-direction: row;
   justify-content: space-between;
   align-items: center;
@@ -46,6 +50,7 @@ defineEmits<{ refresh: [] }>()
   height: $space-controlMin;
   flex-shrink: 0;
 }
+.section-update-retry { width: $space-controlMin; height: $space-controlMin; margin: 0; padding: 0; display: flex; align-items: center; justify-content: center; background-color: transparent; border: 0; }
 .section-title {
   color: #18181b;
   @include type-style('title');
@@ -101,7 +106,7 @@ defineEmits<{ refresh: [] }>()
   }
 
 /* #ifdef WEB || MP-WEIXIN */
-.section-retry::after {
+.section-retry::after, .section-update-retry::after {
   border: 0;
 }
 /* #endif */

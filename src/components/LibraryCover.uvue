@@ -14,7 +14,9 @@ const props = defineProps<{
   kind: string;
   compact?: boolean;
   tiny?: boolean;
+  naturalRatio?: boolean;
 }>();
+const emit = defineEmits<{ ratio: [value: number] }>();
 const source = ref(''),
   loading = ref(false),
   failed = ref(false);
@@ -29,6 +31,7 @@ async function load() {
   release(source.value);
   source.value = '';
   failed.value = false;
+  if (props.naturalRatio) emit('ratio', 2 / 3);
   loading.value = !!(props.fileId || props.url);
   if (!loading.value) return;
   try {
@@ -45,9 +48,19 @@ async function load() {
     }
   }
 }
+function imageLoad(event: any) {
+  loading.value = false;
+  if (!props.naturalRatio) return;
+  const width = Number(event.detail?.width);
+  const height = Number(event.detail?.height);
+  if (Number.isFinite(width) && Number.isFinite(height) && width > 0 && height > 0) {
+    emit('ratio', width / height);
+  }
+}
 function imageError() {
   failed.value = true;
   loading.value = false;
+  if (props.naturalRatio) emit('ratio', 2 / 3);
 }
 watch(() => [props.fileId, props.url, session.token], load, {
   immediate: true,
@@ -63,9 +76,9 @@ onUnmounted(() => {
       v-if="source && !failed"
       class="library-cover-image"
       :src="source"
-      mode="aspectFill"
+      :mode="naturalRatio ? 'aspectFit' : 'aspectFill'"
       :aria-label="title + ' 封面'"
-      @load="loading = false"
+      @load="imageLoad"
       @error="imageError"
     />
     <view v-if="!source || failed || loading" class="library-cover-fallback" :class="{ 'library-cover-compact': compact }">

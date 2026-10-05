@@ -43,7 +43,7 @@ function expectLoadedHeights(before, after, width) {
   if (width < 768) {
     expect(afterTask).toBeGreaterThan(100);
     expect(afterTask).toBeLessThan(160);
-    expect(afterTask).toBeLessThan(beforeTask);
+    expect(afterTask).toBe(beforeTask);
   } else {
     expect(afterTask).toBe(beforeTask);
   }
@@ -126,3 +126,38 @@ test('single-column watched tasks cap height and keep long content scrollable', 
   await page.mouse.wheel(0, 1000);
   await expect.poll(() => scroll.evaluate(element => element.scrollTop)).toBeGreaterThan(0);
 });
+
+for (const width of [390, 768, 1440]) for (const theme of ['light', 'dark']) {
+  test(`过期返回首页后台刷新保留内容和高度 ${width} ${theme}`, async ({ page }, info) => {
+    await page.setViewportSize({ width, height: 1000 });
+    await page.emulateMedia({ colorScheme: theme });
+    const start = new Date('2026-10-05T04:00:00Z');
+    await page.clock.install({ time: start });
+    const state = await setup(page);
+    state.pending.release();
+    await page.goto('/#/pages/home/index');
+    await expect(page.locator('.task-row')).toHaveCount(1);
+    await expect(page.locator('.dashboard-section').getByRole('status', { name: /^正在加载/ })).toHaveCount(0);
+    await expect(page.locator('.overview-card .card-progress')).toHaveCount(0);
+    const before = await heights(page);
+    const values = await page.locator('.stat-value').allTextContents();
+    await page.locator('uni-tabbar').getByText('我', { exact: true }).click();
+    await page.getByRole('button', { name: '关于', exact: true }).click();
+    await expect(page).toHaveURL(/pages\/about\/index/);
+    state.pending = gate();
+    await page.clock.setFixedTime(new Date(start.getTime() + 61 * 1000));
+    await page.getByRole('button', { name: '返回', exact: true }).click();
+    await page.locator('uni-tabbar').getByText('首页', { exact: true }).click();
+    await expect(page.getByRole('status', { name: '正在更新快捷导航' })).toBeVisible();
+    await expect(page.locator('.dashboard-section .content-skeleton')).toHaveCount(0);
+    await expect(page.locator('.task-row')).toHaveCount(1);
+    expect(await heights(page)).toEqual(before);
+    expect(await page.locator('.stat-value').allTextContents()).toEqual(values);
+    await page.screenshot({ path: info.outputPath('background.png'), fullPage: true });
+    state.failLinks = true;
+    state.pending.release();
+    await expect(page.getByRole('button', { name: /^重试快捷导航：/ })).toBeVisible();
+    await expect(page.locator('.quick-link')).toHaveCount(2);
+    expect(await heights(page)).toEqual(before);
+  });
+}

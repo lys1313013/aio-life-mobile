@@ -9,21 +9,27 @@ import typography from '../../styles/typography.json'
 
 const props = defineProps<{ rows: any[]; loading: boolean; moreLoading: boolean; error: string }>()
 const emit = defineEmits<{ edit: [item: any]; more: []; retry: [] }>()
-// 两排书架共用卡片高度，封面保持 2:3；普通间距来自全局配置。
+// 两排书架封面等高、按原图比例展示；2:3 仅用于加载及无封面占位。
 const coverWidth = 66
 const coverHeight = 99
+const coverRatios = ref<Record<string, number>>({})
+function coverKey(item) { return JSON.stringify([item.id, item.fileId || '', item.coverImgUrl || '']) }
+// 极窄封面完整显示，同时保留最小触控宽度。
+function bookWidth(item) { return Math.max(spacing.controlMin, coverHeight * (coverRatios.value[coverKey(item)] || 2 / 3)) }
+function setCoverRatio(item, ratio: number) { coverRatios.value[coverKey(item)] = ratio }
 const labelWidth = typography.roles.title.lineHeight
 const statuses = [
   { status: 'in_progress', first: '在', second: '读', label: '在读' },
   { status: 'not_started', first: '想', second: '读', label: '想读' },
 ]
 const pending = computed(() => props.loading && props.rows.length === 0)
-const groups = computed(() => statuses.map(group => ({ ...group, items: props.rows.filter(item => item.status === group.status) })).filter(group => pending.value || group.items.length > 0))
+const groups = computed(() => statuses.map(group => ({ ...group, items: props.rows.filter(item => item.status === group.status) })).filter(group => pending.value ? group.status === 'in_progress' : group.items.length > 0))
 const activeStatus = ref('in_progress')
 function showStatus(group) { return (props.moreLoading || props.error) && group.status === activeStatus.value }
 function trackWidth(group) {
   const count = pending.value ? 3 : group.items.length
-  return count * coverWidth + Math.max(0, count - 1) * spacing.section + (showStatus(group) ? spacing.controlMin + spacing.section : 0)
+  const booksWidth = pending.value ? count * coverWidth : group.items.reduce((width, item) => width + bookWidth(item), 0)
+  return booksWidth + Math.max(0, count - 1) * spacing.section + (showStatus(group) ? spacing.controlMin + spacing.section : 0)
 }
 function loadMore(group) {
   if (pending.value || props.moreLoading || props.error) return
@@ -45,8 +51,8 @@ function loadMore(group) {
             <view v-for="index in 3" :key="index" class="reading-placeholder" :class="{ 'reading-placeholder-dark': isDark }" :style="{ width: coverWidth + 'px', height: coverHeight + 'px' }" aria-label="加载中" />
           </template>
           <template v-else>
-            <view v-for="item in group.items" :key="item.id" class="reading-book" :style="{ width: coverWidth + 'px', height: coverHeight + 'px' }" role="button" tabindex="0" :aria-label="'编辑' + (item.title || '未命名')" @click="emit('edit', item)" @keydown.enter="emit('edit', item)" @keydown.space.prevent="emit('edit', item)">
-              <LibraryCover :file-id="item.fileId || ''" :url="item.coverImgUrl || ''" :title="item.title || '未命名'" kind="read" compact tiny />
+            <view v-for="item in group.items" :key="coverKey(item)" class="reading-book" :style="{ width: bookWidth(item) + 'px', height: coverHeight + 'px' }" role="button" tabindex="0" :aria-label="'编辑' + (item.title || '未命名')" @click="emit('edit', item)" @keydown.enter="emit('edit', item)" @keydown.space.prevent="emit('edit', item)">
+              <LibraryCover :file-id="item.fileId || ''" :url="item.coverImgUrl || ''" :title="item.title || '未命名'" kind="read" compact tiny natural-ratio @ratio="setCoverRatio(item, $event)" />
             </view>
             <view v-if="showStatus(group)" class="reading-status" :style="{ width: spacing.controlMin + 'px' }">
               <LoadingIndicator v-if="moreLoading" compact label="正在加载更多" />
@@ -70,8 +76,8 @@ function loadMore(group) {
 .reading-label { display: flex; flex-direction: column; align-items: center; justify-content: center; flex-shrink: 0; }
 .reading-label-text { @include type-style('body'); line-height: type-line('label'); letter-spacing: type-tracking('normal'); color: #71717a; }
 .reading-label-dark { color: #a6a6b0; }
-.reading-book { position: relative; flex-shrink: 0; border-radius: $space-inline; overflow: hidden; }
-.reading-placeholder { flex-shrink: 0; border-radius: $space-inline; background-color: #e8ecf1; }
+.reading-book { position: relative; flex-shrink: 0; border-radius: 1px; overflow: hidden; }
+.reading-placeholder { flex-shrink: 0; border-radius: 1px; background-color: #e8ecf1; }
 .reading-placeholder-dark { background-color: #30343b; }
 .reading-status { flex-shrink: 0; align-items: center; justify-content: center; }
 .reading-retry { display: flex; align-items: center; justify-content: center; width: $space-controlMin; height: $space-controlMin; padding: 0; margin: 0; background-color: transparent; }

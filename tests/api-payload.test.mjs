@@ -47,11 +47,16 @@ test('视频封面批量查询保留完整字符串 ID 并拒绝用户归属参�
 
 test('实际 uni.request 边界执行筛选且不修改原对象', async () => {
   const apiSource = await readFile(new URL('../src/services/api.ts', import.meta.url), 'utf8')
+  const refreshSource = await readFile(new URL('../src/services/home-refresh.ts', import.meta.url), 'utf8')
+  const refreshCode = (await transform(refreshSource, { loader: 'ts', format: 'esm' })).code
+  const refreshUrl = 'data:text/javascript;base64,' + Buffer.from(refreshCode).toString('base64')
+  const { homeDataRevision } = await import(refreshUrl)
   const apiCode = (await transform(apiSource
     .replace("'./api-payload.ts'", JSON.stringify(payloadUrl))
+    .replace("'./home-refresh.ts'", JSON.stringify(refreshUrl))
     .replace(/^import .* from '\.\/(contract|session|secondary-lock|menu-access-cache)\.ts'\n/gm, '')
     .replaceAll('import.meta.env', '{}')
-    + '\nconst session = {token:"fixture"}; const unlockNavigationRevision=()=>0; const readResponse=(_status,data)=>data.data; const readUser=v=>v; const clearSession=()=>{}; const saveToken=()=>{}; const requestUnlock=()=>Promise.resolve(); const invalidateMenuAccessAfterWrite=()=>{}; const invalidateMenuAccessCache=()=>{};', { loader: 'ts', format: 'esm' })).code
+    + '\nconst session = {token:"fixture"}; const unlockNavigationRevision=()=>0; const readResponse=(_status,data)=>{if(_status>=400)throw Error("失败");return data.data}; const readUser=v=>v; const clearSession=()=>{}; const saveToken=()=>{}; const requestUnlock=()=>Promise.resolve(); const invalidateMenuAccessAfterWrite=()=>{}; const invalidateMenuAccessCache=()=>{};', { loader: 'ts', format: 'esm' })).code
   const { request } = await import('data:text/javascript;base64,' + Buffer.from(apiCode).toString('base64'))
   const previous = globalThis.uni
   let sent
@@ -59,12 +64,15 @@ test('实际 uni.request 边界执行筛选且不修改原对象', async () => {
   try {
     const row = {id:'9007199254740993',content:'任务',userId:'11',isDeleted:1}
     const original = structuredClone(row)
+    const watchedRevision = homeDataRevision('watched')
     await request('/tasks/9007199254740993','PUT',row)
+    assert.equal(homeDataRevision('watched'), watchedRevision + 1)
     assert.deepEqual(sent.data,{content:'任务'})
     assert.deepEqual(row,original)
     const data = await request('/movie/page','GET',{current:1,size:20,activeOnly:false,userId:'11'})
     assert.deepEqual(sent.data,{current:1,size:20,activeOnly:false})
     assert.deepEqual(data,{items:[],total:0})
+    assert.equal(homeDataRevision('watched'), watchedRevision + 1)
     for (const path of ['/goals', '/anniversaryRecords']) {
       await request(path, 'POST', { title: '固定记录', isPinned: 1, pinnedSort: -99, userId: 'other' })
       assert.deepEqual(sent.data, { title: '固定记录', isPinned: 1 })
@@ -83,5 +91,9 @@ test('实际 uni.request 边界执行筛选且不修改原对象', async () => {
       await request(path, 'GET', { ...query, userId: 'other' })
       assert.deepEqual(sent.data, query)
     }
+    const beforeFailure = homeDataRevision('watched')
+    globalThis.uni.request = options => options.success({ statusCode: 503, data: {} })
+    await assert.rejects(request('/tasks/1', 'DELETE'), /失败/)
+    assert.equal(homeDataRevision('watched'), beforeFailure)
   } finally { globalThis.uni = previous }
 })

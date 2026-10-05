@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { buttonLabelClasses } from '../../services/button-label.ts'
 import ContentSkeleton from '../../components/ContentSkeleton.uvue';
+import LoadingIndicator from '../../components/LoadingIndicator.uvue';
+import { lifeCatalogNeedsRefresh, lifeCatalogRevision } from '../../services/life-catalog-cache.ts';
 import AppIcon from '../../components/AppIcon.uvue'
 import SecondaryUnlock from "../../components/SecondaryUnlock.uvue";
 import { computed, nextTick, ref } from "vue";
@@ -46,11 +48,11 @@ const folder = computed(() => folders.value[folders.value.length - 1] || null);
 let active = false;
 let epoch = 0;
 let account = "";
-let catalogLoaded = false;
+const catalogLoaded = ref(false);
 const sections = computed(() => catalogSections(catalog.value, query.value));
-const available = computed(() => !catalogLoading.value && !catalogError.value);
+const available = computed(() => catalogLoaded.value);
 const canEdit = computed(
-  () => available.value && !quickLoading.value && !quickError.value,
+  () => available.value && !catalogLoading.value && !catalogError.value && !quickLoading.value && !quickError.value,
 );
 const choices = computed(() =>
   catalog.value.filter(
@@ -86,15 +88,17 @@ async function loadPart(part: string, version = epoch, token = session.token) {
   if (loading.value) return;
   loading.value = true;
   error.value = "";
+  const revision = lifeCatalogRevision();
   try {
     const data =
       part === "catalog" ? await loadLifeCatalog() : await loadLifeQuickLinks();
     if (!current(version, token)) return;
     if (part === "catalog") {
+      if (revision !== lifeCatalogRevision()) return;
+      if (JSON.stringify(catalog.value) !== JSON.stringify(data)) folders.value = [];
       catalog.value = data;
-      catalogLoaded = true;
-      cacheLifeCatalog(data, token);
-      folders.value = [];
+      catalogLoaded.value = true;
+      cacheLifeCatalog(data, token, revision);
     }
     else {
       // 保留停用或目录外的快捷项，避免保存时丢失已有配置。
@@ -135,7 +139,7 @@ onShow(() => {
   }
   if (account !== session.token) {
     catalog.value = [];
-    catalogLoaded = false;
+    catalogLoaded.value = false;
     catalogError.value = "";
     query.value = "";
     account = session.token;
@@ -147,15 +151,13 @@ onShow(() => {
   saveError.value = "";
   quickError.value = "";
   draft.value = [];
-  if (!catalogLoaded) {
-    const cached = readCachedLifeCatalog();
-    if (cached !== null) {
-      catalog.value = cached;
-      catalogLoaded = true;
-      catalogError.value = "";
-    }
+  const cached = readCachedLifeCatalog();
+  catalog.value = cached ?? [];
+  catalogLoaded.value = cached !== null;
+  if (cached !== null && !lifeCatalogNeedsRefresh()) {
+    catalogError.value = "";
   }
-  loadPart("catalog");
+  if (lifeCatalogNeedsRefresh() || catalogError.value) loadPart("catalog");
   if (editRequested) loadPart("quick");
 });
 onHide(() => {
@@ -222,6 +224,8 @@ async function save() {
           :placeholder-style="'color: ' + searchSecondaryColor"
           confirm-type="search"
         />
+        <LoadingIndicator v-if="catalogLoading && catalogLoaded && !refreshing" compact label="正在更新功能目录" />
+        <button v-else-if="catalogError && catalogLoaded" role="button" class="life-action" aria-label="重试功能目录" @click="loadPart('catalog')"><AppIcon name="lucide:rotate-cw" :color="searchSecondaryColor" /></button>
         <button
           role="button"
           v-if="query"
@@ -243,10 +247,10 @@ async function save() {
       @refresherrefresh="refresh"
     >
       <view class="life-content ui-page-inset ui-tab-page-inset">
-        <view v-if="catalogLoading && !refreshing" class="life-state ui-px-sm ui-py-card"
+        <view v-if="catalogLoading && !catalogLoaded && !refreshing" class="life-state ui-px-sm ui-py-card"
           ><ContentSkeleton variant="grid" label="正在加载功能目录" /></view
         >
-        <view v-if="catalogError" class="life-state ui-px-sm ui-py-card"
+        <view v-if="catalogError && !catalogLoaded" class="life-state ui-px-sm ui-py-card"
           ><text class="life-error" role="alert">{{ catalogError }}</text
           ><button
             role="button"
@@ -255,7 +259,7 @@ async function save() {
           ><text :class="buttonLabelClasses(['life-retry ui-mt-sm ui-px-card'])">重试功能目录</text></button></view
         >
         <view
-          v-if="!catalogLoading && !catalogError && !sections.length"
+          v-if="catalogLoaded && !sections.length"
           class="life-state ui-px-sm ui-py-card"
           ><text class="life-muted">{{
             query.trim() ? "未找到相关功能" : "暂无可用功能"

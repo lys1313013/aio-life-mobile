@@ -119,8 +119,8 @@ test('首页关注待办失败可重试，完成只提交长ID与状态',async({
     return route.fulfill({json:{rscode:'0',data:data??[]}});
   });
   await page.goto('/');await page.locator('[aria-label="账号"] input').fill('fixture');await page.locator('[aria-label="密码"] input').fill('fixture-password');await page.getByRole('button',{name:'登录',exact:true}).click();
-  await page.getByRole('button',{name:'完成待办',exact:true}).click();await expect(page.getByText('模拟更新失败')).toBeVisible();
-  fail=false;await page.getByRole('button',{name:'重试待办',exact:true}).click();await page.getByRole('button',{name:'完成待办',exact:true}).click();
+  await page.getByRole('button',{name:'完成待办',exact:true}).click();await expect(page.getByRole('button',{name:'重试待办：模拟更新失败',exact:true})).toBeVisible();
+  fail=false;await page.getByRole('button',{name:'重试待办：模拟更新失败',exact:true}).click();await page.getByRole('button',{name:'完成待办',exact:true}).click();
   await expect(page.getByRole('button',{name:'标记未完成',exact:true})).toBeVisible();
   expect(writes.at(-1)).toEqual({id:'9223372036854775807',isCompleted:1});
   const home=page.url();

@@ -56,6 +56,9 @@ async function setup(page, options = {}) {
       if (options.intercept && (await options.intercept(route, path, state)))
         return;
       let data = dashboardFixture(path);
+      // 本用例只测试目录和快捷导航，避免首页业务卡片请求候选菜单干扰目录计数。
+      if (path === '/api/home/cards') data = data.map(item => ({ ...item,
+        enabled: !['section.goal', 'section.anniversary', 'section.reading', 'section.membership', 'section.movie'].includes(item.cardKey) }));
       if (path === "/api/auth/login") data = { accessToken: "life-fixture" };
       if (path === "/api/user/info")
         data = { id: "fixture-user", nickname: "目录测试用户" };
@@ -265,7 +268,7 @@ test("目录失败不显示伪造入口、可重试，下拉保留已有目录",
   ).toBeVisible();
   await expect(
     page.getByRole("button", { name: "运动", exact: true }),
-  ).toBeDisabled();
+  ).toBeEnabled();
   expect(state.catalogCalls).toBeGreaterThan(2);
 });
 test("空目录不补默认项；未登录直接访问生活会跳转登录", async ({ page }) => {
@@ -279,7 +282,7 @@ test("空目录不补默认项；未登录直接访问生活会跳转登录", as
 });
 
 for (const empty of [false, true]) {
-  test(`生活目录重新进入和整页刷新时重新校验启用状态，空目录=${empty}`, async ({ page }) => {
+  test(`生活目录短时间重新进入和整页刷新复用缓存，下拉强制更新，空目录=${empty}`, async ({ page }) => {
     const state = await setup(page, { empty });
     const content = empty
       ? page.getByText("暂无可用功能", { exact: true })
@@ -292,11 +295,11 @@ for (const empty of [false, true]) {
     await page.locator('uni-tabbar').getByText('全部', { exact: true }).click();
     await expect(content).toBeVisible();
     await expect(page.locator('.life-page .content-skeleton')).toHaveCount(0);
-    expect(state.catalogCalls).toBeGreaterThan(beforeReturn);
+    expect(state.catalogCalls).toBe(beforeReturn);
     const beforeReload = state.catalogCalls;
     await page.reload();
     await expect(content).toBeVisible();
-    expect(state.catalogCalls).toBeGreaterThan(beforeReload);
+    expect(state.catalogCalls).toBe(beforeReload);
     const beforeRefresh = state.catalogCalls;
     await pullDown(page, '.tab-scroll');
     await expect.poll(() => state.catalogCalls).toBeGreaterThan(beforeRefresh);
@@ -419,3 +422,36 @@ test("离页后的目录结果不能覆盖再次进入的新结果", async ({ pa
   ).toBeVisible();
   } finally { release(); }
 });
+
+for (const width of [390, 768, 1440]) for (const theme of ['light', 'dark']) {
+  test(`目录过期后台更新不插入骨架、不禁用入口、不挤动布局 ${width} ${theme}`, async ({ page }, info) => {
+    await page.setViewportSize({ width, height: 900 });
+    await page.emulateMedia({ colorScheme: theme });
+    const start = new Date('2026-10-05T04:00:00Z');
+    await page.clock.install({ time: start });
+    let release, hold = false;
+    const gate = new Promise(resolve => { release = resolve; });
+    await setup(page, { intercept: async (route, path) => {
+      if (hold && path === '/api/quick-nav/candidates') await gate;
+      return false;
+    } });
+    const button = page.getByRole('button', { name: '运动', exact: true });
+    await expect(button).toBeEnabled();
+    const before = await button.boundingBox();
+    await page.locator('uni-tabbar').getByText('我', { exact: true }).click();
+    await expect(page).toHaveURL(/pages\/profile\/index/);
+    hold = true;
+    await page.clock.setFixedTime(new Date(start.getTime() + 61 * 60 * 1000));
+    try {
+      await page.locator('uni-tabbar').getByText('全部', { exact: true }).click();
+      await expect(page.getByRole('status', { name: '正在更新功能目录' })).toBeVisible();
+      await expect(page.locator('.life-page .content-skeleton')).toHaveCount(0);
+      await expect(button).toBeEnabled();
+      expect(await button.boundingBox()).toEqual(before);
+      await page.screenshot({ path: info.outputPath('background.png'), fullPage: true });
+      release();
+      await expect(page.getByRole('status', { name: '正在更新功能目录' })).toHaveCount(0);
+      expect(await button.boundingBox()).toEqual(before);
+    } finally { release(); await page.unrouteAll({ behavior: 'ignoreErrors' }); }
+  });
+}

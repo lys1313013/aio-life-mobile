@@ -86,12 +86,12 @@ test('首页详情失败可重试，关闭后忽略晚到响应', async ({ page 
   try {
     await card.getByRole('button', { name: '编辑' + entries[0].title, exact: true }).click();
     await expect(page.getByRole('status', { name: '正在加载记录详情', exact: true })).toBeVisible();
-    await page.getByRole('button', { name: '取消', exact: true }).click();
+    await page.locator('.modal-mask-loading').click({ position: { x: 8, y: 8 } });
     const response = page.waitForResponse('**/api/read-record/' + id);
     release(); await response;
     await expect(page.getByRole('dialog')).toHaveCount(0);
     await expect(page).toHaveURL(/pages\/home\/index/);
-  } finally { release(); await page.unrouteAll({ behavior: 'wait' }); }
+  } finally { release(); await page.unrouteAll({ behavior: 'ignoreErrors' }); }
 });
 test('首页纪念日保存失败保留表单，重试后更新原卡片', async ({ page }) => {
   const state = await setup(page);
