@@ -1,4 +1,5 @@
 import { request } from "./api.ts";
+import { menuVisuals } from './menu-visuals.ts'
 export { cacheLifeCatalog, readCachedLifeCatalog } from './life-catalog-cache.ts';
 import {
   buildCatalog,
@@ -11,6 +12,7 @@ export async function loadLifeCatalog() {
     request("/quick-nav/candidates?client=mobile"),
     request("/menu/preferences?client=mobile"),
   ]);
+  void menuVisuals.load(request)
   return buildCatalog(candidates, preferences);
 }
 export async function loadLifeQuickLinks() {

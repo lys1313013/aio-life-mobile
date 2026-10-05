@@ -3,14 +3,15 @@ import { buttonLabelClasses } from '../services/button-label.ts'
 import ContentSkeleton from './ContentSkeleton.uvue';
 import LoadingIndicator from './LoadingIndicator.uvue';
 import CategoryIcon from './CategoryIcon.uvue'
+import LifeMenuIcon from './LifeMenuIcon.uvue'
 import { isDark, themeClass } from '../services/theme.ts'
-defineProps<{ title: string; icon?: string; height?: number; autoHeight?: boolean; loading?: boolean; updating?: boolean; retainContent?: boolean; error?: string; compact?: boolean; flushTop?: boolean; skeleton?: string }>()
+defineProps<{ title: string; icon?: string; iconColor?: string; height?: number; autoHeight?: boolean; loading?: boolean; updating?: boolean; retainContent?: boolean; error?: string; compact?: boolean; flushTop?: boolean; skeleton?: string }>()
 defineEmits<{ refresh: [] }>()
 </script>
 <template>
   <view class="dashboard-section" :class="themeClass('dashboard-section')" :style="autoHeight ? { height: 'auto' } : height ? { height: height + 'px' } : {}">
     <view class="section-heading" :class="{ 'section-heading-compact': compact }">
-      <view class="section-label"><CategoryIcon v-if="icon" :icon="icon" :size="16" :color="isDark ? '#d4d4d8' : '#52525b'" /><text class="section-title" :class="[{ 'section-title-with-icon': !!icon }, themeClass('section-title')]">{{ title }}</text></view>
+      <view class="section-label"><LifeMenuIcon v-if="icon" :icon="icon" :size="16" :color="iconColor" /><text class="section-title" :class="[{ 'section-title-with-icon': !!icon }, themeClass('section-title')]">{{ title }}</text></view>
       <slot name="actions" />
       <LoadingIndicator v-if="updating" class="section-updating" compact :label="'正在更新' + title" />
       <button v-else-if="error && retainContent" role="button" class="section-update-retry" :aria-label="'重试' + title + '：' + error" @click="$emit('refresh')"><CategoryIcon icon="lucide:rotate-cw" :size="18" :color="isDark ? '#a9bfff' : '#5879ce'" /></button>

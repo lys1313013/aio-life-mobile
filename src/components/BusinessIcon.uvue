@@ -1,0 +1,12 @@
+<script setup lang="ts">
+import { computed, onMounted } from 'vue'
+import LifeMenuIcon from './LifeMenuIcon.uvue'
+import { request } from '../services/api.ts'
+import { menuVisuals, menuVisualState } from '../services/menu-visuals.ts'
+const props = defineProps<{ cardKey: string; size?: number }>()
+const visual = computed(() => menuVisuals.visual(props.cardKey))
+onMounted(() => menuVisuals.load(request))
+</script>
+<template>
+  <LifeMenuIcon :icon="visual.icon" :color="visual.iconColor" :size="size || 20" :aria-busy="menuVisualState.loading" />
+</template>

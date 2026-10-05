@@ -9,6 +9,8 @@ import { computed, nextTick, ref } from "vue";
 import { onShow, onHide } from "@dcloudio/uni-app";
 import PageHeader from "../../components/PageHeader.uvue";
 import AdaptiveModal from "../../components/AdaptiveModal.uvue";
+import { menuVisuals } from "../../services/menu-visuals.ts";
+import { request } from "../../services/api.ts";
 import LifeMenuIcon from "../../components/LifeMenuIcon.uvue";
 import { restoreSession, session } from "../../services/session.ts";
 import {
@@ -129,6 +131,7 @@ async function refresh() {
   }
 }
 onShow(() => {
+  void menuVisuals.load(request)
   active = true;
   epoch++;
   const editRequested = takeQuickNavEditorRequest();
@@ -290,7 +293,7 @@ async function save() {
               "
               @click="openEntry(item)"
             >
-              <LifeMenuIcon :icon="item.icon" :color="item.color" /><text
+              <LifeMenuIcon :icon="menuVisuals.menuVisual(item.menuId, { icon: item.icon, iconColor: item.color }).icon" :color="menuVisuals.menuVisual(item.menuId, { icon: item.icon, iconColor: item.color }).iconColor" /><text
                 class="life-label ui-mt-sm"
                 :class="themeClass('life-ink')"
                 >{{ item.title }}</text
@@ -338,7 +341,7 @@ async function save() {
             :aria-label="item.title + (item.children ? '功能组' : item.native ? '' : '（网页版）')"
             @click="openEntry(item)"
           >
-            <LifeMenuIcon :icon="item.icon" :color="item.color" /><text
+            <LifeMenuIcon :icon="menuVisuals.menuVisual(item.menuId, { icon: item.icon, iconColor: item.color }).icon" :color="menuVisuals.menuVisual(item.menuId, { icon: item.icon, iconColor: item.color }).iconColor" /><text
               class="life-label ui-mt-sm"
               :class="themeClass('life-ink')"
               >{{ item.title }}</text
@@ -468,7 +471,7 @@ async function save() {
               :aria-disabled="saving || draft.length >= QUICK_NAV_MAX"
               @click="add(item)"
             >
-              <LifeMenuIcon :icon="item.icon" :color="item.color" /><text
+              <LifeMenuIcon :icon="menuVisuals.menuVisual(item.menuId, { icon: item.icon, iconColor: item.color }).icon" :color="menuVisuals.menuVisual(item.menuId, { icon: item.icon, iconColor: item.color }).iconColor" /><text
                 class="life-label ui-mt-sm"
                 :class="themeClass('life-ink')"
                 >{{ item.title }}</text

@@ -1,9 +1,11 @@
+import { menuVisuals } from './menu-visuals.ts'
 import { minimalRequestPayload } from './api-payload.ts'
 import { readResponse, readUser } from './contract.ts'
 import { clearSession, saveToken, session } from './session.ts'
 import { requestUnlock, unlockNavigationRevision } from './secondary-lock.ts'
 import { invalidateMenuAccessAfterWrite, invalidateMenuAccessCache } from './menu-access-cache.ts'
 import { invalidateHomeAfterWrite } from './home-refresh.ts'
+import { invalidatePageAfterWrite } from './page-refresh-state.ts'
 
 let baseURL = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:45678/api'
 // #ifdef WEB
@@ -36,7 +38,9 @@ export function request<T>(path: string, method: 'GET' | 'POST' | 'PUT' | 'DELET
           const result = readResponse(response.statusCode, response.data)
           if (token && token === session.token) {
             invalidateMenuAccessAfterWrite(path, method)
+            menuVisuals.afterWrite(path, method)
             invalidateHomeAfterWrite(path, method)
+            invalidatePageAfterWrite(path, method)
           }
           resolve(result)
         } catch (error) {
