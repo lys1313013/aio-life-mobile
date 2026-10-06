@@ -1,5 +1,6 @@
 const { test, expect } = require('@playwright/test');
 const { dashboardFixture } = require('./fixtures.js');
+const { retainedProfilePages } = require('./profile-navigation');
 
 async function setup(page) {
   const state = { profile: { id: '9223372036854775807', accountUsername: 'fixture', nickname: '测试用户', email: 'fixture@example.com', introduction: '测试简介', avatarFileId: null }, binds: [], writes: [], failSave: false, failList: false, failDelete: false, expired: false, delay: 0 };
@@ -54,6 +55,10 @@ for (const width of [390, 768, 1440]) {
       await page.emulateMedia({ colorScheme: system });
       const errors = []; page.on('pageerror', e => errors.push(e.message));
       await setup(page);
+      await expect(page.locator('.profile-menu')).toBeVisible();
+      for (const name of Object.keys(retainedProfilePages)) {
+        await expect(page.getByRole('button', { name, exact: true })).toHaveCount(0);
+      }
       await expect(page.getByRole('button', { name: '账号与安全', exact: true })).toBeVisible();
       await expect(page.getByRole('button', { name: '账号绑定', exact: true })).toHaveCount(0);
       await expect(page.locator('.account-card')).toHaveCount(0);
