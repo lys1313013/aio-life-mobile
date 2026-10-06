@@ -167,9 +167,10 @@ onUnmounted(() => { alive = false; generation++; stop(); context = null })
 <style scoped lang="scss">
 @use '../../styles/typography' as *;
 @use '../../styles/spacing-tokens' as *;
-// Geometry matches the existing 176px chart and its external labels.
-.time-donut-renderer { position: absolute; top: 0; left: 0; width: 176px; height: 176px; }
-.time-donut-canvas { width: 176px; height: 176px; }
+// 容器正常占位，画布在同一容器内定位。微信组件宿主不能依赖跨层绝对定位，
+// 否则滚动或卡片重排后原生画布可能与外部文字分离。
+.time-donut-renderer { position: relative; width: 176px; height: 176px; flex-shrink: 0; }
+.time-donut-canvas { position: absolute; top: 0; left: 0; width: 176px; height: 176px; }
 .time-donut-retry { position: absolute; top: 0; left: 0; min-height: $space-controlMin; min-width: $space-controlMin; margin: 0; padding: 0; @include type-style('caption'); }
 
 /* 按钮文字独立声明样式，兼容 App 不继承容器排版。 */

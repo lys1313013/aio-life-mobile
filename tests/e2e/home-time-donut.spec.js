@@ -15,7 +15,7 @@ const groups = [
   { name: '交通', minutes: 15, color: '#2f54eb' },
   { name: '卫生', minutes: 11, color: '#13c2c2' },
 ];
-async function setup(page) {
+async function setup(page, extra = {}) {
   let minute = 0;
   const fixtures = {
     '/user/info': { id: 'donut-fixture', nickname: '模拟用户' },
@@ -28,6 +28,7 @@ async function setup(page) {
       const startTime = minute; minute += item.minutes;
       return { id: String(index), categoryId: String(index), startTime, endTime: minute - 1 };
     }),
+    ...extra,
   };
   for (const [path, data] of Object.entries(fixtures)) {
     const handler = route => route.fulfill({ json: { rscode: '0', data } });
@@ -38,6 +39,18 @@ async function setup(page) {
   await page.goto('/#/pages/home/index');
   await expect(page.locator('.donut-total')).toHaveText('19h6m');
   return fixtures;
+}
+
+async function expectRingAligned(page) {
+  await expect.poll(() => page.locator('.donut').evaluate(node => {
+    const chart = node.getBoundingClientRect();
+    const canvas = node.querySelector('.time-donut-canvas canvas').getBoundingClientRect();
+    const total = node.querySelector('.donut-total').getBoundingClientRect();
+    return Math.max(Math.abs(canvas.x - chart.x), Math.abs(canvas.y - chart.y),
+      Math.abs(canvas.width - chart.width), Math.abs(canvas.height - chart.height),
+      Math.abs(total.x + total.width / 2 - chart.x - chart.width / 2),
+      Math.abs(total.y + total.height / 2 - chart.y - chart.height / 2));
+  })).toBeLessThan(1);
 }
 
 async function ringPixels(canvas) {
@@ -73,7 +86,9 @@ for (const width of [390, 820, 1440]) for (const theme of ['light', 'dark']) {
     const errors = []; page.on('pageerror', error => errors.push(error.message));
     const fixtures = await setup(page);
     const canvas = page.locator('.time-donut-canvas canvas');
+    await expectRingAligned(page);
     await expect.poll(() => ringPixels(canvas)).toEqual({ wrong: 0, gaps: 0 });
+    await expectRingAligned(page);
     await page.locator('.donut').screenshot({ path: info.outputPath('donut.png') });
     await expect(page.locator('.donut-label')).toHaveCount(4);
     await expect(page.locator('.donut-label-left')).toHaveCount(2);
@@ -92,5 +107,32 @@ for (const width of [390, 820, 1440]) for (const theme of ['light', 'dark']) {
       return [...node.getContext('2d').getImageData(Math.floor(132.5 * scale), Math.floor(88 * scale), 1, 1).data];
     })).toEqual(theme === 'dark' ? [69, 71, 77, 255] : [201, 201, 204, 255]);
     expect(errors).toEqual([]);
+  });
+
+  test(`时迹圆环滚动和卡片重排后仍与总时长对齐 ${width} ${theme}`, async ({ page }, info) => {
+    await page.setViewportSize({ width, height: 300 });
+    await page.emulateMedia({ colorScheme: theme, reducedMotion: 'reduce' });
+    let cards = homeCardFixture().map(item => ({ ...item, enabled: ['section.time', 'section.links', 'section.thoughts'].includes(item.cardKey) }));
+    await page.route('**/api/home/cards/order', route => {
+      const { keys } = route.request().postDataJSON();
+      cards = cards.map(item => item.group === 'section' ? { ...item, sortOrder: keys.indexOf(item.cardKey) } : item)
+        .sort((a, b) => a.group.localeCompare(b.group) || a.sortOrder - b.sortOrder);
+      return route.fulfill({ json: { rscode: '0', data: cards } });
+    });
+    await setup(page, {
+      '/home/cards': cards,
+      '/taskDetails/watched': [],
+      '/thought/dashboard': [{ id: 'layout-thought', content: '用于检查滚动和重排后的圆环位置', createTime: '2026-10-06 10:00' }],
+    });
+    const scroller = page.locator('.dashboard-scroll > .uni-scroll-view > .uni-scroll-view');
+    await scroller.evaluate(node => { node.scrollTop = 100; });
+    await expect.poll(() => scroller.evaluate(node => node.scrollTop)).toBeGreaterThan(0);
+    await expectRingAligned(page);
+    await scroller.evaluate(node => { node.scrollTop = 0; });
+    await page.locator('[data-card-key="section.time"]').press('Alt+ArrowDown');
+    await expect.poll(() => page.locator('.home-order-section:visible').evaluateAll(nodes => nodes.map(node => node.dataset.cardKey))).toEqual(['section.links', 'section.time', 'section.thoughts']);
+    await expectRingAligned(page);
+    await page.locator('.donut').scrollIntoViewIfNeeded();
+    await page.locator('.donut').screenshot({ path: info.outputPath('donut-after-reorder.png') });
   });
 }
