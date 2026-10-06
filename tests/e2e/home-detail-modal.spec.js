@@ -18,26 +18,26 @@ async function setup(page) {
     '/membership/providers': [],
   };
   for (const [path, data] of Object.entries(fixtures)) {
-    for (const suffix of ['', '?*']) await page.route('**/api' + path + suffix, route => route.fulfill({ json: { rscode: '0', data } }));
+    for (const suffix of ['', '?*']) await page.route('**/api' + path + suffix, route => route.fulfill({ json: { code: 0, data } }));
   }
   for (const [index, entry] of entries.entries()) {
-    const list = route => route.fulfill({ json: { rscode: '0', data: entry.key === 'read' || entry.key === 'movie'
+    const list = route => route.fulfill({ json: { code: 0, data: entry.key === 'read' || entry.key === 'movie'
       ? { items: state.rows[index] ? [state.rows[index]] : [], total: state.rows[index] ? 1 : 0 }
       : state.rows[index] ? [state.rows[index]] : [] } });
     const path = entry.base + (entry.key === 'member' ? '/list' : entry.key === 'anniversary' ? '' : '/page');
     for (const suffix of ['', '?*']) await page.route('**/api' + path + suffix, list);
     await page.route('**/api' + entry.base + '/' + id, async route => {
       if (state.waitDetail) await state.waitDetail;
-      if (state.failDetail) return route.fulfill({ json: { rscode: '1', result: '模拟详情加载失败' } });
-      if (route.request().method() === 'DELETE') { state.rows[index] = null; return route.fulfill({ json: { rscode: '0', data: true } }); }
-      await route.fulfill({ json: { rscode: '0', data: state.rows[index] } });
+      if (state.failDetail) return route.fulfill({ json: { code: 1, message: '模拟详情加载失败' } });
+      if (route.request().method() === 'DELETE') { state.rows[index] = null; return route.fulfill({ json: { code: 0, data: true } }); }
+      await route.fulfill({ json: { code: 0, data: state.rows[index] } });
     });
     await page.route('**/api' + entry.base, async route => {
       if (route.request().method() === 'GET') return list(route);
       const payload = route.request().postDataJSON(); state.writes.push(payload);
-      if (state.failSave) return route.fulfill({ json: { rscode: '1', result: '模拟保存失败' } });
+      if (state.failSave) return route.fulfill({ json: { code: 1, message: '模拟保存失败' } });
       state.rows[index] = { ...state.rows[index], ...payload };
-      await route.fulfill({ json: { rscode: '0', data: state.rows[index] } });
+      await route.fulfill({ json: { code: 0, data: state.rows[index] } });
     });
   }
   await page.addInitScript(() => localStorage.setItem('aio-life-mobile.access-token.v1', JSON.stringify({ type: 'string', data: 'fixture-home-detail' })));

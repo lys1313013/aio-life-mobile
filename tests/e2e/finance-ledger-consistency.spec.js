@@ -13,20 +13,20 @@ async function ledger(page, kind, count) {
     if (url.pathname.endsWith('/query')) {
       const current = Number(url.searchParams.get('page') || 1);
       state.requests.push(current);
-      return route.fulfill({ json: { rscode: '0', data: { items: state.rows.slice((current - 1) * 50, current * 50), total: state.rows.length } } });
+      return route.fulfill({ json: { code: 0, data: { items: state.rows.slice((current - 1) * 50, current * 50), total: state.rows.length } } });
     }
     if (/statisticsBy/.test(url.pathname)) {
-      if (state.failStats) return route.fulfill({ json: { rscode: '1', result: '模拟统计失败，可单独重试' } });
-      return route.fulfill({ json: { rscode: '0', data: [{ year: new Date().getFullYear(), month: 10, detail: [{ typeName: '模拟分类', amt: state.rows.reduce((n, x) => n + Number(x.amt), 0) }] }] } });
+      if (state.failStats) return route.fulfill({ json: { code: 1, message: '模拟统计失败，可单独重试' } });
+      return route.fulfill({ json: { code: 0, data: [{ year: new Date().getFullYear(), month: 10, detail: [{ typeName: '模拟分类', amt: state.rows.reduce((n, x) => n + Number(x.amt), 0) }] }] } });
     }
     if (route.request().method() === 'DELETE') {
       state.rows = state.rows.filter(x => x.id !== url.pathname.split('/').at(-1));
-      return route.fulfill({ json: { rscode: '0', data: true } });
+      return route.fulfill({ json: { code: 0, data: true } });
     }
     if (route.request().method() === 'PUT') {
       const payload = route.request().postDataJSON();
       Object.assign(state.rows.find(x => x.id === url.pathname.split('/').at(-1)), payload);
-      return route.fulfill({ json: { rscode: '0', data: true } });
+      return route.fulfill({ json: { code: 0, data: true } });
     }
     return route.fallback();
   });

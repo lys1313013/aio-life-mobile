@@ -6,13 +6,13 @@ const image = '<svg xmlns="http://www.w3.org/2000/svg" width="960" height="605">
 async function setup(page, admin = true) {
   const state = { rows: [cover, { ...cover, id: '2', name: '模拟银行信用卡面（已有引用）', usageCount: 3, cardType: 'credit', sortOrder: 1 }], failSave: false, failDelete: false, failToggle: false, failList: false, calls: [], uploads: [] };
   await page.addInitScript(() => localStorage.setItem('aio-life-mobile.access-token.v1', 'cover-admin-fixture'));
-  await page.route('**/api/user/info', route => route.fulfill({ json: { rscode: '0', data: { id: '1', nickname: '模拟管理员', roles: admin ? ['admin'] : ['user'] } } }));
-  for (const path of ['/menu/list', '/menu/all', '/auth/secondary-lock/menus']) await page.route('**/api' + path, route => route.fulfill({ json: { rscode: '0', data: [] } }));
+  await page.route('**/api/user/info', route => route.fulfill({ json: { code: 0, data: { id: '1', nickname: '模拟管理员', roles: admin ? ['admin'] : ['user'] } } }));
+  for (const path of ['/menu/list', '/menu/all', '/auth/secondary-lock/menus']) await page.route('**/api' + path, route => route.fulfill({ json: { code: 0, data: [] } }));
   await page.route('**/api/file/preview/*', route => route.fulfill({ contentType: 'image/svg+xml', body: image }));
   await page.route('**/api/system/bank-card-covers{,/**}', async route => {
     const request = route.request(), pathname = new URL(request.url()).pathname, method = request.method();
-    const ok = data => route.fulfill({ json: { rscode: '0', data } });
-    const fail = message => route.fulfill({ json: { rscode: '1', result: message } });
+    const ok = data => route.fulfill({ json: { code: 0, data } });
+    const fail = message => route.fulfill({ json: { code: 1, result: message } });
     if (pathname.endsWith('/banks')) return ok([{ id: bankId, name: '模拟银行', enabled: true }, { id: '8', name: '停用银行', enabled: false }]);
     if (pathname.endsWith('/upload')) { state.uploads.push(request.postDataBuffer()); return ok({ id: uploadedId }); }
     if (method === 'GET') return state.failList ? fail('模拟列表失败') : ok(state.rows);
@@ -130,7 +130,7 @@ test('卡面预览失败重试恢复图片且不误开编辑弹窗', async ({ pa
   page.on('pageerror', error => errors.push(error.message));
   let failed = true;
   await page.route('**/api/file/preview/' + fileId, route => failed
-    ? route.fulfill({ status: 500, json: { rscode: '1', result: '模拟图片失败' } })
+    ? route.fulfill({ status: 500, json: { code: 1, message: '模拟图片失败' } })
     : route.fulfill({ contentType: 'image/svg+xml', body: image }));
   await page.goto('/#/pages/admin/bank-card-covers');
   const item = page.locator('.cover-item').first();

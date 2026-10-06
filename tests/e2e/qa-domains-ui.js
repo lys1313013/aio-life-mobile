@@ -12,7 +12,7 @@ async function start(page,routeName,options={}){
  if(p==='/api/menu/preferences')data={menus:[{id:'qa-finance',title:'财务',children:entries.slice(0,5).map((e,i)=>({id:String(i+1),title:e[2]}))},{id:'qa-coding',title:'编程看板',children:entries.slice(5,8).map((e,i)=>({id:String(i+6),title:e[2]}))},...entries.slice(8).map((e,i)=>({id:String(i+9),title:e[2]}))],hiddenMenuIds:[]};
  if(p==='/api/quick-nav/my')data=[];
  if(p==='/api/user/info')data={id:'1',nickname:'模拟用户',roles:['admin']};
- if(p==='/api/password/list')data=state.vaultRow?(options.vaultCount?Array.from({length:options.vaultCount},(_,i)=>({...state.vaultRow,id:String(9220+i),title:['模拟邮件账号','模拟代码托管与长标题账号','模拟学习平台'][i]})):[state.vaultRow]):[];if(state.vaultRow&&p==='/api/password/'+state.vaultRow.id){data=state.vaultRow;if(m==='PUT'){state.calls.push({path:p,body:route.request().postDataJSON()});if(state.fail)return route.fulfill({json:{rscode:'1',result:'模拟保存失败'}});state.vaultRow={...state.vaultRow,...route.request().postDataJSON()};data=state.vaultRow;}}
+ if(p==='/api/password/list')data=state.vaultRow?(options.vaultCount?Array.from({length:options.vaultCount},(_,i)=>({...state.vaultRow,id:String(9220+i),title:['模拟邮件账号','模拟代码托管与长标题账号','模拟学习平台'][i]})):[state.vaultRow]):[];if(state.vaultRow&&p==='/api/password/'+state.vaultRow.id){data=state.vaultRow;if(m==='PUT'){state.calls.push({path:p,body:route.request().postDataJSON()});if(state.fail)return route.fulfill({json:{code:1,message:'模拟保存失败'}});state.vaultRow={...state.vaultRow,...route.request().postDataJSON()};data=state.vaultRow;}}
  if(p==='/api/password/categories')data=['工作'];
  if(p==='/api/income/query')data={items:[{id:'9223372036854775807',amt:100,incTypeId:'81',incDate:'2026-10-01',remark:'模拟收入',tax:8}],total:1};
  if(p==='/api/expense/query')data={items:[{id:'9223372036854775807',amt:70,transactionAmt:99,expTypeId:'81',payTypeId:'82',expTime:'2026-10-01T12:00:00',remark:'模拟支出',transactionNo:'preserve-fixture'}],total:1};
@@ -21,9 +21,9 @@ async function start(page,routeName,options={}){
  if(p==='/api/user/1/basic')data={id:'1',nickname:'模拟用户'};
  if(p==='/api/relationships/persons/search')data=[state.person];
  const list=/(query|statisticsByMonth|statisticsByYear|bank-cards$|message\/list$|relationships\/graph$|mcp\/tools$|password\/list$|csdn\/stats$|userbinds\/list$|getByDictType$)/.test(p);
- if(state.readFail&&list)return route.fulfill({json:{rscode:'1',result:'QA 模拟加载失败'}});
+ if(state.readFail&&list)return route.fulfill({json:{code:1,message:'QA 模拟加载失败'}});
  if(state.empty&&list)data=p.endsWith('getByDictType')?{dictDetailList:[]}:p.endsWith('/graph')?{nodes:[],edges:[]}:p.endsWith('/query')?{items:[],total:0}:[];
- if(data!==undefined)return route.fulfill({json:{rscode:'0',data}});
+ if(data!==undefined)return route.fulfill({json:{code:0,data}});
  return route.fallback();});
  await page.goto('/');await page.locator('[aria-label="账号"] input').fill('qa-domain');await page.locator('[aria-label="密码"] input').fill('mock-password');await page.getByRole('button',{name:'登录',exact:true}).click();await expect(page.locator('uni-tabbar')).toBeVisible();
  await page.locator('uni-tabbar').getByText('全部',{exact:true}).click();await expect(page.locator('[role=button][aria-label="财务总览"]')).toBeVisible();

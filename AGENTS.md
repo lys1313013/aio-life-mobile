@@ -3,7 +3,7 @@
 - 默认中文沟通。本项目是独立 Git 仓库，使用 uni-app x **Vapor**，禁止为了编译通过改成普通 uni-app 或关闭 Vapor。
 - 页面使用 `.uvue` 和组合式 API。`src/manifest.json` 保留 `uni-app-x.vapor: true`，样式隔离策略为 2。
 - 仅使用简单类选择器、跨端内置组件和 `uni.*` API；平台差异通过条件编译隔离。纯逻辑不依赖 `window`、`document`。
-- API 成功码为字符串 `'0'`，错误信息字段是 `result`，ID 始终保留字符串，鉴权为 Bearer Token。
+- API 响应为 `{ code: 0, message: null, data: ... }`，`code` 是整数，错误信息字段是 `message`，ID 始终保留字符串，分页 `PageResp.total` 为 JSON 整数（未提供时为 null），鉴权为 Bearer Token。业务使用数、会员/衣柜统计和消息未读数为 Integer 数字契约。分页及卡面读取边界暂时兼容旧服务端的十进制字符串计数；新 fixture 使用数字。
 - 凭据、Token、证书、真实用户截图不能进入 Git。测试只能使用明确的模拟数据，不得在生产页面提供自动登录或模拟登录入口。
 - 项目真实 AppID 只保存在 Git 忽略的 `src/project.config.json`，由微信编译器复制到构建目录；`src/manifest.json` 和示例配置中的 AppID 必须留空。提交前检查当前文件和新增提交中均无真实 AppID。
 - 接口有 loading，错误可重试。退出确认靠近按钮；手机、平板、桌面及深浅色都需检查。

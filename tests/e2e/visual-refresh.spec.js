@@ -23,15 +23,15 @@ async function subscriptions(page) {
     const data = path.endsWith('/stats')
       ? { activeCount: 3, expiringCount: 1, expiringThisMonthCount: 1, monthlyAmount: 33 }
       : state.rows;
-    return route.fulfill({ json: { rscode: '0', data } });
+    return route.fulfill({ json: { code: 0, data } });
   });
   await page.route('**/api/membership', (route) => {
     const body = route.request().postDataJSON();
     state.writes.push({ method: route.request().method(), body });
-    if (state.fail) return route.fulfill({ json: { rscode: '1', result: '模拟保存失败，请重试' } });
+    if (state.fail) return route.fulfill({ json: { code: 1, message: '模拟保存失败，请重试' } });
     const index = state.rows.findIndex((row) => row.id === body.id);
     state.rows[index] = { ...state.rows[index], ...body };
-    return route.fulfill({ json: { rscode: '0', data: state.rows[index] } });
+    return route.fulfill({ json: { code: 0, data: state.rows[index] } });
   });
   await page.goto('/#/pages/member/index');
   await expect(page.locator('.member-card')).toHaveCount(6);
@@ -102,8 +102,8 @@ for (const width of [390, 768, 1440]) for (const theme of ['light', 'dark']) {
     await page.emulateMedia({ colorScheme: theme });
     await setup(page);
     const feedback = [0, 1, 2].map((i) => ({ id: String(70 + i), title: ['模拟建议：完善记录的筛选与统计', '模拟问题：长标题列表与触控区域验收', '模拟反馈：希望增加图表对比'][i], content: '模拟反馈正文，记录具体场景和期望行为。', feedbackType: ['SUGGESTION', 'BUG', 'QUESTION'][i], summary: '模拟反馈摘要，说明具体场景。', commentCount: i, status: ['PENDING', 'PROCESSING', 'RESOLVED'][i], createTime: '2026-10-01 12:00:00', comments: [], files: [] }));
-    await page.route('**/api/feedback/my*', (route) => route.fulfill({ json: { rscode: '0', data: { items: feedback, total: feedback.length } } }));
-    await page.route('**/api/feedback/my/*', (route) => route.fulfill({ json: { rscode: '0', data: feedback[0] } }));
+    await page.route('**/api/feedback/my*', (route) => route.fulfill({ json: { code: 0, data: { items: feedback, total: feedback.length } } }));
+    await page.route('**/api/feedback/my/*', (route) => route.fulfill({ json: { code: 0, data: feedback[0] } }));
     fs.mkdirSync(output, { recursive: true });
     for (const [route, action, dialogName] of [
       ['mcp/index', '输入参数并调用 fixture_tool', 'fixture_tool'],

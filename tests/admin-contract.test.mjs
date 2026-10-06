@@ -14,7 +14,18 @@ test('管理员所有分页和路径保留长ID，数字ID拒绝；条件平铺�
  assert.throws(()=>readPage({items:[{id:123}],total:1}),/ID/)
  assert.equal(queryPath('/query',{keyword:'a&b',page:1,empty:''}),'/query?keyword=a%26b&page=1')
 })
-test('管理分页兼容后端Long字符串总数，空页有效且长ID保持原样', () => {
+test('管理分页读取数字总数，零和末页有效且长ID保持原样', () => {
+ const page = {items:[{id}],total:21}
+ assert.deepEqual(readPage(page), page)
+ assert.equal(page.total, 21)
+ assert.deepEqual(readPage({items:[],total:0}), {items:[],total:0})
+ assert.deepEqual(readPage({items:[{dictCode:id}],total:1}, 'dictCode'), {items:[{dictCode:id}],total:1})
+ assert.equal(readPage({items:[],total:2147483648}).total, 2147483648)
+ for (const total of [null, undefined, -1, 1.5, NaN, Infinity, 9007199254740992]) {
+  assert.throws(() => readPage({items:[],total}), /列表数据异常/)
+ }
+})
+test('管理分页读取边界暂时兼容未升级服务端的字符串总数', () => {
  const page = {items:[{id}],total:'21'}
  assert.deepEqual(readPage(page), {items:[{id}],total:21})
  assert.equal(page.total, '21')

@@ -12,9 +12,9 @@ async function setup(viewport,theme='light'){
  if(path==='/api/timeTrackerCategory/list')data=[state.category]
  if(path==='/api/menu/admin/tree')data=[state.menu]
  if(path==='/api/menu/admin/role-options')data=['admin','user']
- if((path==='/api/timeTrackerCategory'||path==='/api/menu/admin/'+id)&&method==='PUT'){const body=req.postDataJSON();state.writes.push({path,method,body});if(state.fail)return route.fulfill({json:{rscode:'1',result:'模拟保存失败'}});if(path.includes('timeTrackerCategory'))state.category={...state.category,...body};else state.menu={...state.menu,...body};data=true}
- if(state.status!==200&&['/api/menu/admin/tree','/api/timeTrackerCategory/list'].includes(path))return route.fulfill({status:state.status,json:{rscode:'1',result:state.status===403?'模拟权限拒绝':'登录已过期'}})
- return route.fulfill({json:{rscode:'0',data}})})
+ if((path==='/api/timeTrackerCategory'||path==='/api/menu/admin/'+id)&&method==='PUT'){const body=req.postDataJSON();state.writes.push({path,method,body});if(state.fail)return route.fulfill({json:{code:1,message:'模拟保存失败'}});if(path.includes('timeTrackerCategory'))state.category={...state.category,...body};else state.menu={...state.menu,...body};data=true}
+ if(state.status!==200&&['/api/menu/admin/tree','/api/timeTrackerCategory/list'].includes(path))return route.fulfill({status:state.status,json:{code:1,result:state.status===403?'模拟权限拒绝':'登录已过期'}})
+ return route.fulfill({json:{code:0,data}})})
  return {context,page,state}
 }
 try{

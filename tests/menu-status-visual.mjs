@@ -20,17 +20,17 @@ try {
   const state={fail:false,writes:[],row:{id,parentId:'0',name:'Sample',path:'/sample',component:'sample/index',sort:0,status:1,mobileStatus:0,roles:'admin',meta:{title:'模拟菜单',icon:'lucide:book'}}};
   if(platform==='mobile')await page.addInitScript(()=>localStorage.setItem('aio-life-mobile.access-token.v1','menu-status-fixture'));
   for(const [path,data] of Object.entries(fixtures)){
-   const handler=route=>route.fulfill({json:{rscode:'0',data}});
+   const handler=route=>route.fulfill({json:{code:0,data}});
    await page.route(origin+'/api'+path,handler);await page.route(origin+'/api'+path+'?*',handler);
   }
-  await page.route(origin+'/api/menu/admin/tree',route=>route.fulfill({json:{rscode:'0',data:[state.row]}}));
+  await page.route(origin+'/api/menu/admin/tree',route=>route.fulfill({json:{code:0,data:[state.row]}}));
   for(const field of ['status','mobile-status'])await page.route(origin+'/api/menu/admin/'+id+'/'+field,async route=>{
    const body=route.request().postDataJSON();state.writes.push({path:field,body});
-   if(state.fail)return route.fulfill({json:{rscode:'1',result:'模拟切换失败'}});
+   if(state.fail)return route.fulfill({json:{code:1,message:'模拟切换失败'}});
    state.row[field==='status'?'status':'mobileStatus']=body.status;
-   return route.fulfill({json:{rscode:'0',data:state.row}});
+   return route.fulfill({json:{code:0,data:state.row}});
   });
-  await page.route(origin+'/api/menu/admin/'+id,async route=>{ const body=route.request().postDataJSON(); state.writes.push({path:'edit',body}); state.row={...state.row,...body}; return route.fulfill({json:{rscode:'0',data:state.row}}); });
+  await page.route(origin+'/api/menu/admin/'+id,async route=>{ const body=route.request().postDataJSON(); state.writes.push({path:'edit',body}); state.row={...state.row,...body}; return route.fulfill({json:{code:0,data:state.row}}); });
   await page.goto(origin+(platform==='web'?'/auth/login':'/#/pages/admin/index?kind=menus'));
   if(platform==='web'){
    await page.locator('input:not([type="password"])').first().fill('fixture');

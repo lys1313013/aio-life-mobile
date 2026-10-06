@@ -16,13 +16,13 @@ const records = [
 async function prepare(page) {
   const state = { members: records.map(row => ({ ...row })), reads: 0, fail: false, writes: [] };
   await page.addInitScript(() => localStorage.setItem('aio-life-mobile.access-token.v1', 'membership-filter-fixture'));
-  const fulfill = (route, data) => route.fulfill({ json: { rscode: '0', data } });
+  const fulfill = (route, data) => route.fulfill({ json: { code: 0, data } });
   await page.route('**/api/auth/secondary-lock/menus', route => fulfill(route, []));
   await page.route('**/api/quick-nav/candidates?client=mobile', route => fulfill(route, [{ menuId: 'member', path: '/membership', title: '订阅' }]));
   await page.route('**/api/menu/preferences?client=mobile', route => fulfill(route, { menus: [{ id: 'member', title: '订阅', children: [] }], hiddenMenuIds: [] }));
   await page.route('**/api/membership/list', route => {
     state.reads++;
-    return state.fail ? route.fulfill({ json: { rscode: '1', result: '模拟会员加载失败' } }) : fulfill(route, state.members);
+    return state.fail ? route.fulfill({ json: { code: 1, message: '模拟会员加载失败' } }) : fulfill(route, state.members);
   });
   await page.route('**/api/membership/stats', route => fulfill(route, { activeCount: 3, expiringCount: 1, expiredCount: 3, expiringThisMonthCount: 1, monthlyAmount: 120 }));
   await page.route('**/api/membership/providers', route => fulfill(route, []));

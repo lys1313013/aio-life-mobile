@@ -17,17 +17,17 @@ async function setup(page) {
     const path = new URL(route.request().url()).pathname;
     if (path === '/api/user/info') {
       state.profiles++;
-      return route.fulfill({ json: { rscode: '0', data: { id: '1', nickname: '模拟用户' } } });
+      return route.fulfill({ json: { code: 0, data: { id: '1', nickname: '模拟用户' } } });
     }
     // 导航权限检查先完成；延迟门只控制本用例要测量的卡片请求。
-    if (path === '/api/auth/secondary-lock/menus') return route.fulfill({ json: { rscode: '0', data: [] } });
+    if (path === '/api/auth/secondary-lock/menus') return route.fulfill({ json: { code: 0, data: [] } });
     // 概览先完成，让绑定的 GitHub 卡片也进入 loading 后再测量。
     if (path !== '/api/home/cards' && path !== '/api/dashboard/tasks' && !path.startsWith('/api/dashboard/card/')) await state.pending.promise;
-    if (path === '/api/quick-nav/my' && state.failLinks) return route.fulfill({ json: { rscode: '1', result: '模拟加载失败' } });
+    if (path === '/api/quick-nav/my' && state.failLinks) return route.fulfill({ json: { code: 1, message: '模拟加载失败' } });
     let data = dashboardFixture(path) ?? [];
     if (path === '/api/taskDetails/watched') data = state.watched;
     if (state.empty && ['/api/quick-nav/my', '/api/thought/dashboard'].includes(path)) data = [];
-    await route.fulfill({ json: { rscode: '0', data } });
+    await route.fulfill({ json: { code: 0, data } });
   });
   return state;
 }

@@ -60,7 +60,7 @@ test('实际 uni.request 边界执行筛选且不修改原对象', async () => {
   const { request } = await import('data:text/javascript;base64,' + Buffer.from(apiCode).toString('base64'))
   const previous = globalThis.uni
   let sent
-  globalThis.uni = { request(options) { sent = options; options.success({statusCode: 200, data: {rscode:'0', data: {items:[],total:0}}}) } }
+  globalThis.uni = { request(options) { sent = options; options.success({statusCode: 200, data: {code:0, data: {items:[],total:0}}}) } }
   try {
     const row = {id:'9007199254740993',content:'任务',userId:'11',isDeleted:1}
     const original = structuredClone(row)

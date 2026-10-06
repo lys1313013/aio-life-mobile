@@ -15,13 +15,13 @@ async function setup(page) {
     if (method !== 'GET' && path !== '/api/auth/login') {
       const body = request.postData() ? request.postDataJSON() : null
       state.writes.push({ path, method, body })
-      if (state.failSave) return route.fulfill({ json: { rscode: '1', result: '模拟保存失败' } })
+      if (state.failSave) return route.fulfill({ json: { code: 1, message: '模拟保存失败' } })
       if (path === '/api/goals') { data = { ...body }; Object.assign(state.goals.find(g => g.id === body.id), body) }
       else if (path === '/api/taskDetails' && method === 'PUT') { Object.assign(state.details[0], body); data = true }
       else if (path.startsWith('/api/taskDetails/star/')) { state.details[0].isStarred = 1; data = true }
       else data = true
     }
-    await route.fulfill({ json: { rscode: '0', data: data === undefined ? [] : data } })
+    await route.fulfill({ json: { code: 0, data: data === undefined ? [] : data } })
   })
   await page.goto('/')
   await page.locator('[aria-label="账号"] input').fill('fixture')

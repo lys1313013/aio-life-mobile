@@ -14,7 +14,7 @@ async function setup(page) {
     if (path === '/api/users') {
       state.writes.push({ path, method, data: route.request().postDataJSON() });
       if (state.delay) await new Promise(resolve => setTimeout(resolve, state.delay));
-      if (state.failSave) return route.fulfill({ json: { rscode: '1', result: '保存失败，请重试' } });
+      if (state.failSave) return route.fulfill({ json: { code: 1, message: '保存失败，请重试' } });
       Object.assign(state.profile, route.request().postDataJSON()); state.profile.avatarUrl = state.profile.avatarFileId ? '/avatar-fixture.png' : ''; data = null;
     }
     if (path === '/api/userbinds/list') {
@@ -24,7 +24,7 @@ async function setup(page) {
     if (path === '/api/userbinds') {
       const body = route.request().postDataJSON(); state.writes.push({ path, method, data: body });
       if (state.delay) await new Promise(resolve => setTimeout(resolve, state.delay));
-      if (state.failSave) return route.fulfill({ json: { rscode: '1', result: '保存失败，请重试' } });
+      if (state.failSave) return route.fulfill({ json: { code: 1, message: '保存失败，请重试' } });
       if (method === 'POST') state.binds.push({ ...body, id: '9223372036854775806' });
       else Object.assign(state.binds.find(item => item.id === body.id), body);
       data = true;
@@ -36,7 +36,7 @@ async function setup(page) {
     }
     if (path === '/api/userbinds/douban/verify') data = { nickname: '模拟豆友' };
     if (data === undefined) return route.fulfill({ status: 404, body: path });
-    return route.fulfill({ json: { rscode: '0', data } });
+    return route.fulfill({ json: { code: 0, data } });
   });
   await page.goto('/');
   await page.locator('[aria-label="账号"] input').fill('fixture');
@@ -184,7 +184,7 @@ test('头像通过统一上传接口保存，携带鉴权且不改写邮箱', as
     expect(route.request().headers().authorization).toBe('Bearer profile-fixture');
     expect(route.request().postDataBuffer().toString()).toContain('name="bizType"\r\n\r\navatar');
     uploaded = true;
-    await route.fulfill({ json: { rscode: '0', data: { id: '0123456789abcdef0123456789abcdef', fileUrl: '/avatar-fixture.png' } } });
+    await route.fulfill({ json: { code: 0, data: { id: '0123456789abcdef0123456789abcdef', fileUrl: '/avatar-fixture.png' } } });
   });
   await page.getByRole('button', { name: '基本设置', exact: true }).click();
   await expect(page.locator('[aria-label="昵称"] input')).toHaveValue('测试用户');

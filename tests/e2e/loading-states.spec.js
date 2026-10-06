@@ -26,7 +26,7 @@ async function fixture(page, hold = {}) {
     if (path === '/api/user/info') data = { id: '1', accountUsername: 'fixture', nickname: '模拟用户', roles: ['admin'] };
     if (path === '/api/userbinds/list') data = [{ platform: 'github', platformUsername: 'fixture', accessToken: 'fixture-token' }];
     if (path === '/api/github/recent-commits') data = Array.from({ length: 20 }, (_, n) => ({ id: String((Number(url.searchParams.get('page') || 1) - 1) * 20 + n), repo: 'fixture/mobile', message: '模拟提交 ' + n, date: '2026-10-02', actor: 'fixture' }));
-    await route.fulfill({ json: { rscode: '0', data } });
+    await route.fulfill({ json: { code: 0, data } });
   });
   await page.route('https://api.github.com/**', async route => {
     const url = new URL(route.request().url());
@@ -100,7 +100,7 @@ for (const width of [390, 768, 1440]) for (const theme of ['light', 'dark']) {
         message: `第${number}页模拟提交 ${n}：完善移动端分页及加载状态`,
         date: '2026-10-02', actor: 'fixture',
       }));
-      await route.fulfill({ json: { rscode: '0', data } });
+      await route.fulfill({ json: { code: 0, data } });
     });
     await page.goto('/#/pages/coding/github');
     await expect(page.locator('.content-skeleton')).toHaveCount(0);
@@ -132,9 +132,9 @@ test('GitHub pagination failure retains commits and retries the failed page', as
   await page.route('**/api/github/recent-commits?**', async route => {
     const number = Number(new URL(route.request().url()).searchParams.get('page'));
     requests.push(number);
-    if (number === 2 && fail) return route.fulfill({ json: { rscode: '1', result: '模拟分页失败' } });
+    if (number === 2 && fail) return route.fulfill({ json: { code: 1, message: '模拟分页失败' } });
     const data = Array.from({ length: number === 1 ? 20 : 1 }, (_, n) => ({ id: `${number}-${n}`, repo: 'fixture/mobile', message: `分页${number}提交${n}`, date: '2026-10-02', actor: 'fixture' }));
-    await route.fulfill({ json: { rscode: '0', data } });
+    await route.fulfill({ json: { code: 0, data } });
   });
   await page.goto('/#/pages/coding/github');
   await expect(page.locator('.content-skeleton')).toHaveCount(0);
@@ -167,9 +167,9 @@ for (const width of [390, 768, 1440]) for (const theme of ['light', 'dark']) tes
     const pending = gate();
     await page.route('http://127.0.0.1:5180/api/**', async request => {
       const path = new URL(request.request().url()).pathname;
-      if (path === '/api/user/info' && !['profile/settings', 'profile/index'].includes(route)) return request.fulfill({ json: { rscode: '0', data: { id: '1', nickname: '模拟用户', roles: ['admin'] } } });
+      if (path === '/api/user/info' && !['profile/settings', 'profile/index'].includes(route)) return request.fulfill({ json: { code: 0, data: { id: '1', nickname: '模拟用户', roles: ['admin'] } } });
       await pending.promise;
-      await request.fulfill({ json: { rscode: '0', data: [] } });
+      await request.fulfill({ json: { code: 0, data: [] } });
     });
     await page.goto('/#/pages/' + route); await page.reload();
     await expect(page.locator(selector).first()).toBeVisible();
@@ -237,8 +237,8 @@ test('all asynchronous business pages expose loading placeholders', async ({ pag
     const pending = gate();
     await page.route('http://127.0.0.1:5180/api/**', async request => {
       const path = new URL(request.request().url()).pathname;
-      if (path === '/api/user/info') return request.fulfill({ json: { rscode: '0', data: { id: '1', nickname: '模拟用户', roles: ['admin'] } } });
-      await pending.promise; await request.fulfill({ json: { rscode: '0', data: [] } });
+      if (path === '/api/user/info') return request.fulfill({ json: { code: 0, data: { id: '1', nickname: '模拟用户', roles: ['admin'] } } });
+      await pending.promise; await request.fulfill({ json: { code: 0, data: [] } });
     });
     try {
       await page.goto('/#/pages/' + route); await page.reload();
@@ -320,7 +320,7 @@ for (const width of [390, 768, 1440]) test(`loading matches page grids and cover
   const pending = gate();
   await page.route('http://127.0.0.1:5180/api/**', async route => {
     if (new URL(route.request().url()).pathname !== '/api/user/info') await pending.promise;
-    await route.fulfill({ json: { rscode: '0', data: { id: '1', nickname: '模拟用户' } } });
+    await route.fulfill({ json: { code: 0, data: { id: '1', nickname: '模拟用户' } } });
   });
   const entries = [
     ['records/library?kind=read', '.library-card', '.library-poster', width < 768 ? 3 : width < 1200 ? 5 : 7, 4 / 3],

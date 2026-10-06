@@ -2,7 +2,7 @@ const {dashboardFixture}=require('./fixtures');
 const admin=[['users','/system/user','用户中心'],['menus','/system/menu','菜单管理'],['user-dict','/system/user-dict','用户字典管理'],['feedback','/system/feedback','反馈管理'],['config','/system/config','系统配置'],['operation','/system/operation-log','操作日志'],['access','/system/access-log','访问日志'],['dict-types','/config-management/sysDictType','字典类型'],['dict-data','/config-management/sysDictData','字典数据']];
 async function setup(page, populated=false){
 const state={writes:[],fail:false,failPath:'',status:200};
-await page.route('**/*',async route=>{const req=route.request(),u=new URL(req.url()),p=u.pathname;if(u.origin!=='http://127.0.0.1:5180')return route.fulfill({body:'<!doctype html><html><body>模拟第三方测试页</body></html>',contentType:'text/html; charset=utf-8'});if(!p.startsWith('/api/'))return route.continue();if(state.failPath===p)return route.fulfill({status:state.status,json:{rscode:'1',result:'模拟加载失败'}});let data=dashboardFixture(p);if(req.method()!=='GET')state.writes.push({path:p,body:req.postData()});
+await page.route('**/*',async route=>{const req=route.request(),u=new URL(req.url()),p=u.pathname;if(u.origin!=='http://127.0.0.1:5180')return route.fulfill({body:'<!doctype html><html><body>模拟第三方测试页</body></html>',contentType:'text/html; charset=utf-8'});if(!p.startsWith('/api/'))return route.continue();if(state.failPath===p)return route.fulfill({status:state.status,json:{code:1,message:'模拟加载失败'}});let data=dashboardFixture(p);if(req.method()!=='GET')state.writes.push({path:p,body:req.postData()});
 if(p==='/api/auth/login')data={accessToken:'platform-fixture'};
 if(p==='/api/user/info')data={id:'9223372036854775807',username:'fixture',nickname:'页面检查用户',email:'fixture@example.test',roles:['admin']};
 if(p==='/api/menu/all')data=[...admin.map(([id,path,title])=>({id,path,name:id,meta:{title}})),{id:'categoryadmin',path:'/time/category-admin',name:'categoryadmin',meta:{title:'管理分类'}}];
@@ -45,8 +45,8 @@ if(p==='/api/cbti/result/'+id)data={personality,dimensions:Array.from({length:15
 if(p==='/api/mbti/results')data=[{id,mbtiType:'INTJ',createTime:'2026-10-01'}];
 if(p==='/api/mbti/result/'+id)data={id,mbtiType:'INTJ',predictions:{INTJ:80},resultsPage:'https://devil.ai/mock-result'};
 }
-if(state.fail&&req.method()!=='GET')return route.fulfill({json:{rscode:'1',result:'模拟保存失败'}});
-await route.fulfill({json:{rscode:'0',data:data??[]}});});
+if(state.fail&&req.method()!=='GET')return route.fulfill({json:{code:1,message:'模拟保存失败'}});
+await route.fulfill({json:{code:0,data:data??[]}});});
 await page.goto('/');await page.locator('[aria-label="账号"] input').fill('fixture');await page.locator('[aria-label="密码"] input').fill('fixture-password');await page.getByRole('button',{name:'登录',exact:true}).click();await page.locator('.dashboard-scroll').waitFor();return state;
 }
 module.exports={setup,admin};

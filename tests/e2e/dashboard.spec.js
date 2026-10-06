@@ -7,7 +7,7 @@ async function setup(page, override) {
     let data = dashboardFixture(path);
     if (path === '/api/auth/login') data = { accessToken: 'dashboard-fixture' };
     if (path === '/api/user/info') data = { id: '1', nickname: '测试用户' };
-    await route.fulfill({ json: { rscode: '0', data } });
+    await route.fulfill({ json: { code: 0, data } });
   });
   await page.goto('/');
   await page.locator('[aria-label="账号"] input').fill('test');
@@ -75,7 +75,7 @@ test('空账号不伪造统计和记录，不请求未绑定 GitHub，手机可�
   await setup(page, async (route, path) => {
     if (path === '/api/github/recent-commits') github++;
     const empty = { '/api/dashboard/tasks': [], '/api/quick-nav/my': [], '/api/thought/dashboard': [], '/api/taskDetails/watched': [], '/api/exerciseRecord/dashboardSummary': { days: [] }, '/api/timeRecord/query': [] };
-    if (path in empty) { await route.fulfill({ json: { rscode: '0', data: empty[path] } }); return true; }
+    if (path in empty) { await route.fulfill({ json: { code: 0, data: empty[path] } }); return true; }
   });
   await expect(page.getByText('今日暂无记录')).toBeVisible();
   await expect(page.getByText('暂无快捷方式')).toBeVisible();
@@ -93,9 +93,9 @@ test('运动分页失败保留已有记录，重试使用同一游标', async ({
     if (cursor) {
       expect(cursor).toBe('2026-09-28');
       if (++next === 1) { await route.abort(); return true; }
-      await route.fulfill({ json: { rscode: '0', data: { days: [{ date: '2026-09-27', items: [{ exerciseTypeId: '2', typeLabel: '骑行', count: 15 }] }], hasMore: false } } }); return true;
+      await route.fulfill({ json: { code: 0, data: { days: [{ date: '2026-09-27', items: [{ exerciseTypeId: '2', typeLabel: '骑行', count: 15 }] }], hasMore: false } } }); return true;
     }
-    await route.fulfill({ json: { rscode: '0', data: { ...dashboardFixture(path), hasMore: true, lastDate: '2026-09-28' } } }); return true;
+    await route.fulfill({ json: { code: 0, data: { ...dashboardFixture(path), hasMore: true, lastDate: '2026-09-28' } } }); return true;
   });
   await swipeCardUp(page, '.exercise-scroll');
   await expect(page.locator('.exercise-main').filter({ hasText: /^跑步\s*5$/ })).toBeAttached();
@@ -113,10 +113,10 @@ test('首页关注待办失败可重试，完成只提交长ID与状态',async({
     if(path==='/api/taskDetails/watched')data=[detail];
     if(path==='/api/taskDetails'&&route.request().method()==='PUT'){
       const payload=route.request().postDataJSON();writes.push(payload);
-      if(fail)return route.fulfill({json:{rscode:'1',result:'模拟更新失败'}});
+      if(fail)return route.fulfill({json:{code:1,message:'模拟更新失败'}});
       detail.isCompleted=payload.isCompleted;data=true;
     }
-    return route.fulfill({json:{rscode:'0',data:data??[]}});
+    return route.fulfill({json:{code:0,data:data??[]}});
   });
   await page.goto('/');await page.locator('[aria-label="账号"] input').fill('fixture');await page.locator('[aria-label="密码"] input').fill('fixture-password');await page.getByRole('button',{name:'登录',exact:true}).click();
   await page.getByRole('button',{name:'完成待办',exact:true}).click();await expect(page.getByRole('button',{name:'重试待办：模拟更新失败',exact:true})).toBeVisible();
@@ -139,10 +139,10 @@ for (const width of [390, 768, 1440]) {
     await setup(page, async (route, path) => {
       if (path !== '/api/exerciseRecord/dashboardSummary') return false;
       const cursor = new URL(route.request().url()).searchParams.get('lastDate');
-      if (!cursor) { await route.fulfill({json:{rscode:'0',data:{days:initial,hasMore:true,lastDate:'2026-09-24'}}}); return true; }
+      if (!cursor) { await route.fulfill({json:{code:0,data:{days:initial,hasMore:true,lastDate:'2026-09-24'}}}); return true; }
       expect(cursor).toBe('2026-09-24'); next++;
       await new Promise(resolve => { finish = resolve; });
-      await route.fulfill({json:{rscode:'0',data:{days:[{date:'2026-09-23',items:[{exerciseTypeId:'2',typeLabel:'深蹲',count:50,deltaCount:-10}]}],hasMore:false}}}); return true;
+      await route.fulfill({json:{code:0,data:{days:[{date:'2026-09-23',items:[{exerciseTypeId:'2',typeLabel:'深蹲',count:50,deltaCount:-10}]}],hasMore:false}}}); return true;
     });
     const scroll = page.locator('.exercise-scroll');
     await expect(scroll).toBeVisible();
@@ -174,7 +174,7 @@ test('最近提交在卡片内部上滑加载下一页', async ({ page }) => {
   await setup(page, async (route,path)=>{
     if(path!=='/api/github/recent-commits')return false;
     const current=Number(new URL(route.request().url()).searchParams.get('page'));pages.push(current);
-    await route.fulfill({json:{rscode:'0',data:Array.from({length:current===1?10:1},(_,i)=>({id:`${current}-${i}`,repo:'fixture-repo',message:`模拟提交 ${current}-${i}`,date:'2026-09-30T12:00:00'}))}});return true;
+    await route.fulfill({json:{code:0,data:Array.from({length:current===1?10:1},(_,i)=>({id:`${current}-${i}`,repo:'fixture-repo',message:`模拟提交 ${current}-${i}`,date:'2026-09-30T12:00:00'}))}});return true;
   });
   await expect(page.locator('.commits-scroll')).toBeAttached();
   for(let i=0;i<4&&pages.length===1;i++)await swipeCardUp(page,'.commits-scroll');

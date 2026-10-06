@@ -58,7 +58,7 @@ for (const width of [390, 768, 1440]) {
           transactionStatus: kind === 'expense' ? '模拟已完成' : '',
         }));
         await page.route(`**/api/${kind}/query**`, (route) => route.fulfill({
-          json: { rscode: '0', data: { items: records, total: records.length } },
+          json: { code: 0, data: { items: records, total: records.length } },
         }));
         await page.getByRole('button', { name: '筛选', exact: true }).click();
         await expect(page.locator('.ledger-row')).toHaveCount(3);

@@ -14,8 +14,8 @@ for (const width of [390, 768, 1280]) {
         dictType: 'fixture', dictLabel: `模拟字典 ${i + 1}`,
         dictSort: i, isReadonly: 'N',
       }));
-      await page.route('**/api/goals?*', route => route.fulfill({ json: { rscode: '0', data: rows } }));
-      await page.route('**/api/userDictData/admin/query?*', route => route.fulfill({ json: { rscode: '0', data: { items: rows.map(row => ({ ...row, status: '0' })), total: rows.length } } }));
+      await page.route('**/api/goals?*', route => route.fulfill({ json: { code: 0, data: rows } }));
+      await page.route('**/api/userDictData/admin/query?*', route => route.fulfill({ json: { code: 0, data: { items: rows.map(row => ({ ...row, status: '0' })), total: rows.length } } }));
       // 分别覆盖导航在 MobilePage 内部和外部的两种用法。
       for (const [route, card] of [
         ['/pages/tasks/goals', '.record-card'],

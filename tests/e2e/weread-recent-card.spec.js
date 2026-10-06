@@ -20,16 +20,16 @@ async function setup(page, { connected = true, locked = false, compare = false }
     '/weread/connection': { connected: false },
   };
   for (const [path, data] of Object.entries(fixtures)) {
-    const respond = route => route.fulfill({ json: { rscode: '0', data } });
+    const respond = route => route.fulfill({ json: { code: 0, data } });
     await page.route('**/api' + path, respond); await page.route('**/api' + path + '?*', respond);
   }
   const state = { books, calls: 0, fail: false, moreFail: false, paginated: false, cursors: [], release: null, gate: null, connected, cards, writes: [] };
-  await page.route('**/api/home/cards', route => route.fulfill({ json: { rscode: '0', data: state.cards } }));
+  await page.route('**/api/home/cards', route => route.fulfill({ json: { code: 0, data: state.cards } }));
   await page.route('**/api/home/cards/order', route => {
     const payload = route.request().postDataJSON(); state.writes.push(payload);
     state.cards = state.cards.map(card => card.group === payload.group ? { ...card, sortOrder: payload.keys.indexOf(card.cardKey) } : card)
       .sort((a, b) => a.sortOrder - b.sortOrder);
-    return route.fulfill({ json: { rscode: '0', data: state.cards } });
+    return route.fulfill({ json: { code: 0, data: state.cards } });
   });
   state.delay = () => { state.gate = new Promise(resolve => { state.release = resolve; }); };
   state.delay();
@@ -40,7 +40,7 @@ async function setup(page, { connected = true, locked = false, compare = false }
     const start = cursor ? Number(cursor.split(':')[1]) : 0;
     const rows = state.paginated ? (previousBooks || state.books).slice(start, start + 6) : state.books;
     const nextCursor = state.paginated && start + 6 < state.books.length ? '200:' + (start + 6) : null;
-    return route.fulfill({ json: state.fail || (cursor && state.moreFail) ? { rscode: '1', result: '模拟失败' } : { rscode: '0', data: { connected: state.connected, books: rows, nextCursor } } });
+    return route.fulfill({ json: state.fail || (cursor && state.moreFail) ? { code: 1, message: '模拟失败' } : { code: 0, data: { connected: state.connected, books: rows, nextCursor } } });
   };
   await page.route('**/api/weread/recent', recent);
   await page.route('**/api/weread/recent?*', recent);
@@ -111,7 +111,7 @@ test('未绑定隐藏卡片，菜单锁不请求微信读书', async ({ page }) 
   await expect.poll(() => state.calls).toBe(1);
   await expect(page.getByLabel('微信读书首页卡片', { exact: true })).toHaveCount(0);
   state.connected = true;
-  await page.route('**/api/auth/secondary-lock/menus', route => route.fulfill({ json: { rscode: '0', data: ['weread-menu'] } }));
+  await page.route('**/api/auth/secondary-lock/menus', route => route.fulfill({ json: { code: 0, data: ['weread-menu'] } }));
   const previous = state.calls;
   await page.reload(); await expect(page.getByLabel('微信读书首页卡片', { exact: true })).toContainText('点击解锁');
   expect(state.calls).toBe(previous);

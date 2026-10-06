@@ -93,7 +93,7 @@ test('拒绝缺少 Token、数字 ID、未知状态及无效票据期限', () =>
 });
 
 test('409 和 429 展示结构化业务错误，网关原文仍不泄漏', () => {
-  assert.throws(() => readResponse(409, { rscode: '100400', result: '绑定冲突' }), /绑定冲突/);
-  assert.throws(() => readResponse(429, { rscode: '100400', result: '操作过于频繁' }), /操作过于频繁/);
-  assert.throws(() => readResponse(502, { rscode: '113000', result: 'private upstream' }), /服务暂时不可用/);
+  assert.throws(() => readResponse(409, { code: 100400, message: '绑定冲突' }), /绑定冲突/);
+  assert.throws(() => readResponse(429, { code: 100400, message: '操作过于频繁' }), /操作过于频繁/);
+  assert.throws(() => readResponse(502, { code: 113000, message: 'private upstream' }), /服务暂时不可用/);
 });

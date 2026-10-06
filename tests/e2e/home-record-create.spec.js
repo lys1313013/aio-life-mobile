@@ -13,12 +13,12 @@ async function setup(page) {
     if (path === '/api/user/info') data = { id: '1', nickname: '模拟用户' };
     if (path === '/api/taskDetails/watched') data = [state.task];
     if (path === '/api/thought/query') {
-      if (state.failThought) return route.fulfill({ json: { rscode: '1', result: '模拟闪念加载失败' } });
-      data = { items: [state.thought], total: '1' };
+      if (state.failThought) return route.fulfill({ json: { code: 1, message: '模拟闪念加载失败' } });
+      data = { items: [state.thought], total: 1 };
     }
     if (path === '/api/userDictType/getByDictType') {
       if (state.holdTypes) await state.holdTypes;
-      if (state.failTypes) return route.fulfill({ json: { rscode: '1', result: '模拟类型加载失败' } });
+      if (state.failTypes) return route.fulfill({ json: { code: 1, message: '模拟类型加载失败' } });
       data = { dictDetailList: [{ id: '9223372036854775807', dictLabel: '跑步' }] };
     }
     if ((request.method() === 'POST' && ['/api/thought', '/api/exerciseRecord'].includes(path)) ||
@@ -26,10 +26,10 @@ async function setup(page) {
       (request.method() === 'POST' && path.startsWith('/api/taskDetails/unstar/'))) {
       state.writes.push({ path, body: request.postDataJSON() });
       if (state.holdSave) await state.holdSave;
-      if (state.failSave) return route.fulfill({ json: { rscode: '1', result: '模拟保存失败' } });
+      if (state.failSave) return route.fulfill({ json: { code: 1, message: '模拟保存失败' } });
       data = true;
     }
-    await route.fulfill({ json: { rscode: '0', data } });
+    await route.fulfill({ json: { code: 0, data } });
   });
   await page.goto('/');
   await page.locator('[aria-label="账号"] input').fill('fixture');

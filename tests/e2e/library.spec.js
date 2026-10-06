@@ -27,7 +27,7 @@ async function library(page, kind) {
     (route) =>
       route.fulfill({
         json: {
-          rscode: '0',
+          code: 0,
           data: { items: state.movies, total: state.movies.length },
         },
       }),

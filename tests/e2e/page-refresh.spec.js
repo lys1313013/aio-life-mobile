@@ -10,7 +10,7 @@ async function fixtures(page) {
     const handler = async route => {
       calls[path] = (calls[path] || 0) + 1;
       const data = typeof response === 'function' ? response(new URL(route.request().url())) : response;
-      await route.fulfill({ json: { rscode: '0', data } });
+      await route.fulfill({ json: { code: 0, data } });
     };
     await page.route('**/api' + path, handler);
     await page.route('**/api' + path + '?*', handler);

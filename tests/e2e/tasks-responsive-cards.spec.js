@@ -12,8 +12,8 @@ for (const width of [390, 768, 1440]) for (const theme of ['light', 'dark']) {
       { id: '102', columnId: '8', content: '预约年度体检', detail: '确认时间与检查项目。', unCompletedCount: 0, dueDate: '2026-10-20 10:00:00' },
       { id: '103', columnId: '8', content: '整理读书笔记与本周练习计划', detail: '将新学到的方法整理成清单，周末回顾实践进展。', unCompletedCount: 2 },
     ];
-    await page.route('**/api/tasks?*', route => route.fulfill({ json: { rscode: '0', data: { items: rows, total: rows.length } } }));
-    await page.route('**/api/taskDetails?*', route => route.fulfill({ json: { rscode: '0', data: [
+    await page.route('**/api/tasks?*', route => route.fulfill({ json: { code: 0, data: { items: rows, total: rows.length } } }));
+    await page.route('**/api/taskDetails?*', route => route.fulfill({ json: { code: 0, data: [
       { id: '201', taskId: '101', content: '整理完成的项目记录并补充关键指标与复盘结论', priority: 1, isCompleted: 0, isStarred: 1, startTime: '2026-10-10 09:00:00', endTime: '2026-10-15 18:00:00' },
       { id: '202', taskId: '101', content: '确认团队分享时间', priority: 20, isCompleted: 1, isStarred: 0 },
       { id: '203', taskId: '101', content: '准备分享材料和下一季度行动清单', priority: 10, isCompleted: 0, isStarred: 0 },

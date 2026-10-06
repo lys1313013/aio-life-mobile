@@ -239,7 +239,7 @@ Web 与小程序按官方机制仍使用 VDOM 运行；它们构建成功只能�
 | GET | `/exerciseRecord/dashboardSummary?limit=7&lastDate=...` | 运动摘要及趋势，日期游标分页 |
 | GET | `/github/recent-commits?perPage=10&page=1` | 绑定账号的最近提交 |
 
-成功为 `{ rscode: "0", data: ... }`，业务错误读取 `result`。鉴权使用 `Authorization: Bearer <token>`；不依赖跨端 Cookie，也不尝试不存在的 refresh 接口。用户资料仅保留在内存，密码不会持久化。
+成功为 `{ code: 0, data: ... }`，业务错误读取 `message`。鉴权使用 `Authorization: Bearer <token>`；不依赖跨端 Cookie，也不尝试不存在的 refresh 接口。用户资料仅保留在内存，密码不会持久化。
 
 ## 结构
 

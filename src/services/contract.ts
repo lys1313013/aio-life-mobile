@@ -6,23 +6,23 @@ export function readResponse(statusCode, body) {
     throw error
   }
   if (statusCode < 200 || statusCode >= 300) {
-    if ([400, 403, 409, 429].includes(statusCode) && body != null && typeof body.rscode === 'string'
-      && body.rscode !== '0' && typeof body.result === 'string' && body.result.length > 0) {
-      throw new Error(body.result)
+    if ([400, 403, 409, 429].includes(statusCode) && body != null && Number.isInteger(body.code)
+      && body.code !== 0 && typeof body.message === 'string' && body.message.length > 0) {
+      throw new Error(body.message)
     }
     throw new Error(statusCode >= 500 ? '服务暂时不可用，请稍后重试' : '请求失败，请稍后重试')
   }
-  if (body == null || typeof body !== 'object' || typeof body.rscode !== 'string') {
+  if (body == null || typeof body !== 'object' || !Number.isInteger(body.code)) {
     throw new Error('服务返回异常，请稍后重试')
   }
-  if (body.rscode !== '0') {
-    if (body.rscode === '2001' && typeof body.data?.menuPath === 'string') {
+  if (body.code !== 0) {
+    if (body.code === 2001 && typeof body.data?.menuPath === 'string') {
       const error = new Error('需要二级密码验证')
       error.name = 'SecondaryLockRequiredError'
       error.menuPath = body.data.menuPath
       throw error
     }
-    throw new Error(typeof body.result === 'string' && body.result.length > 0 ? body.result : '请求未完成，请重试')
+    throw new Error(typeof body.message === 'string' && body.message.length > 0 ? body.message : '请求未完成，请重试')
   }
   return body.data
 }

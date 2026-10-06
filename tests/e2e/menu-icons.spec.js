@@ -34,7 +34,7 @@ for (const width of [390, 768, 1440]) for (const theme of ['light', 'dark']) {
       if (path === '/api/quick-nav/my') data = [];
       if (path === '/api/quick-nav/candidates') data = entries;
       if (path === '/api/menu/preferences') data = { menus: [{ id: 'icons', title: '图标检查', children: entries.map(item => ({ id: item.menuId, title: item.title, children: [] })) }], hiddenMenuIds: [] };
-      await route.fulfill({ json: { rscode: '0', data } });
+      await route.fulfill({ json: { code: 0, data } });
     });
     await page.goto('/');
     await page.locator('[aria-label="账号"] input').fill('fixture');

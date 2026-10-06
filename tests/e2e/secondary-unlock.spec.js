@@ -13,23 +13,23 @@ async function setup(page, initial = {}) {
     if (path === '/api/auth/secondary-lock/menus') {
       state.checks++;
       if (state.delayCheck) await state.delayCheck;
-      if (state.failCheck) return route.fulfill({ json: { rscode: '1', result: '菜单锁检查失败' } });
+      if (state.failCheck) return route.fulfill({ json: { code: 1, message: '菜单锁检查失败' } });
       data = state.ids;
     }
     if (path === '/api/menu/all') { state.trees++; data = [{ path: '/my-hub', meta: { menuId: lockedId }, children: [{ path: '/my-hub/memo', meta: { menuId: 'memo' } }] }]; }
     if (path === '/api/auth/secondary-verify') {
       const body = route.request().postDataJSON();
       state.verified.push(body);
-      if (body.password !== 'correct-fixture') return route.fulfill({ json: { rscode: '1', result: '二级密码错误' } });
+      if (body.password !== 'correct-fixture') return route.fulfill({ json: { code: 1, message: '二级密码错误' } });
       state.unlocked = true;
       data = { menuPath: body.menuPath };
     }
     if (path.startsWith('/api/memo/')) {
       state.reads++;
-      if (state.requireUnlock && !state.unlocked) return route.fulfill({ json: { rscode: '2001', result: '需要二级密码验证', data: { menuPath: '/my-hub/memo' } } });
+      if (state.requireUnlock && !state.unlocked) return route.fulfill({ json: { code: 2001, message: '需要二级密码验证', data: { menuPath: '/my-hub/memo' } } });
       data = { items: [], total: 0 };
     }
-    await route.fulfill({ json: { rscode: '0', data } });
+    await route.fulfill({ json: { code: 0, data } });
   });
   await page.goto('/');
   await page.locator('[aria-label="账号"] input').fill('fixture');
@@ -102,7 +102,8 @@ test('我的入口不重复请求菜单锁，检查服务失败也可进入个�
 
 test('预取失败可进入首页，点击重试失败不进入菜单，迟到检查不能覆盖新导航', async ({ page }) => {
   const state = await setup(page, { failCheck: true });
-  await expect.poll(() => state.checks).toBe(1);
+  // 首屏预取失败后，进入全部页会重试一次；成功缓存场景不重复检查。
+  await expect.poll(() => state.checks).toBe(2);
   await page.getByRole('button', { name: '笔记', exact: true }).click();
   await expect(page.getByText('菜单锁检查失败', { exact: true })).toBeVisible();
   await expect(page).toHaveURL(/pages\/life\/index/);
@@ -110,17 +111,21 @@ test('预取失败可进入首页，点击重试失败不进入菜单，迟到�
   state.failCheck = false;
   let release;
   state.delayCheck = new Promise((resolve) => { release = resolve; });
-  await page.getByRole('button', { name: '笔记', exact: true }).click();
-  await expect(page.locator('.page-navigation [role="status"]')).toBeVisible();
-  await expect(page.locator('uni-loading')).toHaveCount(0);
-  await expect(page.getByText('检查菜单锁', { exact: true })).toHaveCount(0);
-  await page.locator('uni-tabbar').getByText('首页', { exact: true }).click();
-  const response = page.waitForResponse((result) => new URL(result.url()).pathname === '/api/auth/secondary-lock/menus');
-  release();
-  await response;
-  await expect(page.locator('.dashboard-scroll')).toBeVisible();
-  await expect(page.getByRole('dialog', { name: '解锁菜单', exact: true })).toHaveCount(0);
-  expect(state.reads).toBe(0);
+  try {
+    await page.getByRole('button', { name: '笔记', exact: true }).click();
+    await expect(page.locator('.page-navigation [role="status"]')).toBeVisible();
+    await expect(page.locator('uni-loading')).toHaveCount(0);
+    await expect(page.getByText('检查菜单锁', { exact: true })).toHaveCount(0);
+    await page.locator('uni-tabbar').getByText('首页', { exact: true }).click();
+    const response = page.waitForResponse((result) => new URL(result.url()).pathname === '/api/auth/secondary-lock/menus');
+    release();
+    await response;
+    await expect(page.locator('.dashboard-scroll')).toBeVisible();
+    await expect(page.getByRole('dialog', { name: '解锁菜单', exact: true })).toHaveCount(0);
+    expect(state.reads).toBe(0);
+  } finally {
+    release();
+  }
 });
 
 test('无锁结果缓存，重复进入不再检查；服务端2001仍触发解锁并使缓存失效', async ({ page }) => {

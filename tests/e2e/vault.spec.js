@@ -20,11 +20,11 @@ test('密码库兼容Web密文，编辑失败保留，提交密文，离页重�
    data=row;
    if(method==='PUT'){
     writes.push(route.request().postDataJSON());
-    if(fail)return route.fulfill({json:{rscode:'1',result:'保存失败，请重试'}});
+    if(fail)return route.fulfill({json:{code:1,message:'保存失败，请重试'}});
     row={...row,...writes.at(-1)};data=row;
    }
   }
-  await route.fulfill({json:{rscode:'0',data:data??[]}});
+  await route.fulfill({json:{code:0,data:data??[]}});
  });
  await page.goto('/');await page.locator('[aria-label="账号"] input').fill('fixture');await page.locator('[aria-label="密码"] input').fill('fixture-password');await page.getByRole('button',{name:'登录',exact:true}).click();await expect(page.locator('.dashboard-scroll')).toBeVisible();
  await page.goto('/#/pages/vault/index');

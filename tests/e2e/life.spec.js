@@ -77,7 +77,7 @@ async function setup(page, options = {}) {
         }
         data = state.saved;
       }
-      return route.fulfill({ json: { rscode: "0", data } });
+      return route.fulfill({ json: { code: 0, data } });
     },
   );
   await page.goto("/");
@@ -202,7 +202,7 @@ test("常用增删、排序、停用、保存失败恢复与首页同步", async
       ) {
         failSave = false;
         await route.fulfill({
-          json: { rscode: "123", result: "保存失败，请重试" },
+          json: { code: 123, message: "保存失败，请重试" },
         });
         return true;
       }
@@ -392,7 +392,7 @@ test("离页后的目录结果不能覆盖再次进入的新结果", async ({ pa
         await waiting;
         await route.fulfill({
           json: {
-            rscode: "0",
+            code: 0,
             data: [
               { menuId: "stale", title: "过期菜单", path: "/record/stale" },
             ],

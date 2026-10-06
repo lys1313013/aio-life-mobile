@@ -18,7 +18,7 @@ else if(path==='/api/cbti/results')data=cbtiRows
 else if(path==='/api/cbti/test'){submitted.push(body);cbtiRows=[{id:'9223372036854775807',personalityCode:'CODE',name:'模拟人格',similarity:88,createTime:'2026-10-01 10:00'}];data={personality,dimensions,similarity:88,matchDetails:[{code:'CODE',name:'模拟人格',similarity:88}]}}
 else if(path==='/api/auth/register'||path==='/api/auth/resetPassword'){registered.push({path,body});data=null}
 else if(path==='/api/auth/sendEmailCode'||path==='/api/auth/sendResetPasswordCode')data=null
-await route.fulfill({json:data===undefined?{rscode:'1',result:'无模拟接口 '+path}:{rscode:'0',data}})})}
+await route.fulfill({json:data===undefined?{code:1,message:'无模拟接口 '+path}:{code:0,data}})})}
 try{
 for(const viewport of [{width:390,height:844},{width:768,height:1024},{width:1440,height:1000}])for(const theme of ['light','dark']){
 const context=await browser.newContext({viewport});await context.addInitScript(({theme})=>{localStorage.setItem('aio-life-mobile.access-token.v1','synthetic-token');localStorage.setItem('aio-life-mobile.theme.v1',theme)},{theme});const page=await context.newPage();page.on('pageerror',error=>console.log('PAGEERROR '+error.message));page.on('console',message=>{if(message.type()==='error')console.log('CONSOLE '+message.text())});page.on('response',response=>{if(response.status()>=400)console.log('HTTP '+response.status()+' '+response.url())});await mock(page)

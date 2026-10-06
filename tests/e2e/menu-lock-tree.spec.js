@@ -26,12 +26,12 @@ async function setup(page, hasPassword = true) {
     if (path === '/api/auth/secondary-lock/menus') {
       if (route.request().method() === 'PUT') {
         state.writes.push(route.request().postDataJSON());
-        if (state.fail) return route.fulfill({ json: { rscode: '1', result: '模拟保存失败' } });
+        if (state.fail) return route.fulfill({ json: { code: 1, message: '模拟保存失败' } });
         state.locked = state.writes.at(-1).menuIds;
       }
       data = state.locked;
     }
-    await route.fulfill({ json: { rscode: '0', data } });
+    await route.fulfill({ json: { code: 0, data } });
   });
   await page.goto('/#/pages/profile/security');
   await expect(page.getByRole('button', { name: '收起记录', exact: true })).toBeVisible();

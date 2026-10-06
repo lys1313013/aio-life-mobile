@@ -16,7 +16,7 @@ async function setup(page) {
       const type = path.split('/').pop();
       state.calls[type] = (state.calls[type] || 0) + 1;
       if (state.pending) await state.pending;
-      if (state.fail) return route.fulfill({ json: { rscode: '1', result: '模拟刷新失败' } });
+      if (state.fail) return route.fulfill({ json: { code: 1, message: '模拟刷新失败' } });
       const destinations = {
         GITHUB: ['https://github.com/example', 'https://github.com/example?tab=repositories'],
         SHANBAY: ['https://web.shanbay.com/web/users/example/checkin', 'https://web.shanbay.com/web/users/example/checkin'],
@@ -24,7 +24,7 @@ async function setup(page) {
       };
       if (destinations[type]) [data.iconClickUrl, data.titleClickUrl] = destinations[type];
     }
-    await route.fulfill({ json: { rscode: '0', data } });
+    await route.fulfill({ json: { code: 0, data } });
   });
   await page.goto('/');
   await page.locator('[aria-label="账号"] input').fill('test');

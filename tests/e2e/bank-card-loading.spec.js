@@ -13,7 +13,7 @@ for (const width of [390, 768, 1440]) for (const theme of ['light', 'dark']) {
     const cardsGate = new Promise(resolve => { releaseCards = resolve; });
     await page.route('**/api/bank-cards', async route => {
       await cardsGate;
-      await route.fulfill({ json: { rscode: '0', data: state.cards } });
+      await route.fulfill({ json: { code: 0, data: state.cards } });
     });
     let release;
     const gate = new Promise(resolve => { release = resolve; });

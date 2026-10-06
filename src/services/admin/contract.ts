@@ -8,7 +8,7 @@ export function queryPath(path, params = {}) {
   return path + (pairs.length ? '?' + pairs.join('&') : '')
 }
 export function readPage(data, idField = 'id') {
-  // 后端 PageResp.total 是 Long，JSON 序列化后为十进制字符串。
+  // PageResp.total 以数字返回；读取边界暂时兼容未升级服务端的十进制字符串。
   const total = typeof data?.total === 'string' && /^\d+$/.test(data.total) ? Number(data.total) : data?.total
   if (!data || !Array.isArray(data.items) || !Number.isSafeInteger(total) || total < 0) throw new Error('列表数据异常，请重试')
   for (const item of data.items) stringId(item[idField])

@@ -12,8 +12,9 @@ function fileId(value) {
 export function readCover(row) {
   if (!row || typeof row.name !== 'string' || !['debit', 'credit'].includes(row.cardType)
     || ![0, 1].includes(row.isEnabled) || !Number.isInteger(row.sortOrder) || row.sortOrder < 0) throw Error('卡面数据异常，请重试')
+  // Integer 数字计数；旧服务端字符串仅在读取边界兼容。
   const usageCount = typeof row.usageCount === 'string' && /^\d+$/.test(row.usageCount) ? Number(row.usageCount) : row.usageCount
-  if (!Number.isSafeInteger(usageCount) || usageCount < 0) throw Error('卡面使用数量异常，请重试')
+  if (!Number.isInteger(usageCount) || usageCount < 0 || usageCount > 2147483647) throw Error('卡面使用数量异常，请重试')
   return { ...row, id: id(row.id), bankId: id(row.bankId), fileId: fileId(row.fileId), usageCount }
 }
 export async function listCoverTemplates() {

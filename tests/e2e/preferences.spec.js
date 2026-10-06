@@ -13,18 +13,18 @@ async function setup(page) {
   if(path==='/api/notification/channels/feishu'){data={configured:true,enabled:true,appId:'fixture-app',receiverOpenId:'fixture-open'};if(method==='PUT')state.notifications.push(route.request().postDataJSON());}
   if(path==='/api/notification/preferences')data=[{bizType:'fixture-visible',visible:true,description:'通知事件',channels:[{channel:'EMAIL',enabled:true}]},{bizType:'fixture-hidden',visible:false,description:'隐藏事件',channels:[{channel:'STATION',enabled:true}]}];
   if(path==='/api/api-key/list'){
-   if(!state.unlock)return route.fulfill({json:{rscode:'2001',result:'需要二级密码验证',data:{menuPath:'/mcp/api-keys'}}});
+   if(!state.unlock)return route.fulfill({json:{code:2001,message:'需要二级密码验证',data:{menuPath:'/mcp/api-keys'}}});
    data=[];
   }
   if(path==='/api/auth/secondary-verify') {state.unlock=true;data={menuPath:'/mcp/api-keys'};}
   if(path==='/api/menu/preferences')data={menus:[{id:'root',title:'记录',children:[{id:'9223372036854775807',title:'笔记',children:[]}]}],hiddenMenuIds:[]};
   if(path==='/api/auth/change-password'){
    state.writes.push({path,body:route.request().postDataJSON()});
-   if(state.fail)return route.fulfill({json:{rscode:'1',result:'保存失败，请重试'}});
+   if(state.fail)return route.fulfill({json:{code:1,message:'保存失败，请重试'}});
    data=null;
   }
   if(path==='/api/menu/preferences'&&method==='PUT')state.writes.push({path,body:route.request().postDataJSON()});
-  return route.fulfill({json:{rscode:'0',data:data??[]}});
+  return route.fulfill({json:{code:0,data:data??[]}});
  });
  await page.goto('/');
  await page.locator('[aria-label="账号"] input').fill('fixture');

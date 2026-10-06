@@ -16,18 +16,18 @@ async function setup(page, mode) {
     '/bank-cards/banks': [{ id: '9', name: '模拟银行', enabled: true }], '/bank-cards/tags': [],
     '/system/bank-card-covers/banks': [{ id: '9', name: '模拟银行', enabled: true }],
   };
-  for (const [path, data] of Object.entries(fixtures)) await page.route('**/api' + path, route => route.fulfill({ json: { rscode: '0', data } }));
+  for (const [path, data] of Object.entries(fixtures)) await page.route('**/api' + path, route => route.fulfill({ json: { code: 0, data } }));
   for (const path of ['/bank-cards', '/system/bank-card-covers']) {
-    await page.route('**/api' + path, route => route.fulfill({ json: { rscode: '0', data: state.rows } }));
+    await page.route('**/api' + path, route => route.fulfill({ json: { code: 0, data: state.rows } }));
     await page.route('**/api' + path + '/order', async route => {
       const move = route.request().postDataJSON(); state.calls.push(move);
       await new Promise(resolve => setTimeout(resolve, 180));
-      if (state.fail) return route.fulfill({ json: { rscode: '1', result: '模拟排序失败' } });
+      if (state.fail) return route.fulfill({ json: { code: 1, message: '模拟排序失败' } });
       const list = [...state.rows].sort((a, b) => a.sortOrder - b.sortOrder);
       const [item] = list.splice(list.findIndex(row => row.id === move.id), 1);
       list.splice(list.findIndex(row => row.id === move.targetId) + (move.after ? 1 : 0), 0, item);
       state.rows = list.map((row, sortOrder) => ({ ...row, sortOrder }));
-      await route.fulfill({ json: { rscode: '0', data: state.rows.map(({ id, sortOrder }) => ({ id, sortOrder })) } });
+      await route.fulfill({ json: { code: 0, data: state.rows.map(({ id, sortOrder }) => ({ id, sortOrder })) } });
     });
   }
   await page.route('**/api/file/preview/*', route => route.fulfill({ contentType: 'image/svg+xml', body: '<svg xmlns="http://www.w3.org/2000/svg" width="960" height="605"><rect width="960" height="605" rx="30" fill="#334766"/><text x="60" y="100" fill="white" font-size="40">DEMO BANK</text></svg>' }));

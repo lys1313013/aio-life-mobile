@@ -6,24 +6,24 @@ const row = (i, type = 'bank') => ({dictCode: String(9223372036854775000n + BigI
 async function setup(page) {
   const state = { requests:[], failMore:false, delay:0, emptyMore:false, writes:[], changes:[], failWrite:false, deleted:[] };
   await page.addInitScript(() => localStorage.setItem('aio-life-mobile.access-token.v1',JSON.stringify({type:'string',data:'dict-data-fixture'})));
-  await page.route('**/api/user/info',r=>r.fulfill({json:{rscode:'0',data:{id:'9001',roles:['admin']}}}));
-  await page.route('**/api/auth/secondary-lock/menus',r=>r.fulfill({json:{rscode:'0',data:[]}}));
-  await page.route('**/api/sysDictType/query?*',r=>r.fulfill({json:{rscode:'0',data:{items:[{dictId:'91',dictName:'银行',dictType:'bank'},{dictId:'92',dictName:'设备状态',dictType:'device_status'}],total:'2'}}}));
+  await page.route('**/api/user/info',r=>r.fulfill({json:{code:0,data:{id:'9001',roles:['admin']}}}));
+  await page.route('**/api/auth/secondary-lock/menus',r=>r.fulfill({json:{code:0,data:[]}}));
+  await page.route('**/api/sysDictType/query?*',r=>r.fulfill({json:{code:0,data:{items:[{dictId:'91',dictName:'银行',dictType:'bank'},{dictId:'92',dictName:'设备状态',dictType:'device_status'}],total: 2}}}));
   await page.route('**/api/sysDictData/query?*',async r=>{
     const q=Object.fromEntries(new URL(r.request().url()).searchParams); state.requests.push(q);
     const delay=state.delay; if(delay) await new Promise(resolve=>setTimeout(resolve,delay));
-    if(q.page==='2' && state.failMore) return r.fulfill({json:{rscode:'1',result:'模拟分页失败'}});
+    if(q.page==='2' && state.failMore) return r.fulfill({json:{code:1,message:'模拟分页失败'}});
     const type=q.dictType||'device_status';
     const items=q.dictLabel ? (q.dictLabel==='不存在'?[]:[row(1,type)]) : q.page==='1'?Array.from({length:20},(_,i)=>row(i+1,type)):state.emptyMore?[]:[row(20,type),row(21,type),row(22,type)];
-    await r.fulfill({json:{rscode:'0',data:{items:items.filter(item=>!state.deleted.includes(item.dictCode)),total:q.dictLabel?String(items.length):String(22-state.deleted.length)}}});
+    await r.fulfill({json:{code:0,data:{items:items.filter(item=>!state.deleted.includes(item.dictCode)),total:q.dictLabel?items.length:22-state.deleted.length}}});
   });
-  await page.route('**/api/sysDictData',r=>{state.writes.push(r.request().postDataJSON());return r.fulfill({json:{rscode:'0',data:true}})});
+  await page.route('**/api/sysDictData',r=>{state.writes.push(r.request().postDataJSON());return r.fulfill({json:{code:0,data:true}})});
   await page.route(/\/api\/sysDictData\/\d+$/, r=>{
     const request=r.request(), id=new URL(request.url()).pathname.split('/').at(-1);
     state.changes.push({method:request.method(),id,body:request.postDataJSON()});
-    if(state.failWrite)return r.fulfill({json:{rscode:'1',result:'模拟删除失败'}});
+    if(state.failWrite)return r.fulfill({json:{code:1,message:'模拟删除失败'}});
     if(request.method()==='DELETE')state.deleted.push(id);
-    return r.fulfill({json:{rscode:'0',data:true}});
+    return r.fulfill({json:{code:0,data:true}});
   });
   await page.goto('/#/pages/admin/index?kind=dict-data');
   await expect(page.locator('.dict-row')).toHaveCount(20);

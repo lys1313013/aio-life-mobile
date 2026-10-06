@@ -6,27 +6,27 @@ const profile = { id: '9223372036854775807', nickname: '生活记录者', email:
 
 async function mockApi(page, options = {}) {
   const requests = { login: 0, info: 0, logout: 0, authorized: false };
-  await page.route('http://127.0.0.1:5180/api/**', async (route) => {
+  await page.route('**/api/**', async (route) => {
     const path = new URL(route.request().url()).pathname;
     if (path === '/api/auth/login') {
       requests.login++;
       await new Promise((resolve) => setTimeout(resolve, 200));
-      return route.fulfill({ json: options.rejectLogin ? { rscode: '113000', result: '用户名或密码错误' } : { rscode: '0', data: { accessToken: 'e2e-token' } } });
+      return route.fulfill({ json: options.rejectLogin ? { code: 113000, message: '用户名或密码错误' } : { code: 0, data: { accessToken: 'e2e-token' } } });
     }
     if (path === '/api/user/info') {
       requests.info++;
       requests.authorized = route.request().headers().authorization === 'Bearer e2e-token';
-      if (options.expire && requests.info > 1) return route.fulfill({ status: 401, body: '未授权' });
+      if (options.expire && requests.info > 1) return route.fulfill({ status: 401, json: { code: 401, message: '登录已过期，请重新登录', data: null } });
       if (options.failInfo && requests.info === 1) return route.abort();
-      return route.fulfill({ json: { rscode: '0', data: profile } });
+      return route.fulfill({ json: { code: 0, data: profile } });
     }
     if (path === '/api/auth/logout') {
       requests.logout++;
       if (options.failLogout) return route.abort();
-      return route.fulfill({ json: { rscode: '0', data: null } });
+      return route.fulfill({ json: { code: 0, data: null } });
     }
     const data = dashboardFixture(path);
-    if (data !== undefined) return route.fulfill({ json: { rscode: '0', data } });
+    if (data !== undefined) return route.fulfill({ json: { code: 0, data } });
     return route.fulfill({ status: 404, body: 'Unexpected test request' });
   });
   return requests;

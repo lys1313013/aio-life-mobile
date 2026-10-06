@@ -13,7 +13,7 @@ async function prepare(page, baseURL, cards) {
     '/bank-cards/banks': [{ id: '9', name: '模拟银行' }],
     '/bank-cards/tags': [],
   })) {
-    await page.route(`${baseURL}/api${path}`, route => route.fulfill({ json: { rscode: '0', data } }));
+    await page.route(`${baseURL}/api${path}`, route => route.fulfill({ json: { code: 0, data } }));
   }
   await page.goto('/#/pages/finance/cards');
 }
@@ -26,11 +26,11 @@ test('切换类型取消旧卡号读取，旧响应不能覆盖新卡的加载�
   const creditGate = new Promise(resolve => { releaseCredit = resolve; });
   await page.route(`${baseURL}/api/bank-cards/88/number`, async route => {
     await debitGate;
-    await route.fulfill({ json: { rscode: '0', data: '622200001234' } });
+    await route.fulfill({ json: { code: 0, data: '622200001234' } });
   });
   await page.route(`${baseURL}/api/bank-cards/89/number`, async route => {
     await creditGate;
-    await route.fulfill({ json: { rscode: '0', data: '433300005678' } });
+    await route.fulfill({ json: { code: 0, data: '433300005678' } });
   });
   await prepare(page, baseURL, [
     { ...card, id: '88', cardType: 'debit', cardNoLast4: '1234', sortOrder: 1 },

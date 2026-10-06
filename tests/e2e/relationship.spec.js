@@ -14,7 +14,7 @@ async function start(page) {
     if (url.pathname.endsWith('/graph')) data = { nodes, edges };
     else if (url.pathname.endsWith('/search')) data = nodes.filter(node => node.name.includes(url.searchParams.get('keyword')));
     else data = { ...nodes.find(node => url.pathname.endsWith('/' + node.id)), relationships: [] };
-    await route.fulfill({ json: { rscode: '0', data } });
+    await route.fulfill({ json: { code: 0, data } });
   });
   await page.goto('/#/pages/relationship/index');
   await expect(page.locator('.graph-node-button')).toHaveCount(13);

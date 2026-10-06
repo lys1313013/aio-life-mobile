@@ -31,7 +31,7 @@ async function setup(page, extra = {}) {
     ...extra,
   };
   for (const [path, data] of Object.entries(fixtures)) {
-    const handler = route => route.fulfill({ json: { rscode: '0', data } });
+    const handler = route => route.fulfill({ json: { code: 0, data } });
     await page.route('**/api' + path, handler);
     await page.route('**/api' + path + '?*', handler);
   }
@@ -117,7 +117,7 @@ for (const width of [390, 820, 1440]) for (const theme of ['light', 'dark']) {
       const { keys } = route.request().postDataJSON();
       cards = cards.map(item => item.group === 'section' ? { ...item, sortOrder: keys.indexOf(item.cardKey) } : item)
         .sort((a, b) => a.group.localeCompare(b.group) || a.sortOrder - b.sortOrder);
-      return route.fulfill({ json: { rscode: '0', data: cards } });
+      return route.fulfill({ json: { code: 0, data: cards } });
     });
     await setup(page, {
       '/home/cards': cards,

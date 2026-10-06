@@ -52,8 +52,8 @@ try {
     let failUpload = true, failSave = true, releaseUpload;
     page.on('pageerror', error => errors.push(error.message));
     await page.addInitScript(() => localStorage.setItem('aio-life-mobile.access-token.v1', 'avatar-fixture'));
-    await page.route(origin + '/api/auth/secondary-lock/menus', route => route.fulfill({ json: { rscode: '0', data: [] } }));
-    await page.route(origin + '/api/user/info', route => route.fulfill({ json: { rscode: '0', data: {
+    await page.route(origin + '/api/auth/secondary-lock/menus', route => route.fulfill({ json: { code: 0, data: [] } }));
+    await page.route(origin + '/api/user/info', route => route.fulfill({ json: { code: 0, data: {
       id: '9223372036854775807', nickname: '模拟用户', introduction: '模拟签名', email: 'fixture@example.com', avatarFileId: null, avatarUrl: ''
     } } }));
     await page.route(origin + '/fixture-avatar.png', route => route.fulfill({ contentType: 'image/png', body: png }));
@@ -61,13 +61,13 @@ try {
       uploads.push(route.request());
       assert.equal(route.request().headers().authorization, 'Bearer avatar-fixture');
       assert.match(route.request().postDataBuffer().toString(), /name="bizType"\r\n\r\navatar/);
-      if (failUpload) return route.fulfill({ json: { rscode: '1', result: '模拟头像上传失败' } });
+      if (failUpload) return route.fulfill({ json: { code: 1, message: '模拟头像上传失败' } });
       await new Promise(resolve => { releaseUpload = resolve; });
-      return route.fulfill({ json: { rscode: '0', data: { id, fileUrl: '/fixture-avatar.png' } } });
+      return route.fulfill({ json: { code: 0, data: { id, fileUrl: '/fixture-avatar.png' } } });
     });
     await page.route(origin + '/api/users', route => {
       writes.push(route.request().postDataJSON());
-      return route.fulfill({ json: failSave ? { rscode: '1', result: '模拟保存失败' } : { rscode: '0', data: null } });
+      return route.fulfill({ json: failSave ? { code: 1, message: '模拟保存失败' } : { code: 0, data: null } });
     });
     await page.goto(origin + '/#/pages/profile/settings');
     const button = page.getByRole('button', { name: '从微信获取头像', exact: true });

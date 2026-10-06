@@ -19,23 +19,23 @@ for (const width of [390, 820, 1440]) for (const theme of ['light', 'dark']) {
       '/api/menu/all': [],
       '/api/goals': [{ id: '1', title: '模拟目标', status: 'in_progress', isPinned: 1, targetValue: 10, currentValue: 2 }],
       '/api/anniversaryRecords': [{ id: '1', title: '模拟纪念日', targetDate: '2026-12-01', isPinned: 1 }],
-      '/api/read-record/page': { items: [{ id: '1', title: '模拟阅读', status: 'in_progress' }], total: '1' },
+      '/api/read-record/page': { items: [{ id: '1', title: '模拟阅读', status: 'in_progress' }], total: 1 },
       '/api/membership/list': [{ id: '1', name: '模拟会员', status: 'active', expiryDate: '2099-01-01' }],
-      '/api/movie/page': { items: [{ id: '1', title: '模拟观影', status: 'not_started' }], total: '1' },
+      '/api/movie/page': { items: [{ id: '1', title: '模拟观影', status: 'not_started' }], total: 1 },
     };
     await page.route(`${info.project.use.baseURL}/api/**`, async route => {
       const path = new URL(route.request().url()).pathname;
       if (businessPaths.includes(path)) {
         await state.pending.promise;
-        if (state.fail) return route.fulfill({ json: { rscode: '1', result: '模拟刷新失败' } });
+        if (state.fail) return route.fulfill({ json: { code: 1, message: '模拟刷新失败' } });
       }
       let data = fixtures[path] ?? dashboardFixture(path) ?? [];
       if (businessPaths.includes(path)) {
         const rows = Array.isArray(data) ? data : data.items;
         const expanded = Array.from({ length: state.count }, (_, index) => ({ ...rows[0], id: String(index + 1), ...(state.count > 1 ? { title: '模拟长标题用于验证换行后的高度和后续卡片位置 ' + index, name: '模拟长名称用于验证换行后的高度 ' + index } : {}) }));
-        data = Array.isArray(data) ? expanded : { items: expanded, total: String(expanded.length) };
+        data = Array.isArray(data) ? expanded : { items: expanded, total: expanded.length };
       }
-      return route.fulfill({ json: { rscode: '0', data } });
+      return route.fulfill({ json: { code: 0, data } });
     });
     try {
       await page.goto('/#/pages/home/index');
@@ -99,7 +99,7 @@ for (const count of [1, 5]) {
       if (path === '/api/home/cards') data = preferences;
       if (path === '/api/dashboard/tasks') { await pending.promise; data = tasks; }
       if (path.startsWith('/api/dashboard/card/')) data = { ...tasks.find(item => path.endsWith(item.type)), value: '3', totalValue: '5', refreshInterval: 0 };
-      return route.fulfill({ json: { rscode: '0', data } });
+      return route.fulfill({ json: { code: 0, data } });
     });
     try {
       await page.goto('/#/pages/home/index');

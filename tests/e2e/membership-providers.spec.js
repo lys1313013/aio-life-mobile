@@ -16,11 +16,11 @@ async function customProvider(page, choice, options, screenshot) {
 async function prepare(page) {
   const state = await setup(page);
   state.members[0] = { ...state.members[0], providerId: providers[0].id, providerName: providers[0].name, providerIconKey: providers[0].iconKey };
-  await page.route('**/api/quick-nav/candidates?client=mobile', route => route.fulfill({ json: { rscode: '0', data: entries } }));
-  await page.route('**/api/menu/preferences?client=mobile', route => route.fulfill({ json: { rscode: '0', data: { menus: entries.map(e => ({ id: e.menuId, title: e.title, children: [] })), hiddenMenuIds: [] } } }));
-  await page.route('**/api/membership/providers', route => route.fulfill({ json: state.providersFail ? { rscode: '1', result: '模拟平台加载失败' } : { rscode: '0', data: providers } }));
+  await page.route('**/api/quick-nav/candidates?client=mobile', route => route.fulfill({ json: { code: 0, data: entries } }));
+  await page.route('**/api/menu/preferences?client=mobile', route => route.fulfill({ json: { code: 0, data: { menus: entries.map(e => ({ id: e.menuId, title: e.title, children: [] })), hiddenMenuIds: [] } } }));
+  await page.route('**/api/membership/providers', route => route.fulfill({ json: state.providersFail ? { code: 1, message: '模拟平台加载失败' } : { code: 0, data: providers } }));
   const catalog = process.env.MEMBERSHIP_LOGO_DIR ? JSON.parse(fs.readFileSync(path.join(process.env.MEMBERSHIP_LOGO_DIR, 'membership-icons.json'), 'utf8')) : providers.filter(row => row.iconKey).map(row => ({ key: row.iconKey, name: row.name }));
-  await page.route('**/api/membership/provider-icons', route => route.fulfill({ json: { rscode: '0', data: catalog.map(row => ({ key: row.key, name: row.name, url: '/api/membership/provider-icons/' + row.key })) } }));
+  await page.route('**/api/membership/provider-icons', route => route.fulfill({ json: { code: 0, data: catalog.map(row => ({ key: row.key, name: row.name, url: '/api/membership/provider-icons/' + row.key })) } }));
   await page.route('**/api/membership/provider-icons/*', route => {
     const url = new URL(route.request().url()); const key = url.pathname.split('/').at(-1).replaceAll('-', '_');
     const icon = catalog.find(row => row.key === key);
@@ -31,11 +31,11 @@ async function prepare(page) {
   state.providers = providers.map(row => ({ ...row }));
   await page.route('**/api/system/membership-providers**', route => {
     const req = route.request();
-    if (req.method() === 'GET') return route.fulfill({ json: { rscode: '0', data: state.providers } });
+    if (req.method() === 'GET') return route.fulfill({ json: { code: 0, data: state.providers } });
     const body = req.method() === 'DELETE' ? null : req.postDataJSON(); state.writes.push({ path: new URL(req.url()).pathname, method: req.method(), body });
     const saved = req.method() === 'DELETE' ? null : { ...body, id: req.method() === 'POST' ? '9007199254740999' : new URL(req.url()).pathname.split('/').at(-1) };
     if (!state.fail) state.providers = [...state.providers.filter(row => !new URL(req.url()).pathname.endsWith('/' + row.id)), ...(saved ? [saved] : [])];
-    return route.fulfill({ json: state.fail ? { rscode: '1', result: '模拟平台保存失败' } : { rscode: '0', data: saved } });
+    return route.fulfill({ json: state.fail ? { code: 1, message: '模拟平台保存失败' } : { code: 0, data: saved } });
   });
   return state;
 }
@@ -63,7 +63,7 @@ for (const width of [390, 768, 1440]) for (const theme of ['light', 'dark']) {
   test(`会员平台管理 ${width} ${theme}`, async ({ page }) => {
     await page.setViewportSize({ width, height: 900 }); await page.emulateMedia({ colorScheme: theme });
     const state = await prepare(page);
-    await page.route('**/api/user/info', route => route.fulfill({ json: { rscode: '0', data: { id: '6', nickname: '模拟管理员', roles: ['admin'] } } }));
+    await page.route('**/api/user/info', route => route.fulfill({ json: { code: 0, data: { id: '6', nickname: '模拟管理员', roles: ['admin'] } } }));
     await page.goto('/#/pages/admin/membership-providers');
     await page.reload();
     await page.getByRole('button', { name: '编辑平台：腾讯视频', exact: true }).click();
@@ -100,7 +100,7 @@ test('平台加载失败可重试，解除平台显式发送null，旧文本保�
 
 test('平台新增、删除失败保留弹窗并重试', async ({ page }) => {
   const state = await prepare(page);
-  await page.route('**/api/user/info', route => route.fulfill({ json: { rscode: '0', data: { id: '6', nickname: '模拟管理员', roles: ['admin'] } } }));
+  await page.route('**/api/user/info', route => route.fulfill({ json: { code: 0, data: { id: '6', nickname: '模拟管理员', roles: ['admin'] } } }));
   await page.goto('/#/pages/admin/membership-providers'); await page.reload();
   await page.getByRole('button', { name: '新增会员平台', exact: true }).click();
   await page.getByRole('textbox', { name: '平台名称', exact: true }).fill('模拟新增平台');

@@ -11,8 +11,8 @@ for(const width of [390,768,1440])for(const dark of [false,true])for(const entry
   state.honors[0].title='年度优秀项目成果奖';state.honors[0].description='记录阶段性成长与重要成果';
   state.anniversaries[1].color='from-gray-700 to-gray-900';state.anniversaries[1].targetDate='2025-01-01';
   state.milestones[1].date='2026-08-11';state.milestones[2].date='2025-09-01';
-  await page.route('**/api/quick-nav/candidates?client=mobile',r=>r.fulfill({json:{rscode:'0',data:entries}}));
-  await page.route('**/api/menu/preferences?client=mobile',r=>r.fulfill({json:{rscode:'0',data:{menus:entries.map(x=>({id:x.menuId,title:x.title,children:[]})),hiddenMenuIds:[]}}}));
+  await page.route('**/api/quick-nav/candidates?client=mobile',r=>r.fulfill({json:{code:0,data:entries}}));
+  await page.route('**/api/menu/preferences?client=mobile',r=>r.fulfill({json:{code:0,data:{menus:entries.map(x=>({id:x.menuId,title:x.title,children:[]})),hiddenMenuIds:[]}}}));
   await page.locator('uni-tabbar').getByText('全部',{exact:true}).click();await page.getByRole('button',{name:entry.title,exact:true}).click();
   await expect(page.getByRole('button',{name:'新增'+(entry.menuId==='activity'?'活动':entry.title),exact:true})).toBeVisible();
   const prefix=`${dir}/${entry.menuId}-${width}-${dark?'dark':'light'}`;

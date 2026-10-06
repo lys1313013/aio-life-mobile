@@ -19,7 +19,7 @@ async function setup(page) {
     if (path.endsWith('/getByDictType')) data = { dictDetailList: [{ id: '81', dictLabel: '正握引体向上', label: '演唱会', value: '1' }, { id: '82', dictLabel: '俯卧撑', label: '音乐节', value: '2' }] };
     if (path === '/api/exerciseRecord/query') data = { items: exercise, total: exercise.length };
     if (path === '/api/performance') data = {total: 3, items: [1, 2, 3].map(id => ({ id: String(id), performanceName: id === 1 ? '模拟活动：2026城市星空音乐节特别纪念场' : '模拟活动：夏夜演唱会', performer: '模拟歌手', performanceType: id === 1 ? '2' : '1', performanceDate: '2026-10-01', city: '北京', venue: '模拟城市音乐公园中央舞台', files: [] })) };
-    await route.fulfill({ json: { rscode: '0', data: data ?? [] } });
+    await route.fulfill({ json: { code: 0, data: data ?? [] } });
   });
   await page.route('https://api.github.com/**', async route => {
     const url = new URL(route.request().url()); let data = [];

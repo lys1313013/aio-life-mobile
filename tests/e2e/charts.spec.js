@@ -28,7 +28,7 @@ async function openTime(page, records = trendRecords()) {
     if (path === '/api/timeTrackerCategory/list') data = categories;
     if (path === '/api/timeRecord/query') data = records.filter(row => row.date === url.searchParams.get('date'));
     if (path === '/api/timeRecord/queryByDateRange') data = records.filter(row => row.date >= url.searchParams.get('startDate') && row.date <= url.searchParams.get('endDate'));
-    await route.fulfill({ json: { rscode: '0', data } });
+    await route.fulfill({ json: { code: 0, data } });
   });
   await page.goto('/#/pages/time/index');
   return page.getByRole('figure', { name: '近 10 天', exact: true });
@@ -88,7 +88,7 @@ test('图表引擎加载失败可重试，空记录仍展示空状态', async ({
   await chart.getByRole('button', { name: '重试图表', exact: true }).click();
   await expect(chart.locator('.chart-y-tick').first()).toBeVisible();
   await expect.poll(() => painted(chart.locator('.aio-chart-canvas canvas'))).toBeGreaterThan(500);
-  await page.route(url => url.pathname === '/api/timeRecord/queryByDateRange', route => route.fulfill({ json: { rscode: '0', data: [] } }));
+  await page.route(url => url.pathname === '/api/timeRecord/queryByDateRange', route => route.fulfill({ json: { code: 0, data: [] } }));
   await page.reload();
   await expect(page.locator('.time-statistics').getByText('暂无记录', { exact: true }).first()).toBeVisible();
   await expect(page.locator('.time-statistics .aio-chart-canvas')).toHaveCount(0);
@@ -123,7 +123,7 @@ for (const kind of ['全零', '单点', '负结余']) {
       if (path.endsWith('statisticsByMonth')) data = (kind === '负结余' ? [1, 2] : [1]).map(month => ({
         year: date.getFullYear(), month, detail: [{ typeId: '1', typeName: '模拟分类', amt: kind === '全零' ? 0 : path.includes('/income/') ? 100 : kind === '负结余' ? 200 : 50 }],
       }));
-      return route.fulfill({ json: { rscode: '0', data } });
+      return route.fulfill({ json: { code: 0, data } });
     });
     await page.goto('/#/pages/finance/index');
     const chart = page.getByRole('figure', { name: '年度收支趋势', exact: true });

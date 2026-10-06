@@ -74,7 +74,7 @@ async function setup(page, theme = "light") {
     else if (path === "/menu/admin/role-options") data = ["admin", "user"];
     else if (path === "/menu/admin/tree") {
       if (state.treeFail)
-        return route.fulfill({ json: { rscode: "1", result: "模拟加载失败" } });
+        return route.fulfill({ json: { code: 1, message: "模拟加载失败" } });
       const tree = (parent) =>
         state.rows
           .filter((row) => row.parentId === parent)
@@ -85,7 +85,7 @@ async function setup(page, theme = "light") {
       const body = req.postDataJSON();
       state.writes.push({ path, method, body });
       if (state.fail || (state.failSort && path.endsWith("/sort")))
-        return route.fulfill({ json: { rscode: "1", result: "模拟保存失败" } });
+        return route.fulfill({ json: { code: 1, message: "模拟保存失败" } });
       const id = path.split("/")[3],
         row = state.rows.find((row) => row.id === id);
       if (method === "DELETE") {
@@ -99,7 +99,7 @@ async function setup(page, theme = "light") {
         data = row;
       }
     }
-    return route.fulfill({ json: { rscode: "0", data } });
+    return route.fulfill({ json: { code: 0, data } });
   });
   await page.goto("/#/pages/admin/index?kind=menus");
   await expect(

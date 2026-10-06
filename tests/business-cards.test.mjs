@@ -10,6 +10,16 @@ const row = id => ({ id: String(id), status: 'in_progress' })
 const page = (items, total = 60) => ({ items, total })
 const deferred = () => { let resolve; const promise = new Promise(done => { resolve = done }); return { promise, resolve } }
 
+test('首页分页数字总数保留长ID，兼容旧字符串并拒绝把空值当零', () => {
+  const item = row('9223372036854775807')
+  assert.deepEqual(cardRows(read, page([item], 1)), [item])
+  assert.deepEqual(cardRows(read, page([], 0)), [])
+  assert.deepEqual(cardRows(read, page([item], '1')), [item])
+  for (const total of [null, '', ' ', true, -1, 1.5, NaN, Infinity, 9007199254740992, '9007199254740992']) {
+    assert.throws(() => cardRows(read, page([], total)), /分页数据异常/)
+  }
+})
+
 test('真实 PageResp items 契约和旧后端固定/状态筛选失败时拒绝展示', () => {
   assert.deepEqual(cardRows(read, page([row(1)])), [row(1)])
   assert.throws(() => cardRows(read, { records: [row(1)], total: 1 }), /数据异常/)

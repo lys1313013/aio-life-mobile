@@ -18,8 +18,8 @@ for (const width of [390, 768, 1280]) for (const colorScheme of ['light', 'dark'
       ownerName: '模拟课程讲师', currentEpisode: 40, episodes: 68,
       status: i === 0 ? 'completed' : 'in_progress',
     }));
-    await page.route('**/api/b-video/getStatusCount', route => route.fulfill({ json: { rscode: '0', data: { completed: 1, in_progress: 7 } } }));
-    await page.route('**/api/b-video/statistics', route => route.fulfill({ json: { rscode: '0', data: { studiedSeconds: 190800, totalSeconds: 390400, unstudiedSeconds: 199600 } } }));
+    await page.route('**/api/b-video/getStatusCount', route => route.fulfill({ json: { code: 0, data: { completed: 1, in_progress: 7 } } }));
+    await page.route('**/api/b-video/statistics', route => route.fulfill({ json: { code: 0, data: { studiedSeconds: 190800, totalSeconds: 390400, unstudiedSeconds: 199600 } } }));
     await page.goto('/#/pages/records/video');
     await expect(page.locator('.video-card')).toHaveCount(8);
     await expect(page.locator('.video-duration').first()).toHaveText('13:33:20');
@@ -38,7 +38,7 @@ for (const width of [390, 768, 1280]) for (const colorScheme of ['light', 'dark'
       bookId: `fixture-${i}`, title: `模拟书籍 ${i + 1}：长标题的阅读与思考`, author: '模拟作者',
       finishReading: i % 3 === 0 ? 1 : 0, cover: i % 3 ? 'http://127.0.0.1:5180/fixture-cover.png' : '',
     }));
-    await page.route('**/api/weread/sync?**', route => route.fulfill({ json: { rscode: '0', data: {
+    await page.route('**/api/weread/sync?**', route => route.fulfill({ json: { code: 0, data: {
       shelf: { books }, notebooks: { books: books.map((book, i) => ({ bookId: book.bookId, book, noteCount: 8, reviewCount: 2, readingProgress: i % 3 === 0 ? 100 : 45 })) },
       stats: { totalReadTime: 3600, readDays: 5, dayAverageReadTime: 720, readStat: [{ stat: '读完', counts: 3 }], readTimes: { '1788220800': 900, '1788825600': 1800, '1789430400': 2700 }, readLongest: books.slice(0, 3).map(book => ({ book, readTime: 1800 })) },
       lastSyncTime: '模拟同步时间',

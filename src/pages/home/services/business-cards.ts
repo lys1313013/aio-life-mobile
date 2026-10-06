@@ -33,7 +33,9 @@ export function cardPath(card, page = 1) {
 }
 export function cardRows(card, data) {
   const rows = card.paged ? data?.items : data
-  if (card.paged && (!Number.isFinite(Number(data?.total)) || Number(data.total) < 0)) throw new Error('卡片分页数据异常，请重试')
+  // 数字总数直接校验；旧服务端字符串仅在此读取边界转换，空值不能当作零。
+  const total = typeof data?.total === 'string' && /^\d+$/.test(data.total) ? Number(data.total) : data?.total
+  if (card.paged && (!Number.isSafeInteger(total) || total < 0)) throw new Error('卡片分页数据异常，请重试')
   if (!Array.isArray(rows) || rows.some(item => !item || typeof item.id !== 'string')) throw new Error('卡片数据异常，请重试')
   if (card.pinned && rows.some(item => item.isPinned !== 1)) throw new Error('服务端首页固定功能尚未就绪，请更新后重试')
   if (card.paged && rows.some(item => !['not_started', 'in_progress'].includes(item.status))) throw new Error('服务端首页状态筛选尚未就绪，请更新后重试')

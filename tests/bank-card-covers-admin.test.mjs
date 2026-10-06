@@ -28,7 +28,16 @@ test('引用约束、图片、URL、排序、银行和字符串ID校验在写入
     assert.throws(() => service.coverPayload({ ...cover, ...invalid }))
   }
   assert.throws(() => service.readCover({ ...cover, id: Number(id) }), /ID/)
+  for (const usageCount of [0, 2, 2147483647]) {
+    const result = service.readCover({ ...cover, usageCount })
+    assert.equal(result.usageCount, usageCount)
+    assert.equal(result.id, id)
+  }
+  // 仅读取边界暂时兼容未升级的服务端。
   assert.equal(service.readCover({ ...cover, usageCount: '2' }).usageCount, 2)
+  for (const usageCount of [null, -1, 1.5, 2147483648, '2147483648', 'invalid']) {
+    assert.throws(() => service.readCover({ ...cover, usageCount }), /使用数量异常/)
+  }
 })
 test('查询过程中启停、编辑、删除和新增合并到慢响应，陈旧查询不会复活删除', () => {
   const journal = service.createCoverMutations(), since = journal.version()

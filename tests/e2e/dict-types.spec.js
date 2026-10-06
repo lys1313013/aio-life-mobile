@@ -6,23 +6,23 @@ const row = i => ({dictId:String(9223372036854775000n+BigInt(i)),dictName:['设�
 async function setup(page) {
   const state = { requests:[], failMore:false, delay:0, emptyMore:false, writes:[], changes:[], failWrite:false, deleted:[] };
   await page.addInitScript(() => localStorage.setItem('aio-life-mobile.access-token.v1',JSON.stringify({type:'string',data:'dict-types-fixture'})));
-  await page.route('**/api/user/info',r=>r.fulfill({json:{rscode:'0',data:{id:'9001',roles:['admin']}}}));
-  await page.route('**/api/auth/secondary-lock/menus',r=>r.fulfill({json:{rscode:'0',data:[]}}));
+  await page.route('**/api/user/info',r=>r.fulfill({json:{code:0,data:{id:'9001',roles:['admin']}}}));
+  await page.route('**/api/auth/secondary-lock/menus',r=>r.fulfill({json:{code:0,data:[]}}));
   await page.route('**/api/sysDictType/query?*',async r=>{
     const q=Object.fromEntries(new URL(r.request().url()).searchParams); state.requests.push(q);
     const delay=state.delay; if(delay) await new Promise(resolve=>setTimeout(resolve,delay));
-    if(q.page==='2' && state.failMore) return r.fulfill({json:{rscode:'1',result:'模拟分页失败'}});
+    if(q.page==='2' && state.failMore) return r.fulfill({json:{code:1,message:'模拟分页失败'}});
 
     const items=q.dictName ? (q.dictName==='不存在'?[]:[{...row(1),dictName:q.dictName}]) : q.page==='1'?Array.from({length:20},(_,i)=>row(i+1)):state.emptyMore?[]:[row(20),row(21),row(22)];
-    await r.fulfill({json:{rscode:'0',data:{items:items.filter(item=>!state.deleted.includes(item.dictId)),total:q.dictName?String(items.length):String(22-state.deleted.length)}}});
+    await r.fulfill({json:{code:0,data:{items:items.filter(item=>!state.deleted.includes(item.dictId)),total:q.dictName?items.length:22-state.deleted.length}}});
   });
-  await page.route('**/api/sysDictType',r=>{state.writes.push(r.request().postDataJSON());return r.fulfill({json:{rscode:'0',data:true}})});
+  await page.route('**/api/sysDictType',r=>{state.writes.push(r.request().postDataJSON());return r.fulfill({json:{code:0,data:true}})});
   await page.route(/\/api\/sysDictType\/\d+$/, r=>{
     const request=r.request(), id=new URL(request.url()).pathname.split('/').at(-1);
     state.changes.push({method:request.method(),id,body:request.postDataJSON()});
-    if(state.failWrite)return r.fulfill({json:{rscode:'1',result:'模拟删除失败'}});
+    if(state.failWrite)return r.fulfill({json:{code:1,message:'模拟删除失败'}});
     if(request.method()==='DELETE')state.deleted.push(id);
-    return r.fulfill({json:{rscode:'0',data:true}});
+    return r.fulfill({json:{code:0,data:true}});
   });
   await page.goto('/#/pages/admin/index?kind=dict-types');
   await expect(page.locator('.dict-row')).toHaveCount(20);

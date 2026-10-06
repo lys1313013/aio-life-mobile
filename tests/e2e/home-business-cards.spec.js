@@ -21,7 +21,7 @@ async function setup(page, { locked = false, failMore = false, readAccess = true
   if (goalCount) fixtures['/goals'] = Array.from({ length: goalCount }, (_, i) => ({ id: '922337203685477580' + i, title: '模拟目标 ' + (i + 1), type: 1, status: 'in_progress', isPinned: 1, targetValue: 100, currentValue: 27, endDate: '2029-09-06' }));
   if (anniversaryCount) fixtures['/anniversaryRecords'] = Array.from({ length: anniversaryCount }, (_, i) => ({ id: '922337203685477570' + i, title: '模拟纪念日 ' + (i + 1), isPinned: 1, icon: '🎉', targetDate: '2027-01-01' }));
   for (const [path, data] of Object.entries(fixtures)) {
-    const respond = route => { requests.push(route.request().method() + ' ' + path); return route.fulfill({ json: { rscode: '0', data } }); };
+    const respond = route => { requests.push(route.request().method() + ' ' + path); return route.fulfill({ json: { code: 0, data } }); };
     await page.route('**/api' + path, respond);
     await page.route('**/api' + path + '?*', respond);
   }
@@ -31,7 +31,7 @@ async function setup(page, { locked = false, failMore = false, readAccess = true
     calls.push(current);
     if (current === 2 && failures-- > 0) return route.fulfill({ status: 503, body: 'unavailable' });
     const all = Array.from({ length: 23 }, (_, i) => ({ id: String(i + 1), title: '阅读条目 ' + (i + 1), status: i < 20 ? 'in_progress' : 'not_started', totalProgress: 100, currentProgress: 30 }));
-    return route.fulfill({ json: { rscode: '0', data: { items: all.slice((current - 1) * 20, current * 20), total: 23 } } });
+    return route.fulfill({ json: { code: 0, data: { items: all.slice((current - 1) * 20, current * 20), total: 23 } } });
   });
   await page.addInitScript(() => localStorage.setItem('aio-life-mobile.access-token.v1', JSON.stringify({ type: 'string', data: 'fixture-home-business' })));
   if (!navigate) return calls;
@@ -49,7 +49,7 @@ for (const width of [390, 820, 1440]) for (const theme of ['light', 'dark']) {
     const pending = new Promise(resolve => { release = resolve; });
     await page.route('**/api/user/info', async route => {
       await pending;
-      await route.fulfill({ json: { rscode: '0', data: { id: 'fixture-user', nickname: '测试用户' } } });
+      await route.fulfill({ json: { code: 0, data: { id: 'fixture-user', nickname: '测试用户' } } });
     });
     try {
       await page.goto('/#/pages/home/index');
@@ -78,8 +78,8 @@ test('首页准备请求失败时不残留标题空壳，重试后恢复业务�
   await setup(page, { navigate: false });
   let fail = true;
   await page.route('**/api/user/info', route => route.fulfill({ json: fail
-    ? { rscode: '1', result: '模拟用户信息加载失败' }
-    : { rscode: '0', data: { id: 'fixture-user', nickname: '测试用户' } }
+    ? { code: 1, message: '模拟用户信息加载失败' }
+    : { code: 0, data: { id: 'fixture-user', nickname: '测试用户' } }
   }));
   await page.goto('/#/pages/home/index');
   await expect(page.getByRole('alert')).toContainText('模拟用户信息加载失败');
@@ -99,7 +99,7 @@ test('短时间返回首页保留业务内容和分页，不重新请求或出�
   let profiles = 0;
   await page.route('**/api/user/info', route => {
     profiles++;
-    return route.fulfill({ json: { rscode: '0', data: { id: 'fixture-user', nickname: '测试用户' } } });
+    return route.fulfill({ json: { code: 0, data: { id: 'fixture-user', nickname: '测试用户' } } });
   });
   await page.getByRole('button', { name: '返回', exact: true }).click();
   await expect.poll(() => profiles).toBeGreaterThan(0);
@@ -172,7 +172,7 @@ test('首页目标长按拖动保存字符串顺序，短滑和取消不排序�
   const orders = [];
   await page.route('**/api/goals/pinned-order', async route => {
     orders.push(route.request().postDataJSON());
-    await route.fulfill({ json: { rscode: '0', data: null } });
+    await route.fulfill({ json: { code: 0, data: null } });
   });
   const card = page.locator('[aria-label="目标首页卡片"]');
   await card.scrollIntoViewIfNeeded();
@@ -194,7 +194,7 @@ test('首页目标排序失败恢复原顺序，可再次拖动保存', async ({
   let fail = true, requests = 0;
   await page.route('**/api/goals/pinned-order', async route => {
     requests++;
-    await route.fulfill({ json: fail ? { rscode: '1', result: '模拟排序失败' } : { rscode: '0', data: null } });
+    await route.fulfill({ json: fail ? { code: 1, message: '模拟排序失败' } : { code: 0, data: null } });
   });
   const card = page.locator('[aria-label="目标首页卡片"]');
   await card.scrollIntoViewIfNeeded();
@@ -212,7 +212,7 @@ test('首页目标直接弹窗编辑、新增和取消固定，保存失败保�
   let fail = true, written;
   await page.route('**/api/goals', async route => {
     written = route.request().postDataJSON();
-    await route.fulfill({ json: fail ? { rscode: '1', result: '模拟保存失败' } : { rscode: '0', data: { ...written, id: written.id || '9223372036854775803' } } });
+    await route.fulfill({ json: fail ? { code: 1, message: '模拟保存失败' } : { code: 0, data: { ...written, id: written.id || '9223372036854775803' } } });
   });
   const card = page.locator('[aria-label="目标首页卡片"]');
   await card.getByRole('button', { name: '编辑固定目标', exact: true }).click();
@@ -255,22 +255,22 @@ for (const kind of ['read', 'movie', 'member']) {
       : { id: '9223372036854775807', title: '首页编辑作品', type: 1, status: 'in_progress', totalProgress: 100, currentProgress: 30, author: '原作者', director: '原导演', remark: '保留完整详情备注', url: '', fileId: '', coverImgUrl: '' };
     let written;
     if (kind === 'member') {
-      await page.route('**/api/membership/list', route => route.fulfill({ json: { rscode: '0', data: [row] } }));
-      await page.route('**/api/membership/' + row.id, route => route.fulfill({ json: { rscode: '0', data: row } }));
-      await page.route('**/api/membership/stats', route => route.fulfill({ json: { rscode: '0', data: {} } }));
-      await page.route('**/api/membership/providers', route => route.fulfill({ json: { rscode: '0', data: [] } }));
+      await page.route('**/api/membership/list', route => route.fulfill({ json: { code: 0, data: [row] } }));
+      await page.route('**/api/membership/' + row.id, route => route.fulfill({ json: { code: 0, data: row } }));
+      await page.route('**/api/membership/stats', route => route.fulfill({ json: { code: 0, data: {} } }));
+      await page.route('**/api/membership/providers', route => route.fulfill({ json: { code: 0, data: [] } }));
     } else {
       await page.route('**/api' + base + '/page?*', route => {
         const activeOnly = new URL(route.request().url()).searchParams.get('activeOnly') === 'true';
         const items = !activeOnly || row.status !== 'completed' ? [row] : [];
-        return route.fulfill({ json: { rscode: '0', data: { items, total: items.length } } });
+        return route.fulfill({ json: { code: 0, data: { items, total: items.length } } });
       });
-      await page.route('**/api' + base + '/' + row.id, route => route.fulfill({ json: { rscode: '0', data: row } }));
+      await page.route('**/api' + base + '/' + row.id, route => route.fulfill({ json: { code: 0, data: row } }));
     }
     await page.route('**/api' + base, route => {
       written = route.request().postDataJSON();
       row = { ...row, ...written };
-      return route.fulfill({ json: { rscode: '0', data: row } });
+      return route.fulfill({ json: { code: 0, data: row } });
     });
     await page.reload();
     const card = page.locator(`[aria-label="${label}首页卡片"]`);
@@ -303,11 +303,11 @@ test('成功写入后返回首页只更新受影响的目标卡片', async ({ pa
   let goal;
   await page.route('**/api/goals', async route => {
     goal = route.request().postDataJSON();
-    return route.fulfill({ json: { rscode: '0', data: goal } });
+    return route.fulfill({ json: { code: 0, data: goal } });
   });
   await page.route('**/api/goals?*', route => {
     requests.push('GET /goals');
-    return route.fulfill({ json: { rscode: '0', data: [goal] } });
+    return route.fulfill({ json: { code: 0, data: [goal] } });
   });
   const card = page.locator('[aria-label="目标首页卡片"]');
   await card.getByRole('button', { name: '编辑固定目标', exact: true }).click();
@@ -358,7 +358,7 @@ for (const width of [390, 820, 1440]) for (const theme of ['light', 'dark']) {
     const orders = [];
     await page.route('**/api/goals/pinned-order', route => {
       orders.push(route.request().postDataJSON());
-      return route.fulfill({ json: { rscode: '0', data: null } });
+      return route.fulfill({ json: { code: 0, data: null } });
     });
     const goal = page.locator('[aria-label="目标首页卡片"]');
     const anniversary = page.locator('[aria-label="纪念日首页卡片"]');
@@ -412,7 +412,7 @@ test('目标拖动到边缘自动滚动，移动到末项只保存一次且松�
   const orders = [];
   await page.route('**/api/goals/pinned-order', route => {
     orders.push(route.request().postDataJSON());
-    return route.fulfill({ json: { rscode: '0', data: null } });
+    return route.fulfill({ json: { code: 0, data: null } });
   });
   const goal = page.locator('[aria-label="目标首页卡片"]');
   await goal.scrollIntoViewIfNeeded();
@@ -444,11 +444,11 @@ for (const width of [390, 820, 1440]) for (const theme of ['light', 'dark']) {
     const orders = [], goalOrders = [];
     await page.route('**/api/anniversaryRecords/pinned-order', route => {
       orders.push(route.request().postDataJSON());
-      return route.fulfill({ json: fail ? { rscode: '1', result: '模拟纪念日排序失败' } : { rscode: '0', data: null } });
+      return route.fulfill({ json: fail ? { code: 1, message: '模拟纪念日排序失败' } : { code: 0, data: null } });
     });
     await page.route('**/api/goals/pinned-order', route => {
       goalOrders.push(route.request().postDataJSON());
-      return route.fulfill({ json: { rscode: '0', data: null } });
+      return route.fulfill({ json: { code: 0, data: null } });
     });
     const card = page.locator('[aria-label="纪念日首页卡片"]');
     await card.scrollIntoViewIfNeeded();
@@ -477,7 +477,7 @@ for (const width of [390, 820, 1440]) for (const theme of ['light', 'dark']) {
     await page.screenshot({ path: info.outputPath('anniversary-sorted.png') });
     // 拖动的误点抑制结束后仍可正常轻点编辑。
     await page.waitForTimeout(460);
-    await page.route('**/api/anniversaryRecords/9223372036854775701', route => route.fulfill({ json: { rscode: '0', data: { id: '9223372036854775701', title: '模拟纪念日 2', isPinned: 1, targetDate: '2027-01-01', icon: '🎉' } } }));
+    await page.route('**/api/anniversaryRecords/9223372036854775701', route => route.fulfill({ json: { code: 0, data: { id: '9223372036854775701', title: '模拟纪念日 2', isPinned: 1, targetDate: '2027-01-01', icon: '🎉' } } }));
     await card.getByRole('button', { name: '编辑模拟纪念日 2', exact: true }).click();
     await expect(page.getByRole('dialog', { name: '编辑纪念日', exact: true })).toBeVisible();
     await page.getByRole('button', { name: '取消', exact: true }).click();
@@ -490,7 +490,7 @@ test('纪念日拖动到边缘自动滚动，松手仅保存纪念日顺序', as
   const orders = [];
   await page.route('**/api/anniversaryRecords/pinned-order', route => {
     orders.push(route.request().postDataJSON());
-    return route.fulfill({ json: { rscode: '0', data: null } });
+    return route.fulfill({ json: { code: 0, data: null } });
   });
   const card = page.locator('[aria-label="纪念日首页卡片"]');
   await card.scrollIntoViewIfNeeded();

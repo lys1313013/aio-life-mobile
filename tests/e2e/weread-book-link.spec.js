@@ -25,10 +25,10 @@ async function setup(page, context) {
     if (path === '/api/weread/book-link') {
       state.calls.push(url.searchParams.get('bookId'));
       await new Promise(resolve => setTimeout(resolve, 250));
-      if (state.fail) return route.fulfill({ json: { rscode: '1', result: '模拟查询失败，请重试' } });
+      if (state.fail) return route.fulfill({ json: { code: 1, message: '模拟查询失败，请重试' } });
       data = { deepLink: state.invalid ? 'javascript:alert(1)' : link };
     }
-    await route.fulfill({ json: { rscode: '0', data } });
+    await route.fulfill({ json: { code: 0, data } });
   });
   await page.goto('/');
   await page.locator('[aria-label="账号"] input').fill('fixture');
@@ -101,7 +101,7 @@ test('离页后关闭空白窗口，迟到的链接不触发跳转', async ({ pa
   let finish;
   await page.route('**/api/weread/book-link?**', async route => {
     await new Promise(resolve => { finish = resolve; });
-    await route.fulfill({ json: { rscode: '0', data: { deepLink: link } } });
+    await route.fulfill({ json: { code: 0, data: { deepLink: link } } });
   });
   const popup = page.waitForEvent('popup');
   await page.getByRole('button', { name: /^在微信读书打开：模拟缺少/ }).click();

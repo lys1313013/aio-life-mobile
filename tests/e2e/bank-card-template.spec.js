@@ -17,8 +17,8 @@ for (const width of [390, 768, 1440]) {
         const url = new URL(route.request().url());
         expect(url.searchParams.get('bankId')).toBe('9');
         expect(url.searchParams.get('cardType')).toBe('credit');
-        if (failList) return route.fulfill({json:{rscode:'1',result:'模拟卡面读取失败'}});
-        return route.fulfill({json:{rscode:'0',data:[{id:templateId,name:'模拟公共卡面',fileId,publicUrl:baseURL+publicPath}]}});
+        if (failList) return route.fulfill({json:{code:1,message:'模拟卡面读取失败'}});
+        return route.fulfill({json:{code:0,data:[{id:templateId,name:'模拟公共卡面',fileId,publicUrl:baseURL+publicPath}]}});
       });
       let publicRequests = 0;
       await page.route(`**${publicPath}`, route => {

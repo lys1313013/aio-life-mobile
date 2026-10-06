@@ -31,7 +31,7 @@ for (const width of [390, 768, 1440]) for (const theme of ['light', 'dark']) {
         data = true;
       } else if (path === '/api/exerciseRecord/dashboardSummary') data = { hasMore: false, days: [{ date: '2026-10-01', items: categories.map(type => ({ exerciseTypeId: type.id, typeLabel: type.dictLabel, icon: type.icon, color: type.color, count: 20, trend: [] })) }] };
       else return route.fallback();
-      await route.fulfill({ json: { rscode: '0', data } });
+      await route.fulfill({ json: { code: 0, data } });
     });
     state.exercise = categories.slice(0, 3).map((type, i) => ({ id: String(101 + i), exerciseTypeId: type.id, exerciseDate: '2026-10-01', exerciseCount: 20 }));
     await page.reload();

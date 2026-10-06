@@ -10,7 +10,7 @@ for (const kind of ['index', 'income']) {
     const year = new Date().getFullYear();
     await page.route('**/api/*/statisticsByMonth', (route) => route.fulfill({
       json: {
-        rscode: '0',
+        code: 0,
         data: [year - 1, year].flatMap((value) => [1, 2, 3].map((month) => ({
           year: value,
           month,

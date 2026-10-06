@@ -61,7 +61,7 @@ async function fixture(p) {
   };
   for (const [path, data] of Object.entries(map))
     await p.route('**/api' + path + (path.includes('query') ? '?*' : ''), (r) =>
-      r.fulfill({ json: { rscode: '0', data } }),
+      r.fulfill({ json: { code: 0, data } }),
     );
   await p.route('**/api/file/preview/*', (r) =>
     r.fulfill({

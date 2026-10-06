@@ -5,7 +5,7 @@ test('设备删除只在编辑弹窗内出现，确认失败可重试，成功�
   await page.setViewportSize({ width: 390, height: 900 });
   await setup(page);
   await page.route('**/api/device/query?*', route => route.fulfill({ json: {
-    rscode: '0', data: { items: [{ id: '9223372036854775807', name: '模拟设备', type: '81', status: '1', purchasePrice: 100 }], total: 1 },
+    code: 0, data: { items: [{ id: '9223372036854775807', name: '模拟设备', type: '81', status: '1', purchasePrice: 100 }], total: 1 },
   } }));
   let calls = 0;
   let release;
@@ -13,9 +13,9 @@ test('设备删除只在编辑弹窗内出现，确认失败可重试，成功�
   await page.route('**/api/device/9223372036854775807', async route => {
     expect(route.request().method()).toBe('DELETE');
     calls++;
-    if (calls === 1) return route.fulfill({ json: { rscode: '1', result: '模拟删除失败' } });
+    if (calls === 1) return route.fulfill({ json: { code: 1, message: '模拟删除失败' } });
     await pending;
-    await route.fulfill({ json: { rscode: '0', data: true } });
+    await route.fulfill({ json: { code: 0, data: true } });
   });
   await page.goto('/#/pages/goods/devices');
   await expect(page.getByText('模拟设备', { exact: true })).toBeVisible();

@@ -19,8 +19,8 @@ for (const width of [320, 390, 600, 768, 1440]) {
         { ...state.cards[0], id: '90', cardNoFirst4: '4333', coverFileIds: ['mock-cover'], bankName: '模拟图片封面长银行名称', cardType: 'credit', creditLimit: 50000, statementDay: 12, repaymentDay: 28, sortOrder: 3 },
       ];
       await page.route('**/api/file/preview/mock-cover', route => route.fulfill({ contentType: 'image/svg+xml', body: '<svg xmlns="http://www.w3.org/2000/svg" width="600" height="378"><rect width="600" height="378" fill="#e5edf8"/><circle cx="460" cy="110" r="190" fill="#adc4e0"/></svg>' }));
-      await page.route('**/api/bank-cards/90/number', route => route.fulfill({ json: { rscode: '0', data: '4333000000000001234' } }));
-      await page.route('**/api/bank-cards/88/number', route => route.fulfill({ json: { rscode: '0', data: '6222000000000001234' } }));
+      await page.route('**/api/bank-cards/90/number', route => route.fulfill({ json: { code: 0, data: '4333000000000001234' } }));
+      await page.route('**/api/bank-cards/88/number', route => route.fulfill({ json: { code: 0, data: '6222000000000001234' } }));
       await page.goto('/#/pages/finance/cards');
       await expect(page.locator('.card-grid .card')).toHaveCount(1);
       await expect(page.getByRole('button', { name: '储蓄卡', exact: true })).toHaveAttribute('aria-pressed', 'true');

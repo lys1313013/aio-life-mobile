@@ -48,7 +48,7 @@ for (const scenario of cases) {
   test(`${scenario.name}内容真实横滑、空列表、边界与编辑防误触`, async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 900 });
     await page.addInitScript(() => localStorage.setItem('aio-life-mobile.access-token.v1', 'tab-swipe-fixture'));
-    const fulfill = (route, data) => route.fulfill({ json: { rscode: '0', data } });
+    const fulfill = (route, data) => route.fulfill({ json: { code: 0, data } });
     await page.route('**/api/auth/secondary-lock/menus', route => fulfill(route, []));
     await page.route('**/api/userDictType/getByDictType?*', route => fulfill(route, {
       dictDetailList: deviceLabels.map((dictLabel, index) => ({ id: String(index + 1), dictLabel })),
@@ -64,7 +64,7 @@ for (const scenario of cases) {
     await page.route(`**/api/${scenario.api}/query?*`, route => {
       const value = new URL(route.request().url()).searchParams.get(scenario.param) || '';
       requests.push(value);
-      if (fail) return route.fulfill({ json: { rscode: '1', result: '模拟分类加载失败' } });
+      if (fail) return route.fulfill({ json: { code: 1, message: '模拟分类加载失败' } });
       const items = value === scenario.tabs[emptyIndex] ? [] : [scenario.row(value)];
       return fulfill(route, { items, total: items.length });
     });

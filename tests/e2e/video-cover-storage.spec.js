@@ -32,8 +32,8 @@ test('导入状态更新与失败重试不打开编辑弹窗', async ({ page }) 
   state.video[0].coverState = 'FAILED';
   state.video[0].coverFileId = null;
   let retries = 0, polls = 0;
-  await page.route('**/api/b-video/*/cover/retry', r => { retries++; return r.fulfill({ json: { rscode: '0', data: null } }); });
-  await page.route('**/api/b-video/covers?**', r => { polls++; return r.fulfill({ json: { rscode: '0', data: [{ id: state.video[0].id, coverState: 'READY', coverFileId: fileId }] } }); });
+  await page.route('**/api/b-video/*/cover/retry', r => { retries++; return r.fulfill({ json: { code: 0, data: null } }); });
+  await page.route('**/api/b-video/covers?**', r => { polls++; return r.fulfill({ json: { code: 0, data: [{ id: state.video[0].id, coverState: 'READY', coverFileId: fileId }] } }); });
   await page.route('**/api/file/preview/' + fileId, r => r.fulfill({ contentType: 'image/png', body: png }));
   await page.goto('/#/pages/records/video');
   await page.getByRole('button', { name: '重试封面', exact: true }).click();

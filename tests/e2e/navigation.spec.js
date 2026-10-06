@@ -20,7 +20,7 @@ test('四栏切换、日期查询、退出清理与重新登录', async ({ page 
       expect(url.searchParams.has('pageSize')).toBe(false);
       data = records;
     }
-    await route.fulfill({ json: { rscode: '0', data } });
+    await route.fulfill({ json: { code: 0, data } });
   });
   async function login() {
     await page.locator('[aria-label="账号"] input').fill('fixture');

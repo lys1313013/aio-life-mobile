@@ -39,10 +39,10 @@ async function setup(page, theme, state = {}) {
     if (p.endsWith("/statisticsByMonth")) {
       if (state.wait) await state.wait;
       if (state.fail)
-        return route.fulfill({ json: { rscode: "1", result: "模拟统计失败" } });
+        return route.fulfill({ json: { code: 1, message: "模拟统计失败" } });
       data = state.empty ? [] : statistics(p.includes("/expense/"));
     }
-    await route.fulfill({ json: { rscode: "0", data } });
+    await route.fulfill({ json: { code: 0, data } });
   });
   await page.goto("/#/pages/finance/index");
 }

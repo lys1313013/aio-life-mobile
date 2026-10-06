@@ -7,7 +7,7 @@ async function prepare(page, baseURL) {
   for (const [path, data] of Object.entries({
     '/user/info': { id: '1', nickname: '模拟用户', roles: ['admin'] },
     '/auth/secondary-lock/menus': [], '/bank-cards': [], '/bank-cards/banks': banks, '/bank-cards/tags': [],
-  })) await page.route(`${baseURL}/api${path}`, route => route.fulfill({ json: { rscode: '0', data } }));
+  })) await page.route(`${baseURL}/api${path}`, route => route.fulfill({ json: { code: 0, data } }));
   await page.goto('/#/pages/finance/cards');
   await expect(page.getByText('暂无储蓄卡', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: '新增银行卡', exact: true }).click();
@@ -20,7 +20,7 @@ test('三千家银行搜索、触底追加、停用、自定义及保存失败�
   // 新增的精确替身只处理本次模拟提交。
   await page.route(`${baseURL}/api/bank-cards`, route => {
     payload = route.request().postDataJSON();
-    return route.fulfill({ json: { rscode: '1', result: '模拟保存失败' } });
+    return route.fulfill({ json: { code: 1, message: '模拟保存失败' } });
   });
   const input = dialog.getByRole('searchbox', { name: '银行', exact: true });
   await input.click();

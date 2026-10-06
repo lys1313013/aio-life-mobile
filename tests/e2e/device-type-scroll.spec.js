@@ -10,11 +10,11 @@ for (const width of [390, 768, 1440]) {
       await page.emulateMedia({ colorScheme });
       await setup(page);
       await page.route('**/api/userDictType/getByDictType?*', route => route.fulfill({
-        json: { rscode: '0', data: { dictDetailList: labels.map((dictLabel, index) => ({ id: String(index + 1), dictLabel })) } },
+        json: { code: 0, data: { dictDetailList: labels.map((dictLabel, index) => ({ id: String(index + 1), dictLabel })) } },
       }));
       await page.route('**/api/device/query?*', route => {
         const type = new URL(route.request().url()).searchParams.get('type');
-        return route.fulfill({ json: { rscode: '0', data: {
+        return route.fulfill({ json: { code: 0, data: {
           items: [{ id: '1', name: type ? `模拟${labels[Number(type) - 1]}` : '模拟全部设备', purchasePrice: 100, status: '1' }], total: 1,
         } } });
       });

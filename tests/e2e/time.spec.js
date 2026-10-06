@@ -57,7 +57,7 @@ async function setup(page, options = {}) {
     if (/^\/api\/(read-record|movie)$/.test(path) && method === 'PUT') {
       const payload = req.postDataJSON();
       state.relatedUpdates.push({ path, payload });
-      if (state.relatedSaveFailure) return route.fulfill({ json: { rscode: '1', result: '状态服务暂不可用' } });
+      if (state.relatedSaveFailure) return route.fulfill({ json: { code: 1, message: '状态服务暂不可用' } });
       state.relatedRecords = state.relatedRecords.map(item => item.id === payload.id ? { ...item, ...payload } : item);
       data = null;
     }
@@ -73,7 +73,7 @@ async function setup(page, options = {}) {
       const coverTitle = state.relatedRecords?.find(item => item.fileId === path.split('/').pop() && path.startsWith('/api/file/preview/') || item.coverImgUrl === path)?.title || '时间之书';
       return route.fulfill({ contentType: 'image/svg+xml', body: `<svg xmlns="http://www.w3.org/2000/svg" width="300" height="400"><rect width="300" height="400" fill="${colors[index % colors.length]}"/><path d="M0 290 Q110 170 300 250 V400 H0" fill="#ffffff" opacity=".12"/><circle cx="230" cy="90" r="45" fill="#eadaba" opacity=".65"/><text x="26" y="175" font-family="sans-serif" font-size="30" fill="#fff">${coverTitle}</text><text x="28" y="210" font-family="sans-serif" font-size="11" fill="#ddd">AIO LIFE · TEST COVER</text></svg>` });
     }
-    await route.fulfill({ json: { rscode: '0', data } });
+    await route.fulfill({ json: { code: 0, data } });
   });
   await page.goto('/');
   await page.locator('[aria-label="账号"] input').fill('fixture');

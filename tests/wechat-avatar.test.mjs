@@ -34,7 +34,7 @@ async function fixture(t) {
     upload, () => {}, session, uni));
   hooks.show(); await tick(); assert.equal(page.ready.value, true);
   const select = (url = 'wxfile://tmp/avatar.png') => { page.beginWechatAvatarSelection(); return page.chooseWechatAvatar({ detail: { avatarUrl: url } }); };
-  const succeed = (index = uploads.length - 1, data = { id: newId, fileUrl: '/new.png' }) => uploads[index].success({ statusCode: 200, data: JSON.stringify({ rscode: '0', data }) });
+  const succeed = (index = uploads.length - 1, data = { id: newId, fileUrl: '/new.png' }) => uploads[index].success({ statusCode: 200, data: JSON.stringify({ code: 0, data }) });
   return { page, session, profile, hooks, uploads, writes, navigations, choices, control, select, succeed };
 }
 
@@ -106,7 +106,7 @@ test('切账号后旧上传成功或旧 401 不修改新账号', async t => {
   for (const statusCode of [200, 401]) {
     const f = await fixture(t), p = f.page;
     const pending = f.select(); f.session.token = 'fixture-b'; await tick();
-    f.uploads[0].success({ statusCode, data: JSON.stringify({ rscode: '0', data: { id: newId, fileUrl: '/new.png' } }) });
+    f.uploads[0].success({ statusCode, data: JSON.stringify({ code: 0, data: { id: newId, fileUrl: '/new.png' } }) });
     await pending;
     assert.equal(f.session.token, 'fixture-b'); assert.equal(p.form.value.avatarFileId, oldId); assert.deepEqual(f.navigations, []);
   }

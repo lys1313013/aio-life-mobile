@@ -8,7 +8,7 @@ for (const width of [320, 390, 768, 1440]) {
       await page.emulateMedia({ colorScheme });
       await setup(page, true);
       await page.route('**/api/menu/preferences?client=mobile', route => route.fulfill({ json: {
-        rscode: '0', data: { menus: [{ id: 'category', title: '个人分类', children: [] }], hiddenMenuIds: [] },
+        code: 0, data: { menus: [{ id: 'category', title: '个人分类', children: [] }], hiddenMenuIds: [] },
       } }));
       await page.goto('/#/pages/time/index');
       const header = page.locator('.page-navigation');

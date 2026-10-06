@@ -63,7 +63,7 @@ try {
         else if (url === '/api/user/info') data = { id: fixtureLogin.id, nickname: '测试用户' };
         else if (url.endsWith('/logout')) data = null;
         else data = [];
-        return route.fulfill({ json: { rscode: '0', data } });
+        return route.fulfill({ json: { code: 0, data } });
       });
       await page.goto(origin + '/#/pages/login/index');
       await page.getByText('微信登录', { exact: true }).waitFor();
@@ -98,11 +98,11 @@ try {
       if (url.endsWith('/capabilities')) data = direct ? { enabled: true, registrationEnabled: true } : { enabled: true };
       if (url.endsWith('/register')) {
         registrations++;
-        if (registrations === 1) return route.fulfill({ status: 400, json: { rscode: '100400', result: '登录票据已失效，请重新微信登录' } });
+        if (registrations === 1) return route.fulfill({ status: 400, json: { code: 100400, message: '登录票据已失效，请重新微信登录' } });
         data = fixtureLogin;
       }
       if (url.endsWith('/phone-login')) { phoneCalls++; throw new Error('不应请求手机号'); }
-      return route.fulfill({ json: { rscode: '0', data } });
+      return route.fulfill({ json: { code: 0, data } });
     });
     await page.goto(origin + '/#/pages/login/index');
     await page.getByText('微信登录', { exact: true }).waitFor();
@@ -131,7 +131,7 @@ try {
   let capabilityCalls = 0;
   await retryPage.route(authRoute, async route => {
     if (++capabilityCalls === 1) return route.abort();
-    return route.fulfill({ json: { rscode: '0', data: { enabled: true } } });
+    return route.fulfill({ json: { code: 0, data: { enabled: true } } });
   });
   await retryPage.goto(origin + '/#/pages/login/index');
   await button(retryPage, '重试微信登录').click();
@@ -152,7 +152,7 @@ try {
     if (url === '/api/auth/login') data = { accessToken: 'old-account-fixture-token' };
     if (url.endsWith('/bind')) data = { ...fixtureLogin, hasPassword: true, newUser: false };
     if (url === '/api/user/info') data = { id: fixtureLogin.id, nickname: '原账号测试用户' };
-    await route.fulfill({ json: { rscode: '0', data } });
+    await route.fulfill({ json: { code: 0, data } });
   });
   await page.goto(origin + '/#/pages/login/index');
   await page.getByText('微信登录', { exact: true }).waitFor();
@@ -192,7 +192,7 @@ try {
         if (url.endsWith('/web/confirm')) data = { status: 'CONFIRMED' };
         if (url.endsWith('/web/cancel')) data = { status: 'CANCELLED' };
         if (url.endsWith('/user/info')) data = { id: fixtureLogin.id, nickname: '扫码测试用户' };
-        return route.fulfill({ json: { rscode: '0', data } });
+        return route.fulfill({ json: { code: 0, data } });
       });
       await scanPage.goto(origin + '/#/pages/auth/web-login?scene=' + scene);
       await button(scanPage, '微信登录').waitFor();

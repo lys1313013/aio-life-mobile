@@ -17,7 +17,7 @@ async function setup(page) {
       state.writes.push({ account, body: route.request().postDataJSON() });
       data = true;
     }
-    await route.fulfill({ json: { rscode: '0', data: data ?? [] } });
+    await route.fulfill({ json: { code: 0, data: data ?? [] } });
   });
   await page.goto('/#/pages/profile/settings');
   await expect(page.locator('[aria-label="昵称"] input')).toHaveValue('用户A');

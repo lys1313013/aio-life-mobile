@@ -9,7 +9,7 @@ async function setup(page) {
     const method = route.request().method(), url = new URL(route.request().url());
     if (method !== 'GET') {
       state.calls.push({ method, path: url.pathname, body: route.request().postData() ? route.request().postDataJSON() : null });
-      if (state.fail) return route.fulfill({ json: { rscode: '1', result: '模拟保存失败' } });
+      if (state.fail) return route.fulfill({ json: { code: 1, message: '模拟保存失败' } });
       if (method === 'DELETE') state.items = homeCardFixture();
       else if (url.pathname.endsWith('/order')) {
         const { group, keys } = route.request().postDataJSON();
@@ -19,10 +19,10 @@ async function setup(page) {
         state.items = state.items.map(item => item.cardKey === key ? { ...item, enabled: route.request().postDataJSON().enabled } : item);
       }
     }
-    return route.fulfill({ json: { rscode: '0', data: state.items } });
+    return route.fulfill({ json: { code: 0, data: state.items } });
   };
-  await page.route('**/api/user/info', route => route.fulfill({ json: { rscode: '0', data: { id: 'fixture-home-card-user', nickname: '测试用户' } } }));
-  await page.route('**/api/auth/secondary-lock/menus', route => route.fulfill({ json: { rscode: '0', data: [] } }));
+  await page.route('**/api/user/info', route => route.fulfill({ json: { code: 0, data: { id: 'fixture-home-card-user', nickname: '测试用户' } } }));
+  await page.route('**/api/auth/secondary-lock/menus', route => route.fulfill({ json: { code: 0, data: [] } }));
   await page.route('**/api/home/cards', respond);
   await page.route('**/api/home/cards/*', respond);
   await page.goto('/#/pages/home-settings/index');
@@ -78,8 +78,8 @@ test('全部关闭不请求业务，GitHub 详情可独立于概览启用', asyn
   const state = await setup(page);
   const calls = [];
   page.on('request', req => { const url=new URL(req.url()); if(url.pathname.startsWith('/api/')) calls.push(url.pathname); });
-  await page.route('**/api/dashboard/tasks', route=>route.fulfill({json:{rscode:'0',data:[{type:'GITHUB',title:'GitHub',icon:'mdi:github'}]}}));
-  for(const suffix of ['', '?*']) await page.route('**/api/github/recent-commits'+suffix, route=>route.fulfill({json:{rscode:'0',data:[{id:'test',repo:'fixture',message:'模拟提交',date:'2026-10-04T10:00:00'}]}}));
+  await page.route('**/api/dashboard/tasks', route=>route.fulfill({json:{code:0,data:[{type:'GITHUB',title:'GitHub',icon:'mdi:github'}]}}));
+  for(const suffix of ['', '?*']) await page.route('**/api/github/recent-commits'+suffix, route=>route.fulfill({json:{code:0,data:[{id:'test',repo:'fixture',message:'模拟提交',date:'2026-10-04T10:00:00'}]}}));
   state.items=state.items.map(item=>({...item,enabled:false}));
   await page.goto('/#/pages/home/index');
   await expect(page.locator('.dashboard-content')).toBeVisible();

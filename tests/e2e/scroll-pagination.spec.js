@@ -47,9 +47,9 @@ for (const [path, endpoint, selector, size] of scenarios) {
       const url = new URL(route.request().url());
       const number = Number(url.searchParams.get('page') || url.searchParams.get('current') || 1);
       requests.push(number);
-      if (number === 2 && fail) return route.fulfill({ json: { rscode: '1', result: '模拟分页失败，已保留列表' } });
+      if (number === 2 && fail) return route.fulfill({ json: { code: 1, message: '模拟分页失败，已保留列表' } });
       if (number === 2) await pending.promise;
-      await route.fulfill({ json: { rscode: '0', data: { items: rows(number, number === 1 ? size : 2), total: size + 2 } } });
+      await route.fulfill({ json: { code: 0, data: { items: rows(number, number === 1 ? size : 2), total: size + 2 } } });
     });
     await page.goto('/#/pages/' + path);
     if (path === 'messages/index') {
@@ -87,7 +87,7 @@ test('支出空末页停止请求，筛选后忽略旧分页结果', async ({ pa
     const number = Number(new URL(route.request().url()).searchParams.get('page'));
     requests.push(number);
     if (number === 2 && !empty) await pending.promise;
-    await route.fulfill({ json: { rscode: '0', data: { items: number === 2 && empty ? [] : rows(number, reset ? 1 : 50), total: reset ? 1 : 100 } } });
+    await route.fulfill({ json: { code: 0, data: { items: number === 2 && empty ? [] : rows(number, reset ? 1 : 50), total: reset ? 1 : 100 } } });
   });
   await page.goto('/#/pages/finance/expense');
   await expect(page.locator('.expense-row')).toHaveCount(50);

@@ -19,18 +19,18 @@ async function setup(page, extra = {}) {
     ...extra,
   };
   for (const [path, data] of Object.entries(fixtures)) {
-    const handler = route => { calls.push(new URL(route.request().url()).pathname); return route.fulfill({ json: { rscode: '0', data } }); };
+    const handler = route => { calls.push(new URL(route.request().url()).pathname); return route.fulfill({ json: { code: 0, data } }); };
     await page.route('**/api' + path, handler);
     await page.route('**/api' + path + '?*', handler);
   }
-  await page.route('**/api/home/cards', route => route.fulfill({ json: { rscode: '0', data: cards } }));
+  await page.route('**/api/home/cards', route => route.fulfill({ json: { code: 0, data: cards } }));
   await page.route('**/api/home/cards/order', async route => {
     const payload = route.request().postDataJSON(); writes.push(payload);
     await new Promise(resolve => setTimeout(resolve, 120));
-    if (fail) { await route.fulfill({ json: { rscode: '1', result: '模拟排序失败' } }); settled++; return; }
+    if (fail) { await route.fulfill({ json: { code: 1, message: '模拟排序失败' } }); settled++; return; }
     cards = cards.map(item => item.group === payload.group ? { ...item, sortOrder: payload.keys.indexOf(item.cardKey) } : item)
       .sort((a, b) => a.group.localeCompare(b.group) || a.sortOrder - b.sortOrder);
-    await route.fulfill({ json: { rscode: '0', data: cards } });
+    await route.fulfill({ json: { code: 0, data: cards } });
     settled++;
   });
   page.on('pageerror', error => errors.push(error.message));
@@ -163,11 +163,11 @@ test('拖动松手立即保留新顺序，保存中无 loading，成功静默，
     writes++;
     const payload = route.request().postDataJSON();
     await new Promise(resolve => { release = resolve; });
-    if (fail) return route.fulfill({ json: { rscode: '1', result: '模拟排序失败' } });
+    if (fail) return route.fulfill({ json: { code: 1, message: '模拟排序失败' } });
     const cards = homeCardFixture().map(item => item.group === payload.group
       ? { ...item, sortOrder: payload.keys.indexOf(item.cardKey) } : item)
       .sort((a, b) => a.group.localeCompare(b.group) || a.sortOrder - b.sortOrder);
-    return route.fulfill({ json: { rscode: '0', data: cards } });
+    return route.fulfill({ json: { code: 0, data: cards } });
   });
   const card = page.locator('[data-card-key="overview.exercise"]');
   const content = await card.locator('.overview-card').elementHandle();
@@ -204,7 +204,7 @@ for (const width of [390, 820, 1440]) for (const theme of ['light', 'dark']) {
       '/read-record/page': { items: [
         { id: 'read-1', title: '模拟在读书籍', status: 'in_progress' },
         ...[2, 3, 4].map(id => ({ id: 'read-' + id, title: '模拟想读书籍 ' + id, status: 'not_started' })),
-      ], total: '4' },
+      ], total: 4 },
       '/exerciseRecord/dashboardSummary': { hasMore: false, days: [1, 2, 3].map(day => ({ date: '2026-10-0' + day, items: [{ exerciseTypeId: 'walk', typeLabel: '散步', count: day * 20, trend: [] }] })) },
     });
     const source = page.locator('[data-card-key="section.reading"]');

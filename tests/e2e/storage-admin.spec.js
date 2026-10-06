@@ -3,12 +3,12 @@ const fs = require('node:fs');
 const image = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=', 'base64');
 const file = (key, extra={}) => ({key,directory:false,size:'10240',lastModified:'2026-10-03T02:30:00Z',previewable:false,...extra});
 const directory = key => file(key,{directory:true,size:'0',lastModified:null});
-const result = (items,nextCursor=null,prefix='') => ({rscode:'0',data:{bucket:'demo-life-files',prefix,items,nextCursor}});
+const result = (items,nextCursor=null,prefix='') => ({code:0,data:{bucket:'demo-life-files',prefix,items,nextCursor}});
 const gate = () => {let release;const promise=new Promise(resolve=>release=resolve);return {promise,release}};
 async function setup(page,theme='light',admin=true) {
   await page.addInitScript(({theme})=>{localStorage.setItem('aio-life-mobile.access-token.v1','storage-fixture');localStorage.setItem('aio-life-mobile.theme.v1',theme)},{theme});
-  await page.route('**/api/user/info',route=>route.fulfill({json:{rscode:'0',data:{id:'1',accountUsername:'fixture',nickname:'模拟管理员',roles:admin?['admin']:['user']}}}));
-  await page.route('**/api/auth/secondary-lock/menus',route=>route.fulfill({json:{rscode:'0',data:[]}}));
+  await page.route('**/api/user/info',route=>route.fulfill({json:{code:0,data:{id:'1',accountUsername:'fixture',nickname:'模拟管理员',roles:admin?['admin']:['user']}}}));
+  await page.route('**/api/auth/secondary-lock/menus',route=>route.fulfill({json:{code:0,data:[]}}));
   await page.route('**/api/system/storage/preview?**',route=>route.fulfill({contentType:'image/png',body:image}));
 }
 async function scrollBottom(page) {
@@ -29,7 +29,7 @@ test('对象存储实际滚动加载、游标去重、失败恢复和空末页�
   await page.route('**/api/system/storage/objects?**',async route=>{
     const cursor=new URL(route.request().url()).searchParams.get('cursor');requests.push(cursor);
     if(!cursor)return route.fulfill({json:result(Array.from({length:24},(_,i)=>file('模拟文件-'+i+'.txt')),'next&cursor')});
-    if(fail)return route.fulfill({json:{rscode:'1',result:'模拟分页失败'}});
+    if(fail)return route.fulfill({json:{code:1,message:'模拟分页失败'}});
     await pending.promise;await route.fulfill({json:result([], 'erroneous-next')});
   });
   await page.goto('/#/pages/admin/storage');await expect(page.locator('.storage-card')).toHaveCount(24);
@@ -68,8 +68,8 @@ for(const width of [390,768,1440])for(const theme of ['light','dark']) {
     });
     await page.route('**/api/system/storage/object?**',route=>{
       expect(route.request().method()).toBe('DELETE');
-      if(blockDelete)return route.fulfill({status:409,json:{rscode:'1',result:'文件仍被业务记录引用，不能删除'}});
-      rows=rows.filter(row=>row.key!==keys[0]);return route.fulfill({json:{rscode:'0',data:null}});
+      if(blockDelete)return route.fulfill({status:409,json:{code:1,message:'文件仍被业务记录引用，不能删除'}});
+      rows=rows.filter(row=>row.key!==keys[0]);return route.fulfill({json:{code:0,data:null}});
     });
     await page.goto('/#/pages/admin/storage');await expect(page.locator('.storage-card')).toHaveCount(4);
     await expect(page.getByRole('button',{name:'预览 '+keys[1],exact:true})).toBeVisible();

@@ -9,12 +9,12 @@ async function openExpense(page) {
     { id: '9007199254741002', amt: 20, transactionAmt: 25, expTypeId: '81', payTypeId: '82', expTime: '2026-09-01 12:30:00', expDesc: '模拟食堂(99999999999999999999)', counterparty: '模拟餐饮公司' },
   ];
   const state = { rows, deleted: [], fail: true };
-  await page.route('**/api/expense/query*', route => route.fulfill({ json: { rscode: '0', data: { items: state.rows, total: state.rows.length } } }));
+  await page.route('**/api/expense/query*', route => route.fulfill({ json: { code: 0, data: { items: state.rows, total: state.rows.length } } }));
   await page.route('**/api/expense/900719925474100*', route => {
     state.deleted.push(route.request().url().split('/').at(-1));
-    if (state.fail) return route.fulfill({ json: { rscode: '1', result: '模拟删除失败' } });
+    if (state.fail) return route.fulfill({ json: { code: 1, message: '模拟删除失败' } });
     state.rows = state.rows.filter(row => row.id !== state.deleted.at(-1));
-    return route.fulfill({ json: { rscode: '0', data: true } });
+    return route.fulfill({ json: { code: 0, data: true } });
   });
   await page.goto('/#/pages/finance/expense');
   await expect(page.locator('.expense-row')).toHaveCount(2);
