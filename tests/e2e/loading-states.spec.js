@@ -238,11 +238,14 @@ test('all asynchronous business pages expose loading placeholders', async ({ pag
     await page.route('http://127.0.0.1:5180/api/**', async request => {
       const path = new URL(request.request().url()).pathname;
       if (path === '/api/user/info') return request.fulfill({ json: { code: 0, data: { id: '1', nickname: '模拟用户', roles: ['admin'] } } });
+      if (route === 'home/index' && path === '/api/home/cards') return request.fulfill({ json: { code: 0, data: dashboardFixture(path) } });
+      if (route === 'home/index' && path === '/api/menu/visuals') return request.fulfill({ json: { code: 0, data: { menus: [], cards: {} } } });
+      if (route === 'home/index' && path === '/api/auth/secondary-lock/menus') return request.fulfill({ json: { code: 0, data: [] } });
       await pending.promise; await request.fulfill({ json: { code: 0, data: [] } });
     });
     try {
       await page.goto('/#/pages/' + route); await page.reload();
-      const loadingSelector = route === 'finance/cards' ? '.card-loading' : route === 'relationship/index' ? '.topology .loading-indicator' : route === 'time/edit' ? '.editor-loading .loading-indicator' : '.content-skeleton';
+      const loadingSelector = route === 'home/index' ? '.home-list-skeleton' : route === 'finance/index' ? '.chart-loading-plot' : route === 'finance/cards' ? '.card-loading' : route === 'relationship/index' ? '.topology .loading-indicator' : route === 'time/edit' ? '.editor-loading .loading-indicator' : '.content-skeleton';
       await expect(page.locator(loadingSelector).first(), route).toBeVisible();
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), route).toBe(true);
       await page.screenshot({ path: info.outputPath(route.replace(/[/?=]/g, '-') + '.png') });
@@ -254,6 +257,8 @@ for (const width of [390, 768, 1440]) for (const theme of ['light', 'dark']) {
   test(`time refresh keeps content stationary ${width} ${theme}`, async ({ page }, info) => {
     await page.setViewportSize({ width, height: 900 });
     await page.emulateMedia({ colorScheme: theme });
+    const started = new Date(); started.setHours(10, 0, 0, 0);
+    await page.clock.setFixedTime(started);
     const firstLoad = gate();
     const hold = { '/api/timeRecord/query': firstLoad };
     await fixture(page, hold);
@@ -264,6 +269,7 @@ for (const width of [390, 768, 1440]) for (const theme of ['light', 'dark']) {
     await expect(page.locator('.timeline-event')).toHaveCount(2);
     expect(await page.locator('.timeline').boundingBox()).toEqual(initial);
 
+    let refreshRound = 0;
     for (const view of ['时间轴视图', '卡片视图']) {
       await page.getByRole('button', { name: view, exact: true }).click();
       const panel = page.locator('.time-main-panel');
@@ -271,6 +277,8 @@ for (const width of [390, 768, 1440]) for (const theme of ['light', 'dark']) {
       const pending = gate();
       hold['/api/timeRecord/query'] = pending;
       await page.locator('uni-tabbar').getByText('首页', { exact: true }).click();
+      // 自动刷新只在缓存过期后执行；普通切换 tab 会保留当前数据。
+      await page.clock.setFixedTime(new Date(started.getTime() + ++refreshRound * 61 * 60 * 1000));
       await page.locator('uni-tabbar').getByText('时迹', { exact: true }).click();
       await expect(page.getByRole('status', { name: '正在更新时迹', exact: true })).toBeVisible();
       expect(await panel.boundingBox()).toEqual(before);

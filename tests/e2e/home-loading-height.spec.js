@@ -21,6 +21,7 @@ async function setup(page) {
     }
     // 导航权限检查先完成；延迟门只控制本用例要测量的卡片请求。
     if (path === '/api/auth/secondary-lock/menus') return route.fulfill({ json: { code: 0, data: [] } });
+    if (path === '/api/menu/visuals') return route.fulfill({ json: { code: 0, data: { menus: [], cards: {} } } });
     // 概览先完成，让绑定的 GitHub 卡片也进入 loading 后再测量。
     if (path !== '/api/home/cards' && path !== '/api/dashboard/tasks' && !path.startsWith('/api/dashboard/card/')) await state.pending.promise;
     if (path === '/api/quick-nav/my' && state.failLinks) return route.fulfill({ json: { code: 1, message: '模拟加载失败' } });
@@ -37,15 +38,22 @@ function card(page, title) {
 }
 
 function expectLoadedHeights(before, after, width) {
-  const { 待办: beforeTask, ...beforeOther } = before;
-  const { 待办: afterTask, ...afterOther } = after;
-  expect(afterOther).toEqual(beforeOther);
+  const limit = width >= 1024 ? 280 : width >= 640 ? 250 : 240;
+  for (const height of Object.values(after)) expect(height).toBeLessThanOrEqual(limit);
   if (width < 768) {
-    expect(afterTask).toBeGreaterThan(100);
-    expect(afterTask).toBeLessThan(160);
-    expect(afterTask).toBe(beforeTask);
+    // 首次加载按合理行数占位；真实导航/空闪念较少时应收缩，刷新仍保留已有高度。
+    for (const title of ['时迹', '待办', '运动', '最近提交']) expect(after[title]).toBe(before[title]);
+    expect(after['待办']).toBeGreaterThan(100);
+    expect(after['待办']).toBeLessThan(160);
+    expect(after['快捷导航']).toBeGreaterThan(100);
+    expect(after['快捷导航']).toBeLessThan(190);
+    expect(after['闪念']).toBeLessThanOrEqual(before['闪念']);
+    expect(after['闪念']).toBeLessThan(180);
+    expect(after['运动']).toBeLessThan(190);
+    expect(after['最近提交']).toBeLessThan(210);
   } else {
-    expect(afterTask).toBe(beforeTask);
+    expect(after).toEqual(before);
+    for (const height of Object.values(after)) expect(height).toBe(limit);
   }
 }
 
@@ -103,7 +111,7 @@ test('home card height survives error, retry and empty content', async ({ page }
   state.failLinks = false;
   state.pending = gate();
   await page.getByRole('button', { name: '重试快捷导航' }).click();
-  await expect(card(page, '快捷导航').locator('.section-loading')).toBeVisible();
+  await expect(card(page, '快捷导航').getByRole('status', { name: '正在加载快捷导航', exact: true })).toBeVisible();
   expect(await heights(page)).toEqual(loaded);
   state.pending.release();
   await expect(page.getByText('暂无快捷方式', { exact: true })).toBeVisible();

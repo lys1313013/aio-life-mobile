@@ -2,6 +2,7 @@
 import { buttonLabelClasses } from '../services/button-label.ts'
 import { computed, nextTick, onUnmounted, ref, watch } from 'vue'
 import { clampTimeSelection, resolveTimeWheelSelection } from '../services/time-selection.ts'
+import { clockLabel } from '../services/dashboard-format.ts'
 import spacing from '../styles/spacing.json'
 import { isDark, themeClass } from '../services/theme.ts'
 
@@ -64,6 +65,7 @@ function useCurrentTime() {
         <button role="button" class="time-end-action time-end-primary time-end-confirm" :class="themeClass('time-end-primary')"
           :disabled="!available || isDisabled(selected)" @click="confirm"><text :class="buttonLabelClasses(['time-end-action time-end-primary time-end-confirm', themeClass('time-end-primary')])">完成</text></button>
       </view>
+      <text class="time-end-bounds" :class="themeClass('time-end-bounds')" aria-label="可选时间范围">{{ available ? clockLabel(min) + ' – ' + clockLabel(max) : '暂无可选时间' }}</text>
       <picker-view class="time-end-wheel" :value="selection"
         :indicator-style="'height: ' + spacing.controlMin + 'px;'" :mask-style="maskStyle"
         @change="change">
@@ -133,6 +135,13 @@ function useCurrentTime() {
 .time-end-action-dark { color: #eeeeef; }
 .time-end-primary { color: #1d4ed8; }
 .time-end-primary-dark { color: #9bbcff; }
+.time-end-bounds {
+  @include type-style('caption');
+  padding: $space-detail $space-modal;
+  text-align: center;
+  color: #6b7280;
+}
+.time-end-bounds-dark { color: #a1a1aa; }
 .time-end-wheel {
   width: 100%;
   // 五行滚轮，与选中行的原生 indicator 高度一致。

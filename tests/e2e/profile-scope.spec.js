@@ -48,14 +48,18 @@ test('资料页切账号清空旧表单并保存当前账号数据', async ({ pa
 });
 
 test('资料页离页旧加载不能覆盖返回后的当前加载', async ({ page }) => {
+  const started = new Date();
+  await page.clock.setFixedTime(started);
   const state = await setup(page);
   let release;
   state.wait = new Promise(resolve => { release = resolve; });
   await page.goto('/#/pages/profile/security');
   await expect(page.getByText('菜单锁', { exact: true })).toBeVisible();
+  await page.clock.setFixedTime(new Date(started.getTime() + 61 * 60 * 1000));
   await page.goBack();
   await expect.poll(() => state.pendingReads).toBe(1);
-  await expect(page.locator('.settings-card')).toHaveCount(0);
+  await expect(page.getByRole('status', { name: '正在加载设置', exact: true })).toBeVisible();
+  await expect(page.locator('[aria-label="昵称"] input')).toHaveValue('用户A');
   state.wait = null;
   await signInAsB(page);
   const oldResponse = page.waitForResponse(response => response.url().endsWith('/api/user/info') && response.request().headers().authorization?.includes('account-a'));

@@ -87,7 +87,7 @@ for (const mode of ['light', 'dark']) {
     await page.goto('/#/pages/time/index');
     await page.getByRole('button', { name: '新增时迹', exact: true }).click();
     const dialog = page.getByRole('dialog', { name: '记录时间', exact: true });
-    for (const label of ['记录日期', '开始时间']) {
+    for (const label of ['记录日期']) {
       await dialog.locator(`uni-picker[aria-label="${label}"]`).click();
       await page.waitForTimeout(350);
       await checkWheel(page, mode === 'dark');
@@ -96,5 +96,18 @@ for (const mode of ['light', 'dark']) {
       await expect(dialog).toBeVisible();
       await expect(page.locator('.uni-picker-content:visible')).toHaveCount(0);
     }
+    await dialog.getByRole('button', { name: '开始时间', exact: true }).click();
+    const timePicker = page.getByRole('dialog', { name: '选择开始时间', exact: true });
+    await expect(timePicker).toBeVisible();
+    const background = await timePicker.evaluate(node => getComputedStyle(node).backgroundColor);
+    expect(background).toBe(mode === 'dark' ? 'rgb(28, 30, 34)' : 'rgb(255, 255, 255)');
+    const number = timePicker.locator('.time-end-number[aria-disabled="false"]').first();
+    expect(contrast(await number.evaluate(node => getComputedStyle(node).color), background)).toBeGreaterThanOrEqual(4.5);
+    const mask = await timePicker.locator('.uni-picker-view-mask').first().evaluate(node => getComputedStyle(node).backgroundImage);
+    expect(mask).toContain(mode === 'dark' ? 'rgba(28, 30, 34,' : 'rgba(255, 255, 255,');
+    await page.screenshot({ path: `artifacts/picker-theme/开始时间-${mode}.png` });
+    await timePicker.getByRole('button', { name: '取消', exact: true }).click();
+    await expect(timePicker).toHaveCount(0);
+    await expect(dialog).toBeVisible();
   });
 }

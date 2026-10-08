@@ -13,13 +13,13 @@ async function harness(web = true) {
   let sequence = 0, rows = ['9223372036854775801', '9223372036854775802', '9223372036854775803'].map(id => ({ id }))
   const fixture = {
     ref: value => ({ value }), getCurrentInstance: () => null, onUnmounted: () => {},
-    spacing: { inline: 8, controlMin: 44 }, businessCardRowHeight: 76,
+    spacing: { inline: 8, controlMin: 44 }, businessCardRowHeight: 64,
     setTimeout: (fn, delay) => { const id = ++sequence; timers.set(id, { fn, delay }); return id },
     clearTimeout: id => timers.delete(id),
     setInterval: fn => { const id = ++sequence; intervals.set(id, fn); return id },
     clearInterval: id => intervals.delete(id),
     window: { requestAnimationFrame: fn => { const id = ++sequence; frames.set(id, fn); return id }, cancelAnimationFrame: id => frames.delete(id), addEventListener() {}, removeEventListener() {} },
-    uni: { vibrateShort() {}, createSelectorQuery: () => ({ in() { return this }, select() { return this }, boundingClientRect() { return this }, exec(fn) { fn([{ top: 100, bottom: 328, height: 228 }]) } }) },
+    uni: { vibrateShort() {}, createSelectorQuery: () => ({ in() { return this }, select() { return this }, boundingClientRect() { return this }, exec(fn) { fn([{ top: 100, bottom: 292, height: 192 }]) } }) },
   }
   const useBusinessOrder = new Function(...Object.keys(fixture), js + '\nreturn useBusinessOrder')(...Object.values(fixture))
   const order = useBusinessOrder({ selector: '.business-order-scroll-goal', rows: () => rows, disabled: () => false, save: async (from, to) => saves.push([from, to]) })
@@ -44,14 +44,14 @@ for (const web of [true, false]) {
     assert.equal((web ? h.frames : h.timers).size, 1)
     assert.equal(h.order.style(h.rows[1].id).transform, 'translateY(0px)')
     h.flush()
-    assert.equal(h.order.style(h.rows[1].id).transform, 'translateY(76px)')
-    assert.equal(h.order.style(h.rows[2].id).transform, 'translateY(-76px)')
+    assert.equal(h.order.style(h.rows[1].id).transform, 'translateY(64px)')
+    assert.equal(h.order.style(h.rows[2].id).transform, 'translateY(-64px)')
     h.order.move(h.point(-1000))
     h.order.cancel()
     h.flush()
     assert.equal(h.intervals.size, 0)
     assert.equal(h.frames.size + h.timers.size, 0)
-    for (const row of h.rows) assert.deepEqual(h.order.style(row.id), { height: '76px', transform: 'translateY(0px)', zIndex: 0 })
+    for (const row of h.rows) assert.deepEqual(h.order.style(row.id), { height: '64px', transform: 'translateY(0px)', zIndex: 0 })
     assert.deepEqual(h.saves, [])
   })
 

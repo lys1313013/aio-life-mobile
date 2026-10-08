@@ -92,7 +92,7 @@ test('平台加载失败可重试，解除平台显式发送null，旧文本保�
   await page.getByRole('button', { name: '重试平台加载', exact: true }).click();
   await expect(page.getByText('模拟平台加载失败', { exact: true })).toHaveCount(0);
   await customProvider(page, '自定义平台', ['自定义平台', '腾讯视频']);
-  await expect(page.getByRole('textbox', { name: '平台', exact: true })).toHaveValue('模拟平台');
+  await expect(page.locator('[aria-label="自定义平台"] input')).toHaveValue('模拟平台');
   await page.getByRole('button', { name: '保存', exact: true }).click();
   await expect(page.getByRole('dialog')).toHaveCount(0);
   expect(state.writes.at(-1).body.providerId).toBeNull();

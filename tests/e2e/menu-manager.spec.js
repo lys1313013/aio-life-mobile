@@ -205,15 +205,14 @@ test("菜单搜索、编辑失败恢复、父级新增、保护菜单、排序�
   expect(state.writes.at(-1).body.meta.extra).toEqual({ retained: true });
   expect(state.writes.at(-1).body.sort).toBe(-1);
   await page.getByRole("button", { name: "仪表盘更多操作" }).click();
-  await page.getByRole("button", { name: "启用菜单", exact: true }).click();
-  await expect(
-    page.getByRole("button", { name: "停用菜单", exact: true }),
-  ).toBeVisible();
+  const webEnabled = page.locator('uni-switch[aria-label="仪表盘 Web 启用"]');
+  await webEnabled.click();
+  await expect(webEnabled.locator('.uni-switch-input')).toHaveClass(/uni-switch-input-checked/);
+  expect(state.writes.at(-1).body.status).toBe(1);
   await dismissModal(page);
   await page.getByRole("button", { name: "系统管理更多操作" }).click();
-  await expect(
-    page.getByRole("button", { name: "停用菜单", exact: true }),
-  ).toBeDisabled();
+  await expect(page.locator('uni-switch[aria-label="系统管理 Web 启用"]')).toHaveAttribute('disabled', 'true');
+  await expect(page.locator('uni-switch[aria-label="系统管理 移动端启用"]')).toHaveAttribute('disabled', 'true');
   await expect(
     page.getByRole("button", { name: "删除菜单", exact: true }),
   ).toHaveCount(0);

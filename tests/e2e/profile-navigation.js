@@ -2,6 +2,7 @@ const { expect } = require('@playwright/test');
 
 // 隐藏菜单保留页面功能，页面审计直接访问这些路由。
 const retainedProfilePages = Object.freeze({
+  'API Key': '/pages/mcp/api-keys',
   '系统设置': '/pages/profile/preferences?section=system',
   'MBTI 测试': '/pages/personality/mbti',
   'CBTI 测试': '/pages/personality/cbti',

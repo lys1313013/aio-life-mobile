@@ -3,6 +3,8 @@ const {test,expect}=require('@playwright/test');
 const fs=require('node:fs'); const {setup,admin}=require('./qa-platform-fixtures');
 const out='artifacts/spacing-audit/11';fs.mkdirSync(out,{recursive:true});
 async function click(p,n){
+ if (n === 'API Key' && p.url().includes('/pages/profile/index')) return openProfileEntry(p, n);
+ if (p.url().includes('/pages/mcp/api-keys') && n === '新增') n = '生成新 API Key';
  if (['dict-data','dict-types'].some(kind => p.url().includes('kind=' + kind)) && ['编辑','删除'].includes(n) && await p.getByRole('dialog').count() === 0) {
   await p.getByRole('button',{name:/更多操作$/}).first().click();
  }

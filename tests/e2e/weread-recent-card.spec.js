@@ -63,7 +63,7 @@ for (const width of [390, 820, 1440]) for (const theme of ['light', 'dark']) {
     const loaded = await geometry(); expect(loaded).toEqual(initial);
     const memberCard = page.getByLabel('会员首页卡片', { exact: true }); await expect(memberCard).toContainText('模拟会员');
     const peerHeight = await memberCard.evaluate(el => el.getBoundingClientRect().height);
-    expect(loaded.height).toBe(peerHeight); expect(loaded.height).toBe(280);
+    expect(loaded.height).toBe(peerHeight); expect(loaded.height).toBe(width >= 1024 ? 280 : width >= 640 ? 250 : 240);
     await card.screenshot({ path: info.outputPath('loaded.png') });
     expect(await card.getByRole('button').count()).toBe(4);
     const popupTask = page.waitForEvent('popup');
@@ -94,7 +94,9 @@ for (const width of [390, 820, 1440]) for (const theme of ['light', 'dark']) {
     await expect(card).toHaveAttribute('aria-busy', 'true'); expect(await geometry()).toEqual(empty);
     state.release(); await expect(card).toHaveAttribute('aria-busy', 'false');
     state.books = [books[0]]; await card.click({ position: { x: 4, y: 60 } });
-    await expect(card).toContainText('42%'); const single = await geometry(); expect(single.height).toBeLessThan(loaded.height);
+    await expect(card).toContainText('42%'); const single = await geometry();
+    if (width < 768) expect(single.height).toBeLessThan(loaded.height);
+    else expect(single.height).toBe(loaded.height);
     state.books = [{ ...books[0], title: '长书名用于检查手机平板桌面是否溢出以及书籍封面作者和阅读进度是否仍然清晰可见' }];
     await card.click({ position: { x: 4, y: 60 } }); await expect(card).toContainText('长书名'); expect(await geometry()).toEqual(single);
     expect(await card.evaluate(el => el.scrollWidth > el.clientWidth)).toBe(false);

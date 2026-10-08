@@ -125,6 +125,10 @@ node --input-type=module -e "import fs from 'node:fs'; const name = 'material-sy
 
 ### 微信小程序
 
+部署含义及简要操作步骤见[微信小程序部署说明](docs/微信小程序部署说明.md)。
+
+2026-10-08 上传版本 `1.0.20261008.1`：直接在当前项目运行 `npm test`，282 项通过；使用 `VITE_API_BASE_URL=https://aiolife.top/api npm run build:weixin` 构建并通过官方本地包体检查，主包 1428.65 KB、全包 4438.09 KB。微信开发者工具 Stable 2.02.2608080 导入当前 `dist/build/mp-weixin`，上传前明确提示覆盖既有体验版，确认后显示“代码上传成功”。本地与产物 AppID 一致，发布压缩开启、SourceMap 上传关闭。微信模拟器已显示线上首页和时迹数据；本次未完成 H5 E2E、微信真机、审核或正式发布。浏览器安全策略阻止访问微信公众平台，未在后台独立复核体验版状态。验证日志保存在 Git 忽略目录 `artifacts/weixin-deploy/20261008-current/`，包体报告在 `artifacts/weixin-size/`。开发者工具的主包大小建议检查通过，仍提示主包包含部分未直接使用的共享 JS。
+
 首次在本机配置小程序：
 
 ```bash

@@ -1,0 +1,22 @@
+<script setup lang="ts">
+import { themeClass } from '../../services/theme.ts'
+defineProps<{ label: string; rows: number; rowHeight: number; singleLine?: boolean; flushTop?: boolean }>()
+</script>
+<template>
+  <view class="home-list-skeleton" :class="{ 'home-list-skeleton-flush': flushTop }" role="status" :aria-label="label">
+    <view v-for="n in rows" :key="n" class="home-skeleton-row" :style="{ height: rowHeight + 'px' }" aria-hidden="true">
+      <view class="home-skeleton-line" :class="themeClass('home-skeleton-line')" />
+      <view v-if="!singleLine" class="home-skeleton-line home-skeleton-detail" :class="themeClass('home-skeleton-line')" />
+    </view>
+  </view>
+</template>
+<style scoped lang="scss">
+@use '../../styles/spacing-tokens' as *;
+@use '../../styles/typography' as *;
+.home-list-skeleton { flex: 1; min-height: 0; overflow: hidden; padding: $space-fieldLabel $space-card $space-card; }
+.home-list-skeleton-flush { padding-top: 0; }
+.home-skeleton-row { box-sizing: border-box; flex-shrink: 0; justify-content: center; gap: $space-detail; padding: $space-detail $space-inline; }
+.home-skeleton-line { width: 70%; height: type-line('badge'); border-radius: 4px; background-color: #e8ecf1; }
+.home-skeleton-detail { width: 45%; }
+.home-skeleton-line-dark { background-color: #30343c; }
+</style>

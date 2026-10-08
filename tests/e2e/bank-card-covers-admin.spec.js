@@ -12,7 +12,7 @@ async function setup(page, admin = true) {
   await page.route('**/api/system/bank-card-covers{,/**}', async route => {
     const request = route.request(), pathname = new URL(request.url()).pathname, method = request.method();
     const ok = data => route.fulfill({ json: { code: 0, data } });
-    const fail = message => route.fulfill({ json: { code: 1, result: message } });
+    const fail = message => route.fulfill({ json: { code: 1, message } });
     if (pathname.endsWith('/banks')) return ok([{ id: bankId, name: '模拟银行', enabled: true }, { id: '8', name: '停用银行', enabled: false }]);
     if (pathname.endsWith('/upload')) { state.uploads.push(request.postDataBuffer()); return ok({ id: uploadedId }); }
     if (method === 'GET') return state.failList ? fail('模拟列表失败') : ok(state.rows);

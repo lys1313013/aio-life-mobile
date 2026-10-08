@@ -5,6 +5,7 @@ const fs = require('node:fs');
 const output = 'artifacts/web-parity-visual-refresh';
 const longId = '9223372036854775807';
 async function subscriptions(page) {
+  await page.clock.setFixedTime(new Date('2026-10-01T12:00:00'));
   await setup(page);
   const state = {
     fail: false,
@@ -34,6 +35,8 @@ async function subscriptions(page) {
     return route.fulfill({ json: { code: 0, data: state.rows[index] } });
   });
   await page.goto('/#/pages/member/index');
+  await expect(page.locator('.member-card')).toHaveCount(4);
+  await page.getByRole('switch', { name: '包含过期', exact: true }).click();
   await expect(page.locator('.member-card')).toHaveCount(6);
   return state;
 }

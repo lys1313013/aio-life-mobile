@@ -73,11 +73,12 @@ const categoryName = computed(() =>
 const selectedCategory = computed(() =>
   categories.value.find((item) => item.id === form.value.categoryId),
 )
-const duration = computed(() => recordMinutes(
+const previewRecord = computed(() =>
   choosingTime.value && previewTime.value !== null
     ? { ...form.value, [choosingTime.value]: previewTime.value }
     : form.value,
-))
+)
+const duration = computed(() => recordMinutes(previewRecord.value))
 const displayDate = computed(() => {
   const [year, month, day] = date.value.split('-').map(Number)
   const weekday = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'][new Date(year, month - 1, day).getDay()]
@@ -469,7 +470,7 @@ function closeSelection() {
                 :disabled="saving || deleting" @click="choosingTime = 'startTime'">
                 <view class="compact-time-field">
                   <text class="compact-time-label" :class="themeClass('compact-time-label')">开始</text>
-                  <text class="compact-time-number" :class="themeClass('compact-time-number')">{{ clockLabel(form.startTime) }}</text>
+                  <text class="compact-time-number" :class="themeClass('compact-time-number')">{{ clockLabel(previewRecord.startTime) }}</text>
                 </view>
               </button>
               <view class="compact-time-summary">
@@ -483,7 +484,7 @@ function closeSelection() {
                 :disabled="saving || deleting" @click="choosingTime = 'endTime'">
                 <view class="compact-time-field">
                   <text class="compact-time-label" :class="themeClass('compact-time-label')">结束</text>
-                  <text class="compact-time-number" :class="themeClass('compact-time-number')">{{ clockLabel(form.endTime) }}</text>
+                  <text class="compact-time-number" :class="themeClass('compact-time-number')">{{ clockLabel(previewRecord.endTime) }}</text>
                 </view>
               </button>
             </view>
@@ -559,7 +560,7 @@ function closeSelection() {
                 <button role="button" class="time-picker end-time-trigger"
                   :aria-label="field === 'startTime' ? '开始时间' : '结束时间'"
                   :disabled="saving || deleting" @click="choosingTime = field">
-                  <view class="time-field"><text class="time-number" :class="themeClass('time-number')">{{ clockLabel(form[field]) }}</text></view>
+                  <view class="time-field"><text class="time-number" :class="themeClass('time-number')">{{ clockLabel(previewRecord[field]) }}</text></view>
                 </button>
                 <button
                   role="button"

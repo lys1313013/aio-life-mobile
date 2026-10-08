@@ -3,6 +3,8 @@ const {test,expect}=require('@playwright/test');const fs=require('node:fs');cons
 const out='test-results/page-audit/platform';fs.mkdirSync(out,{recursive:true});fs.mkdirSync('/tmp/qa-platform-evidence',{recursive:true});
 async function shot(page,name){await page.waitForTimeout(300);fs.mkdirSync(out,{recursive:true});await page.screenshot({path:`${out}/${name}.png`,fullPage:true});fs.copyFileSync(`${out}/${name}.png`,`/tmp/qa-platform-evidence/${name}.png`);const geom=await page.locator('.navigation-button,.icon-button,.dashboard-action,.life-action,.task-check,.delete-button,.category-option').evaluateAll(nodes=>nodes.map(n=>{const b=n.getBoundingClientRect(),child=n.querySelector('svg,img,.category-icon,.navigation-back-surface,.action-content,.delete-icon');const c=child?.getBoundingClientRect();return{class:n.className,label:n.getAttribute('aria-label'),width:b.width,height:b.height,display:getComputedStyle(n).display,dx:c?c.x+c.width/2-b.x-b.width/2:null,dy:c?c.y+c.height/2-b.y-b.height/2:null}}));fs.writeFileSync(`${out}/${name}-geometry.json`,JSON.stringify(geom,null,2));fs.writeFileSync(`/tmp/qa-platform-evidence/${name}-geometry.json`,JSON.stringify(geom,null,2));expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);const modal=page.getByRole('dialog').last();if(await modal.count()){const b=await modal.boundingBox();if(b&&b.height>650){await page.mouse.move(b.x+b.width/2,b.y+b.height/2);await page.mouse.wheel(0,1800);await page.waitForTimeout(100);await page.screenshot({path:`${out}/${name}-bottom.png`,fullPage:true});fs.copyFileSync(`${out}/${name}-bottom.png`,`/tmp/qa-platform-evidence/${name}-bottom.png`);}}}
 async function click(page,name){
+ if (name === 'API Key' && page.url().includes('/pages/profile/index')) return openProfileEntry(page, name);
+ if (page.url().includes('/pages/mcp/api-keys')) name = ({ '新增': '生成新 API Key', '删除': '删除 API Key', '保存': '生成' })[name] || name;
  if (['dict-data','dict-types'].some(kind => page.url().includes('kind=' + kind)) && ['编辑','删除'].includes(name) && await page.getByRole('dialog').count() === 0) {
   await page.getByRole('button',{name:/更多操作$/}).first().click();
  }
@@ -65,10 +67,18 @@ for(const width of [390,768,1440])for(const theme of ['light','dark'])test(`CBTI
 await page.setViewportSize({width,height:900});await page.emulateMedia({colorScheme:theme});const state=await setup(page,true);await page.locator('uni-tabbar').getByText('我',{exact:true}).click();await openProfileEntry(page,'CBTI 测试');await click(page,'QA · 模拟人格');await shot(page,`${width}-${theme}-cbti-type-detail`);await dismissModal(page);await click(page,'删除测试记录');await shot(page,`${width}-${theme}-cbti-history-delete`);await click(page,'取消');await click(page,'查看历史');await shot(page,`${width}-${theme}-cbti-history-result`);await click(page,'返回');await click(page,'人格管理');await click(page,'编辑人格');await shot(page,`${width}-${theme}-cbti-admin-edit`);state.fail=true;await click(page,'保存人格');await expect(page.getByRole('dialog').last().getByRole('alert')).toContainText('模拟保存失败');await shot(page,`${width}-${theme}-cbti-admin-fail`);state.fail=false;await dismissModal(page);await click(page,'删除人格');await shot(page,`${width}-${theme}-cbti-admin-delete`);await click(page,'取消');await dismissModal(page);
 });
 async function nativePicker(page, locator, name) {
+  const isSwitch = await locator.locator('.uni-switch-input').count() > 0;
+  const previousClass = isSwitch ? await locator.locator('.uni-switch-input').getAttribute('class') : null;
   await locator.click();
   await shot(page, `390-light-deep-${name}-picker`);
+  if (isSwitch) {
+    await expect(locator.locator('.uni-switch-input')).not.toHaveAttribute('class', previousClass);
+    await locator.click();
+    await expect(locator.locator('.uni-switch-input')).toHaveAttribute('class', previousClass);
+    return;
+  }
   const nativeDate = locator.locator('input[type="date"]');
-  const endPicker = page.getByRole('dialog', { name: '选择结束时间', exact: true });
+  const endPicker = page.getByRole('dialog', { name: /^选择(?:开始|结束)时间$/ });
   if (await nativeDate.count()) {
     await nativeDate.press('Escape');
     await nativeDate.press('Tab');
@@ -98,7 +108,7 @@ await openProfileEntry(page,'管理与配置');await click(page,'反馈管理');
 test('390补漏：设置与管理深层picker逐个开关',async({page})=>{
 await page.setViewportSize({width:390,height:900});const errors=[];page.on('pageerror',e=>errors.push(e.message));await setup(page,true);await page.locator('uni-tabbar').getByText('我',{exact:true}).click();
 for(const [entry,action,label,key] of [['API Key','新增','有效期','key-expiry'],['系统设置',null,'主题','theme']]){await openProfileEntry(page,entry);if(action)await click(page,action);await nativePicker(page,page.locator(`[aria-label="${label}"]`),key);if(action)await dismissModal(page);await back(page);}
-await openProfileEntry(page,'管理与配置');for(const [kind,title,fields] of [['users','用户中心',['角色']],['menus','菜单管理',['父菜单','启用状态']],['dict-data','字典数据',['字典类型']],['user-dict','用户字典管理',['字典类型','状态','只读']]]){await click(page,title);await click(page,kind==='menus'?'编辑模拟菜单':'编辑');for(const field of fields)await nativePicker(page,page.getByRole('dialog').locator(`[aria-label="${field}"]`),`admin-${kind}-${field}`);await dismissModal(page);await back(page);}
+await openProfileEntry(page,'管理与配置');for(const [kind,title,fields] of [['users','用户中心',['角色']],['menus','菜单管理',['父菜单','Web 启用','移动端启用']],['dict-data','字典数据',['字典类型']],['user-dict','用户字典管理',['字典类型','状态','只读']]]){await click(page,title);await click(page,kind==='menus'?'编辑模拟菜单':'编辑');for(const field of fields)await nativePicker(page,page.getByRole('dialog').locator(`[aria-label="${field}"]`),`admin-${kind}-${field}`);await dismissModal(page);await back(page);}
 for(const [title,fields] of [['字典数据',['字典类型筛选','已加载数据排序']],['用户字典管理',['类型','状态']],['反馈管理',['类型','状态']]]){await click(page,title);for(const field of fields){if(title==='字典数据' && field==='已加载数据排序')await click(page,'排序设置');const fieldNode=page.locator(`[aria-label="${field}"]`);if(await fieldNode.count())await nativePicker(page,fieldNode,`${title}-${field}`);}await back(page);}
 await page.waitForTimeout(400);expect(errors).toEqual([]);
 });
@@ -106,7 +116,7 @@ test('390最终补齐：绑定说明与时迹周期视图日期时间picker',asy
 await page.setViewportSize({width:390,height:900});const errors=[];page.on('pageerror',e=>errors.push(e.message));await setup(page,true);await page.locator('uni-tabbar').getByText('我',{exact:true}).click();await click(page,'账号绑定');await click(page,'新增绑定');await click(page,'填写说明');await expect(page.locator('.binding-hint')).toBeVisible();await shot(page,'390-light-final-binding-help-open');await click(page,'填写说明');await expect(page.locator('.binding-hint')).toHaveCount(0);await shot(page,'390-light-final-binding-help-closed');await click(page,'取消');await back(page);
 await page.locator('uni-tabbar').getByText('时迹',{exact:true}).click();for(const mode of ['日','周','月']){await click(page,mode+'视图');await expect(page.getByRole('button',{name:mode+'视图',exact:true})).toHaveAttribute('aria-pressed','true');await shot(page,'390-light-final-time-'+mode);}
 await click(page,'卡片视图');await expect(page.getByRole('button',{name:'卡片视图',exact:true})).toHaveAttribute('aria-pressed','true');await shot(page,'390-light-final-time-card');await expect(page.locator('.time-statistics')).toBeVisible();await shot(page,'390-light-final-time-statistics');await click(page,'时间轴视图');await nativePicker(page,page.locator('.date-switch uni-picker'),'final-time-date');
-await click(page,'新增时迹');await nativePicker(page,page.getByRole('dialog').locator('uni-picker[aria-label="记录日期"]'),'final-editor-date');for(const [index,name] of [[0,'start'],[1,'end']])await nativePicker(page,page.getByRole('dialog').locator('.compact-time-picker').nth(index),'final-editor-'+name);await dismissModal(page);await expect(page.getByRole('button',{name:'新增时迹',exact:true})).toBeVisible();await page.waitForTimeout(400);expect(errors).toEqual([]);
+await click(page,'新增时迹');await nativePicker(page,page.getByRole('dialog').locator('uni-picker[aria-label="记录日期"]'),'final-editor-date');for(const [label,name] of [['开始时间','start'],['结束时间','end']])await nativePicker(page,page.getByRole('dialog').getByRole('button',{name:label,exact:true}),'final-editor-'+name);await dismissModal(page);await expect(page.getByRole('button',{name:'新增时迹',exact:true})).toBeVisible();await page.waitForTimeout(400);expect(errors).toEqual([]);
 });
 test('390新SVG代表性复核：首页返回编辑器删除关闭',async({page})=>{
 await page.setViewportSize({width:390,height:900});await setup(page,true);const evidence=[];

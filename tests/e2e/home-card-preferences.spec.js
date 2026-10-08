@@ -23,6 +23,7 @@ async function setup(page) {
   };
   await page.route('**/api/user/info', route => route.fulfill({ json: { code: 0, data: { id: 'fixture-home-card-user', nickname: '测试用户' } } }));
   await page.route('**/api/auth/secondary-lock/menus', route => route.fulfill({ json: { code: 0, data: [] } }));
+  await page.route('**/api/menu/visuals?*', route => route.fulfill({ json: { code: 0, data: { menus: [], cards: {} } } }));
   await page.route('**/api/home/cards', respond);
   await page.route('**/api/home/cards/*', respond);
   await page.goto('/#/pages/home-settings/index');

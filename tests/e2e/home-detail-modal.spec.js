@@ -12,6 +12,7 @@ async function setup(page) {
   const fixtures = {
     '/home/cards': homeCardFixture(), '/user/info': { id: 'fixture-user', nickname: '模拟用户' },
     '/auth/secondary-lock/menus': [], '/menu/all': [],
+    '/menu/visuals': { menus: [], cards: {} },
     '/quick-nav/candidates': ['/my-hub/read-record', '/my-hub/movie', '/membership', '/my-hub/anniversary'].map(path => ({ path })),
     '/dashboard/tasks': [], '/quick-nav/my': [], '/thought/dashboard': [], '/taskDetails/watched': [],
     '/exerciseRecord/dashboardSummary': { days: [] }, '/timeTrackerCategory/list': [], '/timeRecord/query': [],

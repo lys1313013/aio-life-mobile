@@ -27,7 +27,8 @@ import { isMenuUnlocked } from '../../services/secondary-lock.ts'
 import spacing from '../../styles/spacing.json'
 import { businessCards as allBusinessCards, businessCardMaxHeight, businessCardRowHeight, cardState, failBusinessAccess, loadBusinessCard } from './services/business-cards.ts'
 const emit = defineEmits(['sorting', 'visibility'])
-const props = defineProps<{ active: boolean; preparing?: boolean; only?: string; embedded?: boolean }>()
+const props = defineProps<{ active: boolean; preparing?: boolean; only?: string; embedded?: boolean; height?: number; maxHeight?: number }>()
+const cardMaxHeight = computed(() => props.maxHeight || businessCardMaxHeight)
 const businessCards = allBusinessCards.filter(card => !props.only || ({ read: 'reading', member: 'membership' }[card.key] || card.key) === props.only)
 const states = reactive(Object.fromEntries(businessCards.map(card => [card.key, cardState()])))
 const selection = ref<any>(null)
@@ -236,17 +237,17 @@ function listHeight(card) {
   const inset = spacing.controlMin + spacing.card + spacing.hairline * 2
   const rows = state.rows.length * businessCardRowHeight
   const status = state.moreLoading || state.moreError ? spacing.controlMin : 0
-  return Math.min(businessCardMaxHeight - inset, rows + status)
+  return Math.min(cardMaxHeight.value - inset, rows + status)
 }
 function placeholderHeight(card) {
-  if (card.key === 'movie') return businessCardMaxHeight - spacing.controlMin - spacing.card - spacing.hairline * 2
+  if (card.key === 'movie') return cardMaxHeight.value - spacing.controlMin - spacing.card - spacing.hairline * 2
   return card.key === 'read' ? 99 : businessCardRowHeight
 }
 </script>
 <template>
   <view v-show="shown.length > 0" class="business-group" :class="{ 'business-group-single': !!only && !embedded }">
     <view v-for="card in shown" :key="card.key" class="business-cell" :style="only ? { width: '100%' } : {}">
-      <view class="business-card" :class="{ 'business-card-dark': isDark }" :style="{ maxHeight: businessCardMaxHeight + 'px' }" :aria-label="card.title + '首页卡片'" :aria-busy="cardLoading(card) || states[card.key].busy">
+      <view class="business-card" :class="{ 'business-card-dark': isDark }" :style="{ height: props.height ? props.height + 'px' : 'auto', maxHeight: cardMaxHeight + 'px' }" :aria-label="card.title + '首页卡片'" :aria-busy="cardLoading(card) || states[card.key].busy">
         <view class="business-heading">
           <button role="button" class="heading-link" :aria-label="'查看全部' + card.title" @click="open(card)"><BusinessIcon :card-key="card.cardKey" :size="16" /><text class="heading-text" :class="{ 'text-dark': isDark }">{{ card.title }}</text></button>
           <LoadingIndicator v-if="cardLoading(card) || states[card.key].busy" class="business-updating" compact :label="'正在加载' + card.title" />
@@ -254,7 +255,7 @@ function placeholderHeight(card) {
         </view>
         <view v-if="states[card.key].locked" class="card-placeholder" :style="{ minHeight: placeholderHeight(card) + 'px' }"><button role="button" class="lock-action" :aria-label="'解锁' + card.title" @click="open(card)"><AppIcon name="ant-design:lock-outlined" :size="18" color="#8b8f99" /><text class="caption">点击解锁</text></button></view>
         <ReadingShelf v-else-if="card.key === 'read' && (states[card.key].rows.length || cardLoading(card))" :rows="states[card.key].rows" :loading="cardLoading(card)" :more-loading="states[card.key].moreLoading" :error="states[card.key].moreError || states[card.key].error" @edit="open(card, $event)" @more="nextPage(card)" @retry="states[card.key].moreError ? load(card, true) : load(card)" />
-        <MovieList v-else-if="card.key === 'movie' && (states[card.key].rows.length || cardLoading(card))" :rows="states[card.key].rows" :loading="cardLoading(card)" :more-loading="states[card.key].moreLoading" :error="states[card.key].moreError" @edit="open(card, $event)" @more="nextPage(card)" @retry="load(card, true)" />
+        <MovieList v-else-if="card.key === 'movie' && (states[card.key].rows.length || cardLoading(card))" :max-height="cardMaxHeight" :rows="states[card.key].rows" :loading="cardLoading(card)" :more-loading="states[card.key].moreLoading" :error="states[card.key].moreError" @edit="open(card, $event)" @more="nextPage(card)" @retry="load(card, true)" />
         <BusinessCardSkeleton v-else-if="!states[card.key].rows.length && cardLoading(card)" :kind="card.key" :label="'正在加载' + card.title" />
         <view v-else-if="!states[card.key].rows.length && states[card.key].error" class="card-placeholder" :style="{ minHeight: placeholderHeight(card) + 'px' }"><text class="error-text">{{ states[card.key].error }}</text><button role="button" class="icon-action" :aria-label="'重试' + card.title" @click="refreshAll"><AppIcon name="lucide:rotate-cw" :size="18" color="#5879ce" /></button></view>
         <scroll-view v-else-if="states[card.key].rows.length" :scroll-y="!recordOrders[card.key] || recordOrders[card.key].scrollEnabled()" :scroll-top="recordOrders[card.key] ? recordOrders[card.key].scrollTop.value : undefined" :show-scrollbar="false" :lower-threshold="40" class="business-scroll" :class="card.pinned ? ['business-order-scroll', 'business-order-scroll-' + card.key] : []" @scroll="recordOrders[card.key]?.scrolled($event)" :style="{ height: listHeight(card) + 'px' }" @scrolltolower="nextPage(card)">

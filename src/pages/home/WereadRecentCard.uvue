@@ -18,10 +18,12 @@ import { wereadAppLink, wereadWebLink, wereadBrowserLink, isMobileBrowser } from
 // #ifdef APP-ANDROID
 import { openWereadBook, openWereadWeb } from '../../uni_modules/aio-weread-launcher'
 // #endif
-const props = defineProps<{ active: boolean; preparing?: boolean; sorting?: boolean }>()
-// 与其他业务卡片共用整体高度，扣除标题、底部间距和边框后均分三行。
-const bodyHeight = businessCardMaxHeight - spacing.controlMin - spacing.card - spacing.hairline * 2
-const rowHeight = bodyHeight / 3
+const props = defineProps<{ active: boolean; preparing?: boolean; sorting?: boolean; height?: number; maxHeight?: number }>()
+// 与其他业务卡片共用响应式高度上限，扣除标题、底部间距和边框。
+const bodyHeight = computed(() => (props.maxHeight || businessCardMaxHeight) - spacing.controlMin - spacing.card - spacing.hairline * 2)
+// 书名、作者和进度占三行；封面 64px 加行内留白，较小卡片通过列表滚动容纳。
+const rowHeight = 64 + spacing.detail * 2
+const coverStyle = { width: '42px', height: '64px' }
 const emit = defineEmits(['visibility', 'scrolling'])
 const books = ref<any[]>([]), connected = ref<boolean | null>(null)
 const loaded = ref(false), loading = ref(false), error = ref(''), locked = ref(false)
@@ -174,7 +176,7 @@ async function openBook(book, webOnly = false) {
 }
 </script>
 <template>
-  <view v-if="visible" class="weread-card" :class="{ 'weread-card-dark': isDark }" aria-label="微信读书首页卡片" :aria-busy="loading" @click="refresh()">
+  <view v-if="visible" class="weread-card" :class="{ 'weread-card-dark': isDark }" :style="{ height: height ? height + 'px' : 'auto', maxHeight: (maxHeight || businessCardMaxHeight) + 'px' }" aria-label="微信读书首页卡片" :aria-busy="loading" @click="refresh()">
     <view class="weread-heading">
       <button class="heading-link" role="button" aria-label="查看微信读书" @click.stop="openPage"><BusinessIcon card-key="section.weread" :size="16" /><text class="card-title" :class="{ 'text-dark': isDark }">微信读书</text></button>
       <LoadingIndicator v-if="loading" class="updating" compact label="正在加载最近阅读" />
@@ -182,13 +184,13 @@ async function openBook(book, webOnly = false) {
     </view>
     <view v-if="locked" class="placeholder" :style="{ minHeight: bodyHeight + 'px' }"><button class="heading-link" role="button" aria-label="解锁微信读书" @click.stop="openPage"><text class="caption">点击解锁</text></button></view>
     <view v-else-if="!loaded && (loading || preparing || !error)" class="book-list" role="status" aria-label="正在加载最近阅读">
-      <view v-for="index in 3" :key="index" class="book-row" :style="{ height: rowHeight + 'px' }"><view class="book-cover skeleton" /><view class="book-content"><view class="skeleton skeleton-title" /><view class="skeleton skeleton-author" /><view class="skeleton skeleton-progress" /></view></view>
+      <view v-for="index in 3" :key="index" class="book-row" :style="{ height: rowHeight + 'px' }"><view class="book-cover skeleton" :style="coverStyle" /><view class="book-content"><view class="skeleton skeleton-title" /><view class="skeleton skeleton-author" /><view class="skeleton skeleton-progress" /></view></view>
     </view>
-    <scroll-view v-else-if="books.length" class="book-scroll" :style="{ height: Math.min(books.length, 3) * rowHeight + 'px' }" :scroll-y="!sorting" :direction="sorting ? 'none' : 'vertical'" :scroll-top="scrollTop" :lower-threshold="32" @scroll="onScroll" @scrolltolower="onScrollLower" @click.stop="refresh()">
+    <scroll-view v-else-if="books.length" class="book-scroll" :style="{ height: Math.min(bodyHeight, Math.min(books.length, 3) * rowHeight) + 'px' }" :scroll-y="!sorting" :direction="sorting ? 'none' : 'vertical'" :scroll-top="scrollTop" :lower-threshold="32" @scroll="onScroll" @scrolltolower="onScrollLower" @click.stop="refresh()">
       <view class="book-list">
       <view v-for="book in books" :key="book.bookId" class="book-row-wrap">
         <button class="book-row book-button home-card-drag-area" :style="{ height: rowHeight + 'px' }" role="button" :aria-label="'在微信读书打开：' + book.title" :disabled="!!opening" @click.stop="openBook(book)">
-          <image v-if="book.cover" class="book-cover" :src="book.cover" mode="aspectFit" /><view v-else class="book-cover cover-fallback"><BusinessIcon card-key="section.weread" :size="20" /></view>
+          <image v-if="book.cover" class="book-cover" :style="coverStyle" :src="book.cover" mode="aspectFit" /><view v-else class="book-cover cover-fallback" :style="coverStyle"><BusinessIcon card-key="section.weread" :size="20" /></view>
           <view class="book-content"><text class="book-title" :class="{ 'text-dark': isDark }">{{ book.title }}</text><view class="book-meta"><text class="book-author caption">{{ book.author }}</text><text class="reading-date caption">{{ readingDate(book.readUpdateTime) }}</text></view><view class="progress-line"><view class="progress-track" role="progressbar" :aria-label="book.title + '阅读进度'" :aria-valuenow="book.progress == null ? undefined : book.progress" :aria-valuemin="0" :aria-valuemax="100"><view class="progress-fill" :style="{ width: (book.progress == null ? 0 : book.progress) + '%', backgroundColor: menuVisuals.visual('section.weread').iconColor || undefined }" /></view><text class="progress-value" :class="{ 'text-dark': isDark }">{{ book.progress == null ? '—' : book.progress + '%' }}</text></view></view>
         </button>
         <view class="book-action"><LoadingIndicator v-if="opening === book.bookId" compact label="正在打开书籍" /><AppIcon v-else-if="webFallback !== book.bookId" name="ant-design:right-outlined" :size="16" color="#8b8f99" /></view>
@@ -205,7 +207,7 @@ async function openBook(book, webOnly = false) {
 @use '../../styles/typography' as *;
 @use '../../styles/spacing.scss';
 @use '../../styles/spacing-tokens' as *;
-.weread-card { position: relative; background-color: #ffffff; border: 1px solid #e8e8ed; border-radius: 14px; padding-bottom: $space-card; overflow: hidden; }
+.weread-card { box-sizing: border-box; position: relative; background-color: #ffffff; border: 1px solid #e8e8ed; border-radius: 14px; padding-bottom: $space-card; overflow: hidden; }
 .weread-card-dark { background-color: #1c1e22; border-color: #303238; }
 .weread-heading { position: relative; height: $space-controlMin; padding: 0 $space-card; flex-direction: row; align-items: center; }
 .heading-link { min-height: $space-controlMin; margin: 0; padding: 0; border: 0; background-color: transparent; display: flex; flex-direction: row; align-items: center; gap: $space-inline; }

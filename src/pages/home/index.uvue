@@ -7,6 +7,7 @@ import TimeDonut from './TimeDonut.uvue'
 import BusinessCards from './BusinessCards.uvue'
 import WereadRecentCard from './WereadRecentCard.uvue'
 import HomeCardSortCell from './HomeCardSortCell.uvue'
+import HomeListSkeleton from './HomeListSkeleton.uvue'
 import { useHomeCardOrder } from './services/use-home-card-order.ts'
 import { mergeVisibleCardOrder } from './services/home-card-order.ts'
 import AppIcon from '../../components/AppIcon.uvue'
@@ -58,6 +59,7 @@ import { lockedMenuPaths, nativeDestination } from '../../services/life-catalog.
 import LifeMenuIcon from '../../components/LifeMenuIcon.uvue'
 import CategoryIcon from '../../components/CategoryIcon.uvue'
 import spacing from '../../styles/spacing.json'
+import typography from '../../styles/typography.json'
 
 const viewportWidth = ref(uni.getWindowInfo().windowWidth)
 const quickIconSize = computed(() => viewportWidth.value < 640 ? 20 : 24)
@@ -103,14 +105,30 @@ const exercise = ref<ExercisePage>({ days: [] })
 const commits = ref<Commit[]>([])
 const time = ref(timeSummary([], []))
 const timeDonutLabels = computed(() => summaryDonutLabels(time.value.groups))
-// 常规卡片高度由视口决定；单列待办从首次加载就按内容布局，以此高度作为滚动上限。
+// 与 Web 一致的响应式上限；多列等高，单列按首屏内容量收缩。
+const cardHeightLimit = computed(() => viewportWidth.value >= 1024 ? 280 : viewportWidth.value >= 640 ? 250 : 240)
+const multiColumnCardHeight = computed(() => viewportWidth.value >= 768 ? cardHeightLimit.value : undefined)
+const quickRowHeight = computed(() => quickIconSize.value + typography.roles.caption.lineHeight + spacing.detail + spacing.inline * 2
+  + (links.value.some(link => !nativeDestination(link.path)) ? typography.roles['chart-label'].lineHeight + spacing.micro : 0))
 function sectionInset(section: string) {
   return spacing.controlMin + (section === 'exercise' ? 0 : spacing.fieldLabel) + spacing.card + spacing.hairline * 2
 }
 function sectionHeight(section: string) {
-  const limit = viewportWidth.value >= 1024 ? 280 : viewportWidth.value >= 640 ? 250 : 240
-  // 五条明细同时完整可见，每条保留标准触控高度。
-  if (section === 'time') return Math.max(limit, sectionInset(section) + spacing.controlMin * 5)
+  if (multiColumnCardHeight.value != null) return multiColumnCardHeight.value
+  const limit = cardHeightLimit.value
+  const inset = sectionInset(section)
+  if (section === 'links') {
+    const body = links.value.length ? Math.ceil(links.value.length / 5) * quickRowHeight.value
+      : 32 + typography.roles.caption.lineHeight + spacing.controlMin + spacing.card * 2
+    return Math.min(limit, inset + body)
+  }
+  if (section === 'thoughts') {
+    const body = states.thoughts.loaded && thoughts.value.length === 0 ? 32 + typography.roles.caption.lineHeight + spacing.card * 2
+      : Math.max(1, states.thoughts.loaded ? thoughts.value.length : 2) * (typography.roles.body.lineHeight * 2 + spacing.detail * 2)
+    return Math.min(limit, inset + body)
+  }
+  if (section === 'exercise') return Math.min(limit, inset + Math.max(1, states.exercise.loaded ? exercise.value.days.reduce((count, day) => count + day.items.length, 0) : 3) * 40)
+  if (section === 'commits') return Math.min(limit, inset + Math.max(1, states.commits.loaded ? commits.value.length : 2) * 68)
   return limit
 }
 const timeDate = ref('')
@@ -651,7 +669,7 @@ function trendLines(points) {
                 <DashboardAction v-if="timeDate && states.time.error" label="时迹更新失败，点击重试" icon="ant-design:reload-outlined" @click="loadSection('time')" /><DashboardAction v-else label="新增时迹" :text="timeElapsed" :loading="states.time.loading && !!timeDate" :disabled="states.time.loading" @click="openTimeRecord()" />
               </template><template #loading>
                 <view class="time-loading" role="status" aria-label="正在加载时迹" aria-live="polite">
-                  <view class="time-layout time-skeleton" aria-hidden="true">
+                  <view class="time-layout time-skeleton" :style="{ height: (sectionHeight('time') - sectionInset('time')) + 'px' }" aria-hidden="true">
                     <view class="timeline-labels">
                       <text class="axis-label">0</text><view class="timeline time-skeleton-fill" :class="themeClass('time-skeleton-fill')" /><text class="axis-label">24</text>
                     </view><view class="donut-stage"><view class="donut">
@@ -663,7 +681,7 @@ function trendLines(points) {
                     </view></view>
                   </view>
                 </view>
-              </template><view class="time-layout">
+              </template><view class="time-layout" :style="{ height: (sectionHeight('time') - sectionInset('time')) + 'px' }">
                 <view class="timeline-labels"
                   ><text class="axis-label">0</text
                   ><view class="timeline"
@@ -707,6 +725,7 @@ function trendLines(points) {
             >
               <template #actions>
                 <DashboardAction label="管理快捷导航" icon="lucide:settings-2" @click="openQuickNavEditor" />
+              </template><template #loading><view class="quick-loading" role="status" aria-label="正在加载快捷导航"><view class="quick-grid" aria-hidden="true"><view v-for="n in 10" :key="n" class="quick-link" :style="{ height: quickRowHeight + 'px' }"><view class="time-skeleton-fill" :class="themeClass('time-skeleton-fill')" :style="{ width: quickIconSize + 'px', height: quickIconSize + 'px' }" /><view class="quick-skeleton-label time-skeleton-fill" :class="themeClass('time-skeleton-fill')" /></view></view></view>
               </template><view v-if="links.length === 0" class="empty-state ui-pad-card"
                 ><AppIcon name="ant-design:appstore-outlined" :size="32" color="#8b8f99" /><text class="empty-label" :class="themeClass('empty-label')">暂无快捷方式</text
                 ><button
@@ -720,6 +739,7 @@ function trendLines(points) {
                   :key="link.menuId"
                   role="button"
                   class="quick-link ui-type-body"
+                  :style="{ height: quickRowHeight + 'px' }"
                   :aria-label="link.title + (nativeDestination(link.path) ? '' : '（网页版）')"
                   @click="openLink(link.path)"
                 >
@@ -759,7 +779,7 @@ function trendLines(points) {
               :retain-content="states.thoughts.loaded"
               :error="states.thoughts.error"
               @refresh="loadSection('thoughts')"
-              ><template #actions><DashboardAction label="新增闪念" @click="addThought" /></template><view v-if="thoughts.length === 0" class="empty-state ui-pad-card"
+              ><template #actions><DashboardAction label="新增闪念" @click="addThought" /></template><template #loading><HomeListSkeleton label="正在加载闪念" :rows="2" :row-height="typography.roles.body.lineHeight * 2 + spacing.detail * 2" /></template><view v-if="thoughts.length === 0" class="empty-state ui-pad-card"
                 ><AppIcon name="ant-design:inbox-outlined" :size="32" color="#8b8f99" /><text class="empty-label" :class="themeClass('empty-label')">暂无固定的闪念</text></view
               ><scroll-view v-else scroll-y :show-scrollbar="false" class="list-scroll"
                 ><view
@@ -788,7 +808,7 @@ function trendLines(points) {
               :retain-content="states.exercise.loaded"
               :error="states.exercise.error"
               @refresh="loadSection('exercise')"
-              ><template #actions><DashboardAction label="新增运动" @click="addExercise" /></template><scroll-view scroll-y :show-scrollbar="false" class="list-scroll exercise-scroll" :lower-threshold="40" @scrolltolower="maybeLoadMore('exercise')" @touchstart="startCardSwipe('exercise', $event)" @touchend="finishCardSwipe('exercise', $event)"
+              ><template #actions><DashboardAction label="新增运动" @click="addExercise" /></template><template #loading><HomeListSkeleton label="正在加载运动" :rows="3" :row-height="40" single-line flush-top /></template><scroll-view scroll-y :show-scrollbar="false" class="list-scroll exercise-scroll" :lower-threshold="40" @scrolltolower="maybeLoadMore('exercise')" @touchstart="startCardSwipe('exercise', $event)" @touchend="finishCardSwipe('exercise', $event)"
                 ><view
                   v-for="day in exercise.days"
                   :key="day.date"
@@ -843,7 +863,7 @@ function trendLines(points) {
               :retain-content="states.commits.loaded"
               :error="states.commits.error"
               @refresh="loadSection('commits')"
-              ><view v-if="commits.length === 0" class="empty-state ui-pad-card"
+              ><template #loading><HomeListSkeleton label="正在加载最近提交" :rows="2" :row-height="68" /></template><view v-if="commits.length === 0" class="empty-state ui-pad-card"
                 ><text class="empty-label" :class="themeClass('empty-label')">暂无最近提交</text></view
               ><scroll-view v-else scroll-y :show-scrollbar="false" class="list-scroll commits-scroll" :lower-threshold="40" @scrolltolower="maybeLoadMore('commits')" @touchstart="startCardSwipe('commits', $event)" @touchend="finishCardSwipe('commits', $event)"
                 ><view
@@ -864,8 +884,8 @@ function trendLines(points) {
               ></DashboardSection
             ></view
           >
-        <view v-if="section.cardKey === 'section.weread'" class="section-content ui-pad-xs"><WereadRecentCard @scrolling="cardOrder.cancel()" :sorting="cardOrder.dragging.value === section.cardKey" :ref="el => { businessCardRefs[section.cardKey] = el }" :active="businessActive" :preparing="loading && !businessActive" @visibility="businessVisibility[section.cardKey] = $event" /></view>
-        <BusinessCards v-if="['section.goal', 'section.anniversary', 'section.reading', 'section.membership', 'section.movie'].includes(section.cardKey)" :ref="el => { businessCardRefs[section.cardKey] = el }" :only="section.cardKey.slice(8)" embedded @visibility="businessVisibility[section.cardKey] = $event" :active="businessActive" :preparing="loading && !businessActive" @sorting="businessSorting = $event" />
+        <view v-if="section.cardKey === 'section.weread'" class="section-content ui-pad-xs"><WereadRecentCard :height="multiColumnCardHeight" :max-height="cardHeightLimit" @scrolling="cardOrder.cancel()" :sorting="cardOrder.dragging.value === section.cardKey" :ref="el => { businessCardRefs[section.cardKey] = el }" :active="businessActive" :preparing="loading && !businessActive" @visibility="businessVisibility[section.cardKey] = $event" /></view>
+        <BusinessCards v-if="['section.goal', 'section.anniversary', 'section.reading', 'section.membership', 'section.movie'].includes(section.cardKey)" :height="multiColumnCardHeight" :max-height="cardHeightLimit" :ref="el => { businessCardRefs[section.cardKey] = el }" :only="section.cardKey.slice(8)" embedded @visibility="businessVisibility[section.cardKey] = $event" :active="businessActive" :preparing="loading && !businessActive" @sorting="businessSorting = $event" />
         </HomeCardSortCell></view>
       </view></scroll-view
     ><TimeRecordEditor v-if="timeEditor" :record-id="timeEditor.recordId" @close="closeTimeEditor" /><RecordCreateModal v-if="recordCreateKind" :kind="recordCreateKind" :thought-id="recordCreateKind === 'think' ? thoughtEditId : ''" @close="recordCreateKind = null" @saved="handleRecordCreated" @deleted="handleThoughtDeleted" /><WatchedTaskEditModal v-if="watchedEditor" :task="watchedEditor" @close="watchedEditor = null" @saved="handleWatchedSaved" />
@@ -1202,7 +1222,7 @@ flex-shrink: 1;
 .donut-label-text-dark { color: #d0d0d6; }
 .recent-times {
   width: 112px;
-  height: $space-controlMin * 5;
+  height: 100%;
   min-height: 0;
   flex-shrink: 0;
 }
@@ -1271,11 +1291,15 @@ color: inherit;
   flex-direction: row;
   flex-wrap: wrap;
 }
+.quick-loading { flex: 1; min-height: 0; padding: $space-fieldLabel $space-card $space-card; overflow: hidden; }
+.quick-skeleton-label { width: 60%; height: type-line('caption'); margin-top: $space-detail; }
 .quick-link {
   display: flex;
   flex-direction: column;
   line-height: type-line('caption');
   width: 20%;
+  box-sizing: border-box;
+  flex-shrink: 0;
   margin: 0;
   min-height: $space-controlMin;
   padding: $space-inline $space-micro;
@@ -1290,6 +1314,10 @@ color: inherit;
   @include type-style('caption');
 
   margin-top: $space-detail;
+  max-width: 100%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .quick-scroll,
 .list-scroll {
@@ -1306,7 +1334,7 @@ color: inherit;
 .list-row {  min-height: 56px; }
 .list-scroll-auto { flex: none; height: auto; }
 .thought-row, .task-row { flex-direction: row; align-items: center; }
-.thought-row { padding: $space-detail $space-inline; min-height: 32px; }
+.thought-row { box-sizing: border-box; min-height: $space-controlMin; padding: $space-detail $space-inline; height: type-line('body') * 2 + $space-detail * 2; }
 .task-row { padding: $space-detail $space-inline; }
 .task-check { display: flex; align-items: center; justify-content: center; flex-shrink: 0; width: 44px; height: 44px; margin: 0 $space-micro 0 (-$space-inline); padding: 0; border: 0; background-color: transparent; line-height: $space-controlMin; }
 .task-copy { flex: 1; min-width: 0; min-height: 44px; justify-content: center; }
@@ -1343,7 +1371,7 @@ flex-shrink: 1;
 /* #endif */
  background-color: #f4f4f5; color: #71717a; border-radius: 4px; padding: 0 $space-fieldLabel; @include type-style('chart-label');  margin-top: $space-tight; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .exercise-day { padding: 0; }
-.exercise-item { min-height: 40px; padding: $space-tight 0; flex-direction: row; align-items: center; }
+.exercise-item { box-sizing: border-box; min-height: 40px; padding: $space-tight 0; flex-direction: row; align-items: center; }
 .exercise-date { width: 64px; flex-shrink: 0; margin-right: $space-inline; flex-direction: row;
 /* #ifndef APP */
 align-items: baseline;
@@ -1386,6 +1414,7 @@ align-items: flex-end;
 @keyframes pagination-spin { to { transform: rotate(360deg); } }
 .pagination-retry { display: flex; align-items: center; justify-content: center; width: 44px; height: 44px; margin: 0; padding: 0; border: 0; background-color: transparent; }
 .commit-row {
+  box-sizing: border-box;
   min-height: 68px;
   padding: $space-inline $space-inline;
 }

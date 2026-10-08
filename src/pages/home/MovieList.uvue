@@ -7,16 +7,16 @@ import { isDark } from '../../services/theme.ts'
 import spacing from '../../styles/spacing.json'
 import { businessCardMaxHeight } from './services/business-cards.ts'
 
-const props = defineProps<{ rows: any[]; loading: boolean; moreLoading: boolean; error: string }>()
+const props = defineProps<{ rows: any[]; loading: boolean; moreLoading: boolean; error: string; maxHeight?: number }>()
 const emit = defineEmits<{ edit: [item: any]; more: []; retry: [] }>()
 // 双列三行首屏，海报保持 2:3；高度扣除卡片标题、底部留白和边框。
-const bodyMaxHeight = businessCardMaxHeight - spacing.controlMin - spacing.card - spacing.hairline * 2
-const rowHeight = bodyMaxHeight / 3
-const coverHeight = rowHeight - spacing.inline * 2
-const coverWidth = coverHeight * 2 / 3
+const bodyMaxHeight = computed(() => (props.maxHeight || businessCardMaxHeight) - spacing.controlMin - spacing.card - spacing.hairline * 2)
+const rowHeight = computed(() => bodyMaxHeight.value / 3)
+const coverHeight = computed(() => rowHeight.value - spacing.inline * 2)
+const coverWidth = computed(() => coverHeight.value * 2 / 3)
 const pending = computed(() => props.loading && props.rows.length === 0)
-const height = computed(() => Math.min(bodyMaxHeight,
-  (pending.value ? 3 : Math.ceil(props.rows.length / 2)) * rowHeight
+const height = computed(() => Math.min(bodyMaxHeight.value,
+  (pending.value ? 3 : Math.ceil(props.rows.length / 2)) * rowHeight.value
   + (props.moreLoading || props.error ? spacing.controlMin : 0)))
 function loadMore() {
   if (!pending.value && !props.loading && !props.moreLoading && !props.error) emit('more')
@@ -57,8 +57,8 @@ function loadMore() {
 .movie-grid { display: flex; flex-direction: row; flex-wrap: wrap; padding: 0 $space-card; }
 .movie-cell { width: 50%; box-sizing: border-box; display: flex; flex-direction: row; align-items: center; gap: $space-inline; padding: $space-detail; min-width: 0; }
 .movie-cover { position: relative; flex-shrink: 0; border-radius: 6px; overflow: hidden; }
-.movie-copy { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: $space-detail; }
-.movie-title { @include type-style('label-strong'); color: #3f3f46; overflow: hidden;
+.movie-copy { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: $space-micro; }
+.movie-title { @include type-style('label-strong'); line-height: type-line('badge'); color: #3f3f46; overflow: hidden;
 /* #ifndef APP */
 display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
 /* #endif */
@@ -70,7 +70,7 @@ max-lines: 2; text-overflow: ellipsis;
 .movie-meta { display: flex; flex-direction: row; align-items: center; gap: $space-detail; }
 .movie-dot { width: 4px; height: 4px; border-radius: 50%; background-color: #8b8f99; flex-shrink: 0; }
 .movie-dot-active { background-color: #618f9d; }
-.movie-caption { @include type-style('caption'); color: #71717a; }
+.movie-caption { @include type-style('caption'); line-height: type-line('badge'); color: #71717a; }
 .movie-caption-dark { color: #a6a6b0; }
 .movie-skeleton { background-color: #e8ecf1; border-radius: 4px; }
 .movie-skeleton-dark { background-color: #30343b; }

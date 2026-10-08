@@ -8,7 +8,8 @@ export const businessCards = [
 ]
 // 卡片整体的几何上限，包括标题、内边距和列表。
 export const businessCardMaxHeight = 280
-export const businessCardRowHeight = 76
+// 56px 进度环加上下行内留白，与 Web 的紧凑列表尺度一致。
+export const businessCardRowHeight = 64
 export const businessCardPageSize = 20
 export function cardState() {
   return { rows: [], loading: false, moreLoading: false, loaded: false, error: '', moreError: '', locked: false, page: 0, more: false, version: 0, busy: false, available: true }

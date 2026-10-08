@@ -9,7 +9,13 @@ import { businessCardRowHeight, cardCaption, cardProgress } from './services/bus
 const props = defineProps<{ card: any; item: any }>()
 const orders = inject<any>('home-business-orders')
 const order = orders[props.card.key]
+const actionTouch = inject<(() => void) | null>('home-card-action-touch', null)
 const emit = defineEmits(['edit'])
+function startTouch(event) {
+  // 让 scroll-view 记录触摸起点；只阻止外层整卡排序，避免短滑被误判为下拉刷新。
+  actionTouch?.()
+  order?.start(props.item.id, event)
+}
 function title(item) { return item.title || item.name || '未命名' }
 // 高频位移只在本行读取，避免拖动时重算整个业务卡片和全部进度环。
 function rowStyle() {
@@ -18,7 +24,7 @@ function rowStyle() {
 </script>
 <template>
   <view class="business-row" :class="[order ? order.classes(item.id) : {}, { 'business-dragging-dark': isDark && order && order.dragging.value === item.id }]" :style="rowStyle()"
-    @touchstart.stop="order && order.start(item.id, $event)" @touchmove="order && order.move($event)" @touchend="order && order.finish($event)" @touchcancel="order && order.cancel()"
+    @touchstart="startTouch" @touchmove="order && order.move($event)" @touchend="order && order.finish($event)" @touchcancel="order && order.cancel()"
     @mousedown.stop="order && order.mouseStart(item.id, $event)"
     @keydown.alt.up.prevent="order && order.keyboard(item.id, -1)" @keydown.alt.down.prevent="order && order.keyboard(item.id, 1)">
     <view class="record-link" role="button" tabindex="0" :aria-label="'编辑' + title(item)" @click="emit('edit')" @keydown.enter="emit('edit')" @keydown.space.prevent="emit('edit')">
@@ -55,10 +61,10 @@ function rowStyle() {
 .record-link { display: flex; flex-direction: row; flex: 1; min-width: 0; align-items: center; gap: $space-inline; min-height: $space-controlMin; }
 .record-cover { width: 32px; height: 48px; flex-shrink: 0; border-radius: 4px; overflow: hidden; }
 .record-emoji { @include type-style('glyph-display'); }
-.record-copy { flex: 1; min-width: 0; gap: $space-detail; }
+.record-copy { flex: 1; min-width: 0; gap: $space-micro; }
 .goal-meta { display: flex; flex-direction: row; flex-wrap: wrap; align-items: center; column-gap: $space-detail; }
 .goal-due { display: flex; flex-direction: row; align-items: center; gap: $space-detail; flex-shrink: 0; }
-.record-title { @include type-style('label-strong'); color: #3f3f46; overflow: hidden;
+.record-title { @include type-style('label-strong'); line-height: type-line('caption'); color: #3f3f46; overflow: hidden;
 /* #ifndef APP */
 display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
 /* #endif */
