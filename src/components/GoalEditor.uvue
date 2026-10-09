@@ -12,7 +12,13 @@ import { dateTime, goalDateRange, goalPayload, goalTypes, statuses, statusLabels
 const props = defineProps<{ saveRecord: (payload: any) => Promise<any>; deleteRecord: (id: string) => Promise<unknown> }>();
 const emit = defineEmits(['saved', 'deleted']);
 const form = ref<any>(null), saving = ref(false), formError = ref('');
-const scope = createRecordScope(() => { form.value = null; });
+const scope = createRecordScope((clearData) => {
+  // 浏览器切到后台保留草稿；真正离页、账号变化或权限过期仍清除。
+  // #ifdef WEB
+  if (!clearData && document.visibilityState === 'hidden') return;
+  // #endif
+  form.value = null;
+});
 watch(() => session.token, () => { form.value = null; });
 function open(item = null, pinned = false) {
   if (saving.value) return;

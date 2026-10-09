@@ -15,10 +15,12 @@ import SecondaryUnlock from "../../components/SecondaryUnlock.uvue";
 import { isDark, themeClass } from '../../services/theme.ts'
 import { useRefreshTheme } from '../../services/refresh-theme.ts'
 const refreshTheme = useRefreshTheme()
-import { nextTick, computed, reactive, ref, watch } from 'vue'
+import { nextTick, computed, reactive, ref, watch, onMounted, onBeforeUnmount } from 'vue'
 import { homeCards, homeCardPreferences } from '../../services/home-cards.ts'
 import { homeDataRevision } from '../../services/home-refresh.ts'
-import { cachedMenuAccess } from '../../services/menu-access-cache.ts'
+import { cachedMenuAccess, loadMenuAccess } from '../../services/menu-access-cache.ts'
+import { createHomeRefreshScheduler, homeSectionRefreshSeconds } from './services/refresh-scheduler.ts'
+import { openExternalLink } from '../../services/external-link.ts'
 import { isMenuUnlocked } from '../../services/secondary-lock.ts'
 import { onShow, onHide, onUnload, onResize } from '@dcloudio/uni-app'
 import DashboardAction from '../../components/DashboardAction.uvue'
@@ -37,6 +39,7 @@ import {
   getWatched,
   getExercises,
   getCommits,
+  getGithubProfile,
   getTime,
 } from '../../services/dashboard.ts'
 import type {
@@ -79,8 +82,8 @@ const cardOrder = useHomeCardOrder({
 })
 watch(orderSignature, () => cardOrder.cancel())
 function sectionVisible(section) {
-  if (section.cardKey === 'section.watched') return (states.watched.loading && !states.watched.loaded) || !!states.watched.error || watched.value.length > 0
-  if (section.cardKey === 'section.exercise') return (states.exercise.loading && !states.exercise.loaded) || !!states.exercise.error || exercise.value.days.length > 0
+  if (section.cardKey === 'section.watched') return (states.watched.loading && !states.watched.loaded) || !!states.watched.error || states.watched.locked || watched.value.length > 0
+  if (section.cardKey === 'section.exercise') return (states.exercise.loading && !states.exercise.loaded) || !!states.exercise.error || states.exercise.locked || exercise.value.days.length > 0
   return (section.cardKey !== 'section.github' || githubBound.value) && businessVisibility[section.cardKey] !== false
 }
 const businessCardRefs = ref<Record<string, any>>({})
@@ -131,6 +134,8 @@ function sectionHeight(section: string) {
   if (section === 'commits') return Math.min(limit, inset + Math.max(1, states.commits.loaded ? commits.value.length : 2) * 68)
   return limit
 }
+// 图表明细沿用 Web 的紧凑五行布局，按内容区高度均分，不撑高卡片。
+const timeRecordHeight = computed(() => (sectionHeight('time') - sectionInset('time')) / 5)
 const timeDate = ref('')
 const timeChartActive = ref(true)
 const nowMinutes = ref(0)
@@ -138,7 +143,8 @@ let minuteTimer: ReturnType<typeof setInterval> | null = null
 function tickTime() {
   const now = new Date()
   nowMinutes.value = now.getHours() * 60 + now.getMinutes()
-  if (timeDate.value && timeDate.value !== todayDate()) loadSection('time')
+  if (refreshedAt) discardExpiredHomeContent()
+  if (active && timeDate.value && timeDate.value !== todayDate()) void loadSection('time', true)
 }
 const timeElapsed = computed(() => {
   if (timeDate.value !== todayDate()) return ''
@@ -156,23 +162,24 @@ function closeTimeEditor() {
   if (takeRecordChange()) {
     loadSection('time', true); loadSection('exercise', true)
     const card = cards.value.find(item => item.type === 'EXERCISE')
-    if (card) loadCard(card)
+    if (card) loadCard(card, true)
   }
 }
 const states = reactive({
-  time: { loading: false, error: '', loaded: false, revision: -1 },
-  links: { loading: false, error: '', loaded: false, revision: -1 },
-  thoughts: { loading: false, error: '', loaded: false, revision: -1 },
-  watched: { loading: false, error: '', loaded: false, revision: -1 },
-  exercise: { loading: false, error: '', loaded: false, revision: -1 },
-  commits: { loading: false, error: '', loaded: false, revision: -1 },
+  time: { loading: false, error: '', loaded: false, locked: false, revision: -1 },
+  links: { loading: false, error: '', loaded: false, locked: false, revision: -1 },
+  thoughts: { loading: false, error: '', loaded: false, locked: false, revision: -1 },
+  watched: { loading: false, error: '', loaded: false, locked: false, revision: -1 },
+  exercise: { loading: false, error: '', loaded: false, locked: false, revision: -1 },
+  commits: { loading: false, error: '', loaded: false, locked: false, revision: -1 },
 })
 const watchedAutoHeight = computed(() => viewportWidth.value < 768)
 const githubBound = ref(false)
+const githubProfile = ref('')
 const visibleCards = computed(() =>
   cardOrder.ordered('overview', cards.value.filter(
     (item) =>
-      homeCards.enabled('overview.' + item.type.toLowerCase()) && (item.loading || item.error || (item.value !== '' && item.value != null)),
+      homeCards.enabled('overview.' + item.type.toLowerCase()) && (item.loading || item.error || item.locked || (item.value !== '' && item.value != null)),
   ).sort((a, b) => homeCards.order('overview.' + a.type.toLowerCase()) - homeCards.order('overview.' + b.type.toLowerCase())), item => 'overview.' + item.type.toLowerCase()),
 )
 const overviewOrderRows = computed(() => !overview.loaded ? homeCardPreferences.items.filter(item => item.group === 'overview' && item.enabled) : visibleCards.value.map(item => ({ cardKey: 'overview.' + item.type.toLowerCase() })))
@@ -205,17 +212,25 @@ let preferencesRevision = -1
 let profileRevision = -1
 let overviewRevision = -1
 const cardRevisions: Record<string, number> = {}
+const cardVersions: Record<string, number> = {}
+const homeScheduler = createHomeRefreshScheduler()
+let pageShown = true
+let browserVisible = true
+// #ifdef WEB
+browserVisible = document.visibilityState !== 'hidden'
+// #endif
 let homeGeneration = 0
 let active = true
 let redirecting = false
 watch(() => session.token, () => {
-  cardOrder.cancel()
+  cardOrder.cancel(); homeScheduler.clear()
+  githubProfile.value = ''
   homeGeneration++; refreshTask = null; cards.value = []; githubBound.value = false
   businessActive.value = false; overview.loading = false; overview.loaded = false
   refreshedAt = 0; timeDate.value = ''; loading.value = false
   preferencesRevision = profileRevision = overviewRevision = -1
   for (const key of Object.keys(cardRevisions)) delete cardRevisions[key]
-  for (const key of Object.keys(states)) { states[key].loading = false; states[key].error = ''; states[key].loaded = false; states[key].revision = -1 }
+  for (const key of Object.keys(states)) { states[key].loading = false; states[key].error = ''; states[key].loaded = false; states[key].locked = false; states[key].revision = -1 }
   links.value = []; thoughts.value = []; watched.value = []; commits.value = []
   exercise.value = { days: [] }; time.value = timeSummary([], [])
 }, { flush: 'sync' })
@@ -239,44 +254,81 @@ function handleError(error): string {
 function isCurrent(token: string) {
   return active && session.token === token
 }
-function discardExpiredHomeContent() {
-  const config = cachedMenuAccess()
-  const expired = (paths: string[]) => !config || paths.some(url =>
-    lockedMenuPaths(url, config.menus, config.ids).some(path => !isMenuUnlocked(path)))
-  const dashboardLocked = expired(['/pages/home/index'])
-  const routes = {
-    time: ['/pages/time/index', '/pages/time/dashboard', '/pages/categories/index'],
-    thoughts: ['/pages/records/notes?kind=think'], watched: ['/pages/tasks/todo'],
-    exercise: ['/pages/records/exercise'], commits: ['/pages/coding/github'], links: [],
-  }
-  for (const key of Object.keys(states)) {
-    if (!dashboardLocked && !expired(routes[key])) continue
-    states[key].loaded = false; states[key].error = ''
-    if (key === 'time') { time.value = timeSummary([], []); timeDate.value = '' }
-    if (key === 'thoughts') thoughts.value = []
-    if (key === 'watched') watched.value = []
-    if (key === 'exercise') exercise.value = { days: [] }
-    if (key === 'commits') commits.value = []
-    if (key === 'links') links.value = []
-  }
-  const cardRoutes = { EXERCISE: '/pages/records/exercise', GITHUB: '/pages/coding/github',
-    LEETCODE: '/pages/coding/leetcode', READ: '/pages/records/weread', WEREAD: '/pages/records/weread', TIME_TRACKER: '/pages/time/index' }
-  if (dashboardLocked || cards.value.some(card => cardRoutes[card.type] && expired([cardRoutes[card.type]]))) {
-    cards.value = []; overview.loaded = false; refreshedAt = 0
+const sectionRoutes: Record<string, string[]> = {
+  time: ['/pages/time/index', '/pages/time/dashboard', '/pages/categories/index'],
+  thoughts: ['/pages/records/notes?kind=think'], watched: ['/pages/tasks/todo'],
+  exercise: ['/pages/records/exercise'], commits: ['/pages/coding/github'], links: [],
+}
+const cardRoutes: Record<string, string> = {
+  EXERCISE: '/pages/records/exercise', GITHUB: '/pages/coding/github', LEETCODE: '/pages/coding/leetcode',
+  READ: '/pages/records/weread', WEREAD: '/pages/records/weread', TIME_TRACKER: '/pages/time/index',
+}
+function blockedHomePath(paths: string[], config = cachedMenuAccess()) {
+  if (!config) return '/pages/home/index'
+  return ['/pages/home/index', ...paths].flatMap(url => lockedMenuPaths(url, config.menus, config.ids))
+    .find(path => !isMenuUnlocked(path)) || ''
+}
+async function requireHomeAccess(paths: string[]) {
+  const config = await loadMenuAccess(path => request(path, 'GET', null, true, null, true))
+  const path = blockedHomePath(paths, config)
+  if (path) { const error = new Error('需要二级密码验证'); error.name = 'SecondaryLockRequiredError'; throw error }
+}
+function lockSection(key: string) {
+  sectionVersions[key] = (sectionVersions[key] || 0) + 1
+  Object.assign(states[key], { loaded: true, locked: true, loading: false, error: '', revision: -1 })
+  if (key === 'time') { time.value = timeSummary([], []); timeDate.value = ''; timeEditor.value = null }
+  if (key === 'thoughts') { thoughts.value = []; if (recordCreateKind.value === 'think') { recordCreateKind.value = null; thoughtEditId.value = '' } }
+  if (key === 'watched') { watched.value = []; watchedEditor.value = null }
+  if (key === 'exercise') { exercise.value = { days: [] }; if (recordCreateKind.value === 'exercise') recordCreateKind.value = null }
+  if (key === 'commits') { commits.value = []; githubProfile.value = '' }
+  if (key === 'links') links.value = []
+  homeScheduler.set('section.' + key, 0, () => {})
+  if (key === 'exercise' || key === 'commits') {
+    pageVersions[key]++; moreErrors[key] = ''
+    if (key === 'exercise') moreExercise.value = false
+    else moreCommits.value = false
   }
 }
-onShow(() => {
+function lockCard(card: OverviewCard) {
+  cardVersions[card.type] = (cardVersions[card.type] || 0) + 1
+  Object.assign(card, { value: '', totalValue: '', locked: true, loading: false, error: '' })
+  if (card.type === 'GITHUB') githubProfile.value = ''
+  homeScheduler.set('overview.' + card.type, 0, () => {})
+}
+function discardExpiredHomeContent() {
+  for (const key of Object.keys(states)) {
+    if (!states[key].locked && blockedHomePath(sectionRoutes[key])) lockSection(key)
+  }
+  for (const card of cards.value) {
+    if (!card.locked && blockedHomePath(cardRoutes[card.type] ? [cardRoutes[card.type]] : [])) lockCard(card)
+  }
+  for (const card of Object.values(businessCardRefs.value)) card?.checkAccess?.()
+  syncHomeSchedule()
+}
+function syncHomeSchedule() {
+  for (const [key, seconds] of Object.entries(homeSectionRefreshSeconds)) {
+    homeScheduler.set('section.' + key, sectionEnabled(key) && !states[key].locked
+      && (key !== 'commits' || githubBound.value) ? seconds : 0, () => {
+      if (!orderDisabled.value && !taskBusy.value && !timeEditor.value && !recordCreateKind.value && !watchedEditor.value) return loadSection(key)
+    })
+  }
+  for (const type of Object.keys(cardRevisions)) {
+    if (!cards.value.some(card => card.type === type)) homeScheduler.set('overview.' + type, 0, () => {})
+  }
+  for (const card of cards.value) {
+    homeScheduler.set('overview.' + card.type, homeCards.enabled('overview.' + card.type.toLowerCase()) && !card.locked ? card.refreshInterval : 0,
+      () => { if (!orderDisabled.value) return loadCard(card) })
+  }
+}
+function showHome() {
   active = true
   timeChartActive.value = true
+  restoreSession()
+  if (!session.token) { goLogin(); return }
+  if (refreshedAt) discardExpiredHomeContent()
   tickTime()
   if (minuteTimer) clearInterval(minuteTimer)
   minuteTimer = setInterval(tickTime, 60000)
-  restoreSession()
-  if (!session.token) {
-    goLogin()
-    return
-  }
-  discardExpiredHomeContent()
   const recordChange = takeRecordChange()
   if (!refreshedAt || Date.now() - refreshedAt >= HOME_REFRESH_INTERVAL_MS || !homeCardPreferences.ready
     || homeCardPreferences.error || preferencesRevision !== homeDataRevision('preferences') || errorText.value) {
@@ -286,39 +338,47 @@ onShow(() => {
   void menuVisuals.load(request)
   businessActive.value = true
   if (profileRevision !== homeDataRevision('profile')) {
-    const revision = homeDataRevision('profile'), token = session.token
-    void fetchUser().then(() => { if (isCurrent(token)) profileRevision = revision })
-      .catch(error => { if (isCurrent(token)) errorText.value = handleError(error) })
+    const revision = homeDataRevision('profile'), token = session.token, generation = homeGeneration
+    void fetchUser().then(() => { if (isCurrent(token) && generation === homeGeneration) profileRevision = revision })
+      .catch(error => { if (isCurrent(token) && generation === homeGeneration) errorText.value = handleError(error) })
   }
   if (overview.error || overviewRevision !== homeDataRevision('overview')) void loadOverview()
   else for (const card of cards.value) {
-    if (card.error || cardRevisions[card.type] !== homeDataRevision('overview.' + card.type)) void loadCard(card)
+    if (card.error || card.locked || cardRevisions[card.type] !== homeDataRevision('overview.' + card.type)
+      || homeScheduler.due('overview.' + card.type)) void loadCard(card)
   }
   for (const key of Object.keys(states)) {
     if (key === 'commits' && !githubBound.value) continue
     const state = states[key]
-    if (!state.loaded || state.error || state.revision !== homeDataRevision(key)
-      || (recordChange && ['time', 'exercise'].includes(key))) void loadSection(key)
+    if (!state.loaded || state.error || state.locked || state.revision !== homeDataRevision(key)
+      || homeScheduler.due('section.' + key) || (recordChange && ['time', 'exercise'].includes(key))) void loadSection(key)
   }
-})
-onHide(() => {
-  cardOrder.cancel()
-  homeGeneration++; refreshTask = null; loading.value = false; overview.loading = false
+  syncHomeSchedule(); homeScheduler.resume()
+}
+function suspendHome(closeEditors = true) {
+  homeScheduler.pause(); cardOrder.cancel()
+  homeGeneration++; refreshTask = null; loading.value = false; refreshing.value = false; overview.loading = false
   for (const key of Object.keys(states)) states[key].loading = false
   for (const card of cards.value) card.loading = false
   moreExercise.value = moreCommits.value = false
   businessActive.value = false; active = false; timeChartActive.value = false
-  timeEditor.value = null; recordCreateKind.value = null; thoughtEditId.value = ''; watchedEditor.value = null
+  if (closeEditors) { timeEditor.value = null; recordCreateKind.value = null; thoughtEditId.value = ''; watchedEditor.value = null }
   if (minuteTimer) clearInterval(minuteTimer)
   minuteTimer = null
-})
-onUnload(() => {
-  cardOrder.cancel()
-  homeGeneration++; refreshTask = null
-  businessActive.value = false
-  active = false
-  if (minuteTimer) clearInterval(minuteTimer)
-})
+}
+onShow(() => { pageShown = true; if (browserVisible) showHome() })
+onHide(() => { pageShown = false; suspendHome() })
+onUnload(() => { pageShown = false; suspendHome(); homeScheduler.clear() })
+// H5 的页面 onHide 不覆盖浏览器切到后台的场景。
+// #ifdef WEB
+function browserVisibilityChanged() {
+  browserVisible = document.visibilityState !== 'hidden'
+  if (!browserVisible) suspendHome(false)
+  else if (pageShown) showHome()
+}
+onMounted(() => document.addEventListener('visibilitychange', browserVisibilityChanged))
+onBeforeUnmount(() => document.removeEventListener('visibilitychange', browserVisibilityChanged))
+// #endif
 
 watch(() => homeCardPreferences.items.map(item => item.cardKey + ':' + item.enabled).sort().join('|'), () => {
   // Saving may finish after navigating back from preferences. Reload newly enabled cards then.
@@ -332,6 +392,7 @@ function refresh() {
   return operation
 }
 async function loadHome() {
+  homeScheduler.pause()
   const generation = ++homeGeneration
   overview.loading = false; moreExercise.value = false; moreCommits.value = false
   for (const key of Object.keys(states)) states[key].loading = false
@@ -340,7 +401,7 @@ async function loadHome() {
   const token = session.token
   try {
     const profileVersion = homeDataRevision('profile'), preferenceVersion = homeDataRevision('preferences')
-    await Promise.all([fetchUser(), homeCards.load(), menuVisuals.load(request, true)])
+    await Promise.all([fetchUser(), homeCards.load(), menuVisuals.load(request, true), loadMenuAccess(path => request(path, 'GET', null, true, null, true))])
     if (!homeCardPreferences.ready || homeCardPreferences.error) throw new Error(homeCardPreferences.error || '首页设置加载失败')
     if (!isCurrent(token) || generation !== homeGeneration) return
     profileRevision = profileVersion; preferencesRevision = preferenceVersion
@@ -359,24 +420,27 @@ async function loadHome() {
   } catch (error) {
     if (active && generation === homeGeneration) errorText.value = handleError(error)
   } finally {
-    if (generation === homeGeneration) loading.value = false
+    if (generation === homeGeneration) { loading.value = false; syncHomeSchedule(); if (active) homeScheduler.resume() }
   }
 }
 async function loadOverview() {
-  if (overview.loading) return
+  if (!active || !session.token || overview.loading) return
   overview.loading = true
   overview.error = ''
   const revision = homeDataRevision('overview')
   const token = session.token
   const generation = homeGeneration
   try {
+    await requireHomeAccess([])
     const items = await getOverview()
     if (!isCurrent(token) || generation !== homeGeneration) return
+    if (blockedHomePath([])) { discardExpiredHomeContent(); return }
     githubBound.value = items.some(item => item.type === 'GITHUB')
     cards.value = items.filter(item => homeCards.enabled('overview.' + item.type.toLowerCase()))
       .sort((a, b) => homeCards.order('overview.' + a.type.toLowerCase()) - homeCards.order('overview.' + b.type.toLowerCase()))
       .map((item) => ({ ...cards.value.find(card => card.type === item.type), ...item, loading: false, error: '' }))
     overview.loaded = true; overviewRevision = revision
+    if (!githubBound.value) { commits.value = []; githubProfile.value = ''; states.commits.loaded = false }
     await Promise.all([
       ...cards.value.map((item) => loadCard(item)),
       ...(githubBound.value ? [loadSection('commits')] : []),
@@ -384,24 +448,40 @@ async function loadOverview() {
   } catch (error) {
     if (isCurrent(token) && generation === homeGeneration) overview.error = handleError(error)
   } finally {
-    if (generation === homeGeneration) overview.loading = false
+    if (generation === homeGeneration) { overview.loading = false; syncHomeSchedule() }
   }
 }
-async function loadCard(item: OverviewCard) {
-  if (item.loading || !homeCards.enabled('overview.' + item.type.toLowerCase())) return
+async function loadCard(item: OverviewCard, force = false) {
+  if (!active || !session.token || (item.loading && !force) || !homeCards.enabled('overview.' + item.type.toLowerCase())) return
   item.loading = true
   const revision = homeDataRevision('overview.' + item.type)
+  const version = cardVersions[item.type] = (cardVersions[item.type] || 0) + 1
   item.error = ''
-  const token = session.token
-  const generation = homeGeneration
+  const token = session.token, generation = homeGeneration
+  const paths = cardRoutes[item.type] ? [cardRoutes[item.type]] : []
+  const current = () => isCurrent(token) && generation === homeGeneration && version === cardVersions[item.type] && cards.value.includes(item)
   try {
+    await requireHomeAccess(paths)
+    if (!current()) return
     const data = await getCard(item.type)
     if (data == null) throw new Error('卡片数据为空，请重试')
-    if (isCurrent(token) && generation === homeGeneration) { Object.assign(item, data); cardRevisions[item.type] = revision }
+    if (current()) {
+      if (blockedHomePath(paths)) { lockCard(item); return }
+      if (revision !== homeDataRevision('overview.' + item.type)) return
+      Object.assign(item, data, { refreshInterval: data.refreshInterval, locked: false })
+      cardRevisions[item.type] = revision
+    }
   } catch (error) {
-    if (isCurrent(token) && generation === homeGeneration) item.error = handleError(error)
+    if (current()) {
+      if (error.name === 'SecondaryLockRequiredError') lockCard(item)
+      else item.error = handleError(error)
+    }
   } finally {
-    if (generation === homeGeneration) item.loading = false
+    if (current()) {
+      item.loading = false
+      syncHomeSchedule(); homeScheduler.settled('overview.' + item.type)
+      if (revision !== homeDataRevision('overview.' + item.type)) void loadCard(item, true)
+    }
   }
 }
 async function loadSection(key: string, force = false) {
@@ -421,52 +501,66 @@ async function loadSection(key: string, force = false) {
   const editVersion = editVersions[key]
   const revision = homeDataRevision(key)
   const current = () => isCurrent(token) && generation === homeGeneration && version === sectionVersions[key] && revision === homeDataRevision(key)
+  const accept = () => {
+    if (!current()) return false
+    if (blockedHomePath(sectionRoutes[key])) { lockSection(key); return false }
+    state.locked = false
+    return true
+  }
   try {
+    await requireHomeAccess(sectionRoutes[key])
+    if (!current()) return
     if (key === 'time') {
       const requestedDate = todayDate()
       const data = await getTime(requestedDate)
-      if (current()) {
+      if (requestedDate !== todayDate() && current()) { void loadSection('time', true); return }
+      if (accept()) {
         time.value = timeSummary(data.categories, data.records)
         timeDate.value = requestedDate
       }
     }
     if (key === 'links') {
       const data = await getQuickLinks()
-      if (current())
+      if (accept())
         links.value = data
           .filter((item) => item.enabled === 1)
           .sort((a, b) => a.sortOrder - b.sortOrder)
     }
     if (key === 'thoughts') {
       const data = await getThoughts()
-      if (current() && editVersion === editVersions.thoughts) thoughts.value = data
+      if (accept() && editVersion === editVersions.thoughts) thoughts.value = data
     }
     if (key === 'watched') {
       const data = await getWatched()
-      if (current() && editVersion === editVersions.watched) watched.value = data
+      if (accept() && editVersion === editVersions.watched) watched.value = data
     }
     if (key === 'exercise') {
       const data = await getExercises()
-      if (current()) {
+      if (accept()) {
         exercise.value = data
         moreErrors.exercise = ''
       }
     }
     if (key === 'commits') {
-      const data = await getCommits()
-      if (current()) {
+      const [data, profile] = await Promise.all([getCommits(), getGithubProfile().catch(() => '')])
+      if (accept()) {
+        githubProfile.value = profile
         commits.value = data
         commitPage.value = 1
         hasMoreCommits.value = data.length === 10
         moreErrors.commits = ''
       }
     }
-    if (current()) { state.loaded = true; state.revision = revision }
+    if (accept()) { state.loaded = true; state.revision = revision }
   } catch (error) {
-    if (current()) state.error = handleError(error)
+    if (current()) {
+      if (error.name === 'SecondaryLockRequiredError') lockSection(key)
+      else state.error = handleError(error)
+    }
   } finally {
     if (generation === homeGeneration && version === sectionVersions[key]) {
       state.loading = false
+      syncHomeSchedule(); homeScheduler.settled('section.' + key)
       // 写入期间旧查询失效；即使保存回调未发起请求，也补齐当前区域。
       if (isCurrent(token) && revision !== homeDataRevision(key)) void loadSection(key, true)
     }
@@ -483,9 +577,11 @@ async function loadMore(key: string) {
   const token = session.token
   const generation = homeGeneration
   try {
+    await requireHomeAccess(sectionRoutes[key])
+    if (!isCurrent(token) || generation !== homeGeneration || pageVersions[key] !== version) return
     if (isExercise) {
       const data = await getExercises(exercise.value.lastDate || '')
-      if (isCurrent(token) && generation === homeGeneration && pageVersions[key] === version)
+      if (isCurrent(token) && generation === homeGeneration && pageVersions[key] === version && !blockedHomePath(sectionRoutes[key]))
         exercise.value = {
           ...data,
           days: [...exercise.value.days, ...data.days],
@@ -493,21 +589,43 @@ async function loadMore(key: string) {
         }
     } else {
       const data = await getCommits(commitPage.value + 1)
-      if (isCurrent(token) && generation === homeGeneration && pageVersions[key] === version) {
+      if (isCurrent(token) && generation === homeGeneration && pageVersions[key] === version && !blockedHomePath(sectionRoutes[key])) {
         commits.value = [...commits.value, ...data.filter(item => !commits.value.some(existing => existing.id === item.id))]
         commitPage.value++
         hasMoreCommits.value = data.length === 10 && commitPage.value < 100
       }
     }
   } catch (error) {
-    if (isCurrent(token) && generation === homeGeneration && pageVersions[key] === version) moreErrors[key] = handleError(error)
+    if (isCurrent(token) && generation === homeGeneration && pageVersions[key] === version) {
+      if (error.name === 'SecondaryLockRequiredError') lockSection(key)
+      else moreErrors[key] = handleError(error)
+    }
   } finally {
-    if (generation === homeGeneration && pageVersions[key] === version) busy.value = false
+    if (generation === homeGeneration && pageVersions[key] === version) { busy.value = false; discardExpiredHomeContent() }
   }
 }
 function openLink(path: string) { openBusinessLink(path) }
+function openGithub() {
+  if (githubProfile.value && !states.commits.locked) openExternalLink(githubProfile.value)
+  else openBusinessLink('/coding/github')
+}
+function viewCommit(commit: Commit) {
+  if (cardOrder.clickBlocked() || states.commits.locked) return
+  const linked = typeof commit.commitUrl === 'string' && /^https:\/\/github\.com\//i.test(commit.commitUrl)
+  uni.showModal({ title: commit.repo, content: commit.message, showCancel: linked,
+    confirmText: linked ? '查看提交' : '关闭', success: result => { if (linked && result.confirm) openExternalLink(commit.commitUrl!) } })
+}
+function taskTimeRange(task: WatchedTask) {
+  const label = (value?: string | null) => {
+    if (!value) return ''
+    const match = value.match(/^\d{4}-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})/)
+    return match ? Number(match[1]) + '/' + Number(match[2]) + ' ' + match[3] + ':' + match[4] : value
+  }
+  return [label(task.startTime), label(task.endTime)].filter(Boolean).join(' - ')
+}
 function openOverviewLink(item: OverviewCard, destination?: string) {
   // 与 Web 一致：未配置链接的图标/标题和卡片正文都只刷新当前卡片。
+  if (item.locked) { openBusinessLink(cardRoutes[item.type] || '/pages/home/index'); return }
   if (!destination) { loadCard(item); return }
   if (destination === 'action:open-time-tracker-modal') { openTimeRecord(); return }
   if (destination === 'action:open-exercise-modal') { openBusinessLink('/record/exercise'); return }
@@ -544,7 +662,7 @@ function handleRecordCreated(savedThought) {
   if (kind === 'exercise') {
     loadSection('exercise', true)
     const card = cards.value.find(item => item.type === 'EXERCISE')
-    if (card) loadCard(card)
+    if (card) loadCard(card, true)
   }
 }
 async function completeWatched(task) {
@@ -624,12 +742,12 @@ function trendLines(points) {
               tabindex="0"
               class="overview-card ui-pad-card"
               :aria-label="
-                (item.error ? '重试' : '刷新') + item.title
+                (item.locked ? '解锁' : item.error ? '重试' : '刷新') + item.title
               "
               :aria-busy="item.loading"
-              @click="loadCard(item)"
-              @keydown.enter.self="loadCard(item)"
-              @keydown.space.prevent.self="loadCard(item)"
+              @click="item.locked ? openOverviewLink(item) : loadCard(item)"
+              @keydown.enter.self="item.locked ? openOverviewLink(item) : loadCard(item)"
+              @keydown.space.prevent.self="item.locked ? openOverviewLink(item) : loadCard(item)"
              :class="themeClass('overview-card')">
               <view v-if="item.loading" class="card-progress"
                 ><view class="card-progress-bar"></view
@@ -645,7 +763,7 @@ function trendLines(points) {
                 ></view
               ><view class="stat-bottom"
                 ><text class="stat-caption" :class="themeClass('stat-caption')">{{
-                  item.error
+                  item.locked ? '点击解锁' : item.error
                     ? '加载失败，点击重试'
                     : item.totalTitle || ''
                 }}</text
@@ -663,6 +781,8 @@ function trendLines(points) {
               :loading="states.time.loading && !refreshing && !states.time.loaded"
               :retain-content="states.time.loaded"
               :error="timeDate ? '' : states.time.error"
+              :locked="states.time.locked" :refresh-disabled="orderDisabled"
+              navigable @navigate="openLink('/time/time-tracker')"
               @refresh="loadSection('time')"
             >
               <template #actions>
@@ -675,7 +795,7 @@ function trendLines(points) {
                     </view><view class="donut-stage"><view class="donut">
                       <view class="donut-ring time-skeleton-ring" :class="themeClass('time-skeleton-ring')" /><view class="time-skeleton-fill time-skeleton-total" :class="themeClass('time-skeleton-fill')" />
                     </view></view><view class="recent-times ui-ml-sm"><view class="recent-time-list">
-                      <view v-for="n in 5" :key="n" class="time-record">
+                      <view v-for="n in 5" :key="n" class="time-record" :style="{ height: timeRecordHeight + 'px' }">
                         <view class="time-skeleton-fill time-skeleton-clock" :class="themeClass('time-skeleton-fill')" /><view :style="appTextColor()" class="time-skeleton-fill time-skeleton-duration record-duration" :class="themeClass('time-skeleton-fill')" /><view :style="appTextColor()" class="time-skeleton-fill time-skeleton-name record-name" :class="themeClass('time-skeleton-fill')" />
                       </view>
                     </view></view>
@@ -708,7 +828,7 @@ function trendLines(points) {
                     v-for="record in time.recent"
                     :key="record.id"
                     class="time-record" :aria-label="'编辑时迹 ' + record.name" @click="openTimeRecord(record.id)"
-                    :style="{ color: record.color }"
+                    :style="{ color: record.color, height: timeRecordHeight + 'px' }"
                     ><view class="time-record-content"><text :style="{ color: record.color }" class="record-clock">{{ record.startLabel }}</text><text :style="{ color: record.color }" class="record-duration">{{ record.durationLabel }}</text><text :style="{ color: record.color }" class="record-name">{{ record.shortName }}</text></view></button
                   ></view></scroll-view>
               </view>
@@ -721,6 +841,8 @@ function trendLines(points) {
               :updating="states.links.loading && !refreshing && states.links.loaded"
               :retain-content="states.links.loaded"
               :error="states.links.error"
+              :locked="states.links.locked" :refresh-disabled="orderDisabled"
+              @navigate="openQuickNavEditor"
               @refresh="loadSection('links')"
             >
               <template #actions>
@@ -747,7 +869,7 @@ function trendLines(points) {
                 </button></view></scroll-view>
             </DashboardSection></view
           ><view
-            v-if="section.cardKey === 'section.watched' && ((states.watched.loading && !states.watched.loaded) || states.watched.error || watched.length)"
+            v-if="section.cardKey === 'section.watched' && ((states.watched.loading && !states.watched.loaded) || states.watched.error || states.watched.locked || watched.length)"
             class="section-content ui-pad-xs"
             ><DashboardSection
               title="待办" :icon="menuVisuals.visual('section.watched').icon" :icon-color="menuVisuals.visual('section.watched').iconColor"
@@ -757,6 +879,8 @@ function trendLines(points) {
               :updating="states.watched.loading && !refreshing && states.watched.loaded"
               :retain-content="states.watched.loaded"
               :error="states.watched.error"
+              :locked="states.watched.locked" :refresh-disabled="orderDisabled"
+              navigable @navigate="openLink('/task/todo')"
               @refresh="loadSection('watched')"
               ><template #loading><view class="watched-loading" :class="{ 'watched-loading-auto': watchedAutoHeight }" role="status" aria-label="正在加载待办"><view class="watched-skeleton-row" aria-hidden="true"><view class="watched-skeleton-check" :class="themeClass('time-skeleton-fill')" /><view class="watched-skeleton-copy"><view class="time-skeleton-fill watched-skeleton-line" :class="themeClass('time-skeleton-fill')" /><view class="time-skeleton-fill watched-skeleton-line" :class="themeClass('time-skeleton-fill')" /></view></view></view></template><scroll-view scroll-y :show-scrollbar="false" class="list-scroll" :class="{ 'list-scroll-auto': watchedAutoHeight }" :style="watchedAutoHeight ? { maxHeight: (sectionHeight('watched') - sectionInset('watched')) + 'px' } : {}"
                 ><view
@@ -764,7 +888,7 @@ function trendLines(points) {
                   :key="task.id"
                   class="list-row task-row ui-pad-sm"
                   ><button role="button" class="task-check ui-type-body" :aria-label="task.isCompleted === 1 ? '标记未完成' : '完成待办'" :aria-busy="taskBusy === task.id" :loading="taskBusy === task.id" :disabled="!!taskBusy" @click="completeWatched(task)"><CategoryIcon v-if="taskBusy !== task.id" :icon="task.isCompleted === 1 ? 'lucide:circle-check' : 'lucide:circle'" :size="20" :color="task.isCompleted === 1 ? '#5b8ff9' : isDark ? '#a1a1aa' : '#71717a'" /></button><view class="task-copy" role="button" :aria-label="'编辑待办 '+task.content" @click="openWatched(task)"
-                    ><view class="task-main"><text v-if="task.priority === 1 || task.priority === 10 || task.priority === 20" class="task-priority" :class="task.priority === 1 ? 'priority-high' : task.priority === 10 ? 'priority-medium' : 'priority-low'">{{ task.priority === 1 ? '高' : task.priority === 10 ? '中' : '低' }}</text><text class="body-text" :class="[{ completed: task.isCompleted === 1 }, themeClass('body-text')]">{{ task.content }}</text></view><text v-if="task.taskName" class="tag" :class="themeClass('tag')">{{ task.taskName }}</text></view
+                    ><view class="task-main"><text v-if="task.priority === 1 || task.priority === 10 || task.priority === 20" class="task-priority" :class="task.priority === 1 ? 'priority-high' : task.priority === 10 ? 'priority-medium' : 'priority-low'">{{ task.priority === 1 ? '高' : task.priority === 10 ? '中' : '低' }}</text><text class="body-text" :class="[{ completed: task.isCompleted === 1 }, themeClass('body-text')]">{{ task.content }}</text></view><text v-if="task.taskName" class="tag" :class="themeClass('tag')">{{ task.taskName }}</text><text v-if="task.startTime || task.endTime" class="task-dates" :class="themeClass('task-dates')">{{ taskTimeRange(task) }}</text></view
                   ></view
                 ></scroll-view
               ></DashboardSection
@@ -778,6 +902,8 @@ function trendLines(points) {
               :updating="states.thoughts.loading && !refreshing && states.thoughts.loaded"
               :retain-content="states.thoughts.loaded"
               :error="states.thoughts.error"
+              :locked="states.thoughts.locked" :refresh-disabled="orderDisabled"
+              navigable @navigate="openLink('/record/think')"
               @refresh="loadSection('thoughts')"
               ><template #actions><DashboardAction label="新增闪念" @click="addThought" /></template><template #loading><HomeListSkeleton label="正在加载闪念" :rows="2" :row-height="typography.roles.body.lineHeight * 2 + spacing.detail * 2" /></template><view v-if="thoughts.length === 0" class="empty-state ui-pad-card"
                 ><AppIcon name="ant-design:inbox-outlined" :size="32" color="#8b8f99" /><text class="empty-label" :class="themeClass('empty-label')">暂无固定的闪念</text></view
@@ -796,7 +922,7 @@ function trendLines(points) {
               ></DashboardSection
             ></view
           ><view
-            v-if="section.cardKey === 'section.exercise' && ((states.exercise.loading && !states.exercise.loaded) || states.exercise.error || exercise.days.length)"
+            v-if="section.cardKey === 'section.exercise' && ((states.exercise.loading && !states.exercise.loaded) || states.exercise.error || states.exercise.locked || exercise.days.length)"
             class="section-content ui-pad-xs"
             ><DashboardSection
               title="运动" :icon="menuVisuals.visual('section.exercise').icon" :icon-color="menuVisuals.visual('section.exercise').iconColor"
@@ -807,6 +933,8 @@ function trendLines(points) {
               :updating="states.exercise.loading && !refreshing && states.exercise.loaded"
               :retain-content="states.exercise.loaded"
               :error="states.exercise.error"
+              :locked="states.exercise.locked" :refresh-disabled="orderDisabled"
+              navigable @navigate="openLink('/record/exercise')"
               @refresh="loadSection('exercise')"
               ><template #actions><DashboardAction label="新增运动" @click="addExercise" /></template><template #loading><HomeListSkeleton label="正在加载运动" :rows="3" :row-height="40" single-line flush-top /></template><scroll-view scroll-y :show-scrollbar="false" class="list-scroll exercise-scroll" :lower-threshold="40" @scrolltolower="maybeLoadMore('exercise')" @touchstart="startCardSwipe('exercise', $event)" @touchend="finishCardSwipe('exercise', $event)"
                 ><view
@@ -862,6 +990,8 @@ function trendLines(points) {
               :updating="states.commits.loading && !refreshing && states.commits.loaded"
               :retain-content="states.commits.loaded"
               :error="states.commits.error"
+              :locked="states.commits.locked" :refresh-disabled="orderDisabled"
+              navigable :title-label="githubProfile ? '访问 GitHub 主页' : '查看 GitHub'" @navigate="openGithub"
               @refresh="loadSection('commits')"
               ><template #loading><HomeListSkeleton label="正在加载最近提交" :rows="2" :row-height="68" /></template><view v-if="commits.length === 0" class="empty-state ui-pad-card"
                 ><text class="empty-label" :class="themeClass('empty-label')">暂无最近提交</text></view
@@ -869,7 +999,7 @@ function trendLines(points) {
                 ><view
                   v-for="(commit, index) in commits"
                   :key="commit.id || index"
-                  class="commit-row"
+                  class="commit-row home-card-drag-area" role="button" tabindex="0" :aria-label="'查看提交：' + commit.message" @click="viewCommit(commit)" @keydown.enter.self="viewCommit(commit)" @keydown.space.prevent.self="viewCommit(commit)"
                   ><view class="commit-top"
                     ><text class="repo-label" :class="themeClass('repo-label')">{{ commit.repo }}</text
                     ><text class="list-date ui-ml-section">{{
@@ -885,7 +1015,7 @@ function trendLines(points) {
             ></view
           >
         <view v-if="section.cardKey === 'section.weread'" class="section-content ui-pad-xs"><WereadRecentCard :height="multiColumnCardHeight" :max-height="cardHeightLimit" @scrolling="cardOrder.cancel()" :sorting="cardOrder.dragging.value === section.cardKey" :ref="el => { businessCardRefs[section.cardKey] = el }" :active="businessActive" :preparing="loading && !businessActive" @visibility="businessVisibility[section.cardKey] = $event" /></view>
-        <BusinessCards v-if="['section.goal', 'section.anniversary', 'section.reading', 'section.membership', 'section.movie'].includes(section.cardKey)" :height="multiColumnCardHeight" :max-height="cardHeightLimit" :ref="el => { businessCardRefs[section.cardKey] = el }" :only="section.cardKey.slice(8)" embedded @visibility="businessVisibility[section.cardKey] = $event" :active="businessActive" :preparing="loading && !businessActive" @sorting="businessSorting = $event" />
+        <BusinessCards v-if="['section.goal', 'section.anniversary', 'section.reading', 'section.membership', 'section.movie'].includes(section.cardKey)" :height="multiColumnCardHeight" :max-height="cardHeightLimit" :ref="el => { businessCardRefs[section.cardKey] = el }" :only="section.cardKey.slice(8)" :refresh-disabled="orderDisabled" embedded @visibility="businessVisibility[section.cardKey] = $event" :active="businessActive" :preparing="loading && !businessActive" @sorting="businessSorting = $event" />
         </HomeCardSortCell></view>
       </view></scroll-view
     ><TimeRecordEditor v-if="timeEditor" :record-id="timeEditor.recordId" @close="closeTimeEditor" /><RecordCreateModal v-if="recordCreateKind" :kind="recordCreateKind" :thought-id="recordCreateKind === 'think' ? thoughtEditId : ''" @close="recordCreateKind = null" @saved="handleRecordCreated" @deleted="handleThoughtDeleted" /><WatchedTaskEditModal v-if="watchedEditor" :task="watchedEditor" @close="watchedEditor = null" @saved="handleWatchedSaved" />
@@ -1246,7 +1376,6 @@ flex-grow: 1;
   border: 0;
   border-radius: 0;
   width: 100%;
-  height: $space-controlMin;
   flex-shrink: 0;
   flex-direction: row;
   align-items: center;
@@ -1261,7 +1390,7 @@ flex-grow: 1;
   align-items: center;
   justify-content: flex-end;
   width: 100%;
-  height: $space-controlMin;
+  height: 100%;
 }
 .record-clock { flex-shrink: 0; }
 .record-duration { flex-shrink: 0; margin-left: $space-detail; }
@@ -1337,6 +1466,8 @@ color: inherit;
 .thought-row { box-sizing: border-box; min-height: $space-controlMin; padding: $space-detail $space-inline; height: type-line('body') * 2 + $space-detail * 2; }
 .task-row { padding: $space-detail $space-inline; }
 .task-check { display: flex; align-items: center; justify-content: center; flex-shrink: 0; width: 44px; height: 44px; margin: 0 $space-micro 0 (-$space-inline); padding: 0; border: 0; background-color: transparent; line-height: $space-controlMin; }
+.task-dates { @include type-style('chart-label'); color: #92929b; margin-top: $space-detail; }
+.task-dates-dark { color: #a1a1aa; }
 .task-copy { flex: 1; min-width: 0; min-height: 44px; justify-content: center; }
 .task-main { flex-direction: row; align-items: center; }
 .task-priority { flex-shrink: 0; border-radius: 4px; padding: $space-hairline $space-detail; margin-right: $space-inline; @include type-style('chart-label');  color: #ffffff; }
@@ -1475,7 +1606,8 @@ align-items: flex-end;
   .thought-text, .body-text, .repo-label { @include type-style('body'); }
   .commit-message { @include type-style('label');  }
   .list-date { @include type-style('badge'); }
-  .task-copy { flex-direction: row; align-items: center; }
+  .task-copy { flex-direction: row; align-items: center; flex-wrap: wrap; }
+  .task-dates { width: 100%; }
   .task-main { flex: 1; min-width: 0; }
   .tag { align-self: center; max-width: 72px; margin-top: 0; margin-left: $space-inline; }
   .section-cell {

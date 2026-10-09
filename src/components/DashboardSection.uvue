@@ -4,25 +4,28 @@ import ContentSkeleton from './ContentSkeleton.uvue';
 import LoadingIndicator from './LoadingIndicator.uvue';
 import CategoryIcon from './CategoryIcon.uvue'
 import LifeMenuIcon from './LifeMenuIcon.uvue'
+import HomeCardHeader from './HomeCardHeader.uvue'
 import { isDark, themeClass } from '../services/theme.ts'
-defineProps<{ title: string; icon?: string; iconColor?: string; height?: number; autoHeight?: boolean; loading?: boolean; updating?: boolean; retainContent?: boolean; error?: string; compact?: boolean; flushTop?: boolean; skeleton?: string }>()
-defineEmits<{ refresh: [] }>()
+defineProps<{ title: string; icon?: string; iconColor?: string; height?: number; autoHeight?: boolean; loading?: boolean; updating?: boolean; retainContent?: boolean; error?: string; compact?: boolean; flushTop?: boolean; skeleton?: string; navigable?: boolean; titleLabel?: string; locked?: boolean; refreshDisabled?: boolean }>()
+defineEmits<{ refresh: []; navigate: [] }>()
 </script>
 <template>
   <view class="dashboard-section" :class="themeClass('dashboard-section')" :style="autoHeight ? { height: 'auto' } : height ? { height: height + 'px' } : {}">
-    <view class="section-heading" :class="{ 'section-heading-compact': compact }">
-      <view class="section-label"><LifeMenuIcon v-if="icon" :icon="icon" :size="16" :color="iconColor" /><text class="section-title" :class="[{ 'section-title-with-icon': !!icon }, themeClass('section-title')]">{{ title }}</text></view>
+    <HomeCardHeader class="section-heading" :label="'刷新' + title" :loading="loading || updating" :disabled="refreshDisabled || locked" @refresh="$emit('refresh')">
+      <button v-if="navigable" role="button" class="section-label heading-link" :aria-label="titleLabel || '查看' + title" @click.stop="$emit('navigate')"><LifeMenuIcon v-if="icon" :icon="icon" :size="16" :color="iconColor" /><text class="section-title" :class="[{ 'section-title-with-icon': !!icon }, themeClass('section-title')]">{{ title }}</text></button>
+      <view v-else class="section-label"><LifeMenuIcon v-if="icon" :icon="icon" :size="16" :color="iconColor" /><text class="section-title" :class="[{ 'section-title-with-icon': !!icon }, themeClass('section-title')]">{{ title }}</text></view>
       <slot name="actions" />
       <LoadingIndicator v-if="updating" class="section-updating" compact :label="'正在更新' + title" />
-      <button v-else-if="error && retainContent" role="button" class="section-update-retry" :aria-label="'重试' + title + '：' + error" @click="$emit('refresh')"><CategoryIcon icon="lucide:rotate-cw" :size="18" :color="isDark ? '#a9bfff' : '#5879ce'" /></button>
-    </view>
-    <view v-if="error && !retainContent" class="section-error" role="alert">
+      <button v-else-if="error && retainContent" role="button" class="section-update-retry" :disabled="refreshDisabled" :aria-label="'重试' + title + '：' + error" @click.stop="$emit('refresh')"><CategoryIcon icon="lucide:rotate-cw" :size="18" :color="isDark ? '#a9bfff' : '#5879ce'" /></button>
+    </HomeCardHeader>
+    <view v-if="locked" class="section-error"><button role="button" class="section-retry" :aria-label="'解锁' + title" @click="$emit('navigate')"><text :class="buttonLabelClasses(['section-retry', themeClass('section-retry')])">点击解锁</text></button></view>
+    <view v-else-if="error && !retainContent" class="section-error" role="alert">
       <text class="section-error-text" :class="themeClass('section-error-text')">{{ error }}</text>
       <button
         role="button"
         class="section-retry"
         :aria-label="'重试' + title"
-        :disabled="loading"
+        :disabled="loading || refreshDisabled"
         @click="$emit('refresh')"
        :class="themeClass('section-retry')"><text :class="buttonLabelClasses(['section-retry', themeClass('section-retry')])">重试</text></button>
     </view>
@@ -43,23 +46,14 @@ defineEmits<{ refresh: [] }>()
   overflow: hidden;
 }
 .section-updating { position: absolute; right: $space-card + $space-controlMin; }
-.section-heading {
-  position: relative;
-  flex-direction: row;
-  justify-content: space-between;
-  align-items: center;
-  padding: 0 $space-card;
-  height: $space-controlMin;
-  flex-shrink: 0;
-}
-.section-update-retry { width: $space-controlMin; height: $space-controlMin; margin: 0; padding: 0; display: flex; align-items: center; justify-content: center; background-color: transparent; border: 0; }
+.section-update-retry { position: relative; z-index: 1; width: $space-controlMin; height: $space-controlMin; margin: 0; padding: 0; display: flex; align-items: center; justify-content: center; background-color: transparent; border: 0; }
 .section-title {
   color: #18181b;
   @include type-style('title');
 
 }
-.section-heading-compact { height: $space-controlMin; padding-top: 0; padding-bottom: 0; }
-.section-label { flex-direction: row; align-items: center; }
+.section-label { display: flex; position: relative; z-index: 1; flex-direction: row; align-items: center; flex-shrink: 0; }
+.heading-link { height: $space-controlMin; min-width: $space-controlMin; margin: 0; padding: 0; border: 0; border-radius: 0; background-color: transparent; }
 .section-title-with-icon { margin-left: $space-inline; }
 .section-content {
   flex: 1;
@@ -108,7 +102,7 @@ defineEmits<{ refresh: [] }>()
   }
 
 /* #ifdef WEB || MP-WEIXIN */
-.section-retry::after, .section-update-retry::after {
+.section-retry::after, .section-update-retry::after, .heading-link::after {
   border: 0;
 }
 /* #endif */

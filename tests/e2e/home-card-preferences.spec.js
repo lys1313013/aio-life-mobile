@@ -22,6 +22,8 @@ async function setup(page) {
     return route.fulfill({ json: { code: 0, data: state.items } });
   };
   await page.route('**/api/user/info', route => route.fulfill({ json: { code: 0, data: { id: 'fixture-home-card-user', nickname: '测试用户' } } }));
+  // GitHub 主页入口新增绑定读取；该用例仅验证卡片启停，所有读取保持模拟。
+  await page.route('**/api/userbinds/list', route => route.fulfill({ json: { code: 0, data: [] } }));
   await page.route('**/api/auth/secondary-lock/menus', route => route.fulfill({ json: { code: 0, data: [] } }));
   await page.route('**/api/menu/visuals?*', route => route.fulfill({ json: { code: 0, data: { menus: [], cards: {} } } }));
   await page.route('**/api/home/cards', respond);

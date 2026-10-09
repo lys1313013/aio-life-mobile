@@ -14,6 +14,8 @@ export interface OverviewCard {
   iconColor?: string
   loading?: boolean
   error?: string
+  refreshInterval?: number | null
+  locked?: boolean
 }
 export interface QuickLink {
   menuId: string
@@ -90,19 +92,26 @@ export interface TimeRecord {
   exercises?: { exerciseTypeId: string; exerciseCount?: number; description?: string }[]
 }
 
-export const getOverview = () => request<OverviewCard[]>('/dashboard/tasks')
+// 首页读取不主动弹二级密码，锁定状态由卡片提供明确的解锁入口。
+const homeRequest = <T>(path: string) => request<T>(path, 'GET', null, true, null, true)
+export const getOverview = () => homeRequest<OverviewCard[]>('/dashboard/tasks')
 export const getCard = (type: string) =>
-  request<OverviewCard>('/dashboard/card/' + encodeURIComponent(type))
-export const getQuickLinks = () => request<QuickLink[]>('/quick-nav/my?client=mobile')
-export const getThoughts = () => request<Thought[]>('/thought/dashboard')
-export const getWatched = () => request<WatchedTask[]>('/taskDetails/watched')
+  homeRequest<OverviewCard>('/dashboard/card/' + encodeURIComponent(type))
+export const getQuickLinks = () => homeRequest<QuickLink[]>('/quick-nav/my?client=mobile')
+export const getThoughts = () => homeRequest<Thought[]>('/thought/dashboard')
+export const getWatched = () => homeRequest<WatchedTask[]>('/taskDetails/watched')
 export const getExercises = (lastDate = '') =>
-  request<ExercisePage>(
+  homeRequest<ExercisePage>(
     '/exerciseRecord/dashboardSummary?limit=7' +
       (lastDate ? '&lastDate=' + encodeURIComponent(lastDate) : ''),
   )
 export const getCommits = (page = 1) =>
-  request<Commit[]>('/github/recent-commits?perPage=10&page=' + page)
+  homeRequest<Commit[]>('/github/recent-commits?perPage=10&page=' + page)
+export async function getGithubProfile() {
+  const bindings = await homeRequest<{ platform: string; platformUsername?: string }[]>('/userbinds/list')
+  const name = bindings.find(item => item.platform === 'github')?.platformUsername || ''
+  return /^[a-z\d][a-z\d-]*$/i.test(name) ? 'https://github.com/' + encodeURIComponent(name) : ''
+}
 export function todayDate() {
   const now = new Date()
   return (
@@ -115,12 +124,12 @@ export function todayDate() {
 }
 export async function getTime(date = todayDate()) {
   const [categories, records] = await Promise.all([
-    request<Category[]>('/timeTrackerCategory/list'),
-    getDateRecords(date),
+    homeRequest<Category[]>('/timeTrackerCategory/list'),
+    getDateRecords(date, true),
   ])
   return { categories, records }
 }
 /** 单日接口一次返回完整列表；失败继续交由调用端显示重试。 */
-export async function getDateRecords(date: string): Promise<TimeRecord[]> {
-  return readDateRecords(await request('/timeRecord/query?date=' + encodeURIComponent(date)))
+export async function getDateRecords(date: string, silent = false): Promise<TimeRecord[]> {
+  return readDateRecords(await request('/timeRecord/query?date=' + encodeURIComponent(date), 'GET', null, true, null, silent))
 }

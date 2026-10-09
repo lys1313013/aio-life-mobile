@@ -1,8 +1,10 @@
 <script setup lang="ts">
 import { computed, reactive, ref, watch, onUnmounted, provide } from 'vue'
+import { onHide } from '@dcloudio/uni-app'
 import AppIcon from '../../components/AppIcon.uvue'
 import BusinessIcon from '../../components/BusinessIcon.uvue'
 import DashboardAction from '../../components/DashboardAction.uvue'
+import HomeCardHeader from '../../components/HomeCardHeader.uvue'
 import ReadingShelf from './ReadingShelf.uvue'
 import MovieList from './MovieList.uvue'
 import AdaptiveModal from '../../components/AdaptiveModal.uvue'
@@ -27,7 +29,7 @@ import { isMenuUnlocked } from '../../services/secondary-lock.ts'
 import spacing from '../../styles/spacing.json'
 import { businessCards as allBusinessCards, businessCardMaxHeight, businessCardRowHeight, cardState, failBusinessAccess, loadBusinessCard } from './services/business-cards.ts'
 const emit = defineEmits(['sorting', 'visibility'])
-const props = defineProps<{ active: boolean; preparing?: boolean; only?: string; embedded?: boolean; height?: number; maxHeight?: number }>()
+const props = defineProps<{ active: boolean; preparing?: boolean; only?: string; embedded?: boolean; height?: number; maxHeight?: number; refreshDisabled?: boolean }>()
 const cardMaxHeight = computed(() => props.maxHeight || businessCardMaxHeight)
 const businessCards = allBusinessCards.filter(card => !props.only || ({ read: 'reading', member: 'membership' }[card.key] || card.key) === props.only)
 const states = reactive(Object.fromEntries(businessCards.map(card => [card.key, cardState()])))
@@ -75,6 +77,12 @@ function invalidate(clear = false) {
 }
 watch(() => session.token, () => invalidate(true), { flush: 'sync' })
 onUnmounted(() => { invalidate(true); emit('sorting', false) })
+onHide(() => {
+  // #ifdef WEB
+  if (document.visibilityState === 'hidden') return
+  // #endif
+  closeDetail()
+})
 // 准备阶段也可能展示旧内容，必须在等待用户信息前撤下过期解锁的数据。
 watch(() => props.active || props.preparing, visible => {
   if (visible) {
@@ -92,9 +100,9 @@ watch(() => props.active || props.preparing, visible => {
 // 组件晚挂载或 H5 热更新后也主动加载，不能只依赖父页面一次性的 ref 调用。
 watch(() => props.active, active => {
   if (active) void refreshAll(false)
-  else { invalidate(); closeDetail() }
+  else invalidate()
 }, { flush: 'sync', immediate: true })
-defineExpose({ refresh: refreshAll })
+defineExpose({ refresh: refreshAll, checkAccess })
 function refreshAll(force = true) {
   if (!props.active || !session.token) return Promise.resolve()
   if (refreshTask) return refreshTask
@@ -149,12 +157,44 @@ async function loadAll(force: boolean) {
     for (const card of businessCards) failBusinessAccess(states[card.key], error)
   }
 }
+function checkAccess() {
+  const config = cachedMenuAccess()
+  for (const card of businessCards) {
+    if (!config || ['/pages/home/index', card.route].some(url => lockedMenuPaths(url, config.menus, config.ids).some(path => !isMenuUnlocked(path)))) {
+      const state = states[card.key]
+      if (!state.locked) {
+        const error = new Error('需要二级密码验证'); error.name = 'SecondaryLockRequiredError'
+        failBusinessAccess(state, error)
+        if (selection.value?.card.key === card.key) closeDetail()
+        delete freshness[card.key]
+      }
+    }
+  }
+}
+function refreshCard(card) {
+  const state = states[card.key]
+  if (props.refreshDisabled || !props.active || state.loading || state.busy || state.locked || recordOrders[card.key]?.clickBlocked()) return
+  void load(card)
+}
 async function load(card, more = false) {
-  if (!props.active || !session.token || !states[card.key].available) return Promise.resolve()
-  // 首页后台加载不主动弹二级密码；服务端要求解锁时立即清除旧内容。
-  const revision = homeDataRevision(card.key), current = epoch
-  await loadBusinessCard(card, states[card.key], path => request(path, 'GET', null, true, null, true), more)
-  if (!more && current === epoch && !states[card.key].error && !states[card.key].locked) freshness[card.key] = { at: Date.now(), revision }
+  const state = states[card.key]
+  if (!props.active || !session.token || !state.available) return
+  if (more && (state.loading || state.moreLoading || !state.more || state.locked || state.busy)) return
+  const revision = homeDataRevision(card.key), current = epoch, version = state.version
+  if (!more) state.loading = true
+  try {
+    const config = await loadMenuAccess(path => request(path, 'GET', null, true, null, true))
+    if (current !== epoch || !props.active || version !== state.version) return
+    if (['/pages/home/index', card.route].some(url => lockedMenuPaths(url, config.menus, config.ids).some(path => !isMenuUnlocked(path)))) {
+      const error = new Error('需要二级密码验证'); error.name = 'SecondaryLockRequiredError'; throw error
+    }
+    await loadBusinessCard(card, state, path => request(path, 'GET', null, true, null, true), more)
+    if (current !== epoch || !props.active) return
+    checkAccess()
+    if (!more && !state.error && !state.locked) freshness[card.key] = { at: Date.now(), revision }
+  } catch (error) {
+    if (current === epoch && props.active && version === state.version) failBusinessAccess(state, error)
+  }
 }
 function nextPage(card) { if (!states[card.key].moreError) void load(card, true) }
 function open(card, item = null, create = false) {
@@ -248,16 +288,16 @@ function placeholderHeight(card) {
   <view v-show="shown.length > 0" class="business-group" :class="{ 'business-group-single': !!only && !embedded }">
     <view v-for="card in shown" :key="card.key" class="business-cell" :style="only ? { width: '100%' } : {}">
       <view class="business-card" :class="{ 'business-card-dark': isDark }" :style="{ height: props.height ? props.height + 'px' : 'auto', maxHeight: cardMaxHeight + 'px' }" :aria-label="card.title + '首页卡片'" :aria-busy="cardLoading(card) || states[card.key].busy">
-        <view class="business-heading">
-          <button role="button" class="heading-link" :aria-label="'查看全部' + card.title" @click="open(card)"><BusinessIcon :card-key="card.cardKey" :size="16" /><text class="heading-text" :class="{ 'text-dark': isDark }">{{ card.title }}</text></button>
+        <HomeCardHeader class="business-heading" :label="'刷新' + card.title" :loading="cardLoading(card) || states[card.key].busy" :disabled="refreshDisabled || states[card.key].locked" @refresh="refreshCard(card)">
+          <button role="button" class="heading-link" :aria-label="'查看全部' + card.title" @click.stop="open(card)"><BusinessIcon :card-key="card.cardKey" :size="16" /><text class="heading-text" :class="{ 'text-dark': isDark }">{{ card.title }}</text></button>
           <LoadingIndicator v-if="cardLoading(card) || states[card.key].busy" class="business-updating" compact :label="'正在加载' + card.title" />
-          <button v-if="states[card.key].rows.length && states[card.key].error && !states[card.key].moreError" role="button" class="icon-action" :aria-label="'重试' + card.title + '：' + states[card.key].error" @click="load(card)"><AppIcon name="lucide:rotate-cw" :size="18" color="#5879ce" /></button><DashboardAction :label="'新增' + card.title" @click="open(card, null, true)" />
-        </view>
-        <view v-if="states[card.key].locked" class="card-placeholder" :style="{ minHeight: placeholderHeight(card) + 'px' }"><button role="button" class="lock-action" :aria-label="'解锁' + card.title" @click="open(card)"><AppIcon name="ant-design:lock-outlined" :size="18" color="#8b8f99" /><text class="caption">点击解锁</text></button></view>
+          <button v-if="states[card.key].rows.length && states[card.key].error && !states[card.key].moreError" role="button" class="icon-action" :aria-label="'重试' + card.title + '：' + states[card.key].error" @click.stop="refreshCard(card)"><AppIcon name="lucide:rotate-cw" :size="18" color="#5879ce" /></button><DashboardAction :label="'新增' + card.title" @click="open(card, null, true)" />
+        </HomeCardHeader>
+        <view v-if="states[card.key].locked" class="card-placeholder" :style="{ minHeight: placeholderHeight(card) + 'px' }"><button role="button" class="lock-action" :aria-label="'解锁' + card.title" @click.stop="open(card)"><AppIcon name="ant-design:lock-outlined" :size="18" color="#8b8f99" /><text class="caption">点击解锁</text></button></view>
         <ReadingShelf v-else-if="card.key === 'read' && (states[card.key].rows.length || cardLoading(card))" :rows="states[card.key].rows" :loading="cardLoading(card)" :more-loading="states[card.key].moreLoading" :error="states[card.key].moreError || states[card.key].error" @edit="open(card, $event)" @more="nextPage(card)" @retry="states[card.key].moreError ? load(card, true) : load(card)" />
         <MovieList v-else-if="card.key === 'movie' && (states[card.key].rows.length || cardLoading(card))" :max-height="cardMaxHeight" :rows="states[card.key].rows" :loading="cardLoading(card)" :more-loading="states[card.key].moreLoading" :error="states[card.key].moreError" @edit="open(card, $event)" @more="nextPage(card)" @retry="load(card, true)" />
         <BusinessCardSkeleton v-else-if="!states[card.key].rows.length && cardLoading(card)" :kind="card.key" :label="'正在加载' + card.title" />
-        <view v-else-if="!states[card.key].rows.length && states[card.key].error" class="card-placeholder" :style="{ minHeight: placeholderHeight(card) + 'px' }"><text class="error-text">{{ states[card.key].error }}</text><button role="button" class="icon-action" :aria-label="'重试' + card.title" @click="refreshAll"><AppIcon name="lucide:rotate-cw" :size="18" color="#5879ce" /></button></view>
+        <view v-else-if="!states[card.key].rows.length && states[card.key].error" class="card-placeholder" :style="{ minHeight: placeholderHeight(card) + 'px' }"><text class="error-text">{{ states[card.key].error }}</text><button role="button" class="icon-action" :aria-label="'重试' + card.title" @click="refreshCard(card)"><AppIcon name="lucide:rotate-cw" :size="18" color="#5879ce" /></button></view>
         <scroll-view v-else-if="states[card.key].rows.length" :scroll-y="!recordOrders[card.key] || recordOrders[card.key].scrollEnabled()" :scroll-top="recordOrders[card.key] ? recordOrders[card.key].scrollTop.value : undefined" :show-scrollbar="false" :lower-threshold="40" class="business-scroll" :class="card.pinned ? ['business-order-scroll', 'business-order-scroll-' + card.key] : []" @scroll="recordOrders[card.key]?.scrolled($event)" :style="{ height: listHeight(card) + 'px' }" @scrolltolower="nextPage(card)">
           <view class="business-list">
             <BusinessCardRow v-for="item in states[card.key].rows" :key="item.id" :card="card" :item="item" @edit="open(card, item)"  />
@@ -268,7 +308,7 @@ function placeholderHeight(card) {
     </view>
   </view>
     <view class="business-dialogs" @touchstart.stop @mousedown.stop>
-    <GoalEditor v-if="props.active && states.goal" ref="goalEditor" :save-record="saveGoal" :delete-record="deleteGoal" @saved="goalSaved" @deleted="goalDeleted" />
+    <GoalEditor v-if="states.goal && !states.goal.locked" ref="goalEditor" :save-record="saveGoal" :delete-record="deleteGoal" @saved="goalSaved" @deleted="goalDeleted" />
     <AdaptiveModal v-if="selection && selection.loading" label="正在加载记录详情" bare :show-close="false" :max-width="spacing.controlMin" @close="closeDetail">
       <LoadingIndicator ring label="正在加载记录详情" />
     </AdaptiveModal>
@@ -295,12 +335,11 @@ function placeholderHeight(card) {
 .business-cell { width: 100%; box-sizing: border-box; padding: $space-detail; }
 .business-card { box-sizing: border-box; background-color: #ffffff; border: 1px solid #e8e8ed; border-radius: 14px; overflow: hidden; padding-bottom: $space-card; }
 .business-card-dark { background-color: #1c1e22; border-color: #303238; }
-.business-heading { position: relative; height: $space-controlMin; flex-shrink: 0; display: flex; flex-direction: row; align-items: center; padding: 0 $space-card; }
 .heading-link, .icon-action, .lock-action { display: flex; flex-direction: row; align-items: center; justify-content: center; min-height: $space-controlMin; margin: 0; padding: 0; border: 0; background-color: transparent; }
 .business-updating { position: absolute; right: $space-card + $space-controlMin; }
-.heading-link { flex: 1; justify-content: flex-start; gap: $space-inline; }
+.heading-link { position: relative; z-index: 1; flex: none; justify-content: flex-start; gap: $space-inline; }
 .heading-text { @include type-style('title'); color: #18181b; }
-.icon-action { width: $space-controlMin; flex-shrink: 0; }
+.icon-action { position: relative; z-index: 1; width: $space-controlMin; flex-shrink: 0; }
 .business-scroll { width: 100%; min-height: 0; }
 .business-list { display: flex; flex-direction: column; }
 .caption { @include type-style('caption'); color: #71717a; }

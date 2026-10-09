@@ -7,7 +7,8 @@ import { invalidateMenuAccessAfterWrite, invalidateMenuAccessCache } from './men
 import { invalidateHomeAfterWrite } from './home-refresh.ts'
 import { invalidatePageAfterWrite } from './page-refresh-state.ts'
 
-let baseURL = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:45678/api'
+// 发布包默认连接线上后端，避免普通构建遗漏临时环境变量后指向手机自身。
+let baseURL = import.meta.env.VITE_API_BASE_URL || (import.meta.env.PROD ? 'https://aiolife.top/api' : 'http://127.0.0.1:45678/api')
 // #ifdef WEB
 baseURL = import.meta.env.VITE_WEB_API_BASE_URL || '/api'
 // #endif

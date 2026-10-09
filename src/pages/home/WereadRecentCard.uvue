@@ -51,7 +51,13 @@ watch(() => [props.active, available.value, session.token], () => {
   if (available.value) void refresh(false)
 }, { immediate: true, flush: 'sync' })
 onUnmounted(() => invalidate(true))
-defineExpose({ refresh })
+function checkAccess() {
+  const config = cachedMenuAccess()
+  if (config && ['/pages/home/index', route].some(url => lockedMenuPaths(url, config.menus, config.ids).some(path => !isMenuUnlocked(path)))) {
+    invalidate(true); locked.value = true
+  }
+}
+defineExpose({ refresh, checkAccess })
 function refresh(force = true) {
   if (!props.active || !session.token || !available.value) return Promise.resolve()
   if (pending) return pending
