@@ -1,6 +1,7 @@
 const { test, expect } = require('@playwright/test');
 const { homeCardFixture } = require('./home-card-fixture');
 const { pullDown } = require('./gestures');
+const { picker } = require('./qa-domains-ui');
 
 async function setup(page, { locked = false, failMore = false, readAccess = true, twoGoals = false, goalCount = 0, anniversaryCount = 0, navigate = true, requests = [] } = {}) {
   const calls = [];
@@ -243,6 +244,129 @@ test('首页目标直接弹窗编辑、新增和取消固定，保存失败保�
   await expect(card).toContainText('首页新目标');
   expect(written.isPinned).toBe(1);
   await expect(page).toHaveURL(/#\/(?:pages\/home\/index)?$/);
+});
+
+async function setupMembershipCreate(page) {
+  const state = { requests: [], writes: [], failSave: false, failProviders: false, holdSave: null };
+  await setup(page, { navigate: false, requests: state.requests });
+  const members = [{ id: '9223372036854775806', name: '已有模拟会员', category: 'other', expiryDate: '2099-12-31' }];
+  const providers = [
+    { id: '9007199254740993', name: '模拟视频平台', code: 'fixture_video', category: 'video', isEnabled: 1 },
+    { id: '9007199254740994', name: '模拟音乐平台', code: 'fixture_music', category: 'music', isEnabled: 1 },
+  ];
+  await page.route('**/api/membership/list', route => {
+    state.requests.push('GET /membership/list');
+    return route.fulfill({ json: { code: 0, data: members } });
+  });
+  await page.route('**/api/membership/providers', route => route.fulfill({ json: state.failProviders
+    ? { code: 1, message: '模拟平台加载失败' } : { code: 0, data: providers }
+  }));
+  await page.route('**/api/membership', async route => {
+    const body = route.request().postDataJSON();
+    state.writes.push({ method: route.request().method(), body });
+    if (state.holdSave) await state.holdSave;
+    if (state.failSave) return route.fulfill({ json: { code: 1, message: '模拟保存失败' } });
+    const saved = { ...body, id: '9223372036854775807' };
+    members.push(saved);
+    return route.fulfill({ json: { code: 0, data: saved } });
+  });
+  await page.goto('/#/pages/home/index');
+  await expect(page.getByLabel('会员首页卡片', { exact: true })).toContainText('已有模拟会员');
+  return state;
+}
+
+for (const width of [390, 768, 1440]) for (const theme of ['light', 'dark']) {
+  test(`首页会员新增按分类、平台、名称填写并局部刷新 ${width} ${theme}`, async ({ page }, info) => {
+    await page.setViewportSize({ width, height: 900 });
+    await page.emulateMedia({ colorScheme: theme });
+    const state = await setupMembershipCreate(page), home = page.url();
+    const card = page.getByLabel('会员首页卡片', { exact: true });
+    await card.getByRole('button', { name: '新增会员', exact: true }).click();
+    const dialog = page.getByRole('dialog', { name: '新增订阅', exact: true });
+    await expect(dialog).toBeVisible();
+    await expect(page).toHaveURL(home);
+    const category = await dialog.locator('uni-picker[aria-label="分类"]').boundingBox();
+    const platform = await dialog.getByRole('button', { name: '选择会员平台', exact: true }).boundingBox();
+    const name = dialog.locator('[aria-label="名称"] input');
+    const nameBox = await name.boundingBox();
+    expect(category.x).toBeLessThan(platform.x);
+    expect(nameBox.y).toBeGreaterThan(category.y + category.height);
+    await picker(page, '分类', '视频');
+    await dialog.getByRole('button', { name: '选择会员平台', exact: true }).click();
+    const choices = page.getByRole('dialog', { name: '选择会员平台', exact: true });
+    await expect(choices.locator('.provider-option-name')).toHaveText(['自定义平台', '模拟视频平台']);
+    await choices.getByRole('button', { name: '选择平台：模拟视频平台', exact: true }).click();
+    await expect(name).toHaveValue('模拟视频平台');
+    await name.fill('首页新增模拟会员');
+    await dialog.getByRole('button', { name: '1年', exact: true }).click();
+    await page.screenshot({ path: info.outputPath('membership-create.png') });
+    const bounds = await dialog.boundingBox();
+    expect(bounds.x).toBeGreaterThanOrEqual(0);
+    expect(bounds.x + bounds.width).toBeLessThanOrEqual(width);
+    expect(bounds.y).toBeGreaterThanOrEqual(0);
+    expect(bounds.y + bounds.height).toBeLessThanOrEqual(900);
+    const before = [...state.requests];
+    await dialog.getByRole('button', { name: '保存', exact: true }).click();
+    await expect(dialog).toHaveCount(0);
+    await expect(card).toContainText('首页新增模拟会员');
+    await expect(page).toHaveURL(home);
+    expect(state.writes).toHaveLength(1);
+    expect(state.writes[0]).toMatchObject({ method: 'POST', body: {
+      name: '首页新增模拟会员', category: 'video', providerId: '9007199254740993',
+    } });
+    expect(state.writes[0].body.id).toBeUndefined();
+    expect(state.requests.slice(before.length)).toEqual(['GET /membership/list']);
+  });
+}
+
+test('首页会员新增失败恢复、分类切换及取消后重开', async ({ page }) => {
+  const state = await setupMembershipCreate(page), home = page.url();
+  state.failProviders = true;
+  const add = page.getByRole('button', { name: '新增会员', exact: true });
+  await add.click();
+  const dialog = page.getByRole('dialog', { name: '新增订阅', exact: true });
+  await expect(dialog.getByText('模拟平台加载失败', { exact: true })).toBeVisible();
+  state.failProviders = false;
+  await dialog.getByRole('button', { name: '重试平台加载', exact: true }).click();
+  await picker(page, '分类', '视频');
+  await dialog.getByRole('button', { name: '选择会员平台', exact: true }).click();
+  await page.getByRole('button', { name: '选择平台：模拟视频平台', exact: true }).click();
+  const name = dialog.locator('[aria-label="名称"] input');
+  await expect(name).toHaveValue('模拟视频平台');
+  await picker(page, '分类', '音乐');
+  await expect(name).toHaveValue('');
+  await dialog.getByRole('button', { name: '选择会员平台', exact: true }).click();
+  await page.getByRole('button', { name: '选择平台：模拟音乐平台', exact: true }).click();
+  await name.fill('保留自定义名称');
+  await picker(page, '分类', '视频');
+  await expect(name).toHaveValue('保留自定义名称');
+  await dialog.getByRole('button', { name: '保存', exact: true }).click();
+  await expect(dialog.getByRole('alert')).toHaveText('请输入会员名称和到期日期');
+  expect(state.writes).toHaveLength(0);
+  await dialog.getByRole('button', { name: '1年', exact: true }).click();
+  state.failSave = true;
+  await dialog.getByRole('button', { name: '保存', exact: true }).click();
+  await expect(dialog.getByRole('alert')).toHaveText('模拟保存失败');
+  await expect(name).toHaveValue('保留自定义名称');
+  state.failSave = false;
+  let release;
+  state.holdSave = new Promise(resolve => { release = resolve; });
+  await dialog.getByRole('button', { name: '保存', exact: true }).click();
+  await expect.poll(() => state.writes.length).toBe(2);
+  await expect(dialog.getByRole('button', { name: '保存', exact: true })).toBeDisabled();
+  await expect(dialog.getByRole('button', { name: '取消', exact: true })).toBeDisabled();
+  release();
+  await expect(dialog).toHaveCount(0);
+  expect(state.writes[1].body.providerId).toBeNull();
+  await add.click();
+  await expect(name).toHaveValue('');
+  await name.fill('取消的草稿');
+  await dialog.getByRole('button', { name: '取消', exact: true }).click();
+  await add.click();
+  await expect(name).toHaveValue('');
+  await dialog.getByRole('button', { name: '取消', exact: true }).click();
+  expect(state.writes).toHaveLength(2);
+  await expect(page).toHaveURL(home);
 });
 
 for (const kind of ['read', 'movie', 'member']) {

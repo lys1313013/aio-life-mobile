@@ -147,8 +147,13 @@ if (!props.record?.id && props.record) Object.assign(form.value, props.record);
         :content-key="String(showDetails) + formError + selectedProviderLabel + providersError"
         @close="emit('close')"
       >
-        <FormField :required="isRequired('member', 'name')" appearance="soft" label="名称" placeholder="请输入订阅名称" v-model="form.name" />
         <view class="ui-field-row">
+          <FormField appearance="soft"
+            compact stretch label="分类" kind="selector"
+            :model-value="categoryLabels[categories.indexOf(form.category)] || form.category"
+            :options="categoryLabels"
+            @update:model-value="changeCategory"
+          />
           <FormField appearance="soft" compact stretch label="平台">
             <button v-if="form.providerId" class="provider-trigger" :class="{ 'provider-trigger-dark': isDark }" role="button" aria-label="选择会员平台" :disabled="providersLoading || !!providersError || saving || deleting" @click="choosingProvider = true">
               <MembershipLogo :icon-key="selectedProvider?.iconKey" :category="form.category" :name="selectedProvider?.name" :size="24" />
@@ -160,14 +165,9 @@ if (!props.record?.id && props.record) Object.assign(form.value, props.record);
               <button class="custom-provider-trigger" role="button" aria-label="选择会员平台" :disabled="providersLoading || !!providersError || saving || deleting" @click="choosingProvider = true"><AppIcon :name="providersLoading ? 'ant-design:loading-outlined' : 'ant-design:down-outlined'" :size="14" /></button>
             </view>
           </FormField>
-          <FormField appearance="soft"
-            compact stretch label="分类" kind="selector"
-            :model-value="categoryLabels[categories.indexOf(form.category)] || form.category"
-            :options="categoryLabels"
-            @update:model-value="changeCategory"
-          />
         </view>
         <view v-if="providersError" class="ui-row ui-section"><text class="member-error ui-type-body">{{ providersError }}</text><MobileButton label="重试平台加载" icon="ant-design:reload-outlined" variant="quiet" :loading="providersLoading" @click="loadProviders" /></view>
+        <FormField :required="isRequired('member', 'name')" appearance="soft" label="名称" placeholder="请输入订阅名称" v-model="form.name" />
         <view class="ui-field-row">
           <FormField appearance="soft" compact stretch label="开通日期" kind="date" v-model="form.startDate" />
           <FormField :required="isRequired('member', 'expiryDate')" appearance="soft" compact stretch label="到期日期" kind="date" v-model="form.expiryDate" />
