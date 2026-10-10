@@ -127,7 +127,7 @@ function sectionHeight(section: string) {
   }
   if (section === 'thoughts') {
     const body = states.thoughts.loaded && thoughts.value.length === 0 ? 32 + typography.roles.caption.lineHeight + spacing.card * 2
-      : Math.max(1, states.thoughts.loaded ? thoughts.value.length : 2) * (typography.roles.body.lineHeight * 2 + spacing.detail * 2)
+      : Math.max(1, states.thoughts.loaded ? thoughts.value.length : 2) * spacing.controlMin
     return Math.min(limit, inset + body)
   }
   if (section === 'exercise') return Math.min(limit, inset + Math.max(1, states.exercise.loaded ? exercise.value.days.reduce((count, day) => count + day.items.length, 0) : 3) * 40)
@@ -174,6 +174,7 @@ const states = reactive({
   commits: { loading: false, error: '', loaded: false, locked: false, revision: -1 },
 })
 const watchedAutoHeight = computed(() => viewportWidth.value < 768)
+const thoughtsAutoHeight = computed(() => viewportWidth.value < 768 && states.thoughts.loaded && thoughts.value.length > 0)
 const githubBound = ref(false)
 const githubProfile = ref('')
 const visibleCards = computed(() =>
@@ -898,6 +899,7 @@ function trendLines(points) {
               title="闪念" :icon="menuVisuals.visual('section.thoughts').icon" :icon-color="menuVisuals.visual('section.thoughts').iconColor"
               compact
               :height="sectionHeight('thoughts')"
+              :auto-height="thoughtsAutoHeight"
               :loading="states.thoughts.loading && !refreshing && !states.thoughts.loaded"
               :updating="states.thoughts.loading && !refreshing && states.thoughts.loaded"
               :retain-content="states.thoughts.loaded"
@@ -905,14 +907,14 @@ function trendLines(points) {
               :locked="states.thoughts.locked" :refresh-disabled="orderDisabled"
               navigable @navigate="openLink('/record/think')"
               @refresh="loadSection('thoughts')"
-              ><template #actions><DashboardAction label="新增闪念" @click="addThought" /></template><template #loading><HomeListSkeleton label="正在加载闪念" :rows="2" :row-height="typography.roles.body.lineHeight * 2 + spacing.detail * 2" /></template><view v-if="thoughts.length === 0" class="empty-state ui-pad-card"
+              ><template #actions><DashboardAction label="新增闪念" @click="addThought" /></template><template #loading><HomeListSkeleton label="正在加载闪念" :rows="2" :row-height="spacing.controlMin" single-line /></template><view v-if="thoughts.length === 0" class="empty-state ui-pad-card"
                 ><AppIcon name="ant-design:inbox-outlined" :size="32" color="#8b8f99" /><text class="empty-label" :class="themeClass('empty-label')">暂无固定的闪念</text></view
-              ><scroll-view v-else scroll-y :show-scrollbar="false" class="list-scroll"
+              ><scroll-view v-else scroll-y :show-scrollbar="false" class="list-scroll" :class="{ 'list-scroll-auto': thoughtsAutoHeight }" :style="thoughtsAutoHeight ? { maxHeight: (cardHeightLimit - sectionInset('thoughts')) + 'px' } : {}"
                 ><view
                   v-for="thought in thoughts"
                   :key="thought.id"
                   class="list-row thought-row ui-pad-sm" role="button" :aria-label="'编辑闪念'" @click="openThought(thought)"
-                  ><text :max-lines="2" class="thought-text" :class="themeClass('thought-text')">{{
+                  ><text :max-lines="3" class="thought-text" :class="themeClass('thought-text')">{{
                     thought.hiddenContent ? '内容已隐藏' : thought.content
                   }}</text
                   ><text class="list-date ui-ml-section">{{
@@ -1463,7 +1465,7 @@ color: inherit;
 .list-row {  min-height: 56px; }
 .list-scroll-auto { flex: none; height: auto; }
 .thought-row, .task-row { flex-direction: row; align-items: center; }
-.thought-row { box-sizing: border-box; min-height: $space-controlMin; padding: $space-detail $space-inline; height: type-line('body') * 2 + $space-detail * 2; }
+.thought-row { box-sizing: border-box; min-height: $space-controlMin; padding: $space-detail $space-inline; }
 .task-row { padding: $space-detail $space-inline; }
 .task-check { display: flex; align-items: center; justify-content: center; flex-shrink: 0; width: 44px; height: 44px; margin: 0 $space-micro 0 (-$space-inline); padding: 0; border: 0; background-color: transparent; line-height: $space-controlMin; }
 .task-dates { @include type-style('chart-label'); color: #92929b; margin-top: $space-detail; }
@@ -1475,7 +1477,7 @@ color: inherit;
 .priority-medium { background-color: #cc8736; }
 .priority-low { background-color: #9299a6; }
 .thought-text, .body-text { flex: 1; min-width: 0; color: #3f3f46; @include type-style('body');  }
-.thought-text { overflow: hidden;
+.thought-text { @include type-style('caption-strong'); white-space: pre-wrap; overflow: hidden;
 /* #ifndef APP */
 display: -webkit-box;
 /* #endif */
@@ -1484,7 +1486,7 @@ text-overflow: ellipsis;
 /* #endif */
 
 /* #ifndef APP */
--webkit-line-clamp: 2;
+-webkit-line-clamp: 3;
 /* #endif */
 
 /* #ifndef APP */
@@ -1603,7 +1605,7 @@ align-items: flex-end;
 }
 @media (min-width: 768px) {
   .overview-cell { width: 25%; }
-  .thought-text, .body-text, .repo-label { @include type-style('body'); }
+  .body-text, .repo-label { @include type-style('body'); }
   .commit-message { @include type-style('label');  }
   .list-date { @include type-style('badge'); }
   .task-copy { flex-direction: row; align-items: center; flex-wrap: wrap; }
