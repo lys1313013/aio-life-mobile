@@ -15,11 +15,9 @@ export function clampTimeSelection(value, min, max) {
   return Math.max(min, Math.min(max, value))
 }
 
-// 原生滚轮分钟列索引就是当天绝对分钟，不能用 00/59 差值猜测方向。
-export function resolveTimeWheelSelection(previous, selection, min, max) {
+// 每列独立通知来源；分钟索引是当天绝对分钟，跨小时后不读取另一列的旧索引。
+export function resolveTimeWheelSelection(previous, index, field, min, max) {
   if (min > max) return previous
-  const candidate = selection[0] !== Math.floor(previous / 60)
-    ? selection[0] * 60 + previous % 60
-    : selection[1]
+  const candidate = field === 'hour' ? index * 60 + previous % 60 : index
   return clampTimeSelection(candidate, min, max)
 }

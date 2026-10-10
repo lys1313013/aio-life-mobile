@@ -17,18 +17,31 @@ test('禁选其他记录占用的分钟，排除自身和其他日期，不能�
 })
 
 test('分钟连续滚动跨小时，支持快速跨多小时和反向返回', () => {
-  assert.equal(resolveTimeWheelSelection(600, [10, 599], 0, 1439), 599)
-  assert.equal(resolveTimeWheelSelection(599, [9, 600], 0, 1439), 600)
-  assert.equal(resolveTimeWheelSelection(599, [9, 721], 0, 1439), 721)
-  assert.equal(resolveTimeWheelSelection(721, [12, 598], 0, 1439), 598)
-  assert.equal(resolveTimeWheelSelection(610, [11, 610], 0, 1439), 670)
+  assert.equal(resolveTimeWheelSelection(600, 599, 'minute', 0, 1439), 599)
+  assert.equal(resolveTimeWheelSelection(599, 600, 'minute', 0, 1439), 600)
+  assert.equal(resolveTimeWheelSelection(599, 721, 'minute', 0, 1439), 721)
+  assert.equal(resolveTimeWheelSelection(721, 598, 'minute', 0, 1439), 598)
+  assert.equal(resolveTimeWheelSelection(610, 11, 'hour', 0, 1439), 670)
+})
+
+test('调小时后连续跨过 59/00，小时联动同步通知不会回退分钟', () => {
+  let selected = 599
+  for (const [field, index, expected] of [
+    ['hour', 11, 719], ['minute', 720, 720], ['hour', 12, 720],
+    ['minute', 721, 721], ['minute', 719, 719], ['hour', 11, 719],
+    ['minute', 718, 718], ['hour', 10, 658], ['minute', 660, 660],
+    ['hour', 11, 660], ['minute', 661, 661],
+  ]) {
+    selected = resolveTimeWheelSelection(selected, index, field, 0, 1439)
+    assert.equal(selected, expected, `${field} ${index}`)
+  }
 })
 
 test('原生滚轮落在禁选项时回到边界，无合法范围时保留原值', () => {
-  assert.equal(resolveTimeWheelSelection(600, [10, 599], 600, 679), 600)
-  assert.equal(resolveTimeWheelSelection(679, [11, 680], 600, 679), 679)
-  assert.equal(resolveTimeWheelSelection(0, [0, -1], 0, 1439), 0)
-  assert.equal(resolveTimeWheelSelection(1439, [23, 1440], 0, 1439), 1439)
-  assert.equal(resolveTimeWheelSelection(610, [15, 610], 600, 679), 679)
-  assert.equal(resolveTimeWheelSelection(610, [15, 610], 1, 0), 610)
+  assert.equal(resolveTimeWheelSelection(600, 599, 'minute', 600, 679), 600)
+  assert.equal(resolveTimeWheelSelection(679, 680, 'minute', 600, 679), 679)
+  assert.equal(resolveTimeWheelSelection(0, -1, 'minute', 0, 1439), 0)
+  assert.equal(resolveTimeWheelSelection(1439, 1440, 'minute', 0, 1439), 1439)
+  assert.equal(resolveTimeWheelSelection(610, 15, 'hour', 600, 679), 679)
+  assert.equal(resolveTimeWheelSelection(610, 15, 'hour', 1, 0), 610)
 })

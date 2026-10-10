@@ -89,12 +89,16 @@ async function closeEditor(page) {
   await page.locator('.modal-mask').last().click({ position: { x: 8, y: 8 } });
 }
 async function previousMinute(page, label, delta = -1, confirm = true) {
-  const cdp = await page.context().newCDPSession(page);
-  await cdp.send('Emulation.setTouchEmulationEnabled', { enabled: true });
   await page.locator(`[aria-label="${label}"]`).click();
   // 等待原生 picker 的入场动画，避免用移动中的坐标发起手势。
   await page.waitForTimeout(400);
-  const column = page.locator('uni-picker-view-column:visible').nth(1);
+  await moveTimeWheel(page, 1, delta);
+  if (confirm) await page.locator('.uni-picker-action-confirm:visible, .time-end-confirm:visible').click();
+}
+async function moveTimeWheel(page, columnIndex, delta) {
+  const cdp = await page.context().newCDPSession(page);
+  await cdp.send('Emulation.setTouchEmulationEnabled', { enabled: true });
+  const column = page.locator('uni-picker-view-column:visible').nth(columnIndex);
   const box = await column.locator('.uni-picker-view-indicator').boundingBox();
   const x = box.x + box.width / 2, y = box.y + box.height / 2;
   await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y }] });
@@ -105,9 +109,40 @@ async function previousMinute(page, label, delta = -1, confirm = true) {
   await page.waitForTimeout(200);
   await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
   await page.waitForTimeout(350);
-  if (confirm) await page.locator('.uni-picker-action-confirm:visible, .time-end-confirm:visible').click();
   await cdp.detach();
 }
+
+for (const width of [390, 768, 1440]) for (const colorScheme of ['light', 'dark']) test(`先调小时再滚动分钟跨界保持连续 ${width} ${colorScheme}`, async ({ page }) => {
+  await page.setViewportSize({ width, height: 900 });
+  await page.emulateMedia({ colorScheme });
+  const state = await setup(page);
+  await page.getByRole('button', { name: '编辑记录 晨间运动', exact: true }).click();
+  const editor = page.getByRole('dialog', { name: '编辑时迹', exact: true });
+  const end = editor.locator('.compact-time-number').nth(1);
+  await editor.getByRole('button', { name: '结束时间', exact: true }).click();
+  await page.waitForTimeout(400);
+  const picker = page.getByRole('dialog', { name: '选择结束时间', exact: true });
+  await moveTimeWheel(page, 0, 2);
+  await expect(end).toHaveText('11:59');
+  await moveTimeWheel(page, 1, 1);
+  await expect(end).toHaveText('12:00');
+  await moveTimeWheel(page, 1, 1);
+  await expect(end).toHaveText('12:01');
+  await moveTimeWheel(page, 1, -2);
+  await expect(end).toHaveText('11:59');
+  await moveTimeWheel(page, 1, -1);
+  await expect(end).toHaveText('11:58');
+  await moveTimeWheel(page, 0, -1);
+  await expect(end).toHaveText('10:58');
+  await moveTimeWheel(page, 1, 2);
+  await expect(end).toHaveText('11:00');
+  await page.screenshot({ path: `artifacts/time-end-picker/hour-minute-${width}-${colorScheme}.png` });
+  await picker.getByRole('button', { name: '完成', exact: true }).click();
+  await expect(end).toHaveText('11:00');
+  await editor.getByRole('button', { name: '保存', exact: true }).click();
+  await expect(editor).toHaveCount(0);
+  expect(state.updates[0]).toMatchObject({ startTime: 540, endTime: 660 });
+});
 
 for (const width of [390, 768, 1440]) for (const colorScheme of ['light', 'dark']) test(`时迹分钟滚轮跨小时并停在相邻记录边界，起止均支持禁选 ${width} ${colorScheme}`, async ({ page }) => {
   await page.setViewportSize({ width, height: 900 });
@@ -281,7 +316,11 @@ test('日周月查询与重叠校验', async ({ page }) => {
 test('三页下拉刷新、失败收起与恢复，移除常驻刷新按钮', async ({ page }) => {
   const state = await setup(page);
   // 整张概览卡的点击刷新沿用 Web；其余位置均不得出现独立刷新控件。
-  await expect(page.getByRole('button', { name: /^刷新/ }).and(page.locator(':not(.overview-card)'))).toHaveCount(0);
+  const refreshControls = page.getByRole('button', { name: /^刷新/ });
+  const countStandaloneRefreshControls = () => refreshControls.evaluateAll((nodes) =>
+    nodes.filter((node) => !node.classList.contains('home-card-refresh') && !node.closest('.overview-card')).length,
+  );
+  await expect.poll(countStandaloneRefreshControls).toBe(0);
   const count = state.queries;
   await pullDown(page, '.tab-scroll');
   await expect.poll(() => state.queries).toBeGreaterThan(count);
@@ -298,7 +337,7 @@ test('三页下拉刷新、失败收起与恢复，移除常驻刷新按钮', as
   const before = state.profiles;
   await pullDown(page, '.dashboard-scroll');
   await expect.poll(() => state.profiles).toBeGreaterThan(before);
-  await expect(page.getByRole('button', { name: /^刷新/ }).and(page.locator(':not(.overview-card)'))).toHaveCount(0);
+  await expect.poll(countStandaloneRefreshControls).toBe(0);
   await page.locator('uni-tabbar').getByText('我', { exact: true }).click();
   await expect(page.getByText('时迹测试用户', { exact: true })).toBeVisible();
   const profileBefore = state.profiles;

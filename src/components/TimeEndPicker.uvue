@@ -12,7 +12,9 @@ const props = withDefaults(defineProps<{ value: number; min?: number; max?: numb
 const emit = defineEmits(['change', 'close', 'preview'])
 const selected = ref(props.min <= props.max ? clampTimeSelection(props.value, props.min, props.max) : props.value)
 // 分钟列使用当天绝对分钟，00/59 两侧天然相邻，小时跟随选中分钟。
-const selection = ref([Math.floor(selected.value / 60), selected.value])
+// 原生 picker 分列管理，联动校正不会产生包含另一列旧值的 change 事件。
+const hourSelection = ref([Math.floor(selected.value / 60)])
+const minuteSelection = ref([selected.value])
 const hours = Array.from({ length: 24 }, (_, index) => index)
 const minutes = Array.from({ length: 1440 }, (_, index) => index)
 const available = computed(() => props.min <= props.max)
@@ -26,19 +28,24 @@ const maskStyle = computed(() => {
   const color = isDark.value ? '28, 30, 34' : '255, 255, 255'
   return `background-image: linear-gradient(180deg, rgba(${color}, 0.95), rgba(${color}, 0.6)), linear-gradient(0deg, rgba(${color}, 0.95), rgba(${color}, 0.6));`
 })
-async function change(event) {
-  const raw = event.detail.value
+async function change(event, field: string) {
+  const raw = [...event.detail.value]
   const previous = selected.value
-  selection.value = raw
-  selected.value = resolveTimeWheelSelection(previous, raw, props.min, props.max)
+  if (field === 'hour') hourSelection.value = raw
+  else minuteSelection.value = raw
+  selected.value = resolveTimeWheelSelection(previous, raw[0], field, props.min, props.max)
   if (available.value) emit('preview', selected.value)
   // 先接收原生位置，再回弹到合法值；同值赋值也能纠正原生滚轮。
   await nextTick()
-  selection.value = [Math.floor(selected.value / 60), selected.value]
+  alignSelection()
+}
+function alignSelection() {
+  hourSelection.value = [Math.floor(selected.value / 60)]
+  minuteSelection.value = [selected.value]
 }
 watch(() => [props.value, props.min, props.max], () => {
   selected.value = available.value ? clampTimeSelection(props.value, props.min, props.max) : props.value
-  selection.value = [Math.floor(selected.value / 60), selected.value]
+  alignSelection()
 })
 // 弹层停留期间保持“此刻”的禁用状态准确，点击时再次读取最新时间。
 const clockTimer = setInterval(() => { nowMinute.value = currentMinute() }, 1000)
@@ -66,20 +73,26 @@ function useCurrentTime() {
           :disabled="!available || isDisabled(selected)" @click="confirm"><text :class="buttonLabelClasses(['time-end-action time-end-primary time-end-confirm', themeClass('time-end-primary')])">完成</text></button>
       </view>
       <text class="time-end-bounds" :class="themeClass('time-end-bounds')" aria-label="可选时间范围">{{ available ? clockLabel(min) + ' – ' + clockLabel(max) : '暂无可选时间' }}</text>
-      <picker-view class="time-end-wheel" :value="selection"
-        :indicator-style="'height: ' + spacing.controlMin + 'px;'" :mask-style="maskStyle"
-        @change="change">
-        <picker-view-column>
-          <view v-for="hour in hours" :key="hour" class="time-end-item">
-            <text class="time-end-number" :class="[themeClass('time-end-number'), { 'time-option-disabled': hourDisabled(hour) }]" :aria-disabled="hourDisabled(hour)">{{ String(hour).padStart(2, '0') }}</text>
-          </view>
-        </picker-view-column>
-        <picker-view-column>
-          <view v-for="minute in minutes" :key="minute" class="time-end-item">
-            <text class="time-end-number" :class="[themeClass('time-end-number'), { 'time-option-disabled': isDisabled(minute) }]" :aria-disabled="isDisabled(minute)">{{ String(minute % 60).padStart(2, '0') }}</text>
-          </view>
-        </picker-view-column>
-      </picker-view>
+      <view class="time-end-wheels">
+        <picker-view class="time-end-wheel" :value="hourSelection"
+          :indicator-style="'height: ' + (spacing.controlMin - spacing.inline) + 'px;'" :mask-style="maskStyle"
+          @change="change($event, 'hour')">
+          <picker-view-column>
+            <view v-for="hour in hours" :key="hour" class="time-end-item">
+              <text class="time-end-number" :class="[themeClass('time-end-number'), { 'time-option-disabled': hourDisabled(hour) }]" :aria-disabled="hourDisabled(hour)">{{ String(hour).padStart(2, '0') }}</text>
+            </view>
+          </picker-view-column>
+        </picker-view>
+        <picker-view class="time-end-wheel" :value="minuteSelection"
+          :indicator-style="'height: ' + (spacing.controlMin - spacing.inline) + 'px;'" :mask-style="maskStyle"
+          @change="change($event, 'minute')">
+          <picker-view-column>
+            <view v-for="minute in minutes" :key="minute" class="time-end-item">
+              <text class="time-end-number" :class="[themeClass('time-end-number'), { 'time-option-disabled': isDisabled(minute) }]" :aria-disabled="isDisabled(minute)">{{ String(minute % 60).padStart(2, '0') }}</text>
+            </view>
+          </picker-view-column>
+        </picker-view>
+      </view>
     </view>
   </view>
 </template>
@@ -142,13 +155,19 @@ function useCurrentTime() {
   color: #6b7280;
 }
 .time-end-bounds-dark { color: #a1a1aa; }
+.time-end-wheels {
+  flex-direction: row;
+  align-self: center;
+  width: $space-controlMin * 4;
+}
 .time-end-wheel {
-  width: 100%;
+  width: 50%;
   // 五行滚轮，与选中行的原生 indicator 高度一致。
-  height: $space-controlMin * 5;
+  // 滚轮滑动行可更紧凑，工具栏按钮仍保留 controlMin 点击区。
+  height: ($space-controlMin - $space-inline) * 5;
 }
 .time-end-item {
-  height: $space-controlMin;
+  height: $space-controlMin - $space-inline;
   align-items: center;
   justify-content: center;
 }
