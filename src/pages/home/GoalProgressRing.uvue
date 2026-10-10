@@ -1,9 +1,17 @@
 <script setup lang="ts">
-import { getCurrentInstance, nextTick, onMounted, onUnmounted, watch } from 'vue'
+import { computed, getCurrentInstance, nextTick, onMounted, onUnmounted, watch } from 'vue'
 import { isDark } from '../../services/theme.ts'
 import { goalProgressColor } from './services/business-cards.ts'
+// #ifdef MP-WEIXIN
+import { iconSource } from '../../services/icon-source.ts'
+import { goalProgressImage } from './goal-progress-image.ts'
+// #endif
 
 const props = defineProps<{ percent: number; label: string }>()
+// #ifdef MP-WEIXIN
+const imageSource = computed(() => iconSource(goalProgressImage(props.percent, goalProgressColor(props.percent)), 56))
+// #endif
+// #ifndef MP-WEIXIN
 const instance = getCurrentInstance()
 const canvasId = 'home-goal-progress-' + instance?.uid
 let context: any = null
@@ -42,12 +50,18 @@ onMounted(async () => {
 watch(() => props.percent, paint)
 watch(isDark, paint)
 onUnmounted(() => { alive = false; context = null })
+// #endif
 </script>
 
 <template>
   <view class="goal-progress" role="progressbar" :aria-label="label" :aria-valuenow="percent" :aria-valuemin="0" :aria-valuemax="100">
     <view class="goal-progress-track" :class="{ 'goal-progress-track-dark': isDark }" />
+    <!-- #ifdef MP-WEIXIN -->
+    <image :src="imageSource" mode="aspectFit" class="goal-progress-image" aria-hidden="true" />
+    <!-- #endif -->
+    <!-- #ifndef MP-WEIXIN -->
     <canvas :id="canvasId" :canvas-id="canvasId" type="2d" class="goal-progress-canvas" aria-hidden="true" />
+    <!-- #endif -->
     <text class="goal-progress-value" :class="{ 'goal-progress-value-dark': isDark }">{{ percent }}%</text>
   </view>
 </template>
@@ -58,7 +72,7 @@ onUnmounted(() => { alive = false; context = null })
 .goal-progress { position: relative; display: flex; width: 56px; height: 56px; flex-shrink: 0; align-items: center; justify-content: center; }
 .goal-progress-track { position: absolute; top: 1px; left: 1px; width: 54px; height: 54px; box-sizing: border-box; border: 4px solid #e4e4e7; border-radius: 50%; }
 .goal-progress-track-dark { border-color: #3f3f46; }
-.goal-progress-canvas { position: absolute; top: 0; left: 0; width: 56px; height: 56px; }
+.goal-progress-canvas, .goal-progress-image { position: absolute; top: 0; left: 0; width: 56px; height: 56px; }
 .goal-progress-value { @include type-style('caption-strong'); color: #3f3f46; }
 .goal-progress-value-dark { color: #ececf0; }
 </style>

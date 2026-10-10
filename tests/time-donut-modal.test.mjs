@@ -1,8 +1,13 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { readFile } from 'node:fs/promises'
-import { transform } from 'esbuild'
+import { build, transform } from 'esbuild'
 import { computed, nextTick, reactive, ref, watch } from 'vue'
+
+const bundle = await build({ entryPoints: ['src/pages/home/time-donut-image.ts'], bundle: true, write: false, format: 'esm' })
+const { timeDonutImage } = await import(`data:text/javascript;base64,${Buffer.from(bundle.outputFiles[0].text).toString('base64')}`)
+const goalBundle = await build({ entryPoints: ['src/pages/home/goal-progress-image.ts'], bundle: true, write: false, format: 'esm' })
+const { goalProgressImage } = await import(`data:text/javascript;base64,${Buffer.from(goalBundle.outputFiles[0].text).toString('base64')}`)
 
 async function registry() {
   const source = await readFile(new URL('../src/services/modal-presence.ts', import.meta.url), 'utf8')
@@ -12,34 +17,30 @@ async function registry() {
 
 async function donut() {
   const source = await readFile(new URL('../src/pages/home/TimeDonut.uvue', import.meta.url), 'utf8')
+  const stack = [true]
   const script = source.match(/<script setup lang="ts">([\s\S]*?)<\/script>/)[1]
-    .replace(/\/\/ #ifdef (\S+)\n([\s\S]*?)\/\/ #endif/g, (_, platform, code) => platform === 'MP-WEIXIN' ? code : '')
-    .replace(/\/\/ #ifndef (\S+)\n([\s\S]*?)\/\/ #endif/g, (_, platform, code) => platform !== 'MP-WEIXIN' ? code : '')
-    .replace(/import[^\n]+\n/g, '')
+    .split('\n').filter(line => {
+      const directive = line.match(/\/\/ #(ifdef|ifndef) (\S+)/)
+      if (directive) {
+        const matches = directive[2] === 'MP-WEIXIN'
+        stack.push(stack.at(-1) && (directive[1] === 'ifdef' ? matches : !matches))
+        return false
+      }
+      if (line.includes('// #endif')) { stack.pop(); return false }
+      return stack.at(-1)
+    }).join('\n').replace(/import[^\n]+\n/g, '')
   const js = (await transform(script, { loader: 'ts' })).code
-  const modals = await registry(), requests = [], timers = new Map(), paints = []
+  const modals = await registry()
   const props = reactive({ groups: [{ id: 'one', minutes: 60, color: '#faad14' }], active: true })
   const isDark = ref(false)
-  let mounted, unmounted, sequence = 0
   const fixture = {
-    ...modals, computed, ref, watch, nextTick, isDark,
-    defineProps: () => props, getCurrentInstance: () => ({ uid: 1 }),
-    onMounted: fn => { mounted = fn }, onUnmounted: fn => { unmounted = fn },
-    summaryDonutRotation: () => 0, summaryDonutLabels: () => [],
-    setTimeout: fn => { const id = ++sequence; timers.set(id, fn); return id },
-    clearTimeout: id => timers.delete(id),
-    uni: { getWindowInfo: () => ({ pixelRatio: 2 }), createCanvasContextAsync: request => requests.push(request) },
+    computed, ref, watch, nextTick, isDark, timeDonutImage, iconSource: svg => svg,
+    defineProps: () => props,
+    // 小程序分支不能再申请屏幕 Canvas，弹窗、滚动和离页均不需要原生层恢复。
+    uni: { createCanvasContextAsync: () => assert.fail('微信时迹不应创建 Canvas') },
   }
-  const component = new Function(...Object.keys(fixture), js + '\nreturn { canvasVisible, failed }')(...Object.values(fixture))
-  function resolve(request = requests.at(-1)) {
-    const context = {
-      canvas: { width: 0, height: 0 }, setTransform() {}, clearRect() {}, beginPath() {},
-      arc() {}, closePath() {}, fill() { paints.push(this.fillStyle) },
-    }
-    request.success({ getContext: () => context })
-  }
-  await mounted()
-  return { ...modals, ...component, props, isDark, requests, timers, paints, resolve, unmounted }
+  const component = new Function(...Object.keys(fixture), js + '\nreturn { imageSource, failed, imageVisible, retryImage }')(...Object.values(fixture))
+  return { ...modals, ...component, props, isDark }
 }
 
 test('嵌套弹窗全部关闭才恢复，重复释放不影响后续弹窗', async () => {
@@ -53,45 +54,61 @@ test('嵌套弹窗全部关闭才恢复，重复释放不影响后续弹窗', as
   third(); assert.equal(h.modalOpen.value, false)
 })
 
-test('微信弹窗移除画布、停止动画，关闭后恢复最新数据且不重播动画', async () => {
+test('微信环图在嵌套弹窗、离页和返回时始终使用普通图像，更新保留最新数据', async () => {
   const h = await donut()
-  h.resolve()
-  assert.equal(h.timers.size, 1)
-  const close = h.registerModal()
-  await nextTick()
-  assert.equal(h.canvasVisible.value, false)
-  assert.equal(h.timers.size, 0)
+  const close = h.registerModal(), closeNested = h.registerModal()
   h.props.groups = [{ id: 'two', minutes: 30, color: '#722ed1' }]
   h.isDark.value = true
   await nextTick()
-  const before = h.paints.length
-  close(); await nextTick(); await nextTick()
-  assert.equal(h.canvasVisible.value, true)
-  assert.equal(h.requests.length, 2)
-  h.resolve()
-  assert.deepEqual(h.paints.slice(before), ['#722ed1', '#722ed1'])
-  assert.equal(h.timers.size, 0)
-  h.unmounted()
+  assert.match(h.imageSource.value, /stroke="#722ed1"/)
+  close(); await nextTick()
+  assert.equal(h.modalOpen.value, true)
+  assert.match(h.imageSource.value, /stroke="#722ed1"/)
+  h.props.active = false; closeNested(); await nextTick()
+  assert.equal(h.modalOpen.value, false)
+  h.props.active = true; await nextTick()
+  assert.match(h.imageSource.value, /stroke="#722ed1"/)
+  h.props.groups = []; await nextTick()
+  assert.match(h.imageSource.value, /stroke="#45474d"/)
+  h.isDark.value = false; await nextTick()
+  assert.match(h.imageSource.value, /stroke="#c9c9cc"/)
 })
 
-test('快速重开弹窗和离页使旧 Canvas 回调失效，返回后重新初始化', async () => {
-  const h = await donut(), original = h.requests[0]
-  const close = h.registerModal()
+test('微信图片加载失败可重新挂载重试，数据变化清除旧错误', async () => {
+  const h = await donut()
+  h.failed.value = true
+  const retry = h.retryImage()
+  assert.equal(h.failed.value, false)
+  assert.equal(h.imageVisible.value, false)
+  await retry
+  assert.equal(h.imageVisible.value, true)
+  h.failed.value = true
+  h.props.groups = [{ id: 'new', minutes: 1, color: '#13c2c2' }]
   await nextTick()
-  h.resolve(original); original.fail()
-  assert.equal(h.paints.length, 0)
   assert.equal(h.failed.value, false)
-  close(); await nextTick(); await nextTick()
-  const returning = h.requests.at(-1)
-  const closeAgain = h.registerModal(); await nextTick()
-  h.resolve(returning); returning.fail()
-  assert.equal(h.paints.length, 0)
-  h.props.active = false; closeAgain(); await nextTick()
-  assert.equal(h.canvasVisible.value, false)
-  const count = h.requests.length
-  h.props.active = true; await nextTick(); await nextTick()
-  assert.equal(h.requests.length, count + 1)
-  h.unmounted(); h.resolve(); h.requests.at(-1).fail()
-  assert.equal(h.paints.length, 0)
-  assert.equal(h.failed.value, false)
+  assert.match(h.imageSource.value, /stroke="#13c2c2"/)
+})
+
+test('微信矢量环图保留小分类的精确角度、透明中心及合法颜色属性', () => {
+  const single = timeDonutImage([{ id: 'single', minutes: 1440, color: '#faad14' }], false)
+  assert.match(single, /r="44.5" fill="none" stroke="#faad14" stroke-width="19"/)
+  assert.doesNotMatch(single, /<path/)
+  const small = timeDonutImage([{ id: 'large', minutes: 1439, color: '#faad14' }, { id: 'small', minutes: 1, color: '#13c2c2' }], false)
+  assert.equal((small.match(/<path /g) || []).length, 2)
+  assert.match(small, /A54,54 0 1,1/)
+  assert.match(small, /A54,54 0 0,1/)
+  assert.match(small, /A35,35 0 0,0/)
+  const escaped = timeDonutImage([{ id: 'color', minutes: 1, color: '"/><script>&' }], false)
+  assert.doesNotMatch(escaped, /<script>/)
+  assert.match(escaped, /&quot;\/&gt;&lt;script&gt;&amp;/)
+})
+
+test('微信目标进度图的零进度不画圆点，满进度闭合，超界进度按边界显示', () => {
+  for (const value of [0, -1]) assert.doesNotMatch(goalProgressImage(value, '#427bea'), /<circle/)
+  for (const value of [100, 101]) {
+    const svg = goalProgressImage(value, '#427bea')
+    assert.match(svg, /r="25"/)
+    assert.doesNotMatch(svg, /stroke-dasharray/)
+  }
+  assert.match(goalProgressImage(25, '#427bea'), new RegExp('stroke-dasharray="' + Math.PI * 50 / 4))
 })

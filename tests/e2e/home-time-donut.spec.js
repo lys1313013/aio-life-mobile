@@ -1,7 +1,10 @@
 const { test, expect } = require('@playwright/test');
 const { homeCardFixture } = require('./home-card-fixture');
+const { dismissModal } = require('./modal');
 const { readFileSync } = require('node:fs');
 const { resolve } = require('node:path');
+const imageRenderer = process.env.AIO_TEST_TIME_DONUT_IMAGE === '1';
+const surfaceSelector = imageRenderer ? '.time-donut-image img' : '.time-donut-canvas canvas';
 const formatSource = readFileSync(resolve(__dirname, '../../src/services/dashboard-format.ts'), 'utf8');
 const donutRotation = import(`data:text/javascript;base64,${Buffer.from(formatSource).toString('base64')}`)
   .then(({ summaryDonutRotation }) => summaryDonutRotation(groups.map((group, index) => ({ ...group, id: String(index) }))));
@@ -44,7 +47,7 @@ async function setup(page, extra = {}) {
 async function expectRingAligned(page) {
   await expect.poll(() => page.locator('.donut').evaluate(node => {
     const chart = node.getBoundingClientRect();
-    const canvas = node.querySelector('.time-donut-canvas canvas').getBoundingClientRect();
+    const canvas = node.querySelector('.time-donut-canvas canvas, .time-donut-image img').getBoundingClientRect();
     const total = node.querySelector('.donut-total').getBoundingClientRect();
     return Math.max(Math.abs(canvas.x - chart.x), Math.abs(canvas.y - chart.y),
       Math.abs(canvas.width - chart.width), Math.abs(canvas.height - chart.height),
@@ -53,9 +56,17 @@ async function expectRingAligned(page) {
   })).toBeLessThan(1);
 }
 
-async function ringPixels(canvas) {
-  return canvas.evaluate((node, { groups, rotation }) => {
-    const ctx = node.getContext('2d'), scale = node.width / 176;
+async function ringPixels(surface, empty = false) {
+  return surface.evaluate(async (node, { groups, rotation, empty }) => {
+    let canvas = node;
+    if (node.tagName === 'IMG') {
+      await node.decode();
+      canvas = document.createElement('canvas');
+      canvas.width = canvas.height = 352;
+      canvas.getContext('2d').drawImage(node, 0, 0, 352, 352);
+    }
+    const ctx = canvas.getContext('2d'), scale = canvas.width / 176;
+    if (empty) return [...ctx.getImageData(Math.floor(132.5 * scale), Math.floor(88 * scale), 1, 1).data];
     const total = groups.reduce((sum, row) => sum + row.minutes, 0);
     let start = -Math.PI / 2 + rotation, wrong = 0, gaps = 0;
     for (const group of groups) {
@@ -76,16 +87,82 @@ async function ringPixels(canvas) {
       if (pixel[3] < 254) gaps++;
     }
     return { wrong, gaps };
-  }, { groups, rotation: await donutRotation });
+  }, { groups, rotation: await donutRotation, empty });
 }
 
 for (const width of [390, 820, 1440]) for (const theme of ['light', 'dark']) {
+  if (imageRenderer) test(`微信首页目标进度环比例正确且随卡片滚动 ${width} ${theme}`, async ({ page }, info) => {
+    await page.setViewportSize({ width, height: 300 });
+    await page.emulateMedia({ colorScheme: theme });
+    const percents = [0, 25, 87, 100];
+    await setup(page, {
+      '/home/cards': homeCardFixture().map(item => ({ ...item, enabled: ['section.time', 'section.goal'].includes(item.cardKey) })),
+      '/quick-nav/candidates': [{ path: '/task-center/goal' }],
+      '/goals': percents.map((percent, index) => ({ id: String(index), title: '模拟目标 ' + index,
+        type: 1, status: 'in_progress', isPinned: 1, targetValue: 100, currentValue: percent })),
+    });
+    const rings = page.locator('.goal-progress');
+    await expect(rings).toHaveCount(4);
+    await expect(page.locator('.goal-progress canvas')).toHaveCount(0);
+    for (let index = 0; index < percents.length; index++) {
+      const ring = rings.nth(index);
+      await expect(ring.locator('.goal-progress-value')).toHaveText(percents[index] + '%');
+      const count = await ring.locator('img').evaluate(async image => {
+        await image.decode();
+        const canvas = document.createElement('canvas'); canvas.width = canvas.height = 112;
+        const ctx = canvas.getContext('2d'); ctx.drawImage(image, 0, 0, 112, 112);
+        let painted = 0;
+        for (let step = 0; step < 360; step++) {
+          const angle = -Math.PI / 2 + (step + 0.5) * Math.PI / 180;
+          if (ctx.getImageData(Math.floor((28 + Math.cos(angle) * 25) * 2),
+            Math.floor((28 + Math.sin(angle) * 25) * 2), 1, 1).data[3] > 128) painted++;
+        }
+        return painted;
+      });
+      expect(Math.abs(count - percents[index] * 3.6)).toBeLessThan(12);
+    }
+    const scroller = page.locator('.dashboard-scroll > .uni-scroll-view > .uni-scroll-view');
+    await scroller.evaluate(node => { node.scrollTop = 120; });
+    await expect.poll(() => scroller.evaluate(node => node.scrollTop)).toBeGreaterThan(0);
+    for (const ring of await rings.all()) {
+      const chart = await ring.boundingBox(), image = await ring.locator('img').boundingBox();
+      expect(Math.abs(chart.x - image.x) + Math.abs(chart.y - image.y)).toBeLessThan(1);
+    }
+    await page.screenshot({ path: info.outputPath('goal-rings-after-scroll.png') });
+  });
+
+  if (imageRenderer) test(`微信时迹图片被弹窗正常覆盖且加载失败可恢复 ${width} ${theme}`, async ({ page }, info) => {
+    await page.setViewportSize({ width, height: 900 });
+    await page.emulateMedia({ colorScheme: theme });
+    await setup(page, { '/timeRecord/recommendNext': { records: [], recommend: null } });
+    const image = page.locator(surfaceSelector);
+    await expect.poll(() => ringPixels(image)).toEqual({ wrong: 0, gaps: 0 });
+    const before = await page.locator('.time-donut-renderer').boundingBox();
+    await page.getByRole('button', { name: '新增时迹', exact: true }).click();
+    await expect(page.getByRole('dialog')).toBeVisible();
+    // 图像和普通文字一起处于遮罩下，不需要打开弹窗时销毁原生画布。
+    await expect(image).toHaveCount(1);
+    await expect(page.locator('.time-donut-renderer canvas')).toHaveCount(0);
+    await page.screenshot({ path: info.outputPath('image-under-modal.png') });
+    await dismissModal(page);
+    await expectRingAligned(page);
+    // 模拟框架 image 的解码失败回调，再验证重试会真实重建并加载图像。
+    await page.locator('.time-donut-image').evaluate(node => {
+      node.__vueParentComponent.emit('error', { detail: { errMsg: '模拟图片解码失败' } });
+    });
+    await page.locator('.time-donut-retry').click();
+    await expect.poll(() => ringPixels(image)).toEqual({ wrong: 0, gaps: 0 });
+    await expect(page.locator('.time-donut-retry')).toHaveCount(0);
+    expect(await page.locator('.time-donut-renderer').boundingBox()).toEqual(before);
+  });
+
   test(`首页时迹圆环连续且小分类比例正确 ${width} ${theme}`, async ({ page }, info) => {
     await page.setViewportSize({ width, height: 900 });
     await page.emulateMedia({ colorScheme: theme, reducedMotion: 'reduce' });
     const errors = []; page.on('pageerror', error => errors.push(error.message));
     const fixtures = await setup(page);
-    const canvas = page.locator('.time-donut-canvas canvas');
+    const canvas = page.locator(surfaceSelector);
+    if (imageRenderer) await expect(page.locator('.time-donut-renderer canvas')).toHaveCount(0);
     await expectRingAligned(page);
     await expect.poll(() => ringPixels(canvas)).toEqual({ wrong: 0, gaps: 0 });
     await expectRingAligned(page);
@@ -102,10 +179,7 @@ for (const width of [390, 820, 1440]) for (const theme of ['light', 'dark']) {
     await page.reload();
     await expect(page.locator('.empty-label')).toContainText('今日暂无记录');
     await expect(page.locator('.donut-label')).toHaveCount(0);
-    await expect.poll(() => canvas.evaluate(node => {
-      const scale = node.width / 176;
-      return [...node.getContext('2d').getImageData(Math.floor(132.5 * scale), Math.floor(88 * scale), 1, 1).data];
-    })).toEqual(theme === 'dark' ? [69, 71, 77, 255] : [201, 201, 204, 255]);
+    await expect.poll(() => ringPixels(canvas, true)).toEqual(theme === 'dark' ? [69, 71, 77, 255] : [201, 201, 204, 255]);
     expect(errors).toEqual([]);
   });
 
@@ -128,6 +202,7 @@ for (const width of [390, 820, 1440]) for (const theme of ['light', 'dark']) {
     await scroller.evaluate(node => { node.scrollTop = 100; });
     await expect.poll(() => scroller.evaluate(node => node.scrollTop)).toBeGreaterThan(0);
     await expectRingAligned(page);
+    await page.screenshot({ path: info.outputPath('after-scroll.png') });
     await scroller.evaluate(node => { node.scrollTop = 0; });
     await page.locator('[data-card-key="section.time"]').press('Alt+ArrowDown');
     await expect.poll(() => page.locator('.home-order-section:visible').evaluateAll(nodes => nodes.map(node => node.dataset.cardKey))).toEqual(['section.links', 'section.time', 'section.thoughts']);
