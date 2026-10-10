@@ -100,13 +100,14 @@ test('我的入口不重复请求菜单锁，检查服务失败也可进入个�
   await expect(page.getByRole('dialog', { name: '解锁菜单', exact: true })).toHaveCount(0);
 });
 
-test('预取失败可进入首页，点击重试失败不进入菜单，迟到检查不能覆盖新导航', async ({ page }) => {
+test('预取失败可进入全部页，点击重试失败不进入菜单，迟到检查不能覆盖新导航', async ({ page }) => {
   const state = await setup(page, { failCheck: true });
-  // 首屏预取失败后，进入全部页会重试一次；成功缓存场景不重复检查。
-  await expect.poll(() => state.checks).toBe(2);
+  // 首屏预取失败不阻塞导航；点击受保护菜单时再重试，成功缓存场景不重复检查。
+  await expect.poll(() => state.checks).toBe(1);
   await page.getByRole('button', { name: '笔记', exact: true }).click();
   await expect(page.getByText('菜单锁检查失败', { exact: true })).toBeVisible();
   await expect(page).toHaveURL(/pages\/life\/index/);
+  await expect.poll(() => state.checks).toBe(2);
   expect(state.reads).toBe(0);
   state.failCheck = false;
   let release;
