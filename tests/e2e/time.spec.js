@@ -458,8 +458,25 @@ for (const width of [390, 768, 1440]) for (const colorScheme of ['light', 'dark'
     expect(times).toHaveLength(2);
     expect(times.every(height => height >= 44)).toBe(true);
     await expect(dialog.locator('.time-step-button, .duration-fields, .modal-close')).toHaveCount(0);
-    await expect(dialog.locator('[aria-label="记录标题"] .uni-input-placeholder')).toHaveText('标题');
-    await expect(dialog.locator('[aria-label="记录备注"] .uni-textarea-placeholder')).toHaveText('描述');
+    const titleInput = dialog.locator('[aria-label="记录标题"] input');
+    const descriptionInput = dialog.locator('[aria-label="记录备注"] textarea');
+    const titlePlaceholder = dialog.locator('[aria-label="记录标题"] .uni-input-placeholder');
+    const descriptionPlaceholder = dialog.locator('[aria-label="记录备注"] .uni-textarea-placeholder');
+    await titleInput.fill('');
+    await descriptionInput.fill('');
+    for (const [placeholder, label] of [[titlePlaceholder, '标题'], [descriptionPlaceholder, '描述']]) {
+      await expect(placeholder).toHaveText(label);
+      await expect(placeholder).toBeVisible();
+      await expect(placeholder).toHaveCSS('font-size', '14px');
+      await expect(placeholder).toHaveCSS('color', colorScheme === 'dark' ? 'rgb(160, 166, 177)' : 'rgb(98, 110, 130)');
+    }
+    await page.screenshot({ path: `test-results/time-placeholder-${width}-${colorScheme}.png` });
+    await titleInput.fill('专注学习');
+    await descriptionInput.fill('模拟备注');
+    await expect(titleInput).toHaveValue('专注学习');
+    await expect(descriptionInput).toHaveValue('模拟备注');
+    await expect(titlePlaceholder).toBeHidden();
+    await expect(descriptionPlaceholder).toBeHidden();
     await expect(dialog.locator('.compact-duration')).toHaveText('2小时');
     await expect(dialog.getByRole('button', { name: '取消', exact: true })).toHaveCount(0);
     expect(simple.width).toBeLessThanOrEqual(440);
