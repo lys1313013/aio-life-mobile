@@ -10,7 +10,7 @@ const skipCardSortStart = inject<(() => void) | null>('home-card-action-touch', 
 function actionTouchStart() { skipCardSortStart?.() }
 </script>
 <template>
-  <button role="button" class="dashboard-action ui-type-body" :class="{ 'dashboard-action-pill': !!text, 'dashboard-action-disabled': loading || disabled }" :aria-label="label" :aria-busy="loading" :loading="loading" :disabled="loading || disabled" :hover-class="isDark ? 'dashboard-action-pressed-dark' : 'dashboard-action-pressed'" @touchstart="actionTouchStart" @mousedown.stop @click="$emit('click')">
+  <button role="button" class="dashboard-action ui-type-body" :class="{ 'dashboard-action-pill': !!text, 'dashboard-action-disabled': loading || disabled }" :aria-label="label" :aria-busy="loading" :loading="loading" :disabled="loading || disabled" hover-class="dashboard-action-pressed" @touchstart="actionTouchStart" @mousedown.stop @click="$emit('click')">
     <view v-if="!loading" class="action-content" :class="[{ 'action-pill': !!text }, text ? themeClass('action-pill') : '']">
       <text v-if="text" class="action-text" :class="themeClass('action-text')">{{ text }}</text>
       <view v-if="!icon || icon === 'lucide:plus'" class="action-plus" :class="{ 'action-plus-small': !!text }">
@@ -29,8 +29,8 @@ function actionTouchStart() { skipCardSortStart?.() }
 .dashboard-action-pill { margin-right: 0; }
 /* 保持透明底，覆盖平台默认的 disabled 按钮背景。 */
 .dashboard-action-disabled { background-color: transparent !important; }
-.dashboard-action-pressed { background-color: #f4f4f5; }
-.dashboard-action-pressed-dark { background-color: #292d35; }
+// 首页卡片操作统一淡化内容，避免透明触摸区出现额外的圆形背景。
+.dashboard-action-pressed { opacity: 0.65; }
 .action-content { flex-direction: row; align-items: center; justify-content: center; }
 .action-pill { min-width: 44px; height: 22px; padding: 0 $space-inline; border-radius: 11px; background-color: #f8f8f9; }
 .action-pill-dark { background-color: #27292f; }
