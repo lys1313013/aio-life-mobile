@@ -111,6 +111,7 @@ const timeDonutLabels = computed(() => summaryDonutLabels(time.value.groups))
 // 与 Web 一致的响应式上限；多列等高，单列按首屏内容量收缩。
 const cardHeightLimit = computed(() => viewportWidth.value >= 1024 ? 280 : viewportWidth.value >= 640 ? 250 : 240)
 const multiColumnCardHeight = computed(() => viewportWidth.value >= 768 ? cardHeightLimit.value : undefined)
+const thoughtRowHeight = spacing.compactRowMin
 const quickRowHeight = computed(() => quickIconSize.value + typography.roles.caption.lineHeight + spacing.detail + spacing.inline * 2
   + (links.value.some(link => !nativeDestination(link.path)) ? typography.roles['chart-label'].lineHeight + spacing.micro : 0))
 function sectionInset(section: string) {
@@ -127,7 +128,7 @@ function sectionHeight(section: string) {
   }
   if (section === 'thoughts') {
     const body = states.thoughts.loaded && thoughts.value.length === 0 ? 32 + typography.roles.caption.lineHeight + spacing.card * 2
-      : Math.max(1, states.thoughts.loaded ? thoughts.value.length : 2) * spacing.controlMin
+      : Math.max(1, states.thoughts.loaded ? thoughts.value.length : 2) * thoughtRowHeight
     return Math.min(limit, inset + body)
   }
   if (section === 'exercise') return Math.min(limit, inset + Math.max(1, states.exercise.loaded ? exercise.value.days.reduce((count, day) => count + day.items.length, 0) : 3) * 40)
@@ -907,13 +908,13 @@ function trendLines(points) {
               :locked="states.thoughts.locked" :refresh-disabled="orderDisabled"
               navigable @navigate="openLink('/record/think')"
               @refresh="loadSection('thoughts')"
-              ><template #actions><DashboardAction label="新增闪念" @click="addThought" /></template><template #loading><HomeListSkeleton label="正在加载闪念" :rows="2" :row-height="spacing.controlMin" single-line /></template><view v-if="thoughts.length === 0" class="empty-state ui-pad-card"
+              ><template #actions><DashboardAction label="新增闪念" @click="addThought" /></template><template #loading><HomeListSkeleton label="正在加载闪念" :rows="2" :row-height="thoughtRowHeight" single-line /></template><view v-if="thoughts.length === 0" class="empty-state ui-pad-card"
                 ><AppIcon name="ant-design:inbox-outlined" :size="32" color="#8b8f99" /><text class="empty-label" :class="themeClass('empty-label')">暂无固定的闪念</text></view
               ><scroll-view v-else scroll-y :show-scrollbar="false" class="list-scroll" :class="{ 'list-scroll-auto': thoughtsAutoHeight }" :style="thoughtsAutoHeight ? { maxHeight: (cardHeightLimit - sectionInset('thoughts')) + 'px' } : {}"
                 ><view
                   v-for="thought in thoughts"
                   :key="thought.id"
-                  class="list-row thought-row ui-pad-sm" role="button" :aria-label="'编辑闪念'" @click="openThought(thought)"
+                  class="thought-row" role="button" :aria-label="'编辑闪念'" @click="openThought(thought)"
                   ><text :max-lines="3" class="thought-text" :class="themeClass('thought-text')">{{
                     thought.hiddenContent ? '内容已隐藏' : thought.content
                   }}</text
@@ -1465,7 +1466,8 @@ color: inherit;
 .list-row {  min-height: 56px; }
 .list-scroll-auto { flex: none; height: auto; }
 .thought-row, .task-row { flex-direction: row; align-items: center; }
-.thought-row { box-sizing: border-box; min-height: $space-controlMin; padding: $space-detail $space-inline; }
+// 闪念与骨架共用紧凑行最小高度，长文本按内容撑开。
+.thought-row { box-sizing: border-box; min-height: $space-compactRowMin; padding: $space-detail $space-inline; }
 .task-row { padding: $space-detail $space-inline; }
 .task-check { display: flex; align-items: center; justify-content: center; flex-shrink: 0; width: 44px; height: 44px; margin: 0 $space-micro 0 (-$space-inline); padding: 0; border: 0; background-color: transparent; line-height: $space-controlMin; }
 .task-dates { @include type-style('chart-label'); color: #92929b; margin-top: $space-detail; }
