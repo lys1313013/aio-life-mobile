@@ -42,7 +42,7 @@ export function layoutChartAxisLabels(labels: string[], points: number[], width:
   return visible
 }
 export function buildChartOption(labels: string[], series: ChartSeries[], settings: {
-  dark: boolean; kind: string; selected: number; selectionActive: boolean; showScale: boolean; width: number
+  dark: boolean; kind: string; selected: number; selectionActive: boolean; showScale: boolean; width: number; roundedBars?: boolean
 }) {
   validateChartData(labels, series)
   const axisColor = settings.dark ? '#737985' : '#c9cdd5'
@@ -51,7 +51,9 @@ export function buildChartOption(labels: string[], series: ChartSeries[], settin
     animation: false,
     textStyle: { fontFamily: typography.families.canvas, fontSize: typography.roles.caption.size },
     // ChartCanvas measures the actual formatted Y ticks before flushing the canvas.
-    grid: { left: spacing.detail, right: spacing.inline, top: spacing.section, bottom: typography.roles.caption.lineHeight + spacing.section },
+    grid: { left: spacing.detail, right: spacing.inline,
+      top: settings.roundedBars ? typography.roles['chart-label'].lineHeight * 2 + spacing.inline : spacing.section,
+      bottom: typography.roles.caption.lineHeight + spacing.section },
     xAxis: {
       type: 'category', data: labels, boundaryGap: settings.kind === 'bar',
       axisLine: { show: true, onZero: false, lineStyle: { color: axisColor } },
@@ -67,12 +69,16 @@ export function buildChartOption(labels: string[], series: ChartSeries[], settin
       name: item.name, type: settings.kind === 'bar' ? 'bar' : 'line',
       data: item.values.map((value, index) => ({ value,
         symbolSize: settings.selectionActive && index === settings.selected ? 6 : 4,
-        itemStyle: { opacity: settings.kind === 'bar' && settings.selectionActive && index !== settings.selected ? 0.45 : 1 },
+        itemStyle: {
+          opacity: settings.kind === 'bar' && settings.selectionActive && index !== settings.selected ? 0.45 : 1,
+          ...(settings.roundedBars ? { borderRadius: value < 0 ? [0, 0, 4, 4] : [4, 4, 0, 0] } : {}),
+        },
       })),
       itemStyle: { color: item.color }, lineStyle: { width: 2, color: item.color },
       showSymbol: labels.length <= 18, symbol: 'circle', smooth: false,
       clip: true, emphasis: { disabled: true },
-      barMaxWidth: 24,
+      barMaxWidth: settings.roundedBars ? 32 : 24,
+      ...(settings.roundedBars ? { barWidth: '50%' } : {}),
     })),
   }
 }

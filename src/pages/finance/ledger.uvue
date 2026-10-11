@@ -415,7 +415,7 @@ async function removeSelected() {
         :error="statisticsError"
         @retry="types.length ? loadStatistics() : initialize()"
         >
-<template #loading><view class="finance-summary ui-gap-sm ui-section"><FormField compact stretch hide-label label="选择年份" kind="selector" :options="overviewYears" v-model="overviewYear" /><view class="metrics ui-row"><view :style="appGridItem(2, 'section', [[700, 3]], true)" class="summary-total"><MetricCard :label="expense ? '总支出' : '总收入'" value="" loading /></view><MetricCard :style="appGridItem(2, 'section', [[700, 3]], false)" :label="overviewYear + (expense ? '年总支出' : '年总收入')" value="" loading /><MetricCard :style="appGridItem(2, 'section', [[700, 3]], false)" :label="expense ? '月均支出' : '月均收入'" value="" loading /></view></view><view class="chart-grid ui-gap-md"><ContentSkeleton :style="appGridItem(1, 'section', [[700, 2]], false)" v-for="n in 2" :key="n" variant="chart" /></view></template>
+<template #loading><view class="finance-summary ui-gap-sm ui-section"><FormField compact stretch hide-label label="选择年份" kind="selector" :options="overviewYears" v-model="overviewYear" /><view class="metrics ui-row"><view :style="appGridItem(2, 'section', [[700, 3]], true)" class="summary-total"><MetricCard :label="expense ? '总支出' : '总收入'" value="" loading /></view><MetricCard :style="appGridItem(2, 'section', [[700, 3]], false)" :label="overviewYear + (expense ? '年总支出' : '年总收入')" value="" loading /><MetricCard :style="appGridItem(2, 'section', [[700, 3]], false)" :label="expense ? '月均支出' : '月均收入'" value="" loading /></view></view><view class="chart-grid ui-gap-md"><AioChart :style="appGridItem(1, 'section', [[700, 2]], false)" :label="expense ? '支出走势' : '收入走势'" kind="bar" period-controls loading :labels="[]" :series="[{ name: expense ? '支出' : '收入', values: [] }]" unit="元" /><ContentSkeleton :style="appGridItem(1, 'section', [[700, 2]], false)" variant="chart" /></view></template>
 <view class="finance-summary ui-gap-sm ui-section"
           ><FormField
             compact
@@ -436,7 +436,7 @@ async function removeSelected() {
               :value="monthlyAverage.toFixed(2)"
               unit="元" /></view></view
         ><view class="chart-grid ui-gap-md"><AioChart :style="appGridItem(1, 'section', [[700, 2]], false)"
-          :label="expense ? '月度支出趋势' : '月度收入趋势'"
+          :label="expense ? '支出走势' : '收入走势'"
           kind="bar"
           period-controls
           :labels="yearRows.map((row) => String(row.month) + '月')"
@@ -446,19 +446,9 @@ async function removeSelected() {
               values: yearRows.map((row) => statisticsTotal([row])),
             },
           ]"
-          unit="元" /><TypeDistribution :style="appGridItem(1, 'section', [[700, 2]], false)" v-if="expense" label="支出类型分布" :items="distribution" /><AioChart :style="appGridItem(1, 'section', [[700, 2]], false)" v-else
+          unit="元" /><TypeDistribution :style="appGridItem(1, 'section', [[700, 2]], false)"
           :label="expense ? '支出类型分布' : '收入类型分布'"
-          kind="bar"
-          compact
-          selectable
-          :labels="distribution.map((row) => row.name)"
-          :series="[
-            {
-              name: expense ? '支出' : '收入',
-              values: distribution.map((row) => row.value),
-            },
-          ]"
-          unit="元"
+          :items="distribution"
       /></view></PageState>
       <view class="tools ledger-toolbar ui-toolbar"
         ><text class="section-title">{{ expense ? '支出明细' : '收入明细' }}</text><view class="filter-trigger"><MobileButton :label="activeFilterCount ? '更多筛选，已启用 ' + activeFilterCount + ' 项条件' : '更多筛选'" icon="ant-design:filter-outlined" variant="quiet" @click="showFilters = !showFilters" /><text v-if="activeFilterCount" class="filter-count">{{ activeFilterCount }}</text></view><MobileButton

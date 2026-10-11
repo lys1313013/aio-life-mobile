@@ -8,8 +8,8 @@ import MobileButton from './MobileButton.uvue'
 import typography from '../styles/typography.json'
 import spacing from '../styles/spacing.json'
 
-const props = defineProps<{ option: any; label: string }>()
-const emit = defineEmits(['layout', 'select', 'width'])
+const props = defineProps<{ option: any; label: string; hoverable?: boolean }>()
+const emit = defineEmits(['layout', 'select', 'width', 'hover', 'leave'])
 const instance = getCurrentInstance()
 const canvasId = 'aio-chart-' + instance?.uid
 const loading = ref(true), error = ref('')
@@ -17,6 +17,7 @@ let chart: any = null, alive = true, generation = 0, scheduled = false
 let canvasContext: any = null
 let width = 0
 let touchStart: any = null, lastTouch = 0
+let selectionSequence = 0
 function rect(): Promise<any> {
   return new Promise(resolve => uni.createSelectorQuery().in(instance?.proxy)
     .select('.aio-chart-canvas').boundingClientRect(value => resolve(value)).exec())
@@ -115,17 +116,31 @@ function queuePaint() {
   scheduled = true
   nextTick(() => { scheduled = false; if (chart) paint(); else initialize() })
 }
-async function select(event) {
+async function select(event, hover = false) {
   if (!chart || !alive || error.value) return
+  const sequence = ++selectionSequence
   const touch = event.changedTouches?.[0]
   const clientX = touch?.clientX ?? event.detail?.x ?? event.clientX
   if (typeof clientX !== 'number') return
   const bounds = await rect()
-  if (!alive || !bounds || Array.isArray(bounds)) return
-  const index = chart.convertFromPixel({ xAxisIndex: 0 }, clientX - bounds.left)
-  if (Number.isFinite(index)) emit('select', Math.max(0, Math.min(props.option.xAxis.data.length - 1, Math.round(index))))
+  if (!alive || sequence !== selectionSequence || !bounds || Array.isArray(bounds)) return
+  const x = clientX - bounds.left
+  if (hover && (x < chart.getOption().grid[0].left || x > width - props.option.grid.right)) {
+    emit('leave')
+    return
+  }
+  const index = chart.convertFromPixel({ xAxisIndex: 0 }, x)
+  if (Number.isFinite(index)) emit(hover ? 'hover' : 'select', Math.max(0, Math.min(props.option.xAxis.data.length - 1, Math.round(index))))
+}
+function hover(event) {
+  if (props.hoverable && Date.now() - lastTouch > 350) select(event, true)
+}
+function leave() {
+  selectionSequence++
+  emit('leave')
 }
 function beginTouch(event) {
+  leave()
   touchStart = event.touches?.[0] || null
   lastTouch = Date.now()
 }
@@ -149,7 +164,8 @@ onUnmounted(() => { alive = false; generation++; chart?.dispose(); chart = null;
 <template>
   <view class="aio-chart-renderer" :aria-busy="loading">
     <canvas :id="canvasId" :canvas-id="canvasId" type="2d" class="aio-chart-canvas"
-      aria-hidden="true" @click="click" @touchstart="beginTouch" @touchend="endTouch" />
+      aria-hidden="true" @click="click" @mousemove="hover" @mouseleave="leave"
+      @touchstart="beginTouch" @touchend="endTouch" @touchcancel="leave" />
     <view v-if="loading || error" class="chart-render-state">
       <text class="chart-render-message" :class="themeClass('chart-render-message')">{{ error || '正在加载图表' }}</text>
       <MobileButton v-if="error" label="重试图表" icon="ant-design:reload-outlined" variant="quiet" @click="initialize" />

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, onUnmounted, ref, watch } from 'vue'
 import ChartCanvas from './ChartCanvas.uvue'
 import { appTextColor } from '../services/app-layout.ts'
 import { isDark, themeClass } from '../services/theme.ts'
@@ -19,16 +19,23 @@ const layout = ref<any>({ axisTicks: [], points: [], series: [], left: 0, axisTo
 const colored = computed(() => colorChartSeries(props.series))
 const visible = computed(() => colored.value.filter(item => props.series.length <= 1 || !hidden.value.includes(item.name)))
 const interactive = computed(() => props.periodControls || props.selectable || !props.hidePeriodSelector)
-// All line charts have a real left Y axis. Preserve the compact bar-chart modes.
-const showScale = computed(() => props.kind !== 'bar' || (!props.hideScale && !props.periodControls))
+const periodTrend = computed(() => props.periodControls && props.kind === 'bar')
+let tooltipTimer: ReturnType<typeof setTimeout> | undefined
+function dismissTooltip() {
+  clearTimeout(tooltipTimer)
+  if (periodTrend.value) touched.value = false
+}
+onUnmounted(() => clearTimeout(tooltipTimer))
+watch(() => [props.loading, props.series], dismissTooltip)
+const showScale = computed(() => props.kind !== 'bar' || !props.hideScale)
 const error = computed(() => {
   try { validateChartData(props.labels, props.series); return '' }
   catch (reason) { return reason.message }
 })
 const option = computed(() => buildChartOption(props.xLabels ?? props.labels, visible.value, {
   dark: isDark.value, kind: props.kind, selected: selected.value,
-  selectionActive: interactive.value && (touched.value || props.kind === 'bar'),
-  showScale: showScale.value, width: width.value,
+  selectionActive: interactive.value && (touched.value || (props.kind === 'bar' && !periodTrend.value)),
+  showScale: showScale.value, width: width.value, roundedBars: periodTrend.value,
 }))
 watch(() => props.labels.join('|'), (_, previous) => {
   const oldLabel = previous?.split('|')[selected.value]
@@ -40,6 +47,15 @@ function select(index: number) {
   if (props.loading || !interactive.value || !props.labels.length) return
   selected.value = Math.max(0, Math.min(props.labels.length - 1, index))
   touched.value = true
+  if (periodTrend.value) {
+    clearTimeout(tooltipTimer)
+    tooltipTimer = setTimeout(dismissTooltip, 3000)
+  }
+}
+function hoverSelect(index: number) {
+  if (!periodTrend.value) return
+  select(index)
+  clearTimeout(tooltipTimer)
 }
 function toggle(name: string) {
   hidden.value = hidden.value.includes(name) ? hidden.value.filter(item => item !== name) : [...hidden.value, name]
@@ -63,18 +79,30 @@ const endLabels = computed(() => {
   for (let i = 1; i < rows.length; i++) rows[i].top = Math.max(rows[i].top, rows[i - 1].top + typography.roles['chart-label'].lineHeight + spacing.micro)
   return rows
 })
+const tooltipText = computed(() => visible.value
+  .map(item => (visible.value.length > 1 ? item.name + ' ' : '') + displayNumber(item.values[selected.value] ?? 0) + props.unit).join('，'))
 const extremeLabels = computed(() => {
-  if (!props.periodControls || props.kind !== 'bar') return []
+  if (!periodTrend.value || props.loading || !props.labels.length) return []
   return layout.value.series.flatMap(item => {
     const values = item.points.map(point => point.value)
     if (!values.length) return []
-    return [...new Set([values.indexOf(Math.max(...values)), values.indexOf(Math.min(...values))])].map(index => {
+    const indices = [...new Set([values.indexOf(Math.max(...values)), values.indexOf(Math.min(...values))])]
+    const rows = indices.map(index => {
       const point = item.points[index]
-      const text = String(Math.round(point.value * 100) / 100) + props.unit
-      const labelWidth = text.length * typography.roles['chart-label'].size
-      return { key: item.name + index, text, left: Math.max(0, Math.min(width.value - labelWidth, point.x - labelWidth / 2)),
-        top: Math.max(0, point.y - typography.roles['chart-label'].lineHeight - spacing.detail), width: labelWidth }
+      const text = displayNumber(point.value)
+      const labelWidth = Math.min(width.value - layout.value.left, text.length * typography.roles['chart-label'].size)
+      return { key: item.name + index, text, width: labelWidth,
+        left: Math.max(layout.value.left, Math.min(width.value - labelWidth, point.x - labelWidth / 2)),
+        top: Math.max(0, point.y - typography.roles['chart-label'].lineHeight - spacing.detail) }
     })
+    if (rows.length === 2) {
+      const [high, low] = rows
+      const line = typography.roles['chart-label'].lineHeight + spacing.detail
+      if (Math.abs(high.top - low.top) < line && high.left < low.left + low.width && low.left < high.left + high.width) {
+        high.top = Math.max(0, low.top - line)
+      }
+    }
+    return rows
   })
 })
 </script>
@@ -83,7 +111,7 @@ const extremeLabels = computed(() => {
   <view class="mini-chart aio-chart" :class="[themeClass('mini-chart'), { 'mini-chart-period': periodControls }]" role="figure" :aria-label="label">
     <view class="mini-chart-header" :class="{ 'chart-header-title-hidden': hideTitle }">
       <text v-if="!hideTitle" class="mini-chart-title" :style="appTextColor()">{{ label }}</text>
-      <text v-if="unit && showScale" class="chart-unit" :class="themeClass('chart-unit')">{{ unit }}</text>
+      <text v-if="!periodTrend && unit && showScale" class="chart-unit" :class="themeClass('chart-unit')">{{ unit }}</text>
       <slot name="actions" />
     </view>
     <view v-if="!hideLegend && series.length > 1" class="chart-legend-compact">
@@ -95,15 +123,17 @@ const extremeLabels = computed(() => {
       </button>
     </view>
     <text v-if="error" class="mini-chart-error" role="alert">{{ error }}</text>
-    <template v-else-if="loading || labels.length">
-      <view class="mini-chart-plot" :role="interactive ? 'slider' : undefined" :tabindex="interactive ? 0 : undefined"
+    <template v-else-if="loading || labels.length || periodTrend">
+      <view class="mini-chart-plot" :role="interactive && labels.length ? 'slider' : undefined" :tabindex="interactive && labels.length ? 0 : undefined"
         :aria-label="interactive ? label + '，点击图表查看数值' : undefined" :aria-valuemin="interactive ? 0 : undefined"
         :aria-valuemax="interactive ? labels.length - 1 : undefined" :aria-valuenow="interactive ? selected : undefined"
         :aria-valuetext="interactive ? selectionText : undefined"
-        @keydown.left.prevent="select(selected - 1)" @keydown.right.prevent="select(selected + 1)">
+        @keydown.left.prevent="select(selected - 1)" @keydown.right.prevent="select(selected + 1)"
+        @keydown.esc="dismissTooltip" @blur="dismissTooltip">
         <view v-if="loading" class="chart-loading-plot" :class="themeClass('chart-loading-plot')" aria-busy="true"><text class="mini-chart-empty" :class="themeClass('mini-chart-empty')">正在加载图表</text></view>
-        <ChartCanvas v-else :option="option" :label="label" @layout="layout = $event" @width="width = $event" @select="select" />
-        <view v-if="showScale" class="chart-y-axis" :style="{ width: layout.left + 'px' }" :aria-label="'Y 轴，单位 ' + unit">
+        <view v-else-if="!labels.length" class="chart-empty-plot"><text class="mini-chart-empty" :class="themeClass('mini-chart-empty')">暂无数据</text></view>
+        <ChartCanvas v-else :option="option" :label="label" :hoverable="periodTrend" @hover="hoverSelect" @leave="dismissTooltip" @layout="layout = $event" @width="width = $event" @select="select" />
+        <view v-if="showScale && !loading && labels.length" class="chart-y-axis" :style="{ width: layout.left + 'px' }" :aria-label="'Y 轴，单位 ' + unit">
           <text v-for="tick in layout.axisTicks" :key="tick.value" class="chart-y-tick" :class="themeClass('chart-y-tick')"
             :style="{ top: tick.top + 'px', width: Math.max(0, layout.left - spacing.micro) + 'px' }">{{ tick.label }}</text>
         </view>
@@ -113,12 +143,11 @@ const extremeLabels = computed(() => {
           :style="{ top: item.top + 'px', color: item.color }" :aria-label="item.name + '总金额'">{{ item.text }}</text>
         <text v-for="item in extremeLabels" :key="item.key" class="chart-extreme-label" :class="themeClass('chart-extreme-label')"
           :style="{ top: item.top + 'px', left: item.left + 'px', width: item.width + 'px' }">{{ item.text }}</text>
+        <view v-if="periodTrend && touched && !loading && labels.length" class="chart-tooltip" :class="themeClass('chart-tooltip')" role="tooltip" aria-live="polite">
+          <text class="chart-tooltip-text" :class="themeClass('chart-tooltip-text')">{{ tooltipText }}</text>
+        </view>
       </view>
-      <view v-if="periodControls" class="chart-period-value" aria-live="polite">
-        <text class="chart-period-label" :style="appTextColor()">{{ labels[selected] }}{{ visible.map(item => item.name).join(' / ') }}</text>
-        <text v-for="item in visible" :key="item.name" class="chart-period-amount" :style="appTextColor()">{{ loading ? '—' : displayNumber(item.values[selected] ?? 0) + unit }}</text>
-      </view>
-      <template v-else-if="!hideValues">
+      <template v-if="!periodControls && !hideValues">
         <text v-if="interactive && (touched || compact)" class="chart-selected-label" :class="themeClass('chart-selected-label')" aria-live="polite">{{ loading ? '—' : labels[selected] }}</text>
         <view class="mini-chart-values" :class="{ 'chart-values-compact': compact }" aria-live="polite">
           <view v-for="item in visible" :key="item.name" class="chart-value-item" :class="{ 'chart-value-inline': !compact }">
@@ -163,17 +192,20 @@ const extremeLabels = computed(() => {
 .chart-value-label { @include type-style('caption'); color: $text-secondary-light; }
 .chart-value-number { @include type-style('caption-strong'); color: #27272a; font-variant-numeric: tabular-nums; }
 .chart-selected-label { @include type-style('caption'); color: $text-secondary-light; margin-top: $space-detail; }
-.chart-period-value { flex-direction: row; justify-content: center; align-items: center; gap: $space-inline; margin-top: $space-inline; }
-.chart-period-label { @include type-style('caption'); }
-.chart-period-amount { @include type-style('title'); }
+.chart-tooltip { position: absolute; top: $space-detail; right: $space-detail; max-width: 100%; padding: $space-detail $space-inline; box-sizing: border-box; border-radius: 6px; background-color: #f4f6fa; border: 1px solid #e8ecf1; pointer-events: none; }
+.chart-tooltip-dark { background-color: #2a2e36; border-color: #3c414b; }
+.chart-tooltip-text { @include type-style('caption'); color: #27272a; font-variant-numeric: tabular-nums; }
+.chart-tooltip-text-dark { color: #eeeeef; }
+.chart-extreme-label { position: absolute; text-align: center; @include type-style('chart-label'); color: $text-secondary-light; pointer-events: none; }
+.chart-extreme-label-dark { color: $text-secondary-dark; }
+.chart-empty-plot { height: 228px; align-items: center; justify-content: center; }
 .chart-end-label { position: absolute; right: $space-detail; @include type-style('chart-label'); background-color: #ffffff; pointer-events: none; }
 .chart-end-label-dark { background-color: #1c1e22; }
-.chart-extreme-label { position: absolute; text-align: center; @include type-style('chart-label'); color: $text-secondary-light; pointer-events: none; }
 .mini-chart-error { @include type-style('label'); color: #e05260; padding: $space-section 0; }
 .mini-chart-empty { @include type-style('body'); color: $text-secondary-light; padding: $space-section 0; }
 .chart-value-number-dark { color: #eeeeef; }
 .chart-unit-dark, .chart-y-tick-dark, .chart-x-label-dark, .chart-value-label-dark,
-.chart-selected-label-dark, .chart-extreme-label-dark, .mini-chart-empty-dark { color: $text-secondary-dark; }
+.chart-selected-label-dark, .mini-chart-empty-dark { color: $text-secondary-dark; }
 /* #ifdef WEB || MP-WEIXIN */
 .chart-legend-button::after { border: 0; }
 /* #endif */

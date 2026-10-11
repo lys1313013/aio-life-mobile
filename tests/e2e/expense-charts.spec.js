@@ -6,7 +6,7 @@ async function openExpense(page, data) {
   await setup(page);
   await page.route('**/api/expense/statisticsByMonth', (route) => route.fulfill({ json: { code: 0, data } }));
   await page.goto('/#/pages/finance/expense');
-  await expect(page.getByText('月度支出趋势', { exact: true })).toBeVisible();
+  await expect(page.getByText('支出走势', { exact: true })).toBeVisible();
 }
 const year = new Date().getFullYear();
 const months = [1, 2, 3].map((month) => ({ year, month, detail: [
@@ -22,31 +22,42 @@ for (const width of [390, 768, 1440]) for (const theme of ['light', 'dark']) {
     const errors = [];
     page.on('pageerror', (error) => errors.push(error.message));
     await openExpense(page, months);
-    await expect(page.locator('.chart-period-label')).toHaveText('3月支出');
-    await expect(page.locator('.chart-period-amount')).toHaveText('525.00元');
+    await expect(page.locator('.chart-period-value, .chart-y-unit')).toHaveCount(0);
     await expect(page.locator('.mini-chart uni-picker')).toHaveCount(0);
-    const plot = page.getByRole('slider', { name: '月度支出趋势，点击图表查看数值' });
+    const chart = page.getByRole('figure', { name: '支出走势', exact: true });
+    const plot = chart.getByRole('slider');
+    await expect(chart.locator('.chart-y-tick').first()).toHaveText('0');
+    await expect(chart.locator('.chart-extreme-label')).toHaveText(['525.00', '175.00']);
     const box = await plot.boundingBox();
-    // Tap the empty space above a bar, not only its painted pixels.
-    await plot.click({ position: { x: box.width / 2, y: 8 } });
-    await expect(page.locator('.chart-period-label')).toHaveText('2月支出');
-    await expect(page.locator('.chart-period-amount')).toHaveText('350.00元');
-    await plot.click({ position: { x: box.width * 0.1, y: box.height / 2 } });
-    await expect(page.locator('.chart-period-label')).toHaveText('1月支出');
-    await expect(page.getByRole('button', { name: /上个月|下个月/ })).toHaveCount(0);
+    const height = (await chart.boundingBox()).height;
+    const canvas = chart.locator('.aio-chart-canvas');
+    const tooltip = chart.getByRole('tooltip');
+    await expect(tooltip).toHaveCount(0);
+    // Hover over the month slot, including blank space above a short bar.
+    await canvas.hover({ position: { x: box.width / 2, y: 8 } });
+    await expect(tooltip).toHaveText('350.00元');
+    await canvas.hover({ position: { x: box.width - 12, y: 8 } });
+    await expect(tooltip).toHaveText('525.00元');
+    const tipBox = await tooltip.boundingBox();
+    expect(tipBox.width).toBeLessThan(150);
+    expect(tipBox.x).toBeGreaterThanOrEqual(box.x);
+    expect(tipBox.x + tipBox.width).toBeLessThanOrEqual(box.x + box.width);
+    await plot.click({ position: { x: box.width * 0.2, y: 8 } });
+    await expect(tooltip).toHaveText('175.00元');
     await expect(plot).toHaveAttribute('aria-valuenow', '0');
     await plot.press('ArrowRight');
-    await expect(page.locator('.chart-period-label')).toHaveText('2月支出');
-    await plot.click({ position: { x: box.width / 2, y: 8 } });
-    await expect(page.locator('.chart-y-tick')).toHaveCount(0);
-    await expect(page.getByText('点柱子查看', { exact: true })).toHaveCount(0);
-    await expect(page.locator('.chart-extreme-label')).toHaveText(['525元', '175元']);
-    for (const label of await page.locator('.chart-extreme-label').all()) {
-      const labelBox = await label.boundingBox();
-      expect(labelBox.x).toBeGreaterThanOrEqual(box.x - 1);
-      expect(labelBox.x + labelBox.width).toBeLessThanOrEqual(box.x + box.width + 1);
-      expect(labelBox.y).toBeGreaterThanOrEqual(box.y - 1);
-    }
+    await expect(tooltip).toHaveText('350.00元');
+    await plot.press('Escape');
+    await expect(tooltip).toHaveCount(0);
+    await canvas.hover({ position: { x: box.width / 2, y: 8 } });
+    await expect(tooltip).toHaveText('350.00元');
+    fs.mkdirSync('artifacts/expense-charts', { recursive: true });
+    await chart.screenshot({ path: `artifacts/expense-charts/tooltip-${width}-${theme}.png` });
+    await page.getByText('支出走势', { exact: true }).click();
+    await expect(tooltip).toHaveCount(0);
+    expect((await chart.boundingBox()).height).toBe(height);
+    await expect.poll(() => page.locator('.chart-y-tick').count()).toBeGreaterThan(2);
+    await expect(chart).not.toContainText(/最高|最低/);
     await expect(page.locator('.distribution-total')).toHaveText('1050.00');
     await expect(page.locator('.distribution-row').first()).toContainText('57.1%');
     // A visible canvas alone does not prove sectors were painted.
@@ -79,16 +90,19 @@ test('全年月份、年份切换与饼图重绘', async ({ page }) => {
     { typeName: '餐饮', amt: (index + 1) * 100 }, { typeName: '交通', amt: 50 },
   ] }));
   await openExpense(page, [...fullYear, { year: year - 1, month: 2, detail: [{ typeName: '日用', amt: 888 }] }]);
-  await expect(page.locator('.chart-period-label')).toHaveText('12月支出');
+  await expect(page.getByRole('slider')).toHaveAttribute('aria-valuetext', '12月 支出1,250.00元');
+  await expect(page.getByRole('tooltip')).toHaveCount(0);
   await expect(page.locator('.chart-x-label').first()).toHaveText('1月');
   await expect(page.locator('.chart-x-label').last()).toHaveText('12月');
-  await expect(page.getByRole('slider', { name: '月度支出趋势，点击图表查看数值' })).toHaveAttribute('aria-valuemax', '11');
+  await expect(page.getByRole('slider', { name: '支出走势，点击图表查看数值' })).toHaveAttribute('aria-valuemax', '11');
   await page.screenshot({ path: 'artifacts/expense-charts/full-year-mobile.png', fullPage: true });
   await page.setViewportSize({ width: 768, height: 1000 });
   await page.locator('uni-picker[aria-label="选择年份"]').click();
   await page.locator('.uni-picker-item').filter({ hasText: new RegExp('^' + (year - 1) + '$') }).filter({ visible: true }).click();
-  await expect(page.locator('.chart-period-label')).toHaveText('2月支出');
-  await expect(page.locator('.chart-period-amount')).toHaveText('888.00元');
+  await expect(page.getByRole('slider')).toHaveAttribute('aria-valuetext', '2月 支出888.00元');
+  await expect(page.getByRole('tooltip')).toHaveCount(0);
+  await page.getByRole('slider').press('ArrowRight');
+  await expect(page.getByRole('tooltip')).toHaveText('888.00元');
   await expect(page.locator('.distribution-row')).toHaveCount(1);
   await expect(page.locator('.distribution-total')).toHaveText('888.00');
   await expect(page.locator('.distribution-percent')).toHaveText('100.0%');
@@ -146,12 +160,14 @@ test.describe('触屏月份选择', () => {
       detail: [{ typeName: '餐饮', amt: index === 6 ? 0 : index === 7 ? 0.01 : 10000 }] }));
     await openExpense(page, detail);
     const plot = page.getByRole('slider');
+    await expect(page.locator('.chart-y-tick').first()).toHaveText('0');
     const box = await plot.boundingBox();
-    await plot.tap({ position: { x: box.width * 6.5 / 12, y: 10 } });
-    await expect(page.locator('.chart-period-label')).toHaveText('7月支出');
-    await expect(page.locator('.chart-period-amount')).toHaveText('0.00元');
-    await plot.tap({ position: { x: box.width * 7.5 / 12, y: 10 } });
-    await expect(page.locator('.chart-period-label')).toHaveText('8月支出');
-    await expect(page.locator('.chart-period-amount')).toHaveText('0.01元');
+    const axisWidth = (await page.locator('.chart-y-axis').boundingBox()).width;
+    const plotWidth = box.width - axisWidth - 8;
+    await plot.tap({ position: { x: axisWidth + plotWidth * 6.5 / 12, y: 10 } });
+    await expect(page.getByRole('tooltip')).toHaveText('0.00元');
+    await plot.tap({ position: { x: axisWidth + plotWidth * 7.5 / 12, y: 10 } });
+    await expect(page.getByRole('tooltip')).toHaveText('0.01元');
+    await expect(page.getByRole('tooltip')).toHaveCount(0, { timeout: 5000 });
   });
 });
