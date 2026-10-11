@@ -3,9 +3,10 @@ import PageState from './PageState.uvue';
 import { themeClass } from '../services/theme.ts'
 import { computed, ref, watch, onUnmounted } from 'vue'
 import AioChart from './AioChart.uvue'
+import AppIcon from './AppIcon.uvue'
 import type { Category, TimeRecord } from '../services/dashboard.ts'
 import { request } from '../services/api.ts'
-import { distributionStats, matchesCategories, recordMinutes, periodRange, periodStatistics, shiftDate, trendPeriods } from '../services/time-format.ts'
+import { distributionStats, matchesCategories, recordMinutes, periodStatistics, trendPeriods } from '../services/time-format.ts'
 import { durationLabel } from '../services/dashboard-format.ts'
 const props = defineProps<{
   records: TimeRecord[]
@@ -21,6 +22,9 @@ let generation = 0
 const filtered = computed(() => props.records.filter(r => matchesCategories(r.categoryId, props.selected, props.categories)))
 const total = computed(() => filtered.value.reduce((sum, r) => sum + recordMinutes(r), 0))
 const distribution = computed(() => distributionStats(props.records, props.categories, props.selected))
+const categoriesExpanded = ref(false)
+const visibleDistribution = computed(() => props.mode === 'day' || categoriesExpanded.value ? distribution.value : distribution.value.slice(0, 5))
+watch(() => [props.date, props.mode, props.selected.join(',')], () => { categoriesExpanded.value = false })
 const types = computed(() => [
   { id: 1, name: '必须', color: '#3b82f6' },
   { id: 2, name: '积极', color: '#10b981' },
@@ -39,14 +43,8 @@ function ringSegments(rows) {
 }
 const panels = computed(() => [
   ...(props.mode === 'day' || !props.selected.length ? [{ id: 'category', title: '时间分布', rows: distribution.value }] : []),
-  ...(!props.selected.length ? [{ id: 'type', title: '时间类型分布', rows: types.value }] : []),
+  ...(props.mode === 'day' && !props.selected.length ? [{ id: 'type', title: '时间类型分布', rows: types.value }] : []),
 ])
-const periods = computed(() => {
-  const range = periodRange(props.date, props.mode)
-  return Array.from({ length: range.days }, (_, index) => periodRange(shiftDate(range.start, index), 'day'))
-})
-const daily = computed(() => periodStatistics(props.records, props.categories, props.selected, periods.value))
-const maximum = computed(() => Math.max(1, ...daily.value.map(item => item.minutes)))
 const trendData = computed(() => periodStatistics(trend.value, props.categories, props.selected, trendPeriods(props.date, props.mode), props.mode !== 'day'))
 const trendLegend = computed(() => distributionStats(trend.value, props.categories, props.selected)
   .filter(item => item.minutes > 0)
@@ -86,18 +84,13 @@ onUnmounted(() => generation++)
           <text class="distribution-total" :class="themeClass('distribution-total')">{{ durationLabel(total) }}</text>
         </view>
       </view>
-      <view v-for="item in panel.rows" :key="item.id" class="stat-row">
+      <view v-for="item in panel.id === 'category' ? visibleDistribution : panel.rows" :key="item.id" class="stat-row">
         <view class="stat-heading"><text class="stat-name" :class="themeClass('stat-name')">{{ item.name }}</text><text class="stat-value" :class="themeClass('stat-value')">{{ durationLabel(item.minutes) }} · {{ Math.round(item.minutes / Math.max(1, total) * 100) }}%</text></view>
         <view class="stat-track" :class="themeClass('stat-track')"><view class="stat-fill" :style="{ width: item.minutes / Math.max(1, total) * 100 + '%', backgroundColor: item.color }" /></view>
       </view>
-    </view>
-    <view v-if="mode !== 'day'" class="stats-card" :class="themeClass('stats-card')" role="figure" aria-label="每日时间分布">
-      <text class="stats-caption" :class="themeClass('stats-caption')">每日时间分布</text>
-      <view v-for="item in daily" :key="item.start" class="daily-stat">
-        <view class="stat-heading"><text class="stat-name" :class="themeClass('stat-name')">{{ item.start.slice(5) }}</text><text class="stat-value" :class="themeClass('stat-value')">{{ durationLabel(item.minutes) }}</text></view>
-        <view class="daily-track" :class="themeClass('daily-track')"><view v-for="segment in item.segments" :key="segment.id" class="daily-segment" :style="{ width: segment.minutes / maximum * 100 + '%', backgroundColor: segment.color }" /></view>
-        <view v-if="item.segments.length" class="daily-detail"><text v-for="segment in item.segments" :key="segment.id" class="daily-detail-text" :class="themeClass('daily-detail-text')">{{ segment.name }} {{ durationLabel(segment.minutes) }}</text></view>
-      </view>
+      <button v-if="panel.id === 'category' && mode !== 'day' && panel.rows.length > 5" role="button" class="distribution-toggle" :class="themeClass('distribution-toggle')" :aria-label="categoriesExpanded ? '收起分类' : '展开全部分类'" :aria-expanded="categoriesExpanded" @click="categoriesExpanded = !categoriesExpanded">
+        <AppIcon :name="categoriesExpanded ? 'ant-design:up-outlined' : 'ant-design:down-outlined'" :size="16" />
+      </button>
     </view>
   </view>
 </template>
@@ -151,6 +144,19 @@ onUnmounted(() => generation++)
 .stat-row {
   margin-top: $space-section;
 }
+.distribution-toggle {
+  align-self: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: $space-controlMin;
+  height: $space-controlMin;
+  margin: $space-detail 0 0;
+  padding: 0;
+  border: 0;
+  background-color: transparent;
+  color: $text-secondary-light;
+}
 .stat-heading {
   flex-direction: row;
   align-items: center;
@@ -176,31 +182,6 @@ onUnmounted(() => generation++)
 .stat-fill {
   height: 6px;
   border-radius: 3px;
-}
-.daily-stat {
-  margin-top: $space-section;
-}
-.daily-track {
-  height: 10px;
-  border-radius: 4px;
-  flex-direction: row;
-  background-color: #f0f2f5;
-  overflow: hidden;
-  margin-top: $space-fieldLabel;
-}
-.daily-segment {
-  height: 10px;
-}
-.daily-detail {
-  flex-direction: row;
-  flex-wrap: wrap;
-  margin-top: $space-detail;
-}
-.daily-detail-text {
-  color: $text-secondary-light;
-  @include type-style('chart-label');
-  margin-right: $space-inline;
-
 }
 .stats-legend {
   flex-direction: row;
@@ -234,18 +215,18 @@ onUnmounted(() => generation++)
 .stats-caption-dark {
   color: #b4b4bd;
 }
-.stat-track-dark,
-.daily-track-dark {
+.stat-track-dark {
   background-color: #282b32;
 }
 
 /* #ifdef WEB || MP-WEIXIN */
-.stats-tab::after {
+.stats-tab::after,
+.distribution-toggle::after {
   border: 0;
 }
 /* #endif */
 
 .stats-empty-dark,
 .stat-value-dark,
-.daily-detail-text-dark { color: $text-secondary-dark; }
+.distribution-toggle-dark { color: $text-secondary-dark; }
 </style>
