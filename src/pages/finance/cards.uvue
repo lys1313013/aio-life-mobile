@@ -493,6 +493,16 @@ function stackCardStyle(card: any, index: number, type: 'debit' | 'credit') {
   if (viewMode.value !== 'stack' || cardExpanded(card) || index === cardsByType.value[type].length - 1) return {};
   return stackFoldedStyle(type);
 }
+function cardRenderKey(id: string, index: number) {
+  // 微信按数组下标发送差量，移动 keyed 节点会残留原位置的折叠高度。
+  // 换位时重建受影响的卡片；业务状态仍以字符串 ID 保存。
+  // #ifdef MP-WEIXIN
+  return id + ':' + index;
+  // #endif
+  // #ifndef MP-WEIXIN
+  return id;
+  // #endif
+}
 const order = useCardOrder({
   rows: cards,
   visible: () => sortedCards.value,
@@ -921,7 +931,7 @@ async function removeTag(value: any) {
       </view>
     </PageHeader><view
       class="body ui-page-body"
-      :class="themeClass('body')"
+      :class="[themeClass('body'), { 'card-order-overflow': !!orderDragging }]"
       >
       <view class="card-type-switch" :class="{ 'card-type-switch-stack': viewMode === 'stack' }" role="group" aria-label="银行卡类型">
         <button v-for="type in cardTypes" :key="type" class="card-type-button" role="button"
@@ -930,13 +940,14 @@ async function removeTag(value: any) {
           <text class="card-type-label" :class="[themeClass('card-type-label'), { 'card-type-label-active': activeCardType === type }, themeClass({ 'card-type-label-active': activeCardType === type })]">{{ type === 'credit' ? '信用卡' : '储蓄卡' }} {{ cardTypeCounts[type] }}</text>
         </button>
       </view>
-      <view class="card-browser-viewport" :style="cardViewportStyle" :class="{ 'card-browser-viewport-stack': viewMode === 'stack', 'card-browser-viewport-moving': cardLayersMoving }">
+      <view class="card-browser-viewport" :style="cardViewportStyle" :class="{ 'card-browser-viewport-stack': viewMode === 'stack', 'card-browser-viewport-moving': cardLayersMoving, 'card-order-overflow': !!orderDragging }">
       <template v-for="layerType in cardTypes" :key="layerType">
-      <view v-if="layerType === selectedCardType || cardLayersMoving" :id="'card-layer-' + layerType" class="card-browser card-layer" :class="{ 'card-layer-positioned': cardLayersMoving, 'card-browser-moving': cardSwitchPhase !== 'idle' }" :style="cardLayerStyle(layerType)" :aria-hidden="layerType !== selectedCardType" :aria-busy="cardSwitchPhase !== 'idle'"
+      <view v-if="layerType === selectedCardType || cardLayersMoving" :id="'card-layer-' + layerType" class="card-browser card-layer" :class="{ 'card-layer-positioned': cardLayersMoving, 'card-browser-moving': cardSwitchPhase !== 'idle', 'card-order-overflow': !!orderDragging }" :style="cardLayerStyle(layerType)" :aria-hidden="layerType !== selectedCardType" :aria-busy="cardSwitchPhase !== 'idle'"
         @touchstart="startStackDrag" @touchmove="moveStackDrag"
         @touchend="finishStackDrag" @touchcancel="finishStackDrag"
         @mousedown="startStackDrag">
       <PageState skeleton="list"
+        :style="orderDragging ? { overflow: 'visible' } : {}"
         :loading="loading"
         :error="error"
         :empty="!loading && !cardsByType[layerType].length"
@@ -944,10 +955,10 @@ async function removeTag(value: any) {
         @retry="load"
         >
 <template #loading><view class="card-grid ui-gap-md" :class="{ 'card-stack': viewMode === 'stack' }"><view :style="[appGridItem(1, 'section', viewMode === 'stack' ? [] : [[600, 2]], false), viewMode === 'stack' && n < 4 ? stackFoldedStyle(layerType) : {}]" v-for="n in 4" :key="n" class="card ui-gap-sm" :class="[themeClass('card'), { 'card-stack-folded': viewMode === 'stack' && n < 4 }]"><view class="card-face ui-pad-card ui-gap-sm"><CardFaceLoading :layer="n - 1" /></view></view></view></template>
-<view class="card-grid ui-gap-md" :class="{ 'card-stack': viewMode === 'stack', 'card-stack-rebounding': stackRebounding }"
+<view class="card-grid ui-gap-md" :class="{ 'card-stack': viewMode === 'stack', 'card-stack-rebounding': stackRebounding, 'card-order-overflow': !!orderDragging }"
           ><view
             v-for="(card, cardIndex) in cardsByType[layerType]"
-            :key="card.id"
+            :key="cardRenderKey(card.id, cardIndex)"
             class="card card-sort-item ui-gap-sm"
             :data-card-id="card.id"
             :aria-busy="orderSaving === card.id"
@@ -1554,6 +1565,8 @@ grid-template-columns: repeat(2, minmax(0, 1fr));
 .card-browser-viewport { position: relative; width: 100%; }
 .card-browser-viewport-stack { max-width: 420px; margin-left: auto; margin-right: auto; }
 .card-browser-viewport-moving { overflow: hidden; }
+// 微信 view 默认裁切；排序中的卡片允许超出卡包原有高度，仍由页面滚动视口限界。
+.card-order-overflow { overflow: visible; }
 .card-layer { position: relative; }
 .card-layer-positioned { position: absolute; top: 0; left: 0; }
 .card-browser { width: 100%; transform-origin: center top; }

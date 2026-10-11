@@ -1,5 +1,5 @@
 import type { Ref } from 'vue'
-import { getCurrentInstance, onUnmounted, ref } from 'vue'
+import { getCurrentInstance, nextTick, onUnmounted, ref } from 'vue'
 import { applyCardOrder, previewCardMove } from './card-order.ts'
 import spacing from '../styles/spacing.json'
 
@@ -38,11 +38,13 @@ export function useCardOrder(options: {
     if (!sameRows()) { cancel(); return }
     const delta = actualScroll - startScroll
     offsetX.value = lastX - startX; offsetY.value = lastY - startY + delta
+    // 用卡片移动后的起点对齐原始槽位，避免从卡面下半部抓取时，
+    // 卡片已移到上一位，手指却仍落在原槽位内，导致不能换序或跳位。
+    const left = rects[from].left + offsetX.value
+    const top = rects[from].top + offsetY.value
     let nearest = from, distance = Infinity
     rects.forEach((rect, index) => {
-      const x = Math.max(rect.left, Math.min(rect.right, lastX))
-      const y = Math.max(rect.top - delta, Math.min(rect.bottom - delta, lastY))
-      const d = (lastX - x) ** 2 + (lastY - y) ** 2
+      const d = (left - rect.left) ** 2 + (top - rect.top) ** 2
       if (d < distance) { distance = d; nearest = index }
     })
     target.value = ids[nearest] || ''; after.value = nearest > from
@@ -108,13 +110,19 @@ export function useCardOrder(options: {
       uni.showToast({ title: error.message || '排序保存失败，请重试', icon: 'none' })
     } finally { if (version === requestRevision) saving.value = '' }
   }
-  function finish(event) {
+  async function finish(event) {
     if (!dragging.value) { cancel(); return }
     event?.preventDefault?.(); event?.stopPropagation?.()
     const move = { id: dragging.value, targetId: target.value, after: after.value }
     const valid = sameRows()
     cancel()
-    if (valid && move.targetId) void save(move)
+    const version = revision
+    // 微信的 keyed 列表按索引做差量更新；同一帧清除拖拽样式并换序，
+    // 移动后的节点可能保留旧 transform / 高亮。先等复位落到视图，再换序。
+    // 实例 $nextTick 在微信端等待 setData 回调，普通 nextTick 只等逻辑层调度。
+    if (instance?.proxy) await instance.proxy.$nextTick()
+    else await nextTick()
+    if (valid && version === revision && sameRows() && move.targetId) void save(move)
   }
   function keyboard(id, delta) {
     const rows = options.visible(), index = rows.findIndex(row => row.id === id), next = rows[index + delta]

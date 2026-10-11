@@ -36,6 +36,18 @@ async function setup(page, mode) {
 async function touch(cdp, type, x = 0, y = 0) {
   await cdp.send('Input.dispatchTouchEvent', { type, touchPoints: ['touchEnd', 'touchCancel'].includes(type) ? [] : [{ x, y, id: 1 }] });
 }
+async function expectStackGeometry(page) {
+  const items = page.locator('.card-sort-item');
+  const folded = await items.first().boundingBox();
+  const face = await items.last().locator('.card-face').boundingBox();
+  for (let index = 0; index < await items.count() - 1; index++) {
+    await expect.poll(async () => (await items.nth(index).boundingBox()).height).toBeCloseTo(folded.height, 0);
+  }
+  await expect.poll(async () => (await items.last().boundingBox()).height).toBeCloseTo(face.height, 0);
+  const viewport = await page.locator('.card-browser-viewport').boundingBox();
+  const last = await items.last().boundingBox();
+  expect(last.y + last.height).toBeLessThanOrEqual(viewport.y + viewport.height + 1);
+}
 async function drag(page, cancel = false) {
   const cdp = await page.context().newCDPSession(page);
   const items = page.locator('.card-sort-item');
@@ -49,6 +61,100 @@ async function drag(page, cancel = false) {
   await touch(cdp, cancel ? 'touchCancel' : 'touchEnd');
   await cdp.detach();
 }
+for (const width of [390, 768, 1440]) for (const theme of ['light', 'dark']) test(`堆叠卡片从下半部向上拖动一位，落点与卡面位置一致 ${width} ${theme}`, async ({ page }) => {
+  await page.setViewportSize({ width, height: 900 });
+  await page.emulateMedia({ colorScheme: theme });
+  const state = await setup(page, 'stack');
+  state.rows = state.rows.slice(0, 3).map(row => ({ ...row, coverFileIds: ['demo-cover'] }));
+  await page.goto('/#/pages/finance/cards');
+  const items = page.locator('.card-sort-item');
+  await expect(items).toHaveCount(3);
+  const previous = await items.nth(1).boundingBox();
+  const last = await items.nth(2).boundingBox();
+  const face = await items.nth(2).locator('.card-face').boundingBox();
+  const cdp = await page.context().newCDPSession(page);
+  const x = face.x + 60, y = face.y + face.height - 30;
+  await touch(cdp, 'touchStart', x, y);
+  await page.waitForTimeout(380);
+  await expect(page.locator('.card-order-dragging')).toHaveCount(1);
+  for (let step = 1; step <= 8; step++) {
+    await touch(cdp, 'touchMove', x, y - (last.y - previous.y) * step / 8);
+  }
+  await expect(items.nth(1)).toHaveClass(/card-order-before/);
+  await page.screenshot({ path: `artifacts/card-order/stack-${width}-${theme}-dragging.png` });
+  await touch(cdp, 'touchEnd');
+  await expect.poll(() => state.calls.length).toBe(1);
+  expect(state.calls[0]).toEqual({ id: '9007199254740995', targetId: '9007199254740994', after: false });
+  await expect(items.nth(1)).toHaveAttribute('data-card-id', '9007199254740995');
+  await expect(page.locator('.card-sort-item[aria-busy="true"]')).toHaveCount(0);
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await expectStackGeometry(page);
+  await page.screenshot({ path: `artifacts/card-order/stack-${width}-${theme}-reordered.png` });
+  await page.reload();
+  await expect(items.nth(1)).toHaveAttribute('data-card-id', '9007199254740995');
+  await expectStackGeometry(page);
+  await cdp.detach();
+});
+
+test('堆叠卡包滚动后向上排序，抓取位置不改变落点', async ({ page }) => {
+  const state = await setup(page, 'stack');
+  state.rows = state.rows.map(row => ({ ...row, coverFileIds: ['demo-cover'] }));
+  await page.goto('/#/pages/finance/cards');
+  const items = page.locator('.card-sort-item');
+  await expect(items).toHaveCount(8);
+  await items.last().scrollIntoViewIfNeeded();
+  const scroller = page.locator('.mobile-page-scroll .uni-scroll-view').last();
+  await expect.poll(() => scroller.evaluate(node => node.scrollTop)).toBeGreaterThan(100);
+  const previous = await items.nth(6).boundingBox();
+  const last = await items.nth(7).boundingBox();
+  const cdp = await page.context().newCDPSession(page);
+  const x = last.x + 70, y = last.y + last.height - 100;
+  await touch(cdp, 'touchStart', x, y);
+  await page.waitForTimeout(380);
+  await expect(page.locator('.card-order-dragging')).toHaveCount(1);
+  for (let step = 1; step <= 8; step++) {
+    await touch(cdp, 'touchMove', x, y - (last.y - previous.y) * step / 8);
+  }
+  await expect(items.nth(6)).toHaveClass(/card-order-before/);
+  await touch(cdp, 'touchEnd');
+  await expect.poll(() => state.calls.length).toBe(1);
+  expect(state.calls[0]).toEqual({ id: '9007199254741000', targetId: '9007199254740999', after: false });
+  await expect(items.nth(6)).toHaveAttribute('data-card-id', '9007199254741000');
+  await expect(page.locator('.card-sort-item[aria-busy="true"]')).toHaveCount(0);
+  await expect(items.locator('[aria-expanded="true"]')).toHaveCount(0);
+  await cdp.detach();
+});
+for (const width of [390, 768, 1440]) for (const theme of ['light', 'dark']) test(`拖动卡片超出卡包底部仍完整可见 ${width} ${theme}`, async ({ page }) => {
+  await page.setViewportSize({ width, height: 900 });
+  await page.emulateMedia({ colorScheme: theme });
+  const state = await setup(page, 'stack');
+  state.rows = state.rows.slice(0, 3).map(row => ({ ...row, coverFileIds: ['demo-cover'] }));
+  await page.goto('/#/pages/finance/cards');
+  const items = page.locator('.card-sort-item');
+  await expect(items).toHaveCount(3);
+  // 模拟微信 view 默认 overflow:hidden，避免只在 H5 的默认 visible 下通过。
+  await page.addStyleTag({ content: ':where(.ui-page-body, .card-browser-viewport, .card-browser, .page-state, .card-grid, .mobile-page-content) { overflow: hidden; }' });
+  const last = await items.last().boundingBox();
+  const viewport = await page.locator('.card-browser-viewport').boundingBox();
+  const cdp = await page.context().newCDPSession(page);
+  const x = last.x + 60, y = last.y + 25;
+  await touch(cdp, 'touchStart', x, y);
+  await page.waitForTimeout(380);
+  await expect(page.locator('.card-order-dragging')).toHaveCount(1);
+  await touch(cdp, 'touchMove', x, y + 80);
+  const moved = await items.last().boundingBox();
+  expect(moved.y + moved.height).toBeGreaterThan(viewport.y + viewport.height + 60);
+  // 检查实际绘制/命中区域，boundingBox 本身无法发现祖先裁切。
+  await expect.poll(() => page.evaluate(({ x, y }) => document.elementFromPoint(x, y)?.closest('.card-sort-item')?.getAttribute('data-card-id'),
+    { x: moved.x + moved.width / 2, y: moved.y + moved.height - 10 })).toBe(state.rows[2].id);
+  await page.screenshot({ path: `artifacts/card-order/overflow-${width}-${theme}.png` });
+  await touch(cdp, 'touchCancel');
+  await expect(page.locator('.card-order-dragging')).toHaveCount(0);
+  await expect(page.locator('.mobile-page-content-dragging')).toHaveCount(0);
+  expect(state.calls).toHaveLength(0);
+  await expectStackGeometry(page);
+  await cdp.detach();
+});
 for (const mode of ['stack', 'grid', 'covers']) test(`长按排序保存取消与回滚 ${mode}`, async ({ page }) => {
   const errors = []; page.on('pageerror', error => errors.push(error.message));
   const state = await setup(page, mode);
