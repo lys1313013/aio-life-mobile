@@ -26,6 +26,7 @@ const props = withDefaults(defineProps<{
   busy?: boolean
   showClose?: boolean
   bare?: boolean
+  fill?: boolean
   contentKey?: string
 }>(), { showClose: false, bare: false })
 const emit = defineEmits(['close', 'reachbottom'])
@@ -38,18 +39,15 @@ const instance = getCurrentInstance()
 const contentHeight = ref(props.bare ? spacing.controlMin : 160)
 const windowHeight = ref(uni.getWindowInfo().windowHeight)
 const keyboardHeight = ref(0)
+const viewportTop = ref(0)
 // #ifdef APP
 let keyboardListenerId: number | null = null
 // #endif
 const safeTop = ref(uni.getWindowInfo().safeAreaInsets?.top || 0)
 const safeBottom = ref(uni.getWindowInfo().safeAreaInsets?.bottom || 0)
 const verticalInset = computed(() => props.verticalInset ?? spacing.overlayBlock)
-const height = computed(() =>
-  Math.min(
-    contentHeight.value,
-    modalAvailableHeight(windowHeight.value, keyboardHeight.value, safeTop.value, safeBottom.value, verticalInset.value),
-  ),
-)
+const availableHeight = computed(() => modalAvailableHeight(windowHeight.value, keyboardHeight.value, safeTop.value, safeBottom.value, verticalInset.value))
+const height = computed(() => props.fill ? availableHeight.value : Math.min(contentHeight.value, availableHeight.value))
 let active = true
 let measuring = false
 let pending = false
@@ -57,7 +55,7 @@ let pending = false
 let contentObserver: ResizeObserver | null = null
 // #endif
 async function measure() {
-  if (!active) return
+  if (!active || props.fill) return
   if (measuring) {
     pending = true
     return
@@ -84,6 +82,13 @@ function resize() {
   windowHeight.value = info.windowHeight
   safeTop.value = info.safeAreaInsets?.top || 0
   safeBottom.value = info.safeAreaInsets?.bottom || 0
+  // H5 软键盘可能只缩小 visualViewport，不触发 uni 的窗口高度变化。
+  // #ifdef WEB
+  if (props.fill && window.visualViewport) {
+    windowHeight.value = window.visualViewport.height
+    viewportTop.value = window.visualViewport.offsetTop
+  }
+  // #endif
   measure()
 }
 function keyboard(event) {
@@ -91,9 +96,14 @@ function keyboard(event) {
   resize()
 }
 onMounted(() => {
+  resize()
   measure()
   // Vapor 的插槽内容更新不一定触发容器的 onUpdated。
   // #ifdef WEB
+  if (props.fill) {
+    window.visualViewport?.addEventListener('resize', resize)
+    window.visualViewport?.addEventListener('scroll', resize)
+  }
   nextTick(() => {
     if (!active) return
     const content = instance?.proxy?.$el?.querySelector?.('.modal-content')
@@ -116,6 +126,8 @@ watch(() => props.contentKey, measure, { flush: 'post' })
 onUnmounted(() => {
   active = false
   // #ifdef WEB
+  window.visualViewport?.removeEventListener('resize', resize)
+  window.visualViewport?.removeEventListener('scroll', resize)
   contentObserver?.disconnect()
   contentObserver = null
   // #endif
@@ -134,7 +146,7 @@ onUnmounted(() => {
   <!-- #ifdef MP-WEIXIN -->
   <root-portal :enable="true">
   <!-- #endif -->
-  <view class="modal-mask ui-modal-mask" :class="[themeClass('modal-mask'), { 'modal-mask-loading': bare }, themeClass({ 'modal-mask-loading': bare })]" :style="{ paddingTop: (verticalInset + safeTop) + 'px', paddingBottom: (verticalInset + safeBottom + keyboardHeight) + 'px' }" @click="!busy && emit('close')">
+  <view class="modal-mask ui-modal-mask" :class="[themeClass('modal-mask'), { 'modal-mask-loading': bare }, themeClass({ 'modal-mask-loading': bare })]" :style="{ paddingTop: (verticalInset + safeTop) + 'px', paddingBottom: (verticalInset + safeBottom + keyboardHeight) + 'px', ...(fill ? { top: viewportTop + 'px', height: windowHeight + 'px', bottom: 'auto' } : {}) }" @click="!busy && emit('close')">
     <!-- 模糊层独立于内容，避免改变内嵌确认框 / picker 的 fixed 定位参照。 -->
     <!-- #ifdef WEB || MP-WEIXIN -->
     <view v-if="!bare" class="modal-backdrop" aria-hidden="true" />
@@ -150,7 +162,11 @@ onUnmounted(() => {
       <!-- #ifdef WEB || MP-WEIXIN -->
       <view v-if="!bare" class="modal-surface" :class="themeClass('modal-surface')" aria-hidden="true" />
       <!-- #endif -->
-      <scroll-view
+      <view v-if="fill" class="modal-fill" :style="{ height: height + 'px' }">
+        <view class="modal-fill-body ui-modal-content"><slot /></view>
+        <view v-if="$slots.footer" class="modal-fill-footer"><slot name="footer" /></view>
+      </view>
+      <scroll-view v-else
         @scrolltolower="emit('reachbottom')"
         direction="vertical"
         :scroll-y="true"
@@ -200,6 +216,9 @@ onUnmounted(() => {
 }
 .modal-close { align-items: flex-end;  }
 .modal-content-bare { padding: 0; }
+.modal-fill { display: flex; flex-direction: column; min-height: 0; }
+.modal-fill-body { display: flex; flex-direction: column; flex: 1; min-height: 0; overflow: hidden; }
+.modal-fill-footer { flex-shrink: 0; padding: 0 $space-modal $space-modal; }
 .modal-mask-dark {
   background-color: rgba(0, 0, 0, 0.48);
 }

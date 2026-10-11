@@ -2,8 +2,8 @@
 import { usePageRefresh } from '../../services/page-refresh.ts'
 import { useWindowResize } from '../../services/window-resize.ts'
 useWindowResize(resizeNotes)
-import FormActions from '../../components/FormActions.uvue';
-import { isRequired, missingRequired } from '../../services/form-required.ts';
+import ThoughtForm from '../../components/ThoughtForm.uvue';
+import { missingRequired } from '../../services/form-required.ts';
 import ContentSkeleton from '../../components/ContentSkeleton.uvue';
 import { computed, onUnmounted, ref } from 'vue';
 import { onLoad, onShow } from '@dcloudio/uni-app';
@@ -17,6 +17,7 @@ import ConfirmAction from '../../components/ConfirmAction.uvue';
 import PageState from '../../components/PageState.uvue';
 import LoadMore from '../../components/LoadMore.uvue';
 import AdaptiveModal from '../../components/AdaptiveModal.uvue';
+import NoteEditor from './NoteEditor.uvue';
 import { createRecordScope } from '../../services/records/page-scope.ts';
 import { isDark } from '../../services/theme.ts';
 import { fetchNotes, saveNote, deleteNote, fetchNoteById } from './services/notes.ts';
@@ -239,54 +240,17 @@ function displayDate(value) {
           </view>
         </view></view></view> </PageState
       ><LoadMore :error="moreError" :loading="loading" :has-more="!pageEnded && rows.length < total" @load="load(false, true)" />
-      <AdaptiveModal v-if="form" :label="'编辑' + title" :busy="saving" @close="form = null">
-        <FormField :required="isRequired(kind === 'memo' ? 'memo' : 'thought', 'title')" v-if="kind === 'memo'" label="标题" v-model="form.title" /><FormField :required="isRequired(kind === 'memo' ? 'memo' : 'thought', 'content')"
-          label="内容"
-          kind="textarea"
-          v-model="form.content"
-        />
-        <template v-if="kind === 'think'"
-          ><view v-for="(event, index) in form.events" :key="event.id || index" class="event-item ui-section ui-gap-sm"
-            ><FormField
-              :label="'关联事件 ' + (index + 1)"
-              kind="textarea"
-              v-model="event.content" /><MobileButton
-              label="移除此事件"
-              icon="ant-design:close-outlined"
-              variant="quiet"
-              @click="form.events.splice(index, 1)" /></view
-          ><MobileButton
-            label="新增关联事件"
-            icon="ant-design:plus-outlined"
-            variant="ghost"
-            @click="form.events.push({ content: '' })"
-        /></template>
-        <view class="toolbar ui-row"
-          ><MobileButton
-            v-if="kind === 'memo' || form.id"
-            :label="form.hiddenContent ? '显示内容' : '隐藏内容'"
-            :icon="form.hiddenContent ? 'ant-design:eye-outlined' : 'ant-design:eye-invisible-outlined'"
-            variant="quiet"
-            @click="form.hiddenContent = !form.hiddenContent" /><MobileButton
-            v-if="kind === 'think'"
-            :label="form.isPinned === 1 ? '取消看板展示' : '展示到看板'"
-            :icon="form.isPinned === 1 ? 'ant-design:star-filled' : 'ant-design:star-outlined'"
-            variant="ghost"
-            @click="form.isPinned = form.isPinned === 1 ? 0 : 1"
-        /></view>
-        <text v-if="formError" class="note-error ui-section ui-type-body">{{ formError }}</text
-        ><FormActions>
-          <template #secondary><ConfirmAction v-if="form.id" :label="'删除' + title" :action="() => remove(form)" /></template>
-          <MobileButton
-            label="取消"
-            variant="quiet"
-            :disabled="saving"
-            @click="form = null" /><MobileButton
-            :label="created ? '重新读取' : '保存'"
-            :loading="saving"
-            @click="save"
-        />
-        </FormActions>
+      <NoteEditor v-if="form && kind === 'memo'" :form="form" :saving="saving" :created="created" :error="formError" :remove="async () => { await remove(form); form = null; }" @save="save" @close="form = null" />
+      <AdaptiveModal v-if="form && kind === 'think'" :label="form.id ? '编辑闪念' : '新增闪念'" :max-width="560" :busy="saving" :content-key="JSON.stringify([form.events.length, formError])" @close="form = null">
+        <ThoughtForm :form="form" :editing="!!form.id" :disabled="saving || created" :error="formError">
+          <template #secondary>
+            <ConfirmAction v-if="form.id" label="删除闪念" :action="async () => { await remove(form); form = null; }">
+              <template #default="{ open, busy: deleting }"><MobileButton label="删除闪念" icon="ant-design:delete-outlined" variant="ghost" :disabled="saving || created" :loading="deleting" @click="open" /></template>
+            </ConfirmAction>
+          </template>
+          <MobileButton label="取消" variant="quiet" :disabled="saving" @click="form = null" />
+          <MobileButton :label="created && !saving ? '重新读取' : '保存'" :loading="saving" @click="save" />
+        </ThoughtForm>
       </AdaptiveModal> </view>
     <template #fixed><FloatingActionButton :label="'新增' + title" @click="open()" /></template>
   </MobilePage>
@@ -304,10 +268,6 @@ function displayDate(value) {
 }
 .notes-page-dark {
   color: #eeeeef;
-}
-.toolbar {
-  flex-direction: row;
-  align-items: center;
 }
 .notes-grid { display: flex; flex-direction: row; flex-wrap: wrap; gap: $space-section; align-items: flex-start; }
 .note-card { width: 100%; min-width: 0; box-sizing: border-box; }
@@ -412,9 +372,6 @@ text-overflow: ellipsis;
   color: $text-secondary-light;
   @include type-style('label');
   flex: 1;
-}
-.note-error {
-  color: #e05252;
 }
 .note-date { flex: 1; min-width: 0; color: $text-secondary-light; @include type-style('badge');  }
 .note-event-count { flex-direction: row; align-items: center; gap: $space-micro; color: $text-secondary-light; @include type-style('badge'); }

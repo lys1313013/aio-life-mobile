@@ -1,0 +1,130 @@
+<script setup lang="ts">
+import { computed, getCurrentInstance, nextTick, onMounted, onUpdated, ref } from 'vue';
+import AdaptiveModal from '../../components/AdaptiveModal.uvue';
+import ConfirmAction from '../../components/ConfirmAction.uvue';
+import FormActions from '../../components/FormActions.uvue';
+import MobileButton from '../../components/MobileButton.uvue';
+import { isDark } from '../../services/theme.ts';
+import { useWindowResize } from '../../services/window-resize.ts';
+import spacing from '../../styles/spacing.json';
+
+const props = defineProps<{
+  form: any;
+  saving: boolean;
+  created: boolean;
+  error: string;
+  remove: () => Promise<void>;
+}>();
+const emit = defineEmits(['save', 'close']);
+const removing = ref(false);
+const busy = computed(() => props.saving || removing.value);
+async function removeNote() {
+  if (busy.value) return;
+  removing.value = true;
+  try { await props.remove(); } finally { removing.value = false; }
+}
+const width = ref(uni.getWindowInfo().windowWidth);
+useWindowResize(() => { width.value = uni.getWindowInfo().windowWidth; });
+// 窄屏取消按钮采用公共 compact 变体，给两枚辅助图标保留完整触控区。
+const compactActions = computed(() => width.value < 360);
+const instance = getCurrentInstance();
+function syncWebLabels() {
+  // #ifdef WEB
+  nextTick(() => {
+    const root = instance?.proxy?.$el;
+    for (const [selector, label] of [['input', '标题'], ['textarea', '内容']]) {
+      const input = root?.querySelector?.(selector);
+      input?.setAttribute('aria-label', label);
+      input?.setAttribute('aria-required', 'true');
+    }
+  });
+  // #endif
+}
+onMounted(syncWebLabels);
+onUpdated(syncWebLabels);
+</script>
+
+<template>
+  <AdaptiveModal label="编辑笔记" fill :max-width="spacing.contentMax" :vertical-inset="spacing.page" :busy="busy" @close="emit('close')">
+    <input
+      v-model="form.title"
+      class="note-editor-title"
+      :class="{ 'note-editor-input-dark': isDark }"
+      placeholder="标题"
+      aria-label="标题"
+      :aria-required="true"
+      :maxlength="-1"
+      :disabled="busy"
+      :adjust-position="false"
+    />
+    <textarea
+      v-model="form.content"
+      class="note-editor-content"
+      :class="{ 'note-editor-input-dark': isDark }"
+      placeholder="记下你的想法…"
+      aria-label="内容"
+      :aria-required="true"
+      :maxlength="-1"
+      :disabled="busy"
+      :adjust-position="false"
+      :auto-height="false"
+    />
+    <template #footer>
+      <text v-if="error" class="note-editor-error" role="alert">{{ error }}</text>
+      <FormActions>
+        <template #secondary>
+          <MobileButton
+            :label="form.hiddenContent ? '在列表中显示正文' : '在列表中隐藏正文'"
+            :icon="form.hiddenContent ? 'ant-design:eye-outlined' : 'ant-design:eye-invisible-outlined'"
+            :aria-pressed="form.hiddenContent"
+            variant="ghost"
+            :disabled="busy"
+            @click="form.hiddenContent = !form.hiddenContent"
+          />
+          <ConfirmAction v-if="form.id" label="删除笔记" :action="removeNote">
+            <template #default="{ open, busy: deleting }"><MobileButton label="删除笔记" icon="ant-design:delete-outlined" variant="ghost" :disabled="saving" :loading="deleting" @click="open" /></template>
+          </ConfirmAction>
+        </template>
+        <MobileButton label="取消" variant="ghost" :compact="compactActions" :disabled="busy" @click="emit('close')" />
+        <MobileButton :label="created ? '重新读取' : '保存'" :compact="compactActions" :loading="saving" :disabled="removing" @click="emit('save')" />
+      </FormActions>
+    </template>
+  </AdaptiveModal>
+</template>
+
+<style scoped lang="scss">
+@use '../../styles/typography' as *;
+@use '../../styles/spacing-tokens' as *;
+.note-editor-title {
+  @include type-style('heading');
+  flex-shrink: 0;
+  width: 100%;
+  min-height: $space-controlMin;
+  margin-bottom: $space-section;
+  padding: 0;
+  border: 0;
+  background-color: transparent;
+  color: #27272a;
+}
+.note-editor-content {
+  @include type-style('prose');
+  flex: 1;
+  min-height: 0;
+  height: 0;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background-color: transparent;
+  color: #27272a;
+}
+.note-editor-input-dark { color: #eeeeef; }
+/* #ifdef WEB */
+.note-editor-title, .note-editor-content { color-scheme: light; }
+.note-editor-input-dark { color-scheme: dark; }
+/* #endif */
+.note-editor-error {
+  @include type-style('label');
+  color: #e05252;
+  margin-bottom: $space-inline;
+}
+</style>
