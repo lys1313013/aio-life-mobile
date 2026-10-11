@@ -112,10 +112,11 @@ const timeDonutLabels = computed(() => summaryDonutLabels(time.value.groups))
 const cardHeightLimit = computed(() => viewportWidth.value >= 1024 ? 280 : viewportWidth.value >= 640 ? 250 : 240)
 const multiColumnCardHeight = computed(() => viewportWidth.value >= 768 ? cardHeightLimit.value : undefined)
 const thoughtRowHeight = spacing.compactRowMin
+const commitRowHeight = spacing.controlMin + spacing.section
 const quickRowHeight = computed(() => quickIconSize.value + typography.roles.caption.lineHeight + spacing.detail + spacing.inline * 2
   + (links.value.some(link => !nativeDestination(link.path)) ? typography.roles['chart-label'].lineHeight + spacing.micro : 0))
-function sectionInset(section: string) {
-  return spacing.controlMin + (section === 'exercise' ? 0 : spacing.fieldLabel) + spacing.card + spacing.hairline * 2
+function sectionInset(_section: string) {
+  return spacing.controlMin + spacing.card + spacing.hairline * 2
 }
 function sectionHeight(section: string) {
   if (multiColumnCardHeight.value != null) return multiColumnCardHeight.value
@@ -132,7 +133,7 @@ function sectionHeight(section: string) {
     return Math.min(limit, inset + body)
   }
   if (section === 'exercise') return Math.min(limit, inset + Math.max(1, states.exercise.loaded ? exercise.value.days.reduce((count, day) => count + day.items.length, 0) : 3) * 40)
-  if (section === 'commits') return Math.min(limit, inset + Math.max(1, states.commits.loaded ? commits.value.length : 2) * 68)
+  if (section === 'commits') return Math.min(limit, inset + Math.max(1, states.commits.loaded ? commits.value.length : 2) * commitRowHeight)
   return limit
 }
 // 图表明细沿用 Web 的紧凑五行布局，按内容区高度均分，不撑高卡片。
@@ -200,7 +201,7 @@ function finishCardSwipe(key: string, event) {
   const inset = sectionInset(key)
   const rowsHeight = key === 'exercise'
     ? exercise.value.days.reduce((count, day) => count + day.items.length, 0) * 40
-    : commits.value.length * 68
+    : commits.value.length * commitRowHeight
   // 内容不足一屏时没有 scrolltolower，仍支持在卡片上向上滑动加载。
   if (distance > 40 && rowsHeight <= sectionHeight(key) - inset) maybeLoadMore(key)
 }
@@ -996,7 +997,7 @@ function trendLines(points) {
               :locked="states.commits.locked" :refresh-disabled="orderDisabled"
               navigable :title-label="githubProfile ? '访问 GitHub 主页' : '查看 GitHub'" @navigate="openGithub"
               @refresh="loadSection('commits')"
-              ><template #loading><HomeListSkeleton label="正在加载最近提交" :rows="2" :row-height="68" /></template><view v-if="commits.length === 0" class="empty-state ui-pad-card"
+              ><template #loading><HomeListSkeleton label="正在加载最近提交" :rows="2" :row-height="commitRowHeight" /></template><view v-if="commits.length === 0" class="empty-state ui-pad-card"
                 ><text class="empty-label" :class="themeClass('empty-label')">暂无最近提交</text></view
               ><scroll-view v-else scroll-y :show-scrollbar="false" class="list-scroll commits-scroll" :lower-threshold="40" @scrolltolower="maybeLoadMore('commits')" @touchstart="startCardSwipe('commits', $event)" @touchend="finishCardSwipe('commits', $event)"
                 ><view
@@ -1017,7 +1018,7 @@ function trendLines(points) {
               ></DashboardSection
             ></view
           >
-        <view v-if="section.cardKey === 'section.weread'" class="section-content ui-pad-xs"><WereadRecentCard :height="multiColumnCardHeight" :max-height="cardHeightLimit" @scrolling="cardOrder.cancel()" :sorting="cardOrder.dragging.value === section.cardKey" :ref="el => { businessCardRefs[section.cardKey] = el }" :active="businessActive" :preparing="loading && !businessActive" @visibility="businessVisibility[section.cardKey] = $event" /></view>
+        <view v-if="section.cardKey === 'section.weread'" class="section-content ui-pad-xs"><WereadRecentCard :height="multiColumnCardHeight" :max-height="cardHeightLimit" :tablet="viewportWidth >= 768 && viewportWidth < 1024" @scrolling="cardOrder.cancel()" :sorting="cardOrder.dragging.value === section.cardKey" :ref="el => { businessCardRefs[section.cardKey] = el }" :active="businessActive" :preparing="loading && !businessActive" @visibility="businessVisibility[section.cardKey] = $event" /></view>
         <BusinessCards v-if="['section.goal', 'section.anniversary', 'section.reading', 'section.membership', 'section.movie'].includes(section.cardKey)" :height="multiColumnCardHeight" :max-height="cardHeightLimit" :ref="el => { businessCardRefs[section.cardKey] = el }" :only="section.cardKey.slice(8)" :refresh-disabled="orderDisabled" embedded @visibility="businessVisibility[section.cardKey] = $event" :active="businessActive" :preparing="loading && !businessActive" @sorting="businessSorting = $event" />
         </HomeCardSortCell></view>
       </view></scroll-view
@@ -1240,7 +1241,7 @@ max-lines: 1;
 .time-loading {
   flex: 1;
   min-height: 0;
-  padding: $space-fieldLabel $space-card $space-card;
+  padding: 0 $space-card $space-card;
 }
 /* 占位直接复用时间轴、圆环和记录布局，避免加载结束时结构跳变。 */
 .time-skeleton { animation: time-skeleton-breathe 1.8s ease-in-out infinite; }
@@ -1423,7 +1424,7 @@ color: inherit;
   flex-direction: row;
   flex-wrap: wrap;
 }
-.quick-loading { flex: 1; min-height: 0; padding: $space-fieldLabel $space-card $space-card; overflow: hidden; }
+.quick-loading { flex: 1; min-height: 0; padding: 0 $space-card $space-card; overflow: hidden; }
 .quick-skeleton-label { width: 60%; height: type-line('caption'); margin-top: $space-detail; }
 .quick-link {
   display: flex;
@@ -1457,7 +1458,7 @@ color: inherit;
   min-height: 0;
   height: 100%;
 }
-.watched-loading { flex: 1; min-height: 0; padding: $space-fieldLabel $space-card $space-card; }
+.watched-loading { flex: 1; min-height: 0; padding: 0 $space-card $space-card; }
 .watched-loading-auto { flex: none; }
 .watched-skeleton-row { min-height: 56px; box-sizing: border-box; flex-direction: row; align-items: center; gap: $space-inline; padding: $space-inline; }
 .watched-skeleton-check { width: 20px; height: 20px; border-radius: 50%; }
@@ -1550,8 +1551,8 @@ align-items: flex-end;
 .pagination-retry { display: flex; align-items: center; justify-content: center; width: 44px; height: 44px; margin: 0; padding: 0; border: 0; background-color: transparent; }
 .commit-row {
   box-sizing: border-box;
-  min-height: 68px;
-  padding: $space-inline $space-inline;
+  min-height: $space-controlMin + $space-section;
+  padding: $space-detail $space-inline;
 }
 .commit-top {
   flex-direction: row;

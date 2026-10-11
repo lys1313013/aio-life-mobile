@@ -11,6 +11,7 @@ import MobilePage from '../../components/MobilePage.uvue';
 import PageHeader from '../../components/PageHeader.uvue';
 import MobileButton from '../../components/MobileButton.uvue';
 import FormField from '../../components/FormField.uvue';
+import FormActions from '../../components/FormActions.uvue';
 import PageState from '../../components/PageState.uvue';
 import ConfirmAction from '../../components/ConfirmAction.uvue';
 import AdaptiveModal from '../../components/AdaptiveModal.uvue';
@@ -40,10 +41,9 @@ const connection = ref<any>({ connected: false }),
   syncing = ref(false),
   error = ref(''),
   tab = ref('阅读看板'),
-  mode = ref('年'),
+  mode = ref('周'),
   date = ref(dateLabel(new Date())),
   statsLoading = ref(false),
-  settings = ref(false),
   keyInput = ref(''),
   saving = ref(false),
   settingsError = ref(''),
@@ -131,11 +131,11 @@ let generation = 0,
   statsRevision = 0,
   detailRevision = 0,
   notesRevision = 0,
-  appliedMode = '年',
+  appliedMode = '周',
   appliedDate = date.value;
 const scope = createRecordScope((clear) => {
-  settings.value = false;
   keyInput.value = '';
+  settingsError.value = '';
   detail.value = null;
   detailRevision++;
   notesRevision++;
@@ -172,14 +172,25 @@ const books = computed(() =>
         : (a, b) => (b.readUpdateTime || 0) - (a.readUpdateTime || 0),
     ),
 );
-const trend = computed(() =>
-  Object.entries(stats.value.readTimes || {})
-    .sort((a, b) => Number(a[0]) - Number(b[0]))
-    .map(([time, value]) => ({
-      label: readingPeriod(time),
-      value: Math.round(Number(value) / 60),
-    })),
-);
+const trend = computed(() => {
+  const entries = Object.entries(stats.value.readTimes || {}).sort((a, b) => Number(a[0]) - Number(b[0]));
+  if (mode.value !== '周') return entries.map(([time, value]) => ({
+    label: readingPeriod(time), value: Math.round(Number(value) / 60),
+  }));
+  const [year, month, day] = date.value.split('-').map(Number);
+  const selected = Date.UTC(year, month - 1, day);
+  const monday = selected - ((new Date(selected).getUTCDay() + 6) % 7) * 86400000;
+  const dailySeconds = new Map(entries.map(([time, value]) => [
+    new Date((Number(time) + 8 * 3600) * 1000).toISOString().slice(0, 10), Number(value),
+  ]));
+  return Array.from({ length: 7 }, (_, index) => {
+    const current = new Date(monday + index * 86400000);
+    return {
+      label: current.getUTCMonth() + 1 + '/' + current.getUTCDate(),
+      value: Math.round((dailySeconds.get(current.toISOString().slice(0, 10)) || 0) / 60),
+    };
+  });
+});
 const noteItems = computed(() => {
   if (!notes.value) return [];
   const chapters = new Map((notes.value.marks?.chapters || []).map((c) => [c.chapterUid, c.title]));
@@ -317,7 +328,7 @@ async function saveConnection() {
     detail.value = null;
     selectedBook.value = '';
     keyInput.value = '';
-    settings.value = false;
+    tab.value = '阅读看板';
     saving.value = false;
     await refresh();
   } catch (e) {
@@ -337,8 +348,9 @@ async function disconnect() {
     notes.value = null;
     detail.value = null;
     selectedBook.value = '';
-    settings.value = false;
+    tab.value = '设置';
     keyInput.value = '';
+    settingsError.value = '';
     notesRevision++;
     detailRevision++;
   } finally {
@@ -383,6 +395,13 @@ function showNotes() {
   tab.value = '阅读笔记';
   selectNotebook(id);
 }
+function selectTab(label: string) {
+  if (tab.value === '设置' && label !== '设置') {
+    keyInput.value = '';
+    settingsError.value = '';
+  }
+  tab.value = label;
+}
 function copy(text) {
   copyError.value = '';
   uni.setClipboardData({
@@ -411,21 +430,9 @@ function openLink(url) {
 <template>
   <MobilePage :refreshing="syncing || loading" @refresh="connection.connected ? refresh() : initialize()"
     ><view class="weread-page ui-page-body" :class="{ 'weread-page-dark': isDark }"
-      ><PageHeader title="微信读书" :back="true" @back="uni.navigateBack()" /><view class="ui-toolbar"
-        ><MobileButton
-          label="连接设置"
-          icon="ant-design:setting-outlined"
-          variant="quiet"
-          :disabled="syncing || statsLoading"
-          @click="settings = true"
-        /></view
-      ><PageState skeleton="media" :loading="loading" :error="error" @retry="connection.connected ? refresh() : initialize()"
-        ><MobileButton
-          v-if="!connection.connected"
-          label="连接微信读书"
-          @click="settings = true"
-        /><template v-if="snapshot"
-          ><view class="weread-tabs ui-row ui-section"><button v-for="label in ['阅读看板', '我的书架', '阅读笔记']" :key="label" role="button" class="weread-tab" :class="{ 'weread-tab-dark': isDark, 'weread-tab-active': tab === label }" :aria-pressed="tab === label" @click="tab = label"><text :class="buttonLabelClasses(['weread-tab', { 'weread-tab-dark': isDark, 'weread-tab-active': tab === label }])">{{ label }}</text></button></view><view v-if="tab === '阅读看板'"
+      ><PageHeader title="微信读书" :back="true" @back="uni.navigateBack()" /><PageState skeleton="media" :loading="loading" :error="error" @retry="connection.connected ? refresh() : initialize()"
+        ><template v-if="snapshot"
+          ><view class="weread-tabs ui-row ui-section"><button v-for="label in ['阅读看板', '我的书架', '阅读笔记', '设置']" :key="label" role="button" class="weread-tab" :class="{ 'weread-tab-dark': isDark, 'weread-tab-active': tab === label, 'weread-tab-settings': label === '设置' }" :aria-pressed="tab === label" @click="selectTab(label)"><text :class="buttonLabelClasses(['weread-tab', { 'weread-tab-dark': isDark, 'weread-tab-active': tab === label }])">{{ label }}</text></button></view><view v-if="tab === '阅读看板'"
             ><view class="toolbar dashboard-filters ui-row ui-section"
               ><view class="dashboard-filter"><FormField compact
                 label="周期"
@@ -456,6 +463,10 @@ function openLink(url) {
             ><AioChart
               label="阅读时长趋势"
               kind="bar"
+              :period-controls="mode !== '周'"
+              :hide-period-selector="mode === '周'"
+              hide-values
+              :show-bar-values="mode === '周'"
               :labels="trend.map((item) => item.label)"
               :series="[{ name: '阅读时长', values: trend.map((item) => item.value) }]"
               unit="分钟"
@@ -504,7 +515,7 @@ function openLink(url) {
                 <text class="book-author" :class="{ 'record-secondary-dark': isDark }">{{ book.author || '作者未知' }}</text>
                 <view class="book-meta ui-row"><text class="book-notes" :class="{ 'record-secondary-dark': isDark }">{{ notebookMap.has(book.bookId) ? (notebookMap.get(book.bookId)?.noteCount || 0) + ' 划线 · ' + (notebookMap.get(book.bookId)?.reviewCount || 0) + ' 点评' : '暂无笔记' }}</text><text v-if="notebookMap.get(book.bookId)?.readingProgress != null" class="book-progress">{{ notebookMap.get(book.bookId)?.readingProgress }}%</text></view>
               </view></view></view><text v-if="!books.length" class="secondary" :class="{ 'record-secondary-dark': isDark }">没有匹配的图书</text></view
-          ><view v-else
+          ><view v-else-if="tab === '阅读笔记'"
             ><FormField
               label="笔记本"
               kind="selector"
@@ -542,38 +553,31 @@ function openLink(url) {
               ></PageState
             ><text v-if="copyError" class="error ui-section ui-type-body">{{ copyError }}</text></view
           ></template
-        ></PageState
-      ><AdaptiveModal
-        v-if="settings"
-        label="微信读书连接"
-        :busy="saving || disconnecting"
-        @close="
-          settings = false;
-          keyInput = '';
-        "
-        ><FormField :required="isRequired('weread', 'keyInput')"
+        ><view v-if="tab === '设置' || !connection.connected" class="weread-settings-panel"
+          ><FormField :required="isRequired('weread', 'keyInput')"
           label="微信读书 Key"
           v-model="keyInput"
           :password="true"
-          :disabled="saving || disconnecting" /><text class="secondary"
+          :disabled="saving || disconnecting" /><text class="secondary ui-section"
            :class="{ 'record-secondary-dark': isDark }">凭证保存在账号绑定中，仅用于读取你的微信读书数据。</text
         ><MobileButton
+          class="weread-key-link ui-section"
           label="获取微信读书 Key"
           variant="quiet"
           @click="openLink('https://weread.qq.com/r/weread-skills')" /><text
           v-if="settingsError"
           class="error ui-section ui-type-body"
           >{{ settingsError }}</text
-        ><view class="toolbar ui-row"
-          ><ConfirmAction
+        ><FormActions
+          ><template #secondary><ConfirmAction
             v-if="connection.connected"
             label="断开微信读书"
             message="断开连接并清除保存的 Key？"
-            :action="disconnect" /><MobileButton
+            :action="disconnect" /></template><MobileButton
             label="验证并保存"
             :loading="saving"
             :disabled="disconnecting"
-            @click="saveConnection" /></view></AdaptiveModal
+            @click="saveConnection" /></FormActions></view></PageState
       ><AdaptiveModal
         v-if="detail"
         label="书籍详情"
@@ -661,11 +665,13 @@ function openLink(url) {
 @use '../../styles/spacing-tokens' as *;
 @include type-utilities('body');
 
-.weread-tabs { flex-direction: row; }
+.weread-tabs { flex-direction: row; align-items: center; }
 .weread-tab { flex: 1; margin: 0; padding: 0 $space-inline; min-height: $space-controlMin; border-radius: 0; background-color: transparent; color: $text-secondary-light; @include type-style('body'); }
+.weread-tab-settings { flex: none; width: $space-controlMin; padding: 0; }
 .weread-tab::after { border: 0; }
 .weread-tab-dark { color: $text-secondary-dark; }
 .weread-tab-active { color: #427bea; border-bottom: 2px solid #427bea; }
+.weread-key-link { width: 100%; box-sizing: border-box; }
 .weread-search { flex-direction: row; align-items: center; padding: 0 $space-card; background-color: #fff; border-radius: 10px; }
 .weread-search-dark { background-color: #1c1e22; }
 .weread-search-input { flex: 1; min-width: 0; height: $space-controlMin;

@@ -12,7 +12,7 @@ const props = withDefaults(defineProps<{
   label: string; labels: string[]; series: ChartSeries[]; kind?: string; unit?: string;
   compact?: boolean; periodControls?: boolean; selectable?: boolean;
   hidePeriodSelector?: boolean; hideLegend?: boolean; hideScale?: boolean; hideTitle?: boolean;
-  hideValues?: boolean; showEndValues?: boolean; xLabels?: string[]; loading?: boolean;
+  hideValues?: boolean; showEndValues?: boolean; showBarValues?: boolean; xLabels?: string[]; loading?: boolean;
 }>(), { kind: 'line', unit: '' })
 const selected = ref(0), hidden = ref<string[]>([]), touched = ref(false), width = ref(280)
 const layout = ref<any>({ axisTicks: [], points: [], series: [], left: 0, axisTop: 0 })
@@ -35,7 +35,7 @@ const error = computed(() => {
 const option = computed(() => buildChartOption(props.xLabels ?? props.labels, visible.value, {
   dark: isDark.value, kind: props.kind, selected: selected.value,
   selectionActive: interactive.value && (touched.value || (props.kind === 'bar' && !periodTrend.value)),
-  showScale: showScale.value, width: width.value, roundedBars: periodTrend.value,
+  showScale: showScale.value, width: width.value, roundedBars: periodTrend.value || props.showBarValues,
 }))
 watch(() => props.labels.join('|'), (_, previous) => {
   const oldLabel = previous?.split('|')[selected.value]
@@ -79,10 +79,20 @@ const endLabels = computed(() => {
   for (let i = 1; i < rows.length; i++) rows[i].top = Math.max(rows[i].top, rows[i - 1].top + typography.roles['chart-label'].lineHeight + spacing.micro)
   return rows
 })
+const barLabels = computed(() => {
+  if (!props.showBarValues || props.kind !== 'bar' || props.loading) return []
+  return layout.value.series.flatMap(item => item.points.map((point, index) => {
+    const text = displayNumber(point.value)
+    const labelWidth = Math.min(width.value - layout.value.left, text.length * typography.roles['chart-label'].size)
+    return { key: item.name + index, text, width: labelWidth,
+      left: Math.max(layout.value.left, Math.min(width.value - labelWidth, point.x - labelWidth / 2)),
+      top: Math.max(0, point.y - typography.roles['chart-label'].lineHeight - spacing.detail) }
+  }))
+})
 const tooltipText = computed(() => visible.value
   .map(item => (visible.value.length > 1 ? item.name + ' ' : '') + displayNumber(item.values[selected.value] ?? 0) + props.unit).join('，'))
 const extremeLabels = computed(() => {
-  if (!periodTrend.value || props.loading || !props.labels.length) return []
+  if (!periodTrend.value || props.showBarValues || props.loading || !props.labels.length) return []
   return layout.value.series.flatMap(item => {
     const values = item.points.map(point => point.value)
     if (!values.length) return []
@@ -142,6 +152,8 @@ const extremeLabels = computed(() => {
         <text v-for="item in endLabels" :key="item.name" class="chart-end-label" :class="themeClass('chart-end-label')"
           :style="{ top: item.top + 'px', color: item.color }" :aria-label="item.name + '总金额'">{{ item.text }}</text>
         <text v-for="item in extremeLabels" :key="item.key" class="chart-extreme-label" :class="themeClass('chart-extreme-label')"
+          :style="{ top: item.top + 'px', left: item.left + 'px', width: item.width + 'px' }">{{ item.text }}</text>
+        <text v-for="item in barLabels" :key="item.key" class="chart-extreme-label" :class="themeClass('chart-extreme-label')"
           :style="{ top: item.top + 'px', left: item.left + 'px', width: item.width + 'px' }">{{ item.text }}</text>
         <view v-if="periodTrend && touched && !loading && labels.length" class="chart-tooltip" :class="themeClass('chart-tooltip')" role="tooltip" aria-live="polite">
           <text class="chart-tooltip-text" :class="themeClass('chart-tooltip-text')">{{ tooltipText }}</text>

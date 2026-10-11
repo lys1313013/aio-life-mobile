@@ -256,7 +256,7 @@ test('时迹新增、失败保留、重复提交、编辑保留附属字段、�
   expect(state.creates[1]).toMatchObject({ categoryId: '1', startTime: 600, endTime: 659, date: today });
   expect(state.creates[1]).not.toHaveProperty('id');
   await page.getByRole('button', { name: '编辑记录 晨间运动' }).click();
-  await expect(page.locator('.exercise-picker').getByText('俯卧撑', { exact: true })).toBeVisible();
+  await expect(page.locator('.exercise-tab').getByText('俯卧撑', { exact: true })).toBeVisible();
   await previousMinute(page, '结束时间');
   await expect(page.locator('.compact-time-number').nth(1)).toHaveText('09:58');
   await page.getByRole('button', { name: '保存', exact: true }).click();
@@ -355,7 +355,7 @@ for (const width of [390, 768, 1440]) for (const colorScheme of ['light', 'dark'
     expect(Math.abs(content.height - body.height)).toBeLessThan(2);
     await page.screenshot({ path: `test-results/time-full-${width}-${colorScheme}.png` });
     await page.getByRole('button', { name: '编辑记录 晨间运动' }).click();
-    await expect(page.locator('.exercise-picker').getByText('俯卧撑', { exact: true })).toBeVisible();
+    await expect(page.locator('.exercise-tab').getByText('俯卧撑', { exact: true })).toBeVisible();
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     await page.screenshot({ path: `test-results/time-editor-${width}-${colorScheme}.png` });
     await page.getByRole('button', { name: '选择分类', exact: true }).click();
@@ -537,13 +537,19 @@ for (const width of [390, 768, 1440]) for (const colorScheme of ['light', 'dark'
     await dialog.getByRole('button', { name: '选择分类', exact: true }).click();
     await category.getByRole('button', { name: '运动', exact: true }).click();
     await expect.poll(async () => (await dialog.boundingBox()).height).toBeGreaterThan(simple.height);
-    for (let i = 0; i < 10; i++) await dialog.getByRole('button', { name: '添加运动', exact: true }).click();
+    await dialog.getByRole('button', { name: '添加运动', exact: true }).click();
+    await page.locator('.modal-panel[aria-label="选择运动"]').getByRole('button', { name: '俯卧撑', exact: true }).click();
+    await page.locator('.modal-panel[aria-label="添加一组"] [aria-label="本组次数"] input').fill('12');
+    await page.locator('.modal-panel[aria-label="添加一组"]').getByRole('button', { name: '保存', exact: true }).click();
+    for (let i = 1; i < 16; i++) {
+      await dialog.getByRole('button', { name: '为俯卧撑加一组' }).click();
+      await page.locator('.modal-panel[aria-label="添加一组"]').getByRole('button', { name: '保存', exact: true }).click();
+    }
     const large = await dialog.boundingBox();
     expect(large.height).toBeLessThanOrEqual(820);
     expect(large.y).toBeGreaterThanOrEqual(40);
-    const scroller = dialog.locator('.modal-scroll .uni-scroll-view').last();
-    expect(await scroller.evaluate(el => el.scrollHeight > el.clientHeight)).toBe(true);
     await dialog.getByRole('button', { name: '保存', exact: true }).scrollIntoViewIfNeeded();
+    await expect(dialog.getByRole('button', { name: '保存', exact: true })).toBeVisible();
     await page.screenshot({ path: `artifacts/time-compact/time-long-${width}-${colorScheme}.png` });
     await closeEditor(page);
     await expect(dialog).toHaveCount(0);
@@ -707,12 +713,13 @@ for (const width of [320, 390, 768, 1440]) for (const colorScheme of ['light', '
 }
 
 for (const width of [390, 768, 1440]) for (const colorScheme of ['light', 'dark']) {
-  test(`运动明细紧凑行与增删保存 ${width}px ${colorScheme}`, async ({ page }) => {
+  test(`运动明细按动作分组与增删保存 ${width}px ${colorScheme}`, async ({ page }) => {
     await page.setViewportSize({ width, height: 900 });
     await page.emulateMedia({ colorScheme });
     const exercises = [
-      { exerciseTypeId: '9223372036854775806', exerciseCount: 20, description: '三组' },
-      { exerciseTypeId: '9223372036854775802', exerciseCount: 10, description: '两组' },
+      { exerciseTypeId: '9223372036854775806', exerciseCount: 20, description: '第一组备注' },
+      { exerciseTypeId: '9223372036854775806', exerciseCount: 12, description: '第二组备注' },
+      { exerciseTypeId: '9223372036854775802', exerciseCount: 10, description: '其他动作备注' },
     ];
     const state = await setup(page, {
       categories: categoryPalette,
@@ -721,43 +728,78 @@ for (const width of [390, 768, 1440]) for (const colorScheme of ['light', 'dark'
     });
     await page.getByRole('button', { name: '编辑记录 晨间运动' }).click();
     const dialog = page.locator('.modal-panel[aria-label="编辑时迹"]');
-    await expect(dialog.locator('.exercise-picker').getByText('健腹轮', { exact: true })).toBeVisible();
+    const tabs = dialog.locator('.exercise-tab');
+    await expect(tabs).toHaveCount(2);
+    await expect(tabs.nth(0)).toContainText('俯卧撑');
+    await expect(tabs.nth(0)).toContainText('2组 · 32次');
+    await expect(tabs.nth(1)).toContainText('健腹轮');
+    await expect(tabs.nth(1)).toContainText('1组 · 10次');
+    await expect(dialog.locator('.exercise-set-tile')).toHaveCount(3);
     const add = dialog.getByRole('button', { name: '添加运动', exact: true });
     await expect(add).toHaveText('');
-    const rows = dialog.locator('.compact-exercise-row');
-    await expect(rows).toHaveCount(2);
-    const dimensions = await rows.evaluateAll(items => items.map(row => [...row.children].map(child => child.getBoundingClientRect().toJSON())));
-    for (const controls of dimensions) {
-      for (const control of controls) expect(control.height).toBeGreaterThanOrEqual(44);
-      expect(Math.max(...controls.map(item => item.y)) - Math.min(...controls.map(item => item.y))).toBeLessThan(2);
-    }
+    const tiles = dialog.locator('.exercise-set-tile');
+    const dimensions = await tiles.evaluateAll(items => items.map(tile => tile.getBoundingClientRect().toJSON()));
+    for (const box of dimensions) expect(box.height).toBeGreaterThanOrEqual(44);
     const timeBox = await dialog.locator('.compact-time-section').boundingBox();
-    const exerciseBox = await rows.first().boundingBox();
+    const exerciseBox = await tiles.first().boundingBox();
     const notesBox = await dialog.locator('.compact-notes').boundingBox();
     expect(exerciseBox.y).toBeGreaterThan(timeBox.y + timeBox.height);
     expect(exerciseBox.y + exerciseBox.height).toBeLessThan(notesBox.y);
     await page.screenshot({ path: `artifacts/time-compact/time-exercises-${width}-${colorScheme}.png` });
-    await dialog.getByRole('button', { name: '运动项目 1', exact: true }).click();
+
+    await tabs.nth(1).click();
+    await expect(dialog.locator('.exercise-set-tile')).toHaveCount(2);
+    await expect(dialog.locator('.exercise-set-order')).toContainText(['第1组']);
+    await tabs.nth(0).click();
+    await tiles.first().click();
+    const editor = page.locator('.modal-panel[aria-label="编辑运动组"]');
+    await expect(editor).toBeVisible();
+    await expect(editor.locator('.exercise-edit-order')).toHaveText('第1组');
+    await expect(editor.getByRole('button', { name: '取消' })).toHaveCount(0);
+    const exerciseIcon = editor.locator('.exercise-edit-icon .category-icon-image img');
+    await expect(exerciseIcon).toBeVisible();
+    await expect(exerciseIcon).toHaveAttribute('src', /^data:image\//);
+    const typeButton = editor.getByRole('button', { name: '修改运动类型' });
+    const typeName = await typeButton.locator('.exercise-edit-type-name').boundingBox();
+    const iconBox = await exerciseIcon.boundingBox();
+    const countBox = await editor.locator('[aria-label="本组次数"] input').boundingBox();
+    const unitBox = await editor.locator('.exercise-edit-unit').boundingBox();
+    const saveBox = await editor.getByRole('button', { name: '保存', exact: true }).boundingBox();
+    expect(Math.abs(typeName.y + typeName.height / 2 - (iconBox.y + iconBox.height / 2))).toBeLessThan(6);
+    expect(countBox.x).toBeGreaterThan(typeName.x + typeName.width);
+    expect(Math.abs(countBox.y + countBox.height / 2 - (iconBox.y + iconBox.height / 2))).toBeLessThan(14);
+    expect(unitBox.x - (countBox.x + countBox.width)).toBeLessThan(8);
+    expect(saveBox.width).toBeGreaterThan(saveBox.height * 2);
+    await page.screenshot({ path: `artifacts/time-compact/exercise-editor-${width}-${colorScheme}.png` });
+    await exerciseIcon.click();
     const exercisePicker = page.locator('.modal-panel[aria-label="选择运动"]');
     await expect(exercisePicker.getByRole('button', { name: '俯卧撑', exact: true })).toHaveAttribute('aria-pressed', 'true');
     await page.screenshot({ path: `artifacts/time-compact/exercise-picker-${width}-${colorScheme}.png` });
-    await closeEditor(page);
-    await expect(exercisePicker).toHaveCount(0);
-    await expect(rows.nth(0)).toContainText('俯卧撑');
-    await dialog.getByRole('button', { name: '运动项目 1', exact: true }).click();
     await exercisePicker.getByRole('button', { name: '健腹轮', exact: true }).click();
-    await expect(exercisePicker).toHaveCount(0);
-    await expect(rows.nth(0)).toContainText('健腹轮');
+    await editor.locator('[aria-label="本组次数"] input').fill('25');
+    await editor.getByRole('button', { name: '保存', exact: true }).click();
+    await expect(tabs.filter({ hasText: '俯卧撑' })).toContainText('1组 · 12次');
+    await expect(tabs.filter({ hasText: '健腹轮' })).toContainText('2组 · 35次');
 
-    await add.click();
-    await expect(rows).toHaveCount(3);
-    await expect(rows.nth(2).locator('.exercise-picker').getByText('健腹轮', { exact: true })).toBeVisible();
-    await dialog.getByRole('button', { name: '移除运动 3', exact: true }).click();
-    await expect(rows).toHaveCount(2);
-    await dialog.locator('[aria-label="运动数量"] input').first().fill('25');
+    await dialog.getByRole('button', { name: '为健腹轮加一组' }).click();
+    const addEditor = page.locator('.modal-panel[aria-label="添加一组"]');
+    await expect(addEditor.locator('.exercise-edit-order')).toHaveText('第3组');
+    await expect(addEditor.getByRole('button', { name: '取消' })).toHaveCount(0);
+    await expect(addEditor.locator('[aria-label="本组次数"] input')).toHaveValue('10');
+    await addEditor.locator('[aria-label="本组次数"] input').fill('12');
+    await addEditor.getByRole('button', { name: '保存', exact: true }).click();
+    await expect(tabs.filter({ hasText: '健腹轮' })).toContainText('3组 · 47次');
+    await dialog.getByRole('button', { name: '健腹轮第3组，12次，编辑' }).click();
+    await page.locator('.modal-panel[aria-label="编辑运动组"]').getByRole('button', { name: '删除本组' }).click();
+    await expect(tabs.filter({ hasText: '健腹轮' })).toContainText('2组 · 35次');
+
     await dialog.getByRole('button', { name: '保存', exact: true }).click();
     await expect(dialog).toHaveCount(0);
-    expect(state.updates[0].exercises).toEqual([{ ...exercises[0], exerciseTypeId: exercises[1].exerciseTypeId, exerciseCount: 25 }, exercises[1]]);
+    expect(state.updates[0].exercises).toEqual([
+      { ...exercises[0], exerciseTypeId: exercises[2].exerciseTypeId, exerciseCount: 25 },
+      exercises[1],
+      exercises[2],
+    ]);
   });
 }
 

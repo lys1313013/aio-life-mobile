@@ -13,7 +13,7 @@ defineEmits<{ refresh: []; navigate: [] }>()
   <view class="dashboard-section" :class="themeClass('dashboard-section')" :style="autoHeight ? { height: 'auto' } : height ? { height: height + 'px' } : {}">
     <HomeCardHeader class="section-heading" :label="'刷新' + title" :loading="loading || updating" :disabled="refreshDisabled || locked" @refresh="$emit('refresh')">
       <button v-if="navigable" role="button" class="section-label heading-link" :aria-label="titleLabel || '查看' + title" @click.stop="$emit('navigate')"><LifeMenuIcon v-if="icon" :icon="icon" :size="16" :color="iconColor" /><text class="section-title" :class="[{ 'section-title-with-icon': !!icon }, themeClass('section-title')]">{{ title }}</text></button>
-      <view v-else class="section-label"><LifeMenuIcon v-if="icon" :icon="icon" :size="16" :color="iconColor" /><text class="section-title" :class="[{ 'section-title-with-icon': !!icon }, themeClass('section-title')]">{{ title }}</text></view>
+      <view v-else class="section-label section-label-static"><LifeMenuIcon v-if="icon" :icon="icon" :size="16" :color="iconColor" /><text class="section-title" :class="[{ 'section-title-with-icon': !!icon }, themeClass('section-title')]">{{ title }}</text></view>
       <slot name="actions" />
       <LoadingIndicator v-if="updating" class="section-updating" compact :label="'正在更新' + title" />
       <button v-else-if="error && retainContent" role="button" class="section-update-retry" :disabled="refreshDisabled" :aria-label="'重试' + title + '：' + error" @click.stop="$emit('refresh')"><CategoryIcon icon="lucide:rotate-cw" :size="18" :color="isDark ? '#a9bfff' : '#5879ce'" /></button>
@@ -53,12 +53,13 @@ defineEmits<{ refresh: []; navigate: [] }>()
 
 }
 .section-label { display: flex; position: relative; z-index: 1; flex-direction: row; align-items: center; flex-shrink: 0; }
-.heading-link { height: $space-controlMin; min-width: $space-controlMin; margin: 0; padding: 0; border: 0; border-radius: 0; background-color: transparent; }
+.heading-link { box-sizing: border-box; height: $space-controlMin; min-width: $space-controlMin; margin: 0; padding: $space-inline 0 0; border: 0; border-radius: 0; background-color: transparent; }
+.section-label-static { transform: translateY($space-detail); }
 .section-title-with-icon { margin-left: $space-inline; }
 .section-content {
   flex: 1;
   min-height: 0;
-  padding: $space-fieldLabel $space-card $space-card;
+  padding: 0 $space-card $space-card;
 }
 .section-content-flush-top { padding-top: 0; }
 .section-content-auto { flex: none; }

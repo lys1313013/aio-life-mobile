@@ -10,7 +10,7 @@ test('窄卡片完整容纳三列，宽卡片增加列数，列宽加留白不�
     const { columnWidth, visibleColumns } = wereadShelfWidth(viewport)
     assert.ok(visibleColumns >= 3)
     assert.ok(columnWidth >= 44)
-    assert.ok(Math.abs(columnWidth * visibleColumns + 8 * (visibleColumns - 1) + 24 - viewport) < 1e-9)
+    assert.ok(Math.abs(columnWidth * visibleColumns + 12 * (visibleColumns - 1) + 24 - viewport) < 1e-9)
     if (viewport >= 600) assert.ok(visibleColumns > 3)
   }
 })

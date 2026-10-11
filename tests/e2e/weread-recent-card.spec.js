@@ -175,7 +175,7 @@ for (const width of [390, 820, 1440]) test(`微信读书书籍区域长按移动
   }
 });
 
-for (const width of [390, 820, 1440]) for (const theme of ['light', 'dark']) {
+for (const width of [390, 820, 900, 1440]) for (const theme of ['light', 'dark']) {
   test(`最近阅读实际滚动分页与失败恢复 ${width} ${theme}`, async ({ page }, info) => {
     await page.setViewportSize({ width, height: 1000 }); await page.emulateMedia({ colorScheme: theme });
     const state = await setup(page);
@@ -194,6 +194,14 @@ for (const width of [390, 820, 1440]) for (const theme of ['light', 'dark']) {
     const scrollEnd = async () => { await page.waitForTimeout(220); await scroller.hover(); await page.mouse.wheel(4000, 0); };
     const axes = await scroller.evaluate(el => ({ horizontal: el.scrollWidth > el.clientWidth, vertical: el.scrollHeight > el.clientHeight }));
     expect(axes).toEqual({ horizontal: true, vertical: false });
+    const nextColumnOffset = await card.evaluate(el => {
+      const right = el.querySelector('.book-scroll').getBoundingClientRect().right;
+      const next = [...el.querySelectorAll('.book-column')].find(column => column.getBoundingClientRect().right > right + 1);
+      return next ? next.getBoundingClientRect().left - right : null;
+    });
+    expect(nextColumnOffset).not.toBeNull();
+    expect(nextColumnOffset).toBeGreaterThanOrEqual(-1);
+    await card.screenshot({ path: info.outputPath('pagination-initial.png') });
     const firstBook = card.locator('.book-button').first(), firstBox = await firstBook.boundingBox();
     await firstBook.dispatchEvent('touchstart', { touches: [{ identifier: 1, clientX: firstBox.x + 100, clientY: firstBox.y + 20 }] });
     await scroller.evaluate(el => { el.scrollLeft = 60; });

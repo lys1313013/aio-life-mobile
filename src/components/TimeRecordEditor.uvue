@@ -7,6 +7,7 @@ import { themeClass } from '../services/theme.ts'
 import { recordChanged } from '../services/time-changes.ts'
 import { computed, ref, watch, onMounted, onUnmounted } from 'vue'
 import AdaptiveModal from './AdaptiveModal.uvue'
+import FormActions from './FormActions.uvue'
 import TimeEndPicker from './TimeEndPicker.uvue'
 import CategoryIcon from './CategoryIcon.uvue'
 import TimeRelatedSelector from './TimeRelatedSelector.uvue'
@@ -94,11 +95,53 @@ const isExercise = computed(
     categoryName.value.split(' / ').includes('运动') ||
     (form.value.exercises || []).length > 0,
 )
-const choosingExercise = ref(-1)
+interface ExerciseGroup {
+  typeId: string
+  indices: number[]
+  total: number
+}
+const choosingExercise = ref(false)
+const addingExerciseType = ref(false)
+const selectedExerciseTypeId = ref('')
+const editingExerciseIndex = ref<number | null>(null)
+const exerciseTypeDraft = ref('')
+const exerciseCountDraft = ref('')
+const exerciseEditError = ref('')
+watch([exerciseTypeDraft, exerciseCountDraft], () => { exerciseEditError.value = '' })
+const exerciseGroups = computed<ExerciseGroup[]>(() => {
+  const groups: ExerciseGroup[] = []
+  ;(form.value.exercises || []).forEach((item, index) => {
+    let group = groups.find((entry) => entry.typeId === item.exerciseTypeId)
+    if (!group) {
+      group = { typeId: item.exerciseTypeId, indices: [], total: 0 }
+      groups.push(group)
+    }
+    group.indices.push(index)
+    const count = Number(item.exerciseCount)
+    if (item.exerciseCount != null && Number.isFinite(count)) group.total += count
+  })
+  return groups
+})
+const activeExerciseGroup = computed(() =>
+  exerciseGroups.value.find((group) => group.typeId === selectedExerciseTypeId.value) ||
+  exerciseGroups.value[0] ||
+  null,
+)
+const activeExerciseTabIndex = computed(() =>
+  exerciseGroups.value.findIndex((group) => group.typeId === activeExerciseGroup.value?.typeId),
+)
 const exerciseSelectionKey = computed(() => JSON.stringify([exerciseTypes.value, exerciseLoading.value, exerciseError.value]))
 const exerciseTypes = ref<{ id: string; dictLabel: string; icon?: string; color?: string }[]>([]),
   exerciseLoading = ref(false),
   exerciseError = ref('')
+const editingExerciseType = computed(() => exerciseTypes.value.find((item) => item.id === exerciseTypeDraft.value))
+const editingExerciseNumber = computed(() => {
+  const index = editingExerciseIndex.value
+  if (index === null) return 1
+  return (form.value.exercises || []).filter((item, itemIndex) =>
+    item.exerciseTypeId === exerciseTypeDraft.value && (index < 0 || itemIndex < index),
+  ).length + 1
+})
 const relateTypes = ref<{ label: string; value: number }[]>([])
 const relatedType = computed(
   () =>
@@ -123,6 +166,7 @@ const layoutKey = computed(() =>
     relatedLayoutRevision.value,
     exerciseError.value,
     exerciseTypes.value,
+    selectedExerciseTypeId.value,
   ]),
 )
 const selectionKey = computed(() => JSON.stringify(categoryOptions.value))
@@ -372,28 +416,66 @@ function exerciseName(typeId: string) {
     (typeId ? '已选运动' : '选择运动')
   )
 }
-function openExerciseSelection(index: number) {
+function exerciseCountLabel(index: number) {
+  const count = form.value.exercises?.[index]?.exerciseCount
+  return count == null ? '未填写' : count + '次'
+}
+function openExerciseSelection(forNewType = false) {
   if (saving.value || deleting.value) return
-  choosingExercise.value = index
+  addingExerciseType.value = forNewType
+  choosingExercise.value = true
   if (!exerciseTypes.value.length) loadExercises()
 }
 function selectExercise(typeId: string) {
   if (saving.value || deleting.value) return
-  const item = form.value.exercises?.[choosingExercise.value]
-  if (item) item.exerciseTypeId = typeId
-  choosingExercise.value = -1
+  choosingExercise.value = false
+  if (addingExerciseType.value && editingExerciseIndex.value === null) {
+    openExerciseEditor(-1, typeId)
+  } else {
+    exerciseTypeDraft.value = typeId
+  }
 }
-function addExercise() {
-  const exercises = form.value.exercises || []
-  const lastExercise = exercises[exercises.length - 1]
-  form.value.exercises = [
-    ...exercises,
-    {
-      exerciseTypeId: lastExercise?.exerciseTypeId || '',
-      exerciseCount: lastExercise?.exerciseCount,
-    },
-  ]
-  if (exerciseTypes.value.length === 0) loadExercises()
+function openExerciseEditor(index: number, typeId = '') {
+  if (saving.value || deleting.value) return
+  const item = index >= 0 ? form.value.exercises?.[index] : null
+  exerciseTypeDraft.value = item?.exerciseTypeId || typeId
+  const matching = (form.value.exercises || []).filter((entry) => entry.exerciseTypeId === typeId)
+  const previous = matching[matching.length - 1]
+  exerciseCountDraft.value = item?.exerciseCount == null
+    ? previous?.exerciseCount == null ? '' : String(previous.exerciseCount)
+    : String(item.exerciseCount)
+  exerciseEditError.value = ''
+  editingExerciseIndex.value = index
+}
+function closeExerciseEditor() {
+  editingExerciseIndex.value = null
+  exerciseEditError.value = ''
+}
+function saveExerciseSet() {
+  if (editingExerciseIndex.value === null) return
+  if (!exerciseTypeDraft.value || !/^\d+$/.test(exerciseCountDraft.value.trim())) {
+    exerciseEditError.value = '请选择运动类型并填写有效次数'
+    return
+  }
+  const count = Number(exerciseCountDraft.value.trim())
+  if (!Number.isSafeInteger(count)) {
+    exerciseEditError.value = '次数超出有效范围'
+    return
+  }
+  const item = { exerciseTypeId: exerciseTypeDraft.value, exerciseCount: count }
+  if (editingExerciseIndex.value >= 0) {
+    const previous = form.value.exercises?.[editingExerciseIndex.value]
+    if (previous) form.value.exercises[editingExerciseIndex.value] = { ...previous, ...item }
+  } else {
+    form.value.exercises = [...(form.value.exercises || []), item]
+  }
+  selectedExerciseTypeId.value = exerciseTypeDraft.value
+  closeExerciseEditor()
+}
+function removeExerciseSet() {
+  if (editingExerciseIndex.value === null || editingExerciseIndex.value < 0) return
+  form.value.exercises?.splice(editingExerciseIndex.value, 1)
+  closeExerciseEditor()
 }
 function selectRelated(item) {
   relatedStatus.value = ''
@@ -644,59 +726,48 @@ function closeSelection() {
           ><text class="error-text" :class="themeClass('error-text')">{{ relatedError }}</text
           ><button role="button" class="small-action" @click="retryOptions" :class="themeClass('small-action')"><text :class="buttonLabelClasses(['small-action', themeClass('small-action')])">重试关联选项</text></button></view
         >
-        <view v-if="isExercise" class="form-card"
-          ><view class="exercise-heading">
-            <text class="section-label" :class="themeClass('section-label')">运动明细</text>
-            <button v-if="compact" role="button" class="exercise-add ui-type-body" aria-label="添加运动"
-              :disabled="saving || deleting" @click="addExercise">
+        <view v-if="isExercise" class="form-card">
+          <view class="exercise-heading">
+            <text class="exercise-heading-label" :class="themeClass('exercise-heading-label')">运动明细</text>
+            <button role="button" class="exercise-add ui-type-body" aria-label="添加运动"
+              :disabled="saving || deleting" @click="openExerciseSelection(true)">
               <AppIcon name="ant-design:plus-outlined" :size="20" color="#4e7ee3" />
             </button>
-          </view><LoadingIndicator v-if="exerciseLoading" label="正在加载运动项目" />
-          <view v-if="exerciseError"
-            ><text class="error-text" :class="themeClass('error-text')">{{ exerciseError }}</text
-            ><button role="button" class="small-action" @click="loadExercises" :class="themeClass('small-action')"><text :class="buttonLabelClasses(['small-action', themeClass('small-action')])">重试运动类型</text></button></view
-          ><view
-            v-for="(item, index) in form.exercises"
-            :key="index"
-            class="exercise-row"
-            :class="{ 'compact-exercise-row': compact }"
-            ><button role="button" class="exercise-type-control ui-type-body"
-              :aria-label="'运动项目 ' + (index + 1)"
-              :disabled="saving || deleting"
-              @click="openExerciseSelection(index)"
-              ><view class="exercise-picker" :class="[compact ? 'compact-exercise-picker' : '', themeClass(compact ? 'compact-exercise-picker' : '')]"
-                ><text class="field-value exercise-name" :class="themeClass('field-value')">{{
-                  exerciseName(item.exerciseTypeId)
-                }}</text><AppIcon name="ant-design:right-outlined" :size="14" color="#8b8f99" /></view
-              ></button
-            ><input
-              v-model="item.exerciseCount"
-              type="digit"
-              class="count-input"
-              aria-label="运动数量"
-              :placeholder-class="'time-editor-placeholder ' + themeClass('time-editor-placeholder')"
-              placeholder="数量"
-              :disabled="saving || deleting"
-              :aria-disabled="saving || deleting"
-            :class="[themeClass('count-input'), compact ? 'compact-exercise-count' : '', themeClass(compact ? 'compact-exercise-count' : '')]" /><button
-              role="button"
-              class="remove-exercise"
-              :aria-label="'移除运动 ' + (index + 1)"
-              :disabled="saving || deleting"
-              :aria-disabled="saving || deleting"
-              @click="form.exercises.splice(index, 1)"
-            >
-<AppIcon :name="compact ? 'ant-design:delete-outlined' : 'ant-design:close-outlined'" :size="18" :color="compact ? '#df5661' : '#8b8f99'" />
-</button></view
-          ><button
-            v-if="!compact"
-            role="button"
-            class="small-action"
-            :disabled="saving || deleting"
-            :aria-disabled="saving || deleting"
-            @click="addExercise"
-           :class="themeClass('small-action')"><text :class="buttonLabelClasses(['small-action', themeClass('small-action')])">添加运动</text></button></view
-        >
+          </view>
+          <LoadingIndicator v-if="exerciseLoading" label="正在加载运动项目" />
+          <view v-if="exerciseError">
+            <text class="error-text" :class="themeClass('error-text')">{{ exerciseError }}</text>
+            <button role="button" class="small-action" :class="themeClass('small-action')" @click="loadExercises"><text :class="buttonLabelClasses(['small-action', themeClass('small-action')])">重试运动类型</text></button>
+          </view>
+          <scroll-view v-if="exerciseGroups.length" direction="horizontal" :scroll-x="true" :show-scrollbar="false"
+            :scroll-into-view="'time-exercise-tab-' + activeExerciseTabIndex" :scroll-with-animation="true"
+            class="exercise-tab-scroll" :class="themeClass('exercise-tab-scroll')">
+            <view class="exercise-tabs">
+              <button v-for="(group, groupIndex) in exerciseGroups" :key="group.typeId" :id="'time-exercise-tab-' + groupIndex" role="button" class="exercise-tab"
+                :class="[{ 'exercise-tab-active': activeExerciseGroup?.typeId === group.typeId }, themeClass('exercise-tab')]"
+                :aria-label="exerciseName(group.typeId) + '，' + group.indices.length + '组，共' + group.total + '次'"
+                :aria-pressed="activeExerciseGroup?.typeId === group.typeId"
+                @click="selectedExerciseTypeId = group.typeId">
+                <text class="exercise-tab-name" :class="[{ 'exercise-tab-name-active': activeExerciseGroup?.typeId === group.typeId }, themeClass('exercise-tab-name')]">{{ exerciseName(group.typeId) }}</text>
+                <text class="exercise-tab-summary" :class="[{ 'exercise-tab-summary-active': activeExerciseGroup?.typeId === group.typeId }, themeClass('exercise-tab-summary')]">{{ group.indices.length }}组 · {{ group.total }}次</text>
+              </button>
+            </view>
+          </scroll-view>
+          <view v-if="activeExerciseGroup" class="exercise-set-grid">
+            <button v-for="(exerciseIndex, groupIndex) in activeExerciseGroup.indices" :key="exerciseIndex" role="button"
+              class="exercise-set-tile" :class="themeClass('exercise-set-tile')"
+              :aria-label="exerciseName(activeExerciseGroup.typeId) + '第' + (groupIndex + 1) + '组，' + exerciseCountLabel(exerciseIndex) + '，编辑'"
+              :disabled="saving || deleting" @click="openExerciseEditor(exerciseIndex)">
+              <text class="exercise-set-order" :class="themeClass('exercise-set-order')">第{{ groupIndex + 1 }}组</text>
+              <text class="exercise-set-value" :class="themeClass('exercise-set-value')">{{ exerciseCountLabel(exerciseIndex) }}</text>
+            </button>
+            <button role="button" class="exercise-set-tile exercise-set-add" :class="themeClass('exercise-set-tile')"
+              :aria-label="'为' + exerciseName(activeExerciseGroup.typeId) + '加一组'"
+              :disabled="saving || deleting" @click="openExerciseEditor(-1, activeExerciseGroup.typeId)">
+              <AppIcon name="ant-design:plus-outlined" :size="20" color="#4e7ee3" />
+            </button>
+          </view>
+        </view>
         <view v-if="compact" class="compact-notes">
           <input v-model="form.title" class="compact-title" :class="themeClass('compact-title')"
             :placeholder-class="'time-editor-placeholder ' + themeClass('time-editor-placeholder')"
@@ -804,8 +875,38 @@ function closeSelection() {
       >
     </view>
   </AdaptiveModal>
-  <AdaptiveModal v-if="choosingExercise >= 0" label="选择运动" :show-close="false"
-    :max-width="500" :content-key="exerciseSelectionKey" @close="choosingExercise = -1">
+  <AdaptiveModal v-if="editingExerciseIndex !== null" :label="editingExerciseIndex < 0 ? '添加一组' : '编辑运动组'" :show-close="false" :dense="true"
+    :max-width="400" :content-key="JSON.stringify([exerciseTypeDraft, exerciseCountDraft, exerciseEditError])" @close="closeExerciseEditor">
+    <view class="exercise-edit-panel">
+      <text class="exercise-edit-order" :class="themeClass('exercise-edit-order')">第{{ editingExerciseNumber }}组</text>
+      <view class="exercise-edit-inline">
+        <button role="button" class="exercise-edit-type" aria-label="修改运动类型" @click="openExerciseSelection(false)">
+          <view class="exercise-edit-icon" :class="themeClass('exercise-edit-icon')">
+            <CategoryIcon :icon="editingExerciseType?.icon || 'lucide:dumbbell'" :color="editingExerciseType?.color || '#4e7ee3'" :size="20" />
+          </view>
+          <text class="exercise-edit-type-name" :class="themeClass('exercise-edit-type-name')">{{ exerciseName(exerciseTypeDraft) }}</text>
+          <AppIcon name="ant-design:right-outlined" :size="14" color="#8b8f99" />
+        </button>
+        <view class="exercise-edit-value">
+          <input :value="exerciseCountDraft" type="number" class="exercise-edit-count" :class="themeClass('exercise-edit-count')"
+            aria-label="本组次数" placeholder="0" :placeholder-class="'time-editor-placeholder ' + themeClass('time-editor-placeholder')"
+            @input="exerciseCountDraft = String($event.detail.value)" />
+          <text class="exercise-edit-unit" :class="themeClass('exercise-edit-unit')">次</text>
+        </view>
+      </view>
+      <text v-if="exerciseEditError" class="error-text" role="alert" :class="themeClass('error-text')">{{ exerciseEditError }}</text>
+      <FormActions>
+        <template #secondary>
+          <button v-if="editingExerciseIndex >= 0" role="button" class="exercise-edit-delete" aria-label="删除本组" @click="removeExerciseSet">
+            <AppIcon name="ant-design:delete-outlined" :size="18" color="#df5661" />
+          </button>
+        </template>
+        <button role="button" class="save-button exercise-edit-save" @click="saveExerciseSet"><text class="action-label">保存</text></button>
+      </FormActions>
+    </view>
+  </AdaptiveModal>
+  <AdaptiveModal v-if="choosingExercise" label="选择运动" :show-close="false"
+    :max-width="500" :content-key="exerciseSelectionKey" @close="choosingExercise = false">
     <LoadingIndicator v-if="exerciseLoading" label="正在加载运动项目" />
     <view v-else-if="exerciseError" class="form-error">
       <text class="error-text" :class="themeClass('error-text')">{{ exerciseError }}</text>
@@ -813,8 +914,8 @@ function closeSelection() {
     </view>
     <view v-else class="category-grid">
       <button v-for="item in exerciseTypes" :key="item.id" role="button" class="category-option ui-type-body"
-        :aria-label="item.dictLabel" :aria-pressed="item.id === form.exercises?.[choosingExercise]?.exerciseTypeId"
-        :class="[{ 'category-selected': item.id === form.exercises?.[choosingExercise]?.exerciseTypeId }, themeClass({ 'category-selected': item.id === form.exercises?.[choosingExercise]?.exerciseTypeId })]"
+        :aria-label="item.dictLabel" :aria-pressed="item.id === exerciseTypeDraft"
+        :class="[{ 'category-selected': item.id === exerciseTypeDraft }, themeClass({ 'category-selected': item.id === exerciseTypeDraft })]"
         @click="selectExercise(item.id)">
         <CategoryIcon :icon="item.icon || 'lucide:dumbbell'" :color="item.color || '#1890ff'" :size="24" />
         <text class="category-name" :class="themeClass('category-name')">{{ item.dictLabel }}</text>
@@ -1030,27 +1131,6 @@ function closeSelection() {
   color: #71717a;
   padding: $space-inline;
 }
-.section-label {
-  @include type-style('body-strong');
-  color: #71717a;
-
-}
-.exercise-row {
-  flex-direction: row;
-  align-items: center;
-}
-.exercise-picker {
-  min-width: 90px;
-  padding: $space-form 0;
-}
-.count-input {
-  flex: 1;
-  height: $space-controlMin;
-  color: #27272a;
-  @include type-style('body');
-  text-align: right;
-}
-.remove-exercise,
 .close-selection {
   display: flex;
   align-items: center;
@@ -1245,11 +1325,9 @@ function closeSelection() {
   .time-number-dark,
   .duration-input-dark,
   .title-input-dark,
-  .count-input-dark,
   .search-input-dark {
     color: #eeeeef;
   }
-  .section-label-dark,
   .description-input-dark {
     color: #b4b4bd;
   }
@@ -1402,8 +1480,9 @@ function closeSelection() {
 .time-step-button,
 .duration-step,
 .exercise-add,
-.exercise-type-control,
-.remove-exercise,
+.exercise-tab,
+.exercise-edit-type,
+.exercise-edit-delete,
 .small-action,
 .cancel-action,
 .delete-button {
@@ -1472,6 +1551,8 @@ function closeSelection() {
   align-items: center;
   justify-content: space-between;
 }
+.exercise-heading-label { @include type-style('title'); color: #27272a; }
+.exercise-heading-label-dark { color: #eeeeef; }
 .exercise-add {
   display: flex;
   align-items: center;
@@ -1483,44 +1564,120 @@ function closeSelection() {
   border: 0;
   background-color: transparent;
 }
-.compact-exercise-row {
-  gap: $space-inline;
-  margin-top: $space-inline;
+.exercise-tab-scroll { width: 100%; margin-top: $space-detail; border-bottom: $space-hairline solid #e5e7eb; }
+.exercise-tabs { flex-direction: row; align-items: stretch; }
+.exercise-tab {
+  flex-shrink: 0;
+  min-height: $space-controlMin + $space-section;
+  margin: 0 $space-section 0 0;
+  padding: $space-detail $space-detail $space-inline;
+  border: 0;
+  border-bottom: $space-tight solid transparent;
+  border-radius: 0;
+  background-color: transparent;
+  text-align: left;
 }
-.exercise-type-control { flex: 1; min-width: 0; margin: 0; padding: 0; border: 0; background-color: transparent; text-align: left; }
-.compact-exercise-picker {
+.exercise-tab-active { border-bottom-color: #4e7ee3; }
+.exercise-tab-name { @include type-style('body-strong'); color: #52525b; white-space: nowrap; }
+.exercise-tab-summary { @include type-style('caption'); color: #71717a; white-space: nowrap; }
+.exercise-tab-scroll-dark { border-bottom-color: #32353c; }
+.exercise-tab-name-dark { color: #b4b4bd; }
+.exercise-tab-summary-dark { color: #8b8f99; }
+.exercise-tab-name-active,
+.exercise-tab-summary-active { color: #4e7ee3; }
+.exercise-set-grid {
+  flex-direction: row;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  margin-top: $space-section;
+  max-width: 440px;
+}
+.exercise-set-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  box-sizing: border-box;
+  width: 31%;
+  min-height: $space-controlMin + $space-section * 2;
+  margin: 0 0 $space-inline;
+  padding: $space-inline;
+  border: $space-hairline solid #e5e7eb;
+  border-radius: 10px;
+  background-color: #f7f8fa;
+  text-align: left;
+}
+.exercise-set-tile-dark { border-color: #32353c; background-color: #23262b; }
+.exercise-set-order { @include type-style('caption'); color: #71717a; }
+.exercise-set-order-dark { color: #a1a1aa; }
+.exercise-set-value { @include type-style('metric-compact'); color: #27272a; }
+.exercise-set-value-dark { color: #eeeeef; }
+.exercise-set-add { align-items: center; }
+.exercise-edit-panel { gap: $space-section; padding: 0 $space-modal $space-modal; }
+.exercise-edit-order { @include type-style('label'); color: #71717a; }
+.exercise-edit-order-dark { color: #b4b4bd; }
+.exercise-edit-inline { flex-direction: row; align-items: center; gap: $space-inline; min-height: $space-controlMin; }
+.exercise-edit-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: $space-controlMin - $space-inline;
+  height: $space-controlMin - $space-inline;
+  border-radius: 10px;
+  background-color: #eaf0ff;
+}
+.exercise-edit-icon-dark { background-color: #26334c; }
+.exercise-edit-type {
+  display: flex;
   flex-direction: row;
   align-items: center;
+  justify-content: flex-start;
   gap: $space-inline;
-  min-width: 0;
-  min-height: $space-controlMin;
-  box-sizing: border-box;
-  padding: 0 $space-section;
-  border: 1px solid #e5e7eb;
-  border-radius: 10px;
-}
-.exercise-name {
   flex: 1;
   min-width: 0;
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
+  min-height: $space-controlMin;
+  padding: 0;
+  margin: 0;
+  border: 0;
+  background-color: transparent;
 }
-.compact-exercise-count {
-  flex: none;
-  width: 72px;
-  min-width: 0;
-  box-sizing: border-box;
-  padding: 0 $space-inline;
-  border: 1px solid #e5e7eb;
-  border-radius: 10px;
-  text-align: center;
+.exercise-edit-type-name { @include type-style('title'); color: #27272a; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.exercise-edit-type-name-dark { color: #eeeeef; }
+.exercise-edit-value { flex-direction: row; align-items: center; flex-shrink: 0; gap: $space-detail; }
+.exercise-edit-count {
+  flex-shrink: 0;
+  width: $space-controlMin + $space-inline;
+  height: $space-controlMin;
+  padding: 0;
+  border: 0;
+  background-color: transparent;
+  text-align: right;
+  @include type-style('metric');
+  color: #27272a;
 }
-.compact-exercise-picker-dark,
-.compact-exercise-count-dark { border-color: #32353c; }
+.exercise-edit-count-dark { color: #eeeeef; }
+.exercise-edit-unit { @include type-style('body'); color: #71717a; }
+.exercise-edit-unit-dark { color: #b4b4bd; }
+.exercise-edit-save { width: $space-modalActionMin + $space-modal; }
+.exercise-edit-delete {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: $space-controlMin;
+  height: $space-controlMin;
+  padding: 0;
+  margin: 0;
+  border: 0;
+  background-color: transparent;
+}
 
 /* #ifdef WEB || MP-WEIXIN */
 .exercise-add::after,
+.exercise-tab::after,
+.exercise-set-tile::after,
+.exercise-edit-type::after,
+.exercise-edit-delete::after,
 .loading-close::after,
 .compact-category::after,
 .cancel-action::after,
@@ -1528,11 +1685,9 @@ function closeSelection() {
 .small-action::after,
 .duration-step::after,
 .time-step-button::after,
-.remove-exercise::after,
 .save-button::after,
 .delete-button::after,
 .close-selection::after,
-.exercise-type-control::after,
 .category-option::after,
 .related-option::after {
   border: 0;
