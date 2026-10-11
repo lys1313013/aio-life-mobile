@@ -1,17 +1,18 @@
 <script setup lang="ts">
-import { computed, onUnmounted, ref, watch } from 'vue'
+import { computed, getCurrentInstance, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import BusinessIcon from '../../components/BusinessIcon.uvue'
 import AppIcon from '../../components/AppIcon.uvue'
 import LoadingIndicator from '../../components/LoadingIndicator.uvue'
 import LoadMore from '../../components/LoadMore.uvue'
 import { request } from '../../services/api.ts'
 import { session } from '../../services/session.ts'
-import { menuVisuals, menuVisualState } from '../../services/menu-visuals.ts'
+import { menuVisualState } from '../../services/menu-visuals.ts'
 import { loadMenuAccess, cachedMenuAccess } from '../../services/menu-access-cache.ts'
 import { lockedMenuPaths } from '../../services/life-catalog.ts'
 import { isMenuUnlocked } from '../../services/secondary-lock.ts'
 import { homeDataRevision } from '../../services/home-refresh.ts'
 import { businessCardMaxHeight } from './services/business-cards.ts'
+import { wereadShelfWidth, wereadShelfLayout, wereadShelfColumns } from './services/weread-shelf.ts'
 import spacing from '../../styles/spacing.json'
 import { isDark } from '../../services/theme.ts'
 import { wereadAppLink, wereadWebLink, wereadBrowserLink, isMobileBrowser } from '../../services/weread-links.ts'
@@ -19,22 +20,32 @@ import { wereadAppLink, wereadWebLink, wereadBrowserLink, isMobileBrowser } from
 import { openWereadBook, openWereadWeb } from '../../uni_modules/aio-weread-launcher'
 // #endif
 const props = defineProps<{ active: boolean; preparing?: boolean; sorting?: boolean; height?: number; maxHeight?: number }>()
-// 与其他业务卡片共用响应式高度上限，扣除标题、底部间距和边框。
-const bodyHeight = computed(() => (props.maxHeight || businessCardMaxHeight) - spacing.controlMin - spacing.card - spacing.hairline * 2)
-// 书名、作者和进度占三行；封面 64px 加行内留白，较小卡片通过列表滚动容纳。
-const rowHeight = 64 + spacing.detail * 2
-const coverStyle = { width: '42px', height: '64px' }
+const viewportWidth = ref(0)
+const shelfWidth = computed(() => wereadShelfWidth(viewportWidth.value || 300))
+const layout = computed(() => wereadShelfLayout(props.height, props.maxHeight || businessCardMaxHeight))
+const bodyStyle = computed(() => ({ height: layout.value.bodyHeight + 'px' }))
+const itemStyle = computed(() => ({ width: shelfWidth.value.columnWidth + 'px', height: layout.value.itemHeight + 'px' }))
+const coverStyle = computed(() => {
+  const width = Math.min(layout.value.coverWidth, Math.max(0, shelfWidth.value.columnWidth - spacing.detail * 2))
+  return { width: width + 'px', height: width * 3 / 2 + 'px' }
+})
 const emit = defineEmits(['visibility', 'scrolling'])
 const books = ref<any[]>([]), connected = ref<boolean | null>(null)
 const loaded = ref(false), loading = ref(false), error = ref(''), locked = ref(false)
-const nextCursor = ref<string | null>(null), loadingMore = ref(false), moreError = ref(''), scrollTop = ref(0)
+const nextCursor = ref<string | null>(null), loadingMore = ref(false), moreError = ref(''), scrollLeft = ref(0)
+const columns = computed(() => wereadShelfColumns(books.value, layout.value.rows))
+const columnStyle = computed(() => ({ width: shelfWidth.value.columnWidth + 'px' }))
+const instance = getCurrentInstance()
+const contentWidth = computed(() => columns.value.length * (shelfWidth.value.columnWidth + spacing.inline) - spacing.inline + spacing.card * 2)
+// 尾部状态留在横向轨道内，不增加卡片高度。
+const trackStyle = computed(() => ({ ...bodyStyle.value, width: (contentWidth.value + (loadingMore.value || moreError.value ? 220 + spacing.inline : 0)) + 'px' }))
 let pageGeneration = 0
 const opening = ref(''), openingError = ref(''), webFallback = ref('')
 let generation = 0, updatedAt = 0, revision = -1, pending: Promise<void> | null = null
 const route = '/pages/records/weread'
 const available = computed(() => !!menuVisualState.cards['section.weread']?.menuId)
 const visible = computed(() => (props.active || props.preparing) && available.value && (connected.value !== false || !!error.value || locked.value))
-watch(visible, value => emit('visibility', value), { immediate: true })
+watch(visible, value => { emit('visibility', value); if (value) void measureViewport() }, { immediate: true })
 function invalidate(clear = false) {
   pageGeneration++; loadingMore.value = false; moreError.value = ''
   generation++; pending = null; loading.value = false; opening.value = ''; openingError.value = ''; webFallback.value = ''
@@ -78,7 +89,7 @@ function refresh(force = true) {
       if (!valid()) return
       if (typeof data?.connected !== 'boolean' || !Array.isArray(data.books)) throw Error('微信读书数据异常，请重试')
       books.value = data.books; connected.value = data.connected; loaded.value = true
-      nextCursor.value = data.nextCursor || null; scrollTop.value = 0
+      nextCursor.value = data.nextCursor || null; scrollLeft.value = 0
       updatedAt = Date.now(); revision = homeDataRevision('weread')
     } catch (e) {
       if (!valid()) return
@@ -109,8 +120,22 @@ async function loadMore() {
   } finally { if (pageVersion === pageGeneration) loadingMore.value = false }
 }
 function onScrollLower() { if (!moreError.value) void loadMore() }
+// 高卡片多排或宽视口可能装下整页；补到可横向滚动或末页，失败不自动重试。
+function fillViewport() {
+  if (!props.active || props.sorting || !loaded.value || loading.value || loadingMore.value || moreError.value || error.value || !nextCursor.value || !viewportWidth.value) return
+  if (contentWidth.value <= viewportWidth.value + spacing.hairline) void loadMore()
+}
+async function measureViewport() {
+  await nextTick()
+  uni.createSelectorQuery().in(instance?.proxy).select('.weread-card').boundingClientRect(rect => {
+    if (rect && !Array.isArray(rect)) viewportWidth.value = Math.max(0, rect.width - spacing.hairline * 2)
+  }).exec()
+}
+watch(() => [props.active, props.sorting, loading.value, loadingMore.value, layout.value.rows, columns.value.length, viewportWidth.value], fillViewport, { flush: 'post' })
+onMounted(() => { void measureViewport(); uni.onWindowResize(measureViewport) })
+onUnmounted(() => { uni.offWindowResize(measureViewport) })
 function onScroll(event) {
-  scrollTop.value = event.detail.scrollTop
+  scrollLeft.value = event.detail.scrollLeft
   // 内层 scroll-view 会消费 touchmove；滚动时仍须取消外层待触发的长按排序。
   if (!props.sorting) emit('scrolling')
 }
@@ -120,8 +145,8 @@ function readingDate(value) {
   const day = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime()
   const bookDay = new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime()
   const pad = number => String(number).padStart(2, '0')
-  const prefix = bookDay === day ? '今天' : bookDay === day - 86400000 ? '昨天' : (date.getFullYear() !== now.getFullYear() ? date.getFullYear() + '-' : '') + pad(date.getMonth() + 1) + '-' + pad(date.getDate())
-  return prefix + ' ' + pad(date.getHours()) + ':' + pad(date.getMinutes())
+  const prefix = bookDay === day ? '' : bookDay === day - 86400000 ? '昨天' : (date.getFullYear() !== now.getFullYear() ? date.getFullYear() + '-' : '') + pad(date.getMonth() + 1) + '-' + pad(date.getDate())
+  return (prefix ? prefix + ' ' : '') + pad(date.getHours()) + ':' + pad(date.getMinutes())
 }
 async function openBook(book, webOnly = false) {
   if (opening.value || locked.value || !props.active) return
@@ -188,68 +213,79 @@ async function openBook(book, webOnly = false) {
       <LoadingIndicator v-if="loading" class="updating" compact label="正在加载最近阅读" />
       <text v-else-if="error && books.length" class="error-text" role="alert">刷新失败</text>
     </view>
-    <view v-if="locked" class="placeholder" :style="{ minHeight: bodyHeight + 'px' }"><button class="heading-link" role="button" aria-label="解锁微信读书" @click.stop="openPage"><text class="caption">点击解锁</text></button></view>
-    <view v-else-if="!loaded && (loading || preparing || !error)" class="book-list" role="status" aria-label="正在加载最近阅读">
-      <view v-for="index in 3" :key="index" class="book-row" :style="{ height: rowHeight + 'px' }"><view class="book-cover skeleton" :style="coverStyle" /><view class="book-content"><view class="skeleton skeleton-title" /><view class="skeleton skeleton-author" /><view class="skeleton skeleton-progress" /></view></view>
-    </view>
-    <scroll-view v-else-if="books.length" class="book-scroll" :style="{ height: Math.min(bodyHeight, Math.min(books.length, 3) * rowHeight) + 'px' }" :scroll-y="!sorting" :direction="sorting ? 'none' : 'vertical'" :scroll-top="scrollTop" :lower-threshold="32" @scroll="onScroll" @scrolltolower="onScrollLower" @click.stop="refresh()">
-      <view class="book-list">
-      <view v-for="book in books" :key="book.bookId" class="book-row-wrap">
-        <button class="book-row book-button home-card-drag-area" :style="{ height: rowHeight + 'px' }" role="button" :aria-label="'在微信读书打开：' + book.title" :disabled="!!opening" @click.stop="openBook(book)">
-          <image v-if="book.cover" class="book-cover" :style="coverStyle" :src="book.cover" mode="aspectFit" /><view v-else class="book-cover cover-fallback" :style="coverStyle"><BusinessIcon card-key="section.weread" :size="20" /></view>
-          <view class="book-content"><text class="book-title" :class="{ 'text-dark': isDark }">{{ book.title }}</text><view class="book-meta"><text class="book-author caption">{{ book.author }}</text><text class="reading-date caption">{{ readingDate(book.readUpdateTime) }}</text></view><view class="progress-line"><view class="progress-track" role="progressbar" :aria-label="book.title + '阅读进度'" :aria-valuenow="book.progress == null ? undefined : book.progress" :aria-valuemin="0" :aria-valuemax="100"><view class="progress-fill" :style="{ width: (book.progress == null ? 0 : book.progress) + '%', backgroundColor: menuVisuals.visual('section.weread').iconColor || undefined }" /></view><text class="progress-value" :class="{ 'text-dark': isDark }">{{ book.progress == null ? '—' : book.progress + '%' }}</text></view></view>
-        </button>
-        <view class="book-action"><LoadingIndicator v-if="opening === book.bookId" compact label="正在打开书籍" /><AppIcon v-else-if="webFallback !== book.bookId" name="ant-design:right-outlined" :size="16" color="#8b8f99" /></view>
-        <button v-if="webFallback === book.bookId" class="web-fallback" role="button" aria-label="网页版阅读" @click.stop="openBook(book, true)"><AppIcon name="ant-design:export-outlined" :size="16" color="#5879ce" /></button>
+    <view v-if="locked" class="placeholder" :style="bodyStyle"><button class="heading-link" role="button" aria-label="解锁微信读书" @click.stop="openPage"><text class="caption" :class="{ 'caption-dark': isDark }">点击解锁</text></button></view>
+    <view v-else-if="!loaded && (loading || preparing || !error)" class="shelf-loading" :style="bodyStyle" role="status" aria-label="正在加载最近阅读">
+      <view class="book-list" :style="bodyStyle">
+        <view v-for="column in shelfWidth.visibleColumns" :key="column" class="book-column" :style="columnStyle">
+          <view v-for="row in layout.rows" :key="row" class="book-row" :style="itemStyle"><view class="book-cover skeleton" :style="coverStyle" /><view class="book-content"><view class="skeleton skeleton-title" /><view class="skeleton skeleton-meta" /></view></view>
+        </view>
       </view>
-      <view @click.stop><LoadMore :loading="loadingMore" :error="moreError" @load="loadMore" /></view>
+    </view>
+    <scroll-view v-else-if="books.length" class="book-scroll" :style="bodyStyle" :scroll-x="!sorting" :scroll-y="false" :direction="sorting ? 'none' : 'horizontal'" :show-scrollbar="false" :scroll-left="scrollLeft" :lower-threshold="32" aria-label="最近阅读书架，左右滑动查看更多" @scroll="onScroll" @scrolltolower="onScrollLower" @click.stop="refresh()">
+      <view class="book-list" :style="trackStyle">
+        <view v-for="column in columns" :key="column[0].bookId" class="book-column" :style="columnStyle">
+          <view v-for="book in column" :key="book.bookId" class="book-row-wrap" :style="itemStyle">
+            <button class="book-row book-button home-card-drag-area" role="button" :aria-label="'在微信读书打开：' + book.title" :disabled="!!opening" @click.stop="openBook(book)">
+              <image v-if="book.cover" class="book-cover" :style="coverStyle" :src="book.cover" mode="aspectFit" /><view v-else class="book-cover cover-fallback" :style="coverStyle"><BusinessIcon card-key="section.weread" :size="20" /></view>
+              <view class="book-content">
+                <text class="book-title" :class="{ 'text-dark': isDark }">{{ book.title }}</text>
+                <view class="book-meta"><text class="progress-value book-caption" :class="{ 'caption-dark': isDark }" :aria-label="book.title + '阅读进度'">{{ book.progress == null ? '—' : book.progress + '%' }}</text><text class="reading-date book-caption" :class="{ 'caption-dark': isDark }" :aria-label="readingDate(book.readUpdateTime)">{{ readingDate(book.readUpdateTime) }}</text></view>
+              </view>
+            </button>
+            <view v-if="opening === book.bookId" class="book-action"><LoadingIndicator compact label="正在打开书籍" /></view>
+            <button v-if="webFallback === book.bookId" class="web-fallback" role="button" aria-label="网页版阅读" @click.stop="openBook(book, true)"><AppIcon name="ant-design:export-outlined" :size="16" :color="isDark ? '#9bbcff' : '#5879ce'" /></button>
+          </view>
+        </view>
+        <view v-if="loadingMore || moreError" class="shelf-status" @click.stop><LoadMore :loading="loadingMore" :error="moreError" @load="loadMore" /></view>
       </view>
     </scroll-view>
-    <view v-else class="placeholder" :style="{ minHeight: bodyHeight + 'px' }"><text class="caption" :class="{ 'error-text': !!error }" role="status">{{ error ? '加载失败，点击空白处重试' : '暂无最近阅读' }}</text></view>
+    <view v-else class="placeholder" :style="bodyStyle"><text class="caption" :class="{ 'caption-dark': isDark, 'error-text': !!error }" role="status">{{ error ? '加载失败，点击空白处重试' : '暂无最近阅读' }}</text></view>
     <text v-if="openingError" class="open-error error-text" role="alert">{{ openingError }}</text>
   </view>
 </template>
 <style scoped lang="scss">
 @use '../../styles/typography' as *;
+@use '../../styles/text-colors' as *;
 @use '../../styles/spacing.scss';
 @use '../../styles/spacing-tokens' as *;
 .weread-card { box-sizing: border-box; position: relative; background-color: #ffffff; border: 1px solid #e8e8ed; border-radius: 14px; padding-bottom: $space-card; overflow: hidden; }
 .weread-card-dark { background-color: #1c1e22; border-color: #303238; }
 .weread-heading { position: relative; height: $space-controlMin; padding: 0 $space-card; flex-direction: row; align-items: center; }
 .heading-link { min-height: $space-controlMin; margin: 0; padding: 0; border: 0; background-color: transparent; display: flex; flex-direction: row; align-items: center; gap: $space-inline; }
-.card-title { @include type-style('title'); color: #18181b; }
+.card-title { @include type-style('body-strong'); color: #18181b; }
 .updating { position: absolute; right: $space-card; }
-.book-list { padding: 0 $space-card; }
-.book-scroll { min-height: 0; }
+.book-list { box-sizing: border-box; min-width: 100%; display: flex; flex-direction: row; align-items: flex-start; gap: $space-inline; padding: 0 $space-card; }
+.book-scroll { min-height: 0; width: 100%; }
+.shelf-loading { overflow: hidden; }
 /* #ifdef WEB */
-.book-scroll :deep(.uni-scroll-view) { overscroll-behavior-y: contain; }
+.book-scroll :deep(.uni-scroll-view) { overscroll-behavior-x: contain; }
 /* #endif */
-.book-row-wrap { position: relative; }
-/* 封面及行高为与 Web 共用的书籍比例几何约束。 */
-.book-row { box-sizing: border-box; flex-direction: row; align-items: center; gap: $space-inline; padding: $space-detail 0; }
-.book-button { display: flex; width: 100%; margin: 0; padding-right: calc($space-controlMin + $space-inline); border: 0; background-color: transparent; text-align: left; }
-.book-cover { width: 42px; height: 64px; border-radius: 3px; flex-shrink: 0; }
+.book-column { flex-shrink: 0; gap: $space-section; }
+.book-row-wrap { position: relative; min-width: 0; flex-shrink: 0; }
+.book-row { box-sizing: border-box; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: $space-inline; }
+.book-button { width: 100%; height: 100%; margin: 0; padding: 0; border: 0; background-color: transparent; text-align: center; }
+.book-cover { border-radius: 3px; flex-shrink: 0; }
 .cover-fallback { align-items: center; justify-content: center; background-color: #88888822; }
-.book-content { flex: 1; min-width: 0; gap: $space-micro; }
-.book-title { @include type-style('body-strong'); color: #27272a; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.book-meta { flex-direction: row; gap: $space-detail; }
-.book-author { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-.reading-date { flex-shrink: 0; }
-.caption { @include type-style('caption'); color: #8b8f99; }
-.progress-line { flex-direction: row; align-items: center; gap: $space-inline; }
-.progress-track { flex: 1; height: 4px; background-color: #88888833; border-radius: 2px; overflow: hidden; }
-.progress-fill { height: 4px; border-radius: 2px; background-color: #5879ce; }
-.progress-value { @include type-style('caption'); width: 36px; color: #27272a; text-align: right; }
+.book-content { width: 100%; min-width: 0; overflow: hidden; align-items: center; gap: $space-detail; }
+.book-title { @include type-style('label-strong'); width: 100%; color: #27272a; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: center; }
+.book-meta { width: 100%; height: type-line('caption'); flex-direction: row; align-items: center; justify-content: center; gap: $space-detail; }
+.progress-value { flex-shrink: 0; white-space: nowrap; }
+.reading-date { min-width: 0; flex-shrink: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.book-caption { @include type-style('badge'); color: $text-secondary-light; }
+.caption { @include type-style('caption'); color: $text-secondary-light; }
+.caption-dark { color: $text-secondary-dark; }
 .text-dark { color: #ececf0; }
-.placeholder { align-items: center; justify-content: center; padding: 0 $space-card; }
+.placeholder { box-sizing: border-box; align-items: center; justify-content: center; padding: 0 $space-card; }
 .skeleton { background-color: #88888822; border-radius: 3px; }
-.skeleton-title { width: 60%; height: 14px; }
-.skeleton-author { width: 40%; height: 12px; }
-.skeleton-progress { width: 100%; height: 4px; }
+.skeleton-title { width: 80%; height: type-line('label-strong'); }
+.skeleton-meta { width: 90%; height: type-line('caption'); }
 .error-text { @include type-style('caption'); color: #c26161; }
 .open-error { position: absolute; right: $space-card; bottom: $space-detail; }
-.book-action { position: absolute; right: 0; top: 0; bottom: 0; width: $space-controlMin; align-items: center; justify-content: center; pointer-events: none; }
-.web-fallback { position: absolute; right: 0; top: 0; bottom: 0; width: $space-controlMin; padding: 0; margin: 0; display: flex; align-items: center; justify-content: center; background-color: transparent; border: 0; }
+// 回退入口放在封面旁的独立触控区，不遮挡书名、百分比和时间。
+.book-action, .web-fallback { position: absolute; right: 0; top: 0; width: $space-controlMin; height: $space-controlMin; align-items: center; justify-content: center; }
+.book-action { pointer-events: none; }
+.web-fallback { padding: 0; margin: 0; display: flex; background-color: transparent; border: 0; }
+.shelf-status { width: 220px; height: 100%; flex-shrink: 0; justify-content: center; }
 /* #ifdef WEB || MP-WEIXIN */
 .heading-link::after, .book-button::after, .web-fallback::after { border: 0; }
 /* #endif */
