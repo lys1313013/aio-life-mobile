@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { inject } from 'vue';
+import { computed, inject } from 'vue';
 import { isDark, themeClass } from '../services/theme.ts';
 import AppIcon from './AppIcon.uvue';
 const props = withDefaults(
@@ -16,6 +16,13 @@ const props = withDefaults(
 );
 const emit = defineEmits(['click']);
 const insideModal = inject('mobile-modal', false);
+// 行内背景覆盖 uni-app 的 disabled/type 默认底色，跨端保留组件自身的主题与变体。
+const backgroundColor = computed(() => {
+  if (props.danger) return isDark.value ? '#c94050' : '#dc3545';
+  if (props.variant === 'ghost' || (insideModal && props.variant === 'quiet' && !props.icon && !props.compact)) return 'transparent';
+  if (props.variant === 'quiet') return isDark.value ? '#292c32' : '#eef2f8';
+  return isDark.value ? '#315b9c' : '#427bea';
+});
 function activate() {
   if (!props.loading && !props.disabled) emit('click');
 }
@@ -26,6 +33,7 @@ function activate() {
     class="mobile-button"
     :class="[
       {
+        'mobile-button-disabled': disabled && !loading,
         'mobile-button-quiet': variant === 'quiet',
         'mobile-button-ghost': variant === 'ghost',
         'mobile-button-danger': danger,
@@ -40,16 +48,18 @@ function activate() {
           'mobile-button-modal-quiet': insideModal && !icon && !compact && variant === 'quiet' && !danger },
       ]),
     ]"
+    :style="{ backgroundColor }"
     :aria-label="label"
     :aria-busy="loading"
     :aria-disabled="loading || disabled"
-    :loading="loading"
     :disabled="loading || disabled"
-    :hover-class="variant === 'ghost' ? 'none' : 'button-hover'"
+    :hover-class="loading || disabled ? 'none' : 'mobile-button-pressed'"
     @click="activate"
   >
+    <view v-if="loading" class="mobile-button-loading" aria-hidden="true"><view class="mobile-button-spinner" :class="{ 'mobile-button-spinner-muted': !danger && (variant === 'quiet' || variant === 'ghost') }" /></view>
+    <view class="mobile-button-content" :class="{ 'mobile-button-content-loading': loading }">
     <AppIcon
-      v-if="icon && !loading"
+      v-if="icon"
       :name="icon"
       :size="20"
       :color="danger || (variant !== 'quiet' && variant !== 'ghost') ? '#ffffff' : isDark ? '#e2e4e9' : '#52525b'"
@@ -61,12 +71,14 @@ function activate() {
         themeClass({ 'mobile-button-label-muted': !danger && (variant === 'quiet' || variant === 'ghost') }),
       ]"
     >{{ label }}</text></slot>
+    </view>
   </button>
 </template>
 <style scoped lang="scss">
 @use '../styles/typography' as *;
 @use '../styles/spacing-tokens' as *;
 .mobile-button {
+  position: relative;
   display: flex;
   flex-direction: row;
   align-items: center;
@@ -76,13 +88,11 @@ function activate() {
   padding: 0 $space-card;
   margin: 0;
   border-radius: 12px;
-  background-color: #427bea;
   color: #ffffff;
   @include type-style('body');
   line-height: $space-controlMin;
 }
 .mobile-button-quiet {
-  background-color: #eef2f8;
   color: #334155;
 }
 .mobile-button-label {
@@ -101,7 +111,6 @@ function activate() {
   flex-shrink: 0;
 }
 .mobile-button-danger {
-  background-color: #dc3545;
   color: #ffffff;
 }
 .mobile-button-icon {
@@ -110,23 +119,18 @@ function activate() {
   @include type-style('glyph-medium');
 }
 .mobile-button-dark {
-  background-color: #315b9c;
   color: #ffffff;
 }
 .mobile-button-quiet-dark {
-  background-color: #292c32;
   color: #eeeeef;
 }
 .mobile-button-danger-dark {
-  background-color: #c94050;
   color: #ffffff;
 }
 .mobile-button-ghost {
-  background-color: transparent;
   color: #52525b;
 }
 .mobile-button-ghost-dark {
-  background-color: transparent;
   color: #e2e4e9;
 }
 .mobile-button-compact {
@@ -145,12 +149,19 @@ background-clip: padding-box;
   line-height: type-leading('compactControl');
 }
 .mobile-button-modal-quiet {
-  background-color: transparent;
   border: $space-hairline solid #e5e7eb;
 }
 .mobile-button-modal-quiet-dark {
   border-color: #32353c;
 }
+.mobile-button-content { display: flex; flex-direction: row; align-items: center; justify-content: center; }
+.mobile-button-content-loading { opacity: 0; }
+.mobile-button-loading { position: absolute; top: 0; right: 0; bottom: 0; left: 0; display: flex; align-items: center; justify-content: center; }
+.mobile-button-spinner { width: 18px; height: 18px; box-sizing: border-box; border: 2px solid rgba(255, 255, 255, 0.3); border-top-color: #ffffff; border-radius: 50%; animation: mobile-button-spin 0.8s linear infinite; }
+.mobile-button-spinner-muted { border-color: rgba(139, 143, 153, 0.3); border-top-color: #8b8f99; }
+.mobile-button-disabled { opacity: 0.5; }
+.mobile-button-pressed { opacity: 0.75; }
+@keyframes mobile-button-spin { to { transform: rotate(360deg); } }
 /* #ifdef WEB || MP-WEIXIN */
 .mobile-button::after {
   border: 0;
