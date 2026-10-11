@@ -1,5 +1,5 @@
-import { request } from './session-guard.ts'
-import { queryPath } from '../query-path.ts'
+import { request } from '../../../services/domains/session-guard.ts'
+import { queryPath } from '../../../services/query-path.ts'
 export const fetchMessages = (isRead: boolean | null = null) => request<any[]>(queryPath('/message/list',{isRead}))
 export const markRead = (id:string) => request('/message/read/'+encodeURIComponent(id),'PUT')
 export const markAllRead = () => request('/message/read-all','PUT')
@@ -14,14 +14,4 @@ export const updateSession = (id:string,title:string) => request('/llm/sessions/
 export const deleteSession = (id:string) => request('/llm/sessions/'+encodeURIComponent(id),'DELETE')
 export const fetchHistory = (conversationId:string) => request<any[]>(queryPath('/llm/chat/history',{conversationId}))
 export const clearHistory = (conversationId:string) => request(queryPath('/llm/chat/history',{conversationId}),'DELETE')
-export const fetchTools = () => request<any[]>('/mcp/tools')
-export const callTool = (name:string,args:Record<string,any>) => request<any>('/mcp/tools/call','POST',{name,arguments:args})
-export const fetchGraph = () => request<any>('/relationships/graph')
-export const searchPeople = (keyword:string) => request<any[]>(queryPath('/relationships/persons/search',{keyword}))
-export const fetchPerson = (id:string) => request<any>('/relationships/persons/'+encodeURIComponent(id))
-export const savePerson = (data:Record<string,any>) => request('/relationships/persons'+(data.id?'/'+encodeURIComponent(data.id):''),data.id?'PUT':'POST',data)
-export const deletePerson = (id:string) => request('/relationships/persons/'+encodeURIComponent(id),'DELETE')
-export const saveRelationship = (data:Record<string,any>) => request('/relationships'+(data.id?'/'+encodeURIComponent(String(data.id)):''),data.id?'PUT':'POST',data)
-export const deleteRelationship = (data:Record<string,any>) => request('/relationships','DELETE',data)
-
 export const fetchUserBasic = (id:string) => request<any>('/user/'+encodeURIComponent(id)+'/basic')

@@ -1,4 +1,4 @@
-import { missingRequired } from '../form-required.ts';
+import { missingRequired } from '../../../services/form-required.ts';
 export function entityId(value) { if(typeof value !== 'string' || !/^\d+$/.test(value)) throw Error('记录ID异常，请重试'); return value }
 export function safeExternalUrl(value) {if(typeof value !== 'string' || !/^https:\/\/[^\s\\]+$/i.test(value)) throw Error('外部地址无效'); return value}
 export function objectValue(value) {if(typeof value === 'string') {try{return JSON.parse(value)}catch{return value}}; return value}
@@ -28,15 +28,6 @@ export function personalityPayload(form) {
   const result={code:form.code.trim(),name:form.name.trim(),vector:vectorValue(form.vector),isSpecial:!!form.isSpecial}
   for(const key of ['motto','color','description','techStack','spirit','imageObject']) if(form[key] != null) result[key]=form[key]
   for(const key of ['strengths','weaknesses']) result[key]=Array.isArray(form[key]) ? form[key] : String(form[key] || '').split('\n').map(line=>line.trim()).filter(Boolean)
-  return result
-}
-export function authPayload(mode,form) {
-  if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim())) throw Error('请输入有效邮箱')
-  if(!form.code.trim()) throw Error('请输入验证码')
-  if(!form.password) throw Error('请输入密码')
-  if(form.password !== form.confirmPassword) throw Error('两次密码不一致')
-  const result={email:form.email.trim(),code:form.code.trim(),password:form.password}
-  if(mode === 'register') {if(!form.username.trim()) throw Error('请输入用户名'); result.username=form.username.trim()}
   return result
 }
 export function shareText(result,site='') { const p=result.personality; return '我在 CBTI 程序员人格测试中测出了【'+p.code+' · '+p.name+'】！\n「'+(p.motto || '')+'」\n匹配度 '+result.similarity+'%'+(site ? '\n'+site : '') }

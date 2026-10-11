@@ -130,6 +130,10 @@ onUnmounted(() => {
 })
 </script>
 <template>
+  <!-- 微信滚动容器会影响 fixed 子节点；整层挂到页面根部，嵌套弹窗也不受父层裁切。 -->
+  <!-- #ifdef MP-WEIXIN -->
+  <root-portal :enable="true">
+  <!-- #endif -->
   <view class="modal-mask ui-modal-mask" :class="[themeClass('modal-mask'), { 'modal-mask-loading': bare }, themeClass({ 'modal-mask-loading': bare })]" :style="{ paddingTop: (verticalInset + safeTop) + 'px', paddingBottom: (verticalInset + safeBottom + keyboardHeight) + 'px' }" @click="!busy && emit('close')">
     <!-- 模糊层独立于内容，避免改变内嵌确认框 / picker 的 fixed 定位参照。 -->
     <!-- #ifdef WEB || MP-WEIXIN -->
@@ -158,6 +162,9 @@ onUnmounted(() => {
       </scroll-view>
     </view>
   </view>
+  <!-- #ifdef MP-WEIXIN -->
+  </root-portal>
+  <!-- #endif -->
 </template>
 <style scoped lang="scss">
 @use '../styles/spacing.scss';

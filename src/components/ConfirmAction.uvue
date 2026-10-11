@@ -94,6 +94,10 @@ onUnmounted(() => {
     <slot :open="open" :busy="busy">
       <MobileButton :label="label" :icon="icon" variant="quiet" :loading="busy" @click="open" />
     </slot>
+    <!-- 保留原位按钮测量，只有确认面板脱离滚动容器和卡片的 transform。 -->
+    <!-- #ifdef MP-WEIXIN -->
+    <root-portal v-if="opened" :enable="true">
+    <!-- #endif -->
     <view
       v-if="opened"
       class="confirm-panel ui-pad-card"
@@ -119,6 +123,9 @@ onUnmounted(() => {
             @click="confirm"><text class="confirm-submit-label" :class="{ 'confirm-button-label-compact': compact }">{{ confirmLabel }}</text></MobileButton></view>
       </scroll-view>
     </view>
+    <!-- #ifdef MP-WEIXIN -->
+    </root-portal>
+    <!-- #endif -->
   </view>
 </template>
 <style scoped lang="scss">
@@ -133,6 +140,10 @@ onUnmounted(() => {
   position: fixed;
   top: 48px;
   z-index: 120;
+  /* 脱离原来的 anchor 后，面板自身必须高于编辑弹窗（1100）。 */
+  /* #ifdef MP-WEIXIN */
+  z-index: 1300;
+  /* #endif */
 
   border-radius: 14px;
   background-color: #ffffff;

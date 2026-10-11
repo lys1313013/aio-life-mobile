@@ -1,6 +1,7 @@
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { build } from 'esbuild';
+import { synchronousImports, unusedMainScripts } from './weixin-main-usage.mjs';
 
 const policy = JSON.parse(readFileSync(new URL('./weixin-package-policy.json', import.meta.url), 'utf8'));
 const slash = value => value.replaceAll('\\', '/');
@@ -128,10 +129,7 @@ export function weixinSubpackageVendors() {
           const from = owner(chunk.fileName);
           // uni removes its synthetic page registration imports from app.js; inspect
           // emitted requires rather than Rollup's pre-rewrite imports metadata.
-          const dependencies = [...chunk.code.matchAll(/\brequire\(\s*['"]([^'"]+)['"]\s*\)/g)]
-            .map(match => match[1].startsWith('.')
-              ? path.posix.normalize(path.posix.join(path.posix.dirname(chunk.fileName), match[1]))
-              : match[1].replace(/^\//, ''));
+          const dependencies = synchronousImports(chunk.code, chunk.fileName);
           runtimeImports.set(chunk.fileName, dependencies);
           for (const dependency of dependencies) {
             const to = owner(dependency);
@@ -147,6 +145,8 @@ export function weixinSubpackageVendors() {
             }
           }
         }
+        const unused = unusedMainScripts(output, config);
+        if (unused.length) this.error(`主包存在未被主包页面、组件或 app 使用的 JS：\n${unused.join('\n')}\n请移动业务源码至所属分包；共享工具需审查状态后配置 scopedSharedServices。`);
         const report = chunks.map(chunk => ({
           file: chunk.fileName,
           bytes: Buffer.byteLength(chunk.code),

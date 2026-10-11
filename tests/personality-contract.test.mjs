@@ -3,8 +3,10 @@ import {readFile} from 'node:fs/promises'
 import assert from 'node:assert/strict'
 import test from 'node:test'
 const asModule=value=>`data:text/javascript;base64,${Buffer.from(withFormRequired(value)).toString('base64')}`
-const source=await readFile(new URL('../src/services/personality/contract.ts',import.meta.url),'utf8')
-const {entityId,safeExternalUrl,mbtiPayload,cbtiPayload,vectorValue,personalityPayload,authPayload,shareText}=await import(asModule(source))
+const authSource=await readFile(new URL('../src/pages/auth/services/contract.ts',import.meta.url),'utf8')
+const source=await readFile(new URL('../src/pages/personality/services/contract.ts',import.meta.url),'utf8')
+const {entityId,safeExternalUrl,mbtiPayload,cbtiPayload,vectorValue,personalityPayload,shareText}=await import(asModule(source))
+const {authPayload}=await import(asModule(authSource))
 const id='9223372036854775807'
 test('历史ID不转number，外部地址只允许https',()=>{assert.equal(entityId(id),id);assert.throws(()=>entityId(1),/ID/);assert.throws(()=>safeExternalUrl('javascript:alert(1)'),/无效/);assert.equal(safeExternalUrl('https://devil.ai/test/abc'),'https://devil.ai/test/abc')})
 test('MBTI 保存完整预测/特质/匹配与结果页，恢复JSON历史',()=>{assert.deepEqual(mbtiPayload('fixture',{mbtiType:'INTP',predictions:'{"Ti":80}',traitOrderConscious:{hero:'Ti'},traitOrderShadow:{critic:'Te'},matches:'["ENTP"]',resultsPage:'https://example.test/result'}),{testId:'fixture',mbtiType:'INTP',predictions:{Ti:80},traitOrderConscious:{hero:'Ti'},traitOrderShadow:{critic:'Te'},matches:['ENTP'],resultsPage:'https://example.test/result'});assert.throws(()=>mbtiPayload('fixture',{}),/未完成/)})

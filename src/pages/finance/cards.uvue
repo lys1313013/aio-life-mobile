@@ -1014,12 +1014,20 @@ async function removeTag(value: any) {
                   <button class="card-more ui-type-body" :id="'card-more-' + card.id" role="button" aria-label="银行卡更多操作" aria-haspopup="menu" :aria-expanded="menuCardId === card.id" :aria-busy="revealBusy === card.id || busy" :aria-disabled="revealBusy === card.id || busy" :loading="revealBusy === card.id || busy" :disabled="revealBusy === card.id || busy" @click="toggleMenu(card)">
                     <AppIcon v-if="revealBusy !== card.id && !busy" name="lucide:ellipsis" :size="20" :color="coverFile(card) ? undefined : '#f1f4f9'" />
                   </button>
+                  <!-- 微信卡片切换使用 transform，菜单与遮罩一起脱离卡片定位上下文。 -->
+                  <!-- #ifdef MP-WEIXIN -->
+                  <root-portal v-if="menuCardId === card.id" :enable="true">
+                    <view class="menu-backdrop" @click="menuCardId = ''" />
+                  <!-- #endif -->
                   <view v-if="menuCardId === card.id" class="card-menu ui-pad-sm ui-gap-xs" :style="{ left: menuLeft + 'px', top: menuTop + 'px' }" :class="themeClass('card-menu')" role="menu">
                     <button :style="appTextColor()" class="card-menu-item ui-row" role="menuitem" @click="edit(card)"><AppIcon name="ant-design:edit-outlined" :size="18" /><text class="ui-type-body">编辑银行卡</text></button>
                     <button :style="appTextColor()" v-if="card.cardNoLast4" class="card-menu-item ui-row" role="menuitem" @click="reveal(card)"><AppIcon name="ant-design:eye-outlined" :size="18" /><text class="ui-type-body">查看卡号</text></button>
                     <button :style="appTextColor()" v-if="card.cardNoLast4" class="card-menu-item ui-row" role="menuitem" @click="reveal(card, true)"><AppIcon name="ant-design:copy-outlined" :size="18" /><text class="ui-type-body">复制卡号</text></button>
                     <button :style="appTextColor()" class="card-menu-item card-menu-danger ui-row" role="menuitem" @click="menuCardId = ''; open()"><AppIcon name="ant-design:delete-outlined" :size="18" color="#dc5454" /><text class="ui-type-body">删除银行卡</text></button>
                   </view>
+                  <!-- #ifdef MP-WEIXIN -->
+                  </root-portal>
+                  <!-- #endif -->
                 </template>
               </ConfirmAction></view>
             </view></view>
@@ -1041,7 +1049,10 @@ async function removeTag(value: any) {
             @click="editTag(item)" /><ConfirmAction
             label="删除标签"
             :action="() => removeTag(item)" /></view></view></view
-    ><view v-if="menuCardId" class="menu-backdrop" @click="menuCardId = ''" />
+    >
+    <!-- #ifndef MP-WEIXIN -->
+    <view v-if="menuCardId" class="menu-backdrop" @click="menuCardId = ''" />
+    <!-- #endif -->
     <AdaptiveModal v-if="numberCardId" label="银行卡卡号" @close="closeNumber">
       <text class="card-number-detail" :class="themeClass('card-number-detail')">{{ displayedCardNumber }}</text>
       <FormActions>
@@ -1396,6 +1407,9 @@ grid-template-columns: minmax(0, 1fr);
 }
 .card-menu {
   position: fixed;
+  /* #ifdef MP-WEIXIN */
+  z-index: 1200;
+  /* #endif */
   box-sizing: border-box;
   width: 168px;
   border-radius: 12px;

@@ -721,7 +721,6 @@ function closeSelection() {
               <AppIcon name="ant-design:delete-outlined" color="#df5661" /></button
             ><view v-if="confirmDelete" class="delete-confirm"
                :class="themeClass('delete-confirm')"><text class="field-value" :class="themeClass('field-value')">删除这条时间记录？</text
-              ><text class="muted-text">关联的运动明细也会删除</text
               ><view class="confirm-actions"
                 ><button
                   role="button"
@@ -757,6 +756,7 @@ function closeSelection() {
             :disabled="saving || deleting"
             :aria-disabled="saving || deleting"
             :loading="saving"
+            :aria-busy="saving"
             @click="submit"
           >
             <text class="action-label">保存</text>
@@ -1094,6 +1094,7 @@ function closeSelection() {
 }
 .save-button {
   display: flex;
+  flex-direction: row;
   align-items: center;
   justify-content: center;
   width: $space-modalActionMin;
@@ -1103,8 +1104,9 @@ function closeSelection() {
   padding: 0;
   margin: 0;
   border-radius: 10px;
-  background-color: #4e7ee3;
-  color: #ffffff;
+  // 覆盖平台 disabled 默认配色，保存期间只显示 loading，不改变按钮颜色。
+  background-color: #4e7ee3 !important;
+  color: #ffffff !important;
   @include type-style('body');
 }
 .delete-anchor {
@@ -1392,6 +1394,20 @@ function closeSelection() {
   border: 0;
   border-radius: 0;
   background-color: transparent;
+}
+// 临时禁用只阻止操作，保留表单底色，避免深浅主题下闪出原生浅色按钮。
+.compact-category,
+.end-time-trigger,
+.field-button,
+.time-step-button,
+.duration-step,
+.exercise-add,
+.exercise-type-control,
+.remove-exercise,
+.small-action,
+.cancel-action,
+.delete-button {
+  background-color: transparent !important;
 }
 /* #ifdef WEB || MP-WEIXIN */
 .end-time-trigger::after { border: 0; }

@@ -156,6 +156,8 @@ npm run check:weixin-size:only  # 只检查已有 dist/build/mp-weixin，适合�
 
 检查使用固定版本 `miniprogram-ci@2.1.31` 的 `getCompiledResult`，读取产物的发布压缩设置，再按编译后的 `app.json` 分包根目录统计 UTF-8 / 二进制文件字节数。主包及每个分包独立按 **1900 KB 预警、2048 KB 硬上限** 检查，主包额外执行 **1600 KB 工程预算**（1 KB = 1024 字节）；超工程预算、超硬上限、缺失产物、编译失败或发布配置漂移均返回非零退出码。预览的 `bigPackageSizeSupport` 不会放宽本地阈值。
 
+微信构建还检查主包 JS 是否被主包页面、原生注册组件或 `app.js` 使用（包含间接依赖和 JSON 组件声明），发现仅分包使用或完全未使用的 JS 即失败。业务专属源码放入对应 `src/pages/<业务>/services/`；多个分包共用且不持有模块级共享状态的工具，可经审查登记在 `scripts/weixin-package-policy.json` 的 `scopedSharedServices`。构建插件为每个调用分包生成虚拟副本，源码仍只维护一份，嵌套工具保留相同分包归属；登录状态、缓存等单例继续引用主包，不能加入副本清单。H5 与 App 不启用此机制。主包组件自身的归属优化不由此项检查覆盖，微信开发者工具的最终质量检查仍需单独确认。
+
 终端列出各包大小、剩余额度、主包最大的 10 个文件；`artifacts/weixin-size/report.json` 保留各包全部文件清单，`report.txt` 为简短报告，`chunks.json` 记录各 JS 文件的模块贡献和实际同步依赖（uni/Rollup 阶段字节数仅用于定位，最终限额以官方编译后的 `report.json` 为准）。微信构建开始即清除旧报告；若前面的 uni 构建失败，不会留下旧的体积通过报告。CI 的构建任务运行同一命令，并保存报告 7 天，超预算或超限会使任务失败。
 
 检查在临时副本上运行，不改开发者工具项目，也不调用 `preview` / `upload`、不更新体验版。离线适配使用编译器默认项目属性和 `touristappid`，无需真实 AppID、上传私钥、IP 白名单或 CI Secrets；内部非密钥占位值只满足官方 Project 构造器参数要求，不用于鉴权。涉及插件或账号特定能力时不能据此声称已验证，当前检查会拒绝插件项目。此适配固定编译器版本，升级时必须重新验证；它统计编译后的文件字节数，不是 ZIP 大小，也未包含服务端最终封装开销，上传端仍保留最终校验。[微信官方编译接口](https://github.com/wechat-miniprogram/miniprogram-ci-dist#获取本地编译后的代码包)

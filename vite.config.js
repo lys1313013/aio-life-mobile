@@ -1,6 +1,7 @@
 import { defineConfig, loadEnv } from 'vite';
 import uni from '@dcloudio/vite-plugin-uni';
 import { weixinSubpackageVendors } from './scripts/weixin-subpackage-vendors.mjs';
+import { weixinSharedServices } from './scripts/weixin-shared-services.mjs';
 import { appVendors } from './scripts/app-vendors.mjs';
 import { chartRuntime } from './scripts/chart-runtime.mjs';
 
@@ -14,7 +15,7 @@ export default defineConfig(({ command, mode }) => {
     define: {
       'import.meta.env.VITE_APP_BUILD_TIME': JSON.stringify(buildTime),
     },
-    plugins: [weixinSubpackageVendors(), appVendors(), chartRuntime(), uni()],
+    plugins: [weixinSharedServices(), weixinSubpackageVendors(), appVendors(), chartRuntime(), uni()],
     // Compile object rest/spread before DevTools Babel; its helper modules are
     // otherwise missing from lazy-loaded subpackages. Keep other targets intact.
     ...(process.env.UNI_PLATFORM === 'mp-weixin' ? {
