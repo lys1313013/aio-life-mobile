@@ -91,11 +91,12 @@ async function setup(page, options = {}) {
 async function openEditor(page) {
   await page.locator("uni-tabbar").getByText("首页", { exact: true }).click();
   await page.getByRole("button", { name: "管理快捷导航", exact: true }).click();
-  await expect(page.getByRole("dialog", { name: "编辑常用功能", exact: true })).toBeVisible();
+  await expect(page).toHaveURL(/\/#\/$/);
+  await expect(page.locator(".quick-editor")).toBeVisible();
 }
 for (const width of [390, 768, 1440]) {
   for (const colorScheme of ["light", "dark"]) {
-    test(`生活目录无重复常用区与首页编辑弹窗 ${width} ${colorScheme}`, async ({
+    test(`生活目录无重复常用区与首页原地编辑 ${width} ${colorScheme}`, async ({
       page,
     }, testInfo) => {
       await page.setViewportSize({ width, height: 900 });
@@ -127,25 +128,24 @@ for (const width of [390, 768, 1440]) {
         ),
       ).toBe(true);
       await page.screenshot({ path: testInfo.outputPath("directory.png") });
+      await page.locator("uni-tabbar").getByText("首页", { exact: true }).click();
+      await page.screenshot({ path: testInfo.outputPath("empty-home.png") });
       await openEditor(page);
-      const dialog = page.getByRole("dialog", {
-        name: "编辑常用功能",
-        exact: true,
-      });
-      await expect(dialog).toBeVisible();
-      await dialog
+      const editor = page.locator(".quick-editor");
+      await expect(editor).toBeVisible();
+      await editor.getByRole("button", { name: "添加快捷方式", exact: true }).click();
+      await page.getByRole("dialog", { name: "添加快捷方式" })
         .getByRole("button", { name: "添加运动", exact: true })
         .click();
+      await page.getByRole("dialog", { name: "添加快捷方式" }).getByRole("button", { name: "完成添加", exact: true }).click();
       await expect(
-        dialog.getByRole("button", { name: "移除运动", exact: true }),
+        editor.getByRole("button", { name: "移除运动", exact: true }),
       ).toBeVisible();
-      const box = await dialog.boundingBox();
-      expect(box.width).toBeLessThanOrEqual(Math.min(width - 32, 560));
-      expect(box.height).toBeLessThanOrEqual(900 - 48);
+      const box = await editor.boundingBox();
+      expect(box.width).toBeLessThanOrEqual(Math.min(width - 32, 960));
       await page.screenshot({ path: testInfo.outputPath("editor.png") });
-      await dialog
-        .getByRole("button", { name: "取消编辑", exact: true })
-        .click();
+      await page.getByRole("button", { name: "取消编辑", exact: true }).click();
+      await expect(editor).toBeHidden();
       await expect(page.locator(".life-quick")).toHaveCount(0);
     });
   }
@@ -209,21 +209,24 @@ test("常用增删、排序、停用、保存失败恢复与首页同步", async
     },
   });
   await openEditor(page);
-  const dialog = page.getByRole("dialog", {
-    name: "编辑常用功能",
-    exact: true,
-  });
-  await dialog.getByRole("button", { name: "添加运动", exact: true }).click();
-  await dialog.getByRole("button", { name: "上移运动", exact: true }).click();
-  await dialog.getByRole("button", { name: "上移运动", exact: true }).click();
-  await dialog.getByRole("button", { name: "移除待办", exact: true }).click();
-  await dialog.getByRole("button", { name: "保存", exact: true }).click();
-  await expect(dialog.getByText("保存失败，请重试")).toBeVisible();
+  const editor = page.locator(".quick-editor");
+  await editor.getByRole("button", { name: "添加快捷方式", exact: true }).click();
+  await page.getByRole("dialog", { name: "添加快捷方式" }).getByRole("button", { name: "添加运动", exact: true }).click();
+  await page.getByRole("dialog", { name: "添加快捷方式" }).getByRole("button", { name: "完成添加", exact: true }).click();
+  const dragHandle = editor.getByRole("button", { name: "拖动排序运动", exact: true });
+  const firstTile = editor.locator(".quick-editor-tile").first();
+  await dragHandle.dragTo(firstTile);
+  await expect(editor.locator(".quick-editor-title").first()).toHaveText("运动");
+  await editor.getByRole("button", { name: "下移运动", exact: true }).click();
+  await editor.getByRole("button", { name: "上移运动", exact: true }).click();
+  await editor.getByRole("button", { name: "移除待办", exact: true }).click();
+  await page.getByRole("button", { name: "保存", exact: true }).click();
+  await expect(editor.getByText("保存失败，请重试")).toBeVisible();
   await expect(
-    dialog.getByRole("button", { name: "移除运动", exact: true }),
+    editor.getByRole("button", { name: "移除运动", exact: true }),
   ).toBeVisible();
-  await dialog.getByRole("button", { name: "保存", exact: true }).click();
-  await expect(dialog).toBeHidden();
+  await page.getByRole("button", { name: "保存", exact: true }).click();
+  await expect(editor).toBeHidden();
   expect(state.posts[0].items).toEqual([
     { menuId: "exercise", enabled: 1, sortOrder: 0 },
     { menuId: "goal", enabled: 0, sortOrder: 1 },
@@ -236,6 +239,32 @@ test("常用增删、排序、停用、保存失败恢复与首页同步", async
   await expect(
     page.locator(".quick-link").getByText("目标", { exact: true }),
   ).toHaveCount(0);
+});
+test("首页取消原地编辑后丢弃草稿", async ({ page }) => {
+  const state = await setup(page, {
+    saved: [{ ...entries.find((i) => i.menuId === "todo"), enabled: 1, sortOrder: 0 }],
+  });
+  await openEditor(page);
+  await page.locator(".quick-editor").getByRole("button", { name: "移除待办", exact: true }).click();
+  await page.getByRole("button", { name: "取消编辑", exact: true }).click();
+  await expect(page.locator(".quick-link").getByText("待办", { exact: true })).toBeVisible();
+  await openEditor(page);
+  await expect(page.locator(".quick-editor").getByRole("button", { name: "移除待办", exact: true })).toBeVisible();
+  expect(state.posts).toHaveLength(0);
+});
+test("首页空态直接添加快捷方式并直达业务页", async ({ page }) => {
+  const state = await setup(page);
+  await page.locator("uni-tabbar").getByText("首页", { exact: true }).click();
+  await page.getByRole("button", { name: "添加常用功能", exact: true }).click();
+  const editor = page.locator(".quick-editor");
+  await expect(page).toHaveURL(/\/#\/$/);
+  await page.getByRole("dialog", { name: "添加快捷方式" }).getByRole("button", { name: "添加待办", exact: true }).click();
+  await page.getByRole("dialog", { name: "添加快捷方式" }).getByRole("button", { name: "完成添加", exact: true }).click();
+  await page.getByRole("button", { name: "保存", exact: true }).click();
+  await expect(editor).toBeHidden();
+  expect(state.posts[0].items).toEqual([{ menuId: "todo", enabled: 1, sortOrder: 0 }]);
+  await page.locator(".quick-link").filter({ hasText: "待办" }).click();
+  await expect(page).toHaveURL(/pages\/tasks\/todo/);
 });
 test("目录失败不显示伪造入口、可重试，下拉保留已有目录", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
@@ -340,42 +369,41 @@ test("目录 401 在请求层清理 Token 后仍返回登录页", async ({ page 
   ).toBeVisible();
   await expect(page.locator("uni-tabbar")).toBeHidden();
 });
-test("12 项上限不截断既有配置，停用可恢复、清空可保存", async ({ page }) => {
+test("15 项上限不截断既有配置，停用可恢复、清空可保存", async ({ page }, testInfo) => {
+  await page.setViewportSize({ width: 390, height: 900 });
   const state = await setup(page, {
     saved: entries
-      .slice(0, 12)
+      .slice(0, 15)
       .map((item, i) => ({ ...item, enabled: i === 1 ? 0 : 1, sortOrder: i })),
   });
   await openEditor(page);
-  const dialog = page.getByRole("dialog", {
-    name: "编辑常用功能",
-    exact: true,
-  });
-  await expect(
-    dialog.getByRole("button", { name: "添加收入", exact: true }),
-  ).toBeDisabled();
-  await dialog.getByRole("button", { name: "启用待办", exact: true }).click();
-  await dialog.getByRole("button", { name: "保存", exact: true }).click();
-  await expect(dialog).toBeHidden();
-  expect(state.posts[0].items).toHaveLength(12);
+  const editor = page.locator(".quick-editor");
+  await expect(editor.locator(".quick-editor-tile")).toHaveCount(15);
+  const lastTileBox = await editor.locator(".quick-editor-tile").last().boundingBox();
+  const footerBox = await editor.locator(".quick-editor-footer").boundingBox();
+  expect(lastTileBox.y + lastTileBox.height).toBeLessThanOrEqual(footerBox.y);
+  await page.screenshot({ path: testInfo.outputPath("editor-15.png"), fullPage: true });
+  await expect(editor.getByRole("button", { name: "添加快捷方式", exact: true })).toHaveCount(0);
+  await editor.getByRole("button", { name: "显示待办", exact: true }).click();
+  await page.getByRole("button", { name: "保存", exact: true }).click();
+  await expect(editor).toBeHidden();
+  expect(state.posts[0].items).toHaveLength(15);
   expect(state.posts[0].items[0].menuId).toBe("9223372036854775807");
   expect(state.posts[0].items[1].enabled).toBe(1);
   await page.locator("uni-tabbar").getByText("首页", { exact: true }).click();
   const lastQuick = page
     .locator(".quick-link")
-    .getByText("LeetCode", { exact: true });
+    .getByText("银行卡", { exact: true });
   await expect(async () => {
     await lastQuick.scrollIntoViewIfNeeded();
     await expect(lastQuick).toBeVisible();
   }).toPass({ timeout: 5000 });
   await page.locator("uni-tabbar").getByText("全部", { exact: true }).click();
   await openEditor(page);
-  for (const item of entries.slice(0, 12))
-    await dialog
-      .getByRole("button", { name: "移除" + item.title, exact: true })
-      .click();
-  await dialog.getByRole("button", { name: "保存", exact: true }).click();
-  await expect(dialog).toBeHidden();
+  await editor.getByRole("button", { name: "清空快捷导航", exact: true }).click();
+  await page.getByRole("dialog", { name: "清空快捷导航", exact: true })
+    .getByRole("button", { name: "确认", exact: true }).click();
+  await expect(editor).toBeHidden();
   expect(state.posts[1].items).toEqual([]);
   await expect(page.locator(".life-quick")).toHaveCount(0);
   await page.locator("uni-tabbar").getByText("首页", { exact: true }).click();

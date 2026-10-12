@@ -1,5 +1,5 @@
 // 目录只整理服务端返回的授权菜单，不凭空补齐入口。
-export const QUICK_NAV_MAX = 12;
+export const QUICK_NAV_MAX = 15;
 const nativePages = {
   "/time/dashboard": "/pages/time/dashboard",
   "/record/feedback": "/pages/records/feedback",
@@ -225,7 +225,7 @@ export function visibleQuickLinks(saved, catalog) {
 }
 
 export function quickLinkPayload(items) {
-  if (items.length > QUICK_NAV_MAX) throw new Error("常用功能最多 12 项");
+  if (items.length > QUICK_NAV_MAX) throw new Error(`常用功能最多 ${QUICK_NAV_MAX} 项`);
   if (new Set(items.map((item) => item.menuId)).size !== items.length)
     throw new Error("常用功能不能重复");
   return items.map((item, index) => ({

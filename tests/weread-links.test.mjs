@@ -86,6 +86,7 @@ test('实际页面统计日期不依赖 Android locale，上海零点有效且�
   page.date.value = '2026-10-04';
   assert.equal(page.timestamp(), Date.parse('2026-10-03T16:00:00Z') / 1000);
   const monthBoundary = Date.parse('2026-09-30T16:00:00Z') / 1000;
+  page.mode.value = '年';
   assert.equal(page.readingPeriod(monthBoundary), '10月');
   page.mode.value = '月';
   assert.equal(page.readingPeriod(monthBoundary), '10/1');

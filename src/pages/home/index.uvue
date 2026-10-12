@@ -6,6 +6,7 @@ import ContentSkeleton from '../../components/ContentSkeleton.uvue';
 import TimeDonut from './TimeDonut.uvue'
 import BusinessCards from './BusinessCards.uvue'
 import WereadRecentCard from './WereadRecentCard.uvue'
+import QuickNavEditor from './QuickNavEditor.uvue'
 import HomeCardSortCell from './HomeCardSortCell.uvue'
 import HomeListSkeleton from './HomeListSkeleton.uvue'
 import { useHomeCardOrder } from './services/use-home-card-order.ts'
@@ -57,7 +58,7 @@ import { takeRecordChange } from '../../services/time-changes.ts'
 import { elapsedSinceRecord } from '../../services/time-format.ts'
 import { todayDate } from '../../services/dashboard.ts'
 import { durationLabel, summaryDonutLabels, timeSummary } from '../../services/dashboard-format.ts'
-import { openBusinessLink, openQuickNavEditor } from '../../services/navigation.ts'
+import { openBusinessLink } from '../../services/navigation.ts'
 import { lockedMenuPaths, nativeDestination } from '../../services/life-catalog.ts'
 import LifeMenuIcon from '../../components/LifeMenuIcon.uvue'
 import CategoryIcon from '../../components/CategoryIcon.uvue'
@@ -65,11 +66,16 @@ import spacing from '../../styles/spacing.json'
 import typography from '../../styles/typography.json'
 
 const viewportWidth = ref(uni.getWindowInfo().windowWidth)
+const quickNavEditing = ref(false)
+const quickNavBusy = ref(false)
+const quickNavReady = ref(false)
+const quickNavStartPicker = ref(false)
+const quickNavSaveSignal = ref(0)
 const quickIconSize = computed(() => viewportWidth.value < 640 ? 20 : 24)
 onResize(event => { viewportWidth.value = event.size.windowWidth; cardOrder.cancel() })
 const businessSorting = ref(false)
 const businessVisibility = reactive<Record<string, boolean>>({})
-const orderDisabled = computed(() => !active || homeCardPreferences.loading || !!homeCardPreferences.busy || loading.value || businessSorting.value)
+const orderDisabled = computed(() => !active || homeCardPreferences.loading || !!homeCardPreferences.busy || loading.value || businessSorting.value || quickNavEditing.value)
 const orderSignature = () => homeCardPreferences.items.map(item => item.cardKey + ':' + item.enabled + ':' + item.sortOrder).join('|')
 const cardOrder = useHomeCardOrder({
   rows: group => group === 'section' ? homeSections.value.filter(sectionVisible) : overviewOrderRows.value,
@@ -102,6 +108,24 @@ const errorText = ref('')
 const cards = ref<OverviewCard[]>([])
 const overview = reactive({ loading: false, error: '', loaded: false })
 const links = ref<QuickLink[]>([])
+function openQuickNavEditor(startPicker = false) {
+  quickNavStartPicker.value = startPicker
+  quickNavBusy.value = true
+  quickNavReady.value = false
+  quickNavEditing.value = true
+}
+function cancelQuickNavEditor() {
+  if (quickNavBusy.value && quickNavReady.value) return
+  quickNavEditing.value = false
+  quickNavReady.value = false
+  quickNavBusy.value = false
+}
+function quickNavSaved() {
+  quickNavEditing.value = false
+  quickNavReady.value = false
+  quickNavBusy.value = false
+  void loadSection('links', true)
+}
 const thoughts = ref<Thought[]>([])
 const watched = ref<WatchedTask[]>([])
 const exercise = ref<ExercisePage>({ days: [] })
@@ -365,7 +389,7 @@ function suspendHome(closeEditors = true) {
   for (const card of cards.value) card.loading = false
   moreExercise.value = moreCommits.value = false
   businessActive.value = false; active = false; timeChartActive.value = false
-  if (closeEditors) { timeEditor.value = null; recordCreateKind.value = null; thoughtEditId.value = ''; watchedEditor.value = null }
+  if (closeEditors) { timeEditor.value = null; recordCreateKind.value = null; thoughtEditId.value = ''; watchedEditor.value = null; quickNavEditing.value = false }
   if (minuteTimer) clearInterval(minuteTimer)
   minuteTimer = null
 }
@@ -776,7 +800,7 @@ function trendLines(points) {
               >
             </view>
           </HomeCardSortCell><SecondaryUnlock />
-  </view><view v-if="homeCardPreferences.ready" class="section-grid"><HomeCardSortCell v-for="section in homeSections" :key="section.cardKey" :visible="sectionVisible(section)" :card-key="section.cardKey" :title="section.title" group="section" :order="cardOrder" :disabled="orderDisabled">
+  </view><view v-if="homeCardPreferences.ready" class="section-grid"><HomeCardSortCell v-for="section in homeSections" :key="section.cardKey" :visible="sectionVisible(section)" :card-key="section.cardKey" :title="section.title" group="section" :order="cardOrder" :disabled="orderDisabled" :wide="section.cardKey === 'section.links' && quickNavEditing">
           <view v-if="section.cardKey === 'section.time'" class="section-content ui-pad-xs"
             ><DashboardSection
               title="时迹" :icon="menuVisuals.visual('section.time').icon" :icon-color="menuVisuals.visual('section.time').iconColor"
@@ -840,24 +864,26 @@ function trendLines(points) {
             ><DashboardSection
               title="快捷导航" :icon="menuVisuals.visual('section.links').icon" :icon-color="menuVisuals.visual('section.links').iconColor" skeleton="grid"
               :height="sectionHeight('links')"
-              :loading="states.links.loading && !refreshing && !states.links.loaded"
-              :updating="states.links.loading && !refreshing && states.links.loaded"
+              :auto-height="quickNavEditing"
+              :loading="!quickNavEditing && states.links.loading && !refreshing && !states.links.loaded"
+              :updating="!quickNavEditing && states.links.loading && !refreshing && states.links.loaded"
               :retain-content="states.links.loaded"
-              :error="states.links.error"
-              :locked="states.links.locked" :refresh-disabled="orderDisabled"
-              @navigate="openQuickNavEditor"
+              :error="quickNavEditing ? '' : states.links.error"
+              :locked="states.links.locked" :refresh-disabled="orderDisabled || quickNavEditing"
+              @navigate="openQuickNavEditor()"
               @refresh="loadSection('links')"
             >
               <template #actions>
-                <DashboardAction label="管理快捷导航" icon="lucide:settings-2" @click="openQuickNavEditor" />
+                <view v-if="quickNavEditing" class="quick-header-actions">
+                  <button role="button" class="quick-header-button" :class="themeClass('quick-header-button')" aria-label="取消编辑" :disabled="quickNavBusy && quickNavReady" @click="cancelQuickNavEditor"><text class="quick-header-text" :class="themeClass('quick-header-text')">取消</text></button>
+                  <button role="button" class="quick-header-button quick-header-save" aria-label="保存" :disabled="quickNavBusy || !quickNavReady" @click="quickNavSaveSignal++"><text class="quick-header-text quick-header-save-text">保存</text></button>
+                </view>
+                <DashboardAction v-else label="管理快捷导航" icon="lucide:settings-2" @click="openQuickNavEditor()" />
               </template><template #loading><view class="quick-loading" role="status" aria-label="正在加载快捷导航"><view class="quick-grid" aria-hidden="true"><view v-for="n in 10" :key="n" class="quick-link" :style="{ height: quickRowHeight + 'px' }"><view class="time-skeleton-fill" :class="themeClass('time-skeleton-fill')" :style="{ width: quickIconSize + 'px', height: quickIconSize + 'px' }" /><view class="quick-skeleton-label time-skeleton-fill" :class="themeClass('time-skeleton-fill')" /></view></view></view>
-              </template><view v-if="links.length === 0" class="empty-state ui-pad-card"
-                ><AppIcon name="ant-design:appstore-outlined" :size="32" color="#8b8f99" /><text class="empty-label" :class="themeClass('empty-label')">暂无快捷方式</text
-                ><button
-                  role="button"
-                  class="text-button ui-pad-sm"
-                  @click="openQuickNavEditor"
-                ><text :class="buttonLabelClasses(['text-button ui-pad-sm'])">添加常用功能</text></button></view
+              </template><QuickNavEditor v-if="quickNavEditing" :start-picker="quickNavStartPicker" :save-signal="quickNavSaveSignal" @busy="quickNavBusy = $event" @ready="quickNavReady = $event" @saved="quickNavSaved" /><button v-else-if="links.length === 0" role="button" class="quick-empty ui-pad-card" aria-label="添加常用功能" @click="openQuickNavEditor(true)"
+                ><view class="quick-empty-icon" :class="themeClass('quick-empty-icon')"><AppIcon name="ant-design:plus-outlined" :size="20" color="#427bea" /></view
+                ><text class="quick-empty-title" :class="themeClass('quick-empty-title')">添加你的第一个快捷方式</text
+                ><text class="quick-empty-caption">从菜单挑选常用功能，首页一触即达</text></button
               ><scroll-view v-else scroll-y :show-scrollbar="false" class="quick-scroll"><view class="quick-grid"
                 ><button
                   v-for="link in links"
@@ -1424,6 +1450,20 @@ color: inherit;
   flex-direction: row;
   flex-wrap: wrap;
 }
+.quick-header-actions { flex-direction: row; align-items: center; gap: $space-detail; }
+.quick-header-button { display: flex; min-width: $space-controlMin; height: $space-controlMin; padding: 0 $space-inline; margin: 0; border: 0; border-radius: $space-inline; background-color: transparent; align-items: center; justify-content: center; }
+.quick-header-button::after, .quick-empty::after { border: 0; }
+.quick-header-text { @include type-style('label'); color: #52525b; }
+.quick-header-text-dark { color: #eeeeef; }
+.quick-header-save { background-color: #427bea; }
+.quick-header-save-text { color: #ffffff; }
+.quick-header-button:disabled { opacity: 0.5; }
+.quick-empty { width: 100%; flex: 1; align-items: center; justify-content: center; border: 0; background-color: transparent; }
+.quick-empty-icon { width: $space-controlMin; height: $space-controlMin; border-radius: $space-card; background-color: #eef2f8; align-items: center; justify-content: center; }
+.quick-empty-icon-dark { background-color: #292c32; }
+.quick-empty-title { @include type-style('label'); color: #27272a; margin-top: $space-inline; }
+.quick-empty-title-dark { color: #eeeeef; }
+.quick-empty-caption { @include type-style('caption'); color: #8b8f99; margin-top: $space-detail; }
 .quick-loading { flex: 1; min-height: 0; padding: 0 $space-card $space-card; overflow: hidden; }
 .quick-skeleton-label { width: 60%; height: type-line('caption'); margin-top: $space-detail; }
 .quick-link {

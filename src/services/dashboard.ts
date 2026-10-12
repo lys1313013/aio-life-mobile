@@ -20,6 +20,7 @@ export interface OverviewCard {
 export interface QuickLink {
   menuId: string
   title: string
+  parentTitle?: string
   path: string
   icon?: string
   color?: string

@@ -1,0 +1,209 @@
+<script setup lang="ts">
+import { computed, getCurrentInstance, onMounted, onUnmounted, ref, watch } from 'vue'
+import AdaptiveModal from '../../components/AdaptiveModal.uvue'
+import MobileButton from '../../components/MobileButton.uvue'
+import ConfirmAction from '../../components/ConfirmAction.uvue'
+import LifeMenuIcon from '../../components/LifeMenuIcon.uvue'
+import AppIcon from '../../components/AppIcon.uvue'
+import LoadingIndicator from '../../components/LoadingIndicator.uvue'
+import { request } from '../../services/api.ts'
+import { loadLifeQuickLinks, saveLifeQuickLinks } from '../../services/life.ts'
+import { QUICK_NAV_MAX } from '../../services/life-catalog.ts'
+import { menuVisuals } from '../../services/menu-visuals.ts'
+import { isDark, themeClass } from '../../services/theme.ts'
+import type { QuickLink } from '../../services/dashboard.ts'
+
+const props = withDefaults(defineProps<{ startPicker?: boolean; saveSignal: number }>(), { startPicker: false })
+const emit = defineEmits(['saved', 'busy', 'ready'])
+const draft = ref<QuickLink[]>([])
+const candidates = ref<QuickLink[]>([])
+const loading = ref(true)
+const saving = ref(false)
+const error = ref('')
+const saveError = ref('')
+const picking = ref(false)
+const query = ref('')
+let active = true
+let dragIndex = -1
+const instance = getCurrentInstance()
+const choices = computed(() => candidates.value.filter(item =>
+  !draft.value.some(saved => saved.menuId === item.menuId) &&
+  (item.title + ' ' + (item.parentTitle || '')).toLowerCase().includes(query.value.trim().toLowerCase()),
+))
+
+async function load() {
+  loading.value = true
+  error.value = ''
+  emit('busy', true)
+  emit('ready', false)
+  try {
+    const [saved, available] = await Promise.all([
+      loadLifeQuickLinks(),
+      request<QuickLink[]>('/quick-nav/candidates?client=mobile'),
+    ])
+    if (!active) return
+    if (!Array.isArray(available) || available.some(item => !item || typeof item.menuId !== 'string' || typeof item.path !== 'string' || typeof item.title !== 'string'))
+      throw new Error('功能目录数据异常，请重试')
+    draft.value = saved.map(item => ({ ...item }))
+    candidates.value = available
+    picking.value = props.startPicker && saved.length === 0
+    emit('ready', true)
+  } catch (reason) {
+    if (active) error.value = reason instanceof Error ? reason.message : '加载失败，请重试'
+  } finally {
+    if (active) { loading.value = false; emit('busy', false) }
+  }
+}
+onMounted(() => {
+  void load()
+  // #ifdef WEB
+  window.addEventListener('mouseup', finishDrag)
+  // #endif
+})
+onUnmounted(() => {
+  active = false
+  // #ifdef WEB
+  window.removeEventListener('mouseup', finishDrag)
+  // #endif
+})
+
+function add(item: QuickLink) {
+  if (draft.value.length >= QUICK_NAV_MAX) return
+  draft.value.push({ ...item, enabled: 1, sortOrder: draft.value.length })
+  if (draft.value.length >= QUICK_NAV_MAX) picking.value = false
+}
+function move(index: number, step: number) {
+  moveTo(index, index + step)
+}
+function moveTo(index: number, target: number) {
+  const items = [...draft.value]
+  if (target < 0 || target >= items.length) return
+  const item = items.splice(index, 1)[0]
+  items.splice(target, 0, item)
+  draft.value = items
+}
+function startDrag(index: number) { if (!saving.value) dragIndex = index }
+function cancelDrag() { dragIndex = -1 }
+function finishDrag(event: any) {
+  const from = dragIndex
+  dragIndex = -1
+  if (from < 0) return
+  const point = event.changedTouches?.[0] || event
+  if (point.clientX == null || point.clientY == null) return
+  uni.createSelectorQuery().in(instance?.proxy).selectAll('.quick-editor-tile').boundingClientRect(rects => {
+    if (!active || !Array.isArray(rects)) return
+    const target = rects.findIndex(rect => point.clientX >= rect.left && point.clientX <= rect.right && point.clientY >= rect.top && point.clientY <= rect.bottom)
+    if (target >= 0) moveTo(from, target)
+  }).exec()
+}
+function remove(index: number) { draft.value.splice(index, 1) }
+function toggle(index: number) { draft.value[index].enabled = draft.value[index].enabled === 1 ? 0 : 1 }
+async function persist(items: QuickLink[]) {
+  if (saving.value || loading.value || error.value) return
+  saving.value = true
+  saveError.value = ''
+  emit('busy', true)
+  try {
+    await saveLifeQuickLinks(items)
+    if (active) emit('saved')
+  } catch (reason) {
+    if (active) saveError.value = reason instanceof Error ? reason.message : '保存失败，请重试'
+    throw reason
+  } finally {
+    if (active) { saving.value = false; emit('busy', false) }
+  }
+}
+async function save() {
+  try { await persist(draft.value) } catch { /* 保留卡片内草稿供重试 */ }
+}
+watch(() => props.saveSignal, () => { void save() })
+function visual(item: QuickLink) {
+  const value = menuVisuals.menuVisual(item.menuId, { icon: item.icon, iconColor: item.color })
+  return { ...value, iconColor: value.iconColor || (isDark.value ? '#e2e4e9' : '#27272a') }
+}
+</script>
+
+<template>
+  <view class="quick-editor">
+    <view v-if="loading" class="quick-editor-state"><LoadingIndicator label="正在加载快捷导航编辑项" /></view>
+    <view v-else-if="error" class="quick-editor-state">
+      <text class="quick-editor-error" role="alert">{{ error }}</text>
+      <MobileButton label="重试加载" variant="quiet" @click="load" />
+    </view>
+    <template v-else>
+      <text v-if="saveError" class="quick-editor-error" role="alert">{{ saveError }}</text>
+      <view class="quick-editor-grid">
+        <view v-for="(item, index) in draft" :key="item.menuId" class="quick-editor-tile" :class="themeClass('quick-editor-tile')">
+          <view class="quick-editor-tile-top">
+            <button role="button" class="quick-editor-grip" :aria-label="'拖动排序' + item.title" :disabled="saving" @touchstart.stop="startDrag(index)" @touchmove.stop.prevent @touchend.stop="finishDrag($event)" @touchcancel.stop="cancelDrag" @mousedown.stop="startDrag(index)"><view class="quick-editor-grip-dots"><view v-for="dot in 6" :key="dot" class="quick-editor-grip-dot" /></view></button>
+            <button role="button" class="quick-editor-remove" :disabled="saving" :aria-label="'移除' + item.title" @click="remove(index)"><AppIcon name="ant-design:close-outlined" :size="16" color="#8b8f99" /></button>
+          </view>
+          <LifeMenuIcon :icon="visual(item).icon" :size="24" :color="visual(item).iconColor" />
+          <text class="quick-editor-title" :class="[themeClass('quick-editor-title'), { 'quick-editor-hidden': item.enabled === 0 }]">{{ item.title }}</text>
+          <view class="quick-editor-controls">
+            <button role="button" class="quick-editor-control" :disabled="saving || index === 0" :aria-label="'上移' + item.title" @click="move(index, -1)"><AppIcon name="ant-design:arrow-left-outlined" :size="16" color="#8b8f99" /></button>
+            <button role="button" class="quick-editor-control" :disabled="saving" :aria-label="(item.enabled === 1 ? '隐藏' : '显示') + item.title" @click="toggle(index)"><AppIcon :name="item.enabled === 1 ? 'ant-design:eye-outlined' : 'ant-design:eye-invisible-outlined'" :size="16" color="#8b8f99" /></button>
+            <button role="button" class="quick-editor-control" :disabled="saving || index === draft.length - 1" :aria-label="'下移' + item.title" @click="move(index, 1)"><view class="quick-editor-right-icon"><AppIcon name="ant-design:arrow-left-outlined" :size="16" color="#8b8f99" /></view></button>
+          </view>
+        </view>
+        <button v-if="draft.length < QUICK_NAV_MAX" role="button" class="quick-editor-add" :class="themeClass('quick-editor-add')" aria-label="添加快捷方式" :disabled="saving" @click="picking = true">
+          <AppIcon name="ant-design:plus-outlined" :size="24" :color="isDark ? '#a9bfff' : '#427bea'" />
+          <text class="quick-editor-add-label">添加</text>
+        </button>
+      </view>
+      <view class="quick-editor-footer">
+        <text class="quick-editor-count">{{ draft.length }}/{{ QUICK_NAV_MAX }}</text>
+        <ConfirmAction v-if="draft.length" label="清空快捷导航" message="清空所有快捷方式？" :action="() => persist([])" icon="ant-design:delete-outlined" />
+      </view>
+    </template>
+    <AdaptiveModal v-if="picking" label="添加快捷方式" :max-width="520" @close="picking = false">
+      <view class="quick-picker">
+        <input v-model="query" class="quick-picker-search" :class="themeClass('quick-picker-search')" aria-label="搜索快捷方式" placeholder="搜索功能" />
+        <text v-if="!choices.length" class="quick-picker-muted">{{ candidates.length ? '暂无可添加的功能' : '暂无可用功能' }}</text>
+        <view v-for="item in choices" :key="item.menuId" class="quick-picker-choice">
+          <LifeMenuIcon :icon="visual(item).icon" :color="visual(item).iconColor" />
+          <view class="quick-picker-name"><text class="quick-picker-label" :class="themeClass('quick-picker-label')">{{ item.title }}</text><text v-if="item.parentTitle" class="quick-picker-muted">{{ item.parentTitle }}</text></view>
+          <MobileButton :label="'添加' + item.title" icon="ant-design:plus-outlined" variant="quiet" :disabled="draft.length >= QUICK_NAV_MAX" @click="add(item)" />
+        </view>
+        <view class="quick-picker-footer"><text class="quick-picker-muted">{{ draft.length }}/{{ QUICK_NAV_MAX }}</text><MobileButton label="完成添加" variant="quiet" @click="picking = false" /></view>
+      </view>
+    </AdaptiveModal>
+  </view>
+</template>
+
+<style scoped lang="scss">
+@use '../../styles/spacing.scss';
+@use '../../styles/spacing-tokens' as *;
+@use '../../styles/typography' as *;
+.quick-editor { min-width: 0; }
+.quick-editor-state { min-height: $space-controlMin; align-items: center; justify-content: center; gap: $space-inline; }
+.quick-editor-error { @include type-style('caption'); color: #c65353; }
+.quick-editor-grid { flex-direction: row; flex-wrap: wrap; }
+.quick-editor-tile, .quick-editor-add { box-sizing: border-box; width: 20%; min-height: 128px; align-items: center; justify-content: center; padding: $space-detail; border-radius: $space-inline; }
+.quick-editor-tile { position: relative; justify-content: flex-start; padding-top: $space-inline; }
+.quick-editor-tile-top { position: absolute; top: 0; left: 0; right: 0; height: $space-controlMin; flex-direction: row; align-items: center; justify-content: space-between; }
+.quick-editor-grip, .quick-editor-remove, .quick-editor-control { display: flex; width: $space-controlMin; height: $space-controlMin; padding: 0; margin: 0; border: 0; background-color: transparent; align-items: center; justify-content: center; }
+.quick-editor-grip::after, .quick-editor-remove::after, .quick-editor-control::after, .quick-editor-add::after { border: 0; }
+.quick-editor-grip { cursor: grab; touch-action: none; }
+.quick-editor-grip-dots { display: flex; width: 10px; flex-direction: row; flex-wrap: wrap; gap: 2px; }
+.quick-editor-grip-dot { width: 3px; height: 3px; border-radius: 2px; background-color: #8b8f99; }
+.quick-editor-remove:disabled, .quick-editor-control:disabled { opacity: 0.35; }
+.quick-editor-title { @include type-style('caption'); color: #52525b; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-top: $space-detail; }
+.quick-editor-title-dark { color: #eeeeef; }
+.quick-editor-hidden { text-decoration: line-through; opacity: 0.5; }
+.quick-editor-controls { flex-direction: row; justify-content: center; }
+.quick-editor-right-icon { transform: rotate(180deg); }
+.quick-editor-add { display: flex; border: 0; background-color: transparent; color: #427bea; }
+.quick-editor-add-label { @include type-style('caption'); color: #427bea; margin-top: $space-detail; }
+.quick-editor-count, .quick-picker-muted { @include type-style('caption'); color: #8b8f99; }
+.quick-editor-footer { flex-direction: row; align-items: center; justify-content: space-between; }
+.quick-picker-search { min-height: $space-controlMin; margin-bottom: $space-inline; padding: 0 $space-card; border-radius: 10px; background-color: #f0f2f5; @include type-style('body'); }
+.quick-picker-search-dark { background-color: #292c32; color: #eeeeef; }
+.quick-picker-choice { flex-direction: row; align-items: center; min-height: $space-controlMin; gap: $space-detail; }
+.quick-picker-name { flex: 1; min-width: 0; }
+.quick-picker-label { @include type-style('label'); color: #27272a; }
+.quick-picker-label-dark { color: #eeeeef; }
+.quick-picker-footer { flex-direction: row; align-items: center; justify-content: space-between; margin-top: $space-section; }
+@media (max-width: 767px) { .quick-editor-tile, .quick-editor-add { width: 25%; } }
+@media (max-width: 479px) { .quick-editor-tile, .quick-editor-add { width: 50%; } }
+</style>

@@ -35,6 +35,7 @@ await page.setViewportSize({width,height:900});await page.emulateMedia({colorSch
 await click(page,'新增时迹');await page.getByRole('dialog').waitFor();await shot(page,`${width}-${theme}-home-time-new`);await dismissModal(page);
 await page.locator('uni-tabbar').getByText('时迹',{exact:true}).click();await shot(page,`${width}-${theme}-time-page`);await click(page,'筛选分类');await shot(page,`${width}-${theme}-time-filter`);await dismissModal(page);await click(page,'新增时迹');await shot(page,`${width}-${theme}-time-new`);await dismissModal(page);
 await page.locator('uni-tabbar').getByText('全部',{exact:true}).click();await shot(page,`${width}-${theme}-life`);await page.locator('uni-tabbar').getByText('首页',{exact:true}).click();await click(page,'管理快捷导航');await shot(page,`${width}-${theme}-life-edit`);await click(page,'取消编辑');
+await page.locator('uni-tabbar').getByText('全部',{exact:true}).click();
 for(const entry of ['个人分类','时间看板']){await click(page,entry);await page.waitForTimeout(200);await shot(page,`${width}-${theme}-${entry}`);if(entry!=='时间看板'){await click(page,'编辑分类');await shot(page,`${width}-${theme}-${entry}-edit`);await dismissModal(page);}await back(page);}
 });
 for(const width of [390,768,1440])for(const theme of ['light','dark'])test(`登录真实点击注册重置政策弹窗 ${width} ${theme}`,async({page})=>{

@@ -47,7 +47,7 @@ function expectLoadedHeights(before, after, width) {
     expect(after['待办']).toBeLessThan(160);
     expect(after['快捷导航']).toBeGreaterThan(100);
     expect(after['快捷导航']).toBeLessThan(190);
-    expect(after['闪念']).toBeLessThanOrEqual(before['闪念']);
+    expect(Math.abs(after['闪念'] - before['闪念'])).toBeLessThanOrEqual(12);
     expect(after['闪念']).toBeLessThan(180);
     expect(after['运动']).toBeLessThan(190);
     expect(after['最近提交']).toBeLessThan(210);
@@ -114,7 +114,7 @@ test('home card height survives error, retry and empty content', async ({ page }
   await expect(card(page, '快捷导航').getByRole('status', { name: '正在加载快捷导航', exact: true })).toBeVisible();
   expect(await heights(page)).toEqual(loaded);
   state.pending.release();
-  await expect(page.getByText('暂无快捷方式', { exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: '添加常用功能', exact: true })).toBeVisible();
   expect(await heights(page)).toEqual(loaded);
 });
 

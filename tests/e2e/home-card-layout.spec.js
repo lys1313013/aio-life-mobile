@@ -1,12 +1,51 @@
 const { test, expect } = require('@playwright/test');
 const { dashboardFixture } = require('./fixtures');
 const { pullDown } = require('./gestures');
+const { homeCardFixture } = require('./home-card-fixture');
 const businessPaths = ['/api/goals', '/api/anniversaryRecords', '/api/read-record/page', '/api/membership/list', '/api/movie/page'];
 const titles = ['目标', '纪念日', '阅读', '会员', '观影'];
 function gate() { let release; const promise = new Promise(resolve => { release = resolve; }); return { promise, release }; }
 async function geometry(page) {
   return page.locator('.business-card').evaluateAll(elements => Object.fromEntries(elements.map(el => [el.getAttribute('aria-label'), { height: el.getBoundingClientRect().height, top: el.getBoundingClientRect().top }])));
 }
+
+test('平板首页隐藏空待办后紧凑排列，刷新有数据后恢复卡位', async ({ page }, info) => {
+  await page.setViewportSize({ width: 820, height: 1100 });
+  await page.emulateMedia({ colorScheme: 'dark' });
+  await page.addInitScript(() => localStorage.setItem('aio-life-mobile.access-token.v1', 'tablet-layout-fixture'));
+  const enabled = new Set(['section.time', 'section.links', 'section.watched', 'section.thoughts', 'section.exercise']);
+  const cards = homeCardFixture().map(item => ({ ...item, enabled: enabled.has(item.cardKey) }));
+  let watched = [];
+  await page.route(`${info.project.use.baseURL}/api/**`, route => {
+    const path = new URL(route.request().url()).pathname;
+    const data = path === '/api/user/info' ? { id: '1', nickname: '模拟用户' }
+      : path === '/api/home/cards' ? cards
+      : path === '/api/taskDetails/watched' ? watched
+      : dashboardFixture(path) ?? [];
+    return route.fulfill({ json: { code: 0, data } });
+  });
+  await page.goto('/#/pages/home/index');
+  const cell = key => page.locator(`[data-card-key="section.${key}"]`);
+  await expect(cell('thoughts')).toBeVisible();
+  await expect(cell('watched')).toBeHidden();
+  const time = await cell('time').boundingBox();
+  const links = await cell('links').boundingBox();
+  const thoughts = await cell('thoughts').boundingBox();
+  const exercise = await cell('exercise').boundingBox();
+  expect(Math.abs(time.x - thoughts.x)).toBeLessThan(2);
+  expect(Math.abs(links.x - exercise.x)).toBeLessThan(2);
+  expect(Math.abs(thoughts.y - exercise.y)).toBeLessThan(2);
+  await page.screenshot({ path: info.outputPath('tablet-empty-watched.png'), fullPage: true });
+
+  watched = [{ id: '9223372036854775807', content: '模拟关注待办', isCompleted: 0 }];
+  await pullDown(page, '.dashboard-scroll');
+  await expect(cell('watched')).toBeVisible();
+  const restored = await cell('watched').boundingBox();
+  const shifted = await cell('thoughts').boundingBox();
+  expect(Math.abs(restored.x - time.x)).toBeLessThan(2);
+  expect(Math.abs(shifted.x - links.x)).toBeLessThan(2);
+  expect(Math.abs(restored.y - shifted.y)).toBeLessThan(2);
+});
 for (const width of [390, 820, 1440]) for (const theme of ['light', 'dark']) {
   test(`所有业务卡片加载、刷新和失败重试保持行高 ${width} ${theme}`, async ({ page }, info) => {
     await page.setViewportSize({ width, height: 1100 });

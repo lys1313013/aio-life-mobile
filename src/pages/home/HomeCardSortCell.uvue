@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { provide } from 'vue'
 import { isDark } from '../../services/theme.ts'
-const props = withDefaults(defineProps<{ cardKey: string; title: string; group: string; order: any; disabled: boolean; visible?: boolean }>(), { visible: true })
+const props = withDefaults(defineProps<{ cardKey: string; title: string; group: string; order: any; disabled: boolean; visible?: boolean; wide?: boolean }>(), { visible: true, wide: false })
 let actionTouch = false
 provide('home-card-action-touch', () => { actionTouch = true })
 function blockClick(event) {
@@ -23,7 +23,7 @@ function cancel() { actionTouch = false; props.order.cancel() }
 function style() { return props.order.style(props.cardKey) }
 </script>
 <template>
-  <view v-show="visible !== false" class="home-sort-cell"  :data-card-key="cardKey" :id="'home-order-' + cardKey" :style="style()" :class="[group === 'overview' ? 'overview-cell home-order-overview ui-pad-xs' : 'section-cell home-order-section', { 'home-sort-lifted': order.dragging.value === cardKey, 'home-sort-target': order.dragging.value && order.target.value === cardKey && order.dragging.value !== cardKey, 'home-sort-dark': isDark }]"
+  <view class="home-sort-cell"  :data-card-key="cardKey" :id="'home-order-' + cardKey" :style="visible === false ? { display: 'none' } : style()" :class="[group === 'overview' ? 'overview-cell home-order-overview ui-pad-xs' : 'section-cell home-order-section', { 'home-sort-hidden': visible === false, 'home-sort-wide': wide, 'home-sort-lifted': order.dragging.value === cardKey, 'home-sort-target': order.dragging.value && order.target.value === cardKey && order.dragging.value !== cardKey, 'home-sort-dark': isDark }]"
     tabindex="0" :aria-label="title + '卡片，长按拖动排序'"
     @touchstart="start($event)" @touchmove="order.move" @touchend="finish" @touchcancel="cancel" @mousedown="start($event, true)"
     @click.capture="blockClick" @contextmenu.prevent
@@ -36,6 +36,7 @@ function style() { return props.order.style(props.cardKey) }
 @use '../../styles/spacing.scss';
 @use '../../styles/spacing-tokens' as *;
 .home-sort-cell { overflow: visible; align-self: flex-start; position: relative; box-sizing: border-box; }
+.home-sort-hidden { display: none !important; }
 .home-sort-content { width: 100%; overflow: visible; }
 .home-sort-content-lifted { position: absolute; left: 0; right: 0; top: 0; width: auto; border-radius: 14px; overflow: hidden; opacity: .96; box-shadow: 0 $space-detail $space-inline rgba(0,0,0,.10); }
 .home-sort-content-lifted-overview { left: $space-detail; right: $space-detail; top: $space-detail; }
@@ -50,4 +51,5 @@ function style() { return props.order.style(props.cardKey) }
 .section-cell { width: 100%; }
 @media (min-width: 768px) { .overview-cell { width: 25%; } .section-cell { width: 50%; } }
 @media (min-width: 1200px) { .overview-cell { width: 20%; flex-grow: 1; } .section-cell { width: 33.3333%; } }
+.section-cell.home-sort-wide { width: 100%; }
 </style>
