@@ -139,6 +139,10 @@ function leave() {
   selectionSequence++
   emit('leave')
 }
+function mouseLeave() {
+  // 触摸结束后的兼容鼠标事件不能立即清除触摸选中态。
+  if (Date.now() - lastTouch > 350) leave()
+}
 function beginTouch(event) {
   leave()
   touchStart = event.touches?.[0] || null
@@ -164,7 +168,7 @@ onUnmounted(() => { alive = false; generation++; chart?.dispose(); chart = null;
 <template>
   <view class="aio-chart-renderer" :aria-busy="loading">
     <canvas :id="canvasId" :canvas-id="canvasId" type="2d" class="aio-chart-canvas"
-      aria-hidden="true" @click="click" @mousemove="hover" @mouseleave="leave"
+      aria-hidden="true" @click="click" @mousemove="hover" @mouseleave="mouseLeave"
       @touchstart="beginTouch" @touchend="endTouch" @touchcancel="leave" />
     <view v-if="loading || error" class="chart-render-state">
       <text class="chart-render-message" :class="themeClass('chart-render-message')">{{ error || '正在加载图表' }}</text>

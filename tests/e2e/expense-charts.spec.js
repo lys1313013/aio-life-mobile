@@ -167,7 +167,10 @@ test.describe('触屏月份选择', () => {
     const box = await plot.boundingBox();
     const axisWidth = (await page.locator('.chart-y-axis').boundingBox()).width;
     const plotWidth = box.width - axisWidth - 8;
+    // Linux 触摸模拟会补发鼠标离开；显式移动鼠标，让各平台都覆盖此顺序。
+    await page.mouse.move(box.x + axisWidth + plotWidth * 6.5 / 12, box.y + 10);
     await plot.tap({ position: { x: axisWidth + plotWidth * 6.5 / 12, y: 10 } });
+    await page.mouse.move(0, 0);
     await expect(page.getByRole('tooltip')).toHaveText('0.00元');
     await plot.tap({ position: { x: axisWidth + plotWidth * 7.5 / 12, y: 10 } });
     await expect(page.getByRole('tooltip')).toHaveText('0.01元');
