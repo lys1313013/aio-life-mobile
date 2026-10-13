@@ -44,7 +44,10 @@ test('平板首页隐藏空待办后紧凑排列，刷新有数据后恢复卡�
   const shifted = await cell('thoughts').boundingBox();
   expect(Math.abs(restored.x - time.x)).toBeLessThan(2);
   expect(Math.abs(shifted.x - links.x)).toBeLessThan(2);
-  expect(Math.abs(restored.y - shifted.y)).toBeLessThan(2);
+  // 下拉刷新收起时整个内容区仍在移动；同一帧读取两张卡片的位置。
+  await expect.poll(() => page.locator('[data-card-key="section.watched"], [data-card-key="section.thoughts"]').evaluateAll(nodes =>
+    Math.abs(nodes[0].getBoundingClientRect().top - nodes[1].getBoundingClientRect().top),
+  )).toBeLessThan(2);
 });
 for (const width of [390, 820, 1440]) for (const theme of ['light', 'dark']) {
   test(`所有业务卡片加载、刷新和失败重试保持行高 ${width} ${theme}`, async ({ page }, info) => {

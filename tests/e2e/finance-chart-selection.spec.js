@@ -1,5 +1,6 @@
 const { test, expect } = require('@playwright/test');
 const { setup } = require('./qa-domains-fixtures');
+const { picker } = require('./qa-domains-ui');
 
 test.use({ hasTouch: true });
 
@@ -41,8 +42,8 @@ for (const kind of ['index', 'income']) {
         for (let i = 3; i < pixels.length; i += 4) if (pixels[i] > 0) painted++;
         return painted;
       })).toBeGreaterThan(500);
-      await page.locator('uni-picker[aria-label="选择年份"]').click();
-      await page.locator('.uni-picker-item').filter({ hasText: new RegExp('^' + (year - 1) + '$') }).filter({ visible: true }).click();
+      // 手机使用滚轮并确认；点击非选中的文字不会提交年份。
+      await picker(page, '选择年份', String(year - 1));
       await expect(chart.locator('.distribution-total')).toHaveText('660.00');
       await expect(chart.locator('.distribution-amount')).toHaveText(['¥600.00', '¥60.00']);
       await expect(chart.locator('.distribution-percent')).toHaveText(['90.9%', '9.1%']);

@@ -159,6 +159,9 @@ test.describe('触屏月份选择', () => {
     const detail = Array.from({ length: 12 }, (_, index) => ({ year, month: index + 1,
       detail: [{ typeName: '餐饮', amt: index === 6 ? 0 : index === 7 ? 0.01 : 10000 }] }));
     await openExpense(page, detail);
+    // 等待首屏请求和画布初始化完成，再测量坐标并触发触屏手势。
+    await page.waitForLoadState('networkidle');
+    await expect(page.locator('.aio-chart-renderer')).toHaveAttribute('aria-busy', 'false');
     const plot = page.getByRole('slider');
     await expect(page.locator('.chart-y-tick').first()).toHaveText('0');
     const box = await plot.boundingBox();

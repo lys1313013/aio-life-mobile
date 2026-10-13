@@ -75,11 +75,13 @@ node tests/wechat-ui/run.mjs # 独立测试副本模拟小程序登录分支，�
 
 统一验证遇到失败立即停止，终端仅显示阶段耗时、结果、日志路径及失败日志末尾；完整日志保存在 `artifacts/commit-validation/` 的独立运行目录中。E2E 已构建 H5，不必再单独运行 `npm run build`。失败后根据对应日志定位，修复后只重跑受影响的阶段或用例；代码、依赖、配置和相关环境未变时不重复已通过检查，影响不明确时重新运行完整命令。此命令检查当前工作区，提交前需核对最终提交内容及构建生成物差异。
 
-本机 E2E 使用已安装的 Google Chrome。CI 使用 `npx playwright install --with-deps chromium` 安装浏览器。测试截图、报告和 trace 均在 Git 忽略目录中。
+本机 E2E 使用已安装的 Google Chrome。CI 使用 [Playwright 官方镜像](https://playwright.dev/docs/docker)，镜像版本从 lockfile 安装后的 Playwright 包读取，浏览器与系统依赖已预装，不再由每个分片重复下载。测试截图、报告和 trace 均在 Git 忽略目录中。
 
 E2E 会先构建 H5，再通过 `npm run preview` 启动生产产物的静态预览，避免开发服务器的依赖预构建刷新页面、破坏测试登录态。运行前需释放 5180 端口；测试不复用已有开发服务器或旧预览。
 
-GitHub Actions 将单元测试与 Web / 微信编译放在 `Unit tests and Web / Weixin builds`，完整浏览器回归分为 4 个 `Browser regression` 任务；回归失败仍会使工作流失败，不跳过用例。先查看具体失败步骤，浏览器测试失败不代表打包失败。每个分片保留 7 天 HTML 报告、失败截图和 trace，可从 Actions 的 `playwright-*` 附件下载；新提交会取消同分支的旧任务。复现单个分片可运行 `npm run test:e2e -- --shard=1/4`。
+GitHub Actions 的 `Unit tests and H5 build` 只构建一次 H5，并上传同次提交的 `h5-<sha>` 产物（保留 1 天）；`Weixin build and package size` 独立并行执行。完整浏览器回归仍分为 4 个 `Browser regression` 任务，每片使用 2 个 worker，并通过 `AIO_E2E_PREBUILT=1` 预览下载的 H5 产物，不重复构建。缺少产物时直接失败，不回退到旧预览或开发服务器。
+
+本地默认仍是 1 个 worker，也不会复用旧构建。机器资源充足时可用 `PLAYWRIGHT_WORKERS=4 npm run test:commit` 并行执行完整提交前回归；复现 CI 单个分片可运行 `npm run test:e2e -- --shard=1/4 --workers=2`。回归失败仍会使工作流失败，不跳过用例。每个分片保留 7 天 HTML 报告、失败截图和 trace，可从 Actions 的 `playwright-*` 附件下载；新提交会取消同分支的旧任务。
 
 ### 本地业务图标
 

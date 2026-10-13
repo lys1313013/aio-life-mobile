@@ -1,7 +1,7 @@
 const { test, expect } = require('@playwright/test');
 const { dashboardFixture } = require('./fixtures.js');
 async function setup(page, override) {
-  await page.route('http://127.0.0.1:5180/api/**', async route => {
+  await page.route(`${test.info().project.use.baseURL}/api/**`, async route => {
     const path = new URL(route.request().url()).pathname;
     if (override && await override(route, path)) return;
     let data = dashboardFixture(path);
@@ -78,7 +78,8 @@ test('空账号不伪造统计和记录，不请求未绑定 GitHub，手机可�
     if (path in empty) { await route.fulfill({ json: { code: 0, data: empty[path] } }); return true; }
   });
   await expect(page.getByText('今日暂无记录')).toBeVisible();
-  await expect(page.getByText('暂无快捷方式')).toBeVisible();
+  await expect(page.getByRole('button', { name: '添加常用功能', exact: true })).toBeVisible();
+  await expect(page.locator('.quick-link')).toHaveCount(0);
   await page.getByText('闪念', { exact: true }).scrollIntoViewIfNeeded();
   await expect(page.getByText('暂无固定的闪念')).toBeVisible();
   await expect(page.getByText('最近提交', { exact: true })).toHaveCount(0);

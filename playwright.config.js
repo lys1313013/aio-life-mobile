@@ -1,12 +1,24 @@
 const { defineConfig } = require('@playwright/test');
+const { existsSync } = require('node:fs');
+const path = require('node:path');
+
+// CI 分片只复用同次工作流构建的产物；本地默认仍构建最终代码。
+const prebuilt = process.env.AIO_E2E_PREBUILT === '1';
+if (prebuilt && !existsSync(path.join(__dirname, 'dist/build/h5/index.html'))) {
+  throw new Error('缺少本次 H5 构建产物，请先构建或下载同次工作流的 h5 artifact。');
+}
+const workers = Number(process.env.PLAYWRIGHT_WORKERS || 1);
+if (!Number.isInteger(workers) || workers < 1) {
+  throw new Error('PLAYWRIGHT_WORKERS 必须为正整数。');
+}
 
 module.exports = defineConfig({
   testDir: './tests/e2e',
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   reporter: process.env.CI ? [['line'], ['html', { open: 'never' }]] : 'list',
-  // 默认串行运行完整业务回归；需要并行时可显式传 --workers。
-  workers: 1,
+  // 默认串行；CI 和提交前验证可显式设置并行度，CLI --workers 仍可覆盖。
+  workers,
   use: {
     baseURL: 'http://127.0.0.1:5180',
     browserName: 'chromium',
@@ -17,7 +29,7 @@ module.exports = defineConfig({
   },
   webServer: {
     // 使用生产产物，避免首次访问懒加载页面时 Vite 依赖优化触发整页刷新。
-    command: 'npm run build && npm run preview',
+    command: prebuilt ? 'npm run preview' : 'npm run build && npm run preview',
     url: 'http://127.0.0.1:5180',
     // 不能误用已运行的开发服务器或上一次构建的预览。
     reuseExistingServer: false,

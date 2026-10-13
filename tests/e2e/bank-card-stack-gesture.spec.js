@@ -208,11 +208,16 @@ test('回弹中可重新接住，触摸取消与切换视图不残留动画', as
   await touch(cdp, 'touchEnd');
   await expect(page.locator('.card-stack-rebounding')).toHaveCount(1);
   await touch(cdp, 'touchStart', x, y + 140);
+  // CDP 返回时触摸事件可能尚未交给页面，先确认回弹已被接住。
+  await settled(page);
   const caught = await gap(page);
-  await page.waitForTimeout(280);
-  expect(await gap(page)).toBeCloseTo(caught, 0);
+  // 先继续拖动，避免静止按住触发 300ms 长按排序，再验证停住后不继续回弹。
   await touch(cdp, 'touchMove', x, y + 80);
-  expect(await gap(page)).toBeLessThan(caught);
+  await expect.poll(() => gap(page)).toBeLessThan(caught);
+  const held = await gap(page);
+  await page.waitForTimeout(280);
+  expect(await gap(page)).toBeCloseTo(held, 0);
+  await expect(page.locator('.card-order-dragging')).toHaveCount(0);
   await touch(cdp, 'touchMove', x, y + 300);
   await touch(cdp, 'touchCancel');
   await expect(page.locator('.card-stack-rebounding')).toHaveCount(1);

@@ -13,9 +13,11 @@ concurrency:
 
 jobs:
   build:
-    name: Unit tests and Web / Weixin builds
+    name: Unit tests and H5 build
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    outputs:
+      playwright_version: ${{ steps.playwright.outputs.version }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -25,6 +27,28 @@ jobs:
       - run: npm ci
       - run: npm test
       - run: npm run build
+      - name: Read locked Playwright version
+        id: playwright
+        run: |
+          echo "version=$(node -p "require('@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: h5-${{ github.sha }}
+          path: dist/build/h5/
+          if-no-files-found: error
+          retention-days: 1
+
+  weixin:
+    name: Weixin build and package size
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
       - name: Build Weixin and enforce package size
         run: npm run check:weixin-size
       - uses: actions/upload-artifact@v4
@@ -37,8 +61,15 @@ jobs:
 
   e2e:
     name: Browser regression (${{ matrix.shard }}/4)
+    needs: build
     runs-on: ubuntu-latest
+    container:
+      image: mcr.microsoft.com/playwright:v${{ needs.build.outputs.playwright_version }}-noble
+      options: --ipc=host
     timeout-minutes: 45
+    env:
+      AIO_E2E_PREBUILT: '1'
+      PLAYWRIGHT_WORKERS: '2'
     strategy:
       fail-fast: false
       matrix:
@@ -50,7 +81,10 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - run: npx playwright install --with-deps chromium
+      - uses: actions/download-artifact@v4
+        with:
+          name: h5-${{ github.sha }}
+          path: dist/build/h5/
       - run: npm run test:e2e -- --shard=${{ matrix.shard }}/4
       - uses: actions/upload-artifact@v4
         if: ${{ !cancelled() }}
