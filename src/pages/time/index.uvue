@@ -12,6 +12,7 @@ import { takeRecordChange } from '../../services/time-changes.ts'
 import { nextTick, computed, ref } from 'vue'
 import { onShow, onHide } from '@dcloudio/uni-app'
 import PageHeader from '../../components/PageHeader.uvue'
+import spacing from '../../styles/spacing.json'
 import FloatingActionButton from '../../components/FloatingActionButton.uvue'
 import AdaptiveModal from '../../components/AdaptiveModal.uvue'
 import FormActions from '../../components/FormActions.uvue'
@@ -249,12 +250,29 @@ function closeEditor() {
 
 <template>
   <view class="tab-page" :class="themeClass('tab-page')">
-    <PageHeader title="时迹">
+    <PageHeader title="时迹" :content-min-width="4 * spacing.controlMin" :actions-min-width="6 * spacing.controlMin + 2 * spacing.inline">
+      <template #default>
       <view class="date-switch" :class="themeClass('date-switch')">
         <button role="button" class="date-step" hover-class="control-pressed" :hover-stay-time="100" :aria-label="mode === 'day' ? '前一天' : '上一周期'" @click="moveDate(-1)"><AppIcon name="ant-design:left-outlined" :size="16" /></button>
         <picker mode="date" aria-label="选择日期" :value="date" @change="selectDate"><view class="date-picker"><text class="date-value" :class="themeClass('date-value')">{{ date }}</text></view></picker>
         <button role="button" class="date-step" hover-class="control-pressed" :hover-stay-time="100" :aria-label="mode === 'day' ? '后一天' : '下一周期'" @click="moveDate(1)"><AppIcon name="ant-design:right-outlined" :size="16" /></button>
       </view>
+      </template>
+      <template #actions>
+          <view class="toolbar-view-group ui-row">
+            <view class="period-tabs" :class="themeClass('period-tabs')" role="group" aria-label="统计周期">
+              <button v-for="(item, index) in modeOptions" :key="item.key" role="button" :aria-label="item.label + '视图'" :aria-pressed="mode === item.key" class="period-tab" hover-class="control-pressed" :hover-stay-time="100" :class="[{ 'segment-first': index === 0, 'segment-last': index === modeOptions.length - 1, 'period-active': mode === item.key }, themeClass(['period-tab', { 'period-active': mode === item.key }])]" @click="selectMode(item.key)"><text :class="buttonLabelClasses(['period-tab', [{ 'period-active': mode === item.key }, themeClass(['period-tab', { 'period-active': mode === item.key }])]])">{{ item.label }}</text></button>
+            </view>
+            <view class="view-tabs" :class="themeClass('view-tabs')" role="group" aria-label="记录展示方式">
+              <button role="button" class="view-tab segment-first" hover-class="control-pressed" :hover-stay-time="100" :class="[{ 'view-active': viewMode === 'timeline' }, themeClass(['view-tab', { 'view-active': viewMode === 'timeline' }])]" aria-label="时间轴视图" :aria-pressed="viewMode === 'timeline'" @click="selectView('timeline')"><AppIcon name="lucide:clock" :size="18" :color="viewMode === 'timeline' ? (isDark ? '#4096ff' : '#1677ff') : (isDark ? '#c6ced8' : '#737985')" /></button>
+              <button role="button" class="view-tab segment-last" hover-class="control-pressed" :hover-stay-time="100" :class="[{ 'view-active': viewMode === 'card' }, themeClass(['view-tab', { 'view-active': viewMode === 'card' }])]" aria-label="卡片视图" :aria-pressed="viewMode === 'card'" @click="selectView('card')"><AppIcon name="lucide:layout-grid" :size="18" :color="viewMode === 'card' ? (isDark ? '#4096ff' : '#1677ff') : (isDark ? '#c6ced8' : '#737985')" /></button>
+            </view>
+            <button role="button" class="filter-trigger" hover-class="control-pressed" :hover-stay-time="100" :class="[themeClass(['filter-trigger', { 'filter-active': selectedCategories.length > 0 }]), { 'filter-active': selectedCategories.length > 0 }]" aria-label="筛选分类" :aria-description="filterLabel" @click="openFilters">
+              <AppIcon name="ant-design:filter-outlined" :size="18" :color="selectedCategories.length ? (isDark ? '#4096ff' : '#1677ff') : (isDark ? '#a4a8b2' : '#737985')" />
+              <view v-if="selectedCategories.length" class="filter-dot" />
+            </button>
+          </view>
+      </template>
     </PageHeader>
     <scroll-view
       scroll-y
@@ -266,26 +284,6 @@ function closeEditor() {
       @refresherrefresh="pullRefresh"
     >
       <view class="tab-content time-content ui-page-inset ui-tab-page-inset">
-        <scroll-view direction="horizontal" :scroll-x="true" :show-scrollbar="false" class="time-toolbar-scroll ui-section">
-        <view class="time-toolbar ui-toolbar">
-          <view class="toolbar-date-group ui-row">
-            <button role="button" class="filter-trigger" hover-class="control-pressed" :hover-stay-time="100" :class="[themeClass(['filter-trigger', { 'filter-active': selectedCategories.length > 0 }]), { 'filter-active': selectedCategories.length > 0 }]" aria-label="筛选分类" :aria-description="filterLabel" @click="openFilters">
-              <AppIcon name="ant-design:filter-outlined" :color="selectedCategories.length ? (isDark ? '#a9c3ff' : '#427bea') : (isDark ? '#a4a8b2' : '#737985')" />
-              <view v-if="selectedCategories.length" class="filter-dot" />
-            </button>
-          </view>
-          <view class="toolbar-view-group ui-row">
-            <view class="period-tabs" :class="themeClass('period-tabs')" role="group" aria-label="统计周期">
-              <button v-for="item in modeOptions" :key="item.key" role="button" :aria-label="item.label + '视图'" :aria-pressed="mode === item.key" class="period-tab" hover-class="control-pressed" :hover-stay-time="100" :class="[{ 'period-active': mode === item.key }, themeClass(['period-tab', { 'period-active': mode === item.key }])]" @click="selectMode(item.key)"><text :class="buttonLabelClasses(['period-tab', [{ 'period-active': mode === item.key }, themeClass(['period-tab', { 'period-active': mode === item.key }])]])">{{ item.label }}</text></button>
-            </view>
-            <view class="toolbar-divider" :class="themeClass('toolbar-divider')" aria-hidden="true" />
-            <view class="view-tabs" :class="themeClass('view-tabs')" role="group" aria-label="记录展示方式">
-              <button role="button" class="view-tab" hover-class="control-pressed" :hover-stay-time="100" :class="[{ 'view-active': viewMode === 'timeline' }, themeClass({ 'view-active': viewMode === 'timeline' })]" aria-label="时间轴视图" :aria-pressed="viewMode === 'timeline'" @click="selectView('timeline')"><AppIcon name="lucide:clock" :size="22" :color="viewMode === 'timeline' ? (isDark ? '#64b5f6' : '#427bea') : (isDark ? '#c6ced8' : '#737985')" /></button>
-              <button role="button" class="view-tab" hover-class="control-pressed" :hover-stay-time="100" :class="[{ 'view-active': viewMode === 'card' }, themeClass({ 'view-active': viewMode === 'card' })]" aria-label="卡片视图" :aria-pressed="viewMode === 'card'" @click="selectView('card')"><AppIcon name="lucide:layout-grid" :size="22" :color="viewMode === 'card' ? (isDark ? '#64b5f6' : '#427bea') : (isDark ? '#c6ced8' : '#737985')" /></button>
-            </view>
-          </view>
-        </view>
-        </scroll-view>
         <view
           v-if="errorText"
           class="state-card"
@@ -425,35 +423,32 @@ function closeEditor() {
 .time-content { max-width: $space-contentMax; }
 // 条件内容使用可参与原生布局的容器，避免 Vapor 多根模板块丢失正文。
 .time-body, .time-statistics-content { width: 100%; }
-.time-toolbar-scroll { width: 100%; }
 /* #ifdef APP */
-// 横向工具栏在原生滚动容器中使用确定高度，正文按内容自然展开。
-.time-toolbar-scroll { height: $space-controlMin + 2 * $space-tight + 2 * $space-hairline; flex-shrink: 0; }
 .time-layout { width: 100%; flex-direction: column; }
 .time-main-panel, .time-stats-panel { width: 100%; flex-grow: 0; flex-shrink: 0; flex-basis: auto; }
 .time-stats-panel { margin-top: $space-section; }
 /* #endif */
-// 保留触控尺寸，分段底座内缩；窄屏工具栏仍可横向滚动。
-.time-toolbar { width: 100%; min-width: 6 * $space-controlMin + $space-inline + 2 * $space-section + 4 * $space-tight + 5 * $space-hairline; flex-direction: row; flex-wrap: nowrap; align-items: center; justify-content: space-between; margin-bottom: 0; }
-.toolbar-date-group, .toolbar-view-group { flex-direction: row; flex-wrap: nowrap; flex-shrink: 0; align-items: center; }
-.toolbar-view-group { gap: $space-section; }
-.toolbar-divider { width: $space-hairline; height: $space-controlMin - 2 * $space-inline; flex-shrink: 0; background-color: #dce1e8; }
-.toolbar-divider-dark { background-color: #303944; }
-.date-switch, .period-tabs, .view-tabs { flex-direction: row; flex-shrink: 0; align-items: center; background-color: #e7eaef; border-radius: 15px; }
-.period-tabs, .view-tabs { padding: $space-tight; border: $space-hairline solid #e1e5eb; background-color: #e9edf2; }
-.date-switch { background-color: #ffffff; border-radius: 14px; }
-.date-step, .period-tab, .view-tab, .filter-trigger, .today-button { display: flex; flex-direction: row; align-items: center; justify-content: center; flex-shrink: 0; width: $space-controlMin; height: $space-controlMin; line-height: $space-controlMin; margin: 0; padding: 0; border: 0; border-radius: 12px; background-color: transparent; color: #737985; @include type-style('body'); }
-.date-picker { width: 88px; min-height: $space-controlMin; box-sizing: border-box; align-items: center; justify-content: center; padding: 0 $space-micro; }
-.date-value { @include type-style('label-strong');  color: #343944; }
-.filter-trigger { position: relative; border-radius: 14px; background-color: #e7eaef; }
-.filter-active { background-color: #e3ecff; }
-.filter-dot { position: absolute; top: $space-inline; right: $space-inline; width: 5px; height: 5px; border-radius: 3px; background-color: #5b8ff9; }
-.period-active, .view-active { font-weight: type-weight('medium'); background-color: #ffffff; box-shadow: 0 1px 3px rgba(28, 39, 61, 0.08); }
-.period-active { color: #343944; }
-.view-active { color: #427bea; }
+// 工具栏按实际可用宽度换行；分组不加内垫，所有按钮保留 44px 触控区。
+.toolbar-view-group { flex-direction: row; flex-wrap: nowrap; flex-shrink: 0; align-items: center; gap: $space-inline; }
+.date-switch, .period-tabs, .view-tabs { flex-direction: row; flex-shrink: 0; align-items: center; }
+.date-switch { background-color: transparent; }
+.period-tabs, .view-tabs { border-radius: 8px; }
+.date-step, .period-tab, .view-tab, .filter-trigger, .today-button { display: flex; flex-direction: row; align-items: center; justify-content: center; flex-shrink: 0; box-sizing: border-box; width: $space-controlMin; height: $space-controlMin; margin: 0; padding: 0; border: 0; border-radius: 0; background-color: transparent; color: #737985; @include type-style('body'); }
+.date-step { border-radius: 8px; }
+.date-picker { width: 2 * $space-controlMin; min-height: $space-controlMin; box-sizing: border-box; align-items: center; justify-content: center; padding: 0 $space-micro; }
+.date-value { @include type-style('label-strong'); color: #343944; white-space: nowrap; }
+.period-tab, .view-tab, .filter-trigger { border: $space-hairline solid #d4d4d8; background-color: transparent; }
+// 相邻边框合为一条，选中按钮盖住共享边；不用阴影，避免厚重底座。
+.period-tab, .view-tab { margin-left: -$space-hairline; }
+.segment-first { margin-left: 0; border-top-left-radius: 8px; border-bottom-left-radius: 8px; }
+.segment-last { border-top-right-radius: 8px; border-bottom-right-radius: 8px; }
+.filter-trigger { position: relative; border-radius: 8px; }
+.filter-active { border-color: #1677ff; background-color: transparent; }
+.filter-dot { position: absolute; top: $space-detail; right: $space-detail; width: 5px; height: 5px; border-radius: 3px; background-color: #1677ff; }
+.period-active, .view-active { z-index: 1; border-color: #1677ff; color: #1677ff; background-color: transparent; }
 .control-pressed { opacity: 0.65; }
 /* #ifdef WEB */
-.date-step, .period-tab, .view-tab, .filter-trigger, .today-button { transition: background-color 160ms ease, color 160ms ease, box-shadow 160ms ease, opacity 120ms ease; }
+.date-step, .period-tab, .view-tab, .filter-trigger, .today-button { transition: background-color 160ms ease, border-color 160ms ease, color 160ms ease, opacity 120ms ease; }
 .date-step:focus-visible, .period-tab:focus-visible, .view-tab:focus-visible, .filter-trigger:focus-visible, .today-button:focus-visible { outline: 2px solid #5b8ff9; outline-offset: -2px; }
 @media (prefers-reduced-motion: reduce) {
   .date-step, .period-tab, .view-tab, .filter-trigger, .today-button { transition: none; }
@@ -473,13 +468,9 @@ function closeEditor() {
 .diff-down { color: #20a574; }
 .date-value-dark, .summary-value-dark { color: #eeeeef; }
 .summary-card-dark { background-color: #1c1e22; }
-.date-switch-dark, .period-tabs-dark, .view-tabs-dark, .filter-trigger-dark { background-color: #202228; }
-.period-tabs-dark, .view-tabs-dark { background-color: #202831; border-color: #2d3742; }
-.period-tab-dark { color: #aeb8c5; }
-.period-active-dark, .view-active-dark { background-color: #3a4755; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.16); }
-.period-active-dark { color: #eef2f6; }
-.view-active-dark { color: #64b5f6; }
-.filter-active-dark { background-color: #2c3953; }
+.period-tabs-dark, .view-tabs-dark, .filter-trigger-dark { background-color: transparent; }
+.period-tab-dark, .view-tab-dark, .filter-trigger-dark { border-color: #3f4147; color: #aeb8c5; }
+.period-active-dark, .view-active-dark, .filter-active-dark { border-color: #4096ff; background-color: transparent; color: #4096ff; }
 /* #ifndef APP */
 @media (min-width: 1025px) {
   .time-layout { flex-direction: row; align-items: flex-start; }
@@ -583,9 +574,9 @@ function closeEditor() {
 .app-button-label-dark { color: #eeeeef; }
 .text-action-label { @include type-style('body'); color: #5b8ff9; }
 .period-tab-label, .today-button-label { color: #737985; @include type-style('body'); }
-.period-active-label { color: #343944; font-weight: type-weight('medium'); }
+.period-active-label { color: #1677ff; font-weight: type-weight('medium'); }
 .period-tab-dark-label { color: #aeb8c5; }
-.period-active-dark-label { color: #eef2f6; }
+.period-active-dark-label { color: #4096ff; }
 .filter-cancel-label, .filter-apply-label { @include type-style('body'); }
 .filter-cancel-label { color: #8b8f99; }
 .filter-apply-label { color: #ffffff; }

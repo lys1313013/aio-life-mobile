@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { useWindowResize } from '../services/window-resize.ts'
 useWindowResize(updateLayout)
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import AppIcon from './AppIcon.uvue'
 import LoadingIndicator from './LoadingIndicator.uvue'
 import { secondaryLock } from '../services/secondary-lock.ts'
@@ -9,28 +9,30 @@ import spacing from '../styles/spacing.json'
 import { navigationLayout } from '../services/navigation-layout.ts'
 import { refreshNativeTheme, themeClass } from '../services/theme.ts'
 onMounted(refreshNativeTheme)
-defineProps({
+const props = defineProps({
   title: { type: String, required: true },
   back: { type: Boolean, default: false },
+  contentMinWidth: { type: Number, default: 0 },
+  actionsMinWidth: { type: Number, default: 0 },
 })
 defineEmits(['back'])
 const statusBarHeight = ref(0)
 const navigationHeight = ref(48)
 const rightInset = ref(spacing.page)
+const availableWidth = ref(0)
+const wrapActions = computed(() => props.actionsMinWidth > 0 && availableWidth.value < props.contentMinWidth + spacing.inline + props.actionsMinWidth)
+const headerHeight = computed(() => navigationHeight.value + (wrapActions.value ? spacing.controlMin + spacing.detail : 0))
 function updateLayout() {
-  let windowInfo = { statusBarHeight: 0, windowWidth: 375 }
+  const windowInfo = uni.getWindowInfo()
   let capsule = null
-  // #ifdef APP
-  windowInfo = uni.getWindowInfo()
-  // #endif
   // #ifdef MP-WEIXIN
-  windowInfo = uni.getWindowInfo()
   capsule = uni.getMenuButtonBoundingClientRect()
   // #endif
   const layout = navigationLayout(windowInfo, capsule, spacing)
   statusBarHeight.value = layout.statusBarHeight
   navigationHeight.value = layout.navigationHeight
   rightInset.value = layout.rightInset
+  availableWidth.value = Math.min(windowInfo.windowWidth - spacing.page - layout.rightInset, spacing.contentMax - 2 * spacing.page) - (props.back ? spacing.controlMin + spacing.detail : 0)
 }
 updateLayout()
 onMounted(() => {
@@ -42,7 +44,7 @@ onMounted(() => {
 
 <template>
   <!-- 保留导航高度，固定定位后不遮住首屏内容。 -->
-  <view class="navigation-placeholder" :style="{ height: statusBarHeight + navigationHeight + 'px' }">
+  <view class="navigation-placeholder" :style="{ height: statusBarHeight + headerHeight + 'px' }">
   <view class="page-navigation" :style="{ paddingTop: statusBarHeight + 'px' }" :class="themeClass('page-navigation')">
     <view class="navigation-row ui-header-inset" :style="{ height: navigationHeight + 'px', paddingRight: rightInset + 'px' }">
       <button
@@ -57,8 +59,12 @@ onMounted(() => {
       </button>
       <view class="navigation-content" :class="{ 'navigation-content-wide': !back }">
         <slot><text class="navigation-title" :class="themeClass('navigation-title')">{{ title }}</text></slot>
+        <view v-if="actionsMinWidth > 0 && !wrapActions" class="navigation-actions"><slot name="actions" /></view>
       </view>
       <LoadingIndicator v-if="secondaryLock.checking" compact label="正在加载" />
+    </view>
+    <view v-if="wrapActions" class="navigation-actions-row ui-header-inset">
+      <view class="navigation-actions-content"><slot name="actions" /></view>
     </view>
   </view>
   </view>
@@ -101,6 +107,25 @@ onMounted(() => {
   max-width: $space-contentMax - 2 * $space-page;
   margin-left: auto;
   margin-right: auto;
+}
+.navigation-actions {
+  flex-shrink: 0;
+  flex-direction: row;
+  margin-left: auto;
+  padding-left: $space-inline;
+}
+.navigation-actions-row {
+  height: $space-controlMin + $space-detail;
+  box-sizing: border-box;
+  padding-bottom: $space-detail;
+}
+.navigation-actions-content {
+  width: 100%;
+  max-width: $space-contentMax - 2 * $space-page;
+  margin-left: auto;
+  margin-right: auto;
+  flex-direction: row;
+  justify-content: flex-end;
 }
 .navigation-title {
   flex: 1;

@@ -713,6 +713,103 @@ for (const width of [320, 390, 768, 1440]) for (const colorScheme of ['light', '
 }
 
 for (const width of [390, 768, 1440]) for (const colorScheme of ['light', 'dark']) {
+  test(`运动项目标签双向触摸滚动 ${width}px ${colorScheme}`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 900 });
+    await page.emulateMedia({ colorScheme });
+    const names = ['瑜伽', '骑行', '正握引体向上', '跑步', '俯卧撑', '健腹轮', '深蹲', '哑铃弯举', '平板支撑', '坐姿器械划船'];
+    const icons = ['mdi:yoga', 'mdi:bike', 'svg:pull-up', 'mdi:run', 'svg:push-up', 'svg:ab-wheel', 'mdi:dumbbell', 'svg:barbell-curl', 'svg:plank', 'mdi:dumbbell'];
+    const exerciseTypes = names.map((dictLabel, index) => ({ id: String(9223372036854775700n + BigInt(index)), dictLabel, icon: icons[index], color: index % 2 ? '#4e7ee3' : '#36b389' }));
+    await setup(page, {
+      categories: categoryPalette,
+      exerciseTypes,
+      records: [{ id: '9223372036854775807', date: today, categoryId: '2', startTime: 540, endTime: 599, title: '晨间运动', exercises: exerciseTypes.map((item, index) => ({ exerciseTypeId: item.id, exerciseCount: index + 1 })) }],
+    });
+    await page.getByRole('button', { name: '编辑记录 晨间运动' }).click();
+    const editor = page.locator('.modal-panel[aria-label="编辑时迹"]');
+    const strip = editor.locator('.exercise-tab-scroll');
+    const scroller = strip.locator('.uni-scroll-view[style]').first();
+    const tabs = strip.locator('.exercise-tab');
+    await expect(tabs.last()).toContainText(names.at(-1));
+    await expect(tabs.locator('.exercise-tab-heading .category-icon-image')).toHaveCount(names.length);
+    const firstIcon = tabs.first().locator('.category-icon-image img');
+    await expect(firstIcon).toBeVisible();
+    await expect(firstIcon).toHaveAttribute('src', /^data:image\//);
+    const iconBox = await firstIcon.boundingBox();
+    const nameBox = await tabs.first().locator('.exercise-tab-name').boundingBox();
+    expect(iconBox.x + iconBox.width).toBeLessThan(nameBox.x);
+    expect(Math.abs(iconBox.y + iconBox.height / 2 - (nameBox.y + nameBox.height / 2))).toBeLessThan(2);
+    await expect(strip).toHaveCSS('border-bottom-width', '0px');
+    await expect(tabs.first()).toHaveCSS('border-bottom-width', '0px');
+    expect(await scroller.evaluate(el => el.scrollWidth > el.clientWidth)).toBe(true);
+    const cdp = await page.context().newCDPSession(page);
+    await cdp.send('Emulation.setTouchEmulationEnabled', { enabled: true });
+    async function swipe(forward) {
+      const box = await strip.boundingBox();
+      const from = box.x + box.width * (forward ? 0.85 : 0.15);
+      const to = box.x + box.width * (forward ? 0.15 : 0.85);
+      const y = box.y + box.height / 2;
+      await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: from, y }] });
+      for (let step = 1; step <= 8; step++) {
+        await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: from + (to - from) * step / 8, y }] });
+        await page.waitForTimeout(40);
+      }
+      await page.waitForTimeout(100);
+      await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+    }
+    await swipe(true);
+    await expect.poll(() => scroller.evaluate(el => el.scrollLeft)).toBeGreaterThan(30);
+    for (let i = 0; i < 7 && await scroller.evaluate(el => el.scrollLeft < el.scrollWidth - el.clientWidth - 2); i++) await swipe(true);
+    await expect(tabs.last()).toBeInViewport({ ratio: 0.95 });
+    await tabs.last().click();
+    await expect(tabs.last()).toHaveAttribute('aria-pressed', 'true');
+    await expect(editor.locator('.exercise-set-value')).toHaveText('10');
+    await page.screenshot({ path: `artifacts/time-compact/exercise-tabs-end-${width}-${colorScheme}.png` });
+    const before = await scroller.evaluate(el => el.scrollLeft);
+    await swipe(false);
+    await expect.poll(() => scroller.evaluate(el => el.scrollLeft)).toBeLessThan(before - 30);
+    for (let i = 0; i < 7 && await scroller.evaluate(el => el.scrollLeft > 2); i++) await swipe(false);
+    await expect(tabs.first()).toBeInViewport({ ratio: 0.95 });
+    await tabs.first().click();
+    await expect(tabs.first()).toHaveAttribute('aria-pressed', 'true');
+    await expect(editor.locator('.exercise-set-value')).toHaveText('1');
+    await page.screenshot({ path: `artifacts/time-compact/exercise-tabs-start-${width}-${colorScheme}.png` });
+    await cdp.detach();
+  });
+
+  test(`运动项目静默加载与弹窗重试 ${width}px ${colorScheme}`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 900 });
+    await page.emulateMedia({ colorScheme });
+    await setup(page);
+    const requests = [];
+    await page.route('**/api/userDictType/getByDictType?**', route => { requests.push(route); });
+    await page.getByRole('button', { name: '编辑记录 晨间运动' }).click();
+    const editor = page.locator('.modal-panel[aria-label="编辑时迹"]');
+    await expect.poll(() => requests.length).toBe(1);
+    await expect(editor.getByRole('status', { name: '正在加载运动项目' })).toHaveCount(0);
+    await expect(editor.locator('.exercise-set-value')).toHaveText('20');
+    await page.screenshot({ path: `artifacts/time-compact/exercise-silent-${width}-${colorScheme}.png` });
+
+    await editor.getByRole('button', { name: '添加运动', exact: true }).click();
+    const picker = page.locator('.modal-panel[aria-label="选择运动"]');
+    await expect(picker.getByRole('status', { name: '正在加载运动项目' })).toBeVisible();
+    expect(requests).toHaveLength(1);
+    await page.screenshot({ path: `artifacts/time-compact/exercise-picker-loading-${width}-${colorScheme}.png` });
+    await requests[0].fulfill({ json: { code: 1, message: '运动项目暂不可用' } });
+    await expect(picker).toContainText('运动项目暂不可用');
+    await expect(editor.getByText('运动项目暂不可用')).toHaveCount(0);
+    await picker.getByRole('button', { name: '重试运动类型' }).click();
+    await expect.poll(() => requests.length).toBe(2);
+    await expect(picker.getByRole('status', { name: '正在加载运动项目' })).toBeVisible();
+    await requests[1].fulfill({ json: { code: 0, data: { dictDetailList: [{ id: '9223372036854775806', dictLabel: '俯卧撑' }] } } });
+    await expect(picker.getByRole('button', { name: '俯卧撑', exact: true })).toBeVisible();
+    await expect(picker.getByRole('status')).toHaveCount(0);
+    await closeEditor(page);
+    await editor.getByRole('button', { name: '添加运动', exact: true }).click();
+    await expect(picker.getByRole('button', { name: '俯卧撑', exact: true })).toBeVisible();
+    await expect(picker.getByRole('status')).toHaveCount(0);
+    expect(requests).toHaveLength(2);
+  });
+
   test(`运动明细按动作分组与增删保存 ${width}px ${colorScheme}`, async ({ page }) => {
     await page.setViewportSize({ width, height: 900 });
     await page.emulateMedia({ colorScheme });
@@ -740,6 +837,19 @@ for (const width of [390, 768, 1440]) for (const colorScheme of ['light', 'dark'
     const tiles = dialog.locator('.exercise-set-tile');
     const dimensions = await tiles.evaluateAll(items => items.map(tile => tile.getBoundingClientRect().toJSON()));
     for (const box of dimensions) expect(box.height).toBeGreaterThanOrEqual(44);
+    const setValue = tiles.first().locator('.exercise-set-value');
+    await expect(setValue).toHaveText('20');
+    await expect(setValue).toHaveCSS('font-size', '16px');
+    await expect(setValue).toHaveCSS('text-align', 'center');
+    const valueBox = await setValue.boundingBox();
+    expect(Math.abs(valueBox.x + valueBox.width / 2 - (dimensions[0].x + dimensions[0].width / 2))).toBeLessThan(2);
+    const removeBox = await tiles.first().getByRole('button', { name: '删除俯卧撑第1组' }).boundingBox();
+    expect(removeBox.width).toBeGreaterThanOrEqual(44);
+    expect(removeBox.height).toBeGreaterThanOrEqual(44);
+    expect(Math.abs(removeBox.x + removeBox.width - (dimensions[0].x + dimensions[0].width))).toBeLessThan(2);
+    const removeIconBox = await tiles.first().locator('.exercise-set-remove .category-icon-image').boundingBox();
+    expect(removeIconBox.y - dimensions[0].y).toBeLessThan(8);
+    expect(dimensions[0].x + dimensions[0].width - removeIconBox.x - removeIconBox.width).toBeLessThan(8);
     const timeBox = await dialog.locator('.compact-time-section').boundingBox();
     const exerciseBox = await tiles.first().boundingBox();
     const notesBox = await dialog.locator('.compact-notes').boundingBox();
@@ -762,15 +872,38 @@ for (const width of [390, 768, 1440]) for (const colorScheme of ['light', 'dark'
     const typeButton = editor.getByRole('button', { name: '修改运动类型' });
     const typeName = await typeButton.locator('.exercise-edit-type-name').boundingBox();
     const iconBox = await exerciseIcon.boundingBox();
-    const countBox = await editor.locator('[aria-label="本组次数"] input').boundingBox();
-    const unitBox = await editor.locator('.exercise-edit-unit').boundingBox();
+    const countInput = editor.locator('[aria-label="本组次数"] input');
+    const typeBox = await typeButton.boundingBox();
+    const countBox = await editor.locator('.exercise-edit-count').boundingBox();
+    await expect(countInput).toHaveValue('20');
+    await expect(editor.locator('.exercise-edit-unit')).toHaveCount(0);
+    await expect(typeButton.locator('.app-icon')).toHaveCount(0);
     const saveBox = await editor.getByRole('button', { name: '保存', exact: true }).boundingBox();
     expect(Math.abs(typeName.y + typeName.height / 2 - (iconBox.y + iconBox.height / 2))).toBeLessThan(6);
-    expect(countBox.x).toBeGreaterThan(typeName.x + typeName.width);
-    expect(Math.abs(countBox.y + countBox.height / 2 - (iconBox.y + iconBox.height / 2))).toBeLessThan(14);
-    expect(unitBox.x - (countBox.x + countBox.width)).toBeLessThan(8);
+    expect(countBox.y).toBeGreaterThan(typeBox.y + typeBox.height);
+    expect(Math.abs(countBox.x - typeBox.x)).toBeLessThan(2);
+    expect(Math.abs(countBox.width - typeBox.width)).toBeLessThan(2);
+    expect(Math.abs(countBox.height - typeBox.height)).toBeLessThan(2);
+    expect(countBox.height).toBeGreaterThanOrEqual(44);
+    expect(saveBox.y).toBeGreaterThan(countBox.y + countBox.height);
+    const fontSizes = await editor.locator('.exercise-edit-type-name, .exercise-edit-count, .action-label').evaluateAll(items => items.map(item => getComputedStyle(item).fontSize));
+    expect(new Set(fontSizes).size).toBe(1);
     expect(saveBox.width).toBeGreaterThan(saveBox.height * 2);
+    await expect.poll(() => editor.evaluate(panel => {
+      const bounds = panel.getBoundingClientRect();
+      const heading = panel.querySelector('.exercise-edit-order').getBoundingClientRect();
+      const save = panel.querySelector('.exercise-edit-save').getBoundingClientRect();
+      const field = panel.querySelector('.exercise-edit-type').getBoundingClientRect();
+      const insets = [heading.top - bounds.top, bounds.bottom - save.bottom, field.left - bounds.left, bounds.right - field.right];
+      return Math.max(...insets) - Math.min(...insets);
+    })).toBeLessThan(2);
     await page.screenshot({ path: `artifacts/time-compact/exercise-editor-${width}-${colorScheme}.png` });
+    await countInput.fill('');
+    await expect(editor.locator('.uni-input-placeholder')).toHaveText('数量');
+    await expect(editor.locator('.uni-input-placeholder')).toBeVisible();
+    await page.screenshot({ path: `artifacts/time-compact/exercise-editor-empty-${width}-${colorScheme}.png` });
+    await editor.getByRole('button', { name: '保存', exact: true }).click();
+    await expect(editor.getByRole('alert')).toContainText('填写有效次数');
     await exerciseIcon.click();
     const exercisePicker = page.locator('.modal-panel[aria-label="选择运动"]');
     await expect(exercisePicker.getByRole('button', { name: '俯卧撑', exact: true })).toHaveAttribute('aria-pressed', 'true');
@@ -792,6 +925,14 @@ for (const width of [390, 768, 1440]) for (const colorScheme of ['light', 'dark'
     await dialog.getByRole('button', { name: '健腹轮第3组，12次，编辑' }).click();
     await page.locator('.modal-panel[aria-label="编辑运动组"]').getByRole('button', { name: '删除本组' }).click();
     await expect(tabs.filter({ hasText: '健腹轮' })).toContainText('2组 · 35次');
+
+    await dialog.getByRole('button', { name: '为健腹轮加一组' }).click();
+    await addEditor.getByRole('button', { name: '保存', exact: true }).click();
+    await expect(tabs.filter({ hasText: '健腹轮' })).toContainText('3组 · 45次');
+    await dialog.getByRole('button', { name: '删除健腹轮第3组' }).click();
+    await expect(tabs.filter({ hasText: '健腹轮' })).toContainText('2组 · 35次');
+    await expect(page.locator('.modal-panel[aria-label="编辑运动组"]')).toHaveCount(0);
+    await expect(dialog.locator('.exercise-set-tile')).toHaveCount(3);
 
     await dialog.getByRole('button', { name: '保存', exact: true }).click();
     await expect(dialog).toHaveCount(0);

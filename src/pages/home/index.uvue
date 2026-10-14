@@ -12,6 +12,7 @@ import HomeListSkeleton from './HomeListSkeleton.uvue'
 import { useHomeCardOrder } from './services/use-home-card-order.ts'
 import { mergeVisibleCardOrder } from './services/home-card-order.ts'
 import AppIcon from '../../components/AppIcon.uvue'
+import MobileButton from '../../components/MobileButton.uvue'
 import SecondaryUnlock from "../../components/SecondaryUnlock.uvue";
 import { isDark, themeClass } from '../../services/theme.ts'
 import { useRefreshTheme } from '../../services/refresh-theme.ts'
@@ -64,11 +65,12 @@ import LifeMenuIcon from '../../components/LifeMenuIcon.uvue'
 import CategoryIcon from '../../components/CategoryIcon.uvue'
 import spacing from '../../styles/spacing.json'
 import typography from '../../styles/typography.json'
+import { readQuickLinks } from '../../services/life-catalog.ts'
 
 const viewportWidth = ref(uni.getWindowInfo().windowWidth)
 const quickNavEditing = ref(false)
 const quickNavBusy = ref(false)
-const quickNavReady = ref(false)
+const quickNavDragging = ref(false)
 const quickNavStartPicker = ref(false)
 const quickNavSaveSignal = ref(0)
 const quickIconSize = computed(() => viewportWidth.value < 640 ? 20 : 24)
@@ -107,24 +109,33 @@ async function pullRefresh() {
 const errorText = ref('')
 const cards = ref<OverviewCard[]>([])
 const overview = reactive({ loading: false, error: '', loaded: false })
-const links = ref<QuickLink[]>([])
+const savedQuickLinks = ref<QuickLink[]>([])
+const links = computed(() => savedQuickLinks.value.filter(item => item.enabled === 1))
 function openQuickNavEditor(startPicker = false) {
+  if (!states.links.loaded || quickNavEditing.value) return
+  sectionVersions.links = (sectionVersions.links || 0) + 1
+  states.links.loading = false
   quickNavStartPicker.value = startPicker
-  quickNavBusy.value = true
-  quickNavReady.value = false
+  quickNavBusy.value = false
   quickNavEditing.value = true
 }
 function cancelQuickNavEditor() {
-  if (quickNavBusy.value && quickNavReady.value) return
+  if (quickNavBusy.value) return
   quickNavEditing.value = false
-  quickNavReady.value = false
+  quickNavDragging.value = false
   quickNavBusy.value = false
 }
-function quickNavSaved() {
+function quickNavSaved(items: QuickLink[]) {
+  savedQuickLinks.value = readQuickLinks(items)
+  sectionVersions.links = (sectionVersions.links || 0) + 1
+  states.links.loading = false
+  states.links.error = ''
+  states.links.loaded = true
+  states.links.revision = homeDataRevision('links')
   quickNavEditing.value = false
-  quickNavReady.value = false
+  quickNavDragging.value = false
   quickNavBusy.value = false
-  void loadSection('links', true)
+  homeScheduler.settled('section.links')
 }
 const thoughts = ref<Thought[]>([])
 const watched = ref<WatchedTask[]>([])
@@ -258,7 +269,7 @@ watch(() => session.token, () => {
   preferencesRevision = profileRevision = overviewRevision = -1
   for (const key of Object.keys(cardRevisions)) delete cardRevisions[key]
   for (const key of Object.keys(states)) { states[key].loading = false; states[key].error = ''; states[key].loaded = false; states[key].locked = false; states[key].revision = -1 }
-  links.value = []; thoughts.value = []; watched.value = []; commits.value = []
+  savedQuickLinks.value = []; thoughts.value = []; watched.value = []; commits.value = []
   exercise.value = { days: [] }; time.value = timeSummary([], [])
 }, { flush: 'sync' })
 
@@ -308,7 +319,7 @@ function lockSection(key: string) {
   if (key === 'watched') { watched.value = []; watchedEditor.value = null }
   if (key === 'exercise') { exercise.value = { days: [] }; if (recordCreateKind.value === 'exercise') recordCreateKind.value = null }
   if (key === 'commits') { commits.value = []; githubProfile.value = '' }
-  if (key === 'links') links.value = []
+  if (key === 'links') savedQuickLinks.value = []
   homeScheduler.set('section.' + key, 0, () => {})
   if (key === 'exercise' || key === 'commits') {
     pageVersions[key]++; moreErrors[key] = ''
@@ -512,7 +523,7 @@ async function loadCard(item: OverviewCard, force = false) {
   }
 }
 async function loadSection(key: string, force = false) {
-  if (!active || !session.token || !sectionEnabled(key)) return
+  if (!active || !session.token || !sectionEnabled(key) || (key === 'links' && quickNavEditing.value)) return
   const state = states[key]
   if (state.loading && !force) return
   const version = sectionVersions[key] = (sectionVersions[key] || 0) + 1
@@ -548,10 +559,7 @@ async function loadSection(key: string, force = false) {
     }
     if (key === 'links') {
       const data = await getQuickLinks()
-      if (accept())
-        links.value = data
-          .filter((item) => item.enabled === 1)
-          .sort((a, b) => a.sortOrder - b.sortOrder)
+      if (accept()) savedQuickLinks.value = readQuickLinks(data)
     }
     if (key === 'thoughts') {
       const data = await getThoughts()
@@ -747,7 +755,7 @@ function trendLines(points) {
     <!-- 保留状态栏与微信胶囊的安全空间。 -->
     <PageHeader title="" />
     <!-- #endif -->
-    <scroll-view :scroll-y="!businessSorting && cardOrder.scrollEnabled()" :direction="businessSorting || !cardOrder.scrollEnabled() ? 'none' : 'vertical'" :scroll-top="cardOrder.scrollTop.value" @scroll="cardOrder.scrolled" :show-scrollbar="false" class="dashboard-scroll" :refresher-enabled="!businessSorting && !cardOrder.dragging.value" :refresher-triggered="refreshing" refresher-background="transparent" :refresher-default-style="refreshTheme" @refresherrefresh="pullRefresh"
+    <scroll-view :scroll-y="!quickNavDragging && !businessSorting && cardOrder.scrollEnabled()" :direction="quickNavDragging || businessSorting || !cardOrder.scrollEnabled() ? 'none' : 'vertical'" :scroll-top="cardOrder.scrollTop.value" @scroll="cardOrder.scrolled" :show-scrollbar="false" class="dashboard-scroll" :refresher-enabled="!quickNavEditing && !businessSorting && !cardOrder.dragging.value" :refresher-triggered="refreshing" refresher-background="transparent" :refresher-default-style="refreshTheme" @refresherrefresh="pullRefresh"
       ><view class="dashboard-content ui-page-inset ui-tab-page-inset">
         <view v-if="errorText" class="global-error" role="alert"
           ><text class="failure-text" :class="themeClass('failure-text')">{{ errorText }}</text
@@ -800,7 +808,7 @@ function trendLines(points) {
               >
             </view>
           </HomeCardSortCell><SecondaryUnlock />
-  </view><view v-if="homeCardPreferences.ready" class="section-grid"><HomeCardSortCell v-for="section in homeSections" :key="section.cardKey" :visible="sectionVisible(section)" :card-key="section.cardKey" :title="section.title" group="section" :order="cardOrder" :disabled="orderDisabled" :wide="section.cardKey === 'section.links' && quickNavEditing">
+  </view><view v-if="homeCardPreferences.ready" class="section-grid"><HomeCardSortCell v-for="section in homeSections" :key="section.cardKey" :visible="sectionVisible(section)" :card-key="section.cardKey" :title="section.title" group="section" :order="cardOrder" :disabled="orderDisabled">
           <view v-if="section.cardKey === 'section.time'" class="section-content ui-pad-xs"
             ><DashboardSection
               title="时迹" :icon="menuVisuals.visual('section.time').icon" :icon-color="menuVisuals.visual('section.time').iconColor"
@@ -875,12 +883,12 @@ function trendLines(points) {
             >
               <template #actions>
                 <view v-if="quickNavEditing" class="quick-header-actions">
-                  <button role="button" class="quick-header-button" :class="themeClass('quick-header-button')" aria-label="取消编辑" :disabled="quickNavBusy && quickNavReady" @click="cancelQuickNavEditor"><text class="quick-header-text" :class="themeClass('quick-header-text')">取消</text></button>
-                  <button role="button" class="quick-header-button quick-header-save" aria-label="保存" :disabled="quickNavBusy || !quickNavReady" @click="quickNavSaveSignal++"><text class="quick-header-text quick-header-save-text">保存</text></button>
+                  <MobileButton label="取消编辑" compact variant="ghost" :disabled="quickNavBusy" @click="cancelQuickNavEditor"><text class="quick-header-text" :class="themeClass('quick-header-text')">取消</text></MobileButton>
+                  <MobileButton label="保存" compact :loading="quickNavBusy" :disabled="quickNavBusy" @click="quickNavSaveSignal++" />
                 </view>
-                <DashboardAction v-else label="管理快捷导航" icon="lucide:settings-2" @click="openQuickNavEditor()" />
+                <DashboardAction v-else label="管理快捷导航" :disabled="!states.links.loaded" icon="lucide:settings-2" @click="openQuickNavEditor()" />
               </template><template #loading><view class="quick-loading" role="status" aria-label="正在加载快捷导航"><view class="quick-grid" aria-hidden="true"><view v-for="n in 10" :key="n" class="quick-link" :style="{ height: quickRowHeight + 'px' }"><view class="time-skeleton-fill" :class="themeClass('time-skeleton-fill')" :style="{ width: quickIconSize + 'px', height: quickIconSize + 'px' }" /><view class="quick-skeleton-label time-skeleton-fill" :class="themeClass('time-skeleton-fill')" /></view></view></view>
-              </template><QuickNavEditor v-if="quickNavEditing" :start-picker="quickNavStartPicker" :save-signal="quickNavSaveSignal" @busy="quickNavBusy = $event" @ready="quickNavReady = $event" @saved="quickNavSaved" /><button v-else-if="links.length === 0" role="button" class="quick-empty ui-pad-card" aria-label="添加常用功能" @click="openQuickNavEditor(true)"
+              </template><QuickNavEditor v-if="quickNavEditing" :items="savedQuickLinks" :start-picker="quickNavStartPicker" :save-signal="quickNavSaveSignal" @busy="quickNavBusy = $event" @dragging="quickNavDragging = $event" @saved="quickNavSaved" /><button v-else-if="links.length === 0" role="button" class="quick-empty ui-pad-card" aria-label="添加常用功能" @click="openQuickNavEditor(true)"
                 ><view class="quick-empty-icon" :class="themeClass('quick-empty-icon')"><AppIcon name="ant-design:plus-outlined" :size="20" color="#427bea" /></view
                 ><text class="quick-empty-title" :class="themeClass('quick-empty-title')">添加你的第一个快捷方式</text
                 ><text class="quick-empty-caption">从菜单挑选常用功能，首页一触即达</text></button
@@ -1451,13 +1459,9 @@ color: inherit;
   flex-wrap: wrap;
 }
 .quick-header-actions { flex-direction: row; align-items: center; gap: $space-detail; }
-.quick-header-button { display: flex; min-width: $space-controlMin; height: $space-controlMin; padding: 0 $space-inline; margin: 0; border: 0; border-radius: $space-inline; background-color: transparent; align-items: center; justify-content: center; }
-.quick-header-button::after, .quick-empty::after { border: 0; }
+.quick-empty::after { border: 0; }
 .quick-header-text { @include type-style('label'); color: #52525b; }
 .quick-header-text-dark { color: #eeeeef; }
-.quick-header-save { background-color: #427bea; }
-.quick-header-save-text { color: #ffffff; }
-.quick-header-button:disabled { opacity: 0.5; }
 .quick-empty { width: 100%; flex: 1; align-items: center; justify-content: center; border: 0; background-color: transparent; }
 .quick-empty-icon { width: $space-controlMin; height: $space-controlMin; border-radius: $space-card; background-color: #eef2f8; align-items: center; justify-content: center; }
 .quick-empty-icon-dark { background-color: #292c32; }

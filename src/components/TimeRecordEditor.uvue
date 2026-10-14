@@ -8,6 +8,7 @@ import { recordChanged } from '../services/time-changes.ts'
 import { computed, ref, watch, onMounted, onUnmounted } from 'vue'
 import AdaptiveModal from './AdaptiveModal.uvue'
 import FormActions from './FormActions.uvue'
+import FormField from './FormField.uvue'
 import TimeEndPicker from './TimeEndPicker.uvue'
 import CategoryIcon from './CategoryIcon.uvue'
 import TimeRelatedSelector from './TimeRelatedSelector.uvue'
@@ -410,9 +411,12 @@ async function remove() {
     deleting.value = false
   }
 }
+function exerciseType(typeId: string) {
+  return exerciseTypes.value.find((item) => item.id === typeId)
+}
 function exerciseName(typeId: string) {
   return (
-    exerciseTypes.value.find((e) => e.id === typeId)?.dictLabel ||
+    exerciseType(typeId)?.dictLabel ||
     (typeId ? '已选运动' : '选择运动')
   )
 }
@@ -474,8 +478,12 @@ function saveExerciseSet() {
 }
 function removeExerciseSet() {
   if (editingExerciseIndex.value === null || editingExerciseIndex.value < 0) return
-  form.value.exercises?.splice(editingExerciseIndex.value, 1)
+  removeExerciseSetAt(editingExerciseIndex.value)
   closeExerciseEditor()
+}
+function removeExerciseSetAt(index: number) {
+  if (saving.value || deleting.value) return
+  form.value.exercises?.splice(index, 1)
 }
 function selectRelated(item) {
   relatedStatus.value = ''
@@ -511,9 +519,6 @@ function closeSelection() {
   >
     <view class="editor-content">
       <view v-if="loading" class="editor-loading">
-        <button role="button" class="loading-close ui-type-body" aria-label="取消加载" @click="goBack">
-          <AppIcon name="ant-design:close-outlined" :size="18" color="#8b8f99" />
-        </button>
         <LoadingIndicator compact label="正在加载时迹详情" />
         <text class="loading-label" :class="themeClass('loading-label')" aria-hidden="true">正在加载</text>
       </view>
@@ -734,33 +739,37 @@ function closeSelection() {
               <AppIcon name="ant-design:plus-outlined" :size="20" color="#4e7ee3" />
             </button>
           </view>
-          <LoadingIndicator v-if="exerciseLoading" label="正在加载运动项目" />
-          <view v-if="exerciseError">
-            <text class="error-text" :class="themeClass('error-text')">{{ exerciseError }}</text>
-            <button role="button" class="small-action" :class="themeClass('small-action')" @click="loadExercises"><text :class="buttonLabelClasses(['small-action', themeClass('small-action')])">重试运动类型</text></button>
-          </view>
           <scroll-view v-if="exerciseGroups.length" direction="horizontal" :scroll-x="true" :show-scrollbar="false"
             :scroll-into-view="'time-exercise-tab-' + activeExerciseTabIndex" :scroll-with-animation="true"
-            class="exercise-tab-scroll" :class="themeClass('exercise-tab-scroll')">
+            class="exercise-tab-scroll">
             <view class="exercise-tabs">
               <button v-for="(group, groupIndex) in exerciseGroups" :key="group.typeId" :id="'time-exercise-tab-' + groupIndex" role="button" class="exercise-tab"
-                :class="[{ 'exercise-tab-active': activeExerciseGroup?.typeId === group.typeId }, themeClass('exercise-tab')]"
                 :aria-label="exerciseName(group.typeId) + '，' + group.indices.length + '组，共' + group.total + '次'"
                 :aria-pressed="activeExerciseGroup?.typeId === group.typeId"
                 @click="selectedExerciseTypeId = group.typeId">
-                <text class="exercise-tab-name" :class="[{ 'exercise-tab-name-active': activeExerciseGroup?.typeId === group.typeId }, themeClass('exercise-tab-name')]">{{ exerciseName(group.typeId) }}</text>
+                <view class="exercise-tab-heading">
+                  <CategoryIcon :icon="exerciseType(group.typeId)?.icon || 'lucide:dumbbell'" :color="exerciseType(group.typeId)?.color || '#4e7ee3'" :size="16" />
+                  <text class="exercise-tab-name" :class="[{ 'exercise-tab-name-active': activeExerciseGroup?.typeId === group.typeId }, themeClass('exercise-tab-name')]">{{ exerciseName(group.typeId) }}</text>
+                </view>
                 <text class="exercise-tab-summary" :class="[{ 'exercise-tab-summary-active': activeExerciseGroup?.typeId === group.typeId }, themeClass('exercise-tab-summary')]">{{ group.indices.length }}组 · {{ group.total }}次</text>
               </button>
             </view>
           </scroll-view>
           <view v-if="activeExerciseGroup" class="exercise-set-grid">
-            <button v-for="(exerciseIndex, groupIndex) in activeExerciseGroup.indices" :key="exerciseIndex" role="button"
-              class="exercise-set-tile" :class="themeClass('exercise-set-tile')"
-              :aria-label="exerciseName(activeExerciseGroup.typeId) + '第' + (groupIndex + 1) + '组，' + exerciseCountLabel(exerciseIndex) + '，编辑'"
-              :disabled="saving || deleting" @click="openExerciseEditor(exerciseIndex)">
-              <text class="exercise-set-order" :class="themeClass('exercise-set-order')">第{{ groupIndex + 1 }}组</text>
-              <text class="exercise-set-value" :class="themeClass('exercise-set-value')">{{ exerciseCountLabel(exerciseIndex) }}</text>
-            </button>
+            <view v-for="(exerciseIndex, groupIndex) in activeExerciseGroup.indices" :key="exerciseIndex"
+              class="exercise-set-tile" :class="themeClass('exercise-set-tile')">
+              <button role="button" class="exercise-set-edit"
+                :aria-label="exerciseName(activeExerciseGroup.typeId) + '第' + (groupIndex + 1) + '组，' + exerciseCountLabel(exerciseIndex) + '，编辑'"
+                :disabled="saving || deleting" @click="openExerciseEditor(exerciseIndex)">
+                <text class="exercise-set-order" :class="themeClass('exercise-set-order')">第{{ groupIndex + 1 }}组</text>
+                <text class="exercise-set-value" :class="themeClass('exercise-set-value')">{{ form.exercises?.[exerciseIndex]?.exerciseCount ?? '未填写' }}</text>
+              </button>
+              <button role="button" class="exercise-set-remove"
+                :aria-label="'删除' + exerciseName(activeExerciseGroup.typeId) + '第' + (groupIndex + 1) + '组'"
+                :disabled="saving || deleting" @click.stop="removeExerciseSetAt(exerciseIndex)">
+                <AppIcon name="ant-design:close-outlined" :size="12" color="#8b8f99" />
+              </button>
+            </view>
             <button role="button" class="exercise-set-tile exercise-set-add" :class="themeClass('exercise-set-tile')"
               :aria-label="'为' + exerciseName(activeExerciseGroup.typeId) + '加一组'"
               :disabled="saving || deleting" @click="openExerciseEditor(-1, activeExerciseGroup.typeId)">
@@ -879,21 +888,17 @@ function closeSelection() {
     :max-width="400" :content-key="JSON.stringify([exerciseTypeDraft, exerciseCountDraft, exerciseEditError])" @close="closeExerciseEditor">
     <view class="exercise-edit-panel">
       <text class="exercise-edit-order" :class="themeClass('exercise-edit-order')">第{{ editingExerciseNumber }}组</text>
-      <view class="exercise-edit-inline">
-        <button role="button" class="exercise-edit-type" aria-label="修改运动类型" @click="openExerciseSelection(false)">
-          <view class="exercise-edit-icon" :class="themeClass('exercise-edit-icon')">
-            <CategoryIcon :icon="editingExerciseType?.icon || 'lucide:dumbbell'" :color="editingExerciseType?.color || '#4e7ee3'" :size="20" />
-          </view>
-          <text class="exercise-edit-type-name" :class="themeClass('exercise-edit-type-name')">{{ exerciseName(exerciseTypeDraft) }}</text>
-          <AppIcon name="ant-design:right-outlined" :size="14" color="#8b8f99" />
-        </button>
-        <view class="exercise-edit-value">
-          <input :value="exerciseCountDraft" type="number" class="exercise-edit-count" :class="themeClass('exercise-edit-count')"
-            aria-label="本组次数" placeholder="0" :placeholder-class="'time-editor-placeholder ' + themeClass('time-editor-placeholder')"
-            @input="exerciseCountDraft = String($event.detail.value)" />
-          <text class="exercise-edit-unit" :class="themeClass('exercise-edit-unit')">次</text>
+      <button role="button" class="exercise-edit-field exercise-edit-type" :class="themeClass('exercise-edit-field')" aria-label="修改运动类型" @click="openExerciseSelection(false)">
+        <view class="exercise-edit-icon" :class="themeClass('exercise-edit-icon')">
+          <CategoryIcon :icon="editingExerciseType?.icon || 'lucide:dumbbell'" :color="editingExerciseType?.color || '#4e7ee3'" :size="20" />
         </view>
-      </view>
+        <text class="exercise-edit-type-name" :class="themeClass('exercise-edit-type-name')">{{ exerciseName(exerciseTypeDraft) }}</text>
+      </button>
+      <FormField label="本组次数" hide-label compact>
+        <input :value="exerciseCountDraft" type="number" class="exercise-edit-field exercise-edit-count" :class="[themeClass('exercise-edit-field'), themeClass('exercise-edit-count')]"
+          aria-label="本组次数" placeholder="数量" :placeholder-class="'time-editor-placeholder ' + themeClass('time-editor-placeholder')"
+          @input="exerciseCountDraft = String($event.detail.value)" />
+      </FormField>
       <text v-if="exerciseEditError" class="error-text" role="alert" :class="themeClass('error-text')">{{ exerciseEditError }}</text>
       <FormActions>
         <template #secondary>
@@ -1372,22 +1377,6 @@ function closeSelection() {
   justify-content: center;
   gap: $space-detail;
 }
-.loading-close {
-  display: flex;
-  flex-direction: row;
-  position: absolute;
-  top: -$space-inline;
-  right: -$space-inline;
-  width: $space-controlMin;
-  height: $space-controlMin;
-  margin: 0;
-  padding: 0;
-  line-height: type-leading('normal');
-  align-items: center;
-  justify-content: center;
-  background-color: transparent;
-  border: 0;
-}
 .loading-label { @include type-style('label');  color: #71717a; }
 .loading-label-dark { color: #a1a1aa; }
 
@@ -1564,23 +1553,33 @@ function closeSelection() {
   border: 0;
   background-color: transparent;
 }
-.exercise-tab-scroll { width: 100%; margin-top: $space-detail; border-bottom: $space-hairline solid #e5e7eb; }
-.exercise-tabs { flex-direction: row; align-items: stretch; }
+.exercise-tab-scroll { width: 100%; min-width: 0; margin-top: $space-detail; white-space: nowrap; }
+.exercise-tabs {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  align-items: stretch;
+  // 按全部标签撑开内容宽度，让 scroll-view 获得真实的横向滚动范围。
+  /* #ifndef APP */
+  width: max-content;
+  /* #endif */
+  /* #ifdef APP */
+  flex-shrink: 0;
+  /* #endif */
+}
 .exercise-tab {
   flex-shrink: 0;
   min-height: $space-controlMin + $space-section;
   margin: 0 $space-section 0 0;
   padding: $space-detail $space-detail $space-inline;
   border: 0;
-  border-bottom: $space-tight solid transparent;
   border-radius: 0;
   background-color: transparent;
   text-align: left;
 }
-.exercise-tab-active { border-bottom-color: #4e7ee3; }
+.exercise-tab-heading { display: flex; flex-direction: row; align-items: center; gap: $space-detail; }
 .exercise-tab-name { @include type-style('body-strong'); color: #52525b; white-space: nowrap; }
 .exercise-tab-summary { @include type-style('caption'); color: #71717a; white-space: nowrap; }
-.exercise-tab-scroll-dark { border-bottom-color: #32353c; }
 .exercise-tab-name-dark { color: #b4b4bd; }
 .exercise-tab-summary-dark { color: #8b8f99; }
 .exercise-tab-name-active,
@@ -1593,6 +1592,7 @@ function closeSelection() {
   max-width: 440px;
 }
 .exercise-set-tile {
+  position: relative;
   display: flex;
   flex-direction: column;
   align-items: flex-start;
@@ -1601,22 +1601,51 @@ function closeSelection() {
   width: 31%;
   min-height: $space-controlMin + $space-section * 2;
   margin: 0 0 $space-inline;
-  padding: $space-inline;
+  padding: 0;
   border: $space-hairline solid #e5e7eb;
   border-radius: 10px;
   background-color: #f7f8fa;
   text-align: left;
 }
 .exercise-set-tile-dark { border-color: #32353c; background-color: #23262b; }
-.exercise-set-order { @include type-style('caption'); color: #71717a; }
+.exercise-set-edit {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  width: 100%;
+  min-height: $space-controlMin + $space-section * 2;
+  margin: 0;
+  padding: $space-inline;
+  border: 0;
+  background-color: transparent;
+}
+.exercise-set-remove {
+  position: absolute;
+  top: 0;
+  right: 0;
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  justify-content: flex-end;
+  box-sizing: border-box;
+  width: $space-controlMin;
+  height: $space-controlMin;
+  padding: $space-detail;
+  margin: 0;
+  border: 0;
+  background-color: transparent;
+}
+.exercise-set-order { @include type-style('caption'); position: relative; top: -$space-detail; align-self: flex-start; color: #71717a; }
 .exercise-set-order-dark { color: #a1a1aa; }
-.exercise-set-value { @include type-style('metric-compact'); color: #27272a; }
+.exercise-set-value { @include type-style('metric-small'); width: 100%; text-align: center; color: #27272a; }
 .exercise-set-value-dark { color: #eeeeef; }
 .exercise-set-add { align-items: center; }
-.exercise-edit-panel { gap: $space-section; padding: 0 $space-modal $space-modal; }
+// AdaptiveModal 已提供四周内边距，表单只负责字段间距，避免底部重复留白。
+.exercise-edit-panel { gap: $space-section; }
 .exercise-edit-order { @include type-style('label'); color: #71717a; }
 .exercise-edit-order-dark { color: #b4b4bd; }
-.exercise-edit-inline { flex-direction: row; align-items: center; gap: $space-inline; min-height: $space-controlMin; }
 .exercise-edit-icon {
   display: flex;
   align-items: center;
@@ -1628,37 +1657,33 @@ function closeSelection() {
   background-color: #eaf0ff;
 }
 .exercise-edit-icon-dark { background-color: #26334c; }
+.exercise-edit-field {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  height: $space-controlMin + $space-inline;
+  padding: 0 $space-card;
+  border: $space-hairline solid #d4d4d8;
+  border-radius: 10px;
+  background-color: transparent;
+  text-align: left;
+}
+.exercise-edit-field-dark { border-color: #3f424b; }
 .exercise-edit-type {
   display: flex;
   flex-direction: row;
   align-items: center;
   justify-content: flex-start;
   gap: $space-inline;
-  flex: 1;
-  min-width: 0;
-  min-height: $space-controlMin;
-  padding: 0;
   margin: 0;
-  border: 0;
-  background-color: transparent;
 }
-.exercise-edit-type-name { @include type-style('title'); color: #27272a; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.exercise-edit-type-name { @include type-style('body'); color: #27272a; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .exercise-edit-type-name-dark { color: #eeeeef; }
-.exercise-edit-value { flex-direction: row; align-items: center; flex-shrink: 0; gap: $space-detail; }
 .exercise-edit-count {
-  flex-shrink: 0;
-  width: $space-controlMin + $space-inline;
-  height: $space-controlMin;
-  padding: 0;
-  border: 0;
-  background-color: transparent;
-  text-align: right;
-  @include type-style('metric');
+  @include type-style('body');
   color: #27272a;
 }
 .exercise-edit-count-dark { color: #eeeeef; }
-.exercise-edit-unit { @include type-style('body'); color: #71717a; }
-.exercise-edit-unit-dark { color: #b4b4bd; }
 .exercise-edit-save { width: $space-modalActionMin + $space-modal; }
 .exercise-edit-delete {
   display: flex;
@@ -1676,9 +1701,10 @@ function closeSelection() {
 .exercise-add::after,
 .exercise-tab::after,
 .exercise-set-tile::after,
+.exercise-set-edit::after,
+.exercise-set-remove::after,
 .exercise-edit-type::after,
 .exercise-edit-delete::after,
-.loading-close::after,
 .compact-category::after,
 .cancel-action::after,
 .field-button::after,
