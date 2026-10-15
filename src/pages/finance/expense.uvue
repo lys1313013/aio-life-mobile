@@ -1,17 +1,7 @@
 <script setup lang="ts">
-import { nextTick, ref } from 'vue'
-import { useDomainPage } from '../../services/domains/page-session.ts'
+import { useLedgerPage } from './services/use-ledger-page.ts'
 import Ledger from './ledger.uvue'
-const mounted = ref(false), visible = ref(false), ledger = ref<any>(null)
-useDomainPage(
-  async refresh => {
-    mounted.value = true; visible.value = true
-    await nextTick()
-    return ledger.value?.resume(refresh)
-  },
-  clear => { visible.value = false; ledger.value?.suspend(clear) },
-  { loading: () => !!ledger.value?.loading, error: () => ledger.value?.error || '', keys: () => ['expense', 'userDictData', 'userDictType'] },
-)
+const { mounted, visible, ledger } = useLedgerPage('expense')
 </script>
 <template><Ledger v-if="mounted" v-show="visible" ref="ledger" kind="expense" /></template>
 
