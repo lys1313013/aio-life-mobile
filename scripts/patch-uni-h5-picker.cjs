@@ -1,5 +1,5 @@
-// 当前锁定版本的 H5 picker 在精确滑动整格时遗漏 onSnap。
-// 保持官方组件与触摸行为，补齐选择通知和卸载后的延迟回调保护。
+// 当前锁定版本的 H5 picker 只在吸附结束时通知变化，且精确滑动整格会遗漏 onSnap。
+// 保持官方滚动行为，补齐实时选择通知和卸载后的延迟回调保护。
 const fs = require('node:fs');
 const path = require('node:path');
 
@@ -32,6 +32,28 @@ const replacement = `    if (this._position !== i) {
     }
   }
   scrollTo(position, time) {`;
+// H5 picker-view emits only after its snap animation. Report the current row while the
+// finger or inertia is moving so dependent time columns and the preview stay in sync.
+const pickerScrollOriginal = `        spring: new Spring(2, 90, 20),
+        onSnap: (index2) => {
+          if (!isNaN(index2) && index2 !== state2.current) {
+            state2.current = index2;
+          }
+        }
+      });`;
+const pickerScrollReplacement = `        spring: new Spring(2, 90, 20),
+        onScroll: (event) => {
+          const index2 = Math.round(event.target.scrollTop / indicatorHeight.value);
+          if (!isNaN(index2) && index2 !== state2.current) {
+            state2.current = index2;
+          }
+        },
+        onSnap: (index2) => {
+          if (!isNaN(index2) && index2 !== state2.current) {
+            state2.current = index2;
+          }
+        }
+      });`;
 // uni-app x 的开发/构建入口与普通 uni-app 分离，必须覆盖 x/Vapor。
 const closeOriginal = `    setTimeout(() => {
       let $picker = pickerRef.value;
@@ -58,7 +80,7 @@ for (const entry of ['dist', 'dist-x', 'dist-x-vapor']) {
   const filename = path.join(packageDir, entry, 'uni-h5.es.js');
   let source = fs.readFileSync(filename, 'utf8');
   let changed = false;
-  for (const [before, after] of [[original, replacement], [closeOriginal, closeReplacement], ...scrollPatches]) {
+  for (const [before, after] of [[original, replacement], [pickerScrollOriginal, pickerScrollReplacement], [closeOriginal, closeReplacement], ...scrollPatches]) {
     if (!source.includes(after)) {
       if (source.split(before).length !== 2) {
         throw new Error(`uni-h5 ${entry} 源码与补丁不匹配，请验证组件行为后更新补丁，禁止静默跳过。`);

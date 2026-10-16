@@ -2,7 +2,6 @@
 import { buttonLabelClasses } from '../services/button-label.ts'
 import { computed, nextTick, onUnmounted, ref, watch } from 'vue'
 import { clampTimeSelection, resolveTimeWheelSelection } from '../services/time-selection.ts'
-import { clockLabel } from '../services/dashboard-format.ts'
 import spacing from '../styles/spacing.json'
 import { isDark, themeClass } from '../services/theme.ts'
 
@@ -12,11 +11,14 @@ const props = withDefaults(defineProps<{ value: number; min?: number; max?: numb
 const emit = defineEmits(['change', 'close', 'preview'])
 const selected = ref(props.min <= props.max ? clampTimeSelection(props.value, props.min, props.max) : props.value)
 // 分钟列使用当天绝对分钟，00/59 两侧天然相邻，小时跟随选中分钟。
-// 原生 picker 分列管理，联动校正不会产生包含另一列旧值的 change 事件。
 const hourSelection = ref([Math.floor(selected.value / 60)])
-const minuteSelection = ref([selected.value])
 const hours = Array.from({ length: 24 }, (_, index) => index)
 const minutes = Array.from({ length: 1440 }, (_, index) => index)
+const minuteRowHeight = spacing.controlMin - spacing.inline
+const minuteScrollTop = ref(selected.value * minuteRowHeight)
+const minuteIndicatorStyle = `height: ${minuteRowHeight}px;`
+let minuteSnapTimer: ReturnType<typeof setTimeout> | null = null
+let ignoreInitialMinuteScroll = true
 const available = computed(() => props.min <= props.max)
 const nowMinute = ref(currentMinute())
 const nowDisabled = computed(() => !available.value || isDisabled(nowMinute.value))
@@ -32,24 +34,47 @@ async function change(event, field: string) {
   const raw = [...event.detail.value]
   const previous = selected.value
   if (field === 'hour') hourSelection.value = raw
-  else minuteSelection.value = raw
   selected.value = resolveTimeWheelSelection(previous, raw[0], field, props.min, props.max)
   if (available.value) emit('preview', selected.value)
-  // 先接收原生位置，再回弹到合法值；同值赋值也能纠正原生滚轮。
+  // Hour change occurs on native picker input; align the absolute-minute scroll view.
   await nextTick()
   alignSelection()
 }
+function changeMinute(event) {
+  if (!available.value) return
+  const scrollTop = Math.max(0, Number(event.detail.scrollTop) || 0)
+  const index = Math.min(minutes.length - 1, Math.round(scrollTop / minuteRowHeight))
+  if (ignoreInitialMinuteScroll) {
+    ignoreInitialMinuteScroll = false
+    if (Math.abs(scrollTop - selected.value * minuteRowHeight) > minuteRowHeight / 2) return
+  }
+  const next = clampTimeSelection(index, props.min, props.max)
+  if (next !== selected.value) {
+    selected.value = next
+    hourSelection.value = [Math.floor(next / 60)]
+    emit('preview', next)
+  }
+  if (minuteSnapTimer) clearTimeout(minuteSnapTimer)
+  minuteSnapTimer = setTimeout(() => {
+    minuteScrollTop.value = selected.value * minuteRowHeight
+    minuteSnapTimer = null
+  }, 120)
+}
 function alignSelection() {
   hourSelection.value = [Math.floor(selected.value / 60)]
-  minuteSelection.value = [selected.value]
+  minuteScrollTop.value = selected.value * minuteRowHeight
 }
 watch(() => [props.value, props.min, props.max], () => {
   selected.value = available.value ? clampTimeSelection(props.value, props.min, props.max) : props.value
   alignSelection()
+  ignoreInitialMinuteScroll = true
 })
 // 弹层停留期间保持“此刻”的禁用状态准确，点击时再次读取最新时间。
 const clockTimer = setInterval(() => { nowMinute.value = currentMinute() }, 1000)
-onUnmounted(() => clearInterval(clockTimer))
+onUnmounted(() => {
+  clearInterval(clockTimer)
+  if (minuteSnapTimer) clearTimeout(minuteSnapTimer)
+})
 function confirm() {
   if (available.value && !isDisabled(selected.value)) emit('change', selected.value)
 }
@@ -76,9 +101,8 @@ function useCurrentTime() {
         <button role="button" class="time-end-action time-end-primary time-end-confirm" :class="themeClass('time-end-primary')"
           :disabled="!available || isDisabled(selected)" @click="confirm"><text :class="buttonLabelClasses(['time-end-action time-end-primary time-end-confirm', themeClass('time-end-primary')])">完成</text></button>
       </view>
-      <text class="time-end-bounds" :class="themeClass('time-end-bounds')" aria-label="可选时间范围">{{ available ? clockLabel(min) + ' – ' + clockLabel(max) : '暂无可选时间' }}</text>
       <view class="time-end-wheels">
-        <picker-view class="time-end-wheel" :value="hourSelection"
+        <picker-view class="time-end-wheel" :value="hourSelection" :immediate-change="true"
           :indicator-style="'height: ' + (spacing.controlMin - spacing.inline) + 'px;'" :mask-style="maskStyle"
           @change="change($event, 'hour')">
           <picker-view-column>
@@ -87,15 +111,18 @@ function useCurrentTime() {
             </view>
           </picker-view-column>
         </picker-view>
-        <picker-view class="time-end-wheel" :value="minuteSelection"
-          :indicator-style="'height: ' + (spacing.controlMin - spacing.inline) + 'px;'" :mask-style="maskStyle"
-          @change="change($event, 'minute')">
-          <picker-view-column>
+        <view class="time-end-wheel time-end-minute-wheel">
+          <scroll-view class="time-end-minute-scroll" :scroll-y="true" :scroll-top="minuteScrollTop"
+            :scroll-with-animation="false" :show-scrollbar="false" @scroll="changeMinute">
+            <view class="time-end-minute-spacer" />
             <view v-for="minute in minutes" :key="minute" class="time-end-item">
               <text class="time-end-number" :class="[themeClass('time-end-number'), { 'time-option-disabled': isDisabled(minute) }]" :aria-disabled="isDisabled(minute)">{{ String(minute % 60).padStart(2, '0') }}</text>
             </view>
-          </picker-view-column>
-        </picker-view>
+            <view class="time-end-minute-spacer" />
+          </scroll-view>
+          <view class="time-end-minute-mask" :style="maskStyle" />
+          <view class="time-end-minute-indicator" :class="themeClass('time-end-minute-indicator')" :style="minuteIndicatorStyle" />
+        </view>
       </view>
     </view>
   </view>
@@ -155,13 +182,6 @@ function useCurrentTime() {
 .time-end-action-dark { color: #eeeeef; }
 .time-end-primary { color: #1d4ed8; }
 .time-end-primary-dark { color: #9bbcff; }
-.time-end-bounds {
-  @include type-style('caption');
-  padding: $space-detail $space-modal;
-  text-align: center;
-  color: #6b7280;
-}
-.time-end-bounds-dark { color: #a1a1aa; }
 .time-end-wheels {
   flex-direction: row;
   align-self: center;
@@ -173,6 +193,34 @@ function useCurrentTime() {
   // 滚轮滑动行可更紧凑，工具栏按钮仍保留 controlMin 点击区。
   height: ($space-controlMin - $space-inline) * 5;
 }
+.time-end-minute-wheel { position: relative; overflow: hidden; }
+.time-end-minute-scroll { width: 100%; height: 100%; }
+.time-end-minute-spacer { height: ($space-controlMin - $space-inline) * 2; }
+.time-end-minute-mask {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 1;
+  background-size: 100% 50%, 100% 50%;
+  background-position: top, bottom;
+  background-repeat: no-repeat;
+  pointer-events: none;
+}
+.time-end-minute-indicator {
+  position: absolute;
+  top: 50%;
+  right: 0;
+  left: 0;
+  z-index: 2;
+  box-sizing: border-box;
+  border-top: 1px solid #e5e7eb;
+  border-bottom: 1px solid #e5e7eb;
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+.time-end-minute-indicator-dark { border-color: #45474d; }
 .time-end-item {
   height: $space-controlMin - $space-inline;
   align-items: center;
