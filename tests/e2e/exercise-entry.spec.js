@@ -33,10 +33,9 @@ for (const width of [390, 768, 1440]) for (const theme of ['light', 'dark']) {
     await page.goto('/#/pages/records/exercise');
     await expect(page.locator('.record-header')).toHaveCount(rows.length);
     // 在列表已滚动时打开，覆盖真实用户从列表底部新增的入口。
-    const scroll = page.locator('.mobile-page-scroll .uni-scroll-view').first();
-    // Put the page in a scrolled state, then verify opening and using the modal preserves it.
-    await scroll.evaluate(el => { el.scrollTop = 450; });
-    console.log('SCROLL VALUE', await scroll.evaluate(el => ({ tag: el.tagName, className: el.className, top: el.scrollTop, max: el.scrollHeight - el.clientHeight })));
+    // Reveal a late row to put the page in a real scrolled state before opening the modal.
+    await page.locator('.record-row').last().scrollIntoViewIfNeeded();
+    const scroll = page.locator('.mobile-page-scroll .uni-scroll-view').last();
     await expect.poll(() => scroll.evaluate(el => el.scrollTop)).toBeGreaterThan(0);
     await page.getByRole('button', { name: '新增运动', exact: true }).tap();
     const dialog = page.getByRole('dialog');
