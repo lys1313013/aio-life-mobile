@@ -1,11 +1,13 @@
 <script setup lang="ts">
 import { appTextColor } from '../services/app-layout.ts'
 
-import { computed, getCurrentInstance, nextTick, onMounted, onUpdated, ref } from 'vue';
+import { computed, getCurrentInstance, inject, nextTick, onMounted, onUpdated, ref } from 'vue';
 import { themeClass } from '../services/theme.ts';
 import { pickerValue } from '../services/mobile-ui.ts';
 import AppIcon from './AppIcon.uvue';
 import RequiredMark from './RequiredMark.uvue';
+// 弹窗自行处理键盘避让，原生输入控件不能再次上推背景页面。
+const insideModal = inject('mobile-modal', false);
 const props = withDefaults(
   defineProps<{
     label: string;
@@ -88,6 +90,8 @@ function change(event) {
         :disabled="disabled"
         :aria-label="label"
         :aria-required="!!required"
+        :fixed="insideModal"
+        :adjust-position="!insideModal"
         :maxlength="-1"
         @input="change"
         @blur="change"
@@ -105,6 +109,7 @@ function change(event) {
           :disabled="disabled"
           :aria-label="label"
         :aria-required="!!required"
+          :adjust-position="!insideModal"
           @input="change"
           @blur="change"
         />
@@ -130,6 +135,7 @@ function change(event) {
         :disabled="disabled"
         :aria-label="label"
         :aria-required="!!required"
+        :adjust-position="!insideModal"
         @input="change"
         @blur="change"
       />

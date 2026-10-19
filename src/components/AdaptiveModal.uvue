@@ -7,6 +7,7 @@ import { modalAvailableHeight } from '../services/mobile-ui.ts'
 import { themeClass } from '../services/theme.ts'
 // #ifdef MP-WEIXIN
 import { registerModal } from '../services/modal-presence.ts'
+import { registerModalTabBar } from '../services/modal-tab-bar.ts'
 // #endif
 import {
   computed,
@@ -34,7 +35,8 @@ const emit = defineEmits(['close', 'reachbottom'])
 provide('mobile-modal', true)
 // #ifdef MP-WEIXIN
 const releaseModal = registerModal()
-onUnmounted(releaseModal)
+const releaseTabBar = registerModalTabBar()
+onUnmounted(() => { releaseModal(); releaseTabBar() })
 // #endif
 const instance = getCurrentInstance()
 const contentHeight = ref(props.bare ? spacing.controlMin : 160)
