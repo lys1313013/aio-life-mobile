@@ -58,7 +58,10 @@ function changeMinute(event) {
   minuteSnapTimer = setTimeout(() => {
     minuteScrollTop.value = selected.value * minuteRowHeight
     minuteSnapTimer = null
-  }, 120)
+  // Keep the programmatic alignment out of an active touch gesture. A short
+  // debounce can snap the scroll view while the finger is still moving, which
+  // drops a row on slower devices and in headless CI.
+  }, 300)
 }
 function alignSelection() {
   hourSelection.value = [Math.floor(selected.value / 60)]
