@@ -1,0 +1,120 @@
+<script setup lang="ts">
+import { computed, onUnmounted, ref, watch } from 'vue'
+import ChartCanvas from '../../../components/ChartCanvas.uvue'
+import { isDark } from '../../../services/theme.ts'
+import typography from '../../../styles/typography.json'
+import spacing from '../../../styles/spacing.json'
+
+const props = defineProps<{ items: { name: string; value: number; color: string }[]; loading?: boolean }>()
+const width = ref(280), hidden = ref<string[]>([]), selected = ref(''), ready = ref(false)
+const visible = computed(() => props.items.filter(item => !hidden.value.includes(item.name)))
+const total = computed(() => props.items.reduce((sum, item) => sum + item.value, 0))
+const visibleTotal = computed(() => visible.value.reduce((sum, item) => sum + item.value, 0))
+const active = computed(() => visible.value.find(item => item.name === selected.value))
+const percentage = (value: number) => visibleTotal.value ? Number((value / visibleTotal.value * 100).toFixed(1)) + '%' : '0%'
+let timer: ReturnType<typeof setTimeout> | undefined
+function dismiss() { clearTimeout(timer); selected.value = '' }
+function select(index: number) {
+  if (props.loading) return
+  selected.value = visible.value[index]?.name || ''
+  clearTimeout(timer)
+  timer = setTimeout(dismiss, 3000)
+}
+function toggle(name: string) {
+  dismiss()
+  hidden.value = hidden.value.includes(name) ? hidden.value.filter(item => item !== name) : [...hidden.value, name]
+}
+watch(() => props.items, dismiss)
+onUnmounted(() => clearTimeout(timer))
+const option = computed(() => ({
+  animation: false,
+  textStyle: { fontFamily: typography.families.canvas },
+  series: [{
+    name: '运动类型分布', type: 'pie', radius: width.value < 600 ? ['35%', '55%'] : ['40%', '65%'],
+    center: ['50%', '50%'], avoidLabelOverlap: true, stillShowZeroSum: false, padAngle: 0,
+    itemStyle: { borderWidth: 0, borderRadius: 0 },
+    label: {
+      show: true, position: 'outside', color: isDark.value ? '#b7b9be' : '#616266',
+      fontSize: typography.roles['chart-label'].size, lineHeight: typography.roles['chart-label'].lineHeight,
+      width: Math.min(150, width.value * 0.24), overflow: 'truncate',
+      formatter: (item: any) => item.name + '\n' + item.value + '次 (' + percentage(item.value) + ')',
+    },
+    labelLayout: { hideOverlap: true },
+    labelLine: { length: spacing.inline, length2: spacing.detail },
+    emphasis: { disabled: true },
+    data: visible.value.map(item => ({ name: item.name, value: item.value,
+      itemStyle: { color: item.color, opacity: selected.value && selected.value !== item.name ? 0.45 : 1 },
+      label: { show: item.value / visibleTotal.value >= 0.01 },
+      labelLine: { show: item.value / visibleTotal.value >= 0.01 },
+    })),
+  }],
+}))
+</script>
+
+<template>
+  <view class="exercise-distribution aio-chart" :class="{ 'exercise-distribution-dark': isDark }" role="figure" aria-label="运动类型分布">
+    <text class="distribution-title" :class="{ 'distribution-text-dark': isDark }">运动类型分布</text>
+    <view class="distribution-plot">
+      <view v-if="loading" class="distribution-state" :class="{ 'distribution-state-dark': isDark }" aria-busy="true">
+        <text class="distribution-secondary" :class="{ 'distribution-secondary-dark': isDark }">正在加载图表</text>
+      </view>
+      <template v-else-if="items.length">
+        <ChartCanvas :option="option" label="运动类型分布" @width="width = $event" @select="select" @leave="dismiss" @ready="ready = $event" />
+        <view v-if="ready" class="distribution-center" aria-label="运动总次数">
+          <text class="distribution-total" :class="{ 'distribution-text-dark': isDark }">{{ total }}</text>
+          <text class="distribution-secondary" :class="{ 'distribution-secondary-dark': isDark }">总次数</text>
+        </view>
+        <view v-if="active" class="distribution-tooltip" :class="{ 'distribution-tooltip-dark': isDark }" role="tooltip" aria-live="polite">
+          <text class="distribution-detail" :class="{ 'distribution-text-dark': isDark }">{{ active.name + ' ' + active.value + '次 (' + percentage(active.value) + ')' }}</text>
+        </view>
+      </template>
+      <view v-else class="distribution-state"><text class="distribution-secondary" :class="{ 'distribution-secondary-dark': isDark }">暂无数据</text></view>
+    </view>
+    <scroll-view direction="horizontal" :scroll-x="true" :show-scrollbar="false" class="distribution-legend-scroll" aria-label="运动类型图例，可横向滚动">
+      <view class="distribution-legend">
+        <button v-for="item in items" :key="item.name" class="distribution-legend-button" :class="{ 'distribution-legend-hidden': hidden.includes(item.name) }"
+          role="button" :aria-label="item.name + '，' + item.value + '次'" :aria-pressed="!hidden.includes(item.name)" :disabled="loading" @click="toggle(item.name)">
+          <view class="distribution-swatch" :style="{ backgroundColor: item.color }" />
+          <text class="distribution-legend-label" :class="{ 'distribution-text-dark': isDark }">{{ item.name }}</text>
+        </button>
+      </view>
+    </scroll-view>
+  </view>
+</template>
+
+<style scoped lang="scss">
+@use '../../../styles/spacing-tokens' as *;
+@use '../../../styles/typography' as *;
+@use '../../../styles/text-colors' as *;
+.exercise-distribution { min-width: 0; padding: $space-card; margin-bottom: $space-section; border-radius: 16px; background-color: #ffffff; }
+.exercise-distribution-dark { background-color: #1c1e22; }
+.distribution-title { @include type-style('body-strong'); color: #27272a; }
+.distribution-plot { position: relative; height: 228px; margin-top: $space-inline; }
+.distribution-center { position: absolute; left: 35%; width: 30%; top: 50%; transform: translateY(-50%); align-items: center; pointer-events: none; }
+.distribution-total { @include type-style('metric-compact'); color: #27272a; }
+.distribution-secondary { @include type-style('caption'); color: $text-secondary-light; }
+.distribution-secondary-dark { color: $text-secondary-dark; }
+.distribution-state { height: 228px; align-items: center; justify-content: center; border-radius: 8px; }
+.distribution-state-dark { background-color: #252a33; }
+.distribution-legend-scroll { width: 100%; min-width: 0; height: $space-controlMin; white-space: nowrap; }
+.distribution-legend {
+  display: flex; flex-direction: row; flex-wrap: nowrap; gap: $space-section; height: $space-controlMin;
+  /* #ifndef APP */
+  width: max-content;
+  /* #endif */
+  /* #ifdef APP */
+  flex-shrink: 0;
+  /* #endif */
+}
+.distribution-legend-button { display: flex; flex-direction: row; flex-shrink: 0; align-items: center; gap: $space-detail; min-height: $space-controlMin; min-width: $space-controlMin; padding: 0; margin: 0; background-color: transparent; border: 0; }
+.distribution-legend-label { @include type-style('caption'); color: #27272a; }
+.distribution-legend-hidden { opacity: 0.4; }
+.distribution-swatch { width: 18px; height: 10px; border-radius: 2px; flex-shrink: 0; }
+.distribution-tooltip { position: absolute; top: 0; right: 0; max-width: 100%; padding: $space-detail $space-inline; border-radius: 6px; background-color: #f4f6fa; pointer-events: none; }
+.distribution-tooltip-dark { background-color: #2a2e36; }
+.distribution-detail { @include type-style('caption'); color: #27272a; }
+.distribution-text-dark { color: #eeeeef; }
+/* #ifdef WEB || MP-WEIXIN */
+.distribution-legend-button::after { border: 0; }
+/* #endif */
+</style>

@@ -41,8 +41,39 @@ export function layoutChartAxisLabels(labels: string[], points: number[], width:
   if (last.left >= visible[visible.length - 1].left + visible[visible.length - 1].width + spacing.detail) visible.push(last)
   return visible
 }
+
+// 使用引擎实际绘制的色块尺寸，窄柱和薄色块不强塞标签。
+export function layoutStackedBarLabels(series: any[], width: number, left: number) {
+  const segments: any[] = [], totals: any[] = []
+  const line = typography.roles['chart-label'].lineHeight
+  const count = Math.max(0, ...series.map(item => item.points.length))
+  for (let index = 0; index < count; index++) {
+    let total = 0, top = Infinity, center = 0, barWidth = 0
+    for (const item of series) {
+      const point = item.points[index], bar = point?.bar
+      if (!bar || point.value <= 0 || !Number.isFinite(bar.y)) continue
+      const barTop = Math.min(bar.y, bar.y + bar.height)
+      total += point.value
+      top = Math.min(top, barTop)
+      center = bar.x + bar.width / 2
+      barWidth = Math.abs(bar.width)
+      const text = String(point.value)
+      if (Math.abs(bar.height) < line + spacing.micro || barWidth < text.length * typography.roles['chart-label'].size * 0.6 + spacing.detail) continue
+      const rgb = item.color.slice(1).match(/.{2}/g).map(value => parseInt(value, 16))
+      const brightness = (rgb[0] * 299 + rgb[1] * 587 + rgb[2] * 114) / 1000
+      segments.push({ key: item.name + index, text, left: bar.x, width: barWidth,
+        top: barTop + (Math.abs(bar.height) - line) / 2, color: brightness > 160 ? '#202124' : '#ffffff' })
+    }
+    if (total > 0) {
+      const text = String(total), labelWidth = Math.min(width - left, Math.max(barWidth, text.length * typography.roles['chart-label'].size))
+      totals.push({ key: index, text, width: labelWidth,
+        left: Math.max(left, Math.min(width - labelWidth, center - labelWidth / 2)), top: Math.max(0, top - line - spacing.detail) })
+    }
+  }
+  return { segments, totals }
+}
 export function buildChartOption(labels: string[], series: ChartSeries[], settings: {
-  dark: boolean; kind: string; selected: number; selectionActive: boolean; showScale: boolean; width: number; roundedBars?: boolean
+  dark: boolean; kind: string; selected: number; selectionActive: boolean; showScale: boolean; width: number; roundedBars?: boolean; stacked?: boolean
 }) {
   validateChartData(labels, series)
   const axisColor = settings.dark ? '#737985' : '#c9cdd5'
@@ -52,7 +83,7 @@ export function buildChartOption(labels: string[], series: ChartSeries[], settin
     textStyle: { fontFamily: typography.families.canvas, fontSize: typography.roles.caption.size },
     // ChartCanvas measures the actual formatted Y ticks before flushing the canvas.
     grid: { left: spacing.detail, right: spacing.inline,
-      top: settings.roundedBars ? typography.roles['chart-label'].lineHeight * 2 + spacing.inline : spacing.section,
+      top: settings.roundedBars || settings.stacked ? typography.roles['chart-label'].lineHeight * 2 + spacing.inline : spacing.section,
       bottom: typography.roles.caption.lineHeight + spacing.section },
     xAxis: {
       type: 'category', data: labels, boundaryGap: settings.kind === 'bar',
@@ -61,12 +92,14 @@ export function buildChartOption(labels: string[], series: ChartSeries[], settin
     },
     yAxis: {
       type: 'value', splitNumber: 4,
+      ...(settings.stacked ? { min: 0, minInterval: 1 } : {}),
       axisLine: { show: settings.showScale, lineStyle: { color: axisColor } },
       axisTick: { show: false }, axisLabel: { show: false },
-      splitLine: { show: settings.showScale, lineStyle: { color: gridColor, width: spacing.hairline } },
+      splitLine: { show: settings.showScale, lineStyle: { color: gridColor, width: spacing.hairline, ...(settings.stacked ? { type: 'dashed' } : {}) } },
     },
     series: series.map(item => ({
       name: item.name, type: settings.kind === 'bar' ? 'bar' : 'line',
+      ...(settings.stacked ? { stack: 'total', barWidth: '72%' } : {}),
       data: item.values.map((value, index) => ({ value,
         symbolSize: settings.selectionActive && index === settings.selected ? 6 : 4,
         itemStyle: {
@@ -77,14 +110,27 @@ export function buildChartOption(labels: string[], series: ChartSeries[], settin
       itemStyle: { color: item.color }, lineStyle: { width: 2, color: item.color },
       showSymbol: labels.length <= 18, symbol: 'circle', smooth: false,
       clip: true, emphasis: { disabled: true },
-      barMaxWidth: settings.roundedBars ? 32 : 24,
+      barMaxWidth: settings.stacked ? 64 : settings.roundedBars ? 32 : 24,
       ...(settings.roundedBars ? { barWidth: '50%' } : {}),
     })),
   }
 }
 
-// Plain canvas surface avoids DOM/event assumptions in ECharts on every platform.
-// Each instance owns its context; no global createCanvas override can steal another chart.
+// 命中环形扇区时排除中心留白，并处理跨越零度的起止角度。
+export function pieSectorAt(sectors: any[], x: number, y: number) {
+  const circle = Math.PI * 2
+  const normalize = (angle: number) => (angle % circle + circle) % circle
+  return sectors.findIndex(sector => {
+    if (!sector || !Number.isFinite(sector.startAngle) || sector.endAngle === sector.startAngle) return false
+    const dx = x - sector.cx, dy = y - sector.cy, radius = Math.hypot(dx, dy)
+    if (radius < sector.r0 || radius > sector.r) return false
+    const angle = Math.atan2(dy, dx)
+    const offset = normalize(sector.clockwise === false ? sector.startAngle - angle : angle - sector.startAngle)
+    return offset <= Math.abs(sector.endAngle - sector.startAngle) + 0.000001
+  })
+}
+
+// Each instance owns its canvas context; no global override can steal another chart.
 export function createChartSurface(context: any) {
   const node = context.canvas
   return {

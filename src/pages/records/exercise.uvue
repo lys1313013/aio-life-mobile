@@ -5,8 +5,8 @@ const { appGridItem } = useAppLayout()
 
 import FormActions from '../../components/FormActions.uvue';
 import { isRequired, missingRequired } from '../../services/form-required.ts';
-import ContentSkeleton from '../../components/ContentSkeleton.uvue';
-import { computed, ref } from 'vue';
+import LoadingIndicator from '../../components/LoadingIndicator.uvue';
+import { computed, ref, watch } from 'vue';
 import { onLoad, onShow } from '@dcloudio/uni-app';
 import MobilePage from '../../components/MobilePage.uvue';
 import PageHeader from '../../components/PageHeader.uvue';
@@ -18,18 +18,27 @@ import AdaptiveModal from '../../components/AdaptiveModal.uvue';
 import FloatingActionButton from '../../components/FloatingActionButton.uvue';
 import MetricCard from '../../components/MetricCard.uvue';
 import AioChart from '../../components/AioChart.uvue';
-import CategoryIcon from '../../components/CategoryIcon.uvue';
+import AppIcon from '../../components/AppIcon.uvue';
+import { exerciseDistributionChart, exerciseMonthlyChart } from './services/exercise-chart.ts';
+import ExerciseDistributionChart from './components/ExerciseDistributionChart.uvue';
+import ExerciseMonthlyChart from './components/ExerciseMonthlyChart.uvue';
+import ExerciseRecordRow from './components/ExerciseRecordRow.uvue';
+import LoadMore from '../../components/LoadMore.uvue';
 import { isDark } from '../../services/theme.ts';
 import { createRecordScope } from '../../services/records/page-scope.ts';
 import { fetchDictionary } from '../../services/dictionary.ts';
+import { todayDate } from '../../services/dashboard.ts';
 import {
   fetchExercisePage,
+  fetchExerciseStatistics,
   saveExercise,
   deleteExercises,
 } from './services/exercise.ts';
 const rows = ref<any[]>([]),
+  recordRows = ref<any[]>([]),
   types = ref<any[]>([]),
   loading = ref(false),
+  refreshing = ref(false),
   error = ref(''),
   typeFilter = ref('全部类型'),
   startDate = ref(''),
@@ -39,28 +48,95 @@ const rows = ref<any[]>([]),
   formError = ref(''),
   saved = ref(false),
   selected = ref<string[]>([]);
+const renderPageSize = 20;
+const selecting = ref(false), swipedId = ref('');
+const page = ref(0), hasMoreRows = ref(false), revealing = ref(false), moreError = ref('');
+const statisticsLoading = ref(false), statisticsError = ref('');
+const chartType = ref('');
+const statisticsReady = ref(false), recordsReady = ref(false);
 let generation = 0,
   autoCreate = false;
+let statisticsRevision = 0;
 const scope = createRecordScope((clear) => {
+  generation++;
+  refreshing.value = false;
+  loading.value = false;
+  statisticsLoading.value = false;
+  revealing.value = false;
   form.value = null;
   selected.value = [];
+  selecting.value = false;
+  swipedId.value = '';
   if (clear) {
     rows.value = [];
+    recordRows.value = [];
     types.value = [];
+    page.value = 0;
+    hasMoreRows.value = false;
+    statisticsReady.value = false;
+    recordsReady.value = false;
+    chartType.value = '';
+    statisticsError.value = '';
   }
 });
 onLoad((query) => {
   autoCreate = query?.create === '1';
 });
-const refreshOnShow = usePageRefresh(() => load(), { loading: () => loading.value, error: () => error.value, keys: () => ['exerciseRecord', 'exerciseType', 'timeRecord', 'userDictData', 'userDictType'] })
+const refreshOnShow = usePageRefresh(() => load(), { loading: () => loading.value || statisticsLoading.value, error: () => error.value || statisticsError.value, keys: () => ['exerciseRecord', 'exerciseType', 'timeRecord', 'userDictData', 'userDictType'] })
 onShow(() => refreshOnShow());
-const filtered = computed(() =>
-  rows.value.filter(
-    (item) =>
-      (!startDate.value || item.exerciseDate >= startDate.value) &&
-      (!endDate.value || item.exerciseDate <= endDate.value),
-  ),
-);
+// 统计使用服务端按日/类型聚合结果，明细列表仅保留已加载的分页。
+const filtered = computed(() => rows.value);
+const visibleRows = computed(() => recordRows.value);
+const recordGroups = computed(() => {
+  const groups: { date: string; items: any[] }[] = [];
+  for (const item of visibleRows.value) {
+    let group = groups[groups.length - 1];
+    if (!group || group.date !== item.exerciseDate) {
+      group = { date: item.exerciseDate, items: [] };
+      groups.push(group);
+    }
+    group.items.push(item);
+  }
+  return groups;
+});
+watch([typeFilter, startDate, endDate], () => {
+  selected.value = [];
+  swipedId.value = '';
+  load();
+});
+function filters() {
+  return [types.value.find((t) => (t.dictLabel || t.label) === typeFilter.value)?.id || '', startDate.value, endDate.value] as const;
+}
+function pageFinished(result, pageNumber) {
+  const total = result.total == null ? null : Number(result.total);
+  if (total != null && (!/^[0-9]+$/.test(String(result.total)) || !Number.isSafeInteger(total))) throw new Error('分页总数异常');
+  return result.items.length < renderPageSize || (total != null && pageNumber * renderPageSize >= total);
+}
+async function revealMore(retry = false) {
+  if (loading.value || error.value || revealing.value || form.value || !hasMoreRows.value || (moreError.value && !retry)) return;
+  const current = generation, next = page.value + 1;
+  revealing.value = true;
+  moreError.value = '';
+  try {
+    const result = await scope.wait(fetchExercisePage(next, ...filters()));
+    if (current !== generation) return;
+    const finished = pageFinished(result, next);
+    const seen = new Set(recordRows.value.map(item => item.id));
+    const additional = result.items.filter(item => {
+      if (seen.has(item.id)) return false;
+      seen.add(item.id);
+      return true;
+    });
+    recordRows.value = [...recordRows.value, ...additional];
+    page.value = next;
+    hasMoreRows.value = !finished;
+  } catch (e) {
+    if (e.name !== 'PageInactiveError' && current === generation) moreError.value = e.message;
+  } finally {
+    if (current === generation) revealing.value = false;
+  }
+}
+const recordCount = computed(() => filtered.value.reduce((sum, item) => sum + item.recordCount, 0));
 const counts = computed(() => {
   const unique = new Set(
     filtered.value.map((item) => item.exerciseDate + '_' + item.exerciseTypeId),
@@ -70,17 +146,7 @@ const counts = computed(() => {
 const quantity = computed(() =>
   filtered.value.reduce((sum, item) => sum + Number(item.exerciseCount || 0), 0),
 );
-const monthly = computed(() => {
-  const groups = new Map<string, Set<string>>();
-  filtered.value.forEach((item) => {
-    const key = item.exerciseDate.slice(0, 7);
-    if (!groups.has(key)) groups.set(key, new Set());
-    groups.get(key).add(item.exerciseDate + '_' + item.exerciseTypeId);
-  });
-  return [...groups]
-    .sort((a, b) => a[0].localeCompare(b[0]))
-    .map(([label, values]) => ({ label, value: values.size }));
-});
+const monthly = computed(() => exerciseMonthlyChart(filtered.value, types.value, isDark.value));
 const visibleTypes = computed(() => {
   const all = [...types.value];
   for (const item of filtered.value)
@@ -88,40 +154,19 @@ const visibleTypes = computed(() => {
       all.push({ id: item.exerciseTypeId, dictLabel: item.exerciseTypeId });
   return all;
 });
-const distribution = computed(() =>
-  visibleTypes.value
-    .map((type) => ({
-      label: type.dictLabel || type.label,
-      value: new Set(
-        filtered.value
-          .filter((item) => item.exerciseTypeId === type.id)
-          .map((item) => item.exerciseDate),
-      ).size,
-    }))
-    .filter((item) => item.value > 0),
-);
-const dailyGroups = computed(() =>
-  visibleTypes.value
-    .map((type) => {
-      const values = new Map<string, number>();
-      filtered.value
-        .filter((item) => item.exerciseTypeId === type.id)
-        .forEach((item) =>
-          values.set(
-            item.exerciseDate,
-            (values.get(item.exerciseDate) || 0) + Number(item.exerciseCount || 0),
-          ),
-        );
-      return {
-        id: type.id,
-        label: type.dictLabel || type.label,
-        points: [...values]
-          .sort((a, b) => a[0].localeCompare(b[0]))
-          .map(([label, value]) => ({ label, value })),
-      };
-    })
-    .filter((group) => group.points.length),
-);
+const distribution = computed(() => exerciseDistributionChart(filtered.value, types.value, isDark.value));
+// 每日运动量只统计单个类型，默认最近使用的类型，避免混合不同运动的计量单位。
+const dailyGroup = computed(() => {
+  const values = new Map<string, number>();
+  for (const item of filtered.value) {
+    if (item.exerciseTypeId !== chartType.value) continue;
+    values.set(item.exerciseDate, (values.get(item.exerciseDate) || 0) + Number(item.exerciseCount || 0));
+  }
+  return {
+    label: name(chartType.value),
+    points: [...values].sort((a, b) => a[0].localeCompare(b[0])).map(([label, value]) => ({ label, value })),
+  };
+});
 function name(id) {
   return (
     types.value.find((item) => item.id === id)?.dictLabel ||
@@ -132,30 +177,57 @@ function name(id) {
 function exerciseType(id) {
   return types.value.find((item) => item.id === id);
 }
+async function loadStatistics(current = generation) {
+  const revision = ++statisticsRevision;
+  statisticsLoading.value = true;
+  statisticsError.value = '';
+  try {
+    const result = await scope.wait(fetchExerciseStatistics(...filters()));
+    if (current !== generation || revision !== statisticsRevision) return;
+    rows.value = result;
+    statisticsReady.value = true;
+    if (!chartType.value) chartType.value = result[0]?.exerciseTypeId || types.value[0]?.id || '';
+  } catch (e) {
+    if (e.name !== 'PageInactiveError' && current === generation && revision === statisticsRevision) statisticsError.value = e.message;
+  } finally {
+    if (current === generation && revision === statisticsRevision) statisticsLoading.value = false;
+  }
+}
+async function refresh() {
+  if (refreshing.value) return;
+  refreshing.value = true;
+  try { await load(); } finally { refreshing.value = false; }
+}
 async function load() {
   const current = ++generation;
   loading.value = true;
+  revealing.value = false;
+  moreError.value = '';
   error.value = '';
   try {
     const dict = await scope.wait(fetchDictionary('exercise_type', true));
-    const typeId =
-      (dict.dictDetailList || []).find((t) => (t.dictLabel || t.label) === typeFilter.value)?.id ||
-      '';
-    const data = [];
-    let page = 1;
-    while (true) {
-      const result = await scope.wait(fetchExercisePage(page++, typeId));
-      data.push(...result.items);
-      if (data.length >= result.total || result.items.length < 100) break;
+    if (current !== generation) return;
+    types.value = dict.dictDetailList || [];
+    if (startDate.value && endDate.value && startDate.value > endDate.value) {
+      error.value = '开始日期不能晚于结束日期';
+      return;
     }
-    if (current === generation) {
-      types.value = dict.dictDetailList || [];
-      rows.value = data;
-      if (autoCreate) {
-        autoCreate = false;
-        open();
-      }
-    }
+    // 明细和统计互不阻塞，统计失败也可以查看和编辑已取得的明细。
+    await Promise.all([
+      loadStatistics(current),
+      (async () => {
+        const result = await scope.wait(fetchExercisePage(1, ...filters()));
+        if (current !== generation) return;
+        const finished = pageFinished(result, 1);
+        recordRows.value = result.items;
+        recordsReady.value = true;
+        page.value = 1;
+        hasMoreRows.value = !finished;
+        loading.value = false;
+        if (!chartType.value) chartType.value = result.items[0]?.exerciseTypeId || types.value[0]?.id || '';
+        if (autoCreate) { autoCreate = false; open(); }
+      })(),
+    ]);
   } catch (e) {
     if (e.name !== 'PageInactiveError' && current === generation) error.value = e.message;
   } finally {
@@ -163,6 +235,7 @@ async function load() {
   }
 }
 function open(item = null) {
+  swipedId.value = '';
   saved.value = false;
   formError.value = '';
   form.value = item
@@ -172,7 +245,7 @@ function open(item = null) {
           types.value.find((t) => (t.dictLabel || t.label) === typeFilter.value)?.id ||
           types.value[0]?.id ||
           '',
-        exerciseDate: new Date().toLocaleDateString('sv-SE'),
+        exerciseDate: todayDate(),
         exerciseCount: '',
         description: '',
       };
@@ -209,36 +282,32 @@ async function save() {
 async function remove(ids) {
   await scope.wait(deleteExercises(ids));
   const removed = new Set(ids);
-  rows.value = rows.value.filter((row) => !removed.has(row.id));
+  recordRows.value = recordRows.value.filter((row) => !removed.has(row.id));
   selected.value = selected.value.filter((id) => !removed.has(id));
+  // offset 分页删除后需要重新定位第一页，避免下一页跳过被删除记录之后的数据。
+  if (hasMoreRows.value) await load();
+  else await loadStatistics();
 }
 function toggle(id) {
   selected.value = selected.value.includes(id)
     ? selected.value.filter((value) => value !== id)
     : [...selected.value, id];
 }
+function toggleSelection() {
+  swipedId.value = '';
+  selecting.value = !selecting.value;
+  selected.value = [];
+}
 </script>
 <template>
-  <MobilePage :refreshing="loading" @refresh="load"
+  <MobilePage :refreshing="refreshing" :scroll-locked="!!form" @refresh="refresh" @reachbottom="revealMore()" @scroll="swipedId = ''"
     ><view class="exercise-page ui-page-body" :class="{ 'exercise-page-dark': isDark }"
-      ><PageHeader title="运动记录" :back="true" @back="uni.navigateBack()" /><view class="ui-toolbar"
-        ><MobileButton
-          label="分类配置"
-          icon="ant-design:setting-outlined"
-          variant="quiet"
-          @click="uni.navigateTo({ url: '/pages/records/categories' })" /><ConfirmAction
-          v-if="selected.length"
-          :label="'删除所选 ' + selected.length + ' 条记录'"
-          :action="() => remove(selected)" /></view
-      ><FormField
+      ><PageHeader title="运动记录" :back="true" @back="uni.navigateBack()" /><FormField
         label="运动类型"
         kind="selector"
         v-model="typeFilter"
         :options="['全部类型', ...types.map((t) => t.dictLabel || t.label)]"
-        @update:model-value="
-          selected = [];
-          load();
-        " /><view class="date-filters ui-field-row"
+ /><view class="date-filters ui-field-row"
         ><FormField compact stretch label="开始日期" kind="date" v-model="startDate" /><FormField compact stretch
           label="结束日期"
           kind="date"
@@ -254,52 +323,70 @@ function toggle(id) {
       ><text v-if="startDate && endDate && startDate > endDate" class="error ui-section ui-type-body"
         >开始日期不能晚于结束日期</text
       ><view class="metrics ui-row ui-section"
-        ><MetricCard :style="appGridItem(2, 'inline', [[600, 3]], false)" :loading="loading && !rows.length" label="运动次数" :value="counts" /><MetricCard :style="appGridItem(2, 'inline', [[600, 3]], false)" :loading="loading && !rows.length"
+        ><MetricCard :style="appGridItem(2, 'inline', [[600, 3]], false)" :loading="statisticsLoading && !statisticsReady" label="运动次数" :value="statisticsReady ? counts : '—'" /><MetricCard :style="appGridItem(2, 'inline', [[600, 3]], false)" :loading="statisticsLoading && !statisticsReady"
           v-if="typeFilter !== '全部类型'"
           label="运动量"
-          :value="quantity" /><MetricCard :style="appGridItem(2, 'inline', [[600, 3]], false)" :loading="loading && !rows.length" label="记录" :value="filtered.length" /></view
-      ><PageState skeleton="list" :loading="loading" :error="error" :empty="!filtered.length" @retry="load"
+          :value="statisticsReady ? quantity : '—'" /><MetricCard :style="appGridItem(2, 'inline', [[600, 3]], false)" :loading="statisticsLoading && !statisticsReady" label="记录" :value="statisticsReady ? recordCount : '—'" /></view
+      ><view class="statistics-region">
+        <LoadingIndicator v-if="statisticsLoading && statisticsReady" floating label="正在更新统计" />
+        <PageState v-if="statisticsError" :error="statisticsError" @retry="loadStatistics()" />
+<ExerciseMonthlyChart
+          :loading="statisticsLoading && !statisticsReady"
+          :labels="monthly.labels"
+          :series="monthly.series"
+          :reset-key="typeFilter + '_' + startDate + '_' + endDate"
+        /><ExerciseDistributionChart
+          :loading="statisticsLoading && !statisticsReady"
+          :items="distribution"
+        /><AioChart
+          :loading="statisticsLoading && !statisticsReady"
+          label="每日运动量"
+          :labels="dailyGroup.points.map((item) => item.label)"
+          :series="[{ name: dailyGroup.label, values: dailyGroup.points.map((item) => item.value) }]"
         >
-<template #loading><view class="ui-gap-md"><ContentSkeleton v-for="n in 2" :key="n" variant="chart" /><ContentSkeleton variant="list" :rows="2" /></view></template>
-<AioChart
-          label="每月运动次数"
-          kind="bar"
-          :labels="monthly.map((item) => item.label)"
-          :series="[{ name: '运动次数', values: monthly.map((item) => item.value) }]"
-          unit="次"
-        /><AioChart
-          label="运动类型分布"
-          kind="bar"
-          :labels="distribution.map((item) => item.label)"
-          :series="[{ name: '运动次数', values: distribution.map((item) => item.value) }]"
-          unit="次"
-        /><AioChart
-          v-for="group in dailyGroups"
-          :key="group.id"
-          :label="group.label + '每日运动量'"
-          :labels="group.points.map((item) => item.label)"
-          :series="[{ name: group.label, values: group.points.map((item) => item.value) }]"
-        /><view
-          v-for="item in filtered"
-          :key="item.id"
-          class="card ui-card"
-          :class="{ 'card-dark': isDark }"
-          ><view class="record-header"
-            ><MobileButton
-              :label="selected.includes(item.id) ? '取消选择记录' : '选择记录'"
-              :icon="selected.includes(item.id) ? 'ant-design:check-square-outlined' : 'ant-design:border-outlined'"
-              variant="quiet"
-              @click="toggle(item.id)" /><view class="record-copy"><view class="record-type"><CategoryIcon :icon="exerciseType(item.exerciseTypeId)?.icon || 'mdi:run'" :color="exerciseType(item.exerciseTypeId)?.color || '#5b8ff9'" :size="20" /><text class="title">{{ name(item.exerciseTypeId) }}</text></view><text class="secondary" :class="{ 'record-secondary-dark': isDark }">{{ item.exerciseDate }}</text></view><text class="record-quantity">{{ item.exerciseCount ?? '—' }}</text
-            ><MobileButton
-              label="编辑运动"
-              icon="ant-design:edit-outlined"
-              variant="quiet"
-              @click="open(item)" /><ConfirmAction
-              label="删除运动"
-              :action="() => remove([item.id])" /></view
-          ><text v-if="item.description" class="record-description" :class="{ 'record-secondary-dark': isDark }">{{ item.description }}</text></view
-        ></PageState
-      ><AdaptiveModal v-if="form" label="编辑运动记录" :busy="saving" @close="form = null"
+          <template #actions>
+            <picker class="daily-type-picker" mode="selector" aria-label="每日运动量类型"
+              :value="Math.max(0, visibleTypes.findIndex(type => type.id === chartType))"
+              :range="visibleTypes.map(type => type.dictLabel || type.label)"
+              :disabled="!visibleTypes.length"
+              @change="chartType = visibleTypes[Number($event.detail.value)]?.id || ''">
+              <view class="daily-type-control">
+                <text class="daily-type-label" :class="{ 'daily-type-label-dark': isDark }">{{ dailyGroup.label || '选择类型' }}</text>
+                <AppIcon name="ant-design:down-outlined" :size="12" />
+              </view>
+            </picker>
+          </template>
+        </AioChart>
+      </view>
+      <view class="record-region">
+      <LoadingIndicator v-if="loading && recordsReady" floating label="正在更新记录" />
+      <PageState skeleton="list" :loading="loading && !recordsReady" :has-content="recordsReady" :error="error" :empty="!recordRows.length" @retry="load">
+        <view class="record-toolbar">
+          <text class="record-list-title">{{ selecting ? '已选 ' + selected.length + ' 条' : '运动记录' }}</text>
+          <ConfirmAction v-if="selected.length" :label="'删除所选 ' + selected.length + ' 条记录'" :action="() => remove(selected)">
+            <template #default="{ open: confirm, busy }"><MobileButton :label="'删除所选 ' + selected.length + ' 条记录'" icon="ant-design:delete-outlined" variant="ghost" :loading="busy" @click="confirm" /></template>
+          </ConfirmAction>
+          <MobileButton :label="selecting ? '完成选择' : '批量选择'" :icon="selecting ? 'ant-design:close-outlined' : 'ant-design:check-square-outlined'" variant="ghost" @click="toggleSelection" />
+        </view>
+        <view v-for="group in recordGroups" :key="group.date" class="record-group">
+          <text class="record-date" :class="{ 'record-secondary-dark': isDark }">{{ group.date }}</text>
+          <view class="record-surface" :class="{ 'record-surface-dark': isDark }">
+            <ExerciseRecordRow v-for="(item, index) in group.items" :key="item.id"
+              :item="item" :label="name(item.exerciseTypeId)"
+              :icon="exerciseType(item.exerciseTypeId)?.icon || 'mdi:run'"
+              :color="exerciseType(item.exerciseTypeId)?.color || '#5b8ff9'"
+              :selecting="selecting" :selected="selected.includes(item.id)"
+              :revealed="swipedId === item.id" :divided="index > 0"
+              :action="() => remove([item.id])"
+              @edit="open(item)" @select="toggle(item.id)"
+              @reveal="swipedId = item.id" @close="swipedId === item.id && (swipedId = '')" />
+          </view>
+        </view>
+        <LoadMore :loading="revealing" :has-more="hasMoreRows" :error="moreError" @load="revealMore(true)" /></PageState></view></view>
+    <template #fixed>
+      <FloatingActionButton v-if="!form" label="新增运动" :disabled="loading || !!error" @click="open()" />
+      <!-- 录入层放在页面滚动容器外，避免微信原生输入和背景滚动相互影响。 -->
+      <AdaptiveModal v-if="form" label="编辑运动记录" :busy="saving" @close="form = null"
         ><FormField :required="isRequired('exercise', 'exerciseTypeId')"
           label="运动类型"
           kind="selector"
@@ -326,8 +413,8 @@ function toggle(id) {
             :label="saved ? '重新读取' : '保存'"
             :loading="saving"
             @click="save" />
-        </FormActions></AdaptiveModal></view>
-    <template #fixed><FloatingActionButton label="新增运动" :disabled="loading || !!error" @click="open()" /></template>
+        </FormActions></AdaptiveModal>
+    </template>
   </MobilePage>
 </template>
 <style scoped lang="scss">
@@ -350,61 +437,21 @@ function toggle(id) {
   align-items: center;
   flex-wrap: wrap;
 }
-.card,
-.chart {
-  border-radius: 16px;
-  background-color: #ffffff;
-}
-.card-dark {
-  background-color: #1c1e22;
-}
-.title {
-
-  @include type-style('title');
-  flex: 1;
-}
-.secondary {
-  color: $text-secondary-light;
-  @include type-style('label');
-}
 .error {
   color: #e05252;
 }
-.bar-row {
-  flex-direction: row;
-  align-items: center;
-  @include type-style('caption');
-}
-.bar {
-  height: 10px;
-  background-color: #4ecdc4;
-  border-radius: 4px;
-}
-.daily {
-  width: 100%;
-}
-.daily-series {
-  flex-direction: row;
-  align-items: flex-end;
-  min-height: 132px;
-}
-.daily-column {
-  align-items: center;
-  width: 44px;
-  @include type-style('badge');
-  flex-shrink: 0;
-}
-.daily-bar {
-  width: 22px;
-  background-color: #4ecdc4;
-  border-radius: 4px;
-}
-
-.record-header { display: flex; flex-direction: row; align-items: center; gap: $space-detail; }
-.record-copy { flex: 1; min-width: 0; gap: $space-detail; }
-.record-type { flex-direction: row; align-items: center; gap: $space-detail; }
-.record-quantity { @include type-style('metric-compact');  color: #469d95; }
-.record-description { @include type-style('label');  color: $text-secondary-light; overflow-wrap: anywhere; }
+.statistics-region { position: relative; }
+.daily-type-picker { min-width: 0; max-width: 50%; flex-shrink: 1; }
+.daily-type-control { display: flex; flex-direction: row; align-items: center; justify-content: flex-end; gap: $space-detail; min-width: $space-controlMin; min-height: $space-controlMin; }
+.daily-type-label { @include type-style('body'); min-width: 0; color: $text-secondary-light; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.daily-type-label-dark { color: $text-secondary-dark; }
+.record-region { position: relative; }
+.record-toolbar { flex-direction: row; align-items: center; gap: $space-detail; margin-top: $space-inline; }
+.record-list-title { @include type-style('title'); flex: 1; }
+.record-group { margin-bottom: $space-section; gap: $space-inline; }
+.record-date { @include type-style('caption'); color: $text-secondary-light; padding-left: $space-card; }
+.record-surface { background-color: #ffffff; border-radius: 12px; overflow: hidden; }
+.record-surface-dark { background-color: #1c1e22; }
 .date-filters { align-items: flex-end; }
 .metrics {
 /* #ifndef APP */

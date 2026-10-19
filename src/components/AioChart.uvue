@@ -3,7 +3,7 @@ import { computed, onUnmounted, ref, watch } from 'vue'
 import ChartCanvas from './ChartCanvas.uvue'
 import { appTextColor } from '../services/app-layout.ts'
 import { isDark, themeClass } from '../services/theme.ts'
-import { buildChartOption, colorChartSeries, layoutChartAxisLabels, validateChartData } from '../services/chart-options.ts'
+import { buildChartOption, colorChartSeries, layoutChartAxisLabels, layoutStackedBarLabels, validateChartData } from '../services/chart-options.ts'
 import type { ChartSeries } from '../services/chart-options.ts'
 import typography from '../styles/typography.json'
 import spacing from '../styles/spacing.json'
@@ -11,19 +11,22 @@ import spacing from '../styles/spacing.json'
 const props = withDefaults(defineProps<{
   label: string; labels: string[]; series: ChartSeries[]; kind?: string; unit?: string;
   compact?: boolean; periodControls?: boolean; selectable?: boolean;
-  hidePeriodSelector?: boolean; hideLegend?: boolean; hideScale?: boolean; hideTitle?: boolean;
+  hidePeriodSelector?: boolean; hideLegend?: boolean; hideScale?: boolean; hideTitle?: boolean; hideUnit?: boolean;
   hideValues?: boolean; showEndValues?: boolean; showBarValues?: boolean; xLabels?: string[]; loading?: boolean;
+  stacked?: boolean; swipeable?: boolean;
 }>(), { kind: 'line', unit: '' })
+const emit = defineEmits(['swipe'])
 const selected = ref(0), hidden = ref<string[]>([]), touched = ref(false), width = ref(280)
 const layout = ref<any>({ axisTicks: [], points: [], series: [], left: 0, axisTop: 0 })
 const colored = computed(() => colorChartSeries(props.series))
-const visible = computed(() => colored.value.filter(item => props.series.length <= 1 || !hidden.value.includes(item.name)))
+const visible = computed(() => colored.value.filter(item => (!props.stacked && props.series.length <= 1) || !hidden.value.includes(item.name)))
 const interactive = computed(() => props.periodControls || props.selectable || !props.hidePeriodSelector)
 const periodTrend = computed(() => props.periodControls && props.kind === 'bar')
+const selectionTooltip = computed(() => periodTrend.value || props.stacked)
 let tooltipTimer: ReturnType<typeof setTimeout> | undefined
 function dismissTooltip() {
   clearTimeout(tooltipTimer)
-  if (periodTrend.value) touched.value = false
+  if (selectionTooltip.value) touched.value = false
 }
 onUnmounted(() => clearTimeout(tooltipTimer))
 watch(() => [props.loading, props.series], dismissTooltip)
@@ -34,8 +37,9 @@ const error = computed(() => {
 })
 const option = computed(() => buildChartOption(props.xLabels ?? props.labels, visible.value, {
   dark: isDark.value, kind: props.kind, selected: selected.value,
-  selectionActive: interactive.value && (touched.value || (props.kind === 'bar' && !periodTrend.value)),
+  selectionActive: interactive.value && (touched.value || (props.kind === 'bar' && !periodTrend.value && !props.stacked)),
   showScale: showScale.value, width: width.value, roundedBars: periodTrend.value || props.showBarValues,
+  stacked: props.stacked,
 }))
 watch(() => props.labels.join('|'), (_, previous) => {
   const oldLabel = previous?.split('|')[selected.value]
@@ -47,17 +51,18 @@ function select(index: number) {
   if (props.loading || !interactive.value || !props.labels.length) return
   selected.value = Math.max(0, Math.min(props.labels.length - 1, index))
   touched.value = true
-  if (periodTrend.value) {
+  if (selectionTooltip.value) {
     clearTimeout(tooltipTimer)
     tooltipTimer = setTimeout(dismissTooltip, 3000)
   }
 }
 function hoverSelect(index: number) {
-  if (!periodTrend.value) return
+  if (!selectionTooltip.value) return
   select(index)
   clearTimeout(tooltipTimer)
 }
 function toggle(name: string) {
+  dismissTooltip()
   hidden.value = hidden.value.includes(name) ? hidden.value.filter(item => item !== name) : [...hidden.value, name]
 }
 function displayNumber(value: number) {
@@ -89,8 +94,12 @@ const barLabels = computed(() => {
       top: Math.max(0, point.y - typography.roles['chart-label'].lineHeight - spacing.detail) }
   }))
 })
-const tooltipText = computed(() => visible.value
+const stackLabels = computed(() => props.stacked && !props.loading
+  ? layoutStackedBarLabels(layout.value.series, width.value, layout.value.left)
+  : { segments: [], totals: [] })
+const tooltipText = computed(() => (props.stacked ? visible.value.filter(item => item.values[selected.value] > 0) : visible.value)
   .map(item => (visible.value.length > 1 ? item.name + ' ' : '') + displayNumber(item.values[selected.value] ?? 0) + props.unit).join('，'))
+const stackTooltip = computed(() => props.labels[selected.value] + ' · 合计 ' + visible.value.reduce((sum, item) => sum + (item.values[selected.value] ?? 0), 0) + props.unit + '\n' + tooltipText.value)
 const extremeLabels = computed(() => {
   if (!periodTrend.value || props.showBarValues || props.loading || !props.labels.length) return []
   return layout.value.series.flatMap(item => {
@@ -121,10 +130,20 @@ const extremeLabels = computed(() => {
   <view class="mini-chart aio-chart" :class="[themeClass('mini-chart'), { 'mini-chart-period': periodControls }]" role="figure" :aria-label="label">
     <view class="mini-chart-header" :class="{ 'chart-header-title-hidden': hideTitle }">
       <text v-if="!hideTitle" class="mini-chart-title" :style="appTextColor()">{{ label }}</text>
-      <text v-if="!periodTrend && unit && showScale" class="chart-unit" :class="themeClass('chart-unit')">{{ unit }}</text>
+      <text v-if="!hideUnit && !periodTrend && unit && showScale" class="chart-unit" :class="themeClass('chart-unit')">{{ unit }}</text>
       <slot name="actions" />
     </view>
-    <view v-if="!hideLegend && series.length > 1" class="chart-legend-compact">
+    <scroll-view v-if="!hideLegend && stacked" direction="horizontal" :scroll-x="true" :show-scrollbar="false" class="chart-legend-scroll" aria-label="分类图例，可横向滚动">
+      <view class="chart-legend-row">
+        <button v-for="item in colored" :key="item.name" class="chart-legend-button" role="button"
+          :class="{ 'chart-legend-hidden': hidden.includes(item.name) }" :aria-label="item.name"
+          :disabled="loading" :aria-pressed="!hidden.includes(item.name)" @click="toggle(item.name)">
+          <view class="chart-stack-swatch" :style="{ backgroundColor: item.color }" />
+          <text class="chart-legend-name" :style="appTextColor()">{{ item.name }}</text>
+        </button>
+      </view>
+    </scroll-view>
+    <view v-else-if="!hideLegend && series.length > 1" class="chart-legend-compact">
       <button v-for="item in colored" :key="item.name" class="chart-legend-button" role="button"
         :class="{ 'chart-legend-hidden': hidden.includes(item.name) }" :aria-label="item.name"
         :disabled="loading" :aria-pressed="!hidden.includes(item.name)" @click="toggle(item.name)">
@@ -133,7 +152,7 @@ const extremeLabels = computed(() => {
       </button>
     </view>
     <text v-if="error" class="mini-chart-error" role="alert">{{ error }}</text>
-    <template v-else-if="loading || labels.length || periodTrend">
+    <template v-else-if="loading || labels.length || periodTrend || stacked">
       <view class="mini-chart-plot" :role="interactive && labels.length ? 'slider' : undefined" :tabindex="interactive && labels.length ? 0 : undefined"
         :aria-label="interactive ? label + '，点击图表查看数值' : undefined" :aria-valuemin="interactive ? 0 : undefined"
         :aria-valuemax="interactive ? labels.length - 1 : undefined" :aria-valuenow="interactive ? selected : undefined"
@@ -142,7 +161,8 @@ const extremeLabels = computed(() => {
         @keydown.esc="dismissTooltip" @blur="dismissTooltip">
         <view v-if="loading" class="chart-loading-plot" :class="themeClass('chart-loading-plot')" aria-busy="true"><text class="mini-chart-empty" :class="themeClass('mini-chart-empty')">正在加载图表</text></view>
         <view v-else-if="!labels.length" class="chart-empty-plot"><text class="mini-chart-empty" :class="themeClass('mini-chart-empty')">暂无数据</text></view>
-        <ChartCanvas v-else :option="option" :label="label" :hoverable="periodTrend" @hover="hoverSelect" @leave="dismissTooltip" @layout="layout = $event" @width="width = $event" @select="select" />
+        <ChartCanvas v-else :option="option" :label="label" :hoverable="selectionTooltip" :swipeable="swipeable"
+          @swipe="dismissTooltip(); emit('swipe', $event)" @hover="hoverSelect" @leave="dismissTooltip" @layout="layout = $event" @width="width = $event" @select="select" />
         <view v-if="showScale && !loading && labels.length" class="chart-y-axis" :style="{ width: layout.left + 'px' }" :aria-label="'Y 轴，单位 ' + unit">
           <text v-for="tick in layout.axisTicks" :key="tick.value" class="chart-y-tick" :class="themeClass('chart-y-tick')"
             :style="{ top: tick.top + 'px', width: Math.max(0, layout.left - spacing.micro) + 'px' }">{{ tick.label }}</text>
@@ -155,8 +175,12 @@ const extremeLabels = computed(() => {
           :style="{ top: item.top + 'px', left: item.left + 'px', width: item.width + 'px' }">{{ item.text }}</text>
         <text v-for="item in barLabels" :key="item.key" class="chart-extreme-label" :class="themeClass('chart-extreme-label')"
           :style="{ top: item.top + 'px', left: item.left + 'px', width: item.width + 'px' }">{{ item.text }}</text>
-        <view v-if="periodTrend && touched && !loading && labels.length" class="chart-tooltip" :class="themeClass('chart-tooltip')" role="tooltip" aria-live="polite">
-          <text class="chart-tooltip-text" :class="themeClass('chart-tooltip-text')">{{ tooltipText }}</text>
+        <text v-for="item in stackLabels.segments" :key="item.key" class="chart-stack-label"
+          :style="{ top: item.top + 'px', left: item.left + 'px', width: item.width + 'px', color: item.color }">{{ item.text }}</text>
+        <text v-for="item in stackLabels.totals" :key="item.key" class="chart-stack-total chart-extreme-label" :class="themeClass('chart-extreme-label')"
+          :style="{ top: item.top + 'px', left: item.left + 'px', width: item.width + 'px' }">{{ item.text }}</text>
+        <view v-if="selectionTooltip && touched && !loading && labels.length" class="chart-tooltip" :class="themeClass('chart-tooltip')" role="tooltip" aria-live="polite">
+          <text class="chart-tooltip-text" :class="themeClass('chart-tooltip-text')">{{ stacked ? stackTooltip : tooltipText }}</text>
         </view>
       </view>
       <template v-if="!periodControls && !hideValues">
@@ -193,7 +217,24 @@ const extremeLabels = computed(() => {
 .chart-y-tick { position: absolute; left: 0; text-align: right; white-space: nowrap; font-family: type-family('canvas'); @include type-style('caption'); color: $text-secondary-light; }
 .chart-x-label { position: absolute; text-align: center; white-space: nowrap; font-family: type-family('canvas'); @include type-style('caption'); color: $text-secondary-light; pointer-events: none; }
 .chart-legend-compact { display: flex; flex-direction: row; flex-wrap: wrap; gap: $space-inline; }
-.chart-legend-button { display: flex; flex-direction: row; align-items: center; gap: $space-detail; min-width: $space-controlMin; min-height: $space-controlMin; padding: 0; margin: 0; border: 0; background-color: transparent; }
+.chart-legend-scroll { width: 100%; min-width: 0; height: $space-controlMin; white-space: nowrap; }
+.chart-legend-row {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  gap: $space-section;
+  height: $space-controlMin;
+  // 全部图例撑开内容宽度，不能把超出部分裁掉而不给 scroll-view 滚动范围。
+  /* #ifndef APP */
+  width: max-content;
+  /* #endif */
+  /* #ifdef APP */
+  flex-shrink: 0;
+  /* #endif */
+}
+.chart-stack-swatch { width: 18px; height: 10px; border-radius: 2px; flex-shrink: 0; }
+.chart-stack-label { position: absolute; text-align: center; @include type-style('chart-label'); pointer-events: none; }
+.chart-legend-button { display: flex; flex-direction: row; flex-shrink: 0; align-items: center; gap: $space-detail; min-width: $space-controlMin; min-height: $space-controlMin; padding: 0; margin: 0; border: 0; background-color: transparent; }
 .chart-legend-name { @include type-style('caption'); }
 .chart-legend-hidden { opacity: 0.4; }
 .chart-legend-swatch { width: 6px; height: 6px; border-radius: 3px; }

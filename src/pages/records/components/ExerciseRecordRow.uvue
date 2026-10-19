@@ -1,0 +1,137 @@
+<script setup lang="ts">
+import { computed, ref, watch } from 'vue';
+import ConfirmAction from '../../../components/ConfirmAction.uvue';
+import AppIcon from '../../../components/AppIcon.uvue';
+import CategoryIcon from '../../../components/CategoryIcon.uvue';
+import spacing from '../../../styles/spacing.json';
+import { isDark } from '../../../services/theme.ts';
+
+const props = defineProps<{
+  item: any;
+  label: string;
+  icon: string;
+  color: string;
+  selecting: boolean;
+  selected: boolean;
+  revealed: boolean;
+  divided: boolean;
+  action: () => Promise<unknown>;
+}>();
+const emit = defineEmits(['edit', 'select', 'reveal', 'close']);
+// 删除操作宽度由最小触控区及卡片内边距组成。
+const actionWidth = spacing.controlMin + spacing.card * 2;
+const offset = ref(0), dragging = ref(false);
+let start: { x: number; y: number; offset: number } | null = null;
+let direction = '', suppressClickUntil = 0;
+const surfaceStyle = computed(() => ({
+  transform: `translateX(${offset.value}px)`,
+  transition: dragging.value ? 'none' : 'transform 180ms ease-out',
+}));
+watch(() => [props.revealed, props.selecting], () => {
+  start = null;
+  dragging.value = false;
+  offset.value = props.revealed && !props.selecting ? -actionWidth : 0;
+});
+function point(event: any) {
+  const touch = event.touches?.[0] || event.changedTouches?.[0];
+  return touch ? { x: touch.clientX, y: touch.clientY } : { x: event.clientX, y: event.clientY };
+}
+function begin(event: any) {
+  if (props.selecting || (event.touches && event.touches.length !== 1) || (event.button != null && event.button !== 0)) return;
+  const p = point(event);
+  start = { ...p, offset: offset.value };
+  direction = '';
+  dragging.value = false;
+}
+function move(event: any) {
+  if (!start) return;
+  if (event.touches && event.touches.length !== 1) { cancel(); return; }
+  const p = point(event), dx = p.x - start.x, dy = p.y - start.y;
+  if (!direction && Math.max(Math.abs(dx), Math.abs(dy)) > 10) {
+    direction = Math.abs(dx) > Math.abs(dy) * 1.5 ? 'horizontal' : 'vertical';
+  }
+  if (direction) suppressClickUntil = Date.now() + 400;
+  if (direction !== 'horizontal') return;
+  event.preventDefault?.();
+  dragging.value = true;
+  offset.value = Math.max(-actionWidth, Math.min(0, start.offset + dx));
+}
+function end() {
+  if (!start) return;
+  const reveal = direction === 'horizontal' ? offset.value < -actionWidth / 2 : props.revealed;
+  if (direction) suppressClickUntil = Date.now() + 400;
+  start = null;
+  dragging.value = false;
+  offset.value = reveal ? -actionWidth : 0;
+  if (reveal) emit('reveal');
+  else emit('close');
+}
+function cancel() {
+  if (direction) suppressClickUntil = Date.now() + 400;
+  start = null;
+  dragging.value = false;
+  offset.value = props.revealed ? -actionWidth : 0;
+}
+function activate() {
+  if (Date.now() < suppressClickUntil) return;
+  if (props.revealed) { emit('close'); return; }
+  emit(props.selecting ? 'select' : 'edit');
+}
+function revealWithKeyboard() {
+  if (!props.selecting) emit('reveal');
+}
+</script>
+<template>
+  <view class="record-row" :class="{ 'record-row-divided': divided, 'record-row-dark': isDark }">
+    <view v-if="(revealed || dragging) && !selecting" class="record-delete" :style="{ width: actionWidth + 'px' }">
+      <ConfirmAction label="删除运动" :action="action">
+        <template #default="{ open, busy }">
+          <button class="record-delete-button" role="button" aria-label="删除运动" :disabled="busy" :loading="busy" @click.stop="open">
+            <AppIcon v-if="!busy" name="ant-design:delete-outlined" :size="20" color="#ffffff" />
+          </button>
+        </template>
+      </ConfirmAction>
+    </view>
+    <view class="record-front" :class="{ 'record-front-dark': isDark, 'record-front-selected': selected, 'record-front-selected-dark': selected && isDark }" :style="surfaceStyle"
+      :role="selecting ? 'checkbox' : 'button'" tabindex="0"
+      :aria-label="(selecting ? '选择记录：' : '编辑运动：') + label + ' ' + item.exerciseDate"
+      :aria-checked="selecting ? selected : undefined"
+      @touchstart="begin" @touchmove="move" @touchend="end" @touchcancel="cancel"
+      @mousedown="begin" @mousemove="move" @mouseup="end" @mouseleave="cancel"
+      @keydown.enter="activate" @keydown.space.prevent="activate" @keydown.delete.prevent="revealWithKeyboard" @keydown.esc="emit('close')"
+      @click="activate">
+      <view class="record-header">
+        <AppIcon v-if="selecting" :name="selected ? 'ant-design:check-square-filled' : 'ant-design:border-outlined'" :size="20" :color="selected ? '#4e9ae8' : isDark ? '#a0a6b1' : '#626e82'" />
+        <view class="record-copy">
+          <view class="record-type"><CategoryIcon :icon="icon" :color="color" :size="20" /><text class="title">{{ label }}</text></view>
+          <text v-if="item.description" class="record-description" :class="{ 'record-description-dark': isDark }">{{ item.description }}</text>
+        </view>
+        <text class="record-quantity">{{ item.exerciseCount ?? '—' }}</text>
+      </view>
+    </view>
+  </view>
+</template>
+<style scoped lang="scss">
+@use '../../../styles/typography' as *;
+@use '../../../styles/spacing-tokens' as *;
+@use '../../../styles/text-colors' as *;
+.record-row { position: relative; overflow: hidden; }
+.record-row-divided { border-top: $space-hairline solid #f1f3f6; }
+.record-row-dark { border-color: #272a30; }
+.record-front { position: relative; background-color: #ffffff; color: #27272a; padding: $space-inline $space-card; touch-action: pan-y; cursor: pointer; }
+.record-front-dark { background-color: #1c1e22; color: #eeeeef; }
+.record-front-selected { background-color: #e8f1fc; }
+.record-front-selected-dark { background-color: #223044; }
+.record-header { flex-direction: row; align-items: center; min-height: $space-controlMin; gap: $space-inline; }
+.record-copy { flex: 1; min-width: 0; gap: $space-detail; }
+.record-type { flex-direction: row; align-items: center; gap: $space-inline; }
+.title { @include type-style('body-strong'); flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.record-quantity { @include type-style('metric-small'); flex-shrink: 0; text-align: right; }
+.record-description { @include type-style('caption'); color: $text-secondary-light; overflow-wrap: anywhere; }
+.record-description-dark { color: $text-secondary-dark; }
+.record-delete { position: absolute; top: 0; right: 0; bottom: 0; background-color: #dc3545; justify-content: center; }
+.record-delete-button { display: flex; align-items: center; justify-content: center; width: 100%; min-height: $space-controlMin; padding: 0; margin: 0; background-color: #dc3545; border-radius: 0; @include type-style('body'); }
+/* #ifdef WEB || MP-WEIXIN */
+.record-delete-button::after { border: 0; }
+/* #endif */
+</style>

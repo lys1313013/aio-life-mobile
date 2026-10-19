@@ -1,18 +1,30 @@
 <script setup lang="ts">
-import { getCurrentInstance, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, getCurrentInstance, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
+// #ifdef MP-WEIXIN
+import { modalOpen } from '../services/modal-presence.ts'
+// #endif
 import { useWindowResize } from '../services/window-resize.ts'
 import { loadChartEngine } from '../services/chart-engine.ts'
-import { chartAxisLabel, chartHeight, createChartSurface } from '../services/chart-options.ts'
+import { chartAxisLabel, chartHeight, createChartSurface, pieSectorAt } from '../services/chart-options.ts'
 import { themeClass } from '../services/theme.ts'
 import MobileButton from './MobileButton.uvue'
 import typography from '../styles/typography.json'
 import spacing from '../styles/spacing.json'
 
-const props = defineProps<{ option: any; label: string; hoverable?: boolean }>()
-const emit = defineEmits(['layout', 'select', 'width', 'hover', 'leave'])
+const props = defineProps<{ option: any; label: string; hoverable?: boolean; swipeable?: boolean }>()
+const emit = defineEmits(['layout', 'select', 'width', 'hover', 'leave', 'ready', 'swipe'])
 const instance = getCurrentInstance()
 const canvasId = 'aio-chart-' + instance?.uid
 const loading = ref(true), error = ref('')
+const canvasVisible = computed(() => {
+  // 微信原生画布可能越过滚动容器和 root-portal，弹窗期间必须移除原生层。
+  // #ifdef MP-WEIXIN
+  return !modalOpen.value
+  // #endif
+  // #ifndef MP-WEIXIN
+  return true
+  // #endif
+})
 let chart: any = null, alive = true, generation = 0, scheduled = false
 let canvasContext: any = null
 let width = 0
@@ -36,6 +48,12 @@ function paint() {
   if (!chart || !alive) return
   try {
     chart.setOption(props.option, { notMerge: true })
+    if (props.option.series[0]?.type === 'pie') {
+      chart.getZr().flush()
+      error.value = ''
+      emit('ready', true)
+      return
+    }
     const yAxis = chart.getModel().getComponent('yAxis').axis
     const ticks = yAxis.scale.getTicks()
     let left = props.option.grid.left
@@ -60,20 +78,25 @@ function paint() {
     canvasContext.font = `${typography.roles.caption.weight} ${typography.roles.caption.size}px ${typography.families.canvas}`
     const labelWidths = labels.map(label => canvasContext.measureText(label).width)
     canvasContext.restore()
-    const annotations = props.option.series.map(item => {
+    const annotations = props.option.series.map((item, seriesIndex) => {
       const values = item.data.map(row => row.value)
+      const data = item.stack ? chart.getModel().getSeriesByIndex(seriesIndex).getData() : null
       return { name: item.name, color: item.itemStyle.color, points: values.map((value, index) => ({
         x: points[index], y: chart.convertToPixel({ yAxisIndex: 0 }, value), value,
+        ...(item.stack ? { bar: data.getItemLayout(index) } : {}),
       })) }
     })
     emit('layout', { axisTicks, points, labelWidths, series: annotations, left,
       axisTop: chartHeight - props.option.grid.bottom + spacing.detail })
     error.value = ''
-  } catch (_) { error.value = '图表加载失败' }
+    emit('ready', true)
+  } catch (_) { error.value = '图表加载失败'; emit('ready', false) }
 }
 async function initialize() {
+  if (!alive || !canvasVisible.value) return
   const id = ++generation
   loading.value = true
+  emit('ready', false)
   error.value = ''
   try {
     await nextTick()
@@ -125,6 +148,16 @@ async function select(event, hover = false) {
   const bounds = await rect()
   if (!alive || sequence !== selectionSequence || !bounds || Array.isArray(bounds)) return
   const x = clientX - bounds.left
+  if (props.option.series[0]?.type === 'pie') {
+    const clientY = touch?.clientY ?? event.detail?.y ?? event.clientY
+    if (typeof clientY !== 'number') return
+    const data = chart.getModel().getSeriesByIndex(0).getData()
+    const sectors = props.option.series[0].data.map((_, index) => data.getItemLayout(index))
+    const index = pieSectorAt(sectors, x, clientY - bounds.top)
+    if (index >= 0) emit(hover ? 'hover' : 'select', index)
+    else emit('leave')
+    return
+  }
   if (hover && (x < chart.getOption().grid[0].left || x > width - props.option.grid.right)) {
     emit('leave')
     return
@@ -152,24 +185,40 @@ function endTouch(event) {
   lastTouch = Date.now()
   const end = event.changedTouches?.[0]
   if (!touchStart || !end) return
-  const distance = Math.hypot(end.clientX - touchStart.clientX, end.clientY - touchStart.clientY)
+  const dx = end.clientX - touchStart.clientX, dy = end.clientY - touchStart.clientY
   touchStart = null
+  if (props.swipeable && Math.abs(dx) >= spacing.controlMin && Math.abs(dx) > Math.abs(dy) * 1.5) {
+    emit('swipe', dx > 0 ? 'right' : 'left')
+    return
+  }
+  const distance = Math.hypot(dx, dy)
   if (distance <= spacing.inline) select(event)
 }
+function cancelTouch() { touchStart = null; leave() }
 function click(event) {
   if (Date.now() - lastTouch > 350) select(event)
 }
 useWindowResize(resize)
 onMounted(initialize)
+// 保留外层几何；嵌套弹窗全部关闭后重建画布，并阻止旧初始化回写。
+watch(canvasVisible, visible => {
+  generation++
+  selectionSequence++
+  chart?.dispose()
+  chart = null
+  canvasContext = null
+  if (visible) initialize()
+  else loading.value = false
+})
 watch(() => props.option, queuePaint, { deep: true })
 onUnmounted(() => { alive = false; generation++; chart?.dispose(); chart = null; canvasContext = null })
 </script>
 
 <template>
   <view class="aio-chart-renderer" :aria-busy="loading">
-    <canvas :id="canvasId" :canvas-id="canvasId" type="2d" class="aio-chart-canvas"
+    <canvas v-if="canvasVisible" :id="canvasId" :canvas-id="canvasId" type="2d" class="aio-chart-canvas" :class="{ 'aio-chart-canvas-swipe': swipeable }"
       aria-hidden="true" @click="click" @mousemove="hover" @mouseleave="mouseLeave"
-      @touchstart="beginTouch" @touchend="endTouch" @touchcancel="leave" />
+      @touchstart="beginTouch" @touchend="endTouch" @touchcancel="cancelTouch" />
     <view v-if="loading || error" class="chart-render-state">
       <text class="chart-render-message" :class="themeClass('chart-render-message')">{{ error || '正在加载图表' }}</text>
       <MobileButton v-if="error" label="重试图表" icon="ant-design:reload-outlined" variant="quiet" @click="initialize" />
@@ -183,6 +232,9 @@ onUnmounted(() => { alive = false; generation++; chart?.dispose(); chart = null;
 @use '../styles/text-colors' as *;
 .aio-chart-renderer { position: relative; width: 100%; height: 228px; }
 .aio-chart-canvas { width: 100%; height: 228px; }
+/* #ifdef WEB */
+.aio-chart-canvas-swipe { touch-action: pan-y; }
+/* #endif */
 .chart-render-state { position: absolute; left: 0; right: 0; top: 0; bottom: 0; justify-content: center; align-items: center; gap: $space-inline; }
 .chart-render-message { @include type-style('caption'); color: $text-secondary-light; }
 .chart-render-message-dark { color: $text-secondary-dark; }
