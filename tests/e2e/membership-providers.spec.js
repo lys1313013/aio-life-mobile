@@ -33,7 +33,7 @@ async function prepare(page) {
     const req = route.request();
     if (req.method() === 'GET') return route.fulfill({ json: { code: 0, data: state.providers } });
     const body = req.method() === 'DELETE' ? null : req.postDataJSON(); state.writes.push({ path: new URL(req.url()).pathname, method: req.method(), body });
-    const saved = req.method() === 'DELETE' ? null : { ...body, id: req.method() === 'POST' ? '9007199254740999' : new URL(req.url()).pathname.split('/').at(-1) };
+    const saved = req.method() === 'DELETE' ? null : { ...body, code: req.method() === 'POST' ? 'custom_fixture' : state.providers.find(row => req.url().endsWith('/' + row.id)).code, id: req.method() === 'POST' ? '9007199254740999' : new URL(req.url()).pathname.split('/').at(-1) };
     if (!state.fail) state.providers = [...state.providers.filter(row => !new URL(req.url()).pathname.endsWith('/' + row.id)), ...(saved ? [saved] : [])];
     return route.fulfill({ json: state.fail ? { code: 1, message: '模拟平台保存失败' } : { code: 0, data: saved } });
   });
@@ -67,6 +67,7 @@ for (const width of [390, 768, 1440]) for (const theme of ['light', 'dark']) {
     await page.goto('/#/pages/admin/membership-providers');
     await page.reload();
     await page.getByRole('button', { name: '编辑平台：腾讯视频', exact: true }).click();
+    await expect(page.getByRole('textbox', { name: '平台编码', exact: true })).toHaveCount(0);
     await page.screenshot({ path: `artifacts/membership-providers/admin-${width}-${theme}.png` });
     await page.getByRole('button', { name: '选择网易云音乐图标', exact: true }).click();
     await picker(page, '状态', '停用');
@@ -77,6 +78,8 @@ for (const width of [390, 768, 1440]) for (const theme of ['light', 'dark']) {
     await page.getByRole('button', { name: '保存', exact: true }).click();
     await expect(page.getByRole('dialog')).toHaveCount(0);
     expect(state.writes.at(-1)).toMatchObject({ method: 'PUT', body: { isEnabled: 0, iconKey: 'netease_music' } });
+    expect(state.writes.at(-1).body).not.toHaveProperty('code');
+    expect(state.providers.find(row => row.id === providers[0].id).code).toBe('tencent_video');
     await expect(page.getByRole('button', { name: '编辑平台：腾讯视频', exact: true })).toContainText('停用');
     await page.screenshot({ path: `artifacts/membership-providers/admin-list-${width}-${theme}.png` });
   });
@@ -104,10 +107,11 @@ test('平台新增、删除失败保留弹窗并重试', async ({ page }) => {
   await page.goto('/#/pages/admin/membership-providers'); await page.reload();
   await page.getByRole('button', { name: '新增会员平台', exact: true }).click();
   await page.getByRole('textbox', { name: '平台名称', exact: true }).fill('模拟新增平台');
-  await page.getByRole('textbox', { name: '平台编码', exact: true }).fill('new_demo');
+  await expect(page.getByRole('textbox', { name: '平台编码', exact: true })).toHaveCount(0);
   await page.getByRole('button', { name: '保存', exact: true }).click();
   await expect(page.getByRole('dialog')).toHaveCount(0);
-  expect(state.writes.at(-1)).toMatchObject({ method: 'POST', body: { name: '模拟新增平台', code: 'new_demo', iconKey: null, isEnabled: 1 } });
+  expect(state.writes.at(-1)).toMatchObject({ method: 'POST', body: { name: '模拟新增平台', iconKey: null, isEnabled: 1 } });
+  expect(state.writes.at(-1).body).not.toHaveProperty('code');
   await page.getByRole('button', { name: '编辑平台：模拟新增平台', exact: true }).click();
   await page.getByRole('button', { name: '删除平台', exact: true }).click();
   state.fail = true;

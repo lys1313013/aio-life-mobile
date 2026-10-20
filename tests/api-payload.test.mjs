@@ -34,7 +34,7 @@ test('会员平台关联保留长 ID、明确解绑和停用，剔除只读派�
   assert.deepEqual(minimalRequestPayload('/system/membership-providers/' + id, 'PUT', {
     name: '腾讯视频', code: 'tencent_video', category: 'video', iconKey: null,
     sortOrder: 0, isEnabled: 0, id, createUser: '1',
-  }), { name: '腾讯视频', code: 'tencent_video', category: 'video', iconKey: null, sortOrder: 0, isEnabled: 0 })
+  }), { name: '腾讯视频', category: 'video', iconKey: null, sortOrder: 0, isEnabled: 0 })
 })
 
 test('动态路由创建、更新、排序保留业务字段和字符串 ID', () => {
