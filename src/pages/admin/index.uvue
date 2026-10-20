@@ -4,6 +4,7 @@ import { isRequired } from '../../services/form-required.ts';
 import MenuManager from '../../components/MenuManager.uvue';
 import DictDataPanel from './DictDataPanel.uvue';
 import DictTypePanel from './DictTypePanel.uvue';
+import WechatConfigEditor from './WechatConfigEditor.uvue';
 import { menuMoveChanges } from '../../services/admin/menu-tree.ts';
 import { computed, ref } from 'vue';
 import { onLoad, onShow, onUnload } from '@dcloudio/uni-app';
@@ -565,6 +566,8 @@ async function download() {
           :class="themeClass('admin-card')"
         >
           <CategoryIcon v-if="kind === 'user-dict'" :icon="row.icon" :color="row.color" />
+          <WechatConfigEditor v-if="kind === 'config' && row.configKey === 'wechat.mini'" :config-value="row.configValue" :disabled="!!busyId || loading" @saved="updated => rows = rows.map(item => item.configKey === updated.configKey ? updated : item)" />
+          <template v-else>
           <view v-for="key in spec.display" :key="key" class="admin-value ui-row ui-py-xs"
             ><text class="admin-label" :class="themeClass('admin-label')">{{ label(key) }}</text
             ><text class="admin-text">{{ display(row, key) }}</text></view
@@ -644,7 +647,8 @@ async function download() {
                 variant="quiet"
                 @click="toggleSelected(row.id)"
             /></template>
-          </view> </view></PageState
+          </view>
+          </template> </view></PageState
       ><LoadMore :error="moreError"
         v-if="!spec.tree && !spec.array"
         :loading="loading"

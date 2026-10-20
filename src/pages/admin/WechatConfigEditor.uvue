@@ -1,0 +1,84 @@
+<script setup lang="ts">
+import { reactive, ref, watch, onUnmounted } from 'vue';
+import { onHide, onShow } from '@dcloudio/uni-app';
+import FormField from '../../components/FormField.uvue';
+import FormActions from '../../components/FormActions.uvue';
+import MobileButton from '../../components/MobileButton.uvue';
+import { session } from '../../services/session.ts';
+import { saveConfig } from './services/index.ts';
+
+const props = defineProps<{ configValue: string; disabled?: boolean }>();
+const emit = defineEmits(['saved']);
+const defaults = {
+  enabled: false, appId: '', appSecret: '', subscribeEnabled: false,
+  templateId: '', titleField: 'thing1', contentField: 'thing2', timeField: 'time3',
+  environment: 'formal', webScanEnabled: false, webScanEnvVersion: 'release',
+};
+const form = reactive({ ...defaults });
+const secretConfigured = ref(false), advanced = ref(false), saving = ref(false), error = ref('');
+const versions = [
+  { label: '正式版', notification: 'formal', scan: 'release' },
+  { label: '体验版', notification: 'trial', scan: 'trial' },
+  { label: '开发版', notification: 'developer', scan: 'develop' },
+];
+let active = true, revision = 0;
+onHide(() => { active = false; revision++; form.appSecret = ''; });
+onShow(() => { active = true; });
+onUnmounted(() => { active = false; form.appSecret = ''; });
+watch(() => props.configValue, value => {
+  const data = JSON.parse(value || '{}');
+  for (const key of Object.keys(defaults)) Object.assign(form, { [key]: data[key] ?? defaults[key] });
+  form.appSecret = '';
+  secretConfigured.value = data.appSecretConfigured === true;
+}, { immediate: true });
+async function save() {
+  if (saving.value || props.disabled || !active) return;
+  saving.value = true;
+  error.value = '';
+  const token = session.token;
+  const requestRevision = revision;
+  try {
+    const updated = await saveConfig({ configKey: 'wechat.mini', configType: 'JSON' }, JSON.stringify(form));
+    if (active && revision === requestRevision && session.token === token) {
+      form.appSecret = '';
+      emit('saved', updated);
+      uni.showToast({ title: '微信配置已生效', icon: 'success' });
+    }
+  } catch (reason) {
+    if (active && revision === requestRevision && session.token === token) error.value = reason.message || '保存失败，请重试';
+  } finally {
+    saving.value = false;
+  }
+}
+</script>
+
+<template>
+  <view>
+    <text class="ui-type-title">微信小程序与订阅通知</text>
+    <view class="ui-mt-sm">
+      <FormField label="微信登录"><switch :checked="form.enabled" :disabled="saving || disabled" aria-label="启用微信登录" @change="event => form.enabled = event.detail.value" /></FormField>
+      <FormField label="订阅通知"><switch :checked="form.subscribeEnabled" :disabled="saving || disabled" aria-label="启用微信订阅通知" @change="event => form.subscribeEnabled = event.detail.value" /></FormField>
+      <FormField label="AppID" v-model="form.appId" :disabled="saving || disabled" />
+      <FormField label="AppSecret" kind="password" v-model="form.appSecret" :disabled="saving || disabled" :placeholder="secretConfigured ? '已配置，留空保留' : '填写小程序 AppSecret'" />
+      <FormField label="订阅模板 ID" v-model="form.templateId" :disabled="saving || disabled" placeholder="微信后台选用的模板 ID" />
+      <MobileButton :label="advanced ? '收起高级设置' : '高级设置'" variant="quiet" :disabled="saving || disabled" @click="advanced = !advanced" />
+      <view v-if="advanced" class="ui-mt-sm">
+        <FormField label="标题字段" v-model="form.titleField" :disabled="saving || disabled" placeholder="例如 thing1，不使用则留空" />
+        <FormField label="内容字段" v-model="form.contentField" :disabled="saving || disabled" placeholder="例如 thing2，不使用则留空" />
+        <FormField label="时间字段" v-model="form.timeField" :disabled="saving || disabled" placeholder="例如 time3，不使用则留空" />
+        <FormField label="通知打开版本" kind="selector" :disabled="saving || disabled" :model-value="versions.find(item => item.notification === form.environment)?.label || ''" :options="versions.map(item => item.label)" @update:model-value="value => form.environment = versions.find(item => item.label === value)?.notification || 'formal'" />
+        <FormField label="网页微信扫码登录"><switch :checked="form.webScanEnabled" :disabled="saving || disabled" aria-label="启用网页微信扫码登录" @change="event => form.webScanEnabled = event.detail.value" /></FormField>
+        <FormField label="网页扫码使用版本" kind="selector" :disabled="saving || disabled" :model-value="versions.find(item => item.scan === form.webScanEnvVersion)?.label || ''" :options="versions.map(item => item.label)" @update:model-value="value => form.webScanEnvVersion = versions.find(item => item.label === value)?.scan || 'release'" />
+      </view>
+      <text v-if="error" class="wechat-error ui-type-body" role="alert">{{ error }}</text>
+      <view class="ui-mt-sm"><FormActions><MobileButton label="保存微信配置" icon="ant-design:check-outlined" :loading="saving" :disabled="disabled" @click="save" /></FormActions></view>
+    </view>
+  </view>
+</template>
+
+<style scoped lang="scss">
+@use '../../styles/spacing.scss';
+@use '../../styles/typography' as *;
+@include type-utilities('title', 'body');
+.wechat-error { color: #e05260; }
+</style>

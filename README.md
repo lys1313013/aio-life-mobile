@@ -180,7 +180,7 @@ npm run check:weixin-size:only  # 只检查已有 dist/build/mp-weixin，适合�
 
 本次 130 项单元测试、H5 / 微信构建通过，产物相对 JS 依赖无缺失；15 项相关 Web 模拟回归通过（六组领域页面加载、MCP 失败重试、两组 Markdown 表格、六组 CBTI 海报生成）。5180 已有开发服务，本次在忽略目录复制测试并将固定 API 拦截地址改为 5187，独立启动生产预览；初次仅改预览端口时因旧拦截地址未匹配而失败，不能算产品失败。原综合用例的海报流程通过，但后续时迹兼容编辑的旧关闭按钮定位超时，未将该综合用例记为通过。部署测试副本与日志保存在本机忽略目录 `artifacts/weixin-deploy/`。
 
-后端先执行用户表迁移，再配置 `AIO_LIFE_WECHAT_MINI_ENABLED=true`、`AIO_LIFE_WECHAT_MINI_APP_ID` 和服务端 `AIO_LIFE_WECHAT_MINI_APP_SECRET`。AppID 应与本地 `src/project.config.json` 的 `appid` 一致。AppSecret 不得放入客户端或 `VITE_*` 变量。能力未启用时自动保留账号密码登录。
+后端先执行用户表迁移，再由管理员在「系统配置 → 微信小程序与订阅通知」填写 AppID、AppSecret 并启用微信登录，保存立即生效。首次保存后台配置前仍兼容原微信环境变量。AppID 应与本地 `src/project.config.json` 的 `appid` 一致。AppSecret 不得放入客户端或 `VITE_*` 变量。能力未启用时自动保留账号密码登录。
 
 首次微信登录可选择手机号授权注册或登录原账号绑定；已有微信绑定后无需重复手机号授权。手机号已占用时必须验证原账号密码。临时票据只保存在页面内存，不能作为 Token 使用；取消授权可重试，凭证失效需要重新微信登录。新用户可在登录后设置密码，也可跳过。
 
@@ -189,7 +189,7 @@ npm run check:weixin-size:only  # 只检查已有 dist/build/mp-weixin，适合�
 
 在微信开发者工具中导入 `dist/build/mp-weixin`，配置自己的小程序 AppID。正式使用时配置 HTTPS request 合法域名；本地联调可仅在开发者工具中临时关闭域名校验。框架编译通过不等同于真机验证或审核通过。
 
-微信小程序一次性订阅通知目前试点支持力扣未打卡提醒，在「我 → 通知设置」订阅并发送测试。测试会消耗一次订阅机会，渠道默认关闭；后端模板字段配置与验收步骤见 [微信小程序订阅消息接入](../docs/微信小程序订阅消息接入.md)。Web、H5 和 App 不调起小程序订阅授权。
+微信小程序一次性订阅通知目前试点支持力扣未打卡提醒，在「我 → 通知设置」订阅并发送测试。测试会消耗一次订阅机会，渠道默认关闭；管理员可在系统配置表单填写模板和字段，AppSecret 加密保存且不回显。配置与验收步骤见 [微信小程序订阅消息接入](../docs/微信小程序订阅消息接入.md)。Web、H5 和 App 不调起小程序订阅授权。
 
 ### iOS / Android
 
@@ -381,7 +381,7 @@ tests/                契约测试与 Web E2E
 
 `pages/auth/web-login` 位于账号分包。微信扫码进入后，未登录用户先走现有微信登录/注册，完成后回到确认页；确认会重新取得微信 code 验证当前账号，全程不请求手机号。
 
-上线时先部署后端接口，再上传发布包含该页面的小程序，最后开启后端 `AIO_LIFE_WECHAT_WEB_SCAN_ENABLED=true` 并部署 Web。正式版使用 `AIO_LIFE_WECHAT_WEB_SCAN_ENV_VERSION=release`。完整协议、测试边界和发布顺序见后端 `docs/微信小程序登录.md` 的 Web 扫码章节。
+上线时先部署后端接口，再上传发布包含该页面的小程序，最后在系统配置高级设置开启「网页微信扫码登录」并部署 Web。正式版选择「网页扫码使用版本 → 正式版」。完整协议、测试边界和发布顺序见后端 `docs/微信小程序登录.md` 的 Web 扫码章节。
 
 专项验证：`node --test tests/wechat-web-login.test.mjs tests/wechat-auth.test.mjs`、`node tests/wechat-ui/run.mjs`。后者仅在隔离测试工程中模拟微信，包含扫码新用户注册后的返回、确认/取消与三种宽度的深浅主题截图，不能替代真机扫码。
 
