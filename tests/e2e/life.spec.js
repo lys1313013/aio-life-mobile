@@ -196,6 +196,7 @@ test("配置的菜单树支持嵌套返回、搜索直达与原生业务路由",
   await page.getByRole("button", { name: "时迹", exact: true }).click();
   await expect(page).toHaveURL(/pages\/time\/index/);
   await page.locator("uni-tabbar").getByText("我", { exact: true }).click();
+  await page.getByRole("button", { name: "设置", exact: true }).click();
   await page.getByRole("button", { name: "关于", exact: true }).click();
   await expect(page).toHaveURL(/pages\/about\/index/);
 });

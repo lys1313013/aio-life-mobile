@@ -96,13 +96,15 @@ test('短时间返回首页保留业务内容和分页，不重新请求或出�
   const calls = await setup(page);
   await expect(page.locator('[aria-label="阅读首页卡片"] .reading-book')).toHaveCount(20);
   await page.locator('uni-tabbar').getByText('我', { exact: true }).click();
-    await page.getByRole('button', { name: '关于', exact: true }).click();
+  await page.getByRole('button', { name: '设置', exact: true }).click();
+  await page.getByRole('button', { name: '关于', exact: true }).click();
   await expect(page).toHaveURL(/pages\/about\/index/);
   let profiles = 0;
   await page.route('**/api/user/info', route => {
     profiles++;
     return route.fulfill({ json: { code: 0, data: { id: 'fixture-user', nickname: '测试用户' } } });
   });
+  await page.getByRole('button', { name: '返回', exact: true }).click();
   await page.getByRole('button', { name: '返回', exact: true }).click();
   await expect(page).toHaveURL(/pages\/profile\/index/);
   const profilesBeforeHome = profiles;
@@ -443,8 +445,10 @@ test('成功写入后返回首页只更新受影响的目标卡片', async ({ pa
   const count = path => requests.filter(item => item === 'GET ' + path).length;
   const before = Object.fromEntries(['/goals', '/user/info', '/dashboard/tasks', '/quick-nav/candidates'].map(path => [path, count(path)]));
   await page.locator('uni-tabbar').getByText('我', { exact: true }).click();
-    await page.getByRole('button', { name: '关于', exact: true }).click();
+  await page.getByRole('button', { name: '设置', exact: true }).click();
+  await page.getByRole('button', { name: '关于', exact: true }).click();
   await expect(page).toHaveURL(/pages\/about\/index/);
+  await page.getByRole('button', { name: '返回', exact: true }).click();
   await page.getByRole('button', { name: '返回', exact: true }).click();
     await page.locator('uni-tabbar').getByText('首页', { exact: true }).click();
   await expect.poll(() => count('/goals')).toBe(before['/goals'] + 1);

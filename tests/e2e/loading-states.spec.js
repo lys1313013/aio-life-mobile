@@ -154,7 +154,7 @@ const scenarios = [
   ['tasks/goals', '.goal-grid .skeleton-tile'],
   ['goods/wardrobe', '.item-photo .skeleton-cover'],
   ['profile/settings', '.skeleton-input'],
-  ['profile/index', '.skeleton-avatar'],
+  ['profile/index', '.skeleton-profile-avatar'],
   ['time/index', '.timeline[aria-busy="true"]'],
 ];
 // Every request after authentication is held so each route's first-frame loading
