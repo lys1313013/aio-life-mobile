@@ -174,10 +174,6 @@ export interface ChangePasswordReq {
   newPassword?: null | string;
 }
 
-export interface ChatSessionSaveReq {
-  title?: null | string;
-}
-
 export interface CommonReq {
   idList?: Array<string> | null;
 }
@@ -403,21 +399,6 @@ export interface IncomeUpdateReq {
   remark?: null | string;
   incTypeId?: null | string;
   tax?: null | number | string;
-}
-
-export interface LLMKeyCreateReq {
-  modelName?: null | string;
-  apiKey?: null | string;
-  baseUrl?: null | string;
-  isDefault?: null | number;
-}
-
-export interface LLMKeyUpdateReq {
-  id?: null | string;
-  modelName?: null | string;
-  apiKey?: null | string;
-  baseUrl?: null | string;
-  isDefault?: null | number;
 }
 
 export interface LoginReq {
@@ -1182,7 +1163,6 @@ export interface ApiRequests {
   CbtiPersonalitySaveReq: CbtiPersonalitySaveReq;
   CbtiTestReq: CbtiTestReq;
   ChangePasswordReq: ChangePasswordReq;
-  ChatSessionSaveReq: ChatSessionSaveReq;
   CommonReq: CommonReq;
   DeviceCreateReq: DeviceCreateReq;
   DeviceUpdateReq: DeviceUpdateReq;
@@ -1207,8 +1187,6 @@ export interface ApiRequests {
   HonorRecordUpdateReq: HonorRecordUpdateReq;
   IncomeCreateReq: IncomeCreateReq;
   IncomeUpdateReq: IncomeUpdateReq;
-  LLMKeyCreateReq: LLMKeyCreateReq;
-  LLMKeyUpdateReq: LLMKeyUpdateReq;
   LoginReq: LoginReq;
   MbtiResultSaveReq: MbtiResultSaveReq;
   MembershipCreateReq: MembershipCreateReq;
@@ -1463,9 +1441,6 @@ const fields: Record<string, Record<string, null | string>> = {
     oldPassword: null,
     newPassword: null,
   },
-  ChatSessionSaveReq: {
-    title: null,
-  },
   CommonReq: {
     idList: null,
   },
@@ -1668,19 +1643,6 @@ const fields: Record<string, Record<string, null | string>> = {
     remark: null,
     incTypeId: null,
     tax: null,
-  },
-  LLMKeyCreateReq: {
-    modelName: null,
-    apiKey: null,
-    baseUrl: null,
-    isDefault: null,
-  },
-  LLMKeyUpdateReq: {
-    id: null,
-    modelName: null,
-    apiKey: null,
-    baseUrl: null,
-    isDefault: null,
   },
   LoginReq: {
     username: null,
@@ -2408,10 +2370,6 @@ const queryFields: Record<string, string[]> = {
     'userId',
   ],
   '/feedback/my/{id}': [],
-  '/llm/chat/history': ['conversationId'],
-  '/llm/sessions': [],
-  '/llm/key/list': [],
-  '/llm/key/default': [],
   '/mcp/tools': [],
   '/membership/list': [],
   '/membership/stats': [],
@@ -2728,20 +2686,6 @@ const requestModels: Array<{
     model: 'FeedbackCommentCreateReq',
     list: false,
   },
-  {
-    method: 'POST',
-    path: '/llm/sessions',
-    model: 'ChatSessionSaveReq',
-    list: false,
-  },
-  {
-    method: 'PUT',
-    path: '/llm/sessions/{conversationId}',
-    model: 'ChatSessionSaveReq',
-    list: false,
-  },
-  { method: 'POST', path: '/llm/key', model: 'LLMKeyCreateReq', list: false },
-  { method: 'PUT', path: '/llm/key', model: 'LLMKeyUpdateReq', list: false },
   {
     method: 'POST',
     path: '/mcp/tools/call',
