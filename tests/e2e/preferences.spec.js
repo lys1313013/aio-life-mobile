@@ -1,8 +1,8 @@
 const { test, expect } = require('@playwright/test');
 const { dashboardFixture } = require('./fixtures.js');
 async function setup(page) {
- const state={writes:[],fail:false,unlock:false,security:[] ,notifications:[]};
- await page.route('http://127.0.0.1:5180/api/**', async route=>{
+ const state={writes:[],fail:false,unlock:false,security:[] ,notifications:[],wechat:{enabled:false,bound:false,bizType:'LEETCODE_REMINDER',templateId:null}};
+ await page.route(/^https?:\/\/[^/]+\/api\//, async route=>{
   const path=new URL(route.request().url()).pathname,method=route.request().method();
   let data=dashboardFixture(path);
   if(path==='/api/auth/login')data={accessToken:'preferences-fixture'};
@@ -11,6 +11,7 @@ async function setup(page) {
   if(path==='/api/auth/secondary-lock/menus'){data=[];if(method==='PUT'){state.security.push(route.request().postDataJSON());data=true;}}
   if(path==='/api/auth/secondary-password/status')data={hasPassword:true};
   if(path==='/api/notification/channels/feishu'){data={configured:true,enabled:true,appId:'fixture-app',receiverOpenId:'fixture-open'};if(method==='PUT')state.notifications.push(route.request().postDataJSON());}
+  if(path==='/api/notification/channels/wechat-mini')data=state.wechat;
   if(path==='/api/notification/preferences')data=[{bizType:'fixture-visible',visible:true,description:'通知事件',channels:[{channel:'EMAIL',enabled:true}]},{bizType:'fixture-hidden',visible:false,description:'隐藏事件',channels:[{channel:'STATION',enabled:true}]}];
   if(path==='/api/api-key/list'){
    if(!state.unlock)return route.fulfill({json:{code:2001,message:'需要二级密码验证',data:{menuPath:'/mcp/api-keys'}}});
@@ -115,4 +116,18 @@ test('离开锁定页面取消等待，返回不保留二级密码',async({page}
  await expect(dialog.locator('[aria-label="二级密码"] input')).toHaveValue('');
  await dialog.getByRole('button',{name:'取消',exact:true}).click();
  await expect(dialog).toHaveCount(0);
+});
+
+test('H5显示微信渠道状态并引导到小程序，不调起原生订阅',async({page})=>{
+ const state=await setup(page);
+ await page.goto('/#/pages/profile/notifications');
+ await expect(page.getByText('暂未开通订阅消息',{exact:true})).toBeVisible();
+ state.wechat={enabled:true,bound:false,bizType:'LEETCODE_REMINDER',templateId:'fixture-template'};
+ await page.reload();
+ await expect(page.getByText('请先通过微信登录绑定当前账号',{exact:true})).toBeVisible();
+ state.wechat.bound=true;
+ await page.reload();
+ await expect(page.getByText('请在微信小程序内订阅',{exact:true})).toBeVisible();
+ await expect(page.getByRole('button',{name:'订阅一次',exact:true})).toHaveCount(0);
+ await expect(page.getByRole('button',{name:'发送测试',exact:true})).toHaveCount(0);
 });

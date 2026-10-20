@@ -189,6 +189,8 @@ npm run check:weixin-size:only  # 只检查已有 dist/build/mp-weixin，适合�
 
 在微信开发者工具中导入 `dist/build/mp-weixin`，配置自己的小程序 AppID。正式使用时配置 HTTPS request 合法域名；本地联调可仅在开发者工具中临时关闭域名校验。框架编译通过不等同于真机验证或审核通过。
 
+微信小程序一次性订阅通知目前试点支持力扣未打卡提醒，在「我 → 通知设置」订阅并发送测试。测试会消耗一次订阅机会，渠道默认关闭；后端模板字段配置与验收步骤见 [微信小程序订阅消息接入](../docs/微信小程序订阅消息接入.md)。Web、H5 和 App 不调起小程序订阅授权。
+
 ### iOS / Android
 
 `src/manifest.json` 已设置：

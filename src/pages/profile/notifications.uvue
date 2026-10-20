@@ -7,12 +7,14 @@ import MobilePage from '../../components/MobilePage.uvue';
 import MobileButton from '../../components/MobileButton.uvue';
 import FormField from '../../components/FormField.uvue';
 import PageState from '../../components/PageState.uvue';
+import LoadingIndicator from '../../components/LoadingIndicator.uvue';
 import ConfirmAction from '../../components/ConfirmAction.uvue';
 import AdaptiveModal from '../../components/AdaptiveModal.uvue';
 import { request } from '../../services/api.ts';
 import { session, restoreSession } from '../../services/session.ts';
 import { themeClass } from '../../services/theme.ts';
 import { notificationPayload } from '../../services/preferences-contract.ts';
+import { subscribeWechatOnce } from './wechat-subscription.ts';
 const loading = ref(false),
   saving = ref(false),
   testing = ref(false),
@@ -22,11 +24,13 @@ const loading = ref(false),
   error = ref(''),
   formError = ref(''),
   recipientWarning = ref('');
+const subscribing = ref(false), wechatError = ref('');
+const wechat = ref<any>({ enabled: false, bound: false });
 const config = ref<any>({}),
   preferences = ref<any[]>([]),
   recipients = ref<any[]>([]),
   form = ref<any>({});
-const channels = { STATION: '站内', EMAIL: '邮件', FEISHU: '飞书' };
+const channels = { STATION: '站内', EMAIL: '邮件', FEISHU: '飞书', WECHAT_MINI: '微信' };
 let revision = 0,
   active = true;
 watch(
@@ -41,6 +45,8 @@ watch(
     ready.value = false;
     error.value = '';
     formError.value = '';
+    wechat.value = { enabled: false, bound: false };
+    wechatError.value = '';
   },
   { flush: 'sync' },
 );
@@ -67,14 +73,16 @@ async function load() {
   loading.value = true;
   error.value = '';
   try {
-    const [c, p]: any = await Promise.all([
+    const [c, p, w]: any = await Promise.all([
       request('/notification/channels/feishu'),
       request('/notification/preferences'),
+      request('/notification/channels/wechat-mini'),
     ]);
     if (v !== revision || !active || token !== session.token) return;
     if (!Array.isArray(p)) throw new Error('通知偏好数据异常');
     config.value = c;
     preferences.value = p;
+    wechat.value = w;
     ready.value = true;
   } catch (e) {
     if (v === revision && active) error.value = e.message;
@@ -91,6 +99,32 @@ function edit() {
   };
   formError.value = '';
   editing.value = true;
+}
+async function subscribeWechat() {
+  if (subscribing.value || saving.value || !wechat.value.enabled || !wechat.value.bound || !wechat.value.templateId) return;
+  const token = session.token, v = revision;
+  subscribing.value = true;
+  wechatError.value = '';
+  try {
+    // 必须直接在用户点击调用链中触发；模板已在页面加载时取得，不先等待网络请求。
+    await subscribeWechatOnce(wechat.value.templateId);
+    if (!active || token !== session.token || v !== revision) return;
+    const data: any = await request('/notification/preferences', 'PUT', {
+      items: [{ bizType: wechat.value.bizType, channel: 'WECHAT_MINI', enabled: true }],
+    });
+    if (!active || token !== session.token || v !== revision) return;
+    preferences.value = data;
+    uni.showToast({ title: '已订阅一次', icon: 'success' });
+  } catch (e) {
+    if (active && token === session.token && v === revision) wechatError.value = e.message;
+  } finally {
+    subscribing.value = false;
+  }
+}
+async function testWechat() {
+  const token = session.token, v = revision;
+  await request('/notification/channels/wechat-mini/test', 'POST');
+  if (active && token === session.token && v === revision) uni.showToast({ title: '测试已发送', icon: 'success' });
 }
 async function saveConfig() {
   if (saving.value) return;
@@ -130,7 +164,7 @@ async function recipientsLoad() {
   }
 }
 async function savePreferences() {
-  if (saving.value || !ready.value) return;
+  if (saving.value || subscribing.value || !ready.value) return;
   saving.value = true;
   error.value = '';
   const token = session.token;
@@ -178,7 +212,7 @@ function back() {
     ><PageHeader title="通知设置" back @back="back" /><MobilePage
       :refreshing="loading"
       @refresh="load"
-      ><PageState skeleton="form" :loading="loading" :error="error" @retry="load"
+      ><PageState skeleton="form" :loading="loading && !ready" :error="error" :has-content="ready" @retry="load"
         ><view v-if="ready" class="notification-panel ui-card" :class="themeClass('notification-panel')"
           ><view class="notification-row ui-row"
             ><text class="notification-name"
@@ -198,7 +232,26 @@ function back() {
               label="删除飞书配置"
               message="删除飞书应用凭证和接收人配置？"
               :action="removeChannel" /></view></view
-        ><view v-if="ready" class="notification-panel ui-card" :class="themeClass('notification-panel')"
+        ><view v-if="ready" class="notification-panel ui-card" :class="themeClass('notification-panel')">
+          <LoadingIndicator v-if="loading" floating label="正在更新通知设置" />
+          <view class="notification-row ui-row">
+            <text class="notification-name">微信 · {{ !wechat.enabled ? '未开通' : wechat.bound ? '已绑定' : '待绑定' }}</text>
+          </view>
+          <text v-if="!wechat.enabled" class="notification-muted" :class="themeClass('notification-muted')">暂未开通订阅消息</text>
+          <text v-else-if="!wechat.bound" class="notification-muted" :class="themeClass('notification-muted')">请先通过微信登录绑定当前账号</text>
+          <template v-else>
+            <!-- #ifdef MP-WEIXIN -->
+            <view class="notification-actions ui-row">
+              <MobileButton label="订阅一次" :loading="subscribing" :disabled="saving" @click="subscribeWechat" />
+              <ConfirmAction label="发送测试" icon="" :danger="false" message="发送测试将消耗一次订阅机会，确认发送？" :action="testWechat" />
+            </view>
+            <!-- #endif -->
+            <!-- #ifndef MP-WEIXIN -->
+            <text class="notification-muted" :class="themeClass('notification-muted')">请在微信小程序内订阅</text>
+            <!-- #endif -->
+          </template>
+          <text v-if="wechatError" class="error-text" role="alert">{{ wechatError }}</text>
+        </view><view v-if="ready" class="notification-panel ui-card" :class="themeClass('notification-panel')"
           ><view
             v-for="item in preferences.filter((x) => x.visible)"
             :key="item.bizType"
@@ -210,7 +263,7 @@ function back() {
               }}</text
               ><switch
                 :checked="channel.enabled"
-                :disabled="saving"
+                :disabled="saving || subscribing || (channel.channel === 'WECHAT_MINI' && (!wechat.enabled || !wechat.bound))"
                 :aria-label="item.description + channels[channel.channel]"
                 @change="channel.enabled = $event.detail.value" /></view></view
           ><MobileButton
@@ -256,6 +309,7 @@ function back() {
 @use '../../styles/spacing.scss';
 @use '../../styles/spacing-tokens' as *;
 .notification-panel {
+  position: relative;
   background-color: #fff;
   color: #27272a;
   border-radius: 14px;

@@ -6,9 +6,11 @@ import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import assert from 'node:assert/strict';
 import { chromium } from '@playwright/test';
+import fixtures from '../e2e/fixtures.js';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
-const output = path.join(root, 'test-results/wechat-ui');
+// Playwright 会清理 test-results；源码副本独立保存在 artifacts，避免并行验证互相删除。
+const output = path.join(root, 'artifacts/wechat-ui');
 const project = path.join(output, 'project');
 await mkdir(output, { recursive: true });
 await rm(project, { recursive: true, force: true });
@@ -17,7 +19,8 @@ await cp(path.join(root, 'src'), path.join(project, 'src'), { recursive: true })
 for (const file of ['package.json', 'vite.config.js', 'index.html']) await cp(path.join(root, file), path.join(project, file));
 await symlink(path.join(root, 'node_modules'), path.join(project, 'node_modules'));
 await cp(path.join(root, 'scripts'), path.join(project, 'scripts'), { recursive: true });
-for (const file of ['src/pages/login/index.uvue', 'src/pages/auth/web-login.uvue', 'src/services/wechat-auth.ts']) {
+for (const file of ['src/pages/login/index.uvue', 'src/pages/auth/web-login.uvue', 'src/services/wechat-auth.ts',
+  'src/pages/profile/notifications.uvue', 'src/pages/profile/wechat-subscription.ts']) {
   const target = path.join(project, file);
   await writeFile(target, (await readFile(target, 'utf8')).replaceAll('MP-WEIXIN', 'WEB'));
 }
@@ -43,6 +46,7 @@ try {
   }
   assert.ok(ready, logs);
   browser = await chromium.launch({ channel: process.env.CI ? undefined : 'chrome' });
+  if (process.env.AIO_WECHAT_UI_ONLY !== 'subscription') {
   for (const width of [390, 768, 1440]) {
     for (const colorScheme of ['light', 'dark']) {
       const context = await browser.newContext({ viewport: { width, height: 900 }, colorScheme });
@@ -179,6 +183,8 @@ try {
     for (const colorScheme of ['light', 'dark']) {
       const context = await browser.newContext({ viewport: { width, height: 900 }, colorScheme });
       const scanPage = await context.newPage();
+      // 注册完成会预取其他页面配置；全部隔离，不能让模拟 Token 请求真实后端。
+      await context.route(origin + '/api/**', route => route.fulfill({ json: { code: 0, data: [] } }));
       const scanCalls = [];
       await scanPage.route(/\/api\/(?:auth\/(?:wechat\/(?:web\/(?:scan|confirm|cancel)|mini\/(?:capabilities|login|register))|secondary-lock\/menus)|user\/info|menu\/all)(?:\?.*)?$/, async route => {
         const url = new URL(route.request().url()).pathname;
@@ -212,6 +218,119 @@ try {
     }
   }
   console.log('新用户扫码→注册→返回确认页→确认/取消，三种尺寸和深浅主题: passed');
+  }
+  // 订阅通知仅在测试副本编译小程序分支，原生回调和业务 API 全部使用模拟数据。
+  for (const width of [390, 768, 1440]) for (const colorScheme of ['light', 'dark']) {
+    const context = await browser.newContext({ viewport: { width, height: 900 }, colorScheme });
+    const notice = await context.newPage();
+    const writes = [];
+    let enabled = true, bound = true, failTest = false, delay = false, reads = 0;
+    let current = [{ bizType: 'LEETCODE_REMINDER', description: '力扣未打卡提醒', visible: true,
+      channels: [{ channel: 'EMAIL', enabled: true }, { channel: 'WECHAT_MINI', enabled: false }] }];
+    const errors = [];
+    notice.on('pageerror', error => errors.push(error.message));
+    await notice.route(origin + '/api/**', async route => {
+      const url = new URL(route.request().url()).pathname;
+      const method = route.request().method();
+      let data = fixtures.dashboardFixture(url) ?? [];
+      if (url === '/api/auth/login') data = { accessToken: 'fixture-notice-token' };
+      if (url.endsWith('/capabilities')) data = { enabled: false };
+      if (url.endsWith('/user/info')) data = { id: '9223372036854775807', nickname: '通知测试用户' };
+      if (url.endsWith('/channels/feishu')) data = { configured: false, enabled: false };
+      if (url.endsWith('/channels/wechat-mini')) data = { enabled, bound, bizType: 'LEETCODE_REMINDER', templateId: 'fixture-template' };
+      if (url.endsWith('/notification/preferences')) {
+        if (method === 'GET') reads++;
+        if (method === 'PUT') {
+          const body = route.request().postDataJSON();
+          writes.push({ url, body });
+          assert.deepEqual(body, { items: [{ bizType: 'LEETCODE_REMINDER', channel: 'WECHAT_MINI', enabled: true }] });
+          current[0].channels[1].enabled = true;
+        }
+        data = current;
+      }
+      if (url.endsWith('/channels/wechat-mini/test')) {
+        writes.push({ url });
+        if (failTest) return route.fulfill({ json: { code: 1, message: '没有可用的订阅机会，请先在小程序点击订阅一次' } });
+        data = null;
+      }
+      if (delay && url.includes('/notification/')) await new Promise(resolve => setTimeout(resolve, 250));
+      return route.fulfill({ json: { code: 0, data } });
+    });
+    await notice.goto(origin + '/#/pages/login/index');
+    await notice.getByRole('button', { name: '登录', exact: true }).waitFor().catch(async error => {
+      await notice.screenshot({ path: path.join(output, 'subscription-startup-error.png') });
+      throw new Error(error.message + '\n' + errors.join('\n') + '\n' + await notice.locator('body').innerText());
+    });
+    await notice.locator('[aria-label="账号"] input').fill('fixture');
+    await notice.locator('[aria-label="密码"] input').fill('fixture-password');
+    await notice.getByRole('button', { name: '登录', exact: true }).click();
+    await notice.waitForFunction(() => uni.getStorageSync('aio-life-mobile.access-token.v1') === 'fixture-notice-token');
+    await notice.evaluate(() => {
+      uni.reLaunch({ url: '/pages/profile/notifications' });
+      window.__subscriptionMode = 'reject';
+      window.__subscriptionCalls = 0;
+      uni.requestSubscribeMessage = options => {
+        window.__subscriptionCalls++;
+        if (window.__subscriptionMode === 'wait') window.__pendingSubscription = options;
+        else options.success({ [options.tmplIds[0]]: window.__subscriptionMode });
+      };
+    });
+    const subscribe = notice.getByRole('button', { name: '订阅一次', exact: true });
+    await subscribe.waitFor();
+    await subscribe.click();
+    await notice.getByText('未获得订阅授权，可再次尝试', { exact: true }).waitFor();
+    assert.equal(writes.length, 0);
+    await notice.evaluate(() => { window.__subscriptionMode = 'wait'; });
+    await subscribe.click();
+    assert.equal(await subscribe.isDisabled(), true);
+    await notice.evaluate(() => {
+      document.querySelector('[aria-label="订阅一次"]').click();
+      const options = window.__pendingSubscription;
+      options.success({ [options.tmplIds[0]]: 'accept' });
+    });
+    await notice.getByText('已订阅一次', { exact: true }).waitFor();
+    assert.equal(await notice.evaluate(() => window.__subscriptionCalls), 2);
+    assert.equal(writes.length, 1);
+    await notice.getByRole('button', { name: '发送测试', exact: true }).click();
+    await notice.getByText('发送测试将消耗一次订阅机会，确认发送？', { exact: true }).waitFor();
+    assert.equal(writes.length, 1);
+    await notice.getByRole('button', { name: '确认', exact: true }).click();
+    await notice.getByText('测试已发送', { exact: true }).waitFor();
+    assert.equal(writes.length, 2);
+    failTest = true;
+    await notice.getByRole('button', { name: '发送测试', exact: true }).click();
+    await notice.getByRole('button', { name: '确认', exact: true }).click();
+    await notice.getByText('没有可用的订阅机会，请先在小程序点击订阅一次', { exact: true }).waitFor();
+    await notice.getByRole('button', { name: '取消', exact: true }).click();
+    await notice.getByText('测试已发送', { exact: true }).waitFor({ state: 'hidden' });
+    await notice.locator('.notification-panel').last().waitFor({ state: 'visible' });
+    await notice.screenshot({ path: path.join(output, `subscription-${width}-${colorScheme}.png`), fullPage: true, animations: 'disabled' });
+    const before = await notice.locator('.notification-panel').last().boundingBox();
+    delay = true;
+    const previousReads = reads;
+    await notice.locator('.mobile-page-scroll').evaluate(element => {
+      let component = element.__vueParentComponent;
+      while (component && component.type.__name !== 'MobilePage') component = component.parent;
+      if (!component) throw new Error('Missing MobilePage');
+      component.emit('refresh');
+    });
+    await notice.waitForFunction(() => document.querySelector('[aria-label="正在更新通知设置"]'));
+    const after = await notice.locator('.notification-panel').last().boundingBox();
+    assert.ok(Math.abs(before.y - after.y) < 2);
+    assert.ok(reads > previousReads);
+    assert.equal(await notice.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+    bound = false;
+    await notice.reload();
+    await notice.getByText('请先通过微信登录绑定当前账号', { exact: true }).waitFor();
+    assert.equal(await subscribe.count(), 0);
+    enabled = false;
+    await notice.reload();
+    await notice.getByText('暂未开通订阅消息', { exact: true }).waitFor();
+    assert.equal(await subscribe.count(), 0);
+    assert.deepEqual(errors, []);
+    await context.close();
+    console.log(`订阅授权/拒绝/去重/测试确认/无额度/未绑定/未开通 ${width}px ${colorScheme}: passed`);
+  }
 } finally {
   if (browser) await browser.close();
   server.kill('SIGTERM');
