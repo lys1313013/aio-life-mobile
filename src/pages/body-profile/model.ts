@@ -1,4 +1,4 @@
-/** 两端遵循同一份身体档案契约；所有数值单位见字段名，仅保存当前状态。 */
+/** 两端遵循同一份身体数据契约；所有数值单位见字段名，仅保存当前状态。 */
 export const measurements = [
   { key: 'heightCm', label: '身高', unit: 'cm' },
   { key: 'weightKg', label: '体重', unit: 'kg' },

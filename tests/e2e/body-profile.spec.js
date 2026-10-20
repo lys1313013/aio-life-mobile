@@ -32,6 +32,8 @@ async function setup(page) {
     }
     let data = dashboardFixture(path);
     if (path === '/api/auth/login') data = { accessToken: 'body-profile-fixture' };
+    if (path === '/api/quick-nav/candidates') data = [{ menuId: '1511', path: '/record/body-profile', title: '身体数据', icon: 'mdi:human-handsup' }];
+    if (path === '/api/menu/preferences') data = { menus: [{ id: '1500', title: '记录', children: [{ id: '1511', title: '身体数据', children: [] }] }], hiddenMenuIds: [] };
     if (path === '/api/user/info') data = { id: '7', nickname: '模拟用户', accountUsername: 'fixture' };
     return route.fulfill({ json: { code: 0, data: data === undefined ? [] : data } });
   });
@@ -44,11 +46,19 @@ async function setup(page) {
 }
 
 for (const width of [390, 768, 1440]) for (const theme of ['light', 'dark']) {
-  test(`身体档案当前值、清空和失败恢复 ${width} ${theme}`, async ({ page }, testInfo) => {
+  test(`身体数据当前值、清空和失败恢复 ${width} ${theme}`, async ({ page }, testInfo) => {
     await page.setViewportSize({ width, height: 1000 });
     await page.emulateMedia({ colorScheme: theme });
     const state = await setup(page);
-    await page.goto('/#/pages/body-profile/index');
+    await page.locator('uni-tabbar').getByText('我', { exact: true }).click();
+    await expect(page.getByRole('button', { name: '编辑资料', exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: '身体数据', exact: true })).toHaveCount(0);
+    await page.screenshot({ path: testInfo.outputPath('my.png'), fullPage: true });
+    await page.locator('uni-tabbar').getByText('全部', { exact: true }).click();
+    await expect(page.getByRole('button', { name: '身体数据', exact: true })).toBeVisible();
+    await page.screenshot({ path: testInfo.outputPath('menu.png'), fullPage: true });
+    await page.getByRole('button', { name: '身体数据', exact: true }).click();
+    await expect(page).toHaveURL(/pages\/body-profile\/index/);
     await expect(page.locator('[data-testid="body-bmi"]')).toHaveText('22.7');
     await expect(page.getByRole('combobox', { name: '性别' })).toHaveCount(0);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
@@ -78,7 +88,7 @@ for (const width of [390, 768, 1440]) for (const theme of ['light', 'dark']) {
     await page.getByRole('dialog').getByRole('button', { name: '保存', exact: true }).click();
     await expect(page.locator('[data-testid="body-bmi"]')).toHaveText('—');
     expect(state.profile.heightCm).toBeNull();
-    await page.getByRole('button', { name: '编辑身体档案', exact: true }).click();
+    await page.getByRole('button', { name: '编辑身体数据', exact: true }).click();
     await expect(page.locator('[aria-label="性别"]')).toBeVisible();
     await page.getByRole('dialog').getByRole('button', { name: '取消', exact: true }).click();
     await page.getByRole('button', { name: '穿戴尺码与身体长度', exact: true }).click();
@@ -91,11 +101,11 @@ test('空态及延迟读取布局稳定，首次失败禁编辑并可重试', as
   state.failRead = true;
   await page.goto('/#/pages/body-profile/index');
   await expect(page.getByRole('alert')).toContainText('模拟读取失败');
-  await expect(page.getByRole('button', { name: '编辑身体档案', exact: true })).toBeDisabled();
+  await expect(page.getByRole('button', { name: '编辑身体数据', exact: true })).toBeDisabled();
   state.failRead = false; state.delay = 600; state.profile = { ...empty };
   await page.getByRole('button', { name: '重试', exact: true }).click();
   const first = await page.locator('.body-anatomy').boundingBox();
-  await expect(page.getByRole('button', { name: '编辑身体档案', exact: true })).toBeEnabled();
+  await expect(page.getByRole('button', { name: '编辑身体数据', exact: true })).toBeEnabled();
   const loaded = await page.locator('.body-anatomy').boundingBox();
   expect(first.height).toBe(loaded.height);
   await expect(page.locator('[data-testid="body-bmi"]')).toHaveText('—');
@@ -107,11 +117,12 @@ test('空态及延迟读取布局稳定，首次失败禁编辑并可重试', as
   expect(state.profile.upperArmCm).toBe(32);
 });
 
-test('从个人中心可进入身体档案', async ({ page }) => {
+test('个人中心不再提供身体数据入口', async ({ page }) => {
   await setup(page);
   await page.goto('/#/pages/profile/index');
-  await page.getByRole('button', { name: '身体档案', exact: true }).click();
-  await expect(page.locator('[data-testid="body-bmi"]')).toHaveText('22.7');
+  await expect(page.getByRole('button', { name: '编辑资料', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: '身体数据', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: '身体档案', exact: true })).toHaveCount(0);
 });
 
 test('编辑中切换性别、测量口径和鞋码类型，不改写其他身体数据', async ({ page }) => {
@@ -120,7 +131,7 @@ test('编辑中切换性别、测量口径和鞋码类型，不改写其他身�
   await page.goto('/#/pages/body-profile/index');
   await expect(page.locator('[data-testid="body-bmi"]')).toHaveText('22.7');
   const originalFigure = await page.locator('.body-figure img').getAttribute('src');
-  await page.getByRole('button', { name: '编辑身体档案', exact: true }).click();
+  await page.getByRole('button', { name: '编辑身体数据', exact: true }).click();
   const dialog = page.getByRole('dialog');
   for (const [label, value] of [['性别', '女'], ['四肢围度测量侧别', '右侧'], ['上臂测量状态', '屈臂收缩']]) {
     await dialog.locator(`uni-picker[aria-label="${label}"]`).click();
@@ -141,7 +152,7 @@ test('编辑中切换性别、测量口径和鞋码类型，不改写其他身�
 });
 
 for (const width of [390, 768, 1440]) for (const theme of ['light', 'dark']) {
-  test(`身体档案禁用指标保持透明 ${width} 应用${theme} 系统相反主题`, async ({ page }, testInfo) => {
+  test(`身体数据禁用指标保持透明 ${width} 应用${theme} 系统相反主题`, async ({ page }, testInfo) => {
     await page.setViewportSize({ width, height: 1000 });
     await page.emulateMedia({ colorScheme: theme === 'dark' ? 'light' : 'dark' });
     await page.addInitScript(value => localStorage.setItem('aio-life-mobile.theme.v1', value), theme);
