@@ -31,7 +31,7 @@ for (const width of [320, 390, 600, 768, 1440]) {
       await expect(page.locator('.card-grid .card')).toHaveCount(2);
       await expect(page.locator('.navigation-title')).toHaveCount(0);
       await expect(page.locator('.card-actions')).toHaveCount(0);
-      await expect(page.locator('.card-grid').getByText(/额度|账单日|还款日/)).toHaveCount(0);
+      await expect(page.locator('.card-grid').getByText(/信用额度：/)).toHaveCount(2);
       await expect(page.locator('.card-face-image')).toHaveCount(1);
       fs.mkdirSync(out, { recursive: true });
       await page.screenshot({ path: `${out}/${width}-${theme}.png`, fullPage: true });

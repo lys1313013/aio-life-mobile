@@ -700,12 +700,27 @@ function handleRecordCreated(savedThought) {
     if (card) loadCard(card, true)
   }
 }
-async function completeWatched(task) {
-  if(taskBusy.value) return
-  taskBusy.value=task.id;states.watched.error='';const token=session.token
-  try {await request('/taskDetails','PUT',{id:task.id,isCompleted:task.isCompleted===1?0:1});if(isCurrent(token))await loadSection('watched')}
-  catch(e){if(isCurrent(token))states.watched.error=e.message}
-  finally {taskBusy.value=''}
+async function completeWatched(task: WatchedTask) {
+  if (taskBusy.value) return
+  taskBusy.value = task.id
+  states.watched.error = ''
+  const token = session.token
+  const generation = homeGeneration
+  const isCompleted = task.isCompleted === 1 ? 0 : 1
+  try {
+    await request('/taskDetails', 'PUT', { id: task.id, isCompleted })
+    if (!isCurrent(token) || generation !== homeGeneration) return
+    // 保留条目到下一次刷新，并阻止旧查询及其 finally 触发补刷。
+    sectionVersions.watched = (sectionVersions.watched || 0) + 1
+    editVersions.watched++
+    states.watched.loading = false
+    states.watched.revision = homeDataRevision('watched')
+    watched.value = watched.value.map(item => item.id === task.id ? { ...item, isCompleted } : item)
+  } catch (error) {
+    if (isCurrent(token) && generation === homeGeneration) states.watched.error = error.message
+  } finally {
+    taskBusy.value = ''
+  }
 }
 
 function overviewVisual(item: OverviewCard) {

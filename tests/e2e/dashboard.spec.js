@@ -105,13 +105,13 @@ test('运动分页失败保留已有记录，重试使用同一游标', async ({
   expect(next).toBe(2);
 });
 
-test('首页关注待办失败可重试，完成只提交长ID与状态',async({page})=>{
-  let fail=true;const writes=[];const detail={id:'9223372036854775807',taskId:'9223372036854775806',content:'模拟关注待办',isCompleted:0};
+test('首页关注待办失败可重试，完成保留到刷新且可取消完成',async({page})=>{
+  let fail=true,reads=0;const writes=[];const detail={id:'9223372036854775807',taskId:'9223372036854775806',content:'模拟关注待办',isCompleted:0};
   await page.route(new URL('/api/**',test.info().project.use.baseURL).href,async route=>{
     const path=new URL(route.request().url()).pathname;let data=dashboardFixture(path);
     if(path==='/api/auth/login')data={accessToken:'dashboard-action-fixture'};
     if(path==='/api/user/info')data={id:'fixture-user',nickname:'模拟首页'};
-    if(path==='/api/taskDetails/watched')data=[detail];
+    if(path==='/api/taskDetails/watched'){reads++;data=detail.isCompleted===1?[]:[detail]}
     if(path==='/api/taskDetails'&&route.request().method()==='PUT'){
       const payload=route.request().postDataJSON();writes.push(payload);
       if(fail)return route.fulfill({json:{code:1,message:'模拟更新失败'}});
@@ -123,13 +123,26 @@ test('首页关注待办失败可重试，完成只提交长ID与状态',async({
   await page.getByRole('button',{name:'完成待办',exact:true}).click();await expect(page.getByRole('button',{name:'重试待办：模拟更新失败',exact:true})).toBeVisible();
   fail=false;await page.getByRole('button',{name:'重试待办：模拟更新失败',exact:true}).click();await page.getByRole('button',{name:'完成待办',exact:true}).click();
   await expect(page.getByRole('button',{name:'标记未完成',exact:true})).toBeVisible();
+  expect(reads).toBe(2);
+  await expect(page.locator('.task-copy .completed')).toHaveText(detail.content);
   expect(writes.at(-1)).toEqual({id:'9223372036854775807',isCompleted:1});
+  await page.getByRole('button',{name:'标记未完成',exact:true}).click();
+  await expect(page.getByRole('button',{name:'完成待办',exact:true})).toBeVisible();
+  expect(writes.at(-1)).toEqual({id:'9223372036854775807',isCompleted:0});
+  expect(reads).toBe(2);
   const home=page.url();
   await page.getByRole('button',{name:'编辑待办 模拟关注待办',exact:true}).click();
   const editor=page.getByRole('dialog',{name:'编辑待办',exact:true});
   await expect(editor).toBeVisible();
   await expect(editor.getByRole('textbox',{name:'内容',exact:true})).toHaveValue(detail.content);
   await expect(page).toHaveURL(home);
+  await editor.getByRole('button',{name:'取消',exact:true}).click();
+  await page.getByRole('button',{name:'完成待办',exact:true}).click();
+  await expect(page.getByRole('button',{name:'标记未完成',exact:true})).toBeVisible();
+  expect(reads).toBe(2);
+  await page.getByRole('button',{name:'刷新待办',exact:true}).click();
+  await expect(page.getByRole('button',{name:'编辑待办 模拟关注待办',exact:true})).toHaveCount(0);
+  expect(reads).toBe(3);
 });
 
 for (const width of [390, 768, 1440]) {

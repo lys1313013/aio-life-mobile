@@ -4,6 +4,7 @@ useWindowResize(() => { measureStackFace(); measureCardLayers(); })
 import { useAppLayout, appTextColor } from '../../services/app-layout.ts'
 const { appGridItem } = useAppLayout()
 
+import { cardAmountText } from './services/card-amount.ts';
 import FormActions from '../../components/FormActions.uvue';
 import { isRequired, missingRequired } from '../../services/form-required.ts';
 import LoadingIndicator from '../../components/LoadingIndicator.uvue';
@@ -722,6 +723,7 @@ function edit(card: any = null) {
         openedDate: '',
         expiryMonth: '',
         creditLimit: '',
+        balance: '',
         statementDay: '',
         repaymentDay: '',
         coverTemplateId: null,
@@ -748,7 +750,15 @@ function selectDraftBank(value: { bankId: string | null; customBankName: string 
 const draftType = computed({
   get: () => (draft.value.cardType === 'credit' ? '信用卡' : '储蓄卡'),
   set: (value) => {
-    draft.value.cardType = value === '信用卡' ? 'credit' : 'debit';
+    const type = value === '信用卡' ? 'credit' : 'debit';
+    if (type === draft.value.cardType) return;
+    draft.value.cardType = type;
+    if (type === 'credit') draft.value.balance = null;
+    else {
+      draft.value.creditLimit = null;
+      draft.value.statementDay = null;
+      draft.value.repaymentDay = null;
+    }
   },
 });
 const draftStatus = computed({
@@ -781,8 +791,10 @@ async function save() {
     formError.value = '请输入12至19位卡号';
     return;
   }
-  if (draft.value.creditLimit !== '' && Number(draft.value.creditLimit) < 0) {
-    formError.value = '信用额度不能为负数';
+  const amountKey = draft.value.cardType === 'credit' ? 'creditLimit' : 'balance';
+  const amount = draft.value[amountKey];
+  if (amount != null && amount !== '' && !/^\d{1,16}(\.\d{1,2})?$/.test(String(amount))) {
+    formError.value = (amountKey === 'balance' ? '余额' : '信用额度') + '须为非负金额，最多16位整数和两位小数';
     return;
   }
   for (const key of ['statementDay', 'repaymentDay'])
@@ -803,12 +815,19 @@ async function save() {
   saving.value = true;
   try {
     const data = { ...draft.value };
+    if (data.cardType === 'credit') data.balance = null;
+    else {
+      data.creditLimit = null;
+      data.statementDay = null;
+      data.repaymentDay = null;
+    }
     if (data.expiryMonth && data.expiryMonth.length === 7) data.expiryMonth += '-01';
     if (!data.cardNo) delete data.cardNo;
     for (const key of [
       'openedDate',
       'expiryMonth',
       'creditLimit',
+      'balance',
       'statementDay',
       'repaymentDay',
     ])
@@ -954,7 +973,7 @@ async function removeTag(value: any) {
         :empty-text="layerType === 'credit' ? '暂无信用卡' : '暂无储蓄卡'"
         @retry="load"
         >
-<template #loading><view class="card-grid ui-gap-md" :class="{ 'card-stack': viewMode === 'stack' }"><view :style="[appGridItem(1, 'section', viewMode === 'stack' ? [] : [[600, 2]], false), viewMode === 'stack' && n < 4 ? stackFoldedStyle(layerType) : {}]" v-for="n in 4" :key="n" class="card ui-gap-sm" :class="[themeClass('card'), { 'card-stack-folded': viewMode === 'stack' && n < 4 }]"><view class="card-face ui-pad-card ui-gap-sm"><CardFaceLoading :layer="n - 1" /></view></view></view></template>
+<template #loading><view class="card-grid ui-gap-md" :class="{ 'card-stack': viewMode === 'stack' }"><view :style="[appGridItem(1, 'section', viewMode === 'stack' ? [] : [[600, 2]], false), viewMode === 'stack' && n < 4 ? stackFoldedStyle(layerType) : {}]" v-for="n in 4" :key="n" class="card ui-gap-sm" :class="[themeClass('card'), { 'card-stack-folded': viewMode === 'stack' && n < 4 }]"><view class="card-face ui-pad-card ui-gap-sm"><CardFaceLoading :layer="n - 1" /></view><text v-if="viewMode !== 'stack'" class="card-meta card-amount-placeholder" aria-hidden="true">余额：未记录</text></view></view></template>
 <view class="card-grid ui-gap-md" :class="{ 'card-stack': viewMode === 'stack', 'card-stack-rebounding': stackRebounding, 'card-order-overflow': !!orderDragging }"
           ><view
             v-for="(card, cardIndex) in cardsByType[layerType]"
@@ -1047,6 +1066,7 @@ async function removeTag(value: any) {
               ><text v-if="card.status !== 'normal'" class="card-status">{{
                 statusMap[card.status]
               }}</text></view
+            ><text v-if="cardExpanded(card)" class="card-meta" :class="themeClass('secondary-text')">{{ cardAmountText(card) }}</text
             ><view v-if="cardExpanded(card) && card.tags?.length" class="card-tags ui-row"><text v-for="item in card.tags" :key="item.id" class="card-tag" :class="themeClass('secondary-text')">{{ item.name }}</text></view
             ><text v-if="cardExpanded(card) && card.remark" class="card-meta" :class="themeClass('secondary-text')">{{ card.remark }}</text
             ></view></view></PageState
@@ -1130,6 +1150,8 @@ async function removeTag(value: any) {
         <FormField appearance="soft" compact stretch label="别名" v-model="draft.alias" />
       </view>
       <FormField appearance="soft" :label="draft.cardNoLast4 ? '新卡号（留空保留）' : '卡号（选填）'" v-model="draft.cardNo" password />
+      <FormField v-if="draft.cardType === 'debit'" appearance="soft" label="余额（元）" placeholder="未记录" input-type="digit" v-model="draft.balance" />
+      <FormField v-else appearance="soft" label="信用额度（元）" placeholder="未记录" input-type="digit" v-model="draft.creditLimit" />
       <button class="editor-more" role="button" :aria-expanded="moreInfo" aria-label="更多信息" @click="moreInfo = !moreInfo">
         <text :style="appTextColor()" class="ui-type-body secondary-text" :class="themeClass('secondary-text')">{{ moreInfo ? '收起更多信息' : '更多信息' }}</text>
         <AppIcon :name="moreInfo ? 'ant-design:up-outlined' : 'ant-design:down-outlined'" :size="14" />
@@ -1141,7 +1163,6 @@ async function removeTag(value: any) {
           <FormField appearance="soft" compact stretch label="到期月份" placeholder="YYYY-MM" v-model="draft.expiryMonth" />
         </view>
         <view v-if="draft.cardType === 'credit'">
-          <FormField appearance="soft" label="信用额度" input-type="digit" v-model="draft.creditLimit" />
           <view class="ui-field-row">
             <FormField appearance="soft" compact stretch label="账单日" input-type="number" v-model="draft.statementDay" />
             <FormField appearance="soft" compact stretch label="还款日" input-type="number" v-model="draft.repaymentDay" />
@@ -1478,6 +1499,7 @@ color: inherit;
 .cover-pending { visibility: hidden; }
 .card-face-image { padding: 0; background-image: none; background-color: #dce3ec; }
 .card-face-dark { background-color: #2a3341; }
+.card-amount-placeholder { opacity: 0; }
 .card-meta { color: $text-secondary-light; @include type-style('caption');  overflow-wrap: anywhere; }
 .card-name { @include type-style('label'); }
 .card-status { color: #c87942; @include type-style('caption'); }
