@@ -162,9 +162,12 @@ const dailyGroup = computed(() => {
     if (item.exerciseTypeId !== chartType.value) continue;
     values.set(item.exerciseDate, (values.get(item.exerciseDate) || 0) + Number(item.exerciseCount || 0));
   }
+  const points = [...values].sort((a, b) => a[0].localeCompare(b[0])).map(([label, value]) => ({ label, value }));
   return {
     label: name(chartType.value),
-    points: [...values].sort((a, b) => a[0].localeCompare(b[0])).map(([label, value]) => ({ label, value })),
+    points,
+    xLabels: points.map((item, index) => index > 0 && item.label.slice(0, 4) === points[index - 1].label.slice(0, 4)
+      ? item.label.slice(5) : item.label),
   };
 });
 function name(id) {
@@ -341,7 +344,11 @@ function toggleSelection() {
         /><AioChart
           :loading="statisticsLoading && !statisticsReady"
           label="每日运动量"
+          hide-values floating-tooltip show-extremes
+          :visible-points="30" scroll-to-end
+          :scroll-key="chartType + '_' + startDate + '_' + endDate"
           :labels="dailyGroup.points.map((item) => item.label)"
+          :x-labels="dailyGroup.xLabels"
           :series="[{ name: dailyGroup.label, values: dailyGroup.points.map((item) => item.value) }]"
         >
           <template #actions>

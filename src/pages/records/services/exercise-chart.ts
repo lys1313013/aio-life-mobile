@@ -5,23 +5,19 @@ import type { ChartSeries } from '../../../services/chart-options.ts'
 const lightColors = ['#5470c6', '#91cc75', '#fac858', '#ee6666', '#73c0de', '#3ba272', '#fc8452', '#9a60b4', '#ea7ccc']
 const darkColors = ['#5070dd', '#b6d634', '#505372', '#ff994d', '#0ca8df', '#ffd10a', '#fb628b', '#785db0', '#3fbe95']
 
-// 只生成当前六个月的绘图数据；缺失的自然月补零，完整汇总继续供其他统计使用。
-export function exerciseMonthWindow(labels: string[], series: ChartSeries[], requestedPage = 0) {
-  const monthNumber = (label: string) => Number(label.slice(0, 4)) * 12 + Number(label.slice(5, 7)) - 1
+// 每次只绘制一个自然年；历史年补齐十二个月，当年只展示到当前月。
+export function exerciseMonthWindow(labels: string[], series: ChartSeries[], requestedPage = 0, now = new Date()) {
   if (!labels.length) return { labels: [], xLabels: [], series: [], year: '—', page: 0, hasOlder: false, hasNewer: false }
-  const first = monthNumber(labels[0]), last = monthNumber(labels[labels.length - 1])
-  const maxPage = Math.ceil((last - first + 1) / 6) - 1
+  const firstYear = Number(labels[0].slice(0, 4)), lastYear = Number(labels[labels.length - 1].slice(0, 4))
+  const maxPage = lastYear - firstYear
   const page = Math.max(0, Math.min(maxPage, requestedPage))
-  const end = last + 1 - page * 6, start = Math.max(first, end - 6)
-  const months = Array.from({ length: end - start }, (_, index) => {
-    const value = start + index
-    return Math.floor(value / 12) + '-' + String(value % 12 + 1).padStart(2, '0')
-  })
+  const year = lastYear - page
+  const count = year === now.getFullYear() ? now.getMonth() + 1 : 12
+  const months = Array.from({ length: count }, (_, index) => year + '-' + String(index + 1).padStart(2, '0'))
   const indices = new Map(labels.map((label, index) => [label, index]))
-  const firstYear = months[0].slice(0, 4), lastYear = months[months.length - 1].slice(0, 4)
   return {
     labels: months, xLabels: months.map(month => Number(month.slice(5)) + '月'),
-    year: firstYear === lastYear ? firstYear : firstYear + '–' + lastYear,
+    year: String(year),
     series: series.map(item => ({ ...item, values: months.map(month => {
       const index = indices.get(month)
       return index == null ? 0 : item.values[index]

@@ -5,10 +5,17 @@ import MobileButton from '../../../components/MobileButton.uvue'
 import { isDark } from '../../../services/theme.ts'
 import type { ChartSeries } from '../../../services/chart-options.ts'
 import { exerciseMonthWindow } from '../services/exercise-chart.ts'
+import { useWindowResize } from '../../../services/window-resize.ts'
+import spacing from '../../../styles/spacing.json'
 
 const props = defineProps<{ labels: string[]; series: ChartSeries[]; loading?: boolean; resetKey?: string }>()
 const page = ref(0)
+const windowWidth = ref(uni.getWindowInfo().windowWidth)
+useWindowResize(() => { windowWidth.value = uni.getWindowInfo().windowWidth })
 const monthWindow = computed(() => exerciseMonthWindow(props.labels, props.series, page.value))
+// 绘图几何：手机每屏最多十个月，宽屏让一年完整铺开。
+const plotMinWidth = computed(() => windowWidth.value < 600
+  ? Math.max(0, windowWidth.value - spacing.page * 2 - spacing.card * 2) * monthWindow.value.labels.length / 10 : 0)
 watch(() => [props.resetKey, props.labels[props.labels.length - 1]], () => { page.value = 0 })
 function changePage(older: boolean) {
   if (props.loading || (older ? !monthWindow.value.hasOlder : !monthWindow.value.hasNewer)) return
@@ -17,14 +24,15 @@ function changePage(older: boolean) {
 </script>
 
 <template>
-  <AioChart label="每月运动次数" kind="bar" unit="次" stacked hide-unit hide-values swipeable
+  <AioChart label="每月运动次数" kind="bar" unit="次" stacked hide-unit hide-values hide-stack-labels
+    :plot-min-width="plotMinWidth" :scroll-key="monthWindow.year" scroll-to-end
     :loading="loading" :labels="monthWindow.labels" :x-labels="monthWindow.xLabels" :series="monthWindow.series"
-    @swipe="changePage($event === 'right')">
+  >
     <template #actions>
       <view class="monthly-controls">
-        <MobileButton label="查看更早的六个月" icon="ant-design:left-outlined" variant="ghost" :disabled="loading || !monthWindow.hasOlder" @click="changePage(true)" />
+        <MobileButton label="查看上一年" icon="ant-design:left-outlined" variant="ghost" :disabled="loading || !monthWindow.hasOlder" @click="changePage(true)" />
         <text class="monthly-year" :class="{ 'monthly-year-dark': isDark }" :aria-label="monthWindow.year + '年'">{{ monthWindow.year }}</text>
-        <MobileButton label="查看更新的六个月" icon="ant-design:right-outlined" variant="ghost" :disabled="loading || !monthWindow.hasNewer" @click="changePage(false)" />
+        <MobileButton label="查看下一年" icon="ant-design:right-outlined" variant="ghost" :disabled="loading || !monthWindow.hasNewer" @click="changePage(false)" />
       </view>
     </template>
   </AioChart>
@@ -34,7 +42,7 @@ function changePage(older: boolean) {
 @use '../../../styles/spacing-tokens' as *;
 @use '../../../styles/typography' as *;
 @use '../../../styles/text-colors' as *;
-.monthly-controls { display: flex; flex-direction: row; align-items: center; gap: $space-micro; }
-.monthly-year { @include type-style('caption'); min-width: $space-controlMin; text-align: center; color: $text-secondary-light; }
+.monthly-controls { display: flex; flex-direction: row; align-items: center; }
+.monthly-year { @include type-style('caption'); text-align: center; color: $text-secondary-light; }
 .monthly-year-dark { color: $text-secondary-dark; }
 </style>
