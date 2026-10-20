@@ -158,8 +158,14 @@ test('每日统计默认最近类型，仅可切换具体类型和无记录类�
     await page.locator('.uni-picker-select:visible').getByText(label, { exact: true }).click();
     const chart = page.getByRole('figure', { name: '每日运动量', exact: true });
     await expect(chart).toBeVisible();
-    if (value) await expect(chart.locator('.chart-value-number')).toHaveText(value);
-    else await expect(chart.getByText('暂无数据', { exact: true })).toBeVisible();
+    if (value) {
+      await expect(chart.locator('.mini-chart-values')).toHaveCount(0);
+      await expect(chart.locator('.chart-selected-label')).toHaveCount(0);
+      await expect(chart.locator('.chart-extreme-label')).toHaveText([value]);
+      await chart.getByRole('slider').press('ArrowRight');
+      await expect(chart.getByRole('tooltip')).toContainText(label + ' ' + value);
+      await expect(chart.getByRole('tooltip')).toContainText('2026-10-19');
+    } else await expect(chart.getByText('暂无数据', { exact: true })).toBeVisible();
     await expect(page.locator('.aio-chart')).toHaveCount(3);
     await expect(page.locator('.record-header')).toHaveCount(2);
   }

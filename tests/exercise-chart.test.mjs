@@ -9,26 +9,50 @@ async function moduleAt(path) {
 const { exerciseMonthlyChart, exerciseDistributionChart, exerciseMonthWindow } = await moduleAt('../src/pages/records/services/exercise-chart.ts')
 const { buildChartOption, layoutStackedBarLabels, pieSectorAt } = await moduleAt('../src/services/chart-options.ts')
 
-test('月图每次最多六个自然月，跨年补零且分页边界不丢失类型颜色', () => {
+test('月图按自然年切换，历史年补零且不跨年，保留类型颜色及导航边界', () => {
   const labels = ['2024-11', '2025-01', '2025-07']
   const series = [{ name: '散步', color: '#5470c6', values: [2, 3, 5] }]
-  const latest = exerciseMonthWindow(labels, series)
-  assert.deepEqual(latest.labels, ['2025-02', '2025-03', '2025-04', '2025-05', '2025-06', '2025-07'])
-  assert.deepEqual(latest.xLabels, ['2月', '3月', '4月', '5月', '6月', '7月'])
-  assert.deepEqual(latest.series[0].values, [0, 0, 0, 0, 0, 5])
+  const now = new Date(2026, 9, 20)
+  const latest = exerciseMonthWindow(labels, series, 0, now)
+  assert.equal(latest.labels.length, 12)
+  assert.equal(latest.labels[0], '2025-01')
+  assert.equal(latest.labels.at(-1), '2025-12')
+  assert.deepEqual(latest.xLabels, Array.from({ length: 12 }, (_, i) => (i + 1) + '月'))
+  assert.deepEqual(latest.series[0].values, [3, 0, 0, 0, 0, 0, 5, 0, 0, 0, 0, 0])
   assert.equal(latest.hasOlder, true)
   assert.equal(latest.hasNewer, false)
-  const older = exerciseMonthWindow(labels, series, 1)
-  assert.deepEqual(older.labels, ['2024-11', '2024-12', '2025-01'])
-  assert.deepEqual(older.series[0].values, [2, 0, 3])
-  assert.equal(older.year, '2024–2025')
+  const older = exerciseMonthWindow(labels, series, 1, now)
+  assert.equal(older.year, '2024')
+  assert.equal(older.labels.length, 12)
+  assert.deepEqual(older.series[0].values, [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0])
   assert.equal(older.series[0].color, latest.series[0].color)
   assert.equal(older.hasOlder, false)
   assert.equal(older.hasNewer, true)
-  assert.equal(exerciseMonthWindow(labels, series, 99).page, 1)
-  assert.equal(exerciseMonthWindow(labels, series, -1).page, 0)
-  assert.deepEqual(exerciseMonthWindow([], []).labels, [])
-  assert.deepEqual(exerciseMonthWindow(['2026-10'], [{ name: '散步', values: [1] }]).series[0].values, [1])
+  assert.equal(exerciseMonthWindow(labels, series, 99, now).page, 1)
+  assert.equal(exerciseMonthWindow(labels, series, -1, now).page, 0)
+  assert.deepEqual(exerciseMonthWindow([], [], 0, now).labels, [])
+})
+
+test('当年只展示到当前月，无记录月份补零，跨年和空白年份可切换', () => {
+  const labels = ['2024-12', '2026-01', '2026-10']
+  const series = [{ name: '散步', values: [2, 3, 5] }]
+  const now = new Date(2026, 9, 20)
+  const latest = exerciseMonthWindow(labels, series, 0, now)
+  assert.equal(latest.year, '2026')
+  assert.equal(latest.labels.length, 10)
+  assert.equal(latest.labels.at(-1), '2026-10')
+  assert.deepEqual(latest.series[0].values, [3, 0, 0, 0, 0, 0, 0, 0, 0, 5])
+  const gap = exerciseMonthWindow(labels, series, 1, now)
+  assert.equal(gap.year, '2025')
+  assert.deepEqual(gap.series[0].values, Array(12).fill(0))
+  assert.equal(gap.hasOlder, true)
+  assert.equal(gap.hasNewer, true)
+  const january = exerciseMonthWindow(['2027-01'], [{ name: '散步', values: [1] }], 0, new Date(2027, 0, 1))
+  assert.deepEqual(january.labels, ['2027-01'])
+  assert.deepEqual(january.series[0].values, [1])
+  const december = exerciseMonthWindow(['2024-12'], [{ name: '散步', values: [1] }], 0, new Date(2024, 11, 31))
+  assert.equal(december.labels.length, 12)
+  assert.equal(december.series[0].values.at(-1), 1)
 })
 
 test('饼图按运动日与类型统计，配色及类型顺序与 Web 一致', () => {

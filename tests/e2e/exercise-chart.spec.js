@@ -18,6 +18,7 @@ const points = values.flatMap((row, month) => row.flatMap((count, type) => Array
   exerciseCount: 50, recordCount: 2,
 }))));
 async function prepare(page, data = points) {
+  await page.clock.setFixedTime(new Date('2026-10-20T12:00:00+08:00'));
   await setup(page);
   const state = { data, fail: false, hold: null, statisticsCalls: [] };
   await page.route('**/api/userDictType/getByDictType?*', route => route.fulfill({ json: { code: 0, data: {
@@ -31,11 +32,13 @@ async function prepare(page, data = points) {
   });
   return state;
 }
+const scrollOffset = chart => chart.locator('.chart-plot-scroll .uni-scroll-view').evaluateAll(elements => Math.max(0, ...elements.map(el => el.scrollLeft)));
+const monthLabels = count => Array.from({ length: count }, (_, i) => (i + 1) + '月');
 const geometry = chart => chart.evaluate(element => ({ height: element.getBoundingClientRect().height,
   next: element.nextElementSibling.getBoundingClientRect().top - element.getBoundingClientRect().top }));
 
 async function swipeMonths(page, chart, direction) {
-  const box = await chart.locator('.aio-chart-canvas').boundingBox();
+  const box = await chart.locator('.chart-plot-scroll').boundingBox();
   const x = box.x + box.width * (direction === 'right' ? 0.2 : 0.8), y = box.y + 90;
   const dx = direction === 'right' ? box.width * 0.6 : direction === 'left' ? -box.width * 0.6 : 0;
   const dy = direction === 'vertical' ? -90 : 0;
@@ -62,58 +65,70 @@ for (const width of [390, 768, 1440]) for (const theme of ['light', 'dark']) {
     await expect(chart.getByText('正在加载图表', { exact: true })).toBeVisible();
     const before = await geometry(chart);
     release(); state.hold = null;
-    await expect(chart.locator('.chart-stack-total')).toHaveText(totals.slice(-6));
+    await expect(chart.locator('.chart-stack-total')).toHaveText(totals.slice(2));
     expect(await geometry(chart)).toEqual(before);
     await expect(chart.locator('.chart-legend-button')).toHaveCount(names.length);
-    expect(await chart.locator('.chart-stack-label').count()).toBeGreaterThan(10);
+    await expect(chart.locator('.chart-stack-label')).toHaveCount(0);
     await chart.scrollIntoViewIfNeeded();
     await chart.evaluate(element => element.scrollIntoView({ block: 'center' }));
-    await expect(chart.locator('.chart-x-label')).toHaveText(['5月', '6月', '7月', '8月', '9月', '10月']);
+    await expect(chart.locator('.chart-x-label')).toHaveText(monthLabels(10));
     await expect(chart.locator('.monthly-year')).toHaveText('2026');
     await chart.screenshot({ path: info.outputPath('stacked.png') });
-    const labels = await chart.locator('.chart-stack-label').evaluateAll(elements => elements.map(el => ({
-      text: el.textContent, box: el.getBoundingClientRect().toJSON(), scrollWidth: el.scrollWidth,
-    })));
-    for (const label of labels) expect(label.scrollWidth).toBeLessThanOrEqual(Math.ceil(label.box.width));
     const plot = chart.getByRole('slider');
     await plot.focus(); await plot.press('ArrowLeft');
     await expect(chart.getByRole('tooltip')).toContainText('2026-09 · 合计 37次');
     await chart.getByRole('button', { name: '散步', exact: true }).click();
     await expect(chart.getByRole('button', { name: '散步', exact: true })).toHaveAttribute('aria-pressed', 'false');
-    await expect(chart.locator('.chart-stack-total')).toHaveText(values.slice(-6).map(row => String(row.reduce((sum, v) => sum + v, 0) - row[0])));
+    await expect(chart.locator('.chart-stack-total')).toHaveText(values.slice(2).map(row => String(row.reduce((sum, v) => sum + v, 0) - row[0])));
     await chart.getByRole('button', { name: '散步', exact: true }).click();
-    await expect(chart.locator('.chart-stack-total')).toHaveText(totals.slice(-6));
+    await expect(chart.locator('.chart-stack-total')).toHaveText(totals.slice(2));
     // 已有数据刷新时保留柱体和下方卡片位置。
     const loaded = await geometry(chart);
     state.hold = new Promise(resolve => { release = resolve; });
     try {
       await pullDown(page, '.mobile-page-scroll');
       await expect(page.getByRole('status', { name: '正在更新统计', exact: true })).toBeVisible();
-      await expect(chart.locator('.chart-stack-total')).toHaveText(totals.slice(-6));
+      await expect(chart.locator('.chart-stack-total')).toHaveText(totals.slice(2));
       expect(await geometry(chart)).toEqual(loaded);
     } finally { release(); state.hold = null; }
     await expect(page.getByRole('status', { name: '正在更新统计', exact: true })).toHaveCount(0);
     expect(await geometry(chart)).toEqual(loaded);
     await chart.evaluate(element => element.scrollIntoView({ block: 'center' }));
     const calls = state.statisticsCalls.length;
-    await swipeMonths(page, chart, 'right');
-    await expect(chart.locator('.chart-stack-total')).toHaveText(totals.slice(0, 6));
-    await expect(chart.locator('.monthly-year')).toHaveText('2025–2026');
-    await expect(chart.locator('.chart-x-label')).toHaveText(['11月', '12月', '1月', '2月', '3月', '4月']);
+    const initialOffset = await scrollOffset(chart);
+    expect(initialOffset).toBe(0);
+    if (width === 390) {
+      const last = await chart.locator('.chart-stack-total').last().boundingBox();
+      const viewport = await chart.locator('.chart-plot-scroll').boundingBox();
+      await page.touchscreen.tap(last.x + last.width / 2, viewport.y + 180);
+      await expect(chart.getByRole('tooltip')).toContainText('2026-10 · 合计 16次');
+    }
+    await chart.getByRole('button', { name: '查看上一年' }).click();
+    await expect(chart.locator('.monthly-year')).toHaveText('2025');
+    await expect(chart.locator('.chart-stack-total')).toHaveText(totals.slice(0, 2));
+    await expect(chart.locator('.chart-x-label')).toHaveText(monthLabels(12));
     await expect(chart.getByRole('tooltip')).toHaveCount(0);
-    await expect(chart.getByRole('button', { name: '查看更早的六个月' })).toBeDisabled();
-    await chart.screenshot({ path: info.outputPath('older-six-months.png') });
-    await swipeMonths(page, chart, 'right');
-    await expect(chart.locator('.chart-stack-total')).toHaveText(totals.slice(0, 6));
-    await swipeMonths(page, chart, 'left');
-    await expect(chart.locator('.chart-stack-total')).toHaveText(totals.slice(-6));
-    await expect(chart.getByRole('button', { name: '查看更新的六个月' })).toBeDisabled();
-    await chart.getByRole('button', { name: '查看更早的六个月' }).click();
-    await expect(chart.locator('.monthly-year')).toHaveText('2025–2026');
-    await chart.getByRole('button', { name: '查看更新的六个月' }).click();
+    await expect(chart.getByRole('button', { name: '查看上一年' })).toBeDisabled();
+    await chart.screenshot({ path: info.outputPath('previous-year.png') });
+    if (width === 390) {
+      // 十二个月超出手机一屏的十个月，滑动只改变当年可见月份。
+      await expect.poll(() => scrollOffset(chart)).toBeGreaterThan(20);
+      const yearOffset = await scrollOffset(chart);
+      await swipeMonths(page, chart, 'right');
+      await expect.poll(() => scrollOffset(chart)).toBeLessThan(yearOffset - 20);
+      await chart.screenshot({ path: info.outputPath('scrolled-earlier-months.png') });
+      await expect(chart.locator('.monthly-year')).toHaveText('2025');
+      await expect(chart.locator('.chart-x-label')).toHaveText(monthLabels(12));
+      await expect(chart.getByRole('tooltip')).toHaveCount(0);
+      await swipeMonths(page, chart, 'left');
+      await expect.poll(() => scrollOffset(chart)).toBeGreaterThan(20);
+    }
+    await chart.getByRole('button', { name: '查看下一年' }).click();
     await expect(chart.locator('.monthly-year')).toHaveText('2026');
+    await expect(chart.getByRole('button', { name: '查看下一年' })).toBeDisabled();
+    await expect(chart.locator('.chart-stack-total')).toHaveText(totals.slice(2));
     await swipeMonths(page, chart, 'vertical');
-    await expect(chart.locator('.chart-stack-total')).toHaveText(totals.slice(-6));
+    await expect(chart.locator('.monthly-year')).toHaveText('2026');
     await expect(chart.getByRole('tooltip')).toHaveCount(0);
     expect(state.statisticsCalls.length).toBe(calls);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
@@ -148,7 +163,7 @@ test('空数据与单条数据保留柱图高度，失败重试恢复且单类�
   await expect(chart.locator('.chart-stack-total')).toHaveText(['1']);
 });
 
-test('月图切换全局筛选回到最新六个月，翻页不重复查询统计', async ({ page }) => {
+test('月图切换全局筛选回到最新年份，切年不重复查询统计', async ({ page }) => {
   await page.setViewportSize({ width: 768, height: 900 });
   const state = await prepare(page);
   await page.route('**/api/exerciseRecord/statistics/summary?*', async route => {
@@ -158,19 +173,15 @@ test('月图切换全局筛选回到最新六个月，翻页不重复查询统�
   });
   await page.goto('/#/pages/records/exercise');
   const chart = page.getByRole('figure', { name: '每月运动次数', exact: true });
-  await expect(chart.locator('.chart-stack-total')).toHaveText(totals.slice(-6));
-  await chart.getByRole('button', { name: '查看更早的六个月' }).click();
-  await expect(chart.locator('.monthly-year')).toHaveText('2025–2026');
+  await expect(chart.locator('.chart-stack-total')).toHaveText(totals.slice(2));
+  await chart.getByRole('button', { name: '查看上一年' }).click();
+  await expect(chart.locator('.monthly-year')).toHaveText('2025');
   await page.locator('uni-picker[aria-label="运动类型"]').click();
   await page.locator('.uni-picker-select:visible').getByText('散步', { exact: true }).click();
-  await expect(chart.locator('.chart-stack-total')).toHaveText(values.slice(-6).map(row => String(row[0])));
+  await expect(chart.locator('.chart-stack-total')).toHaveText(values.slice(3).map(row => String(row[0])));
   await expect(chart.locator('.monthly-year')).toHaveText('2026');
-  await expect(chart.getByRole('button', { name: '查看更新的六个月' })).toBeDisabled();
-  await chart.getByRole('button', { name: '查看更早的六个月' }).click();
-  await expect(chart.locator('.chart-x-label')).toHaveText(['2月', '3月', '4月']);
-  await expect(chart.locator('.chart-stack-total')).toHaveText(['3', '4', '8']);
-  await expect(chart.getByRole('button', { name: '查看更早的六个月' })).toBeDisabled();
-  await chart.getByRole('button', { name: '查看更新的六个月' }).click();
-  await expect(chart.locator('.chart-stack-total')).toHaveText(values.slice(-6).map(row => String(row[0])));
+  await expect(chart.getByRole('button', { name: '查看下一年' })).toBeDisabled();
+  await expect(chart.getByRole('button', { name: '查看上一年' })).toBeDisabled();
+  await expect(chart.locator('.chart-x-label')).toHaveText(monthLabels(10));
   expect(state.statisticsCalls.length).toBe(2);
 });
