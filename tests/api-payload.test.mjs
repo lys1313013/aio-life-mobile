@@ -8,6 +8,21 @@ const code = (await transform(source, { loader: 'ts', format: 'esm' })).code
 const payloadUrl = 'data:text/javascript;base64,' + Buffer.from(code).toString('base64')
 const { minimalRequestPayload, pickQuery } = await import(payloadUrl)
 
+test('时迹更新保留明细字符串ID、零次数及清空描述，新增项无ID且剔除归属审计字段', () => {
+  const exercises = [
+    { id: '9223372036854775001', exerciseTypeId: '9223372036854775002', exerciseCount: 0, description: null, userId: 'other', timeId: 'other-time', createTime: '2000-01-01' },
+    { exerciseTypeId: '77', exerciseCount: 20 },
+  ]
+  const before = structuredClone(exercises)
+  assert.deepEqual(minimalRequestPayload('/timeRecord/9223372036854775000', 'PUT', { exercises }), {
+    exercises: [
+      { id: '9223372036854775001', exerciseTypeId: '9223372036854775002', exerciseCount: 0, description: null },
+      { exerciseTypeId: '77', exerciseCount: 20 },
+    ],
+  })
+  assert.deepEqual(exercises, before)
+})
+
 test('会员平台关联保留长 ID、明确解绑和停用，剔除只读派生字段', () => {
   const id = '9007199254740993'
   for (const providerId of [id, null]) {

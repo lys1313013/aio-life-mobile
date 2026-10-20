@@ -205,7 +205,7 @@ function open(card, item = null, create = false) {
     goalEditor.value?.open(item, true)
     return
   }
-  if (card.key === 'member' && create) {
+  if (create) {
     if (states[card.key].locked) return
     closeDetail()
     selection.value = { card, id: null, record: {}, loading: false, error: '' }
@@ -217,8 +217,7 @@ function open(card, item = null, create = false) {
     void loadDetail()
     return
   }
-  const suffix = create ? 'create=1&home=1' : ''
-  uni.navigateTo({ url: card.route + (suffix ? (card.route.includes('?') ? '&' : '?') + suffix : '') })
+  uni.navigateTo({ url: card.route })
 }
 function closeDetail() { detailVersion++; selection.value = null }
 async function loadDetail() {
@@ -327,7 +326,7 @@ function placeholderHeight(card) {
     </AdaptiveModal>
     <template v-if="selection && selection.record">
       <LibraryRecordEditor v-if="selection.card.paged" :kind="selection.card.key" :record="selection.record" @close="closeDetail" @saved="detailChanged" @deleted="detailChanged" />
-      <AnniversaryRecordEditor v-if="selection.card.key === 'anniversary'" :record="selection.record" @close="closeDetail" @saved="detailChanged" @deleted="detailChanged" />
+      <AnniversaryRecordEditor v-if="selection.card.key === 'anniversary'" :record="selection.record" home @close="closeDetail" @saved="detailChanged" @deleted="detailChanged" />
       <MembershipRecordEditor v-if="selection.card.key === 'member'" :record="selection.record" @close="closeDetail" @saved="detailChanged" @deleted="detailChanged" />
     </template>
     </view>

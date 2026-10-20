@@ -24,8 +24,13 @@ for (const kind of ['expense', 'income']) {
       await page.mouse.move(width / 2, height / 2);
       await page.mouse.wheel(0, 360);
       await add.scrollIntoViewIfNeeded();
-      const scroll = page.locator('.mobile-page-scroll .uni-scroll-view').last();
-      await expect.poll(() => scroll.evaluate(el => el.scrollTop)).toBeGreaterThan(0);
+      // 图表自身也包含 scroll-view，读取页面内实际可滚动的容器，不能取最后一个嵌套图表。
+      const scroll = page.locator('.mobile-page-scroll');
+      await expect.poll(() => scroll.evaluate(root => {
+        const pageScroll = Array.from(root.querySelectorAll('.uni-scroll-view'))
+          .find(element => element.scrollHeight > element.clientHeight);
+        return pageScroll?.scrollTop ?? 0;
+      })).toBeGreaterThan(0);
       await add.click();
       const dialog = page.getByRole('dialog', { name: kind === 'expense' ? '编辑支出' : '编辑收入', exact: true });
       await expect(dialog).toBeVisible();

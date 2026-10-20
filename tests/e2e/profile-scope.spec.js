@@ -34,7 +34,7 @@ async function signInAsB(page) {
   await page.getByRole('button', { name: '登录', exact: true }).click();
   await expect(page.locator('.dashboard-scroll')).toBeVisible();
   await page.locator('uni-tabbar').getByText('我', { exact: true }).click();
-  await page.getByRole('button', { name: '基本设置', exact: true }).click();
+  await page.getByRole('button', { name: '编辑资料', exact: true }).click();
   await expect(page.locator('[aria-label="昵称"] input')).toHaveValue('用户B');
 }
 

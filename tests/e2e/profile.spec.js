@@ -62,16 +62,28 @@ for (const width of [390, 768, 1440]) {
       await expect(page.getByRole('button', { name: '账号与安全', exact: true })).toBeVisible();
       await expect(page.getByRole('button', { name: '账号绑定', exact: true })).toHaveCount(0);
       await expect(page.locator('.account-card')).toHaveCount(0);
+      await expect(page.locator('.profile-menu .menu-row')).toHaveCount(4);
+      await expect(page.locator('.profile-edit')).toHaveCount(0);
+      await expect(page.getByRole('button', { name: '编辑资料', exact: true })).toHaveCount(1);
+      for (const name of ['菜单显示', '首页卡片', '通知设置', '自定义设置', '反馈', '关于']) {
+        await expect(page.getByRole('button', { name, exact: true })).toHaveCount(0);
+      }
+      await page.getByRole('button', { name: '设置', exact: true }).click();
+      for (const name of ['菜单显示', '首页卡片', '通知设置', '自定义设置', '反馈', '关于']) {
+        await expect(page.getByRole('button', { name, exact: true })).toBeVisible();
+      }
+      await page.screenshot({ path: `test-results/settings-center-${width}-${system}.png`, fullPage: true });
       const selected = system === 'dark' ? '日间' : '夜间';
       const bg = selected === '夜间' ? 'rgb(17, 18, 21)' : 'rgb(240, 242, 245)';
       await page.getByRole('button', { name: selected, exact: true }).click();
       await expect(page.locator('.tab-page').last()).toHaveCSS('background-color', bg);
       await expect(page.locator('.page-navigation').last()).toHaveCSS('background-color', bg);
+      await page.getByRole('button', { name: '返回', exact: true }).last().click();
       await expect(page.locator('uni-tabbar .uni-tabbar')).toHaveCSS('background-color', selected === '夜间' ? 'rgb(28, 30, 34)' : 'rgb(255, 255, 255)');
       const menu = await page.locator('.menu-row').first().boundingBox();
       expect(menu.height).toBeLessThanOrEqual(60);
       await page.screenshot({ path: `test-results/profile-manual-${width}-${system}.png`, fullPage: true });
-      await page.getByRole('button', { name: '基本设置', exact: true }).click();
+      await page.locator('.profile-intro').click();
       await expect(page.locator('[aria-label="昵称"] input')).toHaveValue('测试用户');
       await expect(page.locator('.tab-page').last()).toHaveCSS('background-color', bg);
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
@@ -94,11 +106,14 @@ for (const width of [390, 768, 1440]) {
       await expect(page.getByText('账号与安全', { exact: true })).toBeVisible();
       await page.getByRole('button', { name: '返回', exact: true }).last().click();
       await page.reload();
+      await page.getByRole('button', { name: '设置', exact: true }).click();
       await expect(page.getByRole('button', { name: selected, exact: true })).toHaveAttribute('aria-pressed', 'true');
       await expect(page.locator('.tab-page').last()).toHaveCSS('background-color', bg);
+      await page.getByRole('button', { name: '返回', exact: true }).last().click();
       await page.locator('uni-tabbar').getByText('时迹', { exact: true }).click();
       await expect(page.locator('.tab-page').last()).toHaveCSS('background-color', bg);
       await page.locator('uni-tabbar').getByText('我', { exact: true }).click();
+      await page.getByRole('button', { name: '设置', exact: true }).click();
       await page.getByRole('button', { name: '跟随系统', exact: true }).click();
       await expect(page.locator('.tab-page').last()).toHaveCSS('background-color', system === 'dark' ? 'rgb(17, 18, 21)' : 'rgb(240, 242, 245)');
       await page.emulateMedia({ colorScheme: system === 'dark' ? 'light' : 'dark' });
@@ -110,7 +125,7 @@ for (const width of [390, 768, 1440]) {
 
 test('基本设置保存失败保留表单，重试保存并更新我的资料', async ({ page }) => {
   const state = await setup(page);
-  await page.getByRole('button', { name: '基本设置', exact: true }).click();
+  await page.locator('.profile-name').click();
   const nickname = page.locator('[aria-label="昵称"] input');
   await expect(nickname).toHaveValue('测试用户');
   await nickname.fill('新的昵称');
@@ -171,7 +186,7 @@ test('绑定加载失败重试、新增失败重试、编辑留空保留凭证�
 
 test('资料页登录过期跳转登录', async ({ page }) => {
   const state = await setup(page); state.expired = true;
-  await page.getByRole('button', { name: '基本设置', exact: true }).click();
+  await page.getByRole('button', { name: '编辑资料', exact: true }).click();
   await expect(page.getByText('欢迎回来', { exact: true })).toBeVisible();
 });
 
@@ -186,9 +201,12 @@ test('头像通过统一上传接口保存，携带鉴权且不改写邮箱', as
     uploaded = true;
     await route.fulfill({ json: { code: 0, data: { id: '0123456789abcdef0123456789abcdef', fileUrl: '/avatar-fixture.png' } } });
   });
-  await page.getByRole('button', { name: '基本设置', exact: true }).click();
+  await page.locator('.profile-avatar').click();
   await expect(page.locator('[aria-label="昵称"] input')).toHaveValue('测试用户');
   const chooser = page.waitForEvent('filechooser');
+  await expect(page.getByRole('button', { name: '更换头像', exact: true })).toHaveCount(1);
+  await expect(page.getByRole('button', { name: '从微信获取头像', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: '选择头像图片', exact: true })).toHaveCount(0);
   await page.getByRole('button', { name: '更换头像', exact: true }).click();
   await (await chooser).setFiles({ name: 'fixture.png', mimeType: 'image/png', buffer: png });
   await expect(page.locator('.settings-avatar img')).toHaveAttribute('src', '/avatar-fixture.png');

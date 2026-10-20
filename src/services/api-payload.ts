@@ -126,6 +126,29 @@ export interface BankCardTagReq {
   status?: null | string;
 }
 
+export interface BodyProfileSaveReq {
+  version?: null | number;
+  heightCm?: null | number | string;
+  weightKg?: null | number | string;
+  bodyFatPercent?: null | number | string;
+  shoulderWidthCm?: null | number | string;
+  chestCm?: null | number | string;
+  upperArmCm?: null | number | string;
+  forearmCm?: null | number | string;
+  waistCm?: null | number | string;
+  hipCm?: null | number | string;
+  thighCm?: null | number | string;
+  calfCm?: null | number | string;
+  inseamCm?: null | number | string;
+  gender?: null | string;
+  measurementSide?: null | string;
+  armState?: null | string;
+  shoeSystem?: null | string;
+  topSize?: null | string;
+  trousersSize?: null | string;
+  shoeSize?: null | string;
+}
+
 export interface CbtiPersonalitySaveReq {
   code?: null | string;
   name?: null | string;
@@ -430,7 +453,6 @@ export interface MembershipCreateReq {
 
 export interface MembershipProviderReq {
   name?: null | string;
-  code?: null | string;
   category?: null | string;
   iconKey?: null | string;
   sortOrder?: null | number;
@@ -644,6 +666,19 @@ export interface QrLoginModels_ScanRequest {
   ticket?: null | string;
 }
 
+export interface QueryAccessModels_CheckTokenRequest {
+  dataset?: null | string;
+}
+
+export interface QueryAccessModels_EvaluateRequest {
+  token?: null | string;
+  dataset?: null | string;
+}
+
+export interface QueryAccessModels_IssueRequest {
+  appId?: null | string;
+}
+
 export interface QuickNavSaveReq {
   items?: Array<QuickNavSaveReq_Item> | null;
 }
@@ -833,6 +868,7 @@ export interface TaskDetailUpdateReq {
   isCompleted?: null | number;
   sort?: null | number;
   priority?: null | number;
+  isStarred?: null | number;
   startTime?: null | string;
   endTime?: null | string;
 }
@@ -878,6 +914,7 @@ export interface TimeRecordDeleteByDateReq {
 }
 
 export interface TimeRecordExerciseReq {
+  id?: null | string;
   exerciseTypeId?: null | string;
   exerciseCount?: null | number;
   description?: null | string;
@@ -1141,6 +1178,7 @@ export interface ApiRequests {
   BankCardMoveReq: BankCardMoveReq;
   BankCardReq: BankCardReq;
   BankCardTagReq: BankCardTagReq;
+  BodyProfileSaveReq: BodyProfileSaveReq;
   CbtiPersonalitySaveReq: CbtiPersonalitySaveReq;
   CbtiTestReq: CbtiTestReq;
   ChangePasswordReq: ChangePasswordReq;
@@ -1196,6 +1234,9 @@ export interface ApiRequests {
   QrLoginModels_BrowserRequest: QrLoginModels_BrowserRequest;
   QrLoginModels_DecisionRequest: QrLoginModels_DecisionRequest;
   QrLoginModels_ScanRequest: QrLoginModels_ScanRequest;
+  QueryAccessModels_CheckTokenRequest: QueryAccessModels_CheckTokenRequest;
+  QueryAccessModels_EvaluateRequest: QueryAccessModels_EvaluateRequest;
+  QueryAccessModels_IssueRequest: QueryAccessModels_IssueRequest;
   QuickNavSaveReq: QuickNavSaveReq;
   QuickNavSaveReq_Item: QuickNavSaveReq_Item;
   ReadRecordCreateReq: ReadRecordCreateReq;
@@ -1377,6 +1418,28 @@ const fields: Record<string, Record<string, null | string>> = {
     name: null,
     color: null,
     status: null,
+  },
+  BodyProfileSaveReq: {
+    version: null,
+    heightCm: null,
+    weightKg: null,
+    bodyFatPercent: null,
+    shoulderWidthCm: null,
+    chestCm: null,
+    upperArmCm: null,
+    forearmCm: null,
+    waistCm: null,
+    hipCm: null,
+    thighCm: null,
+    calfCm: null,
+    inseamCm: null,
+    gender: null,
+    measurementSide: null,
+    armState: null,
+    shoeSystem: null,
+    topSize: null,
+    trousersSize: null,
+    shoeSize: null,
   },
   CbtiPersonalitySaveReq: {
     code: null,
@@ -1649,7 +1712,6 @@ const fields: Record<string, Record<string, null | string>> = {
   },
   MembershipProviderReq: {
     name: null,
-    code: null,
     category: null,
     iconKey: null,
     sortOrder: null,
@@ -1841,6 +1903,16 @@ const fields: Record<string, Record<string, null | string>> = {
     id: null,
     ticket: null,
   },
+  QueryAccessModels_CheckTokenRequest: {
+    dataset: null,
+  },
+  QueryAccessModels_EvaluateRequest: {
+    token: null,
+    dataset: null,
+  },
+  QueryAccessModels_IssueRequest: {
+    appId: null,
+  },
   QuickNavSaveReq: {
     items: 'QuickNavSaveReq_Item',
   },
@@ -2005,6 +2077,7 @@ const fields: Record<string, Record<string, null | string>> = {
     isCompleted: null,
     sort: null,
     priority: null,
+    isStarred: null,
     startTime: null,
     endTime: null,
   },
@@ -2042,6 +2115,7 @@ const fields: Record<string, Record<string, null | string>> = {
     date: null,
   },
   TimeRecordExerciseReq: {
+    id: null,
     exerciseTypeId: null,
     exerciseCount: null,
     description: null,
@@ -2351,6 +2425,7 @@ const queryFields: Record<string, string[]> = {
   '/b-video/covers': ['ids'],
   '/b-video/getStatusCount': [],
   '/b-video/statistics': [],
+  '/body-profile': [],
   '/cbti/admin/personalities': [],
   '/cbti/questions': [],
   '/cbti/personalities': [],
@@ -2508,6 +2583,7 @@ const queryFields: Record<string, string[]> = {
   ],
   '/userDictType/dictTypeEnum': [],
   '/userDictType/getByDictType': ['dictType'],
+  '/notification/channels/wechat-mini': [],
   '/weread/recent': ['cursor', 'size'],
   '/weread/connection': [],
   '/weread/stats': ['baseTime', 'mode'],
@@ -2521,6 +2597,7 @@ const queryFields: Record<string, string[]> = {
   '/api-key/list': [],
   '/file/preview/{*fileName}': [],
   '/message/list': ['isRead'],
+  '/message/page': ['current', 'isRead', 'size'],
   '/message/unread-count': [],
   '/message/admin/list': ['current', 'size', 'userId'],
   '/auth/qr-login/{id}/status': ['secret'],
@@ -2551,6 +2628,7 @@ const queryFields: Record<string, string[]> = {
   '/menu/admin/tree': [],
   '/menu/admin/role-options': [],
   '/menu/all': ['client'],
+  '/menu/visuals': ['client'],
   '/quick-nav/candidates': ['client'],
   '/quick-nav/my': ['client'],
   '/system/storage/objects': ['cursor', 'pageSize', 'prefix'],
@@ -2736,6 +2814,12 @@ const requestModels: Array<{
     method: 'POST',
     path: '/b-video/syncProgress',
     model: 'BVideoProgressReq',
+    list: false,
+  },
+  {
+    method: 'PUT',
+    path: '/body-profile',
+    model: 'BodyProfileSaveReq',
     list: false,
   },
   {
@@ -3269,6 +3353,24 @@ const requestModels: Array<{
     method: 'POST',
     path: '/auth/wechat/web/cancel',
     model: 'WechatWebLoginController_ScanRequest',
+    list: false,
+  },
+  {
+    method: 'POST',
+    path: '/query/access-token',
+    model: 'QueryAccessModels_IssueRequest',
+    list: false,
+  },
+  {
+    method: 'POST',
+    path: '',
+    model: 'QueryAccessModels_EvaluateRequest',
+    list: false,
+  },
+  {
+    method: 'POST',
+    path: '',
+    model: 'QueryAccessModels_CheckTokenRequest',
     list: false,
   },
   {

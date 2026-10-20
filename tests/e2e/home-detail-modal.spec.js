@@ -53,6 +53,13 @@ async function open(page, entry) {
   await expect(page).toHaveURL(/pages\/home\/index/);
   return dialog;
 }
+async function create(page, entry) {
+  await page.locator(`[aria-label="${entry.label}首页卡片"]`).getByRole('button', { name: '新增' + entry.label, exact: true }).click();
+  const dialog = page.getByRole('dialog');
+  await expect(dialog.locator(`[aria-label="${entry.key === 'anniversary' ? '标题' : '名称'}"] input`)).toHaveValue('');
+  await expect(page).toHaveURL(/pages\/home\/index$/);
+  return dialog;
+}
 for (const width of [390, 820, 1440]) for (const theme of ['light', 'dark']) {
   test(`首页直接明细弹窗 ${width} ${theme}`, async ({ page }, info) => {
     await page.setViewportSize({ width, height: 1000 });
@@ -68,7 +75,49 @@ for (const width of [390, 820, 1440]) for (const theme of ['light', 'dark']) {
       await dialog.getByRole('button', { name: '取消', exact: true }).click();
       await expect(dialog).toHaveCount(0);
     }
+    for (const entry of entries.filter(item => ['anniversary', 'movie', 'read'].includes(item.key))) {
+      const dialog = await create(page, entry);
+      await expect.poll(async () => dialog.evaluate(el => Math.abs(el.getBoundingClientRect().top + el.getBoundingClientRect().height / 2 - window.innerHeight / 2))).toBeLessThan(2);
+      expect(await dialog.evaluate(el => el.scrollWidth > el.clientWidth)).toBe(false);
+      await page.screenshot({ path: info.outputPath(entry.key + '-create.png') });
+      await dialog.getByRole('button', { name: '取消', exact: true }).click();
+      await expect(dialog).toHaveCount(0);
+      await expect(page).toHaveURL(/pages\/home\/index$/);
+    }
     expect(errors).toEqual([]);
+  });
+}
+for (const entry of entries.filter(item => ['anniversary', 'movie', 'read'].includes(item.key))) {
+  test(`首页新增${entry.label}失败保留表单，重试后刷新本卡且不跳页`, async ({ page }) => {
+    const state = await setup(page);
+    const businessPageRequests = [];
+    page.on('request', request => {
+      if (/pages-records-(anniversary|library)/.test(request.url())) businessPageRequests.push(request.url());
+    });
+    const dialog = await create(page, entry);
+    const input = dialog.locator(`[aria-label="${entry.key === 'anniversary' ? '标题' : '名称'}"] input`);
+    const title = '首页新增模拟' + entry.label;
+    await input.fill(title);
+    state.failSave = true;
+    await dialog.getByRole('button', { name: '保存', exact: true }).click();
+    await expect(dialog).toContainText('模拟保存失败');
+    await expect(input).toHaveValue(title);
+    await expect(page).toHaveURL(/pages\/home\/index$/);
+    state.failSave = false;
+    await dialog.getByRole('button', { name: '保存', exact: true }).click();
+    await expect(dialog).toHaveCount(0);
+    const payload = state.writes.at(-1);
+    expect(payload).not.toHaveProperty('id');
+    expect(payload.title).toBe(title);
+    if (entry.key === 'anniversary') expect(payload.isPinned).toBe(1);
+    else expect(payload.status).toBe('not_started');
+    await expect(page.locator(`[aria-label="${entry.label}首页卡片"]`).getByRole('button', { name: '编辑' + title, exact: true })).toBeVisible();
+    await expect(page).toHaveURL(/pages\/home\/index$/);
+    expect(businessPageRequests).toEqual([]);
+    // 标题仍保留进入完整业务列表的入口。
+    await page.getByRole('button', { name: '查看全部' + entry.label, exact: true }).click();
+    await expect(page).toHaveURL(entry.key === 'anniversary' ? /pages\/records\/anniversary$/ : new RegExp('pages/records/library\\?kind=' + entry.key + '$'));
+    await expect(page.getByRole('dialog')).toHaveCount(0);
   });
 }
 test('首页详情失败可重试，关闭后忽略晚到响应', async ({ page }) => {

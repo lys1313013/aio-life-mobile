@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import AppIcon from '../../components/AppIcon.uvue';
+import { buttonLabelClasses } from '../../services/button-label.ts';
 import { usePageRefresh } from '../../services/page-refresh.ts'
 import { isRequired } from '../../services/form-required.ts';
 import { computed, ref, watch } from 'vue';
@@ -13,17 +15,44 @@ import AdaptiveModal from '../../components/AdaptiveModal.uvue';
 import { request } from '../../services/api.ts';
 import { session, restoreSession } from '../../services/session.ts';
 import { clearLifeCatalogCache } from '../../services/life-catalog-cache.ts';
+import type { ThemeMode } from '../../services/theme.ts';
 import { themeClass, setThemeMode, theme } from '../../services/theme.ts';
 import {
   flattenMenuOptions,
   passwordPayload,
 } from '../../services/preferences-contract.ts';
 const titles = {
+  general: '设置',
   password: '修改密码',
   menus: '菜单显示',
   system: '系统设置',
 };
-const mode = ref('password');
+const mode = ref('general');
+const preferenceLinks = [
+  { title: '菜单显示', path: '/pages/profile/preferences?section=menus' },
+  { title: '首页卡片', path: '/pages/home-settings/index' },
+  { title: '通知设置', path: '/pages/profile/notifications' },
+  { title: '自定义设置', path: '/pages/records/categories' },
+];
+const supportLinks = [
+  { title: '反馈', path: '/pages/records/feedback' },
+  { title: '关于', path: '/pages/about/index' },
+];
+const themeOptions: { label: string; value: ThemeMode }[] = [
+  { label: '跟随系统', value: 'system' },
+  { label: '日间', value: 'light' },
+  { label: '夜间', value: 'dark' },
+];
+function openPage(path: string) {
+  uni.navigateTo({ url: path });
+}
+function changeTheme(mode: ThemeMode) {
+  try {
+    setThemeMode(mode);
+  } catch (error) {
+    uni.showToast({ title: error.message, icon: 'none' });
+  }
+}
 const title = computed(() => titles[mode.value] || '设置');
 const loading = ref(false),
   saving = ref(false),
@@ -57,7 +86,7 @@ onLoad((options) => {
     uni.redirectTo({ url: '/pages/mcp/api-keys' });
     return;
   }
-  mode.value = Object.keys(titles).includes(options?.section || '') ? options.section : 'password';
+  mode.value = Object.keys(titles).includes(options?.section || '') ? options.section : 'general';
 });
 const refreshOnShow = usePageRefresh(() => load(), { loading: () => loading.value, error: () => error.value, keys: () => ['menu', 'user', 'users'] })
 onShow(() => {
@@ -169,7 +198,33 @@ function back() {
   <view class="tab-page" :class="themeClass('tab-page')">
     <PageHeader :title="title" back @back="back" />
     <MobilePage :refreshing="loading" @refresh="load">
-      <PageState skeleton="form" :loading="loading" :error="error" @retry="load">
+      <view v-if="mode === 'general'" class="ui-page-body ui-gap-section">
+        <view class="preference-surface ui-pad-card" :class="themeClass('preference-surface')">
+          <view class="theme-row">
+            <text class="preference-name entry-label" :class="themeClass('entry-label')">外观</text>
+            <view class="theme-options" :class="themeClass('theme-options')">
+              <button
+                v-for="option in themeOptions"
+                :key="option.value"
+                role="button"
+                class="theme-option ui-px-card"
+                :class="[themeClass('theme-option'), { 'theme-selected': theme.mode === option.value }, themeClass({ 'theme-selected': theme.mode === option.value })]"
+                :aria-pressed="theme.mode === option.value"
+                @click="changeTheme(option.value)"
+              ><text :class="buttonLabelClasses(['theme-option', themeClass('theme-option'), { 'theme-selected': theme.mode === option.value }, themeClass({ 'theme-selected': theme.mode === option.value })])">{{ option.label }}</text></button>
+            </view>
+          </view>
+          <button v-for="entry in preferenceLinks" :key="entry.path" role="button" class="settings-entry" :aria-label="entry.title" @click="openPage(entry.path)">
+            <text class="entry-label" :class="themeClass('entry-label')">{{ entry.title }}</text><AppIcon name="ant-design:right-outlined" />
+          </button>
+        </view>
+        <view class="preference-surface ui-pad-card" :class="themeClass('preference-surface')">
+          <button v-for="entry in supportLinks" :key="entry.path" role="button" class="settings-entry" :aria-label="entry.title" @click="openPage(entry.path)">
+            <text class="entry-label" :class="themeClass('entry-label')">{{ entry.title }}</text><AppIcon name="ant-design:right-outlined" />
+          </button>
+        </view>
+      </view>
+      <PageState v-else skeleton="form" :loading="loading" :error="error" @retry="load">
         <view
           v-if="mode === 'password'"
           class="preference-surface ui-card"
@@ -252,6 +307,59 @@ function back() {
 @use '../../styles/spacing.scss';
 @use '../../styles/spacing-tokens' as *;
 @include type-utilities('body');
+
+.settings-entry {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 48px;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background-color: transparent;
+}
+.entry-label { @include type-style('body'); color: #27272a; }
+.entry-label-dark { color: #eeeeef; }
+.theme-row {
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: $space-inline;
+  min-height: 48px;
+  padding-top: $space-detail;
+  padding-bottom: $space-detail;
+}
+.theme-options {
+  flex-direction: row;
+  background-color: #f0f2f5;
+  padding: $space-tight;
+  border-radius: 12px;
+}
+.theme-option {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  min-height: $space-controlMin;
+  margin: 0;
+  border: 0;
+  border-radius: 9px;
+  background-color: transparent;
+}
+.theme-selected { background-color: #ffffff; }
+.theme-options-dark { background-color: #111215; }
+.theme-selected-dark { background-color: #303238; }
+.theme-option-label { @include type-style('caption'); color: #71717a; }
+.theme-option-dark-label { color: #b4b4bd; }
+.theme-selected-label { color: #4e7ee3; }
+.theme-selected-dark-label { color: #9dbcfa; }
+/* #ifdef WEB || MP-WEIXIN */
+.settings-entry::after,
+.theme-option::after { border: 0; }
+/* #endif */
 
 .preference-surface {
   background-color: #fff;

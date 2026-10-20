@@ -48,21 +48,23 @@ test('三千家银行搜索、触底追加、停用、自定义及保存失败�
 });
 for (const width of [320, 390, 768, 1440]) for (const theme of ['light', 'dark']) {
   test(`银行卡编辑布局 ${width} ${theme}`, async ({ page, baseURL }) => {
-    await page.setViewportSize({ width, height: 900 });
+    const viewportHeight = 900;
+    await page.setViewportSize({ width, height: viewportHeight });
     await page.emulateMedia({ colorScheme: theme });
     const dialog = await prepare(page, baseURL);
     const input = dialog.getByRole('searchbox', { name: '银行', exact: true });
     await input.fill('LONG');
     await dialog.getByRole('button', { name: '选择' + banks.at(-1).name, exact: true }).click();
     await expect(dialog.locator('.draft-bank-name')).toHaveText(banks.at(-1).name);
-    await expect.poll(async () => (await dialog.boundingBox()).height).toBeLessThan(780);
+    // 余额字段加入储蓄卡表单后增加约 13px；仍需在 900px 视口中留出至少 50px 上下空间。
+    await expect.poll(async () => (await dialog.boundingBox()).height).toBeLessThan(viewportHeight - 100);
     const bounds = await dialog.boundingBox();
     const field = await input.boundingBox();
     const preview = await dialog.locator('.draft-face').boundingBox();
     expect(field.y).toBeLessThan(preview.y);
     expect(preview.height).toBeGreaterThan(150);
     expect(preview.height).toBeLessThan(180);
-    expect(bounds.height).toBeLessThan(780);
+    expect(bounds.height).toBeLessThan(viewportHeight - 100);
     for (const button of await dialog.getByRole('button').all()) {
       if (!(await button.isVisible())) continue;
       const box = await button.boundingBox();

@@ -12,30 +12,15 @@ import { nextTick, computed, ref } from 'vue'
 import { onShow, onHide } from '@dcloudio/uni-app'
 import PageHeader from '../../components/PageHeader.uvue'
 import { fetchUser, logout } from '../../services/api.ts'
-import { theme, setThemeMode } from '../../services/theme.ts'
 import { restoreSession, session } from '../../services/session.ts'
 
 const preferenceLinks = [
-  {title:'自定义设置',path:'/pages/records/categories'},
-  {title:'反馈',path:'/pages/records/feedback'},
-  {title:'消息中心',path:'/pages/messages/index'},
-  {title:'菜单显示',path:'preferences?section=menus'},
-  {title:'首页卡片',path:'/pages/home-settings/index'},
-  {title:'通知设置',path:'notifications'},
+  { title: '身体档案', path: '/pages/body-profile/index' },
+  { title: '消息中心', path: '/pages/messages/index' },
+  { title: '账号与安全', path: 'account-security' },
+  { title: '设置', path: 'preferences?section=general' },
 ]
 
-const themeOptions = [
-  { label: '跟随系统', value: 'system' },
-  { label: '日间', value: 'light' },
-  { label: '夜间', value: 'dark' }
-]
-function changeTheme(mode) {
-  try {
-    setThemeMode(mode)
-  } catch (error) {
-    uni.showToast({ title: error.message, icon: 'none' })
-  }
-}
 function openPage(name: string) {
   uni.navigateTo({ url: name.startsWith('/') ? name : '/pages/profile/' + name })
 }
@@ -111,7 +96,15 @@ async function signOut() {
 
 <template>
   <view class="tab-page" :class="themeClass('tab-page')">
-    <PageHeader title="" />
+    <PageHeader title="" :actions-min-width="44">
+      <template #actions>
+        <!-- #ifndef WEB -->
+        <button role="button" class="profile-icon-button" aria-label="扫码登录" @click="openPage('/pages/scan-login/index')">
+          <AppIcon name="lucide:scan" />
+        </button>
+        <!-- #endif -->
+      </template>
+    </PageHeader>
     <scroll-view
       scroll-y
       class="tab-scroll"
@@ -133,7 +126,7 @@ async function signOut() {
             >{{ errorText }}</text
           ><button role="button" class="text-action" @click="load"><text :class="buttonLabelClasses(['text-action'])">重试账户信息</text></button></view
         >
-        <view v-if="user" class="profile-card ui-pad-card">
+        <button v-if="user" role="button" class="profile-card ui-pad-card" aria-label="编辑资料" @click="openPage('settings')">
           <image
             v-if="user.avatarUrl"
             class="profile-avatar"
@@ -149,79 +142,25 @@ async function signOut() {
               user.name.slice(0, 1)
             }}</text></view
           >
-          <text class="profile-name ui-mt-section" :class="themeClass('profile-name')">{{
+          <view class="profile-details">
+          <text class="profile-name" :class="themeClass('profile-name')">{{
             user.name
           }}</text>
           <text
             v-if="user.introduction"
-            class="profile-intro ui-mt-sm"
+            class="profile-intro"
             :class="themeClass('profile-intro')"
             >{{ user.introduction }}</text
           >
-        </view>
+          </view>
+        </button>
         <view
           v-else-if="loading"
-          class="state-card"
-          :class="themeClass('state-card')"
-          ><ContentSkeleton variant="profile" label="正在加载个人资料" /></view
+          class="profile-loading"
+          ><ContentSkeleton variant="profile-row" label="正在加载个人资料" /></view
         >
         <view class="profile-menu ui-pad-card ui-mt-section" :class="themeClass('profile-menu')">
-          <!-- #ifndef WEB -->
-          <button role="button" class="menu-row ui-type-body" aria-label="扫码登录" @click="openPage('/pages/scan-login/index')">
-            <text class="menu-label" :class="themeClass('menu-label')">扫码登录</text><AppIcon name="ant-design:right-outlined" />
-          </button>
-          <!-- #endif -->
-          <button
-            role="button"
-            class="menu-row ui-type-body"
-            aria-label="基本设置"
-            @click="openPage('settings')"
-          >
-            <text class="menu-label" :class="themeClass('menu-label')"
-              >基本设置</text
-            ><AppIcon name="ant-design:right-outlined" />
-          </button>
-          <button
-            role="button"
-            class="menu-row ui-type-body"
-            aria-label="账号与安全"
-            @click="openPage('account-security')"
-          >
-            <text class="menu-label" :class="themeClass('menu-label')"
-              >账号与安全</text
-            ><AppIcon name="ant-design:right-outlined" />
-          </button>
-          <button v-for="entry in preferenceLinks" :key="entry.path" role="button" class="menu-row ui-type-body" :aria-label="entry.title" @click="openPage(entry.path)"><text class="menu-label" :class="themeClass('menu-label')">{{entry.title}}</text><AppIcon name="ant-design:right-outlined" /></button>
-          <button role="button" class="menu-row ui-type-body" aria-label="关于" @click="uni.navigateTo({url:'/pages/about/index'})"><text class="menu-label" :class="themeClass('menu-label')">关于</text><AppIcon name="ant-design:right-outlined" /></button>
-          <view class="theme-row ui-row ui-py-sm"
-            ><text class="menu-label" :class="themeClass('menu-label')"
-              >外观</text
-            ><view class="theme-options" :class="themeClass('theme-options')"
-              ><button
-                v-for="option in themeOptions"
-                :key="option.value"
-                role="button"
-                class="theme-option ui-px-card"
-                :class="[
-                  { 'theme-selected': theme.mode === option.value },
-                  themeClass([
-                    'theme-option',
-                    { 'theme-selected': theme.mode === option.value }
-                  ])
-                ]"
-                :aria-pressed="theme.mode === option.value"
-                @click="changeTheme(option.value)"
-              >
-                <text :class="buttonLabelClasses(['theme-option ui-px-card', [
-                  { 'theme-selected': theme.mode === option.value },
-                  themeClass([
-                    'theme-option',
-                    { 'theme-selected': theme.mode === option.value }
-                  ])
-                ]])">{{ option.label }}</text>
-              </button></view
-            ></view
-          >
+          <button v-for="entry in preferenceLinks" :key="entry.path" role="button" class="menu-row ui-type-body" :aria-label="entry.title" @click="openPage(entry.path)"><text class="menu-label" :class="themeClass('menu-label')">{{ entry.title }}</text><AppIcon name="ant-design:right-outlined" /></button>
         </view>
         <view class="signout-anchor ui-mt-section">
           <view
@@ -292,56 +231,51 @@ async function signOut() {
   color: #27272a;
   @include type-style('body');
 }
-.menu-chevron {
-  color: #a1a1aa;
-  @include type-style('glyph-medium');
-}
-.theme-row {
-  flex-direction: row;
-  align-items: center;
-  justify-content: space-between;
-
-}
-.theme-options {
-  flex-direction: row;
-  background-color: #f0f2f5;
-  padding: $space-tight;
-  border-radius: 12px;
-  margin-left: 0;
-}
-.theme-option {
-  display: flex;
-  flex-direction: row;
-  align-items: center;
-  justify-content: center;
-  min-height: 44px;
-
-  margin: 0;
-  border: 0;
-  border-radius: 9px;
-  @include type-style('caption');
-  background-color: transparent;
-  color: #71717a;
-  line-height: $space-controlMin;
-}
-.theme-selected {
-  color: #4e7ee3;
-  background-color: #ffffff;
-}
 /* #ifdef WEB || MP-WEIXIN */
 .menu-row::after,
-.theme-option::after {
+.profile-icon-button::after,
+.profile-card::after {
   border: 0;
 }
 /* #endif */
-.profile-card {
+.profile-icon-button {
+  display: flex;
   align-items: center;
-
+  justify-content: center;
+  width: $space-controlMin;
+  height: $space-controlMin;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background-color: transparent;
+}
+.profile-card {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: $space-section;
+  width: 100%;
+  min-height: $space-controlMin;
+  margin: 0;
+  padding-top: $space-section * 2;
+  padding-bottom: $space-section * 2;
+  border: 0;
+  border-radius: 16px;
+  background-color: transparent;
+  text-align: left;
+}
+.profile-details {
+  flex: 1;
+  min-width: 0;
+  gap: $space-detail;
+  align-items: flex-start;
 }
 .profile-avatar {
-  height: 64px;
-  width: 64px;
-  border-radius: 32px;
+  flex-shrink: 0;
+  height: 72px;
+  width: 72px;
+  border-radius: 36px;
   background-color: #e3ebfc;
   align-items: center;
   justify-content: center;
@@ -361,7 +295,8 @@ async function signOut() {
   @include type-style('label');
   color: #71717a;
 
-  text-align: center;
+  text-align: left;
+  word-break: break-all;
 }
 .signout-anchor {
   position: relative;
@@ -442,7 +377,6 @@ flex-shrink: 1;
   .menu-row {
     width: calc((100% - $space-section) / 2);
   }
-  .theme-row { width: 100%; }
 }
 
 .profile-menu-dark {
@@ -450,16 +384,6 @@ flex-shrink: 1;
 }
 .menu-label-dark {
   color: #eeeeef;
-}
-.theme-options-dark {
-  background-color: #111215;
-}
-.theme-option-dark {
-  color: #b4b4bd;
-}
-.theme-selected-dark {
-  color: #9dbcfa;
-  background-color: #303238;
 }
 .profile-name-dark {
   color: #eeeeef;
@@ -492,10 +416,6 @@ flex-shrink: 1;
 .app-button-label { @include type-style('body'); color: #27272a; }
 .app-button-label-dark { color: #eeeeef; }
 .text-action-label { @include type-style('body'); color: #5b8ff9; }
-.theme-option-label { @include type-style('caption'); color: #71717a; }
-.theme-selected-label { color: #4e7ee3; }
 .signout-button-label { color: #c65353; @include type-style('body'); }
-.theme-option-dark-label { color: #b4b4bd; }
-.theme-selected-dark-label { color: #9dbcfa; }
 .signout-button-dark-label { color: #ed9191; }
 </style>

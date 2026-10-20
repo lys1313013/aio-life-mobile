@@ -70,8 +70,11 @@ try {
       return route.fulfill({ json: failSave ? { code: 1, message: '模拟保存失败' } : { code: 0, data: null } });
     });
     await page.goto(origin + '/#/pages/profile/settings');
-    const button = page.getByRole('button', { name: '从微信获取头像', exact: true });
+    const button = page.getByRole('button', { name: '更换头像', exact: true });
+    await expect(button).toHaveCount(1);
     await expect(button).toBeVisible();
+    await expect(page.getByRole('button', { name: '从微信获取头像', exact: true })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: '选择头像图片', exact: true })).toHaveCount(0);
     await expect(page.locator('[aria-label="昵称"] input')).toHaveValue('模拟用户');
     await page.locator('[aria-label="昵称"] input').fill('未保存的新昵称');
     const blob = await page.evaluate(base64 => {

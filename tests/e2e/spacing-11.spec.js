@@ -3,7 +3,7 @@ const {test,expect}=require('@playwright/test');
 const fs=require('node:fs'); const {setup,admin}=require('./qa-platform-fixtures');
 const out='artifacts/spacing-audit/11';fs.mkdirSync(out,{recursive:true});
 async function click(p,n){
- if (n === 'API Key' && p.url().includes('/pages/profile/index')) return openProfileEntry(p, n);
+ if ((n === 'API Key' || settingsProfileEntries.includes(n)) && p.url().includes('/pages/profile/index')) return openProfileEntry(p, n);
  if (p.url().includes('/pages/mcp/api-keys') && n === '新增') n = '生成新 API Key';
  if (['dict-data','dict-types'].some(kind => p.url().includes('kind=' + kind)) && ['编辑','删除'].includes(n) && await p.getByRole('dialog').count() === 0) {
   await p.getByRole('button',{name:/更多操作$/}).first().click();
@@ -13,7 +13,7 @@ async function click(p,n){
  }
  await p.getByRole('button',{name:n,exact:true}).last().click();
 }
-const { createProfileNavigation } = require('./profile-navigation');
+const { createProfileNavigation, settingsProfileEntries } = require('./profile-navigation');
 const { openProfileEntry, back } = createProfileNavigation(click);
 
 async function shot(p,n){await p.waitForTimeout(180);if(process.env.SPACING11_REUSE_EVIDENCE!=='1'||!fs.existsSync(`${out}/${n}.png`)||fs.statSync(`${out}/${n}.png`).size===0)await p.screenshot({path:`${out}/${n}.png`,fullPage:true});const g=await p.locator('.mobile-page-content,.ui-page-body,.ui-card,.modal-content,.modal-panel,.ui-toolbar,.ui-field-row,.icon-button,.navigation-button,.ui-field-compact,.ui-row,.profile-entry').evaluateAll(ns=>ns.filter(n=>n.getBoundingClientRect().width).map(n=>{const b=n.getBoundingClientRect(),s=getComputedStyle(n);return{class:n.className,x:b.x,y:b.y,width:b.width,height:b.height,padding:s.padding,paddingTop:s.paddingTop,paddingRight:s.paddingRight,paddingBottom:s.paddingBottom,paddingLeft:s.paddingLeft,gap:s.gap,margin:s.margin,display:s.display}}));fs.writeFileSync(`${out}/${n}.json`,JSON.stringify(g,null,2));for(const row of g){if(row.class.includes('ui-card'))expect(row.padding).toBe('12px');if(row.class.includes('ui-modal-content')){const spacing=require('../../src/styles/spacing.json');expect(row.paddingTop).toBe(spacing.modalTop+'px');for(const side of ['paddingRight','paddingBottom','paddingLeft'])expect(row[side]).toBe(spacing.modal+'px');}if(row.class.includes('ui-field-compact'))expect(row.margin).toBe('0px');if(row.class.includes('navigation-button')||row.class.includes('icon-button')){expect(row.width).toBeGreaterThanOrEqual(44);expect(row.height).toBeGreaterThanOrEqual(44);}}expect(await p.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);}

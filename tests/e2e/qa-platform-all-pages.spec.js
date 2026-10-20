@@ -3,7 +3,7 @@ const {test,expect}=require('@playwright/test');const fs=require('node:fs');cons
 const out='test-results/page-audit/platform';fs.mkdirSync(out,{recursive:true});fs.mkdirSync('/tmp/qa-platform-evidence',{recursive:true});
 async function shot(page,name){await page.waitForTimeout(300);fs.mkdirSync(out,{recursive:true});await page.screenshot({path:`${out}/${name}.png`,fullPage:true});fs.copyFileSync(`${out}/${name}.png`,`/tmp/qa-platform-evidence/${name}.png`);const geom=await page.locator('.navigation-button,.icon-button,.dashboard-action,.life-action,.task-check,.delete-button,.category-option').evaluateAll(nodes=>nodes.map(n=>{const b=n.getBoundingClientRect(),child=n.querySelector('svg,img,.category-icon,.navigation-back-surface,.action-content,.delete-icon');const c=child?.getBoundingClientRect();return{class:n.className,label:n.getAttribute('aria-label'),width:b.width,height:b.height,display:getComputedStyle(n).display,dx:c?c.x+c.width/2-b.x-b.width/2:null,dy:c?c.y+c.height/2-b.y-b.height/2:null}}));fs.writeFileSync(`${out}/${name}-geometry.json`,JSON.stringify(geom,null,2));fs.writeFileSync(`/tmp/qa-platform-evidence/${name}-geometry.json`,JSON.stringify(geom,null,2));expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);const modal=page.getByRole('dialog').last();if(await modal.count()){const b=await modal.boundingBox();if(b&&b.height>650){await page.mouse.move(b.x+b.width/2,b.y+b.height/2);await page.mouse.wheel(0,1800);await page.waitForTimeout(100);await page.screenshot({path:`${out}/${name}-bottom.png`,fullPage:true});fs.copyFileSync(`${out}/${name}-bottom.png`,`/tmp/qa-platform-evidence/${name}-bottom.png`);}}}
 async function click(page,name){
- if (name === 'API Key' && page.url().includes('/pages/profile/index')) return openProfileEntry(page, name);
+ if ((name === 'API Key' || settingsProfileEntries.includes(name)) && page.url().includes('/pages/profile/index')) return openProfileEntry(page, name);
  if (page.url().includes('/pages/mcp/api-keys')) name = ({ '新增': '生成新 API Key', '删除': '删除 API Key', '保存': '生成' })[name] || name;
  if (['dict-data','dict-types'].some(kind => page.url().includes('kind=' + kind)) && ['编辑','删除'].includes(name) && await page.getByRole('dialog').count() === 0) {
   await page.getByRole('button',{name:/更多操作$/}).first().click();
@@ -13,7 +13,7 @@ async function click(page,name){
  }
  await page.getByRole('button',{name:name,exact:true}).last().click();
 }
-const { retainedProfilePages, createProfileNavigation } = require('./profile-navigation');
+const { retainedProfilePages, createProfileNavigation, settingsProfileEntries } = require('./profile-navigation');
 const { openProfileEntry, back } = createProfileNavigation(click);
 
 for(const width of [390,768,1440])for(const theme of ['light','dark'])test(`我的菜单隐藏与设置页面弹窗 ${width} ${theme}`,async({page})=>{

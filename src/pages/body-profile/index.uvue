@@ -1,0 +1,231 @@
+<script setup lang="ts">
+import type { BodyProfile, MeasurementKey } from './model.ts';
+import { computed, ref, watch } from 'vue';
+import { onHide, onShow, onUnload } from '@dcloudio/uni-app';
+import MobilePage from '../../components/MobilePage.uvue';
+import PageHeader from '../../components/PageHeader.uvue';
+import MobileButton from '../../components/MobileButton.uvue';
+import AdaptiveModal from '../../components/AdaptiveModal.uvue';
+import FormField from '../../components/FormField.uvue';
+import FormActions from '../../components/FormActions.uvue';
+import LoadingIndicator from '../../components/LoadingIndicator.uvue';
+import AppIcon from '../../components/AppIcon.uvue';
+import { iconSource } from '../../services/icon-source.ts';
+import { isDark, themeClass } from '../../services/theme.ts';
+import { session, restoreSession } from '../../services/session.ts';
+import { useAppLayout } from '../../services/app-layout.ts';
+import { getBodyProfile, saveBodyProfile } from './api.ts';
+import { bodyFigureSvg } from './figure.ts';
+import { calculateBmi, emptyProfile, measurements, measurementText, parseMeasurement, profilePayload, shoeText } from './model.ts';
+
+const { appGridItem } = useAppLayout();
+const profile = ref<BodyProfile>(emptyProfile());
+const ready = ref(false), loading = ref(false), refreshing = ref(false), saving = ref(false);
+const error = ref(''), formError = ref(''), editing = ref('all');
+const form = ref<Record<string, string> | null>(null);
+let snapshot = emptyProfile(), generation = 0, active = false;
+const dimensions = measurements.filter((field) => 'side' in field);
+const primary = measurements.slice(0, 2);
+// 行内背景覆盖原生 button 的禁用底色，加载和读取失败时仍沿用页面主题。
+const primaryStyle = computed(() => ({ ...appGridItem(2, 'inline', [[480, 4]]), backgroundColor: 'transparent' }));
+const editingFields = computed(() => measurements.filter((field) => editing.value === 'all' || field.key === editing.value));
+const bmi = computed(() => calculateBmi(profile.value.heightCm, profile.value.weightKg));
+const figure = computed(() => iconSource(bodyFigureSvg(profile.value.gender, isDark.value), 470));
+const limbContext = computed(() => editing.value === 'all' || ['upperArmCm', 'forearmCm', 'thighCm', 'calfCm'].includes(editing.value));
+const clothing = [{ key: 'topSize', label: '上衣' }, { key: 'trousersSize', label: '裤子' }, { key: 'shoeSize', label: '鞋码' }] as const;
+const showClothing = ref(false);
+const clothingEdit = computed(() => editing.value === 'all' || clothing.some((field) => field.key === editing.value));
+const genders = ['未设置', '男', '女'], sides = ['未设置', '左侧', '右侧'], states = ['未设置', '自然放松', '屈臂收缩'];
+const shoeSystems = ['欧码（常见的38、42码）', '中国码（毫米）', '美码', '英码'];
+const shoeCodes = ['EU', 'CN', 'US', 'UK'];
+
+function valid(version: number, token: string) { return active && generation === version && session.token === token; }
+function suspend() {
+  active = false; generation++;
+  loading.value = saving.value = refreshing.value = false;
+  form.value = null;
+}
+function reset() {
+  generation++;
+  profile.value = emptyProfile(); ready.value = false;
+  loading.value = saving.value = refreshing.value = false;
+  error.value = formError.value = '';
+  form.value = null; snapshot = emptyProfile(); showClothing.value = false;
+}
+watch(() => session.token, () => {
+  reset();
+  if (active && session.token) load();
+}, { flush: 'sync' });
+onHide(suspend);
+onUnload(() => { suspend(); reset(); });
+onShow(() => {
+  restoreSession(); active = true;
+  if (!session.token) { uni.reLaunch({ url: '/pages/login/index' }); return; }
+  load();
+});
+
+async function load() {
+  if (loading.value || saving.value || form.value) return;
+  const version = ++generation, token = session.token;
+  loading.value = true; error.value = '';
+  try {
+    const data = await getBodyProfile();
+    if (!valid(version, token)) return;
+    profile.value = { ...emptyProfile(), ...data }; ready.value = true;
+  } catch (failure) {
+    if (valid(version, token)) error.value = failure.message || '读取失败，请重试';
+  } finally {
+    if (valid(version, token)) loading.value = false;
+  }
+}
+async function refresh() {
+  if (loading.value || saving.value || form.value || refreshing.value) return;
+  refreshing.value = true;
+  const token = session.token;
+  const task = load(), version = generation;
+  try { await task; } finally { if (valid(version, token)) refreshing.value = false; }
+}
+function edit(key = 'all') {
+  if (!ready.value || loading.value || saving.value) return;
+  editing.value = key; formError.value = ''; snapshot = { ...profile.value };
+  const values: Record<string, string> = {};
+  for (const field of measurements) values[field.key] = snapshot[field.key] === null ? '' : String(snapshot[field.key]);
+  values.gender = snapshot.gender === 'male' ? '男' : snapshot.gender === 'female' ? '女' : '未设置';
+  values.measurementSide = snapshot.measurementSide === 'left' ? '左侧' : snapshot.measurementSide === 'right' ? '右侧' : '未设置';
+  values.armState = snapshot.armState === 'relaxed' ? '自然放松' : snapshot.armState === 'flexed' ? '屈臂收缩' : '未设置';
+  values.shoeSystem = shoeSystems[Math.max(0, shoeCodes.indexOf(snapshot.shoeSystem || 'EU'))];
+  values.topSize = snapshot.topSize || ''; values.trousersSize = snapshot.trousersSize || ''; values.shoeSize = snapshot.shoeSize || '';
+  form.value = values;
+}
+function close() { if (!saving.value) form.value = null; }
+async function reload() { close(); await load(); }
+async function save() {
+  if (!form.value || saving.value) return;
+  let payload;
+  try {
+    const current = { ...snapshot };
+    for (const field of measurements) current[field.key] = parseMeasurement(form.value[field.key], field.key);
+    current.gender = form.value.gender === '男' ? 'male' : form.value.gender === '女' ? 'female' : null;
+    current.measurementSide = form.value.measurementSide === '左侧' ? 'left' : form.value.measurementSide === '右侧' ? 'right' : null;
+    current.armState = form.value.armState === '自然放松' ? 'relaxed' : form.value.armState === '屈臂收缩' ? 'flexed' : null;
+    current.topSize = form.value.topSize; current.trousersSize = form.value.trousersSize;
+    current.shoeSize = form.value.shoeSize; current.shoeSystem = shoeCodes[shoeSystems.indexOf(form.value.shoeSystem)] as BodyProfile['shoeSystem'];
+    payload = profilePayload(current);
+  } catch (failure) { formError.value = failure.message; return; }
+  const version = ++generation, token = session.token;
+  saving.value = true; formError.value = '';
+  try {
+    const data = await saveBodyProfile(payload);
+    if (!valid(version, token)) return;
+    profile.value = { ...emptyProfile(), ...data }; form.value = null;
+  } catch (failure) {
+    if (valid(version, token)) formError.value = failure.message || '保存失败，请重试';
+  } finally { if (valid(version, token)) saving.value = false; }
+}
+function explainBmi() {
+  uni.showModal({ title: 'BMI', content: '体重（kg）÷ 身高（m）的平方，根据当前数据自动计算。', showCancel: false });
+}
+function metricLabel(key: MeasurementKey) {
+  return '编辑' + measurements.find((field) => field.key === key)!.label;
+}
+function back() { uni.navigateBack({ fail: () => uni.switchTab({ url: '/pages/profile/index' }) }); }
+</script>
+
+<template>
+  <MobilePage :refreshing="refreshing" :scroll-locked="!!form" :refresh-disabled="!!form" @refresh="refresh">
+    <PageHeader title="身体档案" back @back="back" />
+    <view class="ui-page-body profile-layout">
+      <view class="body-card" :class="themeClass('body-card')" :aria-busy="loading">
+        <view class="body-heading"><text class="body-title" :class="themeClass('body-title')">身体档案</text><MobileButton label="编辑身体档案" icon="ant-design:edit-outlined" variant="ghost" :disabled="!ready || loading" @click="edit()" /></view>
+        <view v-if="error" class="body-error" role="alert"><text class="body-error-text" :class="themeClass('body-error-text')">{{ error }}</text><MobileButton label="重试" variant="quiet" :loading="loading" @click="load" /></view>
+        <view class="body-content"><LoadingIndicator v-if="loading" label="正在读取身体档案" />
+          <view class="body-primary">
+            <button role="button" v-for="field in primary" :key="field.key" class="primary-item" :style="primaryStyle" :disabled="!ready || loading" :aria-label="metricLabel(field.key)" @click="edit(field.key)"><text class="metric-label" :class="themeClass('metric-label')">{{ field.label }}</text><view class="metric-row"><text class="metric-value" :class="themeClass('metric-value')">{{ measurementText(profile[field.key]) }}</text><text class="metric-unit" :class="themeClass('metric-unit')">{{ field.unit }}</text></view></button>
+            <view class="primary-item" :style="primaryStyle"><view class="bmi-label"><text class="metric-label" :class="themeClass('metric-label')">BMI</text><button role="button" class="bmi-help" aria-label="BMI计算方式" @click="explainBmi"><AppIcon name="ant-design:question-circle-outlined" :size="12" /></button></view><text class="metric-value" :class="themeClass('metric-value')" aria-live="polite" data-testid="body-bmi">{{ measurementText(bmi) }}</text></view>
+            <button role="button" class="primary-item" :style="primaryStyle" :disabled="!ready || loading" aria-label="编辑体脂率" @click="edit('bodyFatPercent')"><text class="metric-label" :class="themeClass('metric-label')">体脂率</text><view class="metric-row"><text class="metric-value" :class="themeClass('metric-value')">{{ measurementText(profile.bodyFatPercent) }}</text><text class="metric-unit" :class="themeClass('metric-unit')">%</text></view></button>
+          </view>
+          <view class="body-anatomy"><image class="body-figure" mode="aspectFit" :src="figure" aria-label="身体尺寸示意轮廓" />
+            <button role="button" v-for="field in dimensions" :key="field.key" class="measure" :class="['side' in field && field.side === 'right' ? 'measure-right' : 'measure-left']" :style="{ top: ('top' in field ? field.top : 0) + '%', backgroundColor: 'transparent' }" :disabled="!ready || loading" :aria-label="metricLabel(field.key)" @click="edit(field.key)"><text class="metric-label" :class="themeClass('metric-label')">{{ field.label }}</text><view class="measure-row" :class="{ 'measure-row-right': 'side' in field && field.side === 'right' }"><text class="measure-value" :class="themeClass('measure-value')">{{ measurementText(profile[field.key]) }}</text><text class="metric-unit" :class="themeClass('metric-unit')">cm</text></view><view class="measure-line" :class="['side' in field && field.side === 'right' ? 'measure-line-right' : 'measure-line-left', themeClass('measure-line')]" /></button>
+          </view>
+          <view class="body-extra" :class="themeClass('body-extra')"><button role="button" class="extra-toggle" :aria-expanded="showClothing" aria-label="穿戴尺码与身体长度" @click="showClothing = !showClothing"><text class="extra-label" :class="themeClass('extra-label')">穿戴尺码与身体长度</text><AppIcon :name="showClothing ? 'ant-design:minus-outlined' : 'ant-design:plus-outlined'" :size="14" /></button>
+            <view v-if="showClothing" class="clothing-grid"><button role="button" v-for="field in clothing" :key="field.key" class="clothing-item" style="background-color: transparent" :disabled="!ready || loading" :aria-label="'编辑' + field.label" @click="edit(field.key)"><text class="metric-label" :class="themeClass('metric-label')">{{ field.label }}</text><text class="clothing-value" :class="themeClass('clothing-value')">{{ field.key === 'shoeSize' ? shoeText(profile) : profile[field.key] || '—' }}</text></button><button role="button" class="clothing-item" style="background-color: transparent" :disabled="!ready || loading" aria-label="编辑腿内侧长" @click="edit('inseamCm')"><text class="metric-label" :class="themeClass('metric-label')">腿内侧长</text><text class="clothing-value" :class="themeClass('clothing-value')">{{ measurementText(profile.inseamCm) }} cm</text></button></view>
+          </view>
+          <text v-if="profile.updateTime" class="body-updated" :class="themeClass('body-updated')">更新于 {{ profile.updateTime.replace('T', ' ').slice(0, 16) }}</text>
+        </view>
+      </view>
+    </view>
+    <template #fixed>
+      <AdaptiveModal v-if="form" label="编辑身体数据" :max-width="editing === 'all' ? 560 : 420" :busy="saving" :content-key="editing + formError" @close="close">
+        <FormField v-if="editing === 'all'" v-model="form.gender" label="性别" kind="selector" :options="genders" :disabled="saving" />
+        <view class="editor-grid"><view v-for="field in editingFields" :key="field.key" class="editor-cell" :class="{ 'editor-cell-full': editing !== 'all' }"><FormField v-model="form[field.key]" :label="field.label + '（' + field.unit + '）'" input-type="digit" placeholder="未填写，留空可清除" :disabled="saving" /></view></view>
+        <view v-if="limbContext" class="editor-grid"><view class="editor-cell"><FormField v-model="form.measurementSide" label="四肢围度测量侧别" kind="selector" :options="sides" :disabled="saving" /></view><view class="editor-cell"><FormField v-model="form.armState" label="上臂测量状态" kind="selector" :options="states" :disabled="saving" /></view></view>
+        <view v-if="clothingEdit" class="editor-grid"><view v-if="editing === 'all' || editing === 'topSize'" class="editor-cell"><FormField v-model="form.topSize" label="上衣尺码" placeholder="例如 L" :disabled="saving" /></view><view v-if="editing === 'all' || editing === 'trousersSize'" class="editor-cell"><FormField v-model="form.trousersSize" label="裤子尺码" placeholder="例如 W30 / L32" :disabled="saving" /></view><view v-if="editing === 'all' || editing === 'shoeSize'" class="editor-cell"><FormField v-model="form.shoeSystem" label="鞋码类型" kind="selector" :options="shoeSystems" :disabled="saving" /></view><view v-if="editing === 'all' || editing === 'shoeSize'" class="editor-cell"><FormField v-model="form.shoeSize" label="鞋码" input-type="digit" placeholder="例如 42" :disabled="saving" /></view></view>
+        <text v-if="formError" class="form-error" :class="themeClass('form-error')" role="alert">{{ formError }}</text>
+        <FormActions><template v-if="formError" #secondary><MobileButton label="关闭并重新读取" variant="ghost" :disabled="saving" @click="reload" /></template><MobileButton label="取消" variant="quiet" :disabled="saving" @click="close" /><MobileButton label="保存" :loading="saving" @click="save" /></FormActions>
+      </AdaptiveModal>
+    </template>
+  </MobilePage>
+</template>
+
+<style scoped lang="scss">
+@use '../../styles/spacing.scss';
+@use '../../styles/spacing-tokens' as *;
+@use '../../styles/typography' as *;
+@use '../../styles/text-colors' as *;
+.profile-layout { display: flex; flex-direction: column; align-items: center; }
+.body-card { width: 100%; max-width: 600px; align-self: center; background-color: #fff; border-radius: 16px; padding: $space-card; }
+.body-card-dark { background-color: #1c1e22; }
+.body-heading { display: flex; flex-direction: row; justify-content: space-between; align-items: center; margin-bottom: $space-section; }
+.body-title { @include type-style('title'); color: #27272a; }
+.body-title-dark { color: #eeeeef; }
+.body-content { position: relative; }
+.body-primary { display: flex; flex-direction: row; flex-wrap: wrap; gap: $space-inline; }
+.primary-item { width: calc((100% - $space-inline * 3) / 4); min-height: 68px; margin: 0; padding: 0; display: flex; flex-direction: column; align-items: flex-start; background: transparent; border: 0; text-align: left; }
+.metric-label { @include type-style('caption'); color: $text-secondary-light; }
+.metric-label-dark { color: $text-secondary-dark; }
+.metric-row { display: flex; flex-direction: row; align-items: baseline; gap: $space-detail; }
+.metric-value { @include type-style('hero'); color: #27272a; }
+.metric-value-dark { color: #eeeeef; }
+.metric-unit { @include type-style('badge'); color: $text-secondary-light; }
+.metric-unit-dark { color: $text-secondary-dark; }
+.bmi-label { display: flex; flex-direction: row; align-items: center; gap: $space-detail; height: 18px; }
+.bmi-help { min-width: 44px; height: 44px; margin: -13px 0; padding: 0; display: flex; align-items: center; justify-content: flex-start; background: transparent; }
+// 人物图和标注使用固定坐标几何，保持各测量点与人体部位对应。
+.body-anatomy { position: relative; height: 382px; margin-top: $space-inline; }
+.body-figure { position: absolute; top: 0; left: 50%; transform: translateX(-50%); width: 180px; height: 364px; }
+.measure { position: absolute; width: 68px; min-height: 50px; margin: 0; padding: 0; display: flex; flex-direction: column; align-items: flex-start; border: 0; background: transparent; }
+.measure-left { left: 0; text-align: left; }
+.measure-right { right: 0; text-align: right; align-items: flex-end; }
+.measure-row { display: flex; flex-direction: row; align-items: baseline; gap: $space-detail; }
+.measure-row-right { justify-content: flex-end; }
+.measure-value { @include type-style('metric-compact'); color: #27272a; }
+.measure-value-dark { color: #eeeeef; }
+.measure-line { position: absolute; top: 25px; height: 1px; width: 30px; background-color: #e4e6eb; }
+.measure-line-dark { background-color: #373b44; }
+.measure-line-left { left: calc(100% + $space-inline); }
+.measure-line-right { right: calc(100% + $space-inline); }
+.body-extra { border-top: 1px solid #e4e6eb; padding-top: $space-inline; }
+.body-extra-dark { border-color: #373b44; }
+.extra-toggle { min-height: 44px; width: 100%; padding: 0; margin: 0; display: flex; flex-direction: row; align-items: center; justify-content: space-between; background: transparent; }
+.extra-label { @include type-style('caption'); color: $text-secondary-light; }
+.extra-label-dark { color: $text-secondary-dark; }
+.clothing-grid { display: flex; flex-direction: row; flex-wrap: wrap; gap: $space-section; margin-top: $space-inline; }
+.clothing-item { width: calc((100% - $space-section * 2) / 3); min-height: 44px; padding: 0; margin: 0; display: flex; flex-direction: column; align-items: flex-start; text-align: left; background: transparent; }
+.clothing-value { @include type-style('body'); color: #27272a; word-break: break-all; }
+.clothing-value-dark { color: #eeeeef; }
+.body-updated { @include type-style('badge'); color: $text-secondary-light; text-align: right; margin-top: $space-section; }
+.body-updated-dark { color: $text-secondary-dark; }
+.body-error { display: flex; flex-direction: row; align-items: center; gap: $space-inline; margin-bottom: $space-section; }
+.body-error-text { @include type-style('body'); color: #b54747; flex: 1; }
+.body-error-text-dark { color: #f28b82; }
+.editor-grid { display: flex; flex-direction: row; flex-wrap: wrap; column-gap: $space-inline; }
+.editor-cell { width: calc((100% - $space-inline) / 2); }
+.editor-cell-full { width: 100%; }
+.form-error { @include type-style('caption'); color: #c34848; margin-bottom: $space-form; }
+.form-error-dark { color: #f28b82; }
+@media (max-width: 480px) { .primary-item { width: calc((100% - $space-inline) / 2); } .body-figure { width: 152px; } .measure { width: 60px; } .measure-line { width: 14px; } .clothing-item { width: calc((100% - $space-section) / 2); } }
+/* #ifdef WEB || MP-WEIXIN */
+// uni-button 的默认边框由伪元素绘制，仅在支持该样式的平台清除。
+.primary-item::after, .measure::after, .bmi-help::after, .extra-toggle::after, .clothing-item::after { border: 0; }
+/* #endif */
+</style>

@@ -90,7 +90,7 @@ export interface TimeRecord {
   description?: string
   relateId?: string | null
   relateType?: number | null
-  exercises?: { exerciseTypeId: string; exerciseCount?: number; description?: string }[]
+  exercises?: { id?: string; exerciseTypeId: string; exerciseCount?: number; description?: string }[]
 }
 
 // 首页读取不主动弹二级密码，锁定状态由卡片提供明确的解锁入口。

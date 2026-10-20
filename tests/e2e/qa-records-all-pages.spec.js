@@ -5,6 +5,7 @@ const entries=cases.filter(x=>x[0]!=='categories').map(x=>({menuId:x[0],path:x[1
 async function openCase(page,key,title){
  if(key==='categories'){
   await page.locator('uni-tabbar').getByText('我',{exact:true}).click();
+  await page.locator('[role=button][aria-label="设置"]').click();
   await page.locator('[role=button][aria-label="自定义设置"]').click();
  }else{
   await page.locator('uni-tabbar').getByText('全部',{exact:true}).click();

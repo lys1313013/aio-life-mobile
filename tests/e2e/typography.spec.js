@@ -25,7 +25,8 @@ for (const width of [390, 768, 1440]) {
       await expectRole(page.locator('.form-field-picker-value'), 'body');
       await expectRole(page.locator('.chart-y-tick'), 'caption');
       await expectRole(page.locator('.chart-x-label'), 'caption');
-      await expectRole(page.locator('.chart-value-number'), 'caption-strong');
+      // 运动图表隐藏底部数值，改为在图表上展示极值标签。
+      await expectRole(page.locator('.chart-extreme-label'), 'chart-label');
 
       // soft 外观使用相同的表单尺度；标题/按钮保留各自语义。
       await page.goto('/#/pages/goods/devices');

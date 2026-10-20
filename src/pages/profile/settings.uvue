@@ -119,9 +119,10 @@ function wechatAvatarError(event: { detail?: { errMsg?: string } }) {
   wechatAvatarSelection = null
   if (!selection || !current(selection.token, selection.version)) return
   if (event.detail?.errMsg?.toLowerCase().includes('cancel')) return
-  errorText.value = '无法获取微信头像，请重试或更换头像上传'
+  errorText.value = '无法获取微信头像，请重试'
 }
 // #endif
+// #ifndef MP-WEIXIN
 function chooseAvatar() {
   if (uploading.value || saving.value || !ready.value) return
   const token = session.token, version = revision
@@ -138,6 +139,7 @@ function chooseAvatar() {
     }
   })
 }
+// #endif
 async function save() {
   if (!ready.value || saving.value || uploading.value) return
   const nickname = form.value.nickname.trim()
@@ -173,7 +175,7 @@ function back() {
 </script>
 <template>
   <view class="tab-page" :class="themeClass('tab-page')">
-    <PageHeader title="基本设置" back @back="!saving && !uploading && back()" />
+    <PageHeader title="编辑资料" back @back="!saving && !uploading && back()" />
     <scroll-view scroll-y class="tab-scroll">
       <view class="tab-content ui-page-inset">
         <view
@@ -202,13 +204,6 @@ function back() {
           :class="themeClass('settings-card')"
         >
           <view class="avatar-section ui-mb-section">
-            <button
-              role="button"
-              class="avatar-picker"
-              :disabled="uploading || saving" :aria-disabled="uploading || saving"
-              aria-label="选择头像图片"
-              @click="chooseAvatar"
-            >
             <image
               v-if="form.avatarUrl"
               class="settings-avatar"
@@ -225,8 +220,8 @@ function back() {
                 >{{ (form.nickname || '我').slice(0, 1) }}</text
               ></view
             >
-            </button>
             <view class="avatar-actions">
+              <!-- #ifndef MP-WEIXIN -->
               <button
                 role="button"
                 class="avatar-picker"
@@ -235,17 +230,19 @@ function back() {
                 aria-label="更换头像"
                 @click="chooseAvatar"
               ><text class="settings-link">{{ uploading ? '上传中…' : '更换头像' }}</text></button>
+              <!-- #endif -->
               <!-- #ifdef MP-WEIXIN -->
               <button
                 role="button"
                 class="avatar-picker"
                 :open-type="uploading || saving ? '' : 'chooseAvatar'"
                 :disabled="uploading || saving" :aria-disabled="uploading || saving"
-                aria-label="从微信获取头像"
+                :loading="uploading"
+                aria-label="更换头像"
                 @click="beginWechatAvatarSelection"
                 @chooseavatar="chooseWechatAvatar"
                 @error="wechatAvatarError"
-              ><text class="settings-link">从微信获取</text></button>
+              ><text class="settings-link">{{ uploading ? '上传中…' : '更换头像' }}</text></button>
               <!-- #endif -->
             </view>
           </view>

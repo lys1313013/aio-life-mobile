@@ -67,7 +67,7 @@ for (const width of [390, 768, 1440]) for (const theme of ['light', 'dark']) {
     await dialog.getByRole('button', { name: '保存', exact: true }).click();
     await expect(dialog).toHaveCount(0);
     expect(state.calls.at(-1).body.balance).toBeNull();
-    await expect(page.locator('.card').getByText('余额：未记录', { exact: true })).toBeVisible();
+    await expect(page.locator('.card .card-meta')).toHaveCount(0);
     await edit();
     for (const invalid of ['-0.01', '1.001', '10000000000000000']) {
       await balance.fill(invalid);
@@ -94,6 +94,11 @@ for (const width of [390, 768, 1440]) for (const theme of ['light', 'dark']) {
     expect(state.calls.at(-1).body.balance).toBeNull();
     expect(state.calls.at(-1).body.creditLimit).toBe('50000.50');
     await expect(page.locator('.card').getByText('信用额度：50,000.5 元', { exact: true })).toBeVisible();
+    await edit();
+    await credit.fill('');
+    await dialog.getByRole('button', { name: '保存', exact: true }).click();
+    await expect(dialog).toHaveCount(0);
+    await expect(page.locator('.card .card-meta')).toHaveCount(0);
     await edit();
     await chooseType(page, dialog, '储蓄卡');
     await balance.fill('12.34');

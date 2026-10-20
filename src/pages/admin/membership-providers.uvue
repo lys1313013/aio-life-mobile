@@ -42,7 +42,7 @@ async function load(refresh = false) {
 function open(row = null) {
   if (!authorized.value || !loaded.value || loading.value || saving.value) return;
   original.value = row ? { ...row } : null;
-  form.value = row ? { ...row, sortOrder: String(row.sortOrder) } : { name: '', code: '', category: 'other', iconKey: null, sortOrder: '0', isEnabled: 1 };
+  form.value = row ? { ...row, sortOrder: String(row.sortOrder) } : { name: '', category: 'other', iconKey: null, sortOrder: '0', isEnabled: 1 };
   editorRevision++; formError.value = '';
 }
 function close() { if (!saving.value) { form.value = null; editorRevision++; } }
@@ -92,7 +92,6 @@ onUnload(deactivate);
     </MobilePage>
     <AdaptiveModal v-if="form" :label="original ? '编辑会员平台' : '新增会员平台'" :max-width="560" :busy="saving" @close="close">
       <FormField appearance="soft" required label="平台名称" v-model="form.name" :disabled="saving" />
-      <FormField appearance="soft" required label="平台编码" v-model="form.code" :disabled="saving" placeholder="例如 tencent_video" />
       <FormField appearance="soft" required label="分类" kind="selector" :model-value="categoryLabels[categories.indexOf(form.category)]" :options="categoryLabels" :disabled="saving" @update:model-value="form.category = categories[categoryLabels.indexOf($event)]" />
       <FormField appearance="soft" label="图标" compact>
         <scroll-view scroll-y class="icon-scroll" :class="{ 'icon-scroll-compact': icons.length < 4 }">

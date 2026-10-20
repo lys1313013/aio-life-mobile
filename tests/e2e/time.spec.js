@@ -4,7 +4,7 @@ const { pullDown } = require('./gestures.js');
 const today = (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; })();
 async function setup(page, options = {}) {
   const state = { queries: 0, ranges: [], creates: [], updates: [], updateIds: [], deletes: 0, profiles: 0, relatedQueries: [], relatedUpdates: [], coverAuth: [], failRefresh: false, failSave: false, failDelete: false, detailFailure: false, full: false,
-    records: [{ id: '9223372036854775807', date: today, categoryId: '2', startTime: 540, endTime: 599, title: '晨间运动', description: '保留原有备注', exercises: [{ exerciseTypeId: '9223372036854775806', exerciseCount: 20, description: '三组' }], relateId: '9223372036854775805', relateType: 1 }] };
+    records: [{ id: '9223372036854775807', date: today, categoryId: '2', startTime: 540, endTime: 599, title: '晨间运动', description: '保留原有备注', exercises: [{ id: '9223372036854775001', exerciseTypeId: '9223372036854775806', exerciseCount: 20, description: '三组' }], relateId: '9223372036854775805', relateType: 1 }] };
   Object.assign(state, options);
   await page.route(`${test.info().project.use.baseURL}/api/**`, async route => {
     const req = route.request(), url = new URL(req.url()), path = url.pathname, method = req.method();
@@ -270,7 +270,7 @@ test('时迹新增、失败保留、重复提交、编辑保留附属字段、�
   await page.getByRole('button', { name: '保存', exact: true }).click();
   await expect(page.getByRole('button', { name: '编辑记录 晨间运动' })).toBeVisible();
   await expect(page.getByRole('dialog', { name: '编辑时迹', exact: true })).toHaveCount(0);
-  expect(state.updates[0]).toMatchObject({ endTime: 598, relateId: '9223372036854775805', relateType: 1, description: '保留原有备注', exercises: [{ exerciseTypeId: '9223372036854775806', exerciseCount: 20, description: '三组' }] });
+  expect(state.updates[0]).toMatchObject({ endTime: 598, relateId: '9223372036854775805', relateType: 1, description: '保留原有备注', exercises: [{ id: '9223372036854775001', exerciseTypeId: '9223372036854775806', exerciseCount: 20, description: '三组' }] });
   expect(state.updates[0]).not.toHaveProperty('id');
   expect(state.updates[0]).not.toHaveProperty('duration');
   await page.getByRole('button', { name: '编辑记录 专注学习' }).click();
@@ -585,7 +585,7 @@ for (const width of [390, 768, 1440]) for (const colorScheme of ['light', 'dark'
   }
   await dialog.getByRole('button', { name: '保存', exact: true }).click();
   await expect(dialog).toHaveCount(0);
-  expect(state.updates[0]).toMatchObject({ date: today, endTime: width === 390 ? 598 : 599, description: '保留原有备注', relateId: '9223372036854775805', exercises: [{ exerciseTypeId: '9223372036854775806', exerciseCount: 20, description: '三组' }] });
+  expect(state.updates[0]).toMatchObject({ date: today, endTime: width === 390 ? 598 : 599, description: '保留原有备注', relateId: '9223372036854775805', exercises: [{ id: '9223372036854775001', exerciseTypeId: '9223372036854775806', exerciseCount: 20, description: '三组' }] });
 });
 
 
@@ -822,9 +822,9 @@ for (const width of [390, 768, 1440]) for (const colorScheme of ['light', 'dark'
     await page.setViewportSize({ width, height: 900 });
     await page.emulateMedia({ colorScheme });
     const exercises = [
-      { exerciseTypeId: '9223372036854775806', exerciseCount: 20, description: '第一组备注' },
-      { exerciseTypeId: '9223372036854775806', exerciseCount: 12, description: '第二组备注' },
-      { exerciseTypeId: '9223372036854775802', exerciseCount: 10, description: '其他动作备注' },
+      { id: '9223372036854775001', exerciseTypeId: '9223372036854775806', exerciseCount: 20, description: '第一组备注' },
+      { id: '9223372036854775002', exerciseTypeId: '9223372036854775806', exerciseCount: 12, description: '第二组备注' },
+      { id: '9223372036854775003', exerciseTypeId: '9223372036854775802', exerciseCount: 10, description: '其他动作备注' },
     ];
     const state = await setup(page, {
       categories: categoryPalette,

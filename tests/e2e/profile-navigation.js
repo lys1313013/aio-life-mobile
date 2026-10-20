@@ -9,11 +9,16 @@ const retainedProfilePages = Object.freeze({
   '管理与配置': '/pages/admin/directory',
 });
 
+const settingsProfileEntries = ['菜单显示', '首页卡片', '通知设置', '自定义设置', '反馈', '关于'];
+
 function createProfileNavigation(click) {
   async function openProfileEntry(page, name) {
     const url = retainedProfilePages[name];
     if (url) await page.goto('/#' + url);
-    else await click(page, name);
+    else {
+      if (settingsProfileEntries.includes(name) && page.url().includes('/pages/profile/index')) await click(page, '设置');
+      await click(page, name === '基本设置' ? '编辑资料' : name);
+    }
   }
 
   async function back(page) {
@@ -25,7 +30,7 @@ function createProfileNavigation(click) {
     const previous = page.url();
     await page.getByRole('button', { name: '返回', exact: true }).first().click();
     await expect(page).not.toHaveURL(previous);
-    if (page.url().includes('/pages/profile/account-security')) {
+    if (page.url().includes('/pages/profile/account-security') || page.url().includes('/pages/profile/preferences?section=general')) {
       await page.getByRole('button', { name: '返回', exact: true }).first().click();
     }
   }
@@ -33,4 +38,4 @@ function createProfileNavigation(click) {
   return { openProfileEntry, back };
 }
 
-module.exports = { retainedProfilePages, createProfileNavigation };
+module.exports = { retainedProfilePages, settingsProfileEntries, createProfileNavigation };
