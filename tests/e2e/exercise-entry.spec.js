@@ -53,13 +53,14 @@ for (const width of [390, 768, 1440]) for (const theme of ['light', 'dark']) {
     await description.tap();
     await expect(description).toBeFocused();
     await page.keyboard.insertText('模拟触摸录入');
-    if (width < 500) {
-      await date.tap();
+    await date.tap();
+    const nativeDate = date.locator('input[type="date"]');
+    if (await nativeDate.count()) {
+      await nativeDate.fill('2026-10-19');
+    } else {
       await expect(page.locator('.uni-picker-content:visible')).toBeVisible();
       await page.locator('.uni-picker-action-confirm:visible').tap();
       await expect(page.locator('.uni-picker-content:visible')).toHaveCount(0);
-    } else {
-      await date.locator('input[type="date"]').fill('2026-10-19');
     }
     await expect(dialog).toBeVisible();
     expect(await scroll.evaluate(el => el.scrollTop)).toBe(scrollTop);

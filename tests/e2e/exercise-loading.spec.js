@@ -117,6 +117,7 @@ for (const width of [390, 768, 1440]) for (const theme of ['light', 'dark']) {
 
 test('运动列表末批停止、日期筛选重置批次、刷新失败保留已显示记录', async ({ page }) => {
   await page.setViewportSize({ width: 768, height: 900 });
+  await page.clock.setFixedTime(new Date('2026-10-19T12:00:00+08:00'));
   const { calls, state } = await prepare(page, 45);
   await page.goto('/#/pages/records/exercise');
   await expect(page.locator('.record-header')).toHaveCount(20);
@@ -131,8 +132,15 @@ test('运动列表末批停止、日期筛选重置批次、刷新失败保留�
   state.fail = false;
   await page.getByRole('button', { name: '重试', exact: true }).last().click();
   await expect(page.locator('.record-header')).toHaveCount(20);
-  const start = page.locator('uni-picker[aria-label="开始日期"] input[type="date"]');
-  await start.fill('2026-10-19');
+  const startPicker = page.locator('uni-picker[aria-label="开始日期"]');
+  await startPicker.click();
+  const start = startPicker.locator('input[type="date"]');
+  if (await start.count()) {
+    await start.fill('2026-10-19');
+  } else {
+    await expect(page.locator('.uni-picker-content:visible')).toBeVisible();
+    await page.locator('.uni-picker-action-confirm:visible').click();
+  }
   await expect(page.locator('.record-header')).toHaveCount(16);
   await page.getByRole('button', { name: '清除日期筛选', exact: true }).click();
   await expect(page.locator('.record-header')).toHaveCount(20);

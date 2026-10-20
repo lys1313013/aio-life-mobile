@@ -8,6 +8,8 @@ if (prebuilt && !existsSync(path.join(__dirname, 'dist/build/h5/index.html'))) {
   throw new Error('缺少本次 H5 构建产物，请先构建或下载同次工作流的 h5 artifact。');
 }
 const workers = Number(process.env.PLAYWRIGHT_WORKERS || 1);
+const baseURL = process.env.E2E_BASE_URL || 'http://127.0.0.1:5180';
+const previewPort = new URL(baseURL).port || '5180';
 if (!Number.isInteger(workers) || workers < 1) {
   throw new Error('PLAYWRIGHT_WORKERS 必须为正整数。');
 }
@@ -20,7 +22,7 @@ module.exports = defineConfig({
   // 默认串行；CI 和提交前验证可显式设置并行度，CLI --workers 仍可覆盖。
   workers,
   use: {
-    baseURL: 'http://127.0.0.1:5180',
+    baseURL,
     browserName: 'chromium',
     channel: process.env.CI ? undefined : 'chrome',
     screenshot: 'only-on-failure',
@@ -29,8 +31,10 @@ module.exports = defineConfig({
   },
   webServer: {
     // 使用生产产物，避免首次访问懒加载页面时 Vite 依赖优化触发整页刷新。
-    command: prebuilt ? 'npm run preview' : 'npm run build && npm run preview',
-    url: 'http://127.0.0.1:5180',
+    command: prebuilt
+      ? `npx vite preview --host 127.0.0.1 --port ${previewPort} --strictPort --outDir dist/build/h5`
+      : `npm run build && npx vite preview --host 127.0.0.1 --port ${previewPort} --strictPort --outDir dist/build/h5`,
+    url: baseURL,
     // 不能误用已运行的开发服务器或上一次构建的预览。
     reuseExistingServer: false,
     timeout: 120000,
