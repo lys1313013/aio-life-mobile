@@ -58,7 +58,7 @@ for (const width of [390, 820, 1440]) for (const theme of ['light', 'dark']) {
       await expect(cards).toHaveCount(5);
       await page.locator('[aria-label="目标首页卡片"]').scrollIntoViewIfNeeded();
       await page.screenshot({ path: info.outputPath('preparing.png'), fullPage: true });
-      await expect(cards.locator('.business-skeleton')).toHaveCount(3);
+      await expect(cards.locator('.business-skeleton')).toHaveCount(5);
       await expect(cards.locator('.movie-pending .movie-cell')).toHaveCount(6);
       await expect(cards.locator('.reading-placeholder')).toHaveCount(3);
       await expect(page.locator('.business-card[aria-busy="true"]')).toHaveCount(5);
@@ -644,3 +644,66 @@ test('纪念日拖动到边缘自动滚动，松手仅保存纪念日顺序', as
   await expect(card.locator('.record-title').last()).toHaveText('模拟纪念日 1');
   await cdp.detach();
 });
+
+for (const width of [360, 820, 1440]) for (const theme of ['light', 'dark']) {
+  test(`目标卡片完整展示三行且刷新保持高度 ${width} ${theme}`, async ({ page }, info) => {
+    await page.setViewportSize({ width, height: 1000 });
+    await page.emulateMedia({ colorScheme: theme });
+    await setup(page, { navigate: false });
+    const rows = Array.from({ length: 3 }, (_, index) => ({
+      id: '922337203685477580' + index,
+      title: ['模拟系统架构设计师', '模拟电影 TOP250', '模拟早睡 24点前睡觉次数超过100并持续记录每一天'][index],
+      status: 'in_progress', isPinned: 1, currentValue: index * 25, targetValue: 100, endDate: '2029-09-06',
+    }));
+    let release;
+    let pending = new Promise(resolve => { release = resolve; });
+    let fail = false;
+    await page.route('**/api/goals?*', async route => {
+      await pending;
+      await route.fulfill({ json: fail ? { code: 1, message: '模拟目标加载失败' } : { code: 0, data: rows } });
+    });
+    const card = page.locator('[aria-label="目标首页卡片"]');
+    try {
+      await page.goto('/#/pages/home/index');
+      await expect(card.locator('.business-skeleton')).toHaveCount(3);
+      const loadingHeight = (await card.boundingBox()).height;
+      release();
+      await expect(card.locator('.business-row')).toHaveCount(3);
+      await card.scrollIntoViewIfNeeded();
+      const loaded = await card.boundingBox();
+      expect(loaded.height).toBe(loadingHeight);
+      const geometry = await card.locator('.business-scroll').evaluate(scroll => {
+        const bounds = scroll.getBoundingClientRect();
+        return [...scroll.querySelectorAll('.business-row')].map(row => {
+          const rect = row.getBoundingClientRect();
+          return { height: rect.height, visible: rect.top >= bounds.top && rect.bottom <= bounds.bottom };
+        });
+      });
+      expect(geometry.every(row => row.height === 64 && row.visible)).toBe(true);
+      await page.screenshot({ path: info.outputPath('three-goals.png'), fullPage: true });
+      pending = new Promise(resolve => { release = resolve; });
+      await card.getByRole('button', { name: '刷新目标', exact: true }).click();
+      await expect(card.getByRole('status', { name: '正在加载目标' })).toBeVisible();
+      expect((await card.boundingBox()).height).toBe(loaded.height);
+      await expect(card.locator('.business-row')).toHaveCount(3);
+      fail = true;
+      release();
+      await expect(card.getByRole('button', { name: '重试目标：模拟目标加载失败' })).toBeVisible();
+      expect((await card.boundingBox()).height).toBe(loaded.height);
+      fail = false;
+      await card.getByRole('button', { name: '重试目标：模拟目标加载失败' }).click();
+      await expect(card.getByRole('button', { name: '重试目标：模拟目标加载失败' })).toHaveCount(0);
+      expect((await card.boundingBox()).height).toBe(loaded.height);
+      rows.splice(1);
+      await card.getByRole('button', { name: '刷新目标', exact: true }).click();
+      await expect(card.locator('.business-row')).toHaveCount(1);
+      expect((await card.boundingBox()).height).toBe(width < 768 ? loaded.height - 128 : loaded.height);
+      rows.length = 0;
+      await card.getByRole('button', { name: '刷新目标', exact: true }).click();
+      await expect(card).toHaveCount(0);
+    } finally {
+      release();
+      await page.unrouteAll({ behavior: 'wait' });
+    }
+  });
+}

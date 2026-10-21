@@ -5,6 +5,7 @@ import MenuManager from '../../components/MenuManager.uvue';
 import DictDataPanel from './DictDataPanel.uvue';
 import DictTypePanel from './DictTypePanel.uvue';
 import UserDictPanel from './UserDictPanel.uvue';
+import UserPanel from './UserPanel.uvue';
 import WechatConfigEditor from './WechatConfigEditor.uvue';
 import { menuMoveChanges } from '../../services/admin/menu-tree.ts';
 import { computed, ref, watch } from 'vue';
@@ -136,6 +137,10 @@ function searchDictionary(value) {
   rows.value = [];
   total.value = 0;
   pageEnded.value = false;
+  load();
+}
+function searchUsers(value: string) {
+  keyword.value = value;
   load();
 }
 function filters() {
@@ -519,7 +524,7 @@ async function download() {
 <template>
   <view class="admin-page"
     ><PageHeader :title="spec.title" back @back="uni.navigateBack()">
-      <template v-if="['dict-data', 'dict-types', 'user-dict'].includes(kind)" #default>
+      <template v-if="['users', 'dict-data', 'dict-types', 'user-dict'].includes(kind)" #default>
         <text class="admin-dict-heading" :class="themeClass('admin-dict-heading')">{{ spec.title }}</text>
         <MobileButton v-if="authorized" label="新增" icon="ant-design:plus-outlined" variant="ghost" :disabled="loading || !!busyId || dictWorking || dictDragging" @click="edit()" />
       </template>
@@ -534,6 +539,7 @@ async function download() {
       @reachbottom="loadMore"
     >
       <MenuManager v-if="kind === 'menus'" :rows="rows" :loading="loading" :error="error" :busy-id="busyId" :remove="remove" @edit="edit" @create-child="(id) => edit(null, id)" @status="(row, mobile) => mutate(row, () => setMenuStatus(row, mobile))" @move="move" @retry="load()" />
+      <UserPanel v-else-if="kind === 'users'" :rows="rows" :total="total" :loading="loading" :error="error" :more-error="moreError" :has-more="!pageEnded && rows.length < total" :busy="saving || !!busyId" :remove="remove" @search="searchUsers" @edit="edit" @retry="load()" @more="load(true)" />
       <UserDictPanel v-else-if="kind === 'user-dict'" ref="dictPanel" :rows="rows" :options="options" :total="total" :type="typeFilter" :loading="loading" :error="error" :more-error="moreError" :has-more="!pageEnded && rows.length < total" :busy="saving || opened || !!busyId" :busy-id="busyId" :remove="remove" :reorder="sortUserDict"
         @update:rows="rows = $event" @search="searchDictionary" @edit="edit" @retry="load()" @more="load(true)" @dragging="dictDragging = $event" @working="dictWorking = $event" @scroll-top="dictScrollTop = $event" />
       <DictDataPanel v-else-if="kind === 'dict-data'" :rows="rows" :options="options" :total="total" :loading="loading" :error="error" :more-error="moreError" :has-more="!pageEnded && rows.length < total" :busy="!!busyId" :remove="remove" @search="searchDictionary" @edit="edit" @retry="load()" @more="load(true)" />
@@ -689,7 +695,7 @@ async function download() {
       </template>
       <template #fixed
         ><FloatingActionButton
-          v-if="!spec.readOnly && kind !== 'config' && !['dict-data', 'dict-types', 'user-dict'].includes(kind) && authorized"
+          v-if="!spec.readOnly && kind !== 'config' && !['users', 'dict-data', 'dict-types', 'user-dict'].includes(kind) && authorized"
           :disabled="loading || !!busyId"
           @click="edit()"
       /></template>

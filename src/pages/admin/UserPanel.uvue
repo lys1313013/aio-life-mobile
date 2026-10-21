@@ -1,0 +1,154 @@
+<script setup lang="ts">
+import { computed, ref, watch } from 'vue';
+import AppIcon from '../../components/AppIcon.uvue';
+import FormField from '../../components/FormField.uvue';
+import MobileButton from '../../components/MobileButton.uvue';
+import ConfirmAction from '../../components/ConfirmAction.uvue';
+import LoadingIndicator from '../../components/LoadingIndicator.uvue';
+import LoadMore from '../../components/LoadMore.uvue';
+import { isDark, themeClass } from '../../services/theme.ts';
+
+const props = defineProps<{
+  rows: any[]; total: number; loading: boolean; error: string;
+  moreError: string; hasMore: boolean; busy: boolean;
+  remove: (row: any) => Promise<unknown>;
+}>();
+const emit = defineEmits(['search', 'edit', 'retry', 'more']);
+const keyword = ref(''), settled = ref(false);
+watch(() => props.loading, (value, previous) => {
+  if (previous && !value && !props.error) settled.value = true;
+});
+const initialLoading = computed(() => props.loading && !settled.value && !props.rows.length);
+const cards = computed(() => initialLoading.value ? [{ id: 'loading-1' }, { id: 'loading-2' }, { id: 'loading-3' }] : props.rows);
+function search() { emit('search', keyword.value.trim()); }
+function reset() { keyword.value = ''; search(); }
+function name(row) { return row.nickname || row.username || '未命名用户'; }
+function role(value) { return value === 'admin' ? '管理员' : value === 'user' ? '普通用户' : value || '未设置角色'; }
+function time(value) { return value ? String(value).replace('T', ' ') : '—'; }
+</script>
+
+<template>
+  <view class="user-panel ui-page-body" :class="themeClass('user-panel')">
+    <view class="user-search" :class="themeClass('user-search')">
+      <MobileButton label="查询" icon="ant-design:search-outlined" variant="ghost" :loading="loading" :disabled="busy" @click="search" />
+      <FormField label="用户名 / 昵称" hide-label compact stretch>
+        <input class="user-search-input" :class="themeClass('user-search-input')" aria-label="用户名 / 昵称" placeholder="搜索用户名 / 昵称" :value="keyword" :disabled="busy" confirm-type="search" @input="keyword = $event.detail.value" @confirm="search" />
+      </FormField>
+      <MobileButton v-if="keyword" label="重置筛选" icon="ant-design:close-outlined" variant="ghost" :disabled="busy" @click="reset" />
+    </view>
+    <view class="user-toolbar">
+      <text class="user-count" :class="themeClass('user-muted')">{{ initialLoading ? '加载中…' : '共 ' + total + ' 位用户' }}</text>
+    </view>
+    <view class="user-results" :aria-busy="loading">
+      <LoadingIndicator v-if="loading && !initialLoading" floating label="正在更新用户" />
+      <view v-if="error" class="user-notice" :class="[themeClass('user-notice'), { 'user-notice-overlay': rows.length > 0 || settled }]" role="alert">
+        <text class="user-notice-text" :class="themeClass('user-muted')">{{ error }}</text>
+        <MobileButton label="重试" icon="ant-design:reload-outlined" variant="ghost" :loading="loading" @click="emit('retry')" />
+      </view>
+      <view v-if="!initialLoading && !rows.length && (!error || settled)" class="user-empty" :class="themeClass('user-empty')">
+        <AppIcon name="ant-design:team-outlined" :size="32" :color="isDark ? '#7f8c9f' : '#94a3b8'" />
+        <text class="user-empty-title" :class="themeClass('user-empty-title')">{{ keyword ? '没有匹配的用户' : '暂无用户' }}</text>
+      </view>
+      <view class="user-list">
+        <view v-for="row in cards" :key="row.id" class="user-card" :class="[themeClass('user-card'), { 'user-card-loading': initialLoading }]" :aria-hidden="initialLoading">
+          <view class="user-identity">
+            <view class="user-avatar" :class="themeClass('user-avatar')">
+              <text v-if="!initialLoading" class="user-initial">{{ name(row).slice(0, 1).toUpperCase() }}</text>
+              <view v-if="!initialLoading" class="user-presence" :class="[themeClass('user-presence'), { 'user-presence-online': row.isOnline === true }]" role="img" :aria-label="row.isOnline === true ? '在线' : '离线'" />
+            </view>
+            <view class="user-names">
+              <text class="user-name" :class="[themeClass('user-name'), { 'user-placeholder': initialLoading }]">{{ initialLoading ? '　' : name(row) }}</text>
+              <text class="user-username" :class="[themeClass('user-muted'), { 'user-placeholder': initialLoading }]">{{ initialLoading ? '　' : '@' + (row.username || '—') }}</text>
+            </view>
+            <text class="user-role" :class="[themeClass('user-role'), { 'user-role-admin': row.role === 'admin', 'user-role-admin-dark': row.role === 'admin' && isDark, 'user-placeholder': initialLoading }]">{{ initialLoading ? '　　　' : role(row.role) }}</text>
+          </view>
+          <view class="user-email-row">
+            <text class="user-time-label" :class="themeClass('user-muted')">邮箱</text>
+            <text class="user-email" :class="[themeClass('user-muted'), { 'user-placeholder': initialLoading }]">{{ initialLoading ? '　' : row.email || '未设置邮箱' }}</text>
+          </view>
+          <view class="user-times">
+            <view class="user-time">
+              <text class="user-time-label" :class="themeClass('user-muted')">最近活跃</text>
+              <text class="user-time-value" :class="[themeClass('user-time-value'), { 'user-placeholder': initialLoading }]">{{ initialLoading ? '　' : time(row.lastActiveTime) }}</text>
+            </view>
+            <view class="user-time">
+              <text class="user-time-label" :class="themeClass('user-muted')">创建时间</text>
+              <text class="user-time-value" :class="[themeClass('user-time-value'), { 'user-placeholder': initialLoading }]">{{ initialLoading ? '　' : time(row.createTime) }}</text>
+            </view>
+          </view>
+          <view class="user-footer">
+            <text class="user-id" :class="[themeClass('user-muted'), { 'user-placeholder': initialLoading }]">{{ initialLoading ? '　' : 'ID ' + row.id }}</text>
+            <view class="user-actions">
+              <MobileButton label="编辑" icon="ant-design:edit-outlined" variant="ghost" :disabled="initialLoading || loading || busy" @click="emit('edit', row)" />
+              <ConfirmAction label="删除" :message="'确定删除用户“' + name(row) + '”？'" :action="() => remove(row)">
+                <template #default="action">
+                  <MobileButton label="删除" icon="ant-design:delete-outlined" variant="ghost" :disabled="initialLoading || loading || busy" :loading="action.busy" @click="action.open" />
+                </template>
+              </ConfirmAction>
+            </view>
+          </view>
+        </view>
+      </view>
+    </view>
+    <LoadMore :loading="loading" :error="moreError" :has-more="hasMore" @load="emit('more')" />
+  </view>
+</template>
+
+<style scoped lang="scss">
+@use '../../styles/typography' as *;
+@use '../../styles/text-colors' as *;
+@use '../../styles/spacing.scss';
+@use '../../styles/spacing-tokens' as *;
+.user-panel { gap: $space-detail; }
+.user-search, .user-identity, .user-email-row, .user-times, .user-footer, .user-actions, .user-notice { display: flex; flex-direction: row; align-items: center; }
+.user-search { border-radius: 12px; background-color: #ffffff; overflow: hidden; }
+.user-search-dark { background-color: #1c1e22; }
+.user-search-input { @include type-style('body'); width: 100%; min-width: 0; height: $space-controlMin; color: #27272a; }
+.user-search-input-dark { color: #eeeeef; }
+.user-toolbar { min-height: $space-controlMin; justify-content: center; }
+.user-count { @include type-style('caption'); color: $text-secondary-light; }
+.user-results { position: relative; }
+.user-list { display: flex; gap: $space-section; }
+.user-card { box-sizing: border-box; padding: $space-card; gap: $space-inline; border-radius: 14px; background-color: #ffffff; }
+.user-card-dark { background-color: #1c1e22; }
+.user-identity { gap: $space-inline; align-items: flex-start; }
+.user-avatar { position: relative; width: $space-controlMin; height: $space-controlMin; flex-shrink: 0; align-items: center; justify-content: center; border-radius: 14px; background-color: #edf3ff; }
+.user-avatar-dark { background-color: #25334c; }
+.user-initial { @include type-style('title'); color: #6492e0; }
+.user-presence { position: absolute; right: 0; bottom: 0; width: 8px; height: 8px; border: 2px solid #ffffff; border-radius: 50%; background-color: #a3aab6; }
+.user-presence-dark { border-color: #1c1e22; }
+.user-presence-online { background-color: #36b37e; }
+.user-names { flex: 1; min-width: 0; }
+.user-name { @include type-style('title'); color: #27272a; overflow-wrap: anywhere; }
+.user-name-dark { color: #eeeeef; }
+.user-username { @include type-style('caption'); color: $text-secondary-light; overflow-wrap: anywhere; }
+.user-role { @include type-style('badge'); flex-shrink: 0; padding: $space-micro $space-fieldLabel; border-radius: 6px; color: #64748b; background-color: #f2f4f7; }
+.user-role-dark { color: #b1bac9; background-color: #2a2e35; }
+.user-role-admin { color: #427bea; background-color: #edf3ff; }
+.user-role-admin-dark { color: #9bbcff; background-color: #25334c; }
+.user-email-row { gap: $space-inline; }
+.user-email { @include type-style('label'); flex: 1; min-width: 0; color: $text-secondary-light; overflow-wrap: anywhere; }
+.user-times { align-items: flex-start; gap: $space-inline; margin-top: $space-detail; }
+.user-time { flex: 1; min-width: 0; gap: $space-micro; }
+.user-time-label { @include type-style('caption'); color: $text-secondary-light; }
+.user-time-value { @include type-style('caption'); color: #5a6473; overflow-wrap: anywhere; }
+.user-time-value-dark { color: #b3bdca; }
+.user-footer { gap: $space-detail; justify-content: space-between; }
+.user-id { @include type-style('caption'); flex: 1; min-width: 0; color: $text-secondary-light; overflow-wrap: anywhere; }
+.user-actions { flex-shrink: 0; }
+.user-muted-dark { color: $text-secondary-dark; }
+.user-empty, .user-notice { min-height: 208px; box-sizing: border-box; padding: $space-modal; border-radius: 14px; background-color: #ffffff; align-items: center; justify-content: center; gap: $space-inline; }
+.user-empty-dark, .user-notice-dark { background-color: #1c1e22; }
+.user-empty-title { @include type-style('body'); color: #64748b; }
+.user-empty-title-dark { color: $text-secondary-dark; }
+.user-notice-text { @include type-style('body'); color: $text-secondary-light; flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.user-notice-overlay { position: absolute; top: 0; left: 0; right: 0; z-index: 3; min-height: $space-controlMin; padding: $space-detail $space-card; box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12); }
+.user-placeholder { color: transparent; background-color: #eef1f5; border-radius: 6px; }
+.user-card-loading { opacity: 0.65; pointer-events: none; }
+/* #ifdef WEB || MP-WEIXIN */
+@media (min-width: 700px) {
+  .user-list { flex-direction: row; flex-wrap: wrap; align-items: flex-start; }
+  .user-card { width: calc((100% - $space-section) / 2); }
+}
+/* #endif */
+</style>
