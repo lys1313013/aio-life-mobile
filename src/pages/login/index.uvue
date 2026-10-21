@@ -4,16 +4,19 @@ import AppIcon from '../../components/AppIcon.uvue'
 import FormField from '../../components/FormField.uvue'
 import PageHeader from '../../components/PageHeader.uvue'
 import { webLoginReturnPath } from '../../services/wechat-web-login.ts'
-import { themeClass } from '../../services/theme.ts'
+import { isDark, themeClass } from '../../services/theme.ts'
 import { ref } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
 import { login } from '../../services/api.ts'
 import { validateCredentials } from '../../services/contract.ts'
 import { restoreSession, session } from '../../services/session.ts'
 import { fetchWechatCapabilities, startWechatLogin, registerWithWechat, bindWechatAccount, initializeWechatPassword } from '../../services/wechat-auth.ts'
+import { clearRememberedPassword, readRememberedLogin, saveRememberedLogin } from './services/remembered-login.ts'
 
-const username = ref('')
-const password = ref('')
+const rememberedLogin = readRememberedLogin()
+const username = ref(rememberedLogin?.username || '')
+const password = ref(rememberedLogin?.password || '')
+const rememberPassword = ref((rememberedLogin?.password || '').length > 0)
 const passwordVisible = ref(false)
 const newPasswordVisible = ref(false)
 const confirmPasswordVisible = ref(false)
@@ -66,6 +69,10 @@ function switchMode(next) {
   resetPasswordVisibility()
   errorText.value = ''
   password.value = ''
+  if (next === 'password' && rememberPassword.value) {
+    const saved = readRememberedLogin()
+    if (saved) { username.value = saved.username; password.value = saved.password }
+  }
   if (next !== 'bind') {
     loginTicket.value = ''
     ticketExpiresAt.value = 0
@@ -73,6 +80,14 @@ function switchMode(next) {
 }
 
 function openAuth(mode: string) { if (!busy.value) uni.navigateTo({ url: '/pages/auth/index?mode=' + mode }) }
+function toggleRememberPassword() {
+  if (busy.value) return
+  errorText.value = ''
+  try {
+    if (rememberPassword.value) clearRememberedPassword()
+    rememberPassword.value = !rememberPassword.value
+  } catch (error) { errorText.value = error.message }
+}
 function resetPasswordVisibility() {
   passwordVisible.value = false
   newPasswordVisible.value = false
@@ -138,7 +153,12 @@ async function submit() {
   busy.value = true
   try {
     if (mode.value === 'bind') acceptWechat(await bindWechatAccount(loginTicket.value, username.value, password.value))
-    else { await login(username.value, password.value); goHome() }
+    else {
+      await login(username.value, password.value)
+      try { saveRememberedLogin(username.value, rememberPassword.value ? password.value : '') }
+      catch (error) { uni.showToast({ title: error.message, icon: 'none' }) }
+      goHome()
+    }
     password.value = ''
   } catch (error) {
     errorText.value = error.message || '登录失败，请重试'
@@ -238,6 +258,10 @@ async function setPassword() {
               </view>
             </FormField>
             <view class="recovery-row">
+              <button v-if="mode === 'password'" role="checkbox" aria-label="记住密码" :aria-checked="rememberPassword" class="text-button remember-control" :disabled="busy" @click="toggleRememberPassword">
+                <AppIcon :name="rememberPassword ? 'ant-design:check-square-filled' : 'ant-design:border-outlined'" :size="18" :color="rememberPassword ? '#427bea' : isDark ? '#a1a1aa' : '#71717a'" />
+                <text class="remember-label muted" :class="themeClass('muted')">记住密码</text>
+              </button>
               <button role="button" class="text-button auth-link" :class="themeClass('auth-link')" :disabled="busy" @click="openAuth('reset')"><text :class="buttonLabelClasses(['text-button auth-link', themeClass('auth-link')])">忘记密码</text></button>
             </view>
             <button class="ui-type-body" role="button" :class="['primary-button', busy ? 'primary-disabled' : '']" :loading="busy" :disabled="busy" :aria-disabled="busy" @click="submit"><text :class="buttonLabelClasses(['ui-type-body', ['primary-button', busy ? 'primary-disabled' : '']])">{{ busy ? '正在登录' : (mode === 'bind' ? '登录并绑定微信' : '登录') }}</text></button>
@@ -295,7 +319,8 @@ min-height: 100vh;
 .password-input { padding-right: ($space-controlMin + $space-detail); }
 .password-toggle { display: flex; flex-direction: row; position: absolute; right: $space-micro; top: $space-micro; width: $space-controlMin; height: $space-controlMin; padding: 0; margin: 0; border: 0; border-radius: 8px; background-color: transparent; align-items: center; justify-content: center; }
 .primary-button { display: flex; flex-direction: row; height: 48px; border-radius: 8px; background-color: #427bea; @include type-style('body'); line-height: type-leading('tallControl'); }
-.recovery-row { display: flex; flex-direction: row; justify-content: flex-end; margin-bottom: $space-inline; }
+.recovery-row { display: flex; flex-direction: row; align-items: center; flex-wrap: wrap; gap: $space-inline; justify-content: flex-end; margin-bottom: $space-inline; }
+.remember-label { @include type-style('body'); }
 .register-row { display: flex; flex-direction: row; align-items: center; justify-content: center; gap: $space-detail; margin-top: $space-inline; }
 .register-note { @include type-style('body');  }
 .auth-link { color: #356bd4; }
@@ -303,6 +328,7 @@ min-height: 100vh;
 .form-message { padding-top: $space-inline; }
 .login-footer { padding: $space-modal $space-page; padding-bottom: calc($space-overlayBlock + env(safe-area-inset-bottom)); text-align: center; @include type-style('caption');  }
 .text-button { display: flex; flex-direction: row; align-items: center; justify-content: center; min-height: $space-controlMin; margin: 0; padding: 0; border: 0; border-radius: 8px; background-color: transparent; @include type-style('body');  }
+.remember-control { gap: $space-inline; margin-right: auto; }
 .wechat-note { @include type-style('caption');  text-align: center; }
 .account-note { @include type-style('label');  }
 // 保留登录中的按钮外观，覆盖框架默认禁用底色；禁用行为仍由 disabled 控制。

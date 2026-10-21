@@ -39,6 +39,67 @@ async function signIn(page) {
   await page.getByRole('button', { name: '登录', exact: true }).click();
 }
 
+async function signOut(page) {
+  await expect(page.locator('.dashboard-scroll')).toBeVisible();
+  await page.getByText('我', { exact: true }).last().click();
+  await expect(page.getByText(profile.nickname)).toBeVisible();
+  await page.getByRole('button', { name: '退出登录', exact: true }).click();
+  await page.getByRole('button', { name: '退出', exact: true }).click();
+  await expect(page.getByText('欢迎回来', { exact: true })).toBeVisible();
+}
+
+test('默认记住账号但不记住密码，登录退出和刷新后恢复账号', async ({ page }) => {
+  await mockApi(page);
+  await page.goto('/');
+  await expect(page.getByRole('checkbox', { name: '记住密码' })).toHaveAttribute('aria-checked', 'false');
+  await signIn(page);
+  await signOut(page);
+  await page.reload();
+  await expect(page.locator('[aria-label="账号"] input')).toHaveValue('test');
+  await expect(page.locator('[aria-label="密码"] input')).toHaveValue('');
+  await expect(page.getByRole('checkbox', { name: '记住密码' })).toHaveAttribute('aria-checked', 'false');
+});
+
+test('记住密码后退出及刷新恢复，更新后保存，取消只清除密码并保留账号', async ({ page }) => {
+  await mockApi(page);
+  await page.goto('/');
+  await page.getByRole('checkbox', { name: '记住密码' }).click();
+  await page.locator('[aria-label="账号"] input').fill(' fixture-user ');
+  await page.locator('[aria-label="密码"] input').fill(' fixture-password ');
+  await page.getByRole('button', { name: '登录', exact: true }).click();
+  await signOut(page);
+  await page.reload();
+  await expect(page.getByRole('checkbox', { name: '记住密码' })).toHaveAttribute('aria-checked', 'true');
+  await expect(page.locator('[aria-label="账号"] input')).toHaveValue('fixture-user');
+  await expect(page.locator('[aria-label="密码"] input')).toHaveValue(' fixture-password ');
+  await expect(page.locator('[aria-label="密码"] input')).toHaveAttribute('type', 'password');
+  await page.locator('[aria-label="账号"] input').fill('fixture-updated');
+  await page.locator('[aria-label="密码"] input').fill('fixture-updated-password');
+  await page.getByRole('button', { name: '登录', exact: true }).click();
+  await signOut(page);
+  await expect(page.locator('[aria-label="账号"] input')).toHaveValue('fixture-updated');
+  await expect(page.locator('[aria-label="密码"] input')).toHaveValue('fixture-updated-password');
+  await page.locator('[aria-label="账号"] input').fill('fixture-not-signed-in');
+  await page.getByRole('checkbox', { name: '记住密码' }).click();
+  // 取消立即清除密码，保留上次成功登录的账号，不保存尚未登录的输入。
+  await page.reload();
+  await expect(page.getByRole('checkbox', { name: '记住密码' })).toHaveAttribute('aria-checked', 'false');
+  await expect(page.locator('[aria-label="账号"] input')).toHaveValue('fixture-updated');
+  await expect(page.locator('[aria-label="密码"] input')).toHaveValue('');
+});
+
+test('勾选记住后登录失败，不保存错误的账号密码', async ({ page }) => {
+  await mockApi(page, { rejectLogin: true });
+  await page.goto('/');
+  await page.getByRole('checkbox', { name: '记住密码' }).click();
+  await signIn(page);
+  await expect(page.getByText('用户名或密码错误')).toBeVisible();
+  await page.reload();
+  await expect(page.getByRole('checkbox', { name: '记住密码' })).toHaveAttribute('aria-checked', 'false');
+  await expect(page.locator('[aria-label="账号"] input')).toHaveValue('');
+  await expect(page.locator('[aria-label="密码"] input')).toHaveValue('');
+});
+
 test('空表单不请求，业务错误可见，重复点击不重复提交', async ({ page }) => {
   const requests = await mockApi(page, { rejectLogin: true });
   await page.goto('/');
