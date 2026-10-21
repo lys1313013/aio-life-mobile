@@ -13,11 +13,12 @@ import FormField from '../../components/FormField.uvue';
 import AppIcon from '../../components/AppIcon.uvue';
 import FormActions from '../../components/FormActions.uvue';
 import PageState from '../../components/PageState.uvue';
+import LoadingIndicator from '../../components/LoadingIndicator.uvue';
 import ConfirmAction from '../../components/ConfirmAction.uvue';
 import AdaptiveModal from '../../components/AdaptiveModal.uvue';
 import { request } from '../../services/api.ts';
 import { session, restoreSession } from '../../services/session.ts';
-import { themeClass } from '../../services/theme.ts';
+import { isDark, themeClass } from '../../services/theme.ts';
 import {
   encryptSecret,
   decryptSecret,
@@ -31,6 +32,7 @@ const rows = ref<any[]>([]),
   loading = ref(false),
   saving = ref(false),
   editingId = ref(''),
+  copyingId = ref(''),
   error = ref(''),
   formError = ref(''),
   ready = ref(false),
@@ -40,7 +42,6 @@ const rows = ref<any[]>([]),
   password = ref(''),
   confirm = ref(''),
   form = ref<any>({}),
-  showSecret = ref<string[]>([]),
   generator = ref(false);
 const generation = ref<any>({
   length: '16',
@@ -95,7 +96,6 @@ function lock() {
   master.value = '';
   password.value = '';
   confirm.value = '';
-  showSecret.value = [];
   editing.value = false;
   unlocking.value = false;
   form.value = {};
@@ -140,7 +140,6 @@ async function load() {
       new Set([...cats, '工作', '生活', '学习', '金融', '社交', '游戏', '其他']),
     );
     ready.value = true;
-    if (master.value) await decryptAll(master.value);
   } catch (e) {
     if (active && v === version) error.value = e.message;
   } finally {
@@ -158,20 +157,6 @@ async function plain(row, key) {
     plainRemark: row.remark ? await decryptSecret(row.remark, key, row.salt) : '',
   };
 }
-async function decryptAll(key) {
-  const v = version,
-    token = session.token;
-  const values = [];
-  for (const row of rows.value) {
-    try {
-      values.push({ ...(await plain(row, key)), decryptError: false });
-    } catch (e) {
-      const { plainUsername, plainPassword, plainRemark, ...cipher } = row;
-      values.push({ ...cipher, decryptError: true });
-    }
-  }
-  if (active && v === version && token === session.token) rows.value = values;
-}
 function askUnlock(action = null) {
   pendingAction = typeof action === 'function' ? action : null;
   password.value = '';
@@ -184,16 +169,17 @@ async function unlock() {
   saving.value = true;
   formError.value = '';
   const v = version,
-    token = session.token;
+    token = session.token,
+    key = password.value;
   try {
-    if (missingRequired('vaultUnlock', { password: password.value }, 'password')) throw new Error('请输入主密码');
-    if (!rows.value.length && (password.value.length < 6 || password.value !== confirm.value))
+    if (missingRequired('vaultUnlock', { password: key }, 'password')) throw new Error('请输入主密码');
+    if (!rows.value.length && (key.length < 6 || key !== confirm.value))
       throw new Error('主密码至少6位，且两次输入一致');
     if (rows.value.length)
-      await decryptSecret(rows.value[0].password, password.value, rows.value[0].salt);
-    await decryptAll(password.value);
+      await decryptSecret(rows.value[0].password, key, rows.value[0].salt);
+    // 卡片只展示元数据；解锁只验证一次，避免微信端逐字段派生全库密钥。
     if (!active || v !== version || token !== session.token) return;
-    master.value = password.value;
+    master.value = key;
     password.value = '';
     confirm.value = '';
     unlocking.value = false;
@@ -299,61 +285,38 @@ async function remove(row) {
   await request('/password/' + encodeURIComponent(row.id), 'DELETE');
   if (!active || token !== session.token || v !== version) return;
   rows.value = rows.value.filter((x) => x.id !== row.id);
+  editing.value = false;
+  form.value = {};
   touch();
 }
-const favoriteBusy = ref('');
-async function favorite(row) {
+async function copyPassword(id: string) {
+  if (copyingId.value) return;
   if (!master.value) {
-    askUnlock(() => favorite(row));
+    // 解锁后重新读取当前记录，不能复制解锁前闭包里的空明文。
+    askUnlock(() => copyPassword(id));
     return;
   }
-  if (favoriteBusy.value) return;
-  favoriteBusy.value = row.id;
-  const token = session.token,
+  const row = rows.value.find((item) => item.id === id);
+  if (!row) return;
+  const key = master.value,
+    token = session.token,
     v = version;
+  copyingId.value = id;
   try {
-    const { id, title, website, category, username, password, salt, remark, favorite } = row;
-    await request('/password/' + encodeURIComponent(id), 'PUT', {
-      title,
-      website,
-      category,
-      username,
-      password,
-      salt,
-      remark,
-      favorite: !favorite,
-    });
-    if (!active || token !== session.token || v !== version) return;
-    row.favorite = !favorite;
+    const value = await decryptSecret(row.password, key, row.salt);
+    if (!active || v !== version || token !== session.token || key !== master.value) return;
+    await new Promise<void>((resolve, reject) => uni.setClipboardData({
+      data: value,
+      success: () => resolve(),
+      fail: () => reject(new Error('复制失败，请重试')),
+    }));
     touch();
   } catch (e) {
-    error.value = e.message;
+    if (active && v === version && token === session.token && key === master.value)
+      uni.showToast({ title: e.message || '该记录无法解密，请检查主密码', icon: 'none' });
   } finally {
-    favoriteBusy.value = '';
+    copyingId.value = '';
   }
-}
-function reveal(row) {
-  if (!master.value) {
-    askUnlock(() => reveal(rows.value.find((x) => x.id === row.id) || row));
-    return;
-  }
-  showSecret.value = showSecret.value.includes(row.id)
-    ? showSecret.value.filter((x) => x !== row.id)
-    : [...showSecret.value, row.id];
-  touch();
-}
-function copy(value) {
-  if (!master.value) {
-    askUnlock();
-    return;
-  }
-  uni.setClipboardData({
-    data: value || '',
-    fail: () => {
-      error.value = '复制失败';
-    },
-  });
-  touch();
 }
 async function generate() {
   if (saving.value) return;
@@ -403,51 +366,43 @@ function back() {
               :options="['全部', ...categories]" v-model="category" />
           </view>
         </view>
-        <PageState skeleton="list" :loading="loading" :error="error"
-          :empty="ready && !filtered.length" :empty-text="query || category !== '全部' ? '没有匹配的密码' : '暂无密码记录'" @retry="load">
-          <view class="vault-grid ui-gap-section">
+        <PageState :loading="loading" :error="error" :has-content="ready" @retry="load">
+          <template #loading>
+            <view class="vault-grid ui-gap-section" role="status" aria-label="正在加载密码记录">
+              <view v-for="n in 6" :key="n" :style="appGridItem(1, 'section', [[768, 2]], false)"
+                class="vault-card ui-pad-card" :class="themeClass('vault-card')" aria-hidden="true">
+                <view class="vault-card-header"><view class="vault-skeleton-title" :class="themeClass('vault-skeleton-shape')" /></view>
+                <view class="vault-card-footer"><view class="vault-skeleton-label" :class="themeClass('vault-skeleton-shape')" /></view>
+              </view>
+            </view>
+          </template>
+          <view v-if="ready && !filtered.length" class="vault-empty ui-pad-card">
+            <text class="vault-empty-text" :class="themeClass('vault-empty-text')">{{ query || category !== '全部' ? '没有匹配的密码' : '暂无密码记录' }}</text>
+          </view>
+          <view v-else class="vault-grid ui-gap-section">
             <view v-for="row in filtered" :key="row.id"
               :style="appGridItem(1, 'section', [[768, 2]], false)"
-              class="vault-card ui-pad-card" :class="themeClass('vault-card')">
+              class="vault-card ui-pad-card" :class="themeClass('vault-card')"
+              role="button" tabindex="0" :aria-label="'编辑密码：' + row.title"
+              :aria-busy="saving && editingId === row.id"
+              @click="edit(row)" @keydown.enter.self="edit(row)" @keydown.space.self.prevent="edit(row)">
               <view class="vault-card-header">
-                <view class="vault-heading">
-                  <text class="vault-title">{{ row.title }}</text>
-                  <text v-if="row.category" class="vault-category" :class="themeClass('vault-category')">{{ row.category }}</text>
-                </view>
-                <view class="vault-card-actions">
-                  <MobileButton label="收藏"
-                    :icon="row.favorite ? 'ant-design:star-filled' : 'ant-design:star-outlined'"
-                    variant="ghost" :loading="favoriteBusy === row.id" @click="favorite(row)" />
-                  <MobileButton label="编辑密码" icon="ant-design:edit-outlined" variant="ghost"
-                    :loading="saving && editingId === row.id" @click="edit(row)" />
-                  <ConfirmAction label="删除密码" :message="'删除' + row.title + '？'" :action="() => remove(row)">
-                    <template #default="{ open, busy }">
-                      <MobileButton label="删除密码" icon="ant-design:delete-outlined" variant="ghost"
-                        :loading="busy" @click="open" />
-                    </template>
-                  </ConfirmAction>
+                <text class="vault-title">{{ row.title }}</text>
+                <view v-if="row.favorite" class="vault-favorite" role="img" aria-label="已收藏">
+                  <AppIcon name="ant-design:star-filled" :size="20" :color="isDark ? '#f6c94c' : '#bd8700'" />
                 </view>
               </view>
-              <text v-if="row.website" class="vault-website vault-muted" :class="themeClass('vault-muted')">{{ row.website }}</text>
-              <view v-if="row.username" class="vault-row">
-                <text class="vault-field-label" :class="themeClass('vault-muted')">账号</text>
-                <text class="vault-value" selectable>{{ master ? row.plainUsername || '—' : '••••••' }}</text>
-                <MobileButton label="复制账号" icon="ant-design:copy-outlined" variant="ghost"
-                  :disabled="!!master && row.decryptError" @click="copy(row.plainUsername)" />
-              </view>
-              <view class="vault-row">
-                <text class="vault-field-label" :class="themeClass('vault-muted')">密码</text>
-                <text class="vault-value" selectable>{{ master && showSecret.includes(row.id) ? row.plainPassword : '••••••••' }}</text>
-                <view class="vault-card-actions">
-                  <MobileButton label="显示或隐藏密码"
-                    :icon="showSecret.includes(row.id) ? 'ant-design:eye-invisible-outlined' : 'ant-design:eye-outlined'"
-                    variant="ghost" :disabled="!!master && row.decryptError" @click="reveal(row)" />
+              <view class="vault-card-footer">
+                <view v-if="row.category" class="vault-category-tag" :class="themeClass('vault-category-tag')">
+                  <text class="vault-category" :class="themeClass('vault-category')">{{ row.category }}</text>
+                </view>
+                <view class="vault-copy" @click.stop @keydown.stop>
                   <MobileButton label="复制密码" icon="ant-design:copy-outlined" variant="ghost"
-                    :disabled="!!master && row.decryptError" @click="copy(row.plainPassword)" />
+                    :loading="copyingId === row.id"
+                    @click="copyPassword(row.id)" />
                 </view>
               </view>
-              <text v-if="master && row.decryptError" class="error-text">该记录无法解密，请核对主密码或在原端检查记录</text>
-              <text v-if="master && row.plainRemark" class="vault-remark vault-muted" :class="themeClass('vault-muted')">{{ row.plainRemark }}</text>
+              <LoadingIndicator v-if="saving && editingId === row.id" floating label="正在打开密码记录" />
             </view>
           </view>
         </PageState>
@@ -460,10 +415,11 @@ function back() {
       :busy="saving"
       :max-width="440"
       @close="unlocking = false"
-      ><FormField :required="isRequired('vaultUnlock', 'password')" label="主密码" kind="password" v-model="password" /><FormField :required="isRequired('vaultUnlock', 'confirm', { initialized: rows.length > 0 })"
+      ><FormField :required="isRequired('vaultUnlock', 'password')" label="主密码" kind="password" :disabled="saving" v-model="password" /><FormField :required="isRequired('vaultUnlock', 'confirm', { initialized: rows.length > 0 })"
         v-if="!rows.length"
         label="确认主密码"
         kind="password"
+        :disabled="saving"
         v-model="confirm" /><text v-if="formError" class="error-text" role="alert">{{
         formError
       }}</text
@@ -502,7 +458,7 @@ function back() {
           aria-label="收藏密码"
           @change="form.favorite = $event.detail.value" /></view
       ><text v-if="formError" class="error-text" role="alert">{{ formError }}</text
-      ><FormActions><MobileButton label="取消" variant="quiet" :disabled="saving" @click="editing = false" /><MobileButton label="保存" :loading="saving" @click="save" /></FormActions></AdaptiveModal
+      ><FormActions><template #secondary><ConfirmAction v-if="form.id" label="删除密码" :message="'删除' + form.title + '？'" :action="() => remove(form)" /></template><MobileButton label="取消" variant="quiet" :disabled="saving" @click="editing = false" /><MobileButton label="保存" :loading="saving" @click="save" /></FormActions></AdaptiveModal
   ></view>
 </template>
 <style scoped lang="scss">
@@ -569,39 +525,39 @@ function back() {
   }
 }
 .vault-card {
+  position: relative;
   gap: $space-detail;
   min-width: 0;
   margin-bottom: 0;
   background-color: #fff;
   color: #27272a;
-  border-radius: 14px;
+  border-radius: 16px;
 }
 .vault-card-dark { background-color: #1c1e22; color: #eeeeef; }
 .vault-card-header {
   display: flex;
   flex-direction: row;
-  align-items: flex-start;
-  gap: $space-detail;
+  align-items: center;
+  min-height: type-line('brand');
+  gap: $space-inline;
 }
-.vault-heading { flex: 1; min-width: 0; }
-.vault-title { @include type-style('title'); overflow-wrap: anywhere; }
+.vault-title { flex: 1; min-width: 0; @include type-style('brand'); overflow-wrap: anywhere; }
+.vault-favorite { width: $space-controlMin; flex-shrink: 0; align-items: center; justify-content: center; }
+.vault-card-footer { display: flex; flex-direction: row; align-items: center; min-height: $space-controlMin; gap: $space-inline; }
+.vault-category-tag { padding: $space-micro $space-inline; border-radius: 6px; background-color: #eef0f4; }
+.vault-category-tag-dark { background-color: #2b2e35; }
 .vault-category {
-  @include type-style('caption');
+  @include type-style('label');
   color: $text-secondary-light;
 }
 .vault-category-dark { color: $text-secondary-dark; }
-.vault-card-actions {
-  display: flex;
-  flex-direction: row;
-  align-items: center;
-  flex-shrink: 0;
-}
-.vault-muted { @include type-style('label'); color: $text-secondary-light; overflow-wrap: anywhere; }
-.vault-website {
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-}
+.vault-copy { margin-left: auto; flex-shrink: 0; }
+.vault-skeleton-title { height: type-line('brand'); width: 50%; border-radius: 6px; background-color: #e8ecf1; }
+.vault-skeleton-label { height: type-line('brand'); width: $space-controlMin; border-radius: 6px; background-color: #e8ecf1; }
+.vault-skeleton-shape-dark { background-color: #30343c; }
+.vault-empty { align-items: center; }
+.vault-empty-text { @include type-style('body'); color: $text-secondary-light; text-align: center; }
+.vault-empty-text-dark { color: $text-secondary-dark; }
 .vault-row {
   display: flex;
   flex-direction: row;
@@ -609,7 +565,6 @@ function back() {
   gap: $space-inline;
   min-height: $space-controlMin;
 }
-.vault-field-label { @include type-style('caption'); color: $text-secondary-light; flex-shrink: 0; }
 .vault-value {
   flex: 1;
   min-width: 0;
@@ -617,5 +572,4 @@ function back() {
   word-break: break-all;
 }
 
-.vault-muted-dark { color: $text-secondary-dark; }
 </style>
