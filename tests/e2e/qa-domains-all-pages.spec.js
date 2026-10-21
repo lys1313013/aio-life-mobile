@@ -46,7 +46,50 @@ for(const [route] of entries)for(const [width,theme] of [[390,'light'],[390,'dar
  }catch(e){issues.push(e.message);throw e;}finally{reports.push({route,variants:[variant],checks,evidence,status:issues.length?'failed':'passed',issues})}
 });
 
-for(const width of [390,768])for(const theme of ['light','dark'])test(`密码库已有记录逐弹窗与失败保留 ${width} ${theme}`,async({page})=>{await page.setViewportSize({width,height:900});await page.emulateMedia({colorScheme:theme});const state=await start(page,'vault/index',{existingVault:true}),evidence=[],variant=width+'-'+theme+'-existing';await page.locator('[aria-label="解锁"][role=button]').click();const unlock=await panel(page,'vault/index',variant,'解锁密码库',evidence);await unlock.locator('[aria-label="主密码"] input').fill('qa-master');await unlock.locator('[aria-label="解锁"][role=button]').click();await expect(page.getByText('fixture-user',{exact:true})).toBeVisible();await page.locator('[aria-label="显示或隐藏密码"][role=button]').click();await expect(page.getByText('fixture-secret',{exact:true})).toBeVisible();await page.locator('[aria-label="编辑密码"][role=button]').click();const form=await panel(page,'vault/index',variant,'密码记录',evidence);await form.locator('[aria-label="密码"] input').fill('changed-fixture');state.fail=true;await form.locator('[aria-label="保存"][role=button]').click();await expect(form.getByText('模拟保存失败',{exact:true})).toBeVisible();await expect(form.locator('[aria-label="密码"] input')).toHaveValue('changed-fixture');evidence.push(await shot(page,'vault/index',variant,'save-error'));state.fail=false;await form.locator('[aria-label="保存"][role=button]').click();await expect(form).toHaveCount(0);expect(JSON.stringify(state.calls.at(-1))).not.toContain('changed-fixture');await page.locator('[aria-label="删除密码"][role=button]').click();evidence.push(await shot(page,'vault/index',variant,'delete-confirm'));await page.locator('[aria-label="取消"][role=button]').click();await page.locator('[aria-label="返回"][role=button]').click();await page.locator('[role=button][aria-label="密码库"]').last().click();await expect(page.locator('[aria-label="解锁"][role=button]')).toBeVisible();await expect(page.getByText('fixture-user',{exact:true})).toHaveCount(0);reports.push({route:'vault/index',variants:[variant],checks:['已有记录解锁/显示','编辑弹窗内部滚动/失败保留/密文成功保存','删除确认取消','返回目录再进入自动锁定敏感数据清理'],evidence,status:'passed',issues:[]})});
+for (const width of [390, 768]) for (const theme of ['light', 'dark']) {
+  test(`密码库已有记录逐弹窗与失败保留 ${width} ${theme}`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 900 });
+    await page.emulateMedia({ colorScheme: theme });
+    const state = await start(page, 'vault/index', { existingVault: true });
+    const evidence = [], variant = width + '-' + theme + '-existing';
+    await page.getByRole('button', { name: '解锁', exact: true }).click();
+    const unlock = await panel(page, 'vault/index', variant, '解锁密码库', evidence);
+    await unlock.locator('[aria-label="主密码"] input').fill('qa-master');
+    await unlock.getByRole('button', { name: '解锁', exact: true }).click();
+    await expect(unlock).toHaveCount(0);
+    const card = page.getByRole('button', { name: '编辑密码：模拟密码', exact: true });
+    await expect(card).toBeVisible();
+    await expect(card).not.toContainText('fixture-user');
+    await expect(card).not.toContainText('fixture-secret');
+    await card.click();
+    const form = await panel(page, 'vault/index', variant, '密码记录', evidence);
+    await expect(form.locator('[aria-label="账号"] input')).toHaveValue('fixture-user');
+    await expect(form.locator('[aria-label="密码"] input')).toHaveValue('fixture-secret');
+    await form.locator('[aria-label="密码"] input').fill('changed-fixture');
+    state.fail = true;
+    await form.getByRole('button', { name: '保存', exact: true }).click();
+    await expect(form.getByRole('alert')).toContainText('模拟保存失败');
+    await expect(form.locator('[aria-label="密码"] input')).toHaveValue('changed-fixture');
+    evidence.push(await shot(page, 'vault/index', variant, 'save-error'));
+    state.fail = false;
+    await form.getByRole('button', { name: '保存', exact: true }).click();
+    await expect(form).toHaveCount(0);
+    expect(JSON.stringify(state.calls.at(-1))).not.toContain('changed-fixture');
+    await card.click();
+    await expect(form.locator('[aria-label="密码"] input')).toHaveValue('changed-fixture');
+    await form.getByRole('button', { name: '删除密码', exact: true }).click();
+    const confirmation = page.getByRole('dialog', { name: '删除密码', exact: true });
+    await expect(confirmation).toBeVisible();
+    evidence.push(await shot(page, 'vault/index', variant, 'delete-confirm'));
+    await confirmation.getByRole('button', { name: '取消', exact: true }).click();
+    await close(page);
+    await page.getByRole('button', { name: '返回', exact: true }).click();
+    await page.getByRole('button', { name: '密码库', exact: true }).last().click();
+    await expect(page.getByRole('button', { name: '解锁', exact: true })).toBeVisible();
+    await expect(page.getByText('fixture-user', { exact: true })).toHaveCount(0);
+    reports.push({ route: 'vault/index', variants: [variant], checks: ['已有记录解锁、列表隐藏敏感字段、编辑时解密', '编辑弹窗内部滚动/失败保留/密文成功保存', '编辑内删除确认取消', '返回目录再进入自动锁定敏感数据清理'], evidence, status: 'passed', issues: [] });
+  });
+}
 for(const file of ['alipay.csv','alipay.zip','wechat.xlsx'])test(`账单完整本地文件选择 ${file}`,async({page})=>{await page.setViewportSize({width:390,height:900});await start(page,'finance/import');const chooser=page.waitForEvent('filechooser');await page.locator('[role=button][aria-label="选择文件"]').click();await(await chooser).setFiles(path.resolve('tests/e2e/qa-domains-fixtures',file));await expect(page.getByText('1 笔 · ¥26.40',{exact:true})).toBeVisible();const evidence=[await shot(page,'finance/import','390-light-file',file+'-preview')];await page.locator('[aria-label="编辑"][role=button]').click();const modal=await panel(page,'finance/import','390-light-file-'+file,'导入记录',evidence);await expect(modal.locator('[aria-label="记账金额"] input')).toHaveValue('26.4');await expect(modal.locator('[aria-label="交易金额"] input')).toHaveValue('99');await close(page);reports.push({route:'finance/import',variants:['390-light-file-'+file],checks:['实际文件选择器导入完整本地fixture','支付宝CSV/ZIP或微信xlsx解析退款26.40','预览编辑交易原金额99与记账金额26.4保留'],evidence,status:'passed',issues:[]})});
 test('消息离页清理新消息草稿',async({page})=>{await page.setViewportSize({width:390,height:900});await start(page,'messages/index');await page.getByRole('button',{name:'发送消息',exact:true}).click();await page.locator('[role=dialog] [aria-label="内容"] textarea').fill('mock-sensitive-content');await close(page);await page.getByRole('button',{name:'返回',exact:true}).click();await page.getByRole('button',{name:'消息中心',exact:true}).click();await page.getByRole('button',{name:'发送消息',exact:true}).click();await expect(page.locator('[role=dialog] [aria-label="内容"] textarea')).toHaveValue('');await expect(page.getByRole('tab',{name:'AI',exact:true})).toHaveCount(0);});
 
