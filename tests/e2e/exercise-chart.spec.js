@@ -62,7 +62,7 @@ for (const width of [390, 768, 1440]) for (const theme of ['light', 'dark']) {
     state.hold = new Promise(resolve => { release = resolve; });
     await page.goto('/#/pages/records/exercise');
     const chart = page.getByRole('figure', { name: '每月运动次数', exact: true });
-    await expect(chart.getByText('正在加载图表', { exact: true })).toBeVisible();
+    await expect(chart.getByRole('status', { name: '正在加载图表', exact: true })).toBeVisible();
     const before = await geometry(chart);
     release(); state.hold = null;
     await expect(chart.locator('.chart-stack-total')).toHaveText(totals.slice(2));
@@ -142,7 +142,7 @@ test('空数据与单条数据保留柱图高度，失败重试恢复且单类�
   state.hold = new Promise(resolve => { release = resolve; });
   await page.goto('/#/pages/records/exercise');
   const chart = page.getByRole('figure', { name: '每月运动次数', exact: true });
-  await expect(chart.getByText('正在加载图表', { exact: true })).toBeVisible();
+  await expect(chart.getByRole('status', { name: '正在加载图表', exact: true })).toBeVisible();
   const before = await geometry(chart);
   release(); state.hold = null;
   await expect(chart.getByText('暂无数据', { exact: true })).toBeVisible();

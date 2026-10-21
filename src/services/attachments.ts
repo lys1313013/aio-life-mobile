@@ -1,4 +1,4 @@
-import { chooseDocument, releaseDocument } from './native-files.ts'
+import { chooseDocument, fileSelectionError, releaseDocument } from './native-files.ts'
 import { apiUrl } from './api.ts'
 import { requestUnlock, unlockNavigationRevision } from './secondary-lock.ts'
 import { readResponse } from './contract.ts'
@@ -42,7 +42,7 @@ export function chooseAndUploadAttachment(path: string, formData: Record<string,
       const filePath = result.tempFilePaths[0]
       try {current(token)} catch(error) {reject(error);return}
       uploadAttachment(path, filePath, formData).then(resolve, reject)
-    }, fail: () => reject(new Error('未选择图片')) })
+    }, fail: error => reject(fileSelectionError(error, '图片')) })
   })
 }
 

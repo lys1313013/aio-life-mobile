@@ -1,5 +1,12 @@
 export type SelectedDocument = { name: string; path: string; size: number; temporary?: boolean }
 export const IMPORT_FILE_LIMIT = 16 * 1024 * 1024
+// 用户取消选择是正常退出，调用方可按错误类型静默恢复。
+export function fileSelectionError(error: any, kind = '文件'): Error {
+  const cancelled = error?.errCode === 1101001 || /cancel/i.test(error?.errMsg || '')
+  const reason = new Error(cancelled ? '未选择' + kind : '无法打开' + kind + '选择器，请重试')
+  if (cancelled) reason.name = 'FileSelectionCancelledError'
+  return reason
+}
 export function validateDocument(file: SelectedDocument, extensions: string[] = [], maxBytes = IMPORT_FILE_LIMIT) {
   if (!file || !file.path || !file.name) throw new Error('未选择文件')
   if (!Number.isFinite(file.size) || file.size < 0 || file.size > maxBytes) throw new Error('文件大小不能超过 ' + Math.floor(maxBytes / 1024 / 1024) + ' MiB')
@@ -19,7 +26,7 @@ export function chooseDocument(options: { extensions?: string[]; maxBytes?: numb
       // #endif
       resolve(value)
     }catch(error){reject(error)}}
-    const failed=(error:any)=>reject(new Error(error?.errCode===1101001 || /cancel/i.test(error?.errMsg || '')?'未选择文件':'无法打开文件选择器，请重试'))
+    const failed=(error:any)=>reject(fileSelectionError(error))
     // #ifdef WEB
     uni.chooseFile({count:1,type:'all',...(extensions.length?{extension:extensions}:{}),success:selected,fail:failed})
     // #endif

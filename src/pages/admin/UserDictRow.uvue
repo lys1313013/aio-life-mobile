@@ -1,0 +1,153 @@
+<script setup lang="ts">
+import { computed, onUnmounted, ref, watch } from 'vue';
+import AppIcon from '../../components/AppIcon.uvue';
+import CategoryIcon from '../../components/CategoryIcon.uvue';
+import ConfirmAction from '../../components/ConfirmAction.uvue';
+import LoadingIndicator from '../../components/LoadingIndicator.uvue';
+import spacing from '../../styles/spacing.json';
+import { isDark } from '../../services/theme.ts';
+const props = defineProps<{
+  row: any; revealed: boolean; dragging: boolean; sorting: boolean; disabled: boolean;
+  busy: boolean; remove: () => Promise<unknown>; clickBlocked: () => boolean;
+}>();
+const emit = defineEmits(['edit', 'reveal', 'close', 'start', 'move', 'finish', 'cancel', 'keyboard']);
+const actionWidth = spacing.controlMin + spacing.card * 2;
+const offset = ref(0), swiping = ref(false);
+let origin: { x: number; y: number; offset: number } | null = null;
+let direction = '', suppressUntil = 0;
+// #ifdef WEB
+let mouseDocument: any = null;
+// #endif
+function releaseMouse() {
+  // #ifdef WEB
+  mouseDocument?.removeEventListener('mousemove', move);
+  mouseDocument?.removeEventListener('mouseup', end);
+  mouseDocument = null;
+  // #endif
+}
+onUnmounted(releaseMouse);
+const enabled = computed(() => String(props.row.status) === '0');
+const editable = computed(() => props.row.userId === '0');
+const status = computed(() => enabled.value ? '启用' : String(props.row.status) === '1' ? '禁用' : '状态未知');
+const color = computed(() => /^#[\da-f]{6}$/i.test(props.row.color || '') ? props.row.color : '#94a3b8');
+const frontStyle = computed(() => ({ transform: `translateX(${offset.value}px)`, transition: swiping.value ? 'none' : 'transform 180ms ease-out' }));
+watch(() => [props.revealed, props.dragging, props.disabled], () => {
+  if (props.dragging || props.disabled) { origin = null; swiping.value = false; }
+  offset.value = props.revealed && !props.dragging ? -actionWidth : 0;
+});
+function point(event: any) { return event.touches?.[0] || event.changedTouches?.[0] || event; }
+function orderEvent(event: any) {
+  // 鼠标事件适配相同的长按逻辑；触摸事件保留原始多指信息。
+  return event.touches ? event : { touches: [point(event)], preventDefault: () => event.preventDefault?.(), stopPropagation: () => event.stopPropagation?.() };
+}
+function begin(event: any) {
+  if (props.disabled || (event.touches && event.touches.length !== 1) || (event.button != null && event.button !== 0)) return;
+  const p = point(event); origin = { x: p.clientX, y: p.clientY, offset: offset.value };
+  direction = ''; swiping.value = false;
+  emit('start', orderEvent(event));
+  // #ifdef WEB
+  if (!event.touches) {
+    releaseMouse(); mouseDocument = event.currentTarget?.ownerDocument;
+    mouseDocument?.addEventListener('mousemove', move);
+    mouseDocument?.addEventListener('mouseup', end);
+  }
+  // #endif
+}
+function move(event: any) {
+  if (event.touches && event.touches.length !== 1) { cancel(); return; }
+  if (props.dragging) { emit('move', orderEvent(event)); return; }
+  if (!origin) return;
+  const p = point(event), dx = p.clientX - origin.x, dy = p.clientY - origin.y;
+  emit('move', orderEvent(event));
+  if (!direction && Math.max(Math.abs(dx), Math.abs(dy)) > spacing.inline) direction = Math.abs(dx) > Math.abs(dy) * 1.5 ? 'horizontal' : 'vertical';
+  if (direction) suppressUntil = Date.now() + 450;
+  if (direction !== 'horizontal' || !editable.value) return;
+  event.preventDefault?.(); event.stopPropagation?.();
+  swiping.value = true;
+  offset.value = Math.max(-actionWidth, Math.min(0, origin.offset + dx));
+}
+function end(event: any) {
+  releaseMouse();
+  if (props.dragging) {
+    suppressUntil = Date.now() + 450; origin = null; swiping.value = false;
+    emit('finish', event); return;
+  }
+  emit('cancel');
+  if (!origin) return;
+  const reveal = direction === 'horizontal' ? offset.value < -actionWidth / 2 : props.revealed;
+  if (direction) suppressUntil = Date.now() + 450;
+  origin = null; swiping.value = false; offset.value = reveal ? -actionWidth : 0;
+  emit(reveal ? 'reveal' : 'close');
+}
+function cancel() {
+  releaseMouse();
+  if (direction || props.dragging) suppressUntil = Date.now() + 450;
+  origin = null; swiping.value = false; offset.value = props.revealed ? -actionWidth : 0;
+  emit('cancel');
+}
+function activate() {
+  if (props.disabled || props.clickBlocked() || Date.now() < suppressUntil) return;
+  if (props.revealed) { emit('close'); return; }
+  if (editable.value) emit('edit');
+}
+function revealWithKeyboard() { if (!props.disabled && editable.value) emit('reveal'); }
+</script>
+<template>
+  <view class="user-dict-row" :class="{ 'user-dict-row-dark': isDark, 'user-dict-row-lifted': dragging }">
+    <view v-if="(revealed || swiping) && editable && !dragging" class="user-dict-delete" :style="{ width: actionWidth + 'px' }">
+      <ConfirmAction :label="'删除' + row.dictLabel" :message="'确定删除“' + row.dictLabel + '”？'" :action="remove" @success="emit('close')">
+        <template #default="action">
+          <button class="user-dict-delete-button" role="button" :aria-label="'删除' + row.dictLabel" :disabled="disabled || action.busy" :loading="action.busy" @click.stop="action.open">
+            <AppIcon v-if="!action.busy" name="ant-design:delete-outlined" :size="20" color="#ffffff" />
+            <text class="user-dict-delete-label">删除</text>
+          </button>
+        </template>
+      </ConfirmAction>
+    </view>
+    <view class="user-dict-front" :class="{ 'user-dict-front-dark': isDark, 'user-dict-front-dragging': dragging }" :style="frontStyle"
+      role="button" :tabindex="disabled ? -1 : 0" :aria-disabled="disabled || !editable"
+      :aria-label="(editable ? '编辑' : '查看') + row.dictLabel + '，排序 ' + row.dictSort + '，' + status + (row.isReadonly === 'Y' ? '，只读值' : '')"
+      @touchstart="begin" @touchmove="move" @touchend="end" @touchcancel="cancel"
+      @mousedown="begin" @contextmenu.prevent
+      @click="activate" @keydown.enter.self.prevent="activate" @keydown.space.self.prevent="activate"
+      @keydown.up.self.prevent="emit('keyboard', -1)" @keydown.down.self.prevent="emit('keyboard', 1)"
+      @keydown.delete.self.prevent="revealWithKeyboard" @keydown.esc="emit('close')">
+      <view class="user-dict-icon" :style="{ backgroundColor: color + (isDark ? '24' : '12') }"><CategoryIcon :icon="row.icon" :color="row.color" :size="26" /></view>
+      <view class="user-dict-copy">
+        <view class="user-dict-title-row"><text class="user-dict-title">{{ row.dictLabel || '未命名' }}</text><AppIcon v-if="row.isReadonly === 'Y'" name="ant-design:lock-outlined" :size="14" :color="isDark ? '#a9b0ba' : '#7a8596'" /></view>
+        <text class="user-dict-rank" :class="{ 'user-dict-muted-dark': isDark }">排序 {{ row.dictSort ?? '—' }}</text>
+      </view>
+      <view class="user-dict-state" :aria-label="status">
+        <LoadingIndicator v-if="sorting || busy" ring label="保存中" />
+        <template v-else><view class="user-dict-status" :class="{ 'user-dict-status-enabled': enabled }" /><text v-if="!enabled" class="user-dict-state-label" :class="{ 'user-dict-muted-dark': isDark }">{{ status }}</text></template>
+      </view>
+    </view>
+  </view>
+</template>
+<style scoped lang="scss">
+@use '../../styles/typography' as *;
+@use '../../styles/spacing-tokens' as *;
+@use '../../styles/text-colors' as *;
+.user-dict-row { position: relative; border-radius: 0; background-color: #ffffff; }
+.user-dict-row-dark { background-color: #1c1e22; }
+.user-dict-row-lifted { border-radius: 12px; box-shadow: 0 6px 22px rgba(0, 0, 0, .18); outline: $space-hairline solid #8bb5fa; }
+.user-dict-front { position: relative; display: flex; flex-direction: row; align-items: center; gap: $space-card; box-sizing: border-box; min-height: calc(#{$space-controlMin} + #{$space-card} * 2); padding: $space-card; background-color: #ffffff; color: #27272a; cursor: pointer; touch-action: pan-y; user-select: none; border-bottom: $space-hairline solid #f0f2f5; }
+.user-dict-front-dark { color: #eeeeef; background-color: #1c1e22; border-bottom-color: #292c32; }
+.user-dict-front-dragging { border-radius: 12px; touch-action: none; }
+.user-dict-icon { width: $space-controlMin; height: $space-controlMin; border-radius: 12px; align-items: center; justify-content: center; flex-shrink: 0; }
+.user-dict-copy { flex: 1; min-width: 0; gap: $space-detail; }
+.user-dict-title-row { flex-direction: row; align-items: center; gap: $space-inline; }
+.user-dict-title { @include type-style('body-strong'); min-width: 0; overflow-wrap: anywhere; }
+.user-dict-rank { @include type-style('caption'); color: $text-secondary-light; }
+.user-dict-state { flex-direction: row; align-items: center; gap: $space-inline; flex-shrink: 0; min-height: $space-controlMin; }
+.user-dict-status { width: $space-inline; height: $space-inline; border-radius: 50%; background-color: #929caf; }
+.user-dict-status-enabled { background-color: #22b573; }
+.user-dict-state-label { @include type-style('caption'); color: $text-secondary-light; }
+.user-dict-muted-dark { color: $text-secondary-dark; }
+.user-dict-delete { position: absolute; right: 0; top: 0; bottom: 0; background-color: #e54555; justify-content: center; }
+.user-dict-delete-button { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: $space-detail; width: 100%; min-height: calc(#{$space-controlMin} + #{$space-card} * 2); margin: 0; padding: $space-inline 0; border: 0; border-radius: 0; background-color: #e54555; }
+.user-dict-delete-label { @include type-style('caption'); color: #ffffff; }
+/* #ifdef WEB || MP-WEIXIN */
+.user-dict-delete-button::after { border: 0; }
+/* #endif */
+</style>

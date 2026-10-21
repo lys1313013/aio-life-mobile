@@ -38,6 +38,7 @@ const rows = ref<any[]>([]),
   typeFilter = ref('全部类型'),
   keyword = ref('');
 const photos = ref<Record<string, string>>({}),
+  loadedPhotoUrls = ref<Record<string, string>>({}),
   photoBusy = ref<Record<string, boolean>>({}),
   photoErrors = ref<Record<string, string>>({});
 const form = ref<any>(null),
@@ -64,6 +65,7 @@ const scope = createRecordScope((clear) => {
   photoBusy.value = {};
   if (clear) {
     photos.value = {};
+    loadedPhotoUrls.value = {};
     photoErrors.value = {};
     rows.value = [];
     types.value = [];
@@ -163,6 +165,11 @@ async function loadPhoto(item) {
     if (alive && current === generation && token === session.token)
       photoBusy.value = { ...photoBusy.value, [item.id]: false };
   }
+}
+function photoFailed(id: string) {
+  photos.value = { ...photos.value, [id]: '' };
+  loadedPhotoUrls.value = { ...loadedPhotoUrls.value, [id]: '' };
+  photoErrors.value = { ...photoErrors.value, [id]: '图片加载失败' };
 }
 const statusCounts = computed(() =>
   ['1', '4', '2', '3'].map((status) => ({
@@ -332,23 +339,31 @@ async function remove(item) {
         :empty="!filtered.length"
         @retry="load()"
         >
-<template #loading><view class="goods-grid ui-gap-md" ><view v-for="n in 6" :key="n" class="goods-card ui-pad-card ui-gap-sm" :class="{ 'goods-card-dark': isDark }"><view class="goods-media goods-placeholder"><ContentSkeleton variant="cover" /></view><ContentSkeleton variant="tile" /></view></view></template>
+<template #loading><view class="goods-grid ui-gap-md" ><view v-for="n in 6" :key="n" class="goods-card ui-pad-card ui-gap-sm" :class="{ 'goods-card-dark': isDark }"><view class="goods-media" :class="{ 'goods-media-dark': isDark }"><view class="goods-image-skeleton" role="status" aria-label="正在加载设备图片"><view class="goods-image-shimmer" :class="{ 'goods-image-shimmer-dark': isDark }" aria-hidden="true" /></view></view><ContentSkeleton variant="tile" /></view></view></template>
 <view class="goods-grid ui-gap-md"
           ><view
             v-for="item in filtered"
             :key="item.id"
             class="goods-card ui-pad-card ui-gap-sm"
             :class="{ 'goods-card-dark': isDark }"
-            ><view class="goods-media"
+            ><view class="goods-media" :class="{ 'goods-media-dark': isDark, 'goods-media-loaded': photos[item.id] && loadedPhotoUrls[item.id] === photos[item.id] }"
               ><image
                 v-if="photos[item.id]"
                 class="goods-photo"
                 :src="photos[item.id]"
                 mode="aspectFit"
                 :aria-label="item.name + '图片'"
+                @load="loadedPhotoUrls[item.id] = photos[item.id]"
+                @error="photoFailed(item.id)"
                 @click="open(item)"
-              /><view v-else class="goods-placeholder" :class="{ 'secondary-text-dark': isDark }"
-                ><text class="ui-type-body">{{ photoBusy[item.id] ? '加载图片…' : '设备' }}</text
+              /><view
+                v-if="item.fileId && !photoErrors[item.id] && (!photos[item.id] || loadedPhotoUrls[item.id] !== photos[item.id])"
+                class="goods-image-skeleton"
+                role="status"
+                aria-label="正在加载设备图片"
+                ><view class="goods-image-shimmer" :class="{ 'goods-image-shimmer-dark': isDark }" aria-hidden="true" /></view
+              ><view v-else-if="!photos[item.id]" class="goods-placeholder" :class="{ 'secondary-text-dark': isDark }"
+                ><text class="ui-type-body">设备</text
                 ><MobileButton
                   v-if="photoErrors[item.id]"
                   label="重试设备图片"
@@ -377,11 +392,6 @@ async function remove(item) {
         :busy="saving || deleting || attachmentBusy"
         @close="form = null"
       >
-        <view class="device-editor-header ui-row ui-section">
-          <text class="device-editor-title">{{ form.id ? '编辑设备' : '新增设备' }}</text>
-          <MobileButton label="关闭" icon="ant-design:close-outlined" variant="quiet" compact
-            :disabled="saving || deleting || attachmentBusy" @click="form = null" />
-        </view>
         <FormField :required="isRequired('device', 'name')" appearance="soft" label="名称" placeholder="设备名称" v-model="form.name" />
         <FormField appearance="soft" label="配置" placeholder="型号、容量等" v-model="form.spec" />
         <view class="ui-field-row">
@@ -403,7 +413,7 @@ async function remove(item) {
           <FormField appearance="soft" compact stretch label="退役日期" kind="date" placeholder="未退役" v-model="form.endDate" />
         </view>
         <FormField appearance="soft" label="备注" kind="textarea" placeholder="选填" v-model="form.remark" />
-        <AttachmentField
+        <AttachmentField images-only :max-count="1"
           :files="form.files"
           upload-path="/file/upload"
           :form-data="{ bizType: 'device' }"
@@ -457,8 +467,6 @@ async function remove(item) {
   flex-direction: row;
   align-items: center;
 }
-.device-editor-header { align-items: center; justify-content: space-between; }
-.device-editor-title { @include type-style('title');   }
 .device-editor-action { @include type-style('body');   }
 .device-type-scroll {
   width: 100%;
@@ -568,11 +576,45 @@ grid-column: 1 / -1;
   border-radius: 10px;
   background-color: rgba(128, 134, 146, 0.06);
 }
+.goods-media-dark {
+  background-color: rgba(128, 134, 146, 0.12);
+}
+.goods-media-loaded {
+  background-color: transparent;
+}
+.goods-media,
 .goods-photo,
 .goods-placeholder {
   width: 100%;
   height: 150px;
 }
+.goods-image-skeleton {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  border-radius: 10px;
+  overflow: hidden;
+}
+.goods-image-shimmer {
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent 0%, rgba(255, 255, 255, 0.45) 50%, transparent 100%);
+  animation: goods-shimmer-move 1.4s infinite;
+}
+.goods-image-shimmer-dark {
+  background: linear-gradient(90deg, transparent 0%, rgba(255, 255, 255, 0.08) 50%, transparent 100%);
+}
+@keyframes goods-shimmer-move {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+/* #ifdef WEB */
+@media (prefers-reduced-motion: reduce) {
+  .goods-image-shimmer { animation: none; }
+}
+/* #endif */
 .goods-placeholder {
   align-items: center;
   justify-content: center;

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, getCurrentInstance, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import ChartCanvas from './ChartCanvas.uvue'
+import LoadingIndicator from './LoadingIndicator.uvue'
 import { appTextColor } from '../services/app-layout.ts'
 import { isDark, themeClass } from '../services/theme.ts'
 import { buildChartOption, colorChartSeries, layoutChartAxisLabels, layoutStackedBarLabels, validateChartData } from '../services/chart-options.ts'
@@ -202,7 +203,7 @@ const extremeLabels = computed(() => {
         :aria-valuetext="interactive ? selectionText : undefined"
         @keydown.left.prevent="selectWithKeyboard(selected - 1)" @keydown.right.prevent="selectWithKeyboard(selected + 1)"
         @keydown.esc="dismissTooltip" @blur="dismissTooltip">
-        <view v-if="loading" class="chart-loading-plot" :class="themeClass('chart-loading-plot')" aria-busy="true"><text class="mini-chart-empty" :class="themeClass('mini-chart-empty')">正在加载图表</text></view>
+        <view v-if="loading" class="chart-loading-plot" aria-busy="true"><LoadingIndicator ring label="正在加载图表" /></view>
         <view v-else-if="!labels.length" class="chart-empty-plot"><text class="mini-chart-empty" :class="themeClass('mini-chart-empty')">暂无数据</text></view>
         <ChartCanvas v-else :key="plotWidth" :option="option" :label="label" :hoverable="selectionTooltip" :swipeable="swipeable"
           @swipe="dismissTooltip(); emit('swipe', $event)" @hover="hoverSelect" @leave="dismissTooltip" @layout="layout = $event" @width="width = $event" @select="select" />
@@ -265,8 +266,7 @@ const extremeLabels = computed(() => {
 .mini-chart-viewport { position: relative; min-width: 0; margin-top: $space-inline; }
 .chart-plot-scroll { width: 100%; height: 228px; }
 .mini-chart-plot { position: relative; width: 100%; height: 228px; }
-.chart-loading-plot { height: 228px; display: flex; align-items: center; justify-content: center; background-color: #f4f6fa; border-radius: 8px; }
-.chart-loading-plot-dark { background-color: #252a33; }
+.chart-loading-plot { height: 228px; display: flex; align-items: center; justify-content: center; }
 .chart-y-axis { position: absolute; left: 0; top: 0; height: 228px; background-color: #ffffff; pointer-events: none; }
 .chart-y-axis-dark { background-color: #1c1e22; }
 .chart-y-tick { position: absolute; left: 0; text-align: right; white-space: nowrap; font-family: type-family('canvas'); @include type-style('caption'); color: $text-secondary-light; }

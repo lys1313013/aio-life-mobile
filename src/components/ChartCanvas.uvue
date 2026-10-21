@@ -8,6 +8,7 @@ import { loadChartEngine } from '../services/chart-engine.ts'
 import { chartAxisLabel, chartHeight, createChartSurface, pieSectorAt } from '../services/chart-options.ts'
 import { themeClass } from '../services/theme.ts'
 import MobileButton from './MobileButton.uvue'
+import LoadingIndicator from './LoadingIndicator.uvue'
 import typography from '../styles/typography.json'
 import spacing from '../styles/spacing.json'
 
@@ -220,7 +221,8 @@ onUnmounted(() => { alive = false; generation++; chart?.dispose(); chart = null;
       aria-hidden="true" @click="click" @mousemove="hover" @mouseleave="mouseLeave"
       @touchstart="beginTouch" @touchend="endTouch" @touchcancel="cancelTouch" />
     <view v-if="loading || error" class="chart-render-state">
-      <text class="chart-render-message" :class="themeClass('chart-render-message')">{{ error || '正在加载图表' }}</text>
+      <LoadingIndicator v-if="loading && !error" ring label="正在加载图表" />
+      <text v-if="error" class="chart-render-message" :class="themeClass('chart-render-message')" role="alert">{{ error }}</text>
       <MobileButton v-if="error" label="重试图表" icon="ant-design:reload-outlined" variant="quiet" @click="initialize" />
     </view>
   </view>

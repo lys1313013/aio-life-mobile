@@ -1,0 +1,122 @@
+<script setup lang="ts">
+import { computed, onUnmounted, ref, watch } from 'vue';
+import AppIcon from '../../components/AppIcon.uvue';
+import FormField from '../../components/FormField.uvue';
+import MobileButton from '../../components/MobileButton.uvue';
+import PageState from '../../components/PageState.uvue';
+import LoadMore from '../../components/LoadMore.uvue';
+import LoadingIndicator from '../../components/LoadingIndicator.uvue';
+import UserDictRow from './UserDictRow.uvue';
+import { useUserDictOrder } from './services/use-user-dict-order.ts';
+import { isDark } from '../../services/theme.ts';
+const props = defineProps<{
+  rows: any[]; options: any[]; total: number; loading: boolean; error: string;
+  moreError: string; hasMore: boolean; busy: boolean; busyId: string; type: string;
+  remove: (row: any) => Promise<unknown>;
+  reorder: (row: any, target: any, delta: number) => Promise<any>;
+}>();
+const emit = defineEmits(['update:rows', 'search', 'edit', 'retry', 'more', 'dragging', 'working', 'scrollTop']);
+const keyword = ref(''), status = ref(''), revealed = ref(''), settled = ref(false);
+let timer: ReturnType<typeof setTimeout> | undefined;
+const rowsModel = computed({ get: () => props.rows, set: value => emit('update:rows', value) });
+const order = useUserDictOrder({ rows: rowsModel, disabled: () => props.loading || props.busy || !!props.error, save: props.reorder, activated: () => { revealed.value = ''; } });
+const { dragging, saving } = order;
+const locked = computed(() => props.busy || !!dragging.value || !!saving.value);
+const selectedType = computed(() => props.options.find(item => item.value === props.type));
+watch(dragging, value => emit('dragging', !!value));
+watch(saving, value => emit('working', !!value));
+watch(order.scrollTop, value => emit('scrollTop', value));
+watch(() => props.loading, (value, previous) => {
+  if (value) { order.reset(); revealed.value = ''; }
+  else if (previous && !props.error) settled.value = true;
+});
+function search(type = props.type) {
+  clearTimeout(timer);
+  if (locked.value) return;
+  order.reset(); revealed.value = '';
+  emit('search', { keyword: keyword.value.trim(), type, status: status.value });
+}
+function input(value: string) {
+  keyword.value = value; clearTimeout(timer);
+  timer = setTimeout(() => search(), 300);
+}
+function selectType(event: any) { search(props.options[Number(event.detail.value)]?.value || ''); }
+function selectStatus(event: any) { status.value = ['', '0', '1'][Number(event.detail.value)] || ''; search(); }
+function resetFilters() { keyword.value = ''; status.value = ''; search(); }
+function cancel() { order.reset(); revealed.value = ''; }
+onUnmounted(() => { clearTimeout(timer); cancel(); });
+defineExpose({ cancel, scrolled: order.scrolled });
+</script>
+<template>
+  <view class="user-dict-panel ui-page-body" :class="{ 'user-dict-panel-dark': isDark }">
+    <view class="user-dict-search" :class="{ 'user-dict-surface-dark': isDark }">
+      <MobileButton label="查询" icon="ant-design:search-outlined" variant="ghost" :loading="loading" :disabled="locked" @click="search()" />
+      <FormField label="字典名称" hide-label compact stretch><input class="user-dict-search-input" :class="{ 'user-dict-text-dark': isDark }" aria-label="字典名称" placeholder="搜索字典名称" :value="keyword" :disabled="locked" @input="input($event.detail.value)" @confirm="search()" /></FormField>
+    </view>
+    <view class="user-dict-filters">
+      <picker class="user-dict-picker" mode="selector" aria-label="字典类型筛选" :disabled="locked || !options.length" :range="options.map(item => item.label)" :value="Math.max(0, options.findIndex(item => item.value === type))" @change="selectType">
+        <view class="user-dict-control" :class="{ 'user-dict-surface-dark': isDark }"><text class="user-dict-filter-label">{{ selectedType?.label || '字典类型' }}</text><AppIcon name="ant-design:down-outlined" :size="12" /></view>
+      </picker>
+      <picker class="user-dict-picker" mode="selector" aria-label="状态筛选" :disabled="locked" :range="['全部状态', '启用', '禁用']" :value="status === '0' ? 1 : status === '1' ? 2 : 0" @change="selectStatus">
+        <view class="user-dict-control" :class="{ 'user-dict-surface-dark': isDark }"><text class="user-dict-filter-label">{{ status === '0' ? '启用' : status === '1' ? '禁用' : '全部状态' }}</text><AppIcon name="ant-design:down-outlined" :size="12" /></view>
+      </picker>
+      <MobileButton label="重置筛选" icon="ant-design:undo-outlined" variant="ghost" :disabled="locked" @click="resetFilters" />
+    </view>
+    <view class="user-dict-heading">
+      <view class="user-dict-heading-copy"><text class="user-dict-group-name">{{ selectedType?.label || '用户字典' }}</text><text class="user-dict-group-code" :class="{ 'user-dict-muted-dark': isDark }">{{ type || '—' }}</text></view>
+      <text class="user-dict-count" :class="{ 'user-dict-muted-dark': isDark }">{{ total }} 项</text>
+    </view>
+    <view class="user-dict-region">
+    <LoadingIndicator v-if="loading && settled" floating label="正在更新字典" />
+    <PageState :loading="loading && !settled" :error="error" :empty="!rows.length" :has-content="!!rows.length" :empty-text="keyword || status ? '没有匹配的字典' : '暂无字典'" @retry="emit('retry')">
+      <template #loading>
+        <view class="user-dict-list" :class="{ 'user-dict-surface-dark': isDark }" aria-label="加载中">
+          <view v-for="index in 8" :key="index" class="user-dict-skeleton-row"><view class="user-dict-skeleton-icon" :class="{ 'user-dict-skeleton-dark': isDark }" /><view class="user-dict-skeleton-copy"><view class="user-dict-skeleton-title" :class="{ 'user-dict-skeleton-dark': isDark }" /><view class="user-dict-skeleton-rank" :class="{ 'user-dict-skeleton-dark': isDark }" /></view></view>
+        </view>
+      </template>
+      <view v-if="rows.length" class="user-dict-list" :class="{ 'user-dict-surface-dark': isDark, 'user-dict-list-dragging': !!dragging }">
+        <view v-for="row in rows" :key="row.id" class="user-dict-sort-item" :class="{ 'user-dict-sort-active': dragging === row.id }" :style="order.style(row.id)" :data-dict-id="row.id" :aria-busy="saving === row.id || busyId === row.id">
+          <UserDictRow :row="row" :revealed="revealed === row.id" :dragging="dragging === row.id" :sorting="saving === row.id" :disabled="loading || busy || !!saving" :busy="busyId === row.id" :remove="() => remove(row)" :click-blocked="order.clickBlocked"
+            @edit="revealed = ''; emit('edit', row)" @reveal="revealed = row.id" @close="revealed = revealed === row.id ? '' : revealed"
+            @start="order.start(row.id, $event)" @move="order.move" @finish="order.finish" @cancel="order.cancel" @keyboard="order.keyboard(row.id, $event)" />
+        </view>
+      </view>
+    </PageState>
+    </view>
+    <LoadMore :error="moreError" :loading="loading" :has-more="hasMore" @load="emit('more')" />
+  </view>
+</template>
+<style scoped lang="scss">
+@use '../../styles/typography' as *;
+@use '../../styles/spacing.scss';
+@use '../../styles/spacing-tokens' as *;
+@use '../../styles/text-colors' as *;
+.user-dict-panel { gap: $space-section; color: #27272a; }
+.user-dict-panel-dark { color: #eeeeef; }
+.user-dict-search { flex-direction: row; align-items: center; border-radius: 12px; background-color: #ffffff; padding-right: $space-card; }
+.user-dict-search-input { @include type-style('body'); width: 100%; min-width: 0; height: $space-controlMin; color: #27272a; }
+.user-dict-filters { flex-direction: row; align-items: center; gap: $space-inline; }
+.user-dict-picker { flex: 1; min-width: 0; }
+.user-dict-control { flex-direction: row; align-items: center; gap: $space-inline; min-height: $space-controlMin; padding: 0 $space-card; border-radius: 10px; background-color: #ffffff; }
+.user-dict-filter-label { @include type-style('body'); flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.user-dict-heading { flex-direction: row; align-items: center; justify-content: space-between; gap: $space-inline; }
+.user-dict-heading-copy { flex: 1; min-width: 0; gap: $space-detail; }
+.user-dict-group-name { @include type-style('body-strong'); overflow-wrap: anywhere; }
+.user-dict-group-code, .user-dict-count { @include type-style('caption'); color: $text-secondary-light; }
+.user-dict-group-code { overflow-wrap: anywhere; }
+.user-dict-list { background-color: #ffffff; border-radius: 14px; overflow: hidden; }
+.user-dict-list-dragging { overflow: visible; }
+.user-dict-region { position: relative; }
+.user-dict-sort-item { position: relative; }
+.user-dict-sort-active { z-index: 5; }
+.user-dict-surface-dark { background-color: #1c1e22; }
+.user-dict-text-dark { color: #eeeeef; }
+.user-dict-muted-dark { color: $text-secondary-dark; }
+// 首屏骨架复用展示行的图标、文字结构和内边距，避免加载结束后列表大幅跳动。
+.user-dict-skeleton-row { flex-direction: row; align-items: center; gap: $space-card; min-height: $space-controlMin; padding: $space-card; border-bottom: $space-hairline solid transparent; }
+.user-dict-skeleton-icon { width: $space-controlMin; height: $space-controlMin; background-color: #edf0f5; border-radius: 12px; }
+.user-dict-skeleton-copy { flex: 1; gap: $space-detail; }
+.user-dict-skeleton-title { width: 36%; height: type-line('body-strong'); border-radius: 4px; background-color: #edf0f5; }
+.user-dict-skeleton-rank { width: 24%; height: type-line('caption'); border-radius: 4px; background-color: #edf0f5; }
+.user-dict-skeleton-dark { background-color: #30343b; }
+</style>

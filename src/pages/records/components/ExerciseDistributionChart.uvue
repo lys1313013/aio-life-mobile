@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onUnmounted, ref, watch } from 'vue'
 import ChartCanvas from '../../../components/ChartCanvas.uvue'
+import LoadingIndicator from '../../../components/LoadingIndicator.uvue'
 import { isDark } from '../../../services/theme.ts'
 import typography from '../../../styles/typography.json'
 import spacing from '../../../styles/spacing.json'
@@ -55,8 +56,8 @@ const option = computed(() => ({
   <view class="exercise-distribution aio-chart" :class="{ 'exercise-distribution-dark': isDark }" role="figure" aria-label="运动类型分布">
     <text class="distribution-title" :class="{ 'distribution-text-dark': isDark }">运动类型分布</text>
     <view class="distribution-plot">
-      <view v-if="loading" class="distribution-state" :class="{ 'distribution-state-dark': isDark }" aria-busy="true">
-        <text class="distribution-secondary" :class="{ 'distribution-secondary-dark': isDark }">正在加载图表</text>
+      <view v-if="loading" class="distribution-state" aria-busy="true">
+        <LoadingIndicator ring label="正在加载图表" />
       </view>
       <template v-else-if="items.length">
         <ChartCanvas :option="option" label="运动类型分布" @width="width = $event" @select="select" @leave="dismiss" @ready="ready = $event" />
@@ -95,7 +96,6 @@ const option = computed(() => ({
 .distribution-secondary { @include type-style('caption'); color: $text-secondary-light; }
 .distribution-secondary-dark { color: $text-secondary-dark; }
 .distribution-state { height: 228px; align-items: center; justify-content: center; border-radius: 8px; }
-.distribution-state-dark { background-color: #252a33; }
 .distribution-legend-scroll { width: 100%; min-width: 0; height: $space-controlMin; white-space: nowrap; }
 .distribution-legend {
   display: flex; flex-direction: row; flex-wrap: nowrap; gap: $space-section; height: $space-controlMin;

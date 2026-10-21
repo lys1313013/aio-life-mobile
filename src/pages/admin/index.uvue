@@ -4,10 +4,11 @@ import { isRequired } from '../../services/form-required.ts';
 import MenuManager from '../../components/MenuManager.uvue';
 import DictDataPanel from './DictDataPanel.uvue';
 import DictTypePanel from './DictTypePanel.uvue';
+import UserDictPanel from './UserDictPanel.uvue';
 import WechatConfigEditor from './WechatConfigEditor.uvue';
 import { menuMoveChanges } from '../../services/admin/menu-tree.ts';
-import { computed, ref } from 'vue';
-import { onLoad, onShow, onUnload } from '@dcloudio/uni-app';
+import { computed, ref, watch } from 'vue';
+import { onHide, onLoad, onShow, onUnload } from '@dcloudio/uni-app';
 import PageHeader from '../../components/PageHeader.uvue';
 import MobilePage from '../../components/MobilePage.uvue';
 import MobileButton from '../../components/MobileButton.uvue';
@@ -18,13 +19,12 @@ import ConfirmAction from '../../components/ConfirmAction.uvue';
 import AdaptiveModal from '../../components/AdaptiveModal.uvue';
 import FormField from '../../components/FormField.uvue';
 import FormActions from '../../components/FormActions.uvue';
-import CategoryIcon from '../../components/CategoryIcon.uvue';
 import { themeClass } from '../../services/theme.ts';
 import { fetchUser } from '../../services/api.ts';
 import { session, restoreSession } from '../../services/session.ts';
 import { createLatestTask } from '../../services/mobile-ui.ts';
 import { authFileUrl, chooseAndUploadAttachment } from '../../services/attachments.ts';
-import { specs, feedbackStatuses, feedbackTypes } from './services/specs.ts';
+import { specs, adminPayload, feedbackStatuses, feedbackTypes } from './services/specs.ts';
 import { protectedMenu } from '../../services/admin/contract.ts';
 import {
   queryAdmin,
@@ -42,6 +42,7 @@ import {
 } from './services/index.ts';
 import { exportLogs } from './services/export.ts';
 const kind = ref('users');
+const dictPanel = ref<any>(null), dictDragging = ref(false), dictWorking = ref(false), dictScrollTop = ref(0);
 const spec = computed(() => specs[kind.value]);
 const rows = ref<any[]>([]),
   options = ref<any[]>([]),
@@ -108,6 +109,12 @@ const filterStatuses = computed(() =>
 onLoad((params) => {
   kind.value = typeof params?.kind === 'string' && specs[params.kind] ? params.kind : 'users';
 });
+watch(() => session.token, () => {
+  if (kind.value !== 'user-dict') return;
+  dictPanel.value?.cancel(); task.invalidate(); rows.value = []; options.value = []; total.value = 0;
+  busyId.value = ''; opened.value = false; saving.value = false; loading.value = false; refreshing.value = false;
+}, { flush: 'sync' });
+onHide(() => dictPanel.value?.cancel());
 onUnload(() => {
   active = false;
   task.invalidate();
@@ -125,6 +132,7 @@ onShow(() => {
 function searchDictionary(value) {
   keyword.value = value.keyword;
   typeFilter.value = value.type;
+  if (kind.value === 'user-dict') statusFilter.value = value.status;
   rows.value = [];
   total.value = 0;
   pageEnded.value = false;
@@ -145,6 +153,7 @@ function loadMore() {
   load(true);
 }
 async function load(more = false, refresh = false) {
+  if (kind.value === 'user-dict' && (dictDragging.value || dictWorking.value || busyId.value)) return;
   if (more && (loading.value || !rows.value.length || rows.value.length >= total.value || pageEnded.value)) return;
   const generation = task.begin(),
     token = session.token;
@@ -152,17 +161,24 @@ async function load(more = false, refresh = false) {
   refreshing.value = refresh;
   error.value = '';
   moreError.value = '';
-  const nextPage = more ? page.value + 1 : 1;
+  // 删除后按当前已加载条数回补分页边界，避免 offset 分页漏掉一条。
+  const nextPage = more ? (kind.value === 'user-dict' ? Math.floor(rows.value.length / 20) + 1 : page.value + 1) : 1;
   try {
     if (!session.user) await fetchUser();
     if (!authorized.value) throw Error('当前账号没有管理员权限');
+    if (kind.value === 'user-dict' && !options.value.length) {
+      const types = await adminOptions(kind.value);
+      if (!active || !task.isCurrent(generation) || token !== session.token) return;
+      options.value = types;
+      if (!typeFilter.value) typeFilter.value = types[0]?.value || '';
+    }
     const [result, loadedOptions] = await Promise.all([
       queryAdmin(kind.value, { ...filters(), page: nextPage, pageSize: 20 }),
       !options.value.length ? adminOptions(kind.value) : Promise.resolve(options.value),
     ]);
     if (active && task.isCurrent(generation) && token === session.token) {
       const items = more ? [...rows.value, ...result.items] : result.items;
-      rows.value = ['dict-data', 'dict-types'].includes(kind.value)
+      rows.value = ['dict-data', 'dict-types', 'user-dict'].includes(kind.value)
         ? [...new Map(items.map(row => [row[spec.value.id], row])).values()]
         : items;
       pageEnded.value = !result.items.length;
@@ -209,7 +225,8 @@ function setField(field, value) {
       : value;
 }
 function edit(row = null, parentId = '0') {
-  if (loading.value || busyId.value || !authorized.value) return;
+  if (loading.value || busyId.value || dictWorking.value || dictDragging.value || !authorized.value) return;
+  if (kind.value === 'user-dict' && row && row.userId !== '0') return;
   original.value = row;
   menuAdvanced.value = false;
   form.value = row
@@ -240,10 +257,17 @@ async function save() {
   editorError.value = '';
   const token = session.token;
   try {
+    const payload = kind.value === 'user-dict' ? adminPayload(kind.value, form.value, original.value) : null;
     await saveAdmin(kind.value, form.value, original.value);
     if (active && token === session.token) {
       opened.value = false;
-      await load();
+      if (kind.value === 'user-dict' && original.value) {
+        const updated = { ...original.value, ...payload };
+        const matches = updated.dictType === typeFilter.value && (!statusFilter.value || updated.status === statusFilter.value) && (!keyword.value || updated.dictLabel.includes(keyword.value));
+        rows.value = rows.value.flatMap(item => item.id !== updated.id ? [item] : matches ? [updated] : [])
+          .sort((a, b) => Number(a.dictSort) - Number(b.dictSort));
+        if (!matches) total.value = Math.max(0, total.value - 1);
+      } else await load();
     }
   } catch (reason) {
     if (active && token === session.token) editorError.value = reason.message || '保存失败';
@@ -252,8 +276,22 @@ async function save() {
   }
 }
 async function remove(row) {
-  await deleteAdmin(kind.value, row);
-  if (active) await load();
+  if (kind.value !== 'user-dict') {
+    await deleteAdmin(kind.value, row);
+    if (active) await load();
+    return;
+  }
+  if (busyId.value || dictDragging.value || dictWorking.value || loading.value) throw Error('操作进行中，请稍后重试');
+  const token = session.token;
+  busyId.value = row.id;
+  try {
+    await deleteAdmin(kind.value, row);
+    if (active && token === session.token) {
+      rows.value = rows.value.filter(item => item.id !== row.id);
+      total.value = Math.max(0, total.value - 1);
+    }
+  } finally { if (active && token === session.token) busyId.value = ''; }
+  if (active && token === session.token && !rows.value.length && total.value > 0) await load();
 }
 async function mutate(row, action) {
   if (busyId.value) return;
@@ -481,23 +519,30 @@ async function download() {
 <template>
   <view class="admin-page"
     ><PageHeader :title="spec.title" back @back="uni.navigateBack()">
-      <template v-if="['dict-data', 'dict-types'].includes(kind)" #default>
+      <template v-if="['dict-data', 'dict-types', 'user-dict'].includes(kind)" #default>
         <text class="admin-dict-heading" :class="themeClass('admin-dict-heading')">{{ spec.title }}</text>
-        <MobileButton v-if="authorized" label="新增" icon="ant-design:plus-outlined" variant="ghost" :disabled="loading || !!busyId" @click="edit()" />
+        <MobileButton v-if="authorized" label="新增" icon="ant-design:plus-outlined" variant="ghost" :disabled="loading || !!busyId || dictWorking || dictDragging" @click="edit()" />
       </template>
     </PageHeader><MobilePage
       :refreshing="refreshing"
+      :scroll-locked="dictDragging"
+      :drag-scrolling="dictDragging"
+      :scroll-top="kind === 'user-dict' ? dictScrollTop : undefined"
+      :refresh-disabled="dictWorking || !!busyId"
+      @scroll="dictPanel?.scrolled($event)"
       @refresh="load(false, true)"
       @reachbottom="loadMore"
     >
       <MenuManager v-if="kind === 'menus'" :rows="rows" :loading="loading" :error="error" :busy-id="busyId" :remove="remove" @edit="edit" @create-child="(id) => edit(null, id)" @status="(row, mobile) => mutate(row, () => setMenuStatus(row, mobile))" @move="move" @retry="load()" />
+      <UserDictPanel v-else-if="kind === 'user-dict'" ref="dictPanel" :rows="rows" :options="options" :total="total" :type="typeFilter" :loading="loading" :error="error" :more-error="moreError" :has-more="!pageEnded && rows.length < total" :busy="saving || opened || !!busyId" :busy-id="busyId" :remove="remove" :reorder="sortUserDict"
+        @update:rows="rows = $event" @search="searchDictionary" @edit="edit" @retry="load()" @more="load(true)" @dragging="dictDragging = $event" @working="dictWorking = $event" @scroll-top="dictScrollTop = $event" />
       <DictDataPanel v-else-if="kind === 'dict-data'" :rows="rows" :options="options" :total="total" :loading="loading" :error="error" :more-error="moreError" :has-more="!pageEnded && rows.length < total" :busy="!!busyId" :remove="remove" @search="searchDictionary" @edit="edit" @retry="load()" @more="load(true)" />
       <DictTypePanel v-else-if="kind === 'dict-types'" :rows="rows" :total="total" :loading="loading" :error="error" :more-error="moreError" :has-more="!pageEnded && rows.length < total" :busy="!!busyId" :remove="remove" @search="searchDictionary" @edit="edit" @retry="load()" @more="load(true)" />
       <template v-else>
       <FormField :label="kind === 'dict-types' ? '字典名称' : kind === 'dict-data' ? '展示值' : kind === 'users' ? '用户名 / 昵称' : '关键词'" v-model="keyword" :disabled="loading" />
       <view class="admin-filters ui-field-row">
       <FormField
-        v-if="['dict-data', 'user-dict', 'feedback'].includes(kind)"
+        v-if="['dict-data', 'feedback'].includes(kind)"
         compact stretch label="类型"
         kind="selector"
         :model-value="
@@ -515,7 +560,7 @@ async function download() {
         "
       />
       <FormField
-        v-if="['user-dict', 'feedback'].includes(kind)"
+        v-if="kind === 'feedback'"
         compact stretch label="状态"
         kind="selector"
         :model-value="filterStatuses.find((item) => item.value === statusFilter)?.label || '全部'"
@@ -565,7 +610,6 @@ async function download() {
           class="admin-card ui-card"
           :class="themeClass('admin-card')"
         >
-          <CategoryIcon v-if="kind === 'user-dict'" :icon="row.icon" :color="row.color" />
           <WechatConfigEditor v-if="kind === 'config' && row.configKey === 'wechat.mini'" :config-value="row.configValue" :disabled="!!busyId || loading" @saved="updated => rows = rows.map(item => item.configKey === updated.configKey ? updated : item)" />
           <template v-else>
           <view v-for="key in spec.display" :key="key" class="admin-value ui-row ui-py-xs"
@@ -623,19 +667,6 @@ async function download() {
                 :message="kind === 'users' ? '确定删除此用户？' : '确定删除此记录？'"
                 :action="() => remove(row)"
             /></template>
-            <template v-if="kind === 'user-dict'"
-              ><MobileButton
-                label="上移"
-                icon="ant-design:arrow-up-outlined"
-                variant="quiet"
-                :disabled="loading || !!busyId"
-                @click="move(row, -1)" /><MobileButton
-                label="下移"
-                icon="ant-design:arrow-down-outlined"
-                variant="quiet"
-                :disabled="loading || !!busyId"
-                @click="move(row, 1)"
-            /></template>
             <template v-if="kind === 'feedback'"
               ><MobileButton
                 label="详情"
@@ -658,7 +689,7 @@ async function download() {
       </template>
       <template #fixed
         ><FloatingActionButton
-          v-if="!spec.readOnly && kind !== 'config' && !['dict-data', 'dict-types'].includes(kind) && authorized"
+          v-if="!spec.readOnly && kind !== 'config' && !['dict-data', 'dict-types', 'user-dict'].includes(kind) && authorized"
           :disabled="loading || !!busyId"
           @click="edit()"
       /></template>

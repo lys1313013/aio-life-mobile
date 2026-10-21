@@ -1,6 +1,12 @@
 import { request } from '../../../services/domains/session-guard.ts'
 import { queryPath } from '../../../services/query-path.ts'
-export const fetchCodingBindings = (tokens=false) => request<any[]>(queryPath('/userbinds/list',{includeToken:tokens}))
+export function fetchCodingBindings(tokens=false) {
+  // 微信的数据请求由后端携带平台凭证，客户端只读取公开绑定信息。
+  // #ifdef MP-WEIXIN
+  tokens=false
+  // #endif
+  return request<any[]>(queryPath('/userbinds/list',{includeToken:tokens}))
+}
 export const fetchCommits = (page=1) => request<any[]>(queryPath('/github/recent-commits',{page,perPage:20}))
 export const fetchCsdnStats = (username:string) => request<any>(queryPath('/csdn/stats',{username}))
 export const fetchCsdnArticles = (username:string,limit=20) => request<any[]>(queryPath('/csdn/articles',{username,limit}))
@@ -8,26 +14,58 @@ export function externalRequest(url:string, data:Record<string,any>|null=null, t
 export async function fetchRepos(username:string,token=''){
   const repos:any[]=[]
   for(let page=1;;page++){
-    const rows=await externalRequest('https://api.github.com/users/'+encodeURIComponent(username)+'/repos?sort=pushed&per_page=100&page='+page,null,token)
+    let rows:any[]
+    // #ifdef MP-WEIXIN
+    rows=await request<any[]>(queryPath('/github/repos',{page}))
+    // #endif
+    // #ifndef MP-WEIXIN
+    rows=await externalRequest('https://api.github.com/users/'+encodeURIComponent(username)+'/repos?sort=pushed&per_page=100&page='+page,null,token)
+    // #endif
     repos.push(...rows)
     if(rows.length<100)return repos
   }
 }
-export const fetchRepoContributors=(fullName:string,token='')=>externalRequest('https://api.github.com/repos/'+fullName.split('/').map(encodeURIComponent).join('/')+'/contributors?per_page=100',null,token)
-export const fetchRepoInfo=(fullName:string,token='')=>externalRequest('https://api.github.com/repos/'+fullName.split('/').map(encodeURIComponent).join('/'),null,token)
-export const fetchGithubCalendar=(username:string,token:string)=>externalRequest('https://api.github.com/graphql',{query:'query($login:String!){user(login:$login){contributionsCollection{contributionCalendar{totalContributions weeks{contributionDays{contributionCount date contributionLevel}}}}}}',variables:{login:username}},token)
-export function leetcode(query:string,variables:Record<string,any>={},noj=false){
+export function fetchRepoContributors(fullName:string,token='') {
+  // #ifdef MP-WEIXIN
+  return request<any[]>(queryPath('/github/repository/contributors',{name:fullName.split('/')[1]}))
+  // #endif
+  // #ifndef MP-WEIXIN
+  return externalRequest('https://api.github.com/repos/'+fullName.split('/').map(encodeURIComponent).join('/')+'/contributors?per_page=100',null,token)
+  // #endif
+}
+export function fetchRepoInfo(fullName:string,token='') {
+  // #ifdef MP-WEIXIN
+  return request<any>(queryPath('/github/repository/info',{name:fullName.split('/')[1]}))
+  // #endif
+  // #ifndef MP-WEIXIN
+  return externalRequest('https://api.github.com/repos/'+fullName.split('/').map(encodeURIComponent).join('/'),null,token)
+  // #endif
+}
+export function fetchGithubCalendar(username:string,token:string) {
+  // #ifdef MP-WEIXIN
+  return request<any>('/github/calendar')
+  // #endif
+  // #ifndef MP-WEIXIN
+  return externalRequest('https://api.github.com/graphql',{query:'query($login:String!){user(login:$login){contributionsCollection{contributionCalendar{totalContributions weeks{contributionDays{contributionCount date contributionLevel}}}}}}',variables:{login:username}},token)
+  // #endif
+}
+function leetcode(section:string,query:string,variables:Record<string,any>={},noj=false){
+  // #ifdef MP-WEIXIN
+  return request<any>('/leetcode/data/'+section)
+  // #endif
+  // #ifndef MP-WEIXIN
   let base='https://leetcode.cn'
   // #ifdef WEB
   base='/leetcode-api'
   // #endif
   return externalRequest(base+'/graphql'+(noj?'/noj-go/':''),{query,variables}).then(data=>data.data)
+  // #endif
 }
-export const fetchLeetcodeProfile=(username:string)=>leetcode('query($userSlug:String!){userProfilePublicProfile(userSlug:$userSlug){siteRanking profile{reputation countryName}} userProfileUserQuestionProgress(userSlug:$userSlug){numAcceptedQuestions{difficulty count} numFailedQuestions{difficulty count} numUntouchedQuestions{difficulty count}}}',{userSlug:username})
-export const fetchLeetcodeContest=(username:string)=>leetcode('query($userSlug:String!){userContestRanking(userSlug:$userSlug){attendedContestsCount rating globalRanking localRanking globalTotalParticipants localTotalParticipants topPercentage}}',{userSlug:username},true)
-export const fetchLeetcodeCalendar=(username:string)=>leetcode('query($userSlug:String!){userCalendar(userSlug:$userSlug){streak totalActiveDays submissionCalendar activeYears recentStreak}}',{userSlug:username},true)
-export const fetchLeetcodeDaily=()=>leetcode('query{todayRecord{date userStatus question{title titleSlug translatedTitle}}}')
-export const fetchLeetcodeRecent=(username:string)=>leetcode('query($userSlug:String!){recentACSubmissions(userSlug:$userSlug){submissionId submitTime question{title translatedTitle titleSlug questionFrontendId}}}',{userSlug:username},true)
+export const fetchLeetcodeProfile=(username:string)=>leetcode('profile','query($userSlug:String!){userProfilePublicProfile(userSlug:$userSlug){siteRanking profile{reputation countryName}} userProfileUserQuestionProgress(userSlug:$userSlug){numAcceptedQuestions{difficulty count} numFailedQuestions{difficulty count} numUntouchedQuestions{difficulty count}}}',{userSlug:username})
+export const fetchLeetcodeContest=(username:string)=>leetcode('contest','query($userSlug:String!){userContestRanking(userSlug:$userSlug){attendedContestsCount rating globalRanking localRanking globalTotalParticipants localTotalParticipants topPercentage}}',{userSlug:username},true)
+export const fetchLeetcodeCalendar=(username:string)=>leetcode('calendar','query($userSlug:String!){userCalendar(userSlug:$userSlug){streak totalActiveDays submissionCalendar activeYears recentStreak}}',{userSlug:username},true)
+export const fetchLeetcodeDaily=()=>leetcode('daily','query{todayRecord{date userStatus question{title titleSlug translatedTitle}}}')
+export const fetchLeetcodeRecent=(username:string)=>leetcode('recent','query($userSlug:String!){recentACSubmissions(userSlug:$userSlug){submissionId submitTime question{title translatedTitle titleSlug questionFrontendId}}}',{userSlug:username},true)
 export function openExternal(url:string){if(!/^https:\/\//.test(url))throw new Error('链接无效')
   // #ifdef WEB
   window.open(url,'_blank','noopener,noreferrer')

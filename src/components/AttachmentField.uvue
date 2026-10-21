@@ -1,7 +1,10 @@
 <script setup lang="ts">
-import { onUnmounted, ref } from 'vue';
+import { computed, onUnmounted, ref, watch } from 'vue';
+import AppIcon from './AppIcon.uvue';
+import ContentSkeleton from './ContentSkeleton.uvue';
+import { session } from '../services/session.ts';
 import MobileButton from './MobileButton.uvue';
-import { themeClass } from '../services/theme.ts';
+import { isDark, themeClass } from '../services/theme.ts';
 import {
   authFileUrl,
   chooseAndUploadAttachment,
@@ -15,6 +18,7 @@ const props = withDefaults(
     disabled?: boolean;
     readonly?: boolean;
     imagesOnly?: boolean;
+    maxCount?: number;
   }>(),
   { formData: () => ({}) },
 );
@@ -24,13 +28,66 @@ const uploading = ref(false),
   error = ref('');
 const failedFile = ref<any>(null);
 const failedDocument = ref(false);
+const canAdd = computed(() => !props.maxCount || props.files.length < props.maxCount);
+const imageUploadError = computed(() => !!error.value && !failedFile.value && !failedDocument.value);
+function isImage(file) {
+  return props.imagesOnly || String(file.fileType || '').startsWith('image/') ||
+    /\.(avif|bmp|gif|heic|heif|jpe?g|png|svg|webp)$/i.test(file.fileName || file.name || '');
+}
+const imageFiles = computed(() => props.files.filter(isImage));
+const documents = computed(() => props.files.filter(file => !isImage(file)));
+const thumbnails = ref<Record<string, { url: string; loaded: boolean; error: string; request: number }>>({});
 let active = true;
+let requestId = 0;
+let thumbnailToken = session.token;
+function releaseUrl(url: string) {
+  // #ifdef WEB
+  if (url.startsWith('blob:')) URL.revokeObjectURL(url);
+  // #endif
+}
+async function loadThumbnail(file) {
+  const request = ++requestId;
+  const token = session.token;
+  releaseUrl(thumbnails.value[file.id]?.url || '');
+  thumbnails.value[file.id] = { url: '', loaded: false, error: '', request };
+  try {
+    const url = await authFileUrl(file.id);
+    if (!active || token !== session.token || thumbnails.value[file.id]?.request !== request) {
+      releaseUrl(url);
+      return;
+    }
+    thumbnails.value[file.id].url = url;
+  } catch (reason) {
+    if (active && token === session.token && thumbnails.value[file.id]?.request === request)
+      thumbnails.value[file.id].error = reason.message || '图片加载失败';
+  }
+}
+function thumbnailFailed(file, url: string) {
+  const thumbnail = thumbnails.value[file.id];
+  if (thumbnail?.url !== url) return;
+  thumbnail.error = '图片加载失败';
+  thumbnail.loaded = false;
+}
+watch(() => [session.token, ...imageFiles.value.map(file => file.id)], () => {
+  const ids = new Set(imageFiles.value.map(file => file.id));
+  for (const [id, thumbnail] of Object.entries(thumbnails.value)) {
+    if (thumbnailToken !== session.token || !ids.has(id)) {
+      releaseUrl(thumbnail.url);
+      delete thumbnails.value[id];
+    }
+  }
+  thumbnailToken = session.token;
+  for (const file of imageFiles.value) {
+    if (!thumbnails.value[file.id]) void loadThumbnail(file);
+  }
+}, { immediate: true });
 onUnmounted(() => {
+  for (const thumbnail of Object.values(thumbnails.value)) releaseUrl(thumbnail.url);
   active = false;
   emit('busy-change', false);
 });
 async function upload(document = false) {
-  if (uploading.value || props.disabled || props.readonly) return;
+  if (uploading.value || props.disabled || props.readonly || !canAdd.value) return;
   uploading.value = true;
   error.value = '';
   failedFile.value = null;
@@ -43,7 +100,8 @@ async function upload(document = false) {
     if (!file || typeof file.id !== 'string') throw Error('附件 ID 异常，请重试');
     if (active) emit('update:files', [...props.files, file]);
   } catch (reason) {
-    if (active) error.value = reason.message || '上传失败，请重试';
+    if (active && reason.name !== 'FileSelectionCancelledError')
+      error.value = reason.message || '上传失败，请重试';
   } finally {
     if (active) {
       uploading.value = false;
@@ -57,10 +115,9 @@ async function preview(file) {
   error.value = '';
   failedFile.value = file;
   try {
-    const path = await authFileUrl(file.id);
+    const path = thumbnails.value[file.id]?.url || await authFileUrl(file.id);
     if (!active) return;
-    const name = String(file.fileName || file.name || '').toLowerCase();
-    if (/\.(pdf|docx?|xlsx?|pptx?)$/.test(name)) {
+    if (!isImage(file)) {
       // #ifdef WEB
       window.open(path, '_blank', 'noopener');
       // #endif
@@ -89,76 +146,163 @@ function remove(file) {
 }
 </script>
 <template>
-  <view class="attachment-field ui-gap-sm ui-mb-section" :class="themeClass('attachment-field')"
-    ><view v-for="file in files" :key="file.id" class="attachment-row ui-gap-sm"
-      ><text class="attachment-name">{{ file.fileName || file.name || '附件' }}</text
-      ><MobileButton
-        label="预览附件"
-        icon="ant-design:picture-outlined"
-        variant="quiet"
-        :loading="previewing === file.id"
-        @click="preview(file)" /><MobileButton
-        v-if="!readonly"
-        label="移除附件"
-        icon="ant-design:close-outlined"
-        variant="quiet"
-        :disabled="disabled || uploading"
-        @click="remove(file)" /></view
-    ><view v-if="!readonly" class="attachment-actions"><MobileButton
-      label="添加图片"
-      icon="ant-design:plus-outlined"
-      variant="quiet"
-      :loading="uploading"
-      :disabled="disabled"
-      @click="upload(false)" /><!-- #ifdef WEB || MP-WEIXIN || APP --><MobileButton
-      v-if="!imagesOnly"
-      label="添加文件"
-      icon="ant-design:file-text-outlined"
-      variant="quiet"
-      :loading="uploading"
-      :disabled="disabled"
-      @click="upload(true)" /><!-- #endif --></view><view
-      v-if="error"
-      class="attachment-error"
-      role="alert"
-      ><text class="ui-type-label">{{ error }}</text
-      ><MobileButton
-        :label="failedFile ? '重试预览' : '重试上传'"
-        icon="ant-design:reload-outlined"
-        variant="quiet"
-        :disabled="disabled"
-        :loading="uploading"
-        @click="failedFile ? preview(failedFile) : upload(failedDocument)" /></view
-  ></view>
+  <view class="attachment-field ui-gap-sm ui-mb-section" :class="themeClass('attachment-field')">
+    <view v-if="imageFiles.length" class="attachment-images">
+      <view v-for="file in imageFiles" :key="file.id" class="attachment-tile">
+        <button role="button" class="attachment-preview" :class="themeClass('attachment-preview')"
+          :aria-label="thumbnails[file.id]?.error ? '重试图片' : '预览附件'"
+          :aria-busy="!thumbnails[file.id]?.loaded && !thumbnails[file.id]?.error"
+          :disabled="!thumbnails[file.id]?.loaded && !thumbnails[file.id]?.error"
+          @click="thumbnails[file.id]?.error ? loadThumbnail(file) : preview(file)">
+          <image v-if="thumbnails[file.id]?.url && !thumbnails[file.id]?.error"
+            class="attachment-image" :src="thumbnails[file.id].url" mode="aspectFit"
+            :aria-label="file.fileName || file.name || '附件图片'"
+            @load="thumbnails[file.id].loaded = true"
+            @error="thumbnailFailed(file, thumbnails[file.id].url)" />
+          <view v-if="thumbnails[file.id]?.error" class="attachment-status">
+            <AppIcon name="ant-design:reload-outlined" :size="20" color="#8b8f99" />
+            <text class="attachment-caption">加载失败</text>
+          </view>
+          <view v-else-if="!thumbnails[file.id]?.loaded" class="attachment-status">
+            <ContentSkeleton variant="cover" label="正在加载附件图片" />
+          </view>
+        </button>
+        <button v-if="!readonly" role="button" aria-label="移除附件" class="attachment-remove"
+          :class="{ 'attachment-remove-disabled': disabled || uploading }"
+          :style="{ backgroundColor: 'transparent' }"
+          :disabled="disabled || uploading" :aria-disabled="disabled || uploading"
+          :hover-class="disabled || uploading ? 'none' : 'attachment-remove-pressed'"
+          @click.stop="remove(file)">
+          <view class="attachment-remove-badge" :class="themeClass('attachment-remove-badge')">
+            <AppIcon name="ant-design:close-outlined" :size="14" :color="isDark ? '#d4d4d8' : '#71717a'" />
+          </view>
+        </button>
+      </view>
+    </view>
+    <view v-for="file in documents" :key="file.id" class="attachment-row ui-gap-sm">
+      <button role="button" class="attachment-document" :class="themeClass('attachment-document')"
+        aria-label="预览附件" :aria-busy="previewing === file.id" :disabled="!!previewing" @click="preview(file)">
+        <AppIcon name="ant-design:file-text-outlined" :size="20" color="#8b8f99" />
+        <text class="attachment-name">{{ file.fileName || file.name || '附件' }}</text>
+        <text v-if="previewing === file.id" class="attachment-caption">加载中</text>
+      </button>
+      <MobileButton v-if="!readonly" label="移除附件" icon="ant-design:close-outlined" variant="ghost"
+        :disabled="disabled || uploading" @click="remove(file)" />
+    </view>
+    <view v-if="!readonly && canAdd" class="attachment-actions">
+      <button role="button" aria-label="添加图片" class="attachment-add"
+        :class="[themeClass('attachment-add'), { 'attachment-add-disabled': disabled && !uploading }]"
+        :style="{ backgroundColor: isDark ? '#292c32' : '#f1f3f6' }"
+        :aria-busy="uploading && !failedDocument" :aria-disabled="disabled || uploading" :disabled="disabled || uploading"
+        :hover-class="disabled || uploading ? 'none' : 'attachment-add-pressed'" @click="upload(false)">
+        <view v-if="uploading && !failedDocument" class="attachment-upload-spinner" role="status" aria-label="正在上传图片" />
+        <template v-else-if="imageUploadError">
+          <AppIcon name="ant-design:reload-outlined" :size="24" :color="isDark ? '#a1a1aa' : '#71717a'" />
+          <text class="attachment-caption" role="alert" :aria-label="error">上传失败，点击重试</text>
+        </template>
+        <view v-else class="attachment-add-icon">
+          <AppIcon name="ant-design:picture-outlined" :size="28" :color="isDark ? '#a1a1aa' : '#8b8f99'" />
+          <view class="attachment-add-plus" :class="themeClass('attachment-add-plus')">
+            <AppIcon name="ant-design:plus-outlined" :size="12" :color="isDark ? '#8eb5ff' : '#427bea'" />
+          </view>
+        </view>
+      </button>
+      <!-- #ifdef WEB || MP-WEIXIN || APP -->
+      <MobileButton v-if="!imagesOnly" label="添加文件" icon="ant-design:file-text-outlined" variant="quiet"
+        :loading="uploading && failedDocument" :disabled="disabled || uploading" @click="upload(true)" />
+      <!-- #endif -->
+    </view>
+    <view v-if="error && (failedFile || failedDocument)" class="attachment-error" role="alert">
+      <text class="attachment-caption">{{ error }}</text>
+      <MobileButton :label="failedFile ? '重试预览' : '重试上传'" icon="ant-design:reload-outlined" variant="quiet"
+        :disabled="disabled" :loading="uploading"
+        @click="failedFile ? preview(failedFile) : upload(failedDocument)" />
+    </view>
+  </view>
 </template>
 <style scoped lang="scss">
 @use '../styles/typography' as *;
 @use '../styles/spacing.scss';
 @use '../styles/spacing-tokens' as *;
-@include type-utilities('label');
 
-.attachment-field {
-
-  color: #27272a;
+.attachment-field { color: #27272a; }
+.attachment-field-dark { color: #eeeeef; }
+.attachment-images { flex-direction: row; flex-wrap: wrap; gap: $space-inline; }
+// 缩略图固定为方形，加载、失败和展示共用尺寸，避免弹窗跳动。
+.attachment-tile { position: relative; width: 104px; height: 104px; flex-shrink: 0; }
+.attachment-preview {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 12px;
+  overflow: hidden;
+  background-color: #f1f3f6;
 }
-.attachment-field-dark {
-  color: #eeeeef;
-}
-.attachment-row {
-  flex-direction: row;
+.attachment-preview-dark { background-color: #292c32; }
+.attachment-image { width: 100%; height: 100%; }
+.attachment-status { position: absolute; top: 0; right: 0; bottom: 0; left: 0; align-items: center; justify-content: center; gap: $space-detail; }
+// 可见圆形仅 22px，外围透明区域保留 44px 触控尺寸。
+.attachment-remove {
+  position: absolute;
+  top: -$space-inline;
+  right: -$space-inline;
+  display: flex;
   align-items: center;
+  justify-content: center;
+  width: $space-controlMin;
+  height: $space-controlMin;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
 }
-.attachment-name {
-  flex: 1;
-  min-width: 0;
-  overflow-wrap: anywhere;
-  @include type-style('body');
+.attachment-remove-badge {
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background-color: rgba(255, 255, 255, 0.94);
+  box-shadow: 0 1px 4px rgba(15, 23, 42, 0.12);
 }
-.attachment-error {
-  color: #e05260;
-  @include type-style('label');
-  gap: $space-inline;
-}
+.attachment-remove-badge-dark { background-color: rgba(48, 51, 58, 0.96); box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2); }
+.attachment-remove-disabled { opacity: 0.45; }
+.attachment-remove-pressed { opacity: 0.7; }
+.attachment-row { flex-direction: row; align-items: center; }
+.attachment-document { display: flex; flex-direction: row; align-items: center; flex: 1; min-width: 0; min-height: $space-controlMin; margin: 0; padding: 0; border: 0; gap: $space-inline; background-color: transparent; color: #27272a; text-align: left; }
+.attachment-document-dark { color: #eeeeef; }
+.attachment-name { flex: 1; min-width: 0; overflow-wrap: anywhere; @include type-style('body'); }
+.attachment-caption { color: #8b8f99; @include type-style('label'); }
+.attachment-error { flex-direction: row; align-items: center; gap: $space-inline; }
 .attachment-actions { flex-direction: row; align-items: center; gap: $space-inline; }
-
+// 添加与缩略图共用方形尺寸，选择前后图片区域保持稳定。
+.attachment-add {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 104px;
+  height: 104px;
+  margin: 0;
+  padding: $space-inline;
+  box-sizing: border-box;
+  gap: $space-inline;
+  border: $space-hairline dashed #d4d8df;
+  border-radius: 12px;
+}
+.attachment-add-dark { border-color: #444852; }
+.attachment-add-icon { position: relative; }
+.attachment-add-plus { position: absolute; right: -$space-detail; bottom: -$space-detail; width: 18px; height: 18px; align-items: center; justify-content: center; border-radius: 50%; background-color: #f1f3f6; }
+.attachment-add-plus-dark { background-color: #292c32; }
+.attachment-add-disabled { opacity: 0.45; }
+.attachment-add-pressed { opacity: 0.7; }
+.attachment-upload-spinner { width: 22px; height: 22px; box-sizing: border-box; border: 2px solid rgba(139, 143, 153, 0.25); border-top-color: #8b8f99; border-radius: 50%; animation: attachment-upload-spin 0.8s linear infinite; }
+@keyframes attachment-upload-spin { to { transform: rotate(360deg); } }
+/* #ifdef WEB || MP-WEIXIN */
+.attachment-preview::after, .attachment-document::after, .attachment-remove::after, .attachment-add::after { border: 0; }
+/* #endif */
 </style>
