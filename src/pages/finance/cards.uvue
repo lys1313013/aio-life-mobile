@@ -12,7 +12,7 @@ import { useCardOrder } from '../../services/use-card-order.ts';
 import { compareCardOrder } from '../../services/card-order.ts';
 import CardFaceLoading from './components/CardFaceLoading.uvue';
 import BankSelector from './components/BankSelector.uvue';
-import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
+import { computed, getCurrentInstance, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 import spacing from '../../styles/spacing.json';
 import AppIcon from '../../components/AppIcon.uvue';
 import MobilePage from '../../components/MobilePage.uvue';
@@ -147,20 +147,37 @@ function selectTemplate(item: any) {
   templateOpen.value = false;
 }
 const menuLeft = ref(0), menuTop = ref(0);
-function toggleMenu(card: any) {
+const pageInstance = getCurrentInstance();
+let menuPlacementRevision = 0;
+function toggleMenu(card: any, event: any) {
   if (order.clickBlocked()) return;
   if (cardSwitchPhase.value !== 'idle') return;
+  const revision = ++menuPlacementRevision;
   if (menuCardId.value === card.id) { menuCardId.value = ''; return; }
-  uni.createSelectorQuery().select('#card-more-' + card.id).boundingClientRect((rect) => {
-    if (!alive || !rect || Array.isArray(rect)) return;
-    const viewport = uni.getWindowInfo();
-    const menuWidth = 168;
-    const menuItems = card.cardNoLast4 ? 4 : 2;
-    const menuHeight = spacing.controlMin * menuItems + spacing.detail * (menuItems - 1) + spacing.inline * 2;
+  const viewport = uni.getWindowInfo();
+  const menuWidth = 168;
+  const menuItems = card.cardNoLast4 ? 4 : 2;
+  const menuHeight = spacing.controlMin * menuItems + spacing.detail * (menuItems - 1) + spacing.inline * 2;
+  function place(rect: any) {
     menuLeft.value = Math.max(spacing.overlayInline, Math.min(rect.right - menuWidth, viewport.windowWidth - spacing.overlayInline - menuWidth));
     const below = rect.bottom + spacing.detail;
     menuTop.value = Math.max(spacing.overlayInline, below + menuHeight <= viewport.windowHeight - spacing.overlayInline ? below : rect.top - menuHeight - spacing.detail);
-    menuCardId.value = card.id;
+  }
+  // 测量失败也保留入口；微信 tap 的坐标与 boundingClientRect 一样相对视口。
+  const x = event?.detail?.x ?? event?.clientX;
+  const y = event?.detail?.y ?? event?.clientY;
+  const anchorX = Number.isFinite(x) ? x : viewport.windowWidth - spacing.overlayInline - spacing.controlMin / 2;
+  const anchorY = Number.isFinite(y) ? y : viewport.windowHeight / 2;
+  place({ right: anchorX + spacing.controlMin / 2, top: anchorY - spacing.controlMin / 2, bottom: anchorY + spacing.controlMin / 2 });
+  menuCardId.value = card.id;
+  let selector = '#card-more-' + card.id;
+  // 按钮位于 ConfirmAction 插槽内，微信需跨组件查询，H5 不支持 >>>。
+  // #ifdef MP-WEIXIN
+  selector = '.card-menu-control >>> ' + selector;
+  // #endif
+  uni.createSelectorQuery().in(pageInstance?.proxy).select(selector).boundingClientRect((rect) => {
+    if (!alive || revision !== menuPlacementRevision || menuCardId.value !== card.id || !rect || Array.isArray(rect)) return;
+    place(rect);
   }).exec();
 }
 let alive = true,
@@ -1041,7 +1058,7 @@ async function removeTag(value: any) {
               </view>
               <view class="card-menu-control" @touchstart.stop @mousedown.stop><ConfirmAction label="删除银行卡" :message="card.cardNoLast4 ? '删除尾号 ' + card.cardNoLast4 + ' 的银行卡？' : '删除' + (card.alias || card.cardName || card.bankName) + '的银行卡？'" :action="() => remove(card)">
                 <template #default="{ open, busy }">
-                  <button class="card-more ui-type-body" :id="'card-more-' + card.id" role="button" aria-label="银行卡更多操作" aria-haspopup="menu" :aria-expanded="menuCardId === card.id" :aria-busy="revealBusy === card.id || busy" :aria-disabled="revealBusy === card.id || busy" :loading="revealBusy === card.id || busy" :disabled="revealBusy === card.id || busy" @click="toggleMenu(card)">
+                  <button class="card-more ui-type-body" :id="'card-more-' + card.id" role="button" aria-label="银行卡更多操作" aria-haspopup="menu" :aria-expanded="menuCardId === card.id" :aria-busy="revealBusy === card.id || busy" :aria-disabled="revealBusy === card.id || busy" :loading="revealBusy === card.id || busy" :disabled="revealBusy === card.id || busy" @click="toggleMenu(card, $event)">
                     <AppIcon v-if="revealBusy !== card.id && !busy" name="lucide:ellipsis" :size="20" :color="coverFile(card) ? undefined : '#f1f4f9'" />
                   </button>
                   <!-- 微信卡片切换使用 transform，菜单与遮罩一起脱离卡片定位上下文。 -->
