@@ -148,6 +148,20 @@ npm run build:weixin
 
 发布配置启用 `minified`、`minifyWXSS`、`minifyWXML`，并关闭 `uploadWithSourceMap`。已有本地 `src/project.config.json` 也需同步这些 `setting` 字段，否则会覆盖默认配置。主包大小以微信开发者工具上传检查为准，超过 2 MB 会被拒绝；源码构建成功不能替代上传检查。
 
+#### 一条命令构建并上传
+
+先登录微信开发者工具，在「设置 → 安全设置」开启服务端口，并配置上述本地 AppID，然后在本仓库执行：
+
+```bash
+npm run upload:weixin                           # 版本固定 0.9.0，说明默认「功能更新」
+npm run upload:weixin -- --desc "修复首页交互"    # 自定义更新说明，也支持 -d
+npm run upload:weixin -- --help                  # 查看用法，不构建、不上传
+```
+
+命令依次执行微信构建、现有 `postbuild:weixin` 官方包体检查、开发者工具 CLI 上传；任何一步失败即停止。每次上传都会重新构建，不复用旧产物。macOS 自动查找 `/Applications` 或用户 `Applications` 下的 `wechatwebdevtools.app`；其他安装位置通过环境变量 `WECHAT_DEVTOOLS_CLI` 指定 CLI 可执行文件的完整路径。编译时的 API 环境变量与 `build:weixin` 一致。
+
+上传完成后在公众平台确认版本及体验版状态；此命令不提交审核或正式发布。
+
 #### 本地包体检查与 CI
 
 ```bash
@@ -205,11 +219,16 @@ npm run check:weixin-size:only  # 只检查已有 dist/build/mp-weixin，适合�
 }
 ```
 
-项目 npm 编译器统一固定为 **5.31 Alpha 对应版本 `3.0.0-alpha-5030120260930001`**，使用同版本 HBuilderX 5.31 Alpha，按下文准备并导入独立 App 工程。页面使用组合式 API，`.ts` 中使用 JS/TS 业务逻辑；只有打开网页版链接的 `window.open` 放在 `WEB` 条件编译内，App / 小程序采用 `uni.*`。统计折线图和柱状图统一使用 `AioChart.uvue`，内部由 ECharts 6.0.0 绘制；页面只提供数据、单位和交互选项。Canvas 获取、尺寸变化与触摸处理集中在 `ChartCanvas.uvue`，深浅主题、坐标轴和数值格式统一管理。微信图表引擎由构建插件按需裁剪后放入 `chart-runtime` 共享分包，通过 `require.async` 加载；加载失败可重试，不静态进入主包。该分包登记的空 `bootstrap` 页面仅满足微信分包规则，没有业务导航入口。Web 和 App 使用同一套 ECharts 配置与 Canvas 适配。该版本属于 Alpha 通道，升级编译器时须重新执行跨端验证。2026-10-04 本机已安装 HBuilderX 5.31 Alpha（保留原 5.26 正式版），Android 原生编译和云打包通过，iOS App 资源编译通过。未安装完整 Xcode，未生成签名 IPA；资源编译不能代替 iOS 原生联编和真机验证。
+项目 npm 编译器统一固定为 **5.32 Alpha 对应版本 `3.0.0-alpha-5030220261016001`**；App 需要匹配的 HBuilderX 5.32 Alpha。2026-10-21 本机已安装 HBuilderX `5.32.2026101609-alpha`（Apple Silicon），官方 Vapor 基座 `5.32.2026101614.0312` 的 55 个 arm64 原生库通过 C++ 符号检查。`prepare:app` 校验匹配版本及原生库 SHA-256，不再注入旧版云包运行库补丁；本次仅验证本地编译，云打包 APK 与真机结果仍需独立验证。页面使用组合式 API，`.ts` 中使用 JS/TS 业务逻辑；只有打开网页版链接的 `window.open` 放在 `WEB` 条件编译内，App / 小程序采用 `uni.*`。统计折线图和柱状图统一使用 `AioChart.uvue`，内部由 ECharts 6.0.0 绘制；页面只提供数据、单位和交互选项。Canvas 获取、尺寸变化与触摸处理集中在 `ChartCanvas.uvue`，深浅主题、坐标轴和数值格式统一管理。微信图表引擎由构建插件按需裁剪后放入 `chart-runtime` 共享分包，通过 `require.async` 加载；加载失败可重试，不静态进入主包。该分包登记的空 `bootstrap` 页面仅满足微信分包规则，没有业务导航入口。Web 和 App 使用同一套 ECharts 配置与 Canvas 适配。该版本属于 Alpha 通道，升级编译器时须重新执行跨端验证。2026-10-04 本机已安装 HBuilderX 5.31 Alpha（保留原 5.26 正式版），Android 原生编译和云打包通过，iOS App 资源编译通过。未安装完整 Xcode，未生成签名 IPA；资源编译不能代替 iOS 原生联编和真机验证。
 
 执行 `npm run prepare:app` 生成 `artifacts/android/AIO-Life-App`，再用匹配版本的 HBuilderX 打开这个工程。该步骤复制当前源码、保留本地 DCloud AppID，并提供 App 专用依赖转换和生产 API 配置；生成物全部被 Git 忽略。首次在生成工程的 manifest 可视化界面获取自己的 DCloud AppID，或通过本地环境变量 `AIO_DCLOUD_APP_ID` 配置，再选择「发行 → 原生 App 云打包」。Android 可使用云端证书；iOS 需自己的 Bundle ID、Apple 签名证书和描述文件。不要提交证书、私钥或真实 AppID；源码 manifest 保持空 AppID。
 
-2026-10-04 小米 14 真机定位到 5.31 云包的 C++ 运行库不匹配：`libuniappx.so` 引用了云包中 `libc++_shared.so` 缺失的 `__from_chars_floating_point` 符号，导致页面初始化前黑屏。`prepare:app` 现在从已安装的同版本官方 Vapor 基座提取匹配的 arm64 C++ 库，通过忽略工程中的 UTS `libs` 目录参与云打包，并校验两份库的 SHA-256。默认 HBuilderX 路径为 `/Applications/HBuilderX-Alpha.app/Contents/HBuilderX`，可用 `AIO_HBUILDERX_ROOT` 指定；升级 HBuilderX 后必须重新验证，不能继续套用旧运行库。二进制不进入源码仓库。
+2026-10-04 小米 14 真机定位到 5.31 云包的 C++ 运行库不匹配：`libuniappx.so` 引用了云包中 `libc++_shared.so` 缺失的 `__from_chars_floating_point` 符号，导致页面初始化前黑屏。当时通过从官方 Vapor 基座提取匹配的 arm64 C++ 库、注入忽略工程的 UTS `libs` 目录修复。5.32 本地编译已取消这一注入，准备工程时会清理旧覆盖库，并校验官方基座；云包如再出现问题，应先检查实际 APK 的符号依赖，不能直接复用 5.31 补丁。默认 HBuilderX 路径为 `/Applications/HBuilderX-Alpha.app/Contents/HBuilderX`，可用 `AIO_HBUILDERX_ROOT` 指定；升级 HBuilderX 后必须重新验证，不能继续套用旧运行库。二进制不进入源码仓库。
+
+2026-10-21 本地编译验证使用 `cli launch app-android --compile true`，57 个页面编译通过，三个 UTS 插件（安全随机数、微信读书跳转、原生图标）均生成 DEX/JAR。本地标准基座不自动解析图标插件的 Maven 依赖，验证工程临时使用 Maven Central 的 `com.caverock:androidsvg:1.4` JAR（校验官方 SHA-1），并仅在该忽略工程中移除相同 Maven 声明以避免重复类；源码依赖配置保留。再次执行 `prepare:app` 会还原源码配置，本地标准基座编译需重新准备该依赖。`cli launch app-ios --iosTarget simulator --compile true` 的页面资源编译通过，但明确跳过了 UTS 原生编译：本机没有完整 Xcode / iOS SDK。未生成签名 APK/IPA，未连接模拟器或真机，也未执行云打包、上传或发布。
+
+HBuilderX 5.32 本机 GUI 导入工程时出现界面无响应；本次通过 `QT_QPA_PLATFORM=offscreen` 启动已安装的 HBuilderX，再使用其 CLI 完成编译。日志及本地验证报告保存在忽略目录 `artifacts/uni-5.32-upgrade/app/`。
+
 
 APK 下载后执行 `node scripts/check-android-runtime.mjs <apk路径>` 检查实际原生库的 C++ 导入符号，再做签名校验、覆盖安装和冷启动检查。2026-10-04 小米 14 已验证登录、首页统计及快捷导航图标、首页时迹图表与记录、记录编辑弹窗打开；全部功能页图标也已恢复。最新 APK 的设备状态记录在忽略目录 `artifacts/android/build-report.json`。Android 启动图标使用 `src/app-resources/icons/android` 中的现有品牌图标，并在 manifest 中显式配置各密度。
 
@@ -359,7 +378,7 @@ tests/                契约测试与 Web E2E
 
 ### H5 触摸选择器兼容补丁
 
-锁定的 DCloud `3.0.0-alpha-5030120260930001` 在手指恰好滑动整数格时遗漏选中索引通知，导致视觉已切换、确认后仍保留旧值；选择器关闭动画结束前卸载父弹窗或重新打开，也会触发过期清理。`npm run dev`、`npm run build` 和 `npm test` 会先执行 `scripts/patch-uni-h5-picker.cjs`，为官方 picker 补齐通知与生命周期检查；不改变原生端组件。补丁可重复执行，版本或源码变化会明确报错，升级 DCloud 时需重新验证后更新或移除。直接调用 `uni` 命令前也须执行此脚本。
+锁定的 DCloud `3.0.0-alpha-5030220261016001` 仍在手指恰好滑动整数格时遗漏选中索引通知，导致视觉已切换、确认后仍保留旧值；选择器关闭动画结束前卸载父弹窗或重新打开，也会触发过期清理。`npm run dev`、`npm run build` 和 `npm test` 会先执行 `scripts/patch-uni-h5-picker.cjs`，为官方 picker 补齐通知与生命周期检查；不改变原生端组件。补丁可重复执行，版本或源码变化会明确报错，升级 DCloud 时需重新验证后更新或移除。直接调用 `uni` 命令前也须执行此脚本。
 
 本轮逐页从菜单点击、弹窗展开与图标检查的证据见主仓库 `docs/mobile-migration/page-audit.md`。截图仅使用模拟数据，最终归档在忽略目录 `artifacts/page-audit/`，避免被 Playwright 清理临时测试结果时删除。
 
@@ -392,3 +411,13 @@ tests/                契约测试与 Web E2E
 页面与专属服务归入 `pages/scan-login` 分包。H5 不支持 `uni.scanCode`，隐藏入口；直接访问该页会提示使用 App / 小程序。Android / iOS 的 manifest 已登记 `uni-barcode-scanning`，需要用项目匹配的 HBuilderX 重新打包后验证摄像头权限及扫码；Web 模拟状态和微信构建不能代替 App 真机验收。
 
 专项逻辑验证：`node --test tests/qr-login.test.mjs tests/qr-login-page.test.mjs`。完整提交前验证仍使用 `npm run test:commit`。服务端部署要求和接口约定见后端 README 的“已登录 App 扫码登录 Web”。
+
+### 生活足迹
+
+「全部 → 记录 → 生活足迹」，路由 `/pages/life-footprints/index`。默认中国地图，点选后展示紧凑详情；起止日期精确到日，“至今”提交结束日期 `9999-12-31`，界面仍显示“至今”，不使用 `ongoing` 或幂等键。支持地点、地址、备注及位置确认。普通点 8px、选中点 10px、聚合点 18px，透明点击范围 44px；业务页面、服务及标记资源归 `pages/life-footprints` 分包。
+
+H5 按需加载百度 JSAPI 4.0，由后端下发浏览器 AK；地点查询与解析统一走登录后的后端 API。微信及 App 使用原生 `map`，与存储统一为 GCJ02，不请求持续定位。后端建表、菜单和 AK 配置见服务端 README「生活足迹」。
+
+App 的 Android/iOS manifest 已登记 `uni-map.tencent`，源码 key 留空。打包前设置 `AIO_TENCENT_MAP_ANDROID_KEY` / `AIO_TENCENT_MAP_IOS_KEY` 后执行 `npm run prepare:app`；脚本将 key 仅写入 Git 忽略的 App 快照，也保留该快照中已有的 key。需在腾讯控制台匹配各平台包名、签名或 Bundle ID，重新构建自定义基座。配置方式见 [DCloud Android](https://doc.dcloud.net.cn/uni-app-x/collocation/manifest-android.html#uni-map)、[iOS](https://doc.dcloud.net.cn/uni-app-x/collocation/manifest-ios.html#uni-map)。不把百度服务端 AK 填入原生地图 SDK。
+
+专项检查：`node --test tests/life-footprints.test.mjs`；`npx playwright test tests/e2e/life-footprints.spec.js`（使用模拟 API/SDK，覆盖三种宽度、深浅主题、地点确认、真实 picker 操作、失败恢复和旧搜索响应）；`npm run build:weixin` 包含官方编译口径的包体检查。H5 与微信编译已验证，真实地图 AK 联调、微信模拟器/真机、App 编译/真机、上传与发布尚未验证。

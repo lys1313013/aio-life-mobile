@@ -5,7 +5,7 @@ const path = require('node:path');
 
 const packageDir = path.resolve(__dirname, '../node_modules/@dcloudio/uni-h5');
 const version = JSON.parse(fs.readFileSync(path.join(packageDir, 'package.json'), 'utf8')).version;
-const pinnedVersion = '3.0.0-alpha-5030120260930001';
+const pinnedVersion = '3.0.0-alpha-5030220261016001';
 if (version !== pinnedVersion) {
   throw new Error(`uni-h5 ${version}: 请重新验证 picker / scroll-view 生命周期，并评估移除 H5 补丁。`);
 }
