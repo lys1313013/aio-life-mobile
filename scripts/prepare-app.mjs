@@ -10,6 +10,15 @@ const manifestPath = path.join(stage, 'manifest.json');
 const previous = fs.existsSync(manifestPath) ? JSON.parse(fs.readFileSync(manifestPath, 'utf8')) : {};
 const manifest = JSON.parse(fs.readFileSync(path.join(root, 'src/manifest.json'), 'utf8'));
 manifest.appid = process.env.AIO_DCLOUD_APP_ID || previous.appid || '';
+// Native SDK keys stay in the ignored App snapshot or build environment, never source control.
+for (const [platform, variable] of [
+  ['app-android', 'AIO_TENCENT_MAP_ANDROID_KEY'],
+  ['app-ios', 'AIO_TENCENT_MAP_IOS_KEY'],
+]) {
+  const map = manifest[platform].distribute.modules['uni-map'].tencent;
+  map.key = process.env[variable] || previous[platform]?.distribute?.modules?.['uni-map']?.tencent?.key || '';
+}
+
 fs.mkdirSync(stage, { recursive: true });
 // Rebuild the source snapshot without deleting the local signing/build settings.
 for (const entry of fs.readdirSync(path.join(root, 'src'))) {

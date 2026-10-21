@@ -1,0 +1,150 @@
+<script setup lang="ts">
+import type { Coordinate, Footprint, LocationGroup } from './model.ts';
+import { computed, getCurrentInstance, onMounted, onUnmounted, ref, watch } from 'vue';
+import MobileButton from '../../components/MobileButton.uvue';
+import LoadingIndicator from '../../components/LoadingIndicator.uvue';
+import { isDark, themeClass } from '../../services/theme.ts';
+import { groupLocations } from './model.ts';
+import typography from '../../styles/typography.json';
+import dotIcon from './assets/dot.png';
+import activeIcon from './assets/active.png';
+import clusterIcon from './assets/cluster.png';
+// #ifdef WEB
+import type { FootprintMapHandle } from './baidu-map.ts';
+import { mountFootprintMap } from './baidu-map.ts';
+import './map-dots.scss';
+// #endif
+
+const props = withDefaults(defineProps<{ browserKey: string; records?: Footprint[]; selectedId?: string | null; point?: Coordinate | null; picking?: boolean; height?: number }>(), { records: () => [], selectedId: null, point: null, picking: false, height: 480 });
+const emit = defineEmits(['select', 'pick']);
+const instance = getCurrentInstance();
+const mapId = 'footprint-map-' + Math.random().toString(36).slice(2);
+const loading = ref(false), failed = ref(false), zoom = ref(4), center = ref({ longitude: 104, latitude: 35 });
+let alive = true;
+const groups = computed(() => groupLocations(props.records, zoom.value));
+const markers = computed(() => {
+  if (props.picking) return props.point ? [{ id: 1, ...props.point, iconPath: activeIcon, width: 44, height: 44, anchor: { x: .5, y: .5 } }] : [];
+  return groups.value.map((group, index) => ({ id: index + 1, longitude: group.longitude, latitude: group.latitude,
+    iconPath: group.records.length > 1 ? clusterIcon : group.records.some(record => record.id === props.selectedId) ? activeIcon : dotIcon,
+    width: 44, height: 44, anchor: { x: .5, y: .5 },
+    label: group.records.length > 1 ? { content: String(group.records.length), color: '#fff', fontSize: typography.roles.badge.size, anchorX: 0, anchorY: -typography.roles.badge.size / 2 } : undefined,
+  }));
+});
+let pendingFocus: { points: Coordinate[]; level?: number } | null = null;
+// #ifdef WEB
+let handle: FootprintMapHandle | null = null, generation = 0;
+async function start() {
+  const root = instance?.proxy?.$el;
+  const container = root?.querySelector?.('.footprint-h5-canvas');
+  if (!container || !alive) return;
+  const current = ++generation;
+  handle?.destroy(); handle = null; loading.value = true; failed.value = false;
+  try {
+    const map = await mountFootprintMap(container, { key: props.browserKey, small: true, picking: props.picking, onSelect: (group) => emit('select', group), onPick: (point) => emit('pick', point) });
+    if (!alive || current !== generation) { map.destroy(); return; }
+    handle = map; handle.setRecords(props.records, props.selectedId); handle.setPick(props.point); handle.setDark(isDark.value);
+    if (pendingFocus) { map.focus(pendingFocus.points, pendingFocus.level); pendingFocus = null; }
+    else if (props.point) map.focus([props.point], 16);
+  } catch { if (alive && current === generation) failed.value = true; }
+  finally { if (alive && current === generation) loading.value = false; }
+}
+onMounted(start);
+watch(() => props.browserKey, start);
+watch(() => [props.records, props.selectedId], () => handle?.setRecords(props.records, props.selectedId), { deep: true });
+watch(() => props.point, value => handle?.setPick(value), { deep: true });
+watch(isDark, value => handle?.setDark(value));
+onUnmounted(() => { generation++; handle?.destroy(); });
+// #endif
+
+function focus(points: Coordinate[], level = 16) {
+  if (!points.length) return;
+  // #ifdef WEB
+  if (handle) handle.focus(points, level); else pendingFocus = { points, level };
+  // #endif
+  // #ifndef WEB
+  if (points.length === 1 || points.every(p => p.longitude === points[0].longitude && p.latitude === points[0].latitude)) {
+    center.value = { longitude: points[0].longitude, latitude: points[0].latitude }; zoom.value = level;
+  } else uni.createMapContext(mapId, instance?.proxy).includePoints({ points, padding: [40, 40, 160, 40] });
+  // #endif
+}
+function china() {
+  // #ifdef WEB
+  handle?.china();
+  // #endif
+  // #ifndef WEB
+  center.value = { longitude: 104, latitude: 35 }; zoom.value = 4;
+  uni.createMapContext(mapId, instance?.proxy).includePoints({ points: [{ longitude: 73, latitude: 54 }, { longitude: 135, latitude: 18 }], padding: [24, 24, 24, 24] });
+  // #endif
+}
+function zoomIn() {
+  // #ifdef WEB
+  handle?.zoomIn();
+  // #endif
+  // #ifndef WEB
+  zoom.value = Math.min(20, zoom.value + 1);
+  // #endif
+}
+function zoomOut() {
+  // #ifdef WEB
+  handle?.zoomOut();
+  // #endif
+  // #ifndef WEB
+  zoom.value = Math.max(3, zoom.value - 1);
+  // #endif
+}
+function markerTap(event) {
+  if (props.picking) return;
+  const markerId = event.detail?.markerId ?? event.markerId;
+  const group = groups.value[markerId - 1];
+  if (group) emit('select', group);
+}
+function mapTap(event) {
+  if (!props.picking) return;
+  const point = event.detail || event;
+  if (typeof point.longitude === 'number' && typeof point.latitude === 'number') emit('pick', { longitude: point.longitude, latitude: point.latitude });
+}
+function regionChange(event) {
+  // #ifndef WEB
+  if (event.type !== 'end' && event.detail?.type !== 'end') return;
+  uni.createMapContext(mapId, instance?.proxy).getScale({ success: (result) => { if (alive) zoom.value = result.scale; } });
+  // #endif
+}
+onMounted(() => {
+  // #ifndef WEB
+  if (props.point) focus([props.point]); else china();
+  // #endif
+});
+onUnmounted(() => { alive = false; });
+defineExpose({ focus, china });
+</script>
+<template>
+  <view class="footprint-map" :class="themeClass('footprint-map')" :style="{ height: height + 'px' }" :aria-busy="loading">
+    <!-- #ifdef WEB -->
+    <view class="footprint-h5-canvas" aria-label="生活足迹地图" />
+    <view v-if="loading" class="map-cover" :class="themeClass('map-cover')"><LoadingIndicator label="加载地图" /></view>
+    <view v-else-if="failed" class="map-cover" :class="themeClass('map-cover')"><text class="map-error" :class="themeClass('map-error')">地图暂不可用</text><MobileButton label="重试地图" icon="ant-design:reload-outlined" variant="ghost" @click="start" /></view>
+    <!-- #endif -->
+    <!-- #ifndef WEB -->
+    <map :id="mapId" class="footprint-native-canvas" :longitude="center.longitude" :latitude="center.latitude" :scale="zoom" :markers="markers" :enable-zoom="true" :enable-scroll="true" :show-location="false" :theme="isDark ? 'dark' : 'light'" @markertap="markerTap" @tap="mapTap" @regionchange="regionChange" />
+    <!-- #endif -->
+    <view v-if="!loading && !failed" class="country-control" :class="themeClass('country-control')"><MobileButton label="返回中国地图" icon="mdi:map-outline" variant="ghost" @click="china" /></view>
+    <view v-if="!loading && !failed" class="zoom-controls" :class="themeClass('zoom-controls')"><MobileButton label="放大地图" icon="ant-design:plus-outlined" variant="ghost" @click="zoomIn" /><MobileButton label="缩小地图" icon="ant-design:minus-outlined" variant="ghost" @click="zoomOut" /></view>
+  </view>
+</template>
+<style scoped lang="scss">
+@use '../../styles/spacing-tokens' as *;
+@use '../../styles/typography' as *;
+@use '../../styles/text-colors' as *;
+.footprint-map { position: relative; width: 100%; overflow: hidden; border-radius: 8px; background-color: #e9eef3; }
+.footprint-map-dark { background-color: #242c37; }
+.footprint-h5-canvas { width: 100%; height: 100%; }
+.footprint-native-canvas { width: 100%; height: 100%; }
+.map-cover { position: absolute; inset: 0; display: flex; flex-direction: row; align-items: center; justify-content: center; gap: $space-inline; background-color: #e9eef3; }
+.map-cover-dark { background-color: #242c37; }
+.map-error { @include type-style('body'); color: $text-secondary-light; }
+.map-error-dark { color: $text-secondary-dark; }
+.country-control { position: absolute; top: $space-inline; left: $space-inline; background-color: #fff; border-radius: 8px; }
+.zoom-controls { position: absolute; top: $space-inline; right: $space-inline; background-color: #fff; border-radius: 8px; }
+.country-control-dark { background-color: #1c1e22; }
+.zoom-controls-dark { background-color: #1c1e22; }
+</style>

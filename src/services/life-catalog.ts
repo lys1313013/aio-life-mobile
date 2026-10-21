@@ -1,6 +1,7 @@
 // 目录只整理服务端返回的授权菜单，不凭空补齐入口。
 export const QUICK_NAV_MAX = 15;
 const nativePages = {
+  "/record/life-footprints": "/pages/life-footprints/index",
   "/record/body-profile": "/pages/body-profile/index",
   "/time/dashboard": "/pages/time/dashboard",
   "/record/feedback": "/pages/records/feedback",
