@@ -81,7 +81,9 @@ for (const width of [390, 820, 1440]) for (const theme of ['light', 'dark']) {
     });
     try {
       await page.goto('/#/pages/home/index');
-      await expect(page.locator('.business-skeleton')).toHaveCount(3);
+      await expect(page.locator('.business-skeleton')).toHaveCount(5);
+      await expect(page.locator('[aria-label="目标首页卡片"] .business-skeleton')).toHaveCount(3);
+      const goalSkeleton = await page.locator('[aria-label="目标首页卡片"] .business-skeleton').first().boundingBox();
       await expect(page.locator('.movie-pending .movie-cell')).toHaveCount(6);
       await expect(page.locator('.reading-placeholder')).toHaveCount(3);
       await page.locator('[aria-label="目标首页卡片"]').evaluate(el => el.scrollIntoView({ block: 'start' }));
@@ -93,8 +95,9 @@ for (const width of [390, 820, 1440]) for (const theme of ['light', 'dark']) {
       const firstLoaded = await geometry(page);
       if (width >= 768) expect(firstLoaded).toEqual(before);
       else {
-        // 未知观影数量时按三行占位；加载后仅一行应收缩，其他业务按一行占位。
-        for (const title of titles.filter(title => title !== '观影')) expect(firstLoaded[title + '首页卡片'].height).toBe(before[title + '首页卡片'].height);
+        // 目标和观影按三行占位；单条结果收缩，其余业务按一行占位。
+        expect(before['目标首页卡片'].height - firstLoaded['目标首页卡片'].height).toBeCloseTo(goalSkeleton.height * 2, 0);
+        for (const title of titles.filter(title => !['目标', '观影'].includes(title))) expect(firstLoaded[title + '首页卡片'].height).toBe(before[title + '首页卡片'].height);
         expect(firstLoaded['观影首页卡片'].height).toBeLessThan(before['观影首页卡片'].height);
       }
       await page.locator('[aria-label="目标首页卡片"]').evaluate(el => el.scrollIntoView({ block: 'start' }));
@@ -119,7 +122,7 @@ for (const width of [390, 820, 1440]) for (const theme of ['light', 'dark']) {
       const many = await geometry(page);
       await page.locator('[aria-label="目标首页卡片"]').evaluate(el => el.scrollIntoView({ block: 'start' }));
       await page.screenshot({ path: info.outputPath('many.png'), fullPage: true });
-      for (const title of titles) expect(many[title + '首页卡片'].height).toBeLessThanOrEqual(width >= 1024 ? 280 : width >= 640 ? 250 : 240);
+      for (const title of titles) expect(many[title + '首页卡片'].height).toBeLessThanOrEqual(width >= 1024 ? 280 : width >= 640 || title === '目标' ? 250 : 240);
       state.pending = gate();
       await pullDown(page, '.dashboard-scroll');
       await expect(page.locator('.business-card[aria-busy="true"]')).toHaveCount(5);

@@ -28,11 +28,11 @@ for (const width of [390, 768, 1440]) {
       // 运动图表隐藏底部数值，改为在图表上展示极值标签。
       await expectRole(page.locator('.chart-extreme-label'), 'chart-label');
 
-      // soft 外观使用相同的表单尺度；标题/按钮保留各自语义。
+      // soft 外观使用相同的表单尺度；无标题弹窗的操作文字直接应用语义角色。
       await page.goto('/#/pages/goods/devices');
       await page.getByRole('button', { name: '新增设备', exact: true }).click();
       const dialog = page.getByRole('dialog');
-      await expectRole(dialog.locator('.device-editor-title'), 'title');
+      await expectRole(dialog.locator('.device-editor-action'), 'body');
       await expectRole(dialog.locator('.form-field-label'), 'label');
       await expectRole(dialog.locator('.form-field-picker-value'), 'body');
       await expectRole(dialog.locator('.form-field-input'), 'body');

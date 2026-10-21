@@ -62,7 +62,10 @@ for (const width of [390, 768, 1440]) {
       await expect(page.getByRole('button', { name: '账号与安全', exact: true })).toBeVisible();
       await expect(page.getByRole('button', { name: '账号绑定', exact: true })).toHaveCount(0);
       await expect(page.locator('.account-card')).toHaveCount(0);
-      await expect(page.locator('.profile-menu .menu-row')).toHaveCount(4);
+      await expect(page.locator('.profile-menu .menu-row')).toHaveCount(3);
+      for (const name of ['消息中心', '账号与安全', '设置']) {
+        await expect(page.locator('.profile-menu').getByRole('button', { name, exact: true })).toBeVisible();
+      }
       await expect(page.locator('.profile-edit')).toHaveCount(0);
       await expect(page.getByRole('button', { name: '编辑资料', exact: true })).toHaveCount(1);
       for (const name of ['菜单显示', '首页卡片', '通知设置', '自定义设置', '反馈', '关于']) {

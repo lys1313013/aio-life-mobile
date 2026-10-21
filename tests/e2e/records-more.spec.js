@@ -1,4 +1,5 @@
 const {test,expect}=require('@playwright/test')
+const coverImage = require('node:fs').readFileSync(require('node:path').join(__dirname, '../../src/static/book.png'));
 const {dashboardFixture}=require('./fixtures.js')
 const id='9223372036854775807'
 async function setup(page){const state={writes:[],fail:false,exercise:[{id,exerciseTypeId:'81',exerciseDate:'2026-10-01',exerciseCount:20,description:'模拟运动',timeId:'9223372036854775806'}],devices:[{id,name:'模拟设备',spec:'模拟配置',type:'81',status:'1',purchaseDate:'2026-09-01',purchasePrice:100,purchasePlace:'模拟商店',remark:'模拟说明'}],movies:[{id,title:'模拟电影',type:1,status:'in_progress',director:'模拟导演',currentProgress:1,totalProgress:3,remark:'模拟影评',doubanSubjectId:'123'}],activity:[{id,performanceName:'模拟活动',performer:'模拟参与人',venue:'模拟场地',performanceType:'1',performanceDate:'2026-10-01',ticketPrice:50,orderNumber:'模拟订单',files:[]}],video:[{id,title:'模拟视频',url:'https://www.bilibili.com/video/BV1234567890',duration:100,watchedDuration:20,episodes:2,currentEpisode:1,status:'in_progress',notes:'模拟笔记',pagesInfo:'[{"page":1,"duration":50},{"page":2,"duration":50}]',bvid:'BV1234567890',ownerName:'模拟UP'}],thoughts:[{id,content:'模拟闪念',isPinned:0,hiddenContent:false,events:[{id:'31',content:'模拟事件'}]}],memos:[{id,title:'模拟笔记',content:'模拟正文',hiddenContent:false}],anniversaries:[{id,title:'模拟纪念日',targetDate:'2026-10-01',note:'模拟备注',icon:'🎉',color:'from-pink-400 to-rose-500'}],milestones:[{id,title:'模拟里程碑',date:'2026-10-01',end_date:'2026-10-02',type:'life',tags:'["模拟标签"]'}],honors:[{id,title:'模拟荣誉',honorDate:'2026-10-01',issuer:'模拟机构',level:'other',category:'other',tags:'["模拟标签"]',isTop:0,files:[]}],members:[{id,name:'模拟会员',provider:'模拟平台',category:'video',startDate:'2026-10-01',expiryDate:'2026-11-01',price:20,monthlyAmount:20,billingCycle:'month',status:'active',remainingDays:31,autoRenew:1}]}
@@ -47,6 +48,7 @@ test('微信读书下拉同步与失败重试保留数据', async ({ page }) => 
 for (const kind of ['movie', 'read']) {
   test(`${kind} 豆瓣封面回填替换旧附件并使用新 fileId 保存`, async ({ page }) => {
     const state = await setup(page);
+    await page.route('**/api/file/preview/*', route => route.fulfill({ contentType: 'image/png', body: coverImage }));
     const base = kind === 'movie' ? '/movie' : '/read-record';
     state.movies[0].fileId = 'old-cover-id';
     await page.route(`**/api${base}/parse-douban?**`, route => route.fulfill({
@@ -59,7 +61,8 @@ for (const kind of ['movie', 'read']) {
     await expect(dialog.getByRole('button', { name: '添加文件', exact: true })).toHaveCount(0);
     await dialog.locator('[aria-label="豆瓣链接"] input').fill('https://movie.douban.com/subject/123/');
     await dialog.getByRole('button', { name: '解析豆瓣链接', exact: true }).click();
-    await expect(dialog.locator('.attachment-name')).toHaveText('新豆瓣条目 封面');
+    await expect(dialog.locator('.attachment-image[aria-label="新豆瓣条目 封面"] img')).toHaveJSProperty('naturalWidth', 72);
+    await expect(dialog.locator('.attachment-tile')).toHaveCount(1);
     await dialog.getByRole('button', { name: '保存', exact: true }).click();
     await expect(dialog).toHaveCount(0);
     expect(state.writes.filter(write => write.path === `/api${base}`).at(-1).body.fileId).toBe('parsed-cover-id');
@@ -67,6 +70,7 @@ for (const kind of ['movie', 'read']) {
 
   test(`${kind} 自定义封面上传保存 fileId，移除后不重新抓取URL`, async ({ page }) => {
     const state = await setup(page);
+    await page.route('**/api/file/preview/*', route => route.fulfill({ contentType: 'image/png', body: coverImage }));
     const base = kind === 'movie' ? '/movie' : '/read-record';
     state.movies[0].fileId = 'old-cover-id';
     state.movies[0].coverImgUrl = 'https://img1.doubanio.com/old-cover.jpg';
@@ -80,13 +84,15 @@ for (const kind of ['movie', 'read']) {
     await page.goto(`/#/pages/records/library?kind=${kind}`);
     await page.getByRole('button', { name: '编辑记录', exact: true }).click();
     const dialog = page.getByRole('dialog');
+    await dialog.getByRole('button', { name: '移除附件', exact: true }).click();
     const chooser = page.waitForEvent('filechooser');
     await dialog.getByRole('button', { name: '添加图片', exact: true }).click();
     await (await chooser).setFiles({
       name: 'custom-cover.png', mimeType: 'image/png',
       buffer: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=', 'base64'),
     });
-    await expect(dialog.locator('.attachment-name')).toHaveText('custom-cover.png');
+    await expect(dialog.locator('.attachment-image[aria-label="custom-cover.png"] img')).toHaveJSProperty('naturalWidth', 72);
+    await expect(dialog.getByRole('button', { name: '添加图片', exact: true })).toHaveCount(0);
     await dialog.getByRole('button', { name: '保存', exact: true }).click();
     await expect(dialog).toHaveCount(0);
     expect(uploaded).toBe(true);

@@ -8,7 +8,7 @@ const scenarios = [
   ['records/notes', '/thought/query', '.note-card', 30],
   ['records/feedback', '/feedback/my', '.feedback-card', 30],
   ['records/library?kind=read', '/read-record/page', '.library-card', 30],
-  ['admin/index?kind=users', '/user-center/list', '.admin-card', 20],
+  ['admin/index?kind=users', '/user-center/list', '.user-card', 20],
 ];
 function rows(page, count) {
   return Array.from({ length: count }, (_, index) => ({
