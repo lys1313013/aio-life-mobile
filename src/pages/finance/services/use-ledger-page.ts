@@ -1,4 +1,5 @@
 import { ref, watch } from 'vue'
+import { onLoad } from '@dcloudio/uni-app'
 import { useDomainPage } from '../../../services/domains/page-session.ts'
 
 type LedgerInstance = {
@@ -10,6 +11,8 @@ type LedgerInstance = {
 
 export function useLedgerPage(kind: 'expense' | 'income') {
   const mounted = ref(false), visible = ref(false), ledger = ref<LedgerInstance | null>(null)
+  const initialCreate = ref(false)
+  onLoad(options => { initialCreate.value = options?.create === '1' })
   let pendingRefresh: boolean | null = null
 
   function resumeReadyLedger() {
@@ -31,6 +34,7 @@ export function useLedgerPage(kind: 'expense' | 'income') {
     },
     clear => {
       visible.value = false
+      if (clear) initialCreate.value = false
       pendingRefresh = null
       ledger.value?.suspend(clear)
     },
@@ -40,5 +44,5 @@ export function useLedgerPage(kind: 'expense' | 'income') {
       keys: () => [kind, 'userDictData', 'userDictType'],
     },
   )
-  return { mounted, visible, ledger }
+  return { mounted, visible, ledger, initialCreate }
 }

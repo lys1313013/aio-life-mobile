@@ -86,7 +86,7 @@ function refresh(force = true) {
       }
       locked.value = false
       if (!force && loaded.value && revision === homeDataRevision('weread') && Date.now() - updatedAt < 300000) return
-      const data = await request<any>('/weread/recent', 'GET', { size: 6 }, true, null, true, 120000)
+      const data = await request<any>('/weread/recent', 'GET', { pageSize: 6 }, true, null, true, 120000)
       if (!valid()) return
       if (typeof data?.connected !== 'boolean' || !Array.isArray(data.books)) throw Error('微信读书数据异常，请重试')
       books.value = data.books; connected.value = data.connected; loaded.value = true
@@ -108,7 +108,7 @@ async function loadMore() {
   const valid = () => props.active && available.value && !locked.value && current === generation && pageVersion === pageGeneration && owner === session.token
   loadingMore.value = true; moreError.value = ''
   try {
-    const data = await request<any>('/weread/recent', 'GET', { cursor, size: 6 }, true, null, true, 120000)
+    const data = await request<any>('/weread/recent', 'GET', { cursor, pageSize: 6 }, true, null, true, 120000)
     if (!valid()) return
     if (typeof data?.connected !== 'boolean' || !Array.isArray(data.books)) throw Error('微信读书数据异常，请重试')
     if (!data.connected) { books.value = []; connected.value = false; nextCursor.value = null; return }

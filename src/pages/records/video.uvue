@@ -8,7 +8,7 @@ import { isRequired, missingRequired } from '../../services/form-required.ts';
 import ContentSkeleton from '../../components/ContentSkeleton.uvue';
 import AppIcon from '../../components/AppIcon.uvue';
 import { computed, ref, onUnmounted } from 'vue';
-import { onShow, onHide } from '@dcloudio/uni-app';
+import { onLoad, onShow, onHide } from '@dcloudio/uni-app';
 import MobilePage from '../../components/MobilePage.uvue';
 import PageHeader from '../../components/PageHeader.uvue';
 import MobileButton from '../../components/MobileButton.uvue';
@@ -48,6 +48,7 @@ const rows = ref<any[]>([]),
   parsing = ref(false),
   formError = ref(''),
   saved = ref(false);
+const showMore = ref(false);
 const statusLabels = {
   not_started: '未开始',
   in_progress: statusNames[1],
@@ -69,10 +70,19 @@ function selectStatus(label: string) {
 }
 let generation = 0,
   formRevision = 0;
+let requestedEdit = '';
+let requestedCreate = false;
+onLoad((options) => {
+  requestedEdit = String(options?.id || '');
+  requestedCreate = options?.create === '1';
+  if (requestedEdit) status.value = '全部状态';
+});
 const scope = createRecordScope((clear) => {
   formRevision++;
   form.value = null;
   if (clear) {
+    requestedEdit = '';
+    requestedCreate = false;
     rows.value = [];
     counts.value = {};
     statistics.value = {};
@@ -163,6 +173,17 @@ async function load() {
       pollCovers();
       counts.value = statusCounts;
       statistics.value = stats;
+      if (requestedEdit) {
+        const selected = data.find((item) => item.id === requestedEdit);
+        if (!selected) throw new Error('记录不存在或已删除');
+        loading.value = false;
+        open(selected);
+        requestedEdit = '';
+      } else if (requestedCreate) {
+        loading.value = false;
+        open();
+        requestedCreate = false;
+      }
     }
   } catch (e) {
     if (e.name !== 'PageInactiveError' && current === generation) error.value = e.message;
@@ -174,6 +195,7 @@ function open(item = null) {
   if (loading.value || tabSwipe.ignoreClick()) return;
   formRevision++;
   saved.value = false;
+  showMore.value = false;
   formError.value = '';
   form.value = item
     ? {
@@ -221,7 +243,10 @@ async function parse() {
         currentEpisode: String(result.currentEpisode),
       };
   } catch (e) {
-    if (e.name !== 'PageInactiveError' && current === formRevision) formError.value = e.message;
+    if (e.name !== 'PageInactiveError' && current === formRevision) {
+      formError.value = e.message;
+      showMore.value = true;
+    }
   } finally {
     parsing.value = false;
   }
@@ -261,6 +286,7 @@ async function save() {
     currentEpisode < 1 ||
     currentEpisode > episodes
   ) {
+    showMore.value = true;
     formError.value = '请检查时长与当前集数范围';
     return;
   }
@@ -329,56 +355,48 @@ function play(url) {
           formRevision++;
           form = null;
         "
-        ><view class="toolbar ui-row"
-          ><FormField :required="isRequired('video', 'url')" compact stretch label="视频链接" v-model="form.url" /><MobileButton
-            label="解析视频"
-            icon="ant-design:reload-outlined"
-            :loading="parsing"
-            :disabled="saving"
-            @click="parse" /></view
-        ><FormField :required="isRequired('video', 'title')" label="标题" v-model="form.title" /><FormField
-          label="封面链接"
-          v-model="form.cover" />
+        ><view class="ui-field-row video-link-row">
+          <FormField appearance="soft" :required="isRequired('video', 'url')" compact stretch label="视频链接" placeholder="粘贴 B 站视频链接" v-model="form.url" />
+          <MobileButton label="解析视频" variant="quiet" :loading="parsing" :disabled="saving" @click="parse" />
+        </view>
+        <FormField appearance="soft" :required="isRequired('video', 'title')" label="标题" placeholder="视频标题" v-model="form.title" />
         <view class="ui-field-row">
-          <FormField compact stretch label="UP主" v-model="form.ownerName" />
-          <FormField compact stretch label="状态" kind="selector"
+          <FormField appearance="soft" compact stretch label="状态" kind="selector"
             :model-value="statusLabels[form.status]"
             :options="statuses.map((code) => statusLabels[code])"
             @update:model-value="form.status = statuses.find((code) => statusLabels[code] === $event) || 'not_started'" />
+          <FormField appearance="soft" compact stretch label="当前集数" input-type="number" :model-value="form.currentEpisode" @update:model-value="updateEpisode">
+            <template #labelAction><text class="video-field-context" :class="{ 'record-secondary-dark': isDark }">共 {{ form.episodes }} 集</text></template>
+          </FormField>
         </view>
-        <view class="ui-field-row">
-          <FormField compact stretch label="总集数" input-type="number" v-model="form.episodes" />
-          <FormField compact stretch label="当前集数" input-type="number" :model-value="form.currentEpisode" @update:model-value="updateEpisode" />
+        <FormField appearance="soft" label="已学习时长（秒）" input-type="number" v-model="form.watchedDuration">
+          <template #labelAction><text class="video-field-context" :class="{ 'record-secondary-dark': isDark }">共 {{ formatSeconds(form.duration) }}</text></template>
+        </FormField>
+        <FormField appearance="soft" label="学习笔记" kind="textarea" textarea-size="compact" placeholder="记下收获或下次继续的位置" v-model="form.notes" />
+        <button class="video-more-toggle" :class="{ 'video-more-toggle-dark': isDark }" role="button"
+          :aria-label="showMore ? '收起更多信息' : '更多信息'" :aria-expanded="showMore" @click="showMore = !showMore">
+          <text class="video-more-label" :style="appTextColor()">更多信息</text>
+          <AppIcon :name="showMore ? 'ant-design:up-outlined' : 'ant-design:down-outlined'" :size="14" />
+        </button>
+        <view v-if="showMore" class="video-more-fields">
+          <FormField appearance="soft" label="UP主" v-model="form.ownerName" />
+          <FormField appearance="soft" label="封面链接" v-model="form.cover" />
+          <view class="ui-field-row">
+            <FormField appearance="soft" compact stretch label="总集数" input-type="number" v-model="form.episodes" />
+            <FormField appearance="soft" compact stretch label="总时长（秒）" input-type="number" v-model="form.duration" />
+          </view>
+          <view class="ui-field-row">
+            <FormField appearance="soft" compact stretch label="最近观看日期" kind="date" v-model="form.date" />
+            <FormField appearance="soft" compact stretch label="最近观看时间" kind="time" v-model="form.time" />
+          </view>
+          <FormField appearance="soft" label="视频简介" kind="textarea" textarea-size="compact" v-model="form.description" />
         </view>
-        <view class="ui-field-row">
-          <FormField compact stretch label="总时长（秒）" input-type="number" v-model="form.duration" />
-          <FormField compact stretch label="已学习时长（秒）" input-type="number" v-model="form.watchedDuration" />
-        </view>
-        <view class="ui-field-row">
-          <FormField compact stretch label="最近观看日期" kind="date" v-model="form.date" />
-          <FormField compact stretch label="最近观看时间" kind="time" v-model="form.time" />
-        </view>
-        <FormField
-          label="学习笔记"
-          kind="textarea"
-          v-model="form.notes" /><FormField
-          label="视频简介"
-          kind="textarea"
-          v-model="form.description" /><text v-if="formError" class="error ui-section ui-type-body">{{ formError }}</text
-        ><FormActions>
+        <text v-if="formError" class="error ui-section ui-type-body" role="alert">{{ formError }}</text>
+        <FormActions>
           <template #secondary><ConfirmAction v-if="form.id" label="删除视频" :action="() => remove(form)" /><MobileButton label="播放视频" icon="ant-design:play-circle-outlined" variant="quiet" @click="play(form.url)" /></template>
-          <MobileButton
-            label="取消"
-            variant="quiet"
-            :disabled="saving || parsing"
-            @click="
-              formRevision++;
-              form = null;
-            " /><MobileButton
-            :label="saved ? '重新读取' : '保存'"
-            :loading="saving"
-            :disabled="parsing"
-            @click="save" />
+          <MobileButton label="取消" variant="quiet" :disabled="saving || parsing"
+            @click="formRevision++; form = null;" />
+          <MobileButton :label="saved ? '重新读取' : '保存'" :loading="saving" :disabled="parsing" @click="save" />
         </FormActions></AdaptiveModal></view>
     <template #fixed><FloatingActionButton label="新增视频" :disabled="loading || !!error" @click="open()" /></template>
   </MobilePage>
@@ -389,6 +407,25 @@ function play(url) {
 @use '../../styles/spacing.scss';
 @use '../../styles/tab-swipe.scss';
 @use '../../styles/spacing-tokens' as *;
+.video-link-row { align-items: flex-end; }
+.video-field-context { @include type-style('caption'); color: $text-secondary-light; }
+.video-more-toggle {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  min-height: $space-controlMin;
+  margin: 0 0 $space-form;
+  padding: 0;
+  background-color: transparent;
+  color: $text-secondary-light;
+}
+.video-more-toggle-dark { color: $text-secondary-dark; }
+.video-more-label { @include type-style('label'); }
+/* #ifdef WEB || MP-WEIXIN */
+.video-more-toggle::after { border: 0; }
+/* #endif */
 .video-page {
   color: #27272a;
 }

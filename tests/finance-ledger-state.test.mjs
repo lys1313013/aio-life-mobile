@@ -9,7 +9,7 @@ const source = (await readFile(new URL('../src/pages/finance/ledger.uvue', impor
   .replace(/import[\s\S]*?from\s*['"][^'"]+['"];?/g, '');
 let fixtureNumber = 0;
 function gate() { let resolve; const promise = new Promise(r => { resolve = r; }); return { promise, resolve }; }
-async function fixture(kind = 'expense', count = 101) {
+async function fixture(kind = 'expense', count = 101, initialCreate = false) {
   const id = ++fixtureNumber;
   const calls = [], hooks = {};
   const server = Array.from({ length: count }, (_, i) => ({ id: String(i + 1), amt: 1, expTime: '2026-10-03 12:00:00' }));
@@ -58,7 +58,7 @@ const {api,hooks}=globalThis.__ledgerFixtures[${id}];
 const {fetchLedger,fetchDictionary,saveLedger,deleteLedger,deleteExpenses,ledgerId,fetchFinanceStatistics}=api;
 const useAppLayout=()=>({appGridItem:()=>({})});
 const defineExpose=()=>{};
-const onMounted=fn=>{hooks.mount=fn},onUnmounted=fn=>{hooks.unmount=fn},defineProps=()=>({kind:${JSON.stringify(kind)}});`;
+const onMounted=fn=>{hooks.mount=fn},onUnmounted=fn=>{hooks.unmount=fn},defineProps=()=>({kind:${JSON.stringify(kind)},initialCreate:${initialCreate}});`;
   const exports = 'export {initialize,load,loadMore,loadStatistics,refresh,save,remove,removeSelected,rows,page,total,pageEnded,moreError,error,statistics,statisticsError,statisticsBusy,overviewRows,statisticsPeriod,loading,refreshing,draft,selected,modal,formError};';
   const code = transformSync(prefix + source + exports, { loader: 'ts', format: 'esm' }).code;
   const state = await import('data:text/javascript;base64,' + Buffer.from(code).toString('base64'));
@@ -143,4 +143,19 @@ test('写入失败保留列表和表单，批量删除 false 不伪装成功', a
   assert.equal(s.modal.value, true); assert.equal(s.formError.value, '模拟写入失败');
   assert.equal(s.rows.value.length, 50); s.selected.value = ['1'];
   await assert.rejects(s.removeSelected(), /记录未更新/); assert.equal(server.length, 101); assert.deepEqual(s.selected.value, ['1']);
+});
+
+test('首页记一笔等待真实账单加载，失败可重试且只自动打开一次', async () => {
+  const { state: s, controls } = await fixture('expense', 1, true);
+  controls.listFailure = true;
+  await s.initialize();
+  assert.equal(s.modal.value, false);
+  controls.listFailure = false;
+  await s.initialize();
+  assert.equal(s.modal.value, true);
+  assert.equal(s.draft.value.amt, '');
+  assert.equal(s.draft.value.id, undefined);
+  s.modal.value = false;
+  await s.initialize();
+  assert.equal(s.modal.value, false);
 });

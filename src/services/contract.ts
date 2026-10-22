@@ -5,6 +5,11 @@ export function readResponse(statusCode, body) {
     error.name = 'SessionExpiredError'
     throw error
   }
+  if (statusCode === 403) {
+    const error = new Error(typeof body?.message === 'string' && body.message ? body.message : '没有访问权限')
+    error.name = 'ForbiddenError'
+    throw error
+  }
   if (statusCode < 200 || statusCode >= 300) {
     if ([400, 403, 409, 429].includes(statusCode) && body != null && Number.isInteger(body.code)
       && body.code !== 0 && typeof body.message === 'string' && body.message.length > 0) {

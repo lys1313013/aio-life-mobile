@@ -8,8 +8,10 @@ import { buttonLabelClasses } from '../../services/button-label.ts'
 import FormActions from '../../components/FormActions.uvue';
 import { isRequired, missingRequired } from '../../services/form-required.ts';
 import ContentSkeleton from '../../components/ContentSkeleton.uvue';
+import AppIcon from '../../components/AppIcon.uvue';
+import iconCatalog from '../../services/icons/catalog.ts';
 import { computed, onUnmounted, ref } from 'vue';
-import { onShow } from '@dcloudio/uni-app';
+import { onLoad, onShow } from '@dcloudio/uni-app';
 import MobilePage from '../../components/MobilePage.uvue';
 import PageHeader from '../../components/PageHeader.uvue';
 import MobileButton from '../../components/MobileButton.uvue';
@@ -47,6 +49,16 @@ const form = ref<any>(null),
   formError = ref(''),
   attachmentBusy = ref(false),
   created = ref(false);
+const deviceTypeVisuals = computed(() => Object.fromEntries(types.value.map((type) => {
+  const icon = type.icon?.trim();
+  return [type.id, {
+    icon: iconCatalog.icons[icon] ? icon : 'solar:devices-line-duotone',
+    color: /^#[\da-f]{6}$/i.test(type.color || '') ? type.color : undefined,
+  }];
+})));
+function deviceVisual(type: string) {
+  return deviceTypeVisuals.value[type] || { icon: 'solar:devices-line-duotone' };
+}
 const typeLabels = computed(() => ['全部类型', ...types.value.map((t) => t.dictLabel || t.label)]);
 const typeIndex = computed(() => typeLabels.value.indexOf(typeFilter.value));
 const { swipe: tabSwipe, style: tabSwipeStyle, dragging: tabSwipeDragging } = useTabSwipe(
@@ -60,10 +72,18 @@ function selectType(label: string) {
   typeFilter.value = label;
   load();
 }
+let requestedEdit = '';
+let requestedCreate = false;
+onLoad((options) => {
+  requestedEdit = String(options?.id || '');
+  requestedCreate = options?.create === '1';
+});
 const scope = createRecordScope((clear) => {
   form.value = null;
   photoBusy.value = {};
   if (clear) {
+    requestedEdit = '';
+    requestedCreate = false;
     photos.value = {};
     loadedPhotoUrls.value = {};
     photoErrors.value = {};
@@ -133,6 +153,17 @@ async function load(refresh = false) {
       data.forEach((item) => {
         if (item.fileId) loadPhoto(item);
       });
+      if (requestedEdit) {
+        const selected = data.find((item) => item.id === requestedEdit);
+        if (!selected) throw new Error('记录不存在或已删除');
+        loading.value = false;
+        open(selected);
+        requestedEdit = '';
+      } else if (requestedCreate) {
+        loading.value = false;
+        open();
+        requestedCreate = false;
+      }
     }
   } catch (e) {
     if (e.name === 'PageInactiveError') return;
@@ -363,8 +394,11 @@ async function remove(item) {
                 aria-label="正在加载设备图片"
                 ><view class="goods-image-shimmer" :class="{ 'goods-image-shimmer-dark': isDark }" aria-hidden="true" /></view
               ><view v-else-if="!photos[item.id]" class="goods-placeholder" :class="{ 'secondary-text-dark': isDark }"
-                ><text class="ui-type-body">设备</text
-                ><MobileButton
+                ><AppIcon
+                  :name="deviceVisual(item.type).icon"
+                  :color="deviceVisual(item.type).color"
+                  :size="64"
+                /><MobileButton
                   v-if="photoErrors[item.id]"
                   label="重试设备图片"
                   variant="quiet"

@@ -1,0 +1,90 @@
+<script setup lang="ts">
+import { ref, watch, onUnmounted } from 'vue'
+import AppIcon from '../../components/AppIcon.uvue'
+import LoadingIndicator from '../../components/LoadingIndicator.uvue'
+import { authFileUrl } from '../../services/attachments.ts'
+import { request } from '../../services/api.ts'
+import { session } from '../../services/session.ts'
+import { isDark } from '../../services/theme.ts'
+const props = defineProps<{ fileId?: string | null; coverState?: string | null; videoId?: string; label: string; active: boolean }>()
+const source = ref(''), loading = ref(false), failed = ref(false), coverState = ref(''), fileId = ref('')
+let version = 0, polls = 0, timer: ReturnType<typeof setTimeout> | undefined
+function release(url: string) {
+  // #ifdef WEB
+  if (url.startsWith('blob:')) URL.revokeObjectURL(url)
+  // #endif
+}
+function stop() { version++; clearTimeout(timer) }
+async function load() {
+  const current = ++version, owner = session.token
+  release(source.value); source.value = ''; failed.value = false
+  loading.value = !!fileId.value
+  if (!fileId.value || !owner) { loading.value = false; return }
+  try {
+    const url = await authFileUrl(fileId.value)
+    if (current !== version || owner !== session.token) { release(url); return }
+    source.value = url
+  } catch { if (current === version) { failed.value = true; loading.value = false } }
+}
+function poll() {
+  clearTimeout(timer)
+  if (!props.active || !props.videoId || coverState.value !== 'PENDING' || !session.token) return
+  if (polls >= 20) { failed.value = true; return }
+  polls++
+  const owner = session.token, current = version
+  timer = setTimeout(async () => {
+    try {
+      const rows = await request<any[]>('/b-video/covers?ids=' + encodeURIComponent(props.videoId!), 'GET', null, true, null, true)
+      if (!props.active || current !== version || owner !== session.token) return
+      const row = rows.find(item => item.id === props.videoId)
+      if (row) {
+        coverState.value = row.coverState || ''
+        if (row.coverFileId !== fileId.value) { fileId.value = row.coverFileId || ''; await load() }
+      }
+      poll()
+    } catch { if (current === version) failed.value = true }
+  }, 3000)
+}
+async function retry() {
+  if (!props.active || loading.value) return
+  failed.value = false; polls = 0
+  if (props.videoId && coverState.value === 'FAILED') {
+    const owner = session.token, current = ++version
+    loading.value = true
+    try {
+      await request('/b-video/' + encodeURIComponent(props.videoId) + '/cover/retry', 'POST', null, true, null, true)
+      if (owner !== session.token || current !== version) return
+      coverState.value = 'PENDING'
+    } catch { if (current === version) failed.value = true }
+    finally { if (current === version) loading.value = false }
+    poll()
+  } else { await load(); poll() }
+}
+watch(() => [props.fileId, props.coverState, session.token], async () => {
+  stop(); polls = 0; fileId.value = props.fileId || ''; coverState.value = props.coverState || ''
+  await load(); poll()
+}, { immediate: true })
+watch(() => props.active, active => { if (active) { if (fileId.value && !source.value) void load().then(poll); else poll() } else stop() })
+onUnmounted(() => { stop(); release(source.value) })
+</script>
+<template>
+  <view class="summary-cover" :class="{ 'summary-cover-dark': isDark }" :aria-label="label + '图片'" :aria-busy="loading || coverState === 'PENDING'">
+    <image v-if="source && !failed" class="summary-cover-image" :src="source" mode="aspectFill" :aria-label="label + '图片'" @load="loading = false" @error="failed = true; loading = false" />
+    <view v-if="!source || failed || loading" class="summary-cover-placeholder">
+      <LoadingIndicator v-if="loading || (coverState === 'PENDING' && !failed)" compact label="正在加载图片" />
+      <button v-else-if="failed || coverState === 'FAILED'" class="summary-cover-retry" role="button" :aria-label="'重试' + label + '图片'" @click.stop="retry"><AppIcon name="lucide:rotate-cw" :size="18" color="#8b8f99" /></button>
+      <AppIcon v-else :name="videoId ? 'lucide:clapperboard' : 'lucide:image'" :size="20" color="#8b8f99" />
+    </view>
+  </view>
+</template>
+<style scoped lang="scss">
+@use '../../styles/spacing-tokens' as *;
+.summary-cover { width: 100%; height: 100%; position: relative; background-color: #eef0f3; border-radius: 6px; overflow: hidden; }
+.summary-cover-dark { background-color: #30343c; }
+.summary-cover-image { width: 100%; height: 100%; }
+.summary-cover-placeholder { position: absolute; inset: 0; align-items: center; justify-content: center; }
+.summary-cover-retry { width: $space-controlMin; height: $space-controlMin; margin: 0; padding: 0; border: 0; background: transparent; display: flex; align-items: center; justify-content: center; }
+/* #ifdef WEB || MP-WEIXIN */
+.summary-cover-retry::after { border: 0; }
+/* #endif */
+</style>

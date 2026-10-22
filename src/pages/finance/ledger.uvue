@@ -36,7 +36,8 @@ function updateDevice(change: any) {
   const row = rows.value.find(item => ledgerId(item) === change.expenseId);
   if (row) Object.assign(row, { deviceId: change.deviceId, deviceName: change.deviceName });
 }
-const props = defineProps<{ kind: string }>();
+const props = defineProps<{ kind: string; initialCreate?: boolean }>();
+let entryConsumed = false;
 const expense = computed(() => props.kind === 'expense');
 const rows = ref<any[]>([]),
   types = ref<any[]>([]),
@@ -257,6 +258,10 @@ async function initialize() {
     types.value = results[0].dictDetailList || [];
     payments.value = results[1]?.dictDetailList || [];
     await Promise.all([load(), loadStatistics()]);
+    if (alive && !error.value && props.initialCreate && !entryConsumed) {
+      entryConsumed = true;
+      edit();
+    }
   } catch (e) {
     if (alive && version === mutationStamp) {
       error.value = e.message; statisticsError.value = e.message;

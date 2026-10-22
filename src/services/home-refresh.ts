@@ -10,6 +10,8 @@ export function invalidateHomeAfterWrite(path: string, method: string) {
     exerciseRecord: ['exercise', 'overview.EXERCISE'],
     exerciseType: ['exercise', 'time'],
     thought: ['thoughts'],
+    memo: ['memo'], 'b-video': ['video'], device: ['device'],
+    income: ['finance', 'income'], expense: ['finance', 'expense', 'device'],
     taskDetails: ['watched'], tasks: ['watched'], taskColumn: ['watched'],
     'quick-nav': ['links'],
     goals: ['goal'], anniversaryRecords: ['anniversary'],

@@ -5,3 +5,5 @@ export function saveNote(kind, payload) { const base = kind === 'think' ? '/thou
 export function deleteNote(kind, id) { return kind === 'think' ? request('/thought/batchDelete', 'POST', { idList: [recordId(id)] }) : request('/memo/' + recordId(id), 'DELETE') }
 
 export function fetchNoteById(id) { return request<any>('/thought/query', 'GET', { page: 1, pageSize: 1, id: recordId(id) }) }
+
+export function fetchMemoById(id: string) { return request<any>('/memo/' + recordId(id)) }

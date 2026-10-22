@@ -1,0 +1,160 @@
+<script setup lang="ts">
+import { computed, reactive, watch, onUnmounted } from 'vue'
+import DashboardSection from '../../components/DashboardSection.uvue'
+import DashboardAction from '../../components/DashboardAction.uvue'
+import AppIcon from '../../components/AppIcon.uvue'
+import SummaryCover from './SummaryCover.uvue'
+import LoadingIndicator from '../../components/LoadingIndicator.uvue'
+import { request } from '../../services/api.ts'
+import { session } from '../../services/session.ts'
+import { isDark } from '../../services/theme.ts'
+import { menuVisuals } from '../../services/menu-visuals.ts'
+import { homeDataRevision } from '../../services/home-refresh.ts'
+import { cachedMenuAccess, loadMenuAccess } from '../../services/menu-access-cache.ts'
+import { lockedMenuPaths, matchesNativeMenu } from '../../services/life-catalog.ts'
+import { isMenuUnlocked } from '../../services/secondary-lock.ts'
+import { openExternalLink } from '../../services/external-link.ts'
+import { createHomeRefreshScheduler } from './services/refresh-scheduler.ts'
+import { createSummaryController, summaryCards, summaryState, summaryEntry, summaryCaption, summaryMoney, financeSummaryKinds, summaryPeriods } from './services/summary-cards.ts'
+const props = defineProps<{ kind: string; active: boolean; preparing?: boolean; height?: number; refreshDisabled?: boolean }>()
+const emit = defineEmits(['visibility'])
+const card = summaryCards[props.kind]
+const state = reactive(summaryState())
+const financial = financeSummaryKinds.includes(props.kind)
+const metrics = props.kind === 'finance' ? [{ key: 'income', label: '收入' }, { key: 'expense', label: '支出' }, { key: 'balance', label: '结余' }] : [{ key: 'amount', label: props.kind === 'income' ? '收入' : '支出' }]
+const actionLabel = props.kind === 'finance' ? '记一笔' : props.kind === 'income' ? '记收入' : props.kind === 'expense' ? '记支出' : '新增' + card.title
+const visual = computed(() => menuVisuals.visual('section.' + props.kind))
+const scheduler = createHomeRefreshScheduler()
+const fetch = path => request(path, 'GET', null, true, null, true)
+let candidates = null, candidatesAt = 0, accessRevision = -1
+function lockedRoute(config) {
+  return ['/pages/home/index', ...card.access].find(route => lockedMenuPaths(route, config.menus, config.ids).some(path => !isMenuUnlocked(path))) || ''
+}
+async function access() {
+  const owner = session.token
+  const config = await loadMenuAccess(fetch)
+  if (!candidates || Date.now() - candidatesAt > 60000 || accessRevision !== homeDataRevision('access')) {
+    const rows = await fetch('/quick-nav/candidates?client=mobile')
+    if (!Array.isArray(rows) || rows.some(row => !row || typeof row.path !== 'string')) throw Error('菜单权限数据异常，请重试')
+    if (session.token !== owner) throw Error('登录状态已变化，请重试')
+    candidates = rows; candidatesAt = Date.now(); accessRevision = homeDataRevision('access')
+  }
+  const unlockRoute = lockedRoute(config)
+  return { available: card.access.every(route => candidates.some(row => matchesNativeMenu(route, row.path))), locked: !!unlockRoute, unlockRoute }
+}
+const controller = createSummaryController(props.kind, state, {
+  active: () => props.active && !!session.token,
+  revision: () => homeDataRevision(props.kind), access, fetch,
+})
+function checkAccess() {
+  const config = cachedMenuAccess()
+  const route = config ? lockedRoute(config) : card.route
+  if (route && state.data) { controller.invalidate(true); state.data = null; state.locked = true; state.unlockRoute = route; scheduler.clear() }
+}
+async function refresh(force = true) {
+  await controller.refresh(force)
+  scheduler.set(props.kind, state.available && !state.locked ? state.data?.refreshInterval : 0, () => refresh())
+  if (props.active) scheduler.resume()
+}
+watch(() => props.active, active => {
+  if (active) { checkAccess(); void refresh(false) }
+  else { scheduler.pause(); controller.invalidate() }
+}, { immediate: true })
+watch(() => props.preparing, preparing => { if (preparing) checkAccess() })
+watch(() => session.token, () => { scheduler.clear(); controller.invalidate(true); candidates = null }, { flush: 'sync' })
+watch(() => state.available, available => emit('visibility', available), { immediate: true })
+onUnmounted(() => { scheduler.clear(); controller.invalidate() })
+defineExpose({ refresh, checkAccess })
+async function changePeriod(period) {
+  if (!props.active || props.refreshDisabled || state.locked) return
+  scheduler.pause()
+  await controller.setPeriod(period)
+  scheduler.set(props.kind, state.available && !state.locked ? state.data?.refreshInterval : 0, () => refresh())
+  if (props.active) scheduler.resume()
+}
+function manualRefresh() { if (!props.refreshDisabled) void refresh() }
+function navigate(id = '') {
+  if (!props.active || props.refreshDisabled) return
+  const url = state.locked ? state.unlockRoute || card.route : summaryEntry(props.kind, id)
+  if (url === '/pages/home/index') return
+  uni.navigateTo({ url })
+}
+function create() {
+  if (!props.active || props.refreshDisabled || state.locked) return
+  if (props.kind === 'finance') {
+    uni.showActionSheet({ itemList: ['记支出', '记收入'], success: result => {
+      if (props.active && !state.locked) uni.navigateTo({ url: '/pages/finance/' + (result.tapIndex === 0 ? 'expense' : 'income') + '?create=1' })
+    } })
+    return
+  }
+  uni.navigateTo({ url: card.route + (card.route.includes('?') ? '&' : '?') + 'create=1' })
+}
+function resume(row) { if (props.active && !props.refreshDisabled && !state.locked && row.resumeUrl) openExternalLink(row.resumeUrl) }
+</script>
+<template>
+  <view v-if="state.available" class="summary-card" :aria-label="card.title + '首页卡片'" :aria-busy="state.loading" :class="{ 'summary-dark': isDark }">
+    <DashboardSection :title="card.title" :icon="visual.icon" :icon-color="visual.iconColor" :height="height" :auto-height="!height" :loading="!financial && !state.data && !state.error && !state.locked" :updating="state.loading && !!state.data" :retain-content="financial || !!state.data" :error="state.error" :locked="state.locked" :refresh-disabled="refreshDisabled" navigable @navigate="navigate()" @refresh="manualRefresh">
+      <template #actions><DashboardAction :label="actionLabel" @click="create" /></template>
+      <template #loading><view class="summary-pending" role="status" :aria-label="'正在加载' + card.title"><view v-for="n in 3" :key="n" class="summary-skeleton-row"><view v-if="kind === 'video' || kind === 'device'" class="summary-image-placeholder" :class="{ 'summary-video-image': kind === 'video', 'summary-skeleton-dark': isDark }" /><view class="summary-skeleton-copy"><view class="summary-skeleton-line" :class="{ 'summary-skeleton-dark': isDark }" /><view class="summary-skeleton-caption" :class="{ 'summary-skeleton-dark': isDark }" /></view></view></view></template>
+      <view v-if="financial" class="finance-summary">
+        <view class="finance-range" role="group" :aria-label="card.title + '统计范围'">
+          <button v-for="period in summaryPeriods" :key="period.key" class="finance-range-button" :class="{ 'finance-range-selected': (state.data?.period || state.period) === period.key, 'finance-range-dark': isDark, 'finance-range-selected-dark': isDark && (state.data?.period || state.period) === period.key }" role="button" :aria-label="card.title + '：' + period.label" :aria-pressed="(state.data?.period || state.period) === period.key" :aria-busy="state.loading && state.period === period.key" :disabled="refreshDisabled || state.locked" @click.stop="changePeriod(period.key)"><text class="finance-range-label" :class="{ 'finance-range-label-dark': isDark }">{{ period.label }}</text><LoadingIndicator v-if="state.loading && state.period === period.key" class="finance-range-updating" compact :label="'正在加载' + period.label" /></button>
+        </view>
+        <template v-if="state.data"><text class="summary-caption" :class="{ 'summary-caption-dark': isDark }">{{ state.data.label }}</text><view class="finance-metrics"><view v-for="metric in metrics" :key="metric.key" class="finance-metric"><text class="summary-caption" :class="{ 'summary-caption-dark': isDark }">{{ metric.label }}</text><text class="finance-value" :class="{ 'summary-text-dark': isDark, 'finance-value-single': kind !== 'finance' }">{{ summaryMoney(state.data[metric.key]) }}</text></view></view></template>
+        <view v-else-if="state.error" class="finance-pending"><text class="finance-error">{{ state.error }}</text></view><view v-else class="finance-pending" role="status" :aria-label="'正在加载' + card.title"><view class="summary-skeleton-line" :class="{ 'summary-skeleton-dark': isDark }" /><view class="finance-metrics"><view v-for="metric in metrics" :key="metric.key" class="finance-metric"><view class="summary-skeleton-caption" :class="{ 'summary-skeleton-dark': isDark }" /><view class="summary-skeleton-line" :class="{ 'summary-skeleton-dark': isDark }" /></view></view></view>
+      </view>
+      <view v-else-if="state.data && !state.data.items.length" class="summary-empty"><text class="summary-caption" :class="{ 'summary-caption-dark': isDark }">{{ card.empty }}</text></view>
+      <view v-else-if="state.data" class="summary-list">
+        <view v-for="row in state.data.items" :key="row.id" class="summary-row">
+          <view v-if="kind === 'video' || kind === 'device'" class="summary-image" :class="{ 'summary-video-image': kind === 'video' }"><SummaryCover :file-id="kind === 'video' ? row.coverFileId : row.fileId" :cover-state="kind === 'video' ? row.coverState : ''" :video-id="kind === 'video' ? row.id : ''" :label="row.title || row.name || '未命名'" :active="active && !state.locked" /></view>
+          <button class="summary-entry" role="button" :aria-label="(kind === 'video' && row.resumeUrl ? '继续观看' : '查看') + (row.title || row.name || '未命名')" @click.stop="kind === 'video' && row.resumeUrl ? resume(row) : navigate(row.id)">
+            <text class="summary-title" :class="{ 'summary-text-dark': isDark }">{{ row.title || row.name || '未命名' }}</text><text class="summary-caption" :class="{ 'summary-caption-dark': isDark }">{{ summaryCaption(kind, row) }}</text>
+          </button>
+          <button v-if="kind === 'video'" class="summary-edit" role="button" :aria-label="'编辑' + (row.title || '视频')" @click.stop="navigate(row.id)"><AppIcon name="lucide:pencil" :size="16" /></button>
+        </view>
+      </view>
+    </DashboardSection>
+  </view>
+</template>
+<style scoped lang="scss">
+@use '../../styles/typography' as *;
+@use '../../styles/spacing.scss';
+@use '../../styles/spacing-tokens' as *;
+.summary-card { width: 100%; }
+.summary-pending { padding: 0 $space-card $space-card; }
+.summary-list { display: flex; flex-direction: column; }
+.summary-row { gap: $space-inline; display: flex; flex-direction: row; align-items: center; min-height: 64px; }
+.summary-entry { min-height: 64px; min-width: 0; flex: 1; display: flex; flex-direction: column; justify-content: center; align-items: flex-start; gap: $space-detail; padding: $space-inline 0; margin: 0; border: 0; background: transparent; text-align: left; }
+.summary-title { @include type-style('body'); color: #27272a; overflow: hidden; text-overflow: ellipsis; width: 100%; white-space: nowrap; }
+.summary-caption { @include type-style('caption'); color: #71717a; }
+.summary-edit { flex: none; height: $space-controlMin; width: $space-controlMin; display: flex; align-items: center; justify-content: center; padding: 0; margin: 0; border: 0; background: transparent; }
+.summary-empty { min-height: 64px; justify-content: center; align-items: center; }
+.finance-summary { gap: $space-inline; min-height: 134px; justify-content: center; }
+.finance-metrics { display: flex; flex-direction: row; gap: $space-inline; flex-wrap: wrap; }
+.finance-metric { flex: 1; min-width: 0; gap: $space-detail; }
+.finance-value { @include type-style('body'); color: #27272a; word-break: break-all; }
+.summary-skeleton-row { height: 64px; flex-direction: row; align-items: center; gap: $space-inline; }
+.summary-skeleton-copy { flex: 1; gap: $space-detail; }
+.summary-skeleton-line { height: 18px; width: 75%; background-color: #e8ecf1; border-radius: 4px; }
+.summary-skeleton-caption { height: 14px; width: 60%; background-color: #e8ecf1; border-radius: 4px; }
+.summary-skeleton-dark { background-color: #30343c; }
+.summary-text-dark { color: #ececf0; }
+.summary-caption-dark { color: #a1a1aa; }
+.summary-image, .summary-image-placeholder { width: 44px; height: 44px; flex-shrink: 0; }
+.summary-video-image { width: 72px; }
+.summary-image-placeholder { background-color: #e8ecf1; border-radius: 6px; }
+.finance-range { flex-direction: row; gap: $space-detail; }
+.finance-range-button { display: flex; position: relative; flex: 1; min-height: $space-controlMin; margin: 0; padding: 0 $space-inline; border: 0; border-radius: 6px; background-color: transparent; align-items: center; justify-content: center; }
+.finance-range-selected { background-color: #eef2ff; }
+.finance-range-dark { background-color: #252b34; }
+.finance-range-selected-dark { background-color: #344566; }
+.finance-range-updating { position: absolute; right: $space-detail; }
+.finance-error { @include type-style('caption'); color: #bc4949; }
+.finance-range-label { @include type-style('caption'); color: #3f3f46; }
+.finance-range-label-dark { color: #ececf0; }
+.finance-pending { gap: $space-inline; min-height: 74px; }
+.finance-value-single { @include type-style('metric'); }
+/* #ifdef WEB || MP-WEIXIN */
+.summary-entry::after, .summary-edit::after, .finance-range-button::after { border: 0; }
+/* #endif */
+</style>

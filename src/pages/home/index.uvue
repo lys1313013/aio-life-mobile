@@ -5,6 +5,7 @@ import { buttonLabelClasses } from '../../services/button-label.ts'
 import ContentSkeleton from '../../components/ContentSkeleton.uvue';
 import TimeDonut from './TimeDonut.uvue'
 import BusinessCards from './BusinessCards.uvue'
+import SummaryHomeCard from './SummaryHomeCard.uvue'
 import WereadRecentCard from './WereadRecentCard.uvue'
 import QuickNavEditor from './QuickNavEditor.uvue'
 import HomeCardSortCell from './HomeCardSortCell.uvue'
@@ -1068,6 +1069,7 @@ function trendLines(points) {
             ></view
           >
         <view v-if="section.cardKey === 'section.weread'" class="section-content ui-pad-xs"><WereadRecentCard :height="multiColumnCardHeight" :max-height="cardHeightLimit" :tablet="viewportWidth >= 768 && viewportWidth < 1024" @scrolling="cardOrder.cancel()" :sorting="cardOrder.dragging.value === section.cardKey" :ref="el => { businessCardRefs[section.cardKey] = el }" :active="businessActive" :preparing="loading && !businessActive" @visibility="businessVisibility[section.cardKey] = $event" /></view>
+        <view v-if="['section.memo', 'section.finance', 'section.income', 'section.expense', 'section.video', 'section.device'].includes(section.cardKey)" class="section-content ui-pad-xs"><SummaryHomeCard :kind="section.cardKey.slice(8)" :height="multiColumnCardHeight" :ref="el => { businessCardRefs[section.cardKey] = el }" :active="businessActive" :preparing="loading && !businessActive" :refresh-disabled="orderDisabled" @visibility="businessVisibility[section.cardKey] = $event" /></view>
         <BusinessCards v-if="['section.goal', 'section.anniversary', 'section.reading', 'section.membership', 'section.movie'].includes(section.cardKey)" :height="multiColumnCardHeight" :max-height="cardHeightLimit" :ref="el => { businessCardRefs[section.cardKey] = el }" :only="section.cardKey.slice(8)" :refresh-disabled="orderDisabled" embedded @visibility="businessVisibility[section.cardKey] = $event" :active="businessActive" :preparing="loading && !businessActive" @sorting="businessSorting = $event" />
         </HomeCardSortCell></view>
       </view></scroll-view

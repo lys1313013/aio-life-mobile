@@ -29,7 +29,7 @@ export function sortMemberships(rows, today = new Date()) {
 }
 export function cardPath(card, page = 1) {
   if (card.pinned) return card.endpoint + '?isPinned=1'
-  if (card.paged) return card.endpoint + '/page?activeOnly=true&inProgressFirst=true&current=' + page + '&size=' + businessCardPageSize
+  if (card.paged) return card.endpoint + '/page?activeOnly=true&inProgressFirst=true&page=' + page + '&pageSize=' + businessCardPageSize
   return card.endpoint + '/list'
 }
 export function cardRows(card, data) {

@@ -17,6 +17,7 @@ async function fixture(kind, t) {
   let source = (await readFile(new URL(`../src/pages/finance/${kind}.uvue`, import.meta.url), 'utf8')).split('<script setup lang="ts">')[1].split('</script>')[0]
   if (source.includes("'./services/use-ledger-page.ts'")) {
     const helper = (await readFile(new URL('../src/pages/finance/services/use-ledger-page.ts', import.meta.url), 'utf8'))
+      .replace(/import \{ onLoad \}[^\n]+/, `const onLoad = callback => globalThis[${JSON.stringify(key)}].load = callback;`)
       .replace(/from 'vue'/g, `from ${JSON.stringify(vueURL)}`)
       .replace(/import \{ useDomainPage \}[^\n]+/, domainImport)
     source = source.replace("'./services/use-ledger-page.ts'", JSON.stringify(moduleURL(helper)))
@@ -27,7 +28,7 @@ async function fixture(kind, t) {
   const lines = source.split('\n')
   const imports = lines.filter(line => line.startsWith('import ')).join('\n')
   const body = lines.filter(line => !line.startsWith('import ')).join('\n')
-  const { setup } = await import(moduleURL(`${imports}\nexport function setup() {\n${body}\nreturn { mounted, visible, ledger };\n}`))
+  const { setup } = await import(moduleURL(`${imports}\nexport function setup() {\n${body}\nreturn { mounted, visible, ledger, initialCreate };\n}`))
   const scope = effectScope()
   const state = scope.run(setup)
   const calls = []
@@ -78,3 +79,13 @@ for (const kind of ['expense', 'income']) {
     assert.deepEqual(f.calls.at(-1), ['suspend', true])
   })
 }
+
+test('首页记一笔参数保留到挂载，跨账号清理不重新打开编辑器', async t => {
+  const f = await fixture('expense', t)
+  f.hooks.load({ create: '1' })
+  assert.equal(f.initialCreate.value, true)
+  f.hooks.suspend(false)
+  assert.equal(f.initialCreate.value, true)
+  f.hooks.suspend(true)
+  assert.equal(f.initialCreate.value, false)
+})

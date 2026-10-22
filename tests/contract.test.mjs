@@ -64,3 +64,8 @@ test('头像只读取文件 ID 和展示 URL，不再使用旧 avatar 地址', (
   assert.equal(readUser({ id: '42', avatarFileId: null }).avatarFileId, null);
   assert.throws(() => readUser({ id: '42', avatarFileId: 123 }), /头像信息异常/);
 });
+
+test('403 保留权限错误类型，允许摘要卡清除已经撤销权限的数据', () => {
+  assert.throws(() => readResponse(403, { code: 403, message: '没有访问权限' }), error => error.name === 'ForbiddenError' && error.message === '没有访问权限');
+  assert.throws(() => readResponse(403, null), error => error.name === 'ForbiddenError');
+});

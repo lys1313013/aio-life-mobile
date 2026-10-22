@@ -20,7 +20,7 @@ import AdaptiveModal from '../../components/AdaptiveModal.uvue';
 import NoteEditor from './NoteEditor.uvue';
 import { createRecordScope } from '../../services/records/page-scope.ts';
 import { isDark } from '../../services/theme.ts';
-import { fetchNotes, saveNote, deleteNote, fetchNoteById } from './services/notes.ts';
+import { fetchNotes, saveNote, deleteNote, fetchNoteById, fetchMemoById } from './services/notes.ts';
 const kind = ref('think'),
   title = computed(() => (kind.value === 'think' ? '闪念' : '笔记'));
 const rows = ref<any[]>([]),
@@ -54,6 +54,8 @@ const scope = createRecordScope((clearData) => {
     rows.value = [];
     total.value = 0;
     created.value = false;
+    requestedEdit = '';
+    requestedCreate = false;
   }
 });
 let requestedEdit = '';
@@ -62,7 +64,7 @@ let alive = true,
   generation = 0;
 onLoad((options) => {
   kind.value = options?.kind === 'memo' ? 'memo' : 'think';
-  requestedEdit = options?.editId || '';
+  requestedEdit = String(options?.id || options?.editId || '');
   requestedCreate = options?.create === '1';
 });
 const refreshOnShow = usePageRefresh(() => load(), { loading: () => loading.value, error: () => error.value, keys: () => ['memo', 'thought'] })
@@ -91,9 +93,13 @@ async function load(refresh = false, more = false) {
       pageEnded.value = !data.items.length;
       total.value = data.total;
       page.value = nextPage;
-      if (requestedEdit && kind.value === 'think') {
-        const selected = await scope.wait(fetchNoteById(requestedEdit));
-        if (current === generation && selected.items[0]) open(selected.items[0]);
+      if (requestedEdit) {
+        const selected = kind.value === 'memo'
+          ? await scope.wait(fetchMemoById(requestedEdit))
+          : (await scope.wait(fetchNoteById(requestedEdit))).items[0];
+        if (!alive || current !== generation) return;
+        if (!selected) throw new Error('记录不存在或已删除');
+        open(selected);
         requestedEdit = '';
       } else if (requestedCreate) {
         requestedCreate = false;

@@ -66,7 +66,13 @@ export function authFileUrl(id: string): Promise<string> {
           if (response.statusCode === 401) { clearSession(); uni.reLaunch({url:'/pages/login/index'}); throw new Error('登录已过期，请重新登录') }
           if (response.statusCode !== 200) throw new Error('附件加载失败，请重试')
           resolve(response.tempFilePath)
-        } catch (reason) { reject(reason) }
+        } catch (reason) {
+          // 下载完成时账号已切换，调用方拿不到 URL；在这里释放无人接收的临时图片。
+          // #ifdef WEB
+          if (response.tempFilePath?.startsWith('blob:')) URL.revokeObjectURL(response.tempFilePath)
+          // #endif
+          reject(reason)
+        }
       },
       fail: () => reject(new Error('附件加载失败，请重试')),
     })
