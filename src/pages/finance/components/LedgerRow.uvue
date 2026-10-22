@@ -19,7 +19,7 @@ const props = defineProps<{
 }>();
 const expense = computed(() => props.kind === 'expense');
 const kindLabel = computed(() => expense.value ? '支出' : '收入');
-const emit = defineEmits(['edit', 'select', 'open', 'close']);
+const emit = defineEmits(['edit', 'select', 'open', 'close', 'device']);
 // 操作区容纳一个至少 44px 的按钮，两侧留公共行内间距。
 const actionWidth = spacing.controlMin + spacing.inline * 2;
 const offset = ref(0);
@@ -109,8 +109,10 @@ function activate() {
             <text v-if="expense || summary !== category" class="ledger-detail" :class="themeClass('ledger-detail')">{{ category }}{{ expense ? ' · ' + payment : '' }}</text>
             <text class="ledger-date" :class="themeClass('ledger-detail')">{{ date }}</text>
           </view>
+          <text v-if="expense && row.deviceName" class="ledger-detail" :class="themeClass('ledger-detail')">{{ row.deviceName }}</text>
           <text v-if="differentAmount" class="ledger-detail" :class="themeClass('ledger-detail')">交易金额 ¥{{ Number(row.transactionAmt).toFixed(2) }}</text>
         </view>
+        <MobileButton v-if="expense && !selecting" label="关联设备" icon="ant-design:link-outlined" variant="quiet" @click="emit('device')" />
       </view>
     </view>
     <!-- 确认框放在裁剪区和 transform 外，保持相对于屏幕定位。 -->

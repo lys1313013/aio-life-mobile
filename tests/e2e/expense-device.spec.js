@@ -1,0 +1,73 @@
+const { test, expect } = require('@playwright/test');
+const { setup } = require('./qa-domains-fixtures');
+const { picker } = require('./qa-domains-ui');
+const fs = require('node:fs/promises');
+const expenseId = '9223372036854775806', deviceId = '9223372036854775805';
+async function prepare(page) {
+ await setup(page);
+ const state = { linked: null, fail: false, calls: [], pages: [] };
+ const defaults = { name: '模拟耳机', purchasePrice: 42.5, purchaseDate: '2026-10-22', purchasePlace: '模拟商家', remark: '模拟备注', status: '1' };
+ const devices = Array.from({ length: 35 }, (_, i) => ({ id: i === 0 ? deviceId : String(100 + i), name: `模拟设备${i + 1}`, spec: '256GB · 深空灰', purchaseDate: '2026-10-01' }));
+ await page.route('**/api/expense/query*', route => route.fulfill({ json: { code: 0, data: { items: [{ id: expenseId, amt: 42.5, transactionAmt: 60, expTime: '2026-10-22 23:30:00', remark: '模拟账单', expTypeId: '81', payTypeId: '82', deviceName: state.linked?.name }], total: 1 } } }));
+ await page.route('**/api/device/query*', route => {
+  const url = new URL(route.request().url()), pageNumber = Number(url.searchParams.get('page') || 1), name = url.searchParams.get('name') || '';
+  state.pages.push(pageNumber); const rows = devices.filter(row => row.name.includes(name));
+  return route.fulfill({ json: { code: 0, data: { items: rows.slice((pageNumber - 1) * 30, pageNumber * 30), total: rows.length } } });
+ });
+ await page.route(`**/api/expense/${expenseId}/device`, route => {
+  const method = route.request().method(), body = route.request().postDataJSON();
+  if (method === 'GET') return route.fulfill({ json: { code: 0, data: { device: state.linked, defaults } } });
+  state.calls.push({ method, body });
+  if (state.fail) return route.fulfill({ json: { code: 1, message: '模拟保存失败' } });
+  if (method === 'POST') state.linked = { ...body, id: deviceId };
+  if (method === 'PUT') state.linked = devices.find(row => row.id === body.deviceId);
+  if (method === 'DELETE') state.linked = null;
+  return route.fulfill({ json: { code: 0, data: method === 'DELETE' ? true : state.linked } });
+ });
+ await page.goto('/#/pages/finance/expense');
+ await page.getByRole('button', { name: '关联设备', exact: true }).click();
+ await expect(page.getByRole('dialog', { name: '关联设备', exact: true })).toBeVisible();
+ return state;
+}
+test('关联设备分页、失败保留、解绑和预填新建', async ({ page }) => {
+ await page.setViewportSize({ width: 390, height: 850 });
+ const state = await prepare(page), dialog = page.getByRole('dialog', { name: '关联设备', exact: true });
+ await dialog.getByRole('button', { name: '选择设备：模拟设备1', exact: true }).click();
+ state.fail = true;
+ await dialog.getByRole('button', { name: '保存', exact: true }).click();
+ await expect(dialog.getByRole('alert')).toContainText('模拟保存失败');
+ state.fail = false;
+ await dialog.getByRole('button', { name: '保存', exact: true }).click();
+ await expect(dialog).toHaveCount(0);
+ expect(state.calls.at(-1).body.deviceId).toBe(deviceId);
+ await expect(page.locator('.expense-row')).toContainText('模拟设备1');
+ await page.getByRole('button', { name: '关联设备', exact: true }).click();
+ await dialog.getByRole('button', { name: '解除设备关联', exact: true }).click();
+ await page.getByRole('button', { name: '确认', exact: true }).click();
+ await expect(dialog).toHaveCount(0);
+ await page.getByRole('button', { name: '关联设备', exact: true }).click();
+ await dialog.locator('.modal-scroll').hover(); await page.mouse.wheel(0, 100000);
+ await expect.poll(() => state.pages.includes(2)).toBe(true);
+ await expect(dialog.getByRole('button', { name: '选择设备：模拟设备35', exact: true })).toBeVisible();
+ await page.mouse.wheel(0, -100000);
+ await picker(page, '关联方式', '新建设备');
+ await expect(dialog.getByRole('textbox', { name: '设备名称', exact: true })).toHaveValue('模拟耳机');
+ await expect(dialog.getByRole('spinbutton', { name: '购买价格', exact: true })).toHaveValue('42.5');
+ await dialog.getByRole('textbox', { name: '设备名称', exact: true }).fill('用户确认的设备');
+ await dialog.getByRole('button', { name: '保存', exact: true }).click();
+ await expect(dialog).toHaveCount(0);
+ expect(state.calls.at(-1).body).toMatchObject({ name: '用户确认的设备', purchasePrice: 42.5, purchaseDate: '2026-10-22', purchasePlace: '模拟商家', remark: '模拟备注' });
+});
+for (const width of [390, 768, 1440]) for (const theme of ['light', 'dark']) test(`关联设备布局 ${width} ${theme}`, async ({ page }) => {
+ await page.setViewportSize({ width, height: 1000 });
+ await page.addInitScript(theme => localStorage.setItem('aio-life-mobile.theme.v1', theme), theme);
+ await prepare(page);
+ const dialog = page.getByRole('dialog', { name: '关联设备', exact: true });
+ await picker(page, '关联方式', '新建设备');
+ await expect(dialog.getByRole('textbox', { name: '设备名称', exact: true })).toHaveValue('模拟耳机');
+ await page.waitForTimeout(500);
+ await fs.mkdir('artifacts/expense-device', { recursive: true });
+ await page.screenshot({ path: `artifacts/expense-device/${width}-${theme}.png` });
+ const bounds = await dialog.boundingBox();
+ expect(bounds.x).toBeGreaterThanOrEqual(0); expect(bounds.x + bounds.width).toBeLessThanOrEqual(width + 1);
+});

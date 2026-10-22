@@ -1,0 +1,151 @@
+<script setup lang="ts">
+import { computed, onMounted, onUnmounted, ref } from 'vue';
+import AdaptiveModal from '../../../components/AdaptiveModal.uvue';
+import FormField from '../../../components/FormField.uvue';
+import FormActions from '../../../components/FormActions.uvue';
+import MobileButton from '../../../components/MobileButton.uvue';
+import ConfirmAction from '../../../components/ConfirmAction.uvue';
+import PageState from '../../../components/PageState.uvue';
+import LoadMore from '../../../components/LoadMore.uvue';
+import { themeClass } from '../../../services/theme.ts';
+import { fetchDictionary } from '../services/finance.ts';
+import { getExpenseDevice, searchDevices, bindExpenseDevice, createExpenseDevice, unbindExpenseDevice } from '../services/expense-device.ts';
+
+const props = defineProps<{ expenseId: string }>();
+const emit = defineEmits(['close', 'updated']);
+const mode = ref('已有设备'), current = ref<any>(null), draft = ref<any>({});
+const selectedId = ref(''), keyword = ref(''), types = ref<any[]>([]);
+const loading = ref(false), ready = ref(false), saving = ref(false), error = ref(''), saveError = ref('');
+const choices = ref<any[]>([]), choicesBusy = ref(false), choicesError = ref(''), total = ref(0);
+let alive = true, sequence = 0, page = 0, searchName = '', retryReset = true;
+onUnmounted(() => { alive = false; sequence++; });
+const typeName = computed({
+  get: () => types.value.find(item => String(item.id) === draft.value.type)?.dictLabel || '未分类',
+  set: value => { draft.value.type = String(types.value.find(item => item.dictLabel === value)?.id || ''); },
+});
+async function loadChoices(reset = false) {
+  if (!reset && (choicesBusy.value || choicesError.value || choices.value.length >= total.value)) return;
+  retryReset = reset;
+  const stamp = ++sequence, next = reset ? 1 : page + 1;
+  if (reset) searchName = keyword.value.trim();
+  choicesBusy.value = true; choicesError.value = '';
+  try {
+    const result = await searchDevices(next, searchName);
+    if (!alive || stamp !== sequence) return;
+    const seen = new Set<string>();
+    choices.value = (reset ? result.items : [...choices.value, ...result.items]).filter(item => {
+      if (seen.has(item.id)) return false; seen.add(item.id); return true;
+    });
+    total.value = result.items.length ? Number(result.total ?? choices.value.length) : choices.value.length;
+    page = next;
+  } catch (e) { if (alive && stamp === sequence) choicesError.value = e.message; }
+  finally { if (alive && stamp === sequence) choicesBusy.value = false; }
+}
+function retryChoices() { choicesError.value = ''; void loadChoices(retryReset); }
+async function initialize() {
+  loading.value = true; error.value = '';
+  try {
+    const [context, dictionary] = await Promise.all([getExpenseDevice(props.expenseId), fetchDictionary('device_type')]);
+    if (!alive) return;
+    current.value = context.device;
+    selectedId.value = context.device?.id || '';
+    draft.value = { ...context.defaults, purchasePrice: context.defaults.purchasePrice == null ? '' : String(context.defaults.purchasePrice),
+      name: context.defaults.name || '', spec: '', type: '', purchaseDate: context.defaults.purchaseDate || '',
+      purchasePlace: context.defaults.purchasePlace || '', remark: context.defaults.remark || '' };
+    types.value = dictionary.dictDetailList || [];
+    ready.value = true;
+    void loadChoices(true);
+  } catch (e) { if (alive) error.value = e.message; }
+  finally { if (alive) loading.value = false; }
+}
+function publish(device: any) {
+  emit('updated', { expenseId: props.expenseId, deviceId: device?.id || null, deviceName: device?.name || null });
+  emit('close');
+}
+async function save() {
+  if (saving.value || !ready.value) return;
+  saveError.value = '';
+  if (mode.value === '已有设备' && !selectedId.value) { saveError.value = '请选择设备'; return; }
+  if (mode.value === '新建设备' && !draft.value.name.trim()) { saveError.value = '请填写设备名称'; return; }
+  const price = draft.value.purchasePrice === '' ? null : Number(draft.value.purchasePrice);
+  if (mode.value === '新建设备' && price != null && (!Number.isFinite(price) || price < 0 || price > 99999999.99 || !/^\d+(\.\d{1,2})?$/.test(draft.value.purchasePrice))) {
+    saveError.value = '请填写有效的购买价格，最多两位小数'; return;
+  }
+  saving.value = true;
+  try {
+    const result = mode.value === '已有设备'
+      ? await bindExpenseDevice(props.expenseId, selectedId.value)
+      : await createExpenseDevice(props.expenseId, { ...draft.value, purchasePrice: price, purchaseDate: draft.value.purchaseDate || null });
+    if (alive) publish(result);
+  } catch (e) { if (alive) saveError.value = e.message; }
+  finally { if (alive) saving.value = false; }
+}
+async function unbind() {
+  if (saving.value) return;
+  saving.value = true;
+  try {
+    if (!await unbindExpenseDevice(props.expenseId)) throw new Error('解除关联失败，请重试');
+    if (alive) publish(null);
+  } finally { if (alive) saving.value = false; }
+}
+onMounted(initialize);
+</script>
+<template>
+  <AdaptiveModal label="关联设备" :busy="saving" :max-width="520" show-close @close="emit('close')"
+    @reachbottom="mode === '已有设备' && loadChoices()">
+    <PageState :loading="loading" :error="error" @retry="initialize">
+      <view v-if="ready">
+        <FormField label="关联方式" kind="selector" v-model="mode" :disabled="saving"
+          :options="current ? ['已有设备'] : ['已有设备', '新建设备']" />
+        <template v-if="mode === '已有设备'">
+          <text v-if="current" class="device-copy">当前：{{ current.name }}</text>
+          <view class="ui-toolbar">
+            <FormField label="搜索设备" placeholder="设备名称" compact stretch v-model="keyword" :disabled="saving" />
+            <MobileButton label="搜索设备" icon="ant-design:search-outlined" :loading="choicesBusy" :disabled="saving" @click="loadChoices(true)" />
+          </view>
+          <view v-for="item in choices" :key="item.id" class="device-choice">
+            <view class="device-description">
+              <text class="device-copy">{{ item.name }}</text>
+              <text class="device-meta" :class="themeClass('device-meta')">{{ [item.spec, item.purchaseDate].filter(Boolean).join(' · ') }}</text>
+            </view>
+            <MobileButton :label="'选择设备：' + item.name" :icon="selectedId === item.id ? 'ant-design:check-circle-outlined' : 'ant-design:border-outlined'"
+              :disabled="saving" variant="quiet" @click="selectedId = item.id" />
+          </view>
+          <text v-if="!choicesBusy && !choicesError && !choices.length" class="device-meta" :class="themeClass('device-meta')">暂无设备</text>
+          <LoadMore :loading="choicesBusy" :error="choicesError" :has-more="choicesBusy || !!choicesError || choices.length < total" @load="retryChoices" />
+        </template>
+        <template v-else>
+          <FormField label="设备名称" required v-model="draft.name" :disabled="saving" />
+          <FormField label="配置" v-model="draft.spec" :disabled="saving" />
+          <FormField label="设备类型" kind="selector" :options="['未分类', ...types.map(item => item.dictLabel)]" v-model="typeName" :disabled="saving" />
+          <FormField label="购买价格" input-type="digit" v-model="draft.purchasePrice" :disabled="saving" />
+          <FormField label="购买日期" kind="date" v-model="draft.purchaseDate" :disabled="saving" />
+          <FormField label="购买地点" v-model="draft.purchasePlace" :disabled="saving" />
+          <FormField label="备注" kind="textarea" v-model="draft.remark" :disabled="saving" />
+        </template>
+        <text v-if="saveError" role="alert" class="device-error">{{ saveError }}</text>
+      </view>
+    </PageState>
+    <FormActions>
+      <template v-if="current" #secondary>
+        <ConfirmAction label="解除设备关联" :action="unbind">
+          <template #default="{ open, busy }"><MobileButton label="解除设备关联" icon="ant-design:disconnect-outlined" danger :disabled="saving" :loading="busy" @click="open" /></template>
+        </ConfirmAction>
+      </template>
+      <MobileButton label="取消" variant="quiet" :disabled="saving" @click="emit('close')" />
+      <MobileButton label="保存" :loading="saving" :disabled="!ready" @click="save" />
+    </FormActions>
+  </AdaptiveModal>
+</template>
+<style scoped lang="scss">
+@use '../../../styles/spacing.scss';
+@use '../../../styles/spacing-tokens' as *;
+@use '../../../styles/typography' as *;
+@use '../../../styles/text-colors' as *;
+.device-choice { display: flex; flex-direction: row; align-items: center; gap: $space-inline; padding: $space-inline 0; }
+.device-description { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: $space-detail; }
+.device-copy { @include type-style('body'); overflow-wrap: anywhere; }
+.device-meta { @include type-style('caption'); color: $text-secondary-light; overflow-wrap: anywhere; }
+.device-meta-dark { color: $text-secondary-dark; }
+.device-error { @include type-style('body'); color: #dc5454; }
+</style>

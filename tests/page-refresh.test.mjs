@@ -101,3 +101,12 @@ test('查询过程中写入不会被完成时间掩盖；解锁过期也必须�
     assert.equal(f.access.url, '/pages/tasks/goals?kind=read&editId=1')
   } finally { f.close() }
 })
+
+test('支出关联写入刷新设备页，设备变更刷新支出关联名称', () => {
+  const beforeDevice = state.pageDataSignature(['device'])
+  state.invalidatePageAfterWrite('/expense/9223372036854775806/device', 'POST')
+  assert.notEqual(state.pageDataSignature(['device']), beforeDevice)
+  const beforeExpense = state.pageDataSignature(['expense'])
+  state.invalidatePageAfterWrite('/device/9223372036854775805', 'PUT')
+  assert.notEqual(state.pageDataSignature(['expense']), beforeExpense)
+})

@@ -8,6 +8,8 @@ export function invalidatePageAfterWrite(path: string, method: string) {
   if (method === 'GET') return
   const root = path.split('?')[0].split('/')[1]
   if (root) revisions[root] = (revisions[root] || 0) + 1
+  if (/^\/expense\/[^/]+\/device$/.test(path.split('?')[0])) revisions.device = (revisions.device || 0) + 1
+  if (root === 'device') revisions.expense = (revisions.expense || 0) + 1
 }
 export function createPageFreshness() {
   let snapshot: { owner: string; signature: string; at: number } | null = null

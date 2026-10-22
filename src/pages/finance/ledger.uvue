@@ -17,6 +17,7 @@ import MetricCard from '../../components/MetricCard.uvue';
 import AioChart from '../../components/AioChart.uvue';
 import TypeDistribution from './components/TypeDistribution.uvue';
 import LedgerRow from './components/LedgerRow.uvue';
+import ExpenseDeviceModal from './components/ExpenseDeviceModal.uvue';
 import AdaptiveModal from '../../components/AdaptiveModal.uvue';
 import { themeClass } from '../../services/theme.ts';
 import {
@@ -28,6 +29,13 @@ import {
   ledgerId,
   fetchFinanceStatistics,
 } from './services/finance.ts';
+const deviceExpenseId = ref('');
+function updateDevice(change: any) {
+  // 失效进行中的旧列表请求，下一次分页重新从首屏读取；当前列表只更新受影响行。
+  version++; loading.value = false; needsReset = true;
+  const row = rows.value.find(item => ledgerId(item) === change.expenseId);
+  if (row) Object.assign(row, { deviceId: change.deviceId, deviceName: change.deviceName });
+}
 const props = defineProps<{ kind: string }>();
 const expense = computed(() => props.kind === 'expense');
 const rows = ref<any[]>([]),
@@ -259,6 +267,7 @@ async function initialize() {
 function suspend(clear = false) {
   alive = false; version++; statisticsSequence++; refreshSequence++;
   loading.value = false; statisticsBusy.value = false; refreshing.value = false;
+  deviceExpenseId.value = '';
   modal.value = false; selected.value = []; openedRow.value = '';
   draft.value = {}; formError.value = '';
   if (clear) {
@@ -593,12 +602,13 @@ async function removeSelected() {
           :payment="expense ? name(payments, row.payTypeId) : ''"
           :first="index === 0" :last="index === sorted.length - 1"
           :opened="openedRow === ledgerId(row)" :selecting="expense && selecting" :selected="selected.includes(ledgerId(row))"
-          :remove="() => remove(row)" @edit="edit(row)" @select="toggle(row)"
+          :remove="() => remove(row)" @device="deviceExpenseId = ledgerId(row)" @edit="edit(row)" @select="toggle(row)"
           @open="openedRow = ledgerId(row)" @close="openedRow === ledgerId(row) && (openedRow = '')" />
         <LoadMore :error="moreError" :hasMore="!pageEnded && rows.length < total" :loading="loading" @load="load(false)" />
       </PageState>
     </view>
     <template #fixed>
+    <ExpenseDeviceModal v-if="deviceExpenseId" :expense-id="deviceExpenseId" @close="deviceExpenseId = ''" @updated="updateDevice" />
     <AdaptiveModal
       v-if="modal"
       :label="expense ? '编辑支出' : '编辑收入'"
