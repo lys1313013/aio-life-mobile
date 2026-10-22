@@ -40,9 +40,25 @@ const search = ref('');
 const collapsed = ref<string[]>([]);
 const original = ref<any>(null);
 const form = ref<any>({});
+const showDescription = ref(false);
+const showColorValue = ref(false);
+const showIconValue = ref(false);
+const iconPickerOpen = ref(false);
+const iconSearch = ref('');
 const task = createLatestTask();
 let active = true;
 const icons = Object.keys(catalog.icons);
+// 与 Web 我的分类保持相同的预设色；已有自定义色不做转换。
+const colorPresets = ['#1890ff', '#52c41a', '#faad14', '#f5222d', '#722ed1', '#13c2c2', '#eb2f96', '#fa8c16', '#a0d911', '#2f54eb'];
+const filteredIcons = computed(() => icons.filter((icon) => icon.toLowerCase().includes(iconSearch.value.trim().toLowerCase())));
+function openIconPicker() {
+  iconSearch.value = '';
+  iconPickerOpen.value = true;
+}
+function selectIcon(icon: string) {
+  form.value.icon = icon;
+  iconPickerOpen.value = false;
+}
 const shown = computed(() =>
   orderCategories(rows.value).filter(
     (row) =>
@@ -122,6 +138,10 @@ function edit(row = null, parentId = '0') {
         timeType: 1,
       };
   editorError.value = '';
+  showDescription.value = false;
+  showColorValue.value = false;
+  showIconValue.value = false;
+  iconPickerOpen.value = false;
   opened.value = true;
 }
 async function save() {
@@ -252,66 +272,80 @@ function privateCategory(row) {
       v-if="opened"
       label="编辑分类"
       :busy="saving"
-      :content-key="editorError"
+      :content-key="editorError + showDescription + showColorValue + showIconValue"
       @close="opened = false"
     >
-      <FormField
-        label="上级分类"
-        kind="selector"
-        :model-value="parentName"
-        :options="parents.map((row) => row.name)"
-        @update:model-value="
-          (value) => (form.parentId = parents.find((row) => row.name === value)?.id || '0')
-        "
-      />
-      <FormField :required="isRequired('category', 'name')" label="分类名称" v-model="form.name" :disabled="saving" /><FormField :required="isRequired('category', 'color')"
-        label="颜色"
-        v-model="form.color"
-        :disabled="saving"
-      /><FormField label="图标" v-model="form.icon" :disabled="saving" />
-      <FormField
-        label="选择图标"
-        kind="selector"
-        :model-value="form.icon"
-        :options="icons"
-        :disabled="saving"
-        @update:model-value="(value) => (form.icon = value)"
-      /><CategoryIcon :icon="form.icon" :color="form.color" />
-      <FormField
-        label="描述"
-        kind="textarea"
-        v-model="form.description"
-        :disabled="saving"
-      /><FormField
-        label="时间类型"
-        kind="selector"
-        :model-value="types[(form.timeType || 1) - 1]"
-        :options="types"
-        :disabled="saving"
-        @update:model-value="(value) => (form.timeType = types.indexOf(value) + 1)"
-      />
-      <FormField label="卡片统计"
-        ><switch
-          :checked="form.isTrackTime === 1"
+      <view class="category-editor">
+        <view class="category-preview" :class="themeClass('category-preview')">
+          <CategoryIcon :icon="form.icon" :color="form.color" :size="28" />
+          <text class="category-preview-name" :class="themeClass('category-preview-name')">{{ form.name || '新分类' }}</text>
+        </view>
+        <FormField appearance="soft" :required="isRequired('category', 'name')" label="分类名称" v-model="form.name" :disabled="saving" />
+        <FormField
+          appearance="soft"
+          label="上级分类"
+          kind="selector"
+          :model-value="parentName"
+          :options="parents.map((row) => row.name)"
           :disabled="saving"
-          aria-label="卡片统计"
-          @change="(event) => (form.isTrackTime = event.detail.value ? 1 : 0)" /></FormField
-      ><FormField label="启用"
-        ><switch
-          :checked="form.isEnabled === 1"
+          @update:model-value="(value) => (form.parentId = parents.find((row) => row.name === value)?.id || '0')"
+        />
+        <FormField appearance="soft" :required="isRequired('category', 'color')" label="颜色">
+          <template #labelAction>
+            <button role="button" class="category-inline-action" :class="themeClass('category-inline-action')" :disabled="saving" :aria-expanded="showColorValue" aria-label="自定义颜色" @click="showColorValue = !showColorValue">
+              <view class="category-current-color" :style="{ backgroundColor: form.color }" />
+              <AppIcon name="ant-design:edit-outlined" :size="16" />
+            </button>
+          </template>
+          <view class="category-palette">
+            <button role="button" v-for="color in colorPresets" :key="color" class="category-color-option" :class="[{ 'category-color-selected': form.color?.toLowerCase() === color }, themeClass('category-color-option')]" :aria-label="'选择颜色 ' + color" :aria-pressed="form.color?.toLowerCase() === color" :disabled="saving" @click="form.color = color">
+              <view class="category-color-swatch" :style="{ backgroundColor: color }">
+                <AppIcon v-if="form.color?.toLowerCase() === color" name="ant-design:check-outlined" color="#ffffff" :size="16" />
+              </view>
+            </button>
+          </view>
+        </FormField>
+        <FormField v-if="showColorValue" appearance="soft" label="自定义颜色值" v-model="form.color" placeholder="#1890ff" :disabled="saving" />
+        <FormField appearance="soft" label="图标">
+          <view class="category-icon-control" :class="themeClass('category-icon-control')">
+            <button role="button" class="category-icon-trigger" :disabled="saving" aria-label="选择分类图标" @click="openIconPicker">
+              <CategoryIcon :icon="form.icon" :color="form.color" />
+              <text class="category-control-text" :class="themeClass('category-control-text')">{{ form.icon ? '更换图标' : '选择图标' }}</text>
+              <AppIcon name="ant-design:right-outlined" :size="14" />
+            </button>
+            <MobileButton label="自定义图标" icon="ant-design:edit-outlined" variant="quiet" :disabled="saving" @click="showIconValue = !showIconValue" />
+            <MobileButton v-if="form.icon" label="清除图标" icon="ant-design:close-outlined" variant="quiet" :disabled="saving" @click="form.icon = ''" />
+          </view>
+        </FormField>
+        <FormField v-if="showIconValue" appearance="soft" label="图标名称" v-model="form.icon" placeholder="如 lucide:book-open" :disabled="saving" />
+        <FormField
+          appearance="soft"
+          label="时间类型"
+          kind="selector"
+          :model-value="types[(form.timeType || 1) - 1]"
+          :options="types"
           :disabled="saving"
-          aria-label="启用分类"
-          @change="(event) => (form.isEnabled = event.detail.value ? 1 : 0)"
-      /></FormField>
-      <FormField
-        v-if="admin"
-        label="排序"
-        :model-value="String(form.sort || 0)"
-        input-type="number"
-        :disabled="saving"
-        @update:model-value="(value) => (form.sort = Number(value))"
-      /><text v-if="editorError" class="category-error ui-mb-section ui-type-body" role="alert">{{ editorError }}</text
-      >
+          @update:model-value="(value) => (form.timeType = types.indexOf(value) + 1)"
+        />
+        <view class="category-toggle-row">
+          <view class="category-toggle" :class="themeClass('category-toggle')">
+            <text class="category-toggle-label" :class="themeClass('category-toggle-label')">卡片统计</text>
+            <switch :checked="form.isTrackTime === 1" :disabled="saving" aria-label="卡片统计" @change="(event) => (form.isTrackTime = event.detail.value ? 1 : 0)" />
+          </view>
+          <view class="category-toggle" :class="themeClass('category-toggle')">
+            <text class="category-toggle-label" :class="themeClass('category-toggle-label')">启用</text>
+            <switch :checked="form.isEnabled === 1" :disabled="saving" aria-label="启用分类" @change="(event) => (form.isEnabled = event.detail.value ? 1 : 0)" />
+          </view>
+        </view>
+        <button role="button" class="category-description-toggle" :disabled="saving" :aria-expanded="showDescription" aria-label="分类描述" @click="showDescription = !showDescription">
+          <text class="category-toggle-label" :class="themeClass('category-toggle-label')">描述</text>
+          <text class="category-description-summary" :class="themeClass('category-description-summary')">{{ form.description ? '已填写' : '选填' }}</text>
+          <AppIcon :name="showDescription ? 'ant-design:up-outlined' : 'ant-design:down-outlined'" :size="12" />
+        </button>
+        <FormField v-if="showDescription" appearance="soft" label="描述" hide-label kind="textarea" v-model="form.description" :disabled="saving" />
+        <FormField v-if="admin" appearance="soft" label="排序" :model-value="String(form.sort || 0)" input-type="number" :disabled="saving" @update:model-value="(value) => (form.sort = Number(value))" />
+        <text v-if="editorError" class="category-error ui-mb-section ui-type-body" role="alert">{{ editorError }}</text>
+      </view>
       <FormActions>
         <template v-if="original" #secondary>
           <MobileButton label="上移分类" icon="ant-design:arrow-up-outlined" variant="quiet" :disabled="!!busyId || saving" @click="move(original, -1)" />
@@ -320,8 +354,17 @@ function privateCategory(row) {
         <MobileButton label="取消" variant="quiet" :disabled="saving" @click="opened = false" />
         <MobileButton label="保存" :loading="saving" @click="save" />
       </FormActions>
-    </AdaptiveModal
-  ></view>
+    </AdaptiveModal>
+    <AdaptiveModal v-if="opened && iconPickerOpen" label="选择分类图标" show-close :max-width="520" :content-key="iconSearch" @close="iconPickerOpen = false">
+      <FormField appearance="soft" label="搜索图标" :model-value="iconSearch" placeholder="输入图标名称，如 book" @update:model-value="(value) => (iconSearch = value)" />
+      <view class="category-icon-grid">
+        <button role="button" v-for="icon in filteredIcons" :key="icon" class="category-icon-option" :class="[{ 'category-icon-selected': form.icon === icon }, themeClass('category-icon-option')]" :aria-label="'选择图标 ' + icon" :aria-pressed="form.icon === icon" @click="selectIcon(icon)">
+          <CategoryIcon :icon="icon" :color="form.color" :size="24" />
+        </button>
+      </view>
+      <text v-if="!filteredIcons.length" class="category-empty" :class="themeClass('category-description-summary')">没有匹配的图标，可返回输入自定义图标名称</text>
+    </AdaptiveModal>
+  </view>
 </template>
 <style scoped lang="scss">
 @use '../../styles/typography' as *;
@@ -380,5 +423,80 @@ function privateCategory(row) {
   color: #e05260;
 
 }
+.category-editor { min-width: 0; }
+.category-preview {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: $space-inline;
+  padding: $space-card;
+  margin-bottom: $space-form;
+  border-radius: 12px;
+  background-color: #f2f4f7;
+}
+.category-preview-dark { background-color: #272a30; }
+.category-preview-name {
+  @include type-style('title');
+  color: #27272a;
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.category-preview-name-dark { color: #eeeeef; }
+.category-inline-action {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  gap: $space-inline;
+  min-width: $space-controlMin;
+  min-height: $space-controlMin;
+  margin: 0;
+  padding: 0 $space-inline;
+  border: 0;
+  background-color: transparent;
+  color: #707784;
+}
+.category-inline-action-dark { color: #a0a6b1; }
+.category-current-color { width: 16px; height: 16px; border-radius: 50%; }
+.category-palette { display: flex; flex-direction: row; flex-wrap: wrap; gap: $space-detail; }
+.category-color-option {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: $space-controlMin;
+  height: $space-controlMin;
+  min-width: $space-controlMin;
+  margin: 0;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 50%;
+  background-color: transparent;
+}
+.category-color-option-dark { background-color: transparent; }
+.category-color-selected { border-color: #8995a6; }
+.category-color-swatch { width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; }
+.category-icon-control { display: flex; flex-direction: row; align-items: center; border-radius: 10px; background-color: #f2f4f7; padding-right: $space-detail; }
+.category-icon-control-dark { background-color: #272a30; }
+.category-icon-trigger { display: flex; flex-direction: row; align-items: center; gap: $space-inline; flex: 1; min-width: 0; min-height: $space-controlMin; margin: 0; padding: 0 $space-card; border: 0; background-color: transparent; }
+.category-control-text { @include type-style('body'); color: #27272a; flex: 1; text-align: left; }
+.category-control-text-dark { color: #dce0e7; }
+.category-toggle-row { display: flex; flex-direction: row; gap: $space-inline; margin-bottom: $space-form; }
+.category-toggle { display: flex; flex-direction: row; align-items: center; justify-content: space-between; gap: $space-detail; flex: 1; min-width: 0; min-height: $space-controlMin; }
+.category-toggle-label { @include type-style('label'); color: #707784; }
+.category-toggle-label-dark { color: #a0a6b1; }
+.category-description-toggle { display: flex; flex-direction: row; align-items: center; gap: $space-inline; min-height: $space-controlMin; margin: 0 0 $space-detail; padding: 0; border: 0; background-color: transparent; }
+.category-description-summary { @include type-style('caption'); color: #808692; flex: 1; text-align: right; }
+.category-description-summary-dark { color: #a0a6b1; }
+.category-icon-grid { display: flex; flex-direction: row; flex-wrap: wrap; gap: $space-inline; }
+.category-icon-option { display: flex; align-items: center; justify-content: center; width: $space-controlMin; height: $space-controlMin; margin: 0; padding: 0; border: 1px solid transparent; border-radius: 10px; background-color: #f2f4f7; }
+.category-icon-option-dark { background-color: #272a30; }
+.category-icon-selected { border-color: #427bea; }
+.category-empty { @include type-style('body'); padding: $space-card 0; }
+/* #ifdef WEB || MP-WEIXIN */
+.category-inline-action::after, .category-color-option::after, .category-icon-trigger::after, .category-description-toggle::after, .category-icon-option::after { border: 0; }
+/* #endif */
 
 </style>

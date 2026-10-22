@@ -12,6 +12,7 @@ import PageHeader from '../../components/PageHeader.uvue';
 import MobileButton from '../../components/MobileButton.uvue';
 import ConfirmAction from '../../components/ConfirmAction.uvue';
 import FormField from '../../components/FormField.uvue';
+import FormActions from '../../components/FormActions.uvue';
 import PageState from '../../components/PageState.uvue';
 import AdaptiveModal from '../../components/AdaptiveModal.uvue';
 import {
@@ -36,7 +37,11 @@ const graph = ref<any>({ nodes: [], edges: [] }),
   formError = ref(''),
   person = ref<any>(null),
   draft = ref<any>(null),
-  relation = ref<any>(null);
+  relation = ref<any>(null),
+  showContactFields = ref(false),
+  showMoreFields = ref(false);
+const contactFieldCount = computed(() => ['birthday', 'phone', 'email', 'school'].filter(key => String(draft.value?.[key] ?? '').trim()).length);
+const moreFieldCount = computed(() => ['avatar', 'tags', 'socialLinks', 'notes'].filter(key => String(draft.value?.[key] ?? '').trim()).length);
 const personDetailFields = computed(() =>
   ['description', 'tags', 'birthday', 'phone', 'email', 'school', 'socialLinks', 'notes']
     .filter((key) => String(person.value?.[key] ?? '').trim().length > 0),
@@ -193,6 +198,8 @@ async function detail(id: string) {
   }
 }
 function edit(value: any = null) {
+  showContactFields.value = false;
+  showMoreFields.value = false;
   draft.value = value
     ? { ...value }
     : {
@@ -412,78 +419,63 @@ function nodeName(id: string) {
             @click="editRelation(item)" /><ConfirmAction
             label="删除关系"
             :action="() => removeRel(item)" /></view></view></AdaptiveModal
-    ><AdaptiveModal v-if="draft" label="人物" :busy="busy" @close="draft = null"
-      ><view class="ui-field-row">
-          <FormField compact stretch :required="isRequired('person', 'name')" label="姓名" v-model="draft.name" />
-          <FormField compact stretch
-        label="分类"
-        kind="selector"
-        :options="['亲属', '社会', '情感', '其他']"
-        v-model="draft.category" />
-        </view><FormField label="头像URL" v-model="draft.avatar" /><FormField
-        label="介绍"
-        kind="textarea"
-        v-model="draft.description" /><FormField label="标签" v-model="draft.tags" /><view class="ui-field-row">
-          <FormField compact stretch
-        label="生日"
-        kind="date"
-        v-model="draft.birthday" />
-          <FormField compact stretch label="电话" v-model="draft.phone" />
-        </view><FormField
-        label="邮箱"
-        v-model="draft.email" /><FormField label="学校" v-model="draft.school" /><FormField
-        label="社交链接"
-        kind="textarea"
-        v-model="draft.socialLinks" /><FormField
-        label="备注"
-        kind="textarea" textarea-size="compact"
-        v-model="draft.notes" /><text v-if="formError" class="error ui-py-section ui-type-body">{{ formError }}</text
-      ><MobileButton label="保存" :loading="busy" @click="save" /></AdaptiveModal
-    ><AdaptiveModal v-if="relation" label="关系" :busy="busy" @close="relation = null"
-      ><FormField
-        :required="isRequired('relation', 'targetPersonId')" label="关联人物"
-        kind="selector"
-        :options="
-          graph.nodes.filter((item) => item.id !== person.id).map((item) => targetLabel(item))
-        "
-        v-model="targetName" /><view class="ui-field-row">
-          <FormField compact stretch
-        label="关系类型"
-        kind="selector"
-        :options="[
-          '父母',
-          '母亲',
-          '父亲',
-          '子女',
-          '配偶',
-          '恋人',
-          '兄弟姐妹',
-          '朋友',
-          '挚友',
-          '同学',
-          '同事',
-          '老师',
-          '学生',
-          'mentor',
-          '前任',
-          '暗恋',
-          '其他',
-        ]"
-        v-model="relation.relationType" />
-          <FormField compact stretch
-        label="方向"
-        kind="selector"
-        :options="['单向', '双向']"
-        v-model="relation.direction" />
-        </view><FormField
-        label="说明"
-        kind="textarea" textarea-size="compact"
-        v-model="relation.description" /><FormField label="标签" v-model="relation.tags" /><text
-        v-if="formError"
-        class="error ui-py-section ui-type-body"
-        >{{ formError }}</text
-      ><MobileButton label="保存关系" :loading="busy" @click="saveRel" /></AdaptiveModal
-  ></MobilePage>
+    ><AdaptiveModal v-if="draft" label="人物" :busy="busy" :max-width="500" @close="draft = null">
+      <view class="ui-field-row">
+        <FormField compact stretch appearance="soft" :required="isRequired('person', 'name')" label="姓名" placeholder="请输入姓名" v-model="draft.name" />
+        <FormField compact stretch appearance="soft" label="分类" kind="selector" :options="['亲属', '社会', '情感', '其他']" v-model="draft.category" />
+      </view>
+      <FormField appearance="soft" label="介绍" kind="textarea" textarea-size="compact" placeholder="简短描述这个人" v-model="draft.description" />
+      <view class="editor-section">
+        <button role="button" aria-label="联系信息" :aria-expanded="showContactFields" class="editor-section-toggle" :class="themeClass('editor-section-toggle')" @click="showContactFields = !showContactFields">
+          <text class="editor-section-title">联系信息</text>
+          <text v-if="contactFieldCount" class="editor-section-summary" :class="themeClass('editor-section-summary')">已填写 {{ contactFieldCount }} 项</text>
+          <AppIcon :name="showContactFields ? 'ant-design:up-outlined' : 'ant-design:down-outlined'" :size="14" />
+        </button>
+        <view v-if="showContactFields" class="editor-section-fields">
+          <view class="ui-field-row">
+            <FormField compact stretch appearance="soft" label="生日" kind="date" v-model="draft.birthday" />
+            <FormField compact stretch appearance="soft" label="电话" placeholder="电话号码" v-model="draft.phone" />
+          </view>
+          <FormField appearance="soft" label="邮箱" v-model="draft.email" />
+          <FormField appearance="soft" label="学校" v-model="draft.school" />
+        </view>
+      </view>
+      <view class="editor-section">
+        <button role="button" aria-label="更多资料" :aria-expanded="showMoreFields" class="editor-section-toggle" :class="themeClass('editor-section-toggle')" @click="showMoreFields = !showMoreFields">
+          <text class="editor-section-title">更多资料</text>
+          <text v-if="moreFieldCount" class="editor-section-summary" :class="themeClass('editor-section-summary')">已填写 {{ moreFieldCount }} 项</text>
+          <AppIcon :name="showMoreFields ? 'ant-design:up-outlined' : 'ant-design:down-outlined'" :size="14" />
+        </button>
+        <view v-if="showMoreFields" class="editor-section-fields">
+          <FormField appearance="soft" label="头像URL" placeholder="https://" v-model="draft.avatar" />
+          <FormField appearance="soft" label="标签" placeholder="多个标签用逗号分隔" v-model="draft.tags" />
+          <FormField appearance="soft" label="社交链接" kind="textarea" textarea-size="compact" v-model="draft.socialLinks" />
+          <FormField appearance="soft" label="备注" kind="textarea" textarea-size="compact" v-model="draft.notes" />
+        </view>
+      </view>
+      <text v-if="formError" role="alert" class="error ui-py-section ui-type-body">{{ formError }}</text>
+      <view class="editor-actions">
+        <FormActions>
+          <MobileButton label="取消" variant="quiet" :disabled="busy" @click="draft = null" />
+          <MobileButton label="保存" :loading="busy" @click="save" />
+        </FormActions>
+      </view>
+    </AdaptiveModal>
+    <AdaptiveModal v-if="relation" label="关系" :busy="busy" :max-width="500" @close="relation = null">
+      <FormField appearance="soft" :required="isRequired('relation', 'targetPersonId')" label="关联人物" kind="selector" :options="graph.nodes.filter((item) => item.id !== person.id).map((item) => targetLabel(item))" v-model="targetName" />
+      <view class="ui-field-row">
+        <FormField compact stretch appearance="soft" label="关系类型" kind="selector" :options="['父母', '母亲', '父亲', '子女', '配偶', '恋人', '兄弟姐妹', '朋友', '挚友', '同学', '同事', '老师', '学生', 'mentor', '前任', '暗恋', '其他']" v-model="relation.relationType" />
+        <FormField compact stretch appearance="soft" label="方向" kind="selector" :options="['单向', '双向']" v-model="relation.direction" />
+      </view>
+      <FormField appearance="soft" label="说明" kind="textarea" textarea-size="compact" v-model="relation.description" />
+      <FormField appearance="soft" label="标签" placeholder="多个标签用逗号分隔" v-model="relation.tags" />
+      <text v-if="formError" role="alert" class="error ui-py-section ui-type-body">{{ formError }}</text>
+      <FormActions>
+        <MobileButton label="取消" variant="quiet" :disabled="busy" @click="relation = null" />
+        <MobileButton label="保存关系" :loading="busy" @click="saveRel" />
+      </FormActions>
+    </AdaptiveModal>
+  </MobilePage>
 </template>
 <style scoped lang="scss">
 @use '../../styles/typography' as *;
@@ -509,6 +501,13 @@ function nodeName(id: string) {
 .category-tab-active { background-color: #427bea; color: #ffffff; }
 .category-dot { width: 6px; height: 6px; border-radius: 3px; }
 .actions { flex-wrap: wrap; }
+.editor-section-toggle { width: 100%; min-height: $space-controlMin; margin: 0; padding: 0; display: flex; flex-direction: row; align-items: center; gap: $space-inline; background-color: transparent; color: #52525b; text-align: left; }
+.editor-section-toggle-dark { color: #d4d4d8; }
+.editor-section-title { flex: 1; @include type-style('label'); }
+.editor-section-summary { @include type-style('caption'); color: $text-secondary-light; }
+.editor-section-summary-dark { color: $text-secondary-dark; }
+.editor-section-fields { padding-top: $space-inline; }
+.editor-actions { padding-top: $space-inline; }
 .graph-panel { overflow: hidden; border-radius: 16px; background-color: #ffffff; }
 .graph-panel-dark { background-color: #1c1e22; }
 .graph-toolbar { align-items: center; gap: $space-detail; padding: $space-detail $space-inline; }
@@ -546,7 +545,7 @@ display: flex;
 .relation-direction { color: $text-secondary-light; }
 .relation-description { width: 100%; color: $text-secondary-light; @include type-style('caption'); }
 /* #ifdef WEB || MP-WEIXIN */
-.graph-node-button::after, .category-tab::after, .relations-toggle::after { border: 0; }
+.graph-node-button::after, .category-tab::after, .relations-toggle::after, .editor-section-toggle::after { border: 0; }
 /* #endif */
 .edge {
   display: flex;
