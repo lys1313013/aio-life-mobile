@@ -5,20 +5,28 @@ import MobileButton from '../../components/MobileButton.uvue';
 import LoadingIndicator from '../../components/LoadingIndicator.uvue';
 import { isDark, themeClass } from '../../services/theme.ts';
 import { groupLocations } from './model.ts';
+import type { MapTileSource } from './map-config.ts';
+import { DEFAULT_MAP_SOURCE } from './map-config.ts';
 import typography from '../../styles/typography.json';
 import dotIcon from './assets/dot.png';
 import activeIcon from './assets/active.png';
 import clusterIcon from './assets/cluster.png';
 // #ifdef WEB
-import type { FootprintMapHandle } from './baidu-map.ts';
-import { mountFootprintMap } from './baidu-map.ts';
+import type { FootprintMapHandle } from './footprint-map.ts';
+import { mountFootprintMap } from './footprint-map.ts';
+import 'leaflet/dist/leaflet.css';
+import leafletLicenseUrl from './assets/leaflet-license.txt?url';
 import './map-dots.scss';
 // #endif
 
-const props = withDefaults(defineProps<{ browserKey: string; records?: Footprint[]; selectedId?: string | null; point?: Coordinate | null; picking?: boolean; height?: number }>(), { records: () => [], selectedId: null, point: null, picking: false, height: 480 });
+const props = withDefaults(defineProps<{ source?: MapTileSource; records?: Footprint[]; selectedId?: string | null; point?: Coordinate | null; picking?: boolean; height?: number }>(), { records: () => [], selectedId: null, point: null, picking: false, height: 480, source: () => ({ ...DEFAULT_MAP_SOURCE }) });
 const emit = defineEmits(['select', 'pick']);
 const instance = getCurrentInstance();
 const mapId = 'footprint-map-' + Math.random().toString(36).slice(2);
+const tilesLoading = ref(false), tilesFailed = ref(false);
+// #ifdef WEB
+const attributionUrl = computed(() => { try { const url = new URL(props.source.attributionUrl); return url.protocol === 'https:' ? url.href : undefined; } catch { return undefined; } });
+// #endif
 const loading = ref(false), failed = ref(false), zoom = ref(4), center = ref({ longitude: 104, latitude: 35 });
 let alive = true;
 const groups = computed(() => groupLocations(props.records, zoom.value));
@@ -38,9 +46,9 @@ async function start() {
   const container = root?.querySelector?.('.footprint-h5-canvas');
   if (!container || !alive) return;
   const current = ++generation;
-  handle?.destroy(); handle = null; loading.value = true; failed.value = false;
+  handle?.destroy(); handle = null; loading.value = true; failed.value = false; tilesLoading.value = false; tilesFailed.value = false;
   try {
-    const map = await mountFootprintMap(container, { key: props.browserKey, small: true, picking: props.picking, onSelect: (group) => emit('select', group), onPick: (point) => emit('pick', point) });
+    const map = await mountFootprintMap(container, { source: props.source, onTileState: state => { if (!alive || current !== generation) return; tilesLoading.value = state === 'loading'; tilesFailed.value = state === 'error'; }, small: true, picking: props.picking, onSelect: (group) => emit('select', group), onPick: (point) => emit('pick', point) });
     if (!alive || current !== generation) { map.destroy(); return; }
     handle = map; handle.setRecords(props.records, props.selectedId); handle.setPick(props.point); handle.setDark(isDark.value);
     if (pendingFocus) { map.focus(pendingFocus.points, pendingFocus.level); pendingFocus = null; }
@@ -49,10 +57,11 @@ async function start() {
   finally { if (alive && current === generation) loading.value = false; }
 }
 onMounted(start);
-watch(() => props.browserKey, start);
+watch(() => props.source, start, { deep: true });
 watch(() => [props.records, props.selectedId], () => handle?.setRecords(props.records, props.selectedId), { deep: true });
 watch(() => props.point, value => handle?.setPick(value), { deep: true });
 watch(isDark, value => handle?.setDark(value));
+function retryTiles() { handle?.retryTiles(); }
 onUnmounted(() => { generation++; handle?.destroy(); });
 // #endif
 
@@ -123,9 +132,12 @@ defineExpose({ focus, china });
     <view class="footprint-h5-canvas" aria-label="生活足迹地图" />
     <view v-if="loading" class="map-cover" :class="themeClass('map-cover')"><LoadingIndicator label="加载地图" /></view>
     <view v-else-if="failed" class="map-cover" :class="themeClass('map-cover')"><text class="map-error" :class="themeClass('map-error')">地图暂不可用</text><MobileButton label="重试地图" icon="ant-design:reload-outlined" variant="ghost" @click="start" /></view>
+    <view v-if="!failed && tilesLoading" class="map-progress" :class="themeClass('map-progress')"><LoadingIndicator label="底图加载中" ring compact /></view>
+    <view v-else-if="!failed && tilesFailed" class="map-tile-error" :class="themeClass('map-tile-error')" role="alert"><text class="map-error" :class="themeClass('map-error')">底图加载失败</text><MobileButton label="重试底图" icon="ant-design:reload-outlined" variant="ghost" @click="retryTiles" /></view>
+    <view class="map-attribution" :class="themeClass('map-attribution')"><a :href="leafletLicenseUrl" download="Leaflet-LICENSE.txt" target="_blank" rel="noopener noreferrer" aria-label="Leaflet 开源许可"><text class="map-attribution-text" :class="themeClass('map-attribution-text')">Leaflet · </text></a><a v-if="attributionUrl" :href="attributionUrl" target="_blank" rel="noopener noreferrer"><text class="map-attribution-text" :class="themeClass('map-attribution-text')">{{ source.attribution }}</text></a><text v-else class="map-attribution-text" :class="themeClass('map-attribution-text')">{{ source.attribution }}</text></view>
     <!-- #endif -->
     <!-- #ifndef WEB -->
-    <map :id="mapId" class="footprint-native-canvas" :longitude="center.longitude" :latitude="center.latitude" :scale="zoom" :markers="markers" :enable-zoom="true" :enable-scroll="true" :show-location="false" :theme="isDark ? 'dark' : 'light'" @markertap="markerTap" @tap="mapTap" @regionchange="regionChange" />
+    <map :id="mapId" class="footprint-native-canvas" :longitude="center.longitude" :latitude="center.latitude" :scale="zoom" :markers="markers" :enable-zoom="true" :enable-scroll="true" :show-location="false" theme="light" @markertap="markerTap" @tap="mapTap" @regionchange="regionChange" />
     <!-- #endif -->
     <view v-if="!loading && !failed" class="country-control" :class="themeClass('country-control')"><MobileButton label="返回中国地图" icon="mdi:map-outline" variant="ghost" @click="china" /></view>
     <view v-if="!loading && !failed" class="zoom-controls" :class="themeClass('zoom-controls')"><MobileButton label="放大地图" icon="ant-design:plus-outlined" variant="ghost" @click="zoomIn" /><MobileButton label="缩小地图" icon="ant-design:minus-outlined" variant="ghost" @click="zoomOut" /></view>
@@ -137,14 +149,24 @@ defineExpose({ focus, china });
 @use '../../styles/text-colors' as *;
 .footprint-map { position: relative; width: 100%; overflow: hidden; border-radius: 8px; background-color: #e9eef3; }
 .footprint-map-dark { background-color: #242c37; }
-.footprint-h5-canvas { width: 100%; height: 100%; }
+.footprint-h5-canvas { position: relative; z-index: 0; width: 100%; height: 100%; }
 .footprint-native-canvas { width: 100%; height: 100%; }
-.map-cover { position: absolute; inset: 0; display: flex; flex-direction: row; align-items: center; justify-content: center; gap: $space-inline; background-color: #e9eef3; }
+.map-cover { z-index: 2; position: absolute; inset: 0; display: flex; flex-direction: row; align-items: center; justify-content: center; gap: $space-inline; background-color: #e9eef3; }
 .map-cover-dark { background-color: #242c37; }
 .map-error { @include type-style('body'); color: $text-secondary-light; }
 .map-error-dark { color: $text-secondary-dark; }
-.country-control { position: absolute; top: $space-inline; left: $space-inline; background-color: #fff; border-radius: 8px; }
-.zoom-controls { position: absolute; top: $space-inline; right: $space-inline; background-color: #fff; border-radius: 8px; }
+.country-control { z-index: 1; position: absolute; top: $space-inline; left: $space-inline; background-color: #fff; border-radius: 8px; }
+.zoom-controls { z-index: 1; position: absolute; top: $space-inline; right: $space-inline; background-color: #fff; border-radius: 8px; }
 .country-control-dark { background-color: #1c1e22; }
 .zoom-controls-dark { background-color: #1c1e22; }
+/* #ifdef WEB */
+.footprint-map { isolation: isolate; }
+.map-progress, .map-tile-error { position: absolute; top: $space-inline; left: 50%; z-index: 1; display: flex; flex-direction: row; align-items: center; gap: $space-inline; padding: $space-detail $space-inline; border-radius: 6px; transform: translateX(-50%); background-color: #fff; }
+.map-progress-dark, .map-tile-error-dark { background-color: #1c1e22; }
+.map-progress { pointer-events: none; }
+.map-attribution { position: absolute; right: 0; bottom: 0; z-index: 1; max-width: 100%; padding: $space-detail; background-color: #fff; }
+.map-attribution-dark { background-color: #1c1e22; }
+.map-attribution-text { @include type-style('caption'); color: $text-secondary-light; }
+.map-attribution-text-dark { color: $text-secondary-dark; }
+/* #endif */
 </style>

@@ -1,0 +1,78 @@
+<script setup lang="ts">
+import type { Region } from './regions.ts';
+import { computed, onUnmounted, ref, watch } from 'vue';
+import FormField from '../../components/FormField.uvue';
+import LoadingIndicator from '../../components/LoadingIndicator.uvue';
+import MobileButton from '../../components/MobileButton.uvue';
+import { getFootprintRegions, getFootprintRegionPath } from './api.ts';
+
+const props = withDefaults(defineProps<{ modelValue?: string | null; disabled?: boolean }>(), { modelValue: null, disabled: false });
+const emit = defineEmits(['update:modelValue', 'change', 'ready']);
+const labels = ['省/直辖市', '市', '区/县', '乡镇/街道'];
+const options = ref<Region[][]>([[], [], [], []]), path = ref<Region[]>([]);
+const loading = ref(false), error = ref('');
+const fields = computed(() => labels.map((label, index) => ({ label, index,
+  options: [index === 0 ? '不选择' : '不细分', ...options.value[index].map(item => item.name)],
+  value: path.value[index]?.name || '',
+  disabled: props.disabled || loading.value || (index > 0 && (!path.value[index - 1]?.hasChildren || !options.value[index].length)),
+})));
+let revision = 0, alive = true;
+let retry = () => initialize();
+
+async function initialize() {
+  const current = ++revision, code = props.modelValue;
+  loading.value = true; error.value = '';
+  retry = initialize;
+  try {
+    const selected = code ? await getFootprintRegionPath(code) : [];
+    const parents = [null, ...selected.filter(item => item.hasChildren && item.level < 4)];
+    const loaded = await Promise.all(parents.map(item => getFootprintRegions(item?.code)));
+    if (!alive || current !== revision) return;
+    const next: Region[][] = [[], [], [], []];
+    parents.forEach((item, index) => { next[item?.level || 0] = loaded[index]; });
+    options.value = next; path.value = selected;
+    emit('ready', [...selected]);
+  } catch (failure) { if (alive && current === revision) error.value = failure.message || '地区加载失败'; }
+  finally { if (alive && current === revision) loading.value = false; }
+}
+async function loadChildren(region: Region, current: number) {
+  loading.value = true; error.value = '';
+  retry = () => loadChildren(region, ++revision);
+  try {
+    const children = await getFootprintRegions(region.code);
+    if (alive && current === revision) options.value[region.level] = children;
+  } catch (failure) { if (alive && current === revision) error.value = failure.message || '地区加载失败'; }
+  finally { if (alive && current === revision) loading.value = false; }
+}
+function choose(index: number, value: string) {
+  const current = ++revision;
+  const selected = options.value[index].find(item => item.name === value);
+  path.value = [...path.value.slice(0, index), ...(selected ? [selected] : [])];
+  options.value = options.value.map((items, level) => level > index ? [] : items);
+  error.value = '';
+  emit('update:modelValue', path.value.at(-1)?.code || null);
+  emit('change', [...path.value]);
+  if (selected?.hasChildren && index < 3) loadChildren(selected, current);
+}
+watch(() => props.modelValue, code => {
+  if (code !== (path.value.at(-1)?.code || null) || !options.value[0].length) initialize();
+}, { immediate: true });
+onUnmounted(() => { alive = false; revision++; });
+</script>
+<template>
+  <view class="region-picker" :aria-busy="loading">
+    <view class="region-grid">
+      <view v-for="field in fields" :key="field.index" class="region-cell"><FormField :label="field.label" compact stretch kind="selector" :options="field.options" :model-value="field.value" :disabled="field.disabled" :placeholder="field.index === 0 ? '请选择（选填）' : '不细分'" @update:model-value="choose(field.index, $event)"><template #labelAction><LoadingIndicator v-if="loading && field.index === 0" compact label="加载地区" /></template></FormField></view>
+    </view>
+    <view v-if="error" class="region-error"><text class="region-error-text" role="alert">{{ error }}</text><MobileButton label="重试地区" variant="quiet" icon="ant-design:reload-outlined" :disabled="disabled" @click="retry" /></view>
+  </view>
+</template>
+<style scoped lang="scss">
+@use '../../styles/spacing-tokens' as *;
+@use '../../styles/typography' as *;
+.region-picker { margin-bottom: $space-form; }
+.region-grid { display: flex; flex-direction: row; flex-wrap: wrap; gap: $space-inline; }
+.region-cell { width: calc(50% - $space-inline / 2); min-width: 0; }
+.region-error { display: flex; flex-direction: row; align-items: center; gap: $space-inline; }
+.region-error-text { @include type-style('caption'); color: #c2414a; }
+</style>

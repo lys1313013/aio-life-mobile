@@ -416,8 +416,12 @@ tests/                契约测试与 Web E2E
 
 「全部 → 记录 → 生活足迹」，路由 `/pages/life-footprints/index`。默认中国地图，点选后展示紧凑详情；起止日期精确到日，“至今”提交结束日期 `9999-12-31`，界面仍显示“至今”，不使用 `ongoing` 或幂等键。支持地点、地址、备注及位置确认。普通点 8px、选中点 10px、聚合点 18px，透明点击范围 44px；业务页面、服务及标记资源归 `pages/life-footprints` 分包。
 
-H5 按需加载百度 JSAPI 4.0，由后端下发浏览器 AK；地点查询与解析统一走登录后的后端 API。微信及 App 使用原生 `map`，与存储统一为 GCJ02，不请求持续定位。后端建表、菜单和 AK 配置见服务端 README「生活足迹」。
+H5 按需加载随前端打包的 Leaflet，不加载百度 SDK、不需要浏览器 AK；底图采用后端系统配置下发的标准 XYZ 服务，默认 OpenStreetMap，可改为自建服务。WGS84 底图上将 GCJ02 记录转换后显示，选点转回 GCJ02 提交；GCJ02 底图直接使用记录坐标。底图失败保留标记和表单、局部重试，右下角常驻数据署名。地点查询与解析统一走登录后的后端 API，仅需百度服务端 AK。微信及 App 使用原生 `map`，与存储统一为 GCJ02，不请求持续定位。后端建表、菜单和 AK 配置见服务端 README「生活足迹」。
 
 App 的 Android/iOS manifest 已登记 `uni-map.tencent`，源码 key 留空。打包前设置 `AIO_TENCENT_MAP_ANDROID_KEY` / `AIO_TENCENT_MAP_IOS_KEY` 后执行 `npm run prepare:app`；脚本将 key 仅写入 Git 忽略的 App 快照，也保留该快照中已有的 key。需在腾讯控制台匹配各平台包名、签名或 Bundle ID，重新构建自定义基座。配置方式见 [DCloud Android](https://doc.dcloud.net.cn/uni-app-x/collocation/manifest-android.html#uni-map)、[iOS](https://doc.dcloud.net.cn/uni-app-x/collocation/manifest-ios.html#uni-map)。不把百度服务端 AK 填入原生地图 SDK。
 
-专项检查：`node --test tests/life-footprints.test.mjs`；`npx playwright test tests/e2e/life-footprints.spec.js`（使用模拟 API/SDK，覆盖三种宽度、深浅主题、地点确认、真实 picker 操作、失败恢复和旧搜索响应）；`npm run build:weixin` 包含官方编译口径的包体检查。H5 与微信编译已验证，真实地图 AK 联调、微信模拟器/真机、App 编译/真机、上传与发布尚未验证。
+专项检查：`node --test tests/life-footprints.test.mjs`；`npx playwright test tests/e2e/life-footprints.spec.js`（真实 Leaflet、模拟 API/底图，覆盖三种宽度、深浅主题、地点确认、真实 picker 操作、失败恢复和旧搜索响应）；`npm run build:weixin` 包含官方编译口径的包体检查。真实百度地址解析 AK 联调、微信模拟器/真机、App 编译/真机、上传与发布尚未验证。
+
+新增／编辑支持从后端 `system_region` 表按需选择省、市、区县、乡镇街道；`GET /system/regions?parentCode=` 加载下一级，`GET /system/regions/{code}/path` 回显路径，只保存最深选中的字符串 `regionCode`。可以停在任一级或不选地区，旧记录兼容 `null`；境外地点继续手动选点。切换地区后清空旧坐标并要求重新选点，地区中心不作为精确位置。地区名称加入地点查询及地址解析上下文；详细地址在地图上方，新增和编辑共用紧凑双列字段及可滚动居中弹窗。微信原生地图使用浅色主题，不依赖 Web 腾讯 JavaScript SDK 或浏览器 Key；不请求持续定位权限。地区数据版本与导入维护以服务端 README 为准。
+
+地图适配与坐标转换分别位于 `src/pages/life-footprints/footprint-map.ts`、`coordinates.ts`，与 Web 的同名模块保持契约一致；仅 H5 条件编译引入 Leaflet 与样式，不进入微信主包或 App 原生地图。验证日志见 Git 忽略的 `artifacts/commit-validation/`。

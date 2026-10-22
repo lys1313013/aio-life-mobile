@@ -31,6 +31,7 @@ for (const width of [390, 768, 1440]) for (const theme of ['light', 'dark']) {
     const errors = []; page.on('pageerror', error => errors.push(error.message));
     const state = await setup(page);
     await expect(page.locator('.footprint-map-hit')).toHaveCount(1);
+    await expect(page.getByRole('link', { name: 'Leaflet 开源许可', exact: true })).toHaveAttribute('download', 'Leaflet-LICENSE.txt');
     await expect(page.locator('.footprint-detail')).toHaveCount(0);
     await page.screenshot({ path: testInfo.outputPath('china.png'), fullPage: true });
     await page.getByRole('button', { name: '3条地点记录', exact: true }).click();
@@ -72,6 +73,7 @@ for (const width of [390, 768, 1440]) for (const theme of ['light', 'dark']) {
     expect(state.writes.at(-1).endDate).toMatch(/^\d{4}-\d{2}-\d{2}$/);
     expect(state.writes.at(-1).endDate).not.toBe('9999-12-31');
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    expect(state.sdkRequests).toEqual([]);
     expect(errors).toEqual([]);
   });
 }
@@ -146,3 +148,85 @@ for (const width of [390, 768, 1440]) for (const theme of ['light', 'dark']) {
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   });
 }
+
+test('无百度 AK 时仍可显示与选点，底图失败后局部重试保持标记和高度', async ({ page }) => {
+  const state = await setup(page, { failTiles: true, searchEnabled: false });
+  const region = page.locator('.footprint-map-region');
+  await expect(page.getByText('底图加载失败', { exact: true })).toBeVisible();
+  await expect(page.locator('.footprint-map-hit')).toHaveCount(1);
+  const initial = await region.boundingBox();
+  state.failTiles = false;
+  await page.getByRole('button', { name: '重试底图', exact: true }).click();
+  await expect(page.getByText('底图加载失败', { exact: true })).toHaveCount(0);
+  await expect(page.locator('.footprint-map-hit')).toHaveCount(1);
+  expect((await region.boundingBox()).height).toBe(initial.height);
+  await page.getByRole('button', { name: '新增生活足迹', exact: true }).click();
+  const dialog = page.getByRole('dialog');
+  await dialog.locator('[aria-label="地点"] input').fill('无 AK 选点');
+  await dialog.locator('uni-picker[aria-label="开始"]').click();
+  const nativeDate = dialog.locator('uni-picker[aria-label="开始"] input[type="date"]');
+  if (await nativeDate.count()) await nativeDate.fill('2020-08-01');
+  else await page.locator('.uni-picker-action-confirm:visible').click();
+  await dialog.locator('.footprint-h5-canvas').click({ position: { x: 130, y: 110 } });
+  await expect(dialog).toContainText('位置已确认');
+  await dialog.getByRole('button', { name: '保存', exact: true }).click();
+  await expect(dialog).toHaveCount(0);
+  expect(state.writes.at(-1).coordinateSystem).toBe('GCJ02');
+  expect(state.sdkRequests).toEqual([]);
+});
+
+
+test('地图缩小及横跨日期变更线时不请求越界瓦片', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  const state = await setup(page, { records: [], searchEnabled: false });
+  await page.getByRole('button', { name: '新增生活足迹', exact: true }).click();
+  const dialog = page.getByRole('dialog');
+  await dialog.getByRole('button', { name: '缩小地图', exact: true }).click();
+  await dialog.getByRole('button', { name: '缩小地图', exact: true }).click();
+  await expect(dialog.locator('.leaflet-tile')).not.toHaveCount(0);
+  await expect.poll(() => page.locator('[role="dialog"] .leaflet-tile').evaluateAll(tiles => tiles.every(tile => tile.complete && tile.naturalWidth > 0))).toBe(true);
+  expect(state.invalidTileRequests).toEqual([]);
+  await expect(dialog.getByText('底图加载失败', { exact: true })).toHaveCount(0);
+});
+
+async function selectRegion(page, label, value) {
+  await page.locator(`uni-picker[aria-label="${label}"]`).click();
+  await page.locator('.uni-picker-select:visible').getByText(value, { exact: true }).click();
+}
+
+test('四级地区按需加载、失败重试、地址解析上下文与编辑回显', async ({ page }, testInfo) => {
+  await page.setViewportSize({ width: 1440, height: 1100 });
+  const state = await setup(page, { failRegions: true });
+  await page.getByRole('button', { name: '新增生活足迹', exact: true }).click();
+  const dialog = page.getByRole('dialog');
+  await expect(dialog.getByRole('alert')).toContainText('模拟地区读取失败');
+  state.failRegions = false;
+  await dialog.getByRole('button', { name: '重试地区', exact: true }).click();
+  await expect(dialog.getByRole('alert')).toHaveCount(0);
+  await selectRegion(page, '省/直辖市', '浙江省');
+  await expect.poll(() => state.regionCalls.some(path => path.includes('parentCode=33'))).toBe(true);
+  await selectRegion(page, '市', '杭州市');
+  await selectRegion(page, '区/县', '西湖区');
+  await selectRegion(page, '乡镇/街道', '三墩镇');
+  await dialog.locator('[aria-label="地点"] input').fill('模拟住所');
+  await dialog.locator('[aria-label="详细地址"] input').fill('甲路1号');
+  await dialog.getByRole('button', { name: '解析地址到地图', exact: true }).click();
+  await expect.poll(() => state.geocodes.at(-1)).toBe('浙江省杭州市西湖区三墩镇甲路1号');
+  await dialog.getByRole('button', { name: '确认位置', exact: true }).click();
+  await dialog.locator('uni-picker[aria-label="开始"]').click();
+  const date = dialog.locator('uni-picker[aria-label="开始"] input[type="date"]');
+  if (await date.count()) await date.fill('2020-08-01');
+  else await page.locator('.uni-picker-action-confirm:visible').click();
+  await page.screenshot({ path: testInfo.outputPath('regions-editor.png'), fullPage: true });
+  await dialog.getByRole('button', { name: '保存', exact: true }).click();
+  await expect(dialog).toHaveCount(0);
+  expect(state.writes.at(-1)).toMatchObject({ regionCode: '330106012', city: '杭州市' });
+  await page.getByRole('button', { name: '编辑生活足迹', exact: true }).click();
+  await expect(dialog.locator('uni-picker[aria-label="乡镇/街道"]')).toContainText('三墩镇');
+  await selectRegion(page, '省/直辖市', '北京市');
+  await expect(dialog.locator('uni-picker[aria-label="市"]')).toContainText('不细分');
+  await expect(dialog).toContainText('点选地图标记具体位置');
+  await dialog.getByRole('button', { name: '保存', exact: true }).click();
+  await expect(dialog.getByRole('alert')).toContainText('选择并确认地图位置');
+  await dialog.getByRole('button', { name: '取消', exact: true }).click();
+});

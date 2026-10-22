@@ -1,3 +1,5 @@
+import type { MapTileSource } from './map-config.ts';
+
 /** 结束日期的特殊值；界面展示为“至今”。 */
 export const PRESENT_DATE = '9999-12-31';
 
@@ -11,6 +13,7 @@ export interface FootprintRequest extends Coordinate {
   placeName: string;
   address: null | string;
   city: null | string;
+  regionCode: null | string;
   coordinateSystem: 'GCJ02';
   providerUid: null | string;
   note: null | string;
@@ -28,7 +31,7 @@ export interface LocationResult extends Coordinate {
   level: string;
 }
 export interface MapConfig {
-  browserKey: string;
+  tiles?: MapTileSource;
   searchEnabled: boolean;
   coordinateSystem: 'GCJ02';
 }
@@ -54,6 +57,7 @@ export function emptyDraft(): Draft {
     placeName: '',
     address: null,
     city: null,
+    regionCode: null,
     latitude: null,
     longitude: null,
     coordinateSystem: 'GCJ02',
@@ -97,6 +101,7 @@ export function draftPayload(draft: Draft): FootprintRequest {
     placeName: draft.placeName.trim(),
     address: draft.address?.trim() || null,
     city: draft.city?.trim() || null,
+    regionCode: draft.regionCode || null,
     longitude: draft.longitude!,
     latitude: draft.latitude!,
     coordinateSystem: 'GCJ02',
@@ -137,13 +142,15 @@ export function timeLabel(
 export function groupLocations(
   records: Footprint[],
   zoom: number,
+  project: (point: Coordinate) => Coordinate = (point) => point,
 ): LocationGroup[] {
   const scale = 256 * 2 ** Math.min(zoom, 22),
     groups: (LocationGroup & { x: number; y: number })[] = [];
   for (const record of records) {
     if (!validCoordinate(record)) continue;
-    const sin = Math.sin((Math.max(-85.05112878, Math.min(85.05112878, record.latitude)) * Math.PI) / 180);
-    const x = ((record.longitude + 180) / 360) * scale;
+    const position = project(record);
+    const sin = Math.sin((Math.max(-85.05112878, Math.min(85.05112878, position.latitude)) * Math.PI) / 180);
+    const x = ((position.longitude + 180) / 360) * scale;
     const y = (0.5 - Math.log((1 + sin) / (1 - sin)) / (4 * Math.PI)) * scale;
     const group = groups.find((g) => Math.hypot(g.x - x, g.y - y) < 44);
     if (group) {

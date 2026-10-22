@@ -15,13 +15,17 @@ import { session, restoreSession } from '../../services/session.ts';
 import { useWindowResize } from '../../services/window-resize.ts';
 import FootprintMap from './FootprintMap.uvue';
 import DateInput from './DateInput.uvue';
+import RegionPicker from './RegionPicker.uvue';
+import type { Region } from './regions.ts';
+import { regionAddress, regionCity, regionName } from './regions.ts';
 import { draftPayload, emptyDraft, PRESENT_DATE, sortFootprints, timeLabel } from './model.ts';
 import { createFootprint, deleteFootprint, geocodeFootprintAddress, getFootprintMapConfig, getFootprints, reverseFootprintLocation, searchFootprintLocations, updateFootprint } from './api.ts';
 
 const records = ref<Footprint[]>([]), selected = ref<Footprint | null>(null), choices = ref<Footprint[]>([]);
-const config = ref<MapConfig>({ browserKey: '', searchEnabled: false, coordinateSystem: 'GCJ02' });
+const config = ref<MapConfig>({ searchEnabled: false, coordinateSystem: 'GCJ02' });
 const ready = ref(false), loading = ref(false), refreshing = ref(false), saving = ref(false), searching = ref(false), resolving = ref(false);
 const reloadAvailable = ref(false);
+const regionPath = ref<Region[]>([]);
 const error = ref(''), formError = ref(''), form = ref<Draft | null>(null), candidates = ref<LocationResult[]>([]), mapHint = ref('');
 const mainMap = ref(), editorMap = ref();
 const mapHeight = ref(480);
@@ -32,7 +36,7 @@ let active = false, generation = 0, editRevision = 0, searchRevision = 0;
 let debounce: ReturnType<typeof setTimeout> | undefined;
 function invalidateSearch() { clearTimeout(debounce); searchRevision++; candidates.value = []; searching.value = resolving.value = false; }
 function suspend() { active = false; generation++; editRevision++; invalidateSearch(); loading.value = saving.value = refreshing.value = false; form.value = null; }
-function reset() { suspend(); records.value = []; selected.value = null; choices.value = []; ready.value = false; config.value = { browserKey: '', searchEnabled: false, coordinateSystem: 'GCJ02' }; error.value = ''; }
+function reset() { suspend(); records.value = []; selected.value = null; choices.value = []; ready.value = false; config.value = { searchEnabled: false, coordinateSystem: 'GCJ02' }; error.value = ''; }
 onHide(suspend); onUnload(reset);
 watch(() => session.token, () => { const wasActive = active; reset(); active = wasActive; if (active && session.token) load(); }, { flush: 'sync' });
 onShow(() => { restoreSession(); active = true; if (!session.token) { uni.reLaunch({ url: '/pages/login/index' }); return; } load(); });
@@ -61,8 +65,15 @@ function selectGroup(group: LocationGroup) {
   selected.value = null; choices.value = group.records;
   if (!group.records.every(r => r.longitude === group.records[0].longitude && r.latitude === group.records[0].latitude)) mainMap.value?.focus(group.records);
 }
-function edit(record?: Footprint) { reloadAvailable.value = false; editRevision++; invalidateSearch(); formError.value = mapHint.value = ''; form.value = record ? { ...record, confirmed: true } : emptyDraft(); }
+function edit(record?: Footprint) { reloadAvailable.value = false; editRevision++; invalidateSearch(); formError.value = mapHint.value = ''; regionPath.value = []; form.value = record ? { ...record, regionCode: record.regionCode || null, confirmed: true } : emptyDraft(); }
 function close() { if (!saving.value) { editRevision++; invalidateSearch(); form.value = null; } }
+function changeRegion(path: Region[]) {
+  if (!form.value) return;
+  invalidateSearch(); regionPath.value = path;
+  form.value.city = regionCity(path);
+  form.value.longitude = form.value.latitude = null; form.value.confirmed = false; form.value.providerUid = null;
+  mapHint.value = path.length ? '地区已选择，请解析地址或在地图上点选具体位置' : '';
+}
 function nameInput(value: string) {
   if (!form.value || form.value.placeName === value) return;
   form.value.placeName = value; invalidateSearch();
@@ -71,7 +82,7 @@ function nameInput(value: string) {
   debounce = setTimeout(async () => {
     searching.value = true;
     try {
-      const result = await searchFootprintLocations(value.trim());
+      const result = await searchFootprintLocations(value.trim(), regionName(regionPath.value));
       if (validEdit(editing, token) && revision === searchRevision) { candidates.value = result; mapHint.value = result.length ? '' : '未找到可选地点，可补充城市名称或在地图选点'; }
     } catch (failure) { if (validEdit(editing, token) && revision === searchRevision) mapHint.value = failure.message || '搜索失败，可在地图选点'; }
     finally { if (validEdit(editing, token) && revision === searchRevision) searching.value = false; }
@@ -81,7 +92,7 @@ function addressInput(value: string) { if (!form.value || form.value.address ===
 function selectCandidate(location: LocationResult) {
   if (!form.value) return;
   invalidateSearch(); form.value = { ...form.value, longitude: location.longitude, latitude: location.latitude,
-    placeName: location.placeName, address: location.address || null, city: location.city || null,
+    placeName: location.placeName, address: location.address || null, city: regionCity(regionPath.value) || location.city || null,
     providerUid: location.providerUid, confirmed: false };
   mapHint.value = location.precise ? '' : '请确认地图位置，必要时点选调整';
   editorMap.value?.focus([location], 16);
@@ -98,7 +109,7 @@ async function pickPosition(location: Coordinate) {
     if (!validEdit(editing, token) || revision !== searchRevision || !form.value) return;
     if (!form.value.placeName.trim()) form.value.placeName = result.placeName;
     if (!form.value.address) form.value.address = result.address;
-    form.value.city = result.city || form.value.city;
+    form.value.city = regionCity(regionPath.value) || result.city || form.value.city;
   } catch (failure) { if (validEdit(editing, token) && revision === searchRevision) mapHint.value = failure.message || '可手动补充地址'; }
   finally { if (validEdit(editing, token) && revision === searchRevision) resolving.value = false; }
 }
@@ -109,7 +120,7 @@ async function geocode() {
   const name = form.value.placeName;
   resolving.value = true;
   try {
-    const result = await geocodeFootprintAddress(form.value.address?.trim() || name.trim());
+    const result = await geocodeFootprintAddress(regionAddress(regionPath.value, form.value.address?.trim() || name.trim()));
     if (validEdit(editing, token) && revision === searchRevision) { selectCandidate(result); if (form.value && name) form.value.placeName = name; }
   } catch (failure) { if (validEdit(editing, token) && revision === searchRevision) mapHint.value = failure.message || '解析失败，请在地图选点'; }
   finally { if (validEdit(editing, token)) resolving.value = false; }
@@ -146,7 +157,7 @@ async function remove() {
     <view class="ui-page-body footprint-page">
       <view class="footprint-map-region">
         <view v-if="error" class="footprint-error" :class="themeClass('footprint-error')"><text class="error-text" role="alert">{{ error }}</text><MobileButton label="重试" :loading="loading" variant="quiet" @click="load" /></view>
-        <FootprintMap ref="mainMap" :browser-key="config.browserKey" :records="records" :selected-id="selected?.id" :height="mapHeight" @select="selectGroup" />
+        <FootprintMap ref="mainMap" :source="config.tiles" :records="records" :selected-id="selected?.id" :height="mapHeight" @select="selectGroup" />
         <view v-if="loading" class="footprint-loading"><LoadingIndicator label="读取记录" /></view>
         <view v-if="selected || choices.length > 0" class="footprint-detail" :class="themeClass('footprint-detail')">
           <view class="detail-heading"><text class="detail-name" :class="themeClass('detail-name')">{{ selected?.placeName || choices.length + ' 条记录' }}</text><view class="detail-actions"><MobileButton v-if="selected" label="编辑生活足迹" icon="ant-design:edit-outlined" variant="ghost" @click="edit(selected)" /><MobileButton label="关闭详情" icon="ant-design:close-outlined" variant="ghost" @click="dismiss" /></view></view>
@@ -155,14 +166,13 @@ async function remove() {
       </view>
     </view>
     <template #fixed>
-      <AdaptiveModal v-if="form" label="编辑生活足迹" :max-width="520" :busy="saving" show-close :content-key="formError + mapHint + candidates.length + String(form.confirmed)" @close="close">
+      <AdaptiveModal v-if="form" label="编辑生活足迹" :max-width="640" :busy="saving" show-close :content-key="formError + mapHint + candidates.length + String(form.confirmed)" @close="close">
         <view class="footprint-date-row"><view class="footprint-date-cell"><DateInput label="开始" :model-value="form.startDate" :disabled="saving" @update:model-value="form.startDate = $event" /></view><view class="footprint-date-cell"><DateInput label="结束" :model-value="form.endDate === PRESENT_DATE ? '' : form.endDate" :disabled="saving || form.endDate === PRESENT_DATE" @update:model-value="form.endDate = $event"><template #action><checkbox-group @change="form.endDate = $event.detail.value.length > 0 ? PRESENT_DATE : ''"><label class="ongoing-label"><checkbox value="ongoing" :checked="form.endDate === PRESENT_DATE" :disabled="saving" /><text class="ongoing-text" :class="themeClass('ongoing-text')">至今</text></label></checkbox-group></template></DateInput></view></view>
         <FormField label="地点" :model-value="form.placeName" placeholder="搜索地点或填写名称" :disabled="saving" @update:model-value="nameInput"><template #labelAction><LoadingIndicator v-if="searching" compact label="搜索地点" /></template></FormField>
         <view v-if="candidates.length" class="location-results"><button role="button" v-for="(location, index) in candidates" :key="location.providerUid || String(index)" class="location-option" :class="themeClass('location-option')" @click="selectCandidate(location)"><text class="group-name" :class="themeClass('group-name')">{{ location.placeName }}</text><text class="detail-time" :class="themeClass('detail-time')">{{ location.city }} {{ location.address }}</text></button></view>
-        <FootprintMap ref="editorMap" :browser-key="config.browserKey" :point="point" picking :height="180" @pick="pickPosition" />
-        <view class="position-state"><text class="detail-time" :class="themeClass('detail-time')">{{ form.confirmed ? '位置已确认' : point ? '请确认所选位置' : '请选择地图位置' }}</text><MobileButton v-if="point && !form.confirmed" label="确认位置" variant="quiet" :disabled="saving" @click="confirmPosition" /><LoadingIndicator v-if="resolving" compact label="解析地址" /></view>
-        <text v-if="mapHint" class="detail-time" :class="themeClass('detail-time')">{{ mapHint }}</text>
-        <FormField label="地址" :model-value="form.address || ''" placeholder="详细地址（选填）" :disabled="saving" @update:model-value="addressInput"><template #labelAction><MobileButton v-if="config.searchEnabled" label="解析地址到地图" icon="ant-design:environment-outlined" variant="ghost" :loading="resolving" :disabled="saving || !(form.address || form.placeName)" @click="geocode" /></template></FormField>
+        <RegionPicker v-model="form.regionCode" :disabled="saving" @ready="regionPath = $event" @change="changeRegion" />
+        <FormField label="详细地址" :model-value="form.address || ''" placeholder="街道、门牌号等（选填）" :disabled="saving" @update:model-value="addressInput"><template #labelAction><MobileButton v-if="config.searchEnabled" label="解析地址到地图" icon="ant-design:environment-outlined" variant="ghost" :loading="resolving" :disabled="saving || !(form.address || form.placeName)" @click="geocode" /></template></FormField>
+        <FormField label="地图位置"><FootprintMap ref="editorMap" :source="config.tiles" :point="point" picking :height="220" @pick="pickPosition" /><view class="position-state"><text class="detail-time" :class="themeClass('detail-time')">{{ form.confirmed ? '位置已确认' : point ? '请确认所选位置' : '点选地图标记具体位置' }}</text><MobileButton v-if="point && !form.confirmed" label="确认位置" variant="quiet" :disabled="saving" @click="confirmPosition" /><LoadingIndicator v-if="resolving" compact label="解析地址" /></view><text v-if="mapHint" class="detail-time" :class="themeClass('detail-time')">{{ mapHint }}</text></FormField>
         <FormField label="备注" :model-value="form.note || ''" kind="textarea" textarea-size="compact" :disabled="saving" @update:model-value="form.note = $event" />
         <view v-if="formError"><text class="error-text" role="alert">{{ formError }}</text><MobileButton v-if="reloadAvailable" label="关闭并重新读取" variant="quiet" :disabled="saving" @click="close(); load()" /></view>
         <FormActions><template v-if="form.id" #secondary><ConfirmAction label="删除" :action="remove" /></template><MobileButton label="取消" variant="quiet" :disabled="saving" @click="close" /><MobileButton label="保存" :loading="saving" @click="save" /></FormActions>
@@ -207,5 +217,5 @@ async function remove() {
 .location-results { display: flex; flex-direction: column; gap: $space-detail; margin-bottom: $space-section; }
 .location-option { display: flex; flex-direction: column; align-items: flex-start; gap: $space-detail; padding: $space-inline; margin: 0; background-color: #f3f4f7; border-radius: 6px; text-align: left; }
 .location-option-dark { background-color: #282c34; }
-.position-state { display: flex; flex-direction: row; align-items: center; gap: $space-inline; min-height: $space-controlMin; margin-bottom: $space-form; }
+.position-state { display: flex; flex-direction: row; align-items: center; gap: $space-inline; min-height: $space-controlMin; }
 </style>
