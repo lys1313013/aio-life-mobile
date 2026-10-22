@@ -187,7 +187,9 @@ test('最近提交在卡片内部上滑加载下一页', async ({ page }) => {
   const pages=[];
   await setup(page, async (route,path)=>{
     if(path!=='/api/github/recent-commits')return false;
-    const current=Number(new URL(route.request().url()).searchParams.get('page'));pages.push(current);
+    const params = new URL(route.request().url()).searchParams;
+    expect(params.get('pageSize')).toBe('10'); expect(params.has('perPage')).toBe(false);
+    const current=Number(params.get('page'));pages.push(current);
     await route.fulfill({json:{code:0,data:Array.from({length:current===1?10:1},(_,i)=>({id:`${current}-${i}`,repo:'fixture-repo',message:`模拟提交 ${current}-${i}`,date:'2026-09-30T12:00:00'}))}});return true;
   });
   await expect(page.locator('.commits-scroll')).toBeAttached();

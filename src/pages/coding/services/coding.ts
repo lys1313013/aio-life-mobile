@@ -7,7 +7,7 @@ export function fetchCodingBindings(tokens=false) {
   // #endif
   return request<any[]>(queryPath('/userbinds/list',{includeToken:tokens}))
 }
-export const fetchCommits = (page=1) => request<any[]>(queryPath('/github/recent-commits',{page,perPage:20}))
+export const fetchCommits = (page=1) => request<any[]>(queryPath('/github/recent-commits',{page,pageSize:20}))
 export const fetchCsdnStats = (username:string) => request<any>(queryPath('/csdn/stats',{username}))
 export const fetchCsdnArticles = (username:string,limit=20) => request<any[]>(queryPath('/csdn/articles',{username,limit}))
 export function externalRequest(url:string, data:Record<string,any>|null=null, token=''):Promise<any>{return new Promise((resolve,reject)=>{uni.request({url,method:data?'POST':'GET',data,header:{'Content-Type':'application/json',...(token?{Authorization:'Bearer '+token}:{})},success:response=>{if(response.statusCode<200||response.statusCode>=300)reject(new Error('外部服务请求失败 '+response.statusCode));else if((response.data as any)?.errors)reject(new Error((response.data as any).errors[0].message));else resolve(response.data)},fail:()=>reject(new Error('外部服务连接失败，请重试'))})})}

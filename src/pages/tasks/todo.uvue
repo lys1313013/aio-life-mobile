@@ -76,16 +76,22 @@ async function load(refresh = false) {
   refreshing.value = refresh;
   error.value = '';
   try {
-    const columnPage = await scope.wait(fetchColumns());
+    const columnRows = [];
+    let columnPage = 1;
+    while (true) {
+      const response = await scope.wait(fetchColumns(columnPage++));
+      columnRows.push(...response.items);
+      if (!response.items.length || (response.total != null && columnRows.length >= Number(response.total)) || response.items.length < 200) break;
+    }
     const rows = [];
     let page = 1;
     while (true) {
       const response = await scope.wait(fetchTasks(page++));
       rows.push(...response.items);
-      if (rows.length >= response.total || response.items.length < 100) break;
+      if (!response.items.length || (response.total != null && rows.length >= Number(response.total)) || response.items.length < 100) break;
     }
     if (!alive || current !== generation) return;
-    columns.value = columnPage.items;
+    columns.value = columnRows;
     tasks.value = rows;
     if (!columns.value.some((c) => c.id === selected.value))
       selected.value = columns.value[0]?.id || '';

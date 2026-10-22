@@ -107,7 +107,7 @@ export const getExercises = (lastDate = '') =>
       (lastDate ? '&lastDate=' + encodeURIComponent(lastDate) : ''),
   )
 export const getCommits = (page = 1) =>
-  homeRequest<Commit[]>('/github/recent-commits?perPage=10&page=' + page)
+  homeRequest<Commit[]>('/github/recent-commits?pageSize=10&page=' + page)
 export async function getGithubProfile() {
   const bindings = await homeRequest<{ platform: string; platformUsername?: string }[]>('/userbinds/list')
   const name = bindings.find(item => item.platform === 'github')?.platformUsername || ''

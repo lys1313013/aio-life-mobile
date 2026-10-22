@@ -24,7 +24,7 @@ async function fixtures(page) {
   await route('/goals', [{ id: '1', title: '模拟目标', type: 1, status: 'in_progress', isPinned: 0 }]);
   const books = Array.from({ length: 35 }, (_, i) => ({ id: String(i + 1), title: '模拟阅读 ' + (i + 1), status: 'in_progress', type: 1 }));
   await route('/read-record/page', url => {
-    const current = Number(url.searchParams.get('current') || 1);
+    const current = Number(url.searchParams.get('page') || 1);
     return { items: books.slice((current - 1) * 30, current * 30), total: books.length };
   });
   await route('/expense/query', { items: [{ id: '1', amt: 12, expDesc: '模拟支出', expTime: '2026-10-05 12:00:00', expTypeId: 'type', payTypeId: 'type' }], total: 1 });

@@ -52,7 +52,14 @@ test('嵌套事件、空附件及明确 null 保留清空语义', () => {
 
 test('GET 精确路径优先，筛选保留 false 和零', () => {
   assert.deepEqual(pickQuery('/relationships/persons/search', { keyword: '人', userId: '11' }), { keyword: '人' })
-  assert.deepEqual(pickQuery('/movie/page', { current: 0, activeOnly: false, userId: '11' }), { current: 0, activeOnly: false })
+  assert.deepEqual(pickQuery('/movie/page', { page: 0, activeOnly: false, userId: '11' }), { page: 0, activeOnly: false })
+})
+
+test('移动分页白名单统一保留 page/pageSize，游标及业务筛选不被误删', () => {
+  for (const path of ['/taskColumn/query', '/tasks', '/read-record/page', '/movie/page', '/message/admin/list', '/github/recent-commits']) {
+    assert.deepEqual(pickQuery(path, { page: 2, pageSize: 20, ignored: true }), { page: 2, pageSize: 20 }, path)
+  }
+  assert.deepEqual(pickQuery('/weread/recent', { cursor: '1791163200:9007199254740993', pageSize: 6, ignored: true }), { cursor: '1791163200:9007199254740993', pageSize: 6 })
 })
 
 test('视频封面批量查询保留完整字符串 ID 并拒绝用户归属参数', () => {
@@ -85,10 +92,10 @@ test('实际 uni.request 边界执行筛选且不修改原对象', async () => {
     assert.deepEqual(sent.data,{content:'任务'})
     assert.deepEqual(row,original)
     const cursor = '1791163200:9007199254740993'
-    await request('/weread/recent', 'GET', { cursor, size: 6, userId: 'other' })
-    assert.deepEqual(sent.data, { cursor, size: 6 })
-    const data = await request('/movie/page','GET',{current:1,size:20,activeOnly:false,userId:'11'})
-    assert.deepEqual(sent.data,{current:1,size:20,activeOnly:false})
+    await request('/weread/recent', 'GET', { cursor, pageSize: 6, userId: 'other' })
+    assert.deepEqual(sent.data, { cursor, pageSize: 6 })
+    const data = await request('/movie/page','GET',{page:1,pageSize:20,activeOnly:false,userId:'11'})
+    assert.deepEqual(sent.data,{page:1,pageSize:20,activeOnly:false})
     assert.deepEqual(data,{items:[],total:0})
     assert.equal(homeDataRevision('watched'), watchedRevision + 1)
     for (const path of ['/goals', '/anniversaryRecords']) {
@@ -105,7 +112,7 @@ test('实际 uni.request 边界执行筛选且不修改原对象', async () => {
       assert.deepEqual(sent.data, { isPinned: 1 })
     }
     for (const path of ['/read-record/page', '/movie/page']) {
-      const query = { current: 2, size: 20, activeOnly: true, inProgressFirst: true }
+      const query = { page: 2, pageSize: 20, activeOnly: true, inProgressFirst: true }
       await request(path, 'GET', { ...query, userId: 'other' })
       assert.deepEqual(sent.data, query)
     }

@@ -67,9 +67,9 @@ export function getRelated(
 ) {
   return request<{ items: RelatedRecord[]; total: number }>(
     (type === 1 ? '/read-record/page' : '/movie/page') +
-      '?current=' +
+      '?page=' +
       page +
-      '&size=24&activeOnly=' +
+      '&pageSize=24&activeOnly=' +
       !all +
       (type === 1 ? '&inProgressFirst=true&title=' : '&title=') +
       encodeURIComponent(keyword),

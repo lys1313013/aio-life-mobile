@@ -42,7 +42,7 @@ test('分页去重、请求去重、失败保留旧列表和页码并重试同�
   assert.equal(state.page, 2); assert.equal(state.moreError, '连接失败')
   assert.deepEqual(state.rows.map(item => item.id), ['1', '2', '3'])
   await loadBusinessCard(read, state, async path => { paths.push(path); return page([row(4)], 61) }, true)
-  assert.equal(paths.at(-1), paths.at(-2)); assert.match(paths.at(-1), /current=3/)
+  assert.equal(paths.at(-1), paths.at(-2)); assert.match(paths.at(-1), /page=3/)
   assert.equal(state.page, 3); assert.equal(state.moreError, '')
 })
 

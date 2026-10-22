@@ -50,7 +50,7 @@ async function setup(page, options = {}) {
       let list = state.relatedRecords || [{ id: '9223372036854775803', title: '时间之书', status: 'in_progress' }];
       if (url.searchParams.get('activeOnly') === 'true') list = list.filter(item => ['in_progress', 'not_started'].includes(item.status));
       if (url.searchParams.get('title')) list = list.filter(item => item.title.includes(url.searchParams.get('title')));
-      const current = Number(url.searchParams.get('current'));
+      const current = Number(url.searchParams.get('page'));
       data = { items: list.slice((current - 1) * 24, current * 24), total: list.length };
     }
     const relatedMatch = path.match(/^\/api\/(read-record|movie)\/(\d+)$/);

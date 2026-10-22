@@ -34,7 +34,10 @@ async function setup(page, { connected = true, locked = false, compare = false }
   state.delay = () => { state.gate = new Promise(resolve => { state.release = resolve; }); };
   state.delay();
   const recent = async route => {
-    const cursor = new URL(route.request().url()).searchParams.get('cursor');
+    const params = new URL(route.request().url()).searchParams;
+    expect(params.get('pageSize')).toBe('6');
+    expect(params.has('size')).toBe(false);
+    const cursor = params.get('cursor');
     const previousBooks = cursor ? [...state.books] : null;
     state.calls++; state.cursors.push(cursor); await state.gate;
     const start = cursor ? Number(cursor.split(':')[1]) : 0;

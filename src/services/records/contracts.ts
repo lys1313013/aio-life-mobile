@@ -4,7 +4,7 @@ export const goalTypes = ['日', '周', '月', '季度', '半年', '年度', '�
 export const statuses = ['not_started', 'in_progress', 'completed', 'on_hold']
 export const statusLabels = ['待开始', '进行中', '已完成', '搁置']
 export function recordId(value) {
-  if (typeof value !== 'string' || !value) throw new Error('记录 ID 异常，请重新加载')
+  if (typeof value !== 'string' || !value.trim()) throw new Error('记录 ID 异常，请重新加载')
   return value
 }
 export function textTags(value) {
@@ -30,8 +30,8 @@ export function taskPayload(form, kind) {
   if (missingRequired(kind, form, field)) throw new Error(kind === 'column' ? '请输入列名称' : '请输入任务内容')
   const payload = { ...form, [field]: form[field].trim() }
   if (form.id) payload.id = recordId(form.id)
-  if (form.columnId) payload.columnId = recordId(form.columnId)
-  if (form.taskId) payload.taskId = recordId(form.taskId)
+  if (kind === 'task' && (!form.id || form.columnId != null)) payload.columnId = recordId(form.columnId)
+  if (kind === 'detail' && (!form.id || form.taskId != null)) payload.taskId = recordId(form.taskId)
   if (kind === 'detail' && ![1, 10, 20].includes(Number(form.priority))) throw new Error('请选择优先级')
   if (payload.startTime && payload.endTime && payload.endTime < payload.startTime) throw new Error('结束时间不能早于开始时间')
   return payload

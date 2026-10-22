@@ -45,7 +45,9 @@ for (const [path, endpoint, selector, size] of scenarios) {
     let fail = true;
     await page.route('**/api' + endpoint + '?**', async route => {
       const url = new URL(route.request().url());
-      const number = Number(url.searchParams.get('page') || url.searchParams.get('current') || 1);
+      expect(url.searchParams.get('pageSize')).toBe(String(size));
+      expect(url.searchParams.has('current') || url.searchParams.has('size') || url.searchParams.has('get')).toBe(false);
+      const number = Number(url.searchParams.get('page') || 1);
       requests.push(number);
       if (number === 2 && fail) return route.fulfill({ json: { code: 1, message: '模拟分页失败，已保留列表' } });
       if (number === 2) await pending.promise;

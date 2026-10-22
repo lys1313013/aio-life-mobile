@@ -62,3 +62,54 @@ test('待办明细完成和关注保留关联', async ({ page }) => {
   await page.locator('[aria-label="关注明细"]').click()
   expect(state.writes.at(-1).path).toBe('/api/taskDetails/star/7')
 })
+
+test('待办列超过公共页上限时逐页获取，失败重试保留完整看板', async ({ page }) => {
+  const state = await setup(page)
+  state.columns = Array.from({ length: 201 }, (_, index) => ({ id: String(index + 8), title: '分页列' + index, bgColor: '' }))
+  const calls = [], taskCalls = []
+  let fail = true
+  await page.route('**/api/taskColumn/query?**', async route => {
+    const params = new URL(route.request().url()).searchParams
+    const number = Number(params.get('page')), pageSize = Number(params.get('pageSize'))
+    expect(pageSize).toBe(200)
+    expect(params.has('current') || params.has('size') || params.has('get')).toBe(false)
+    calls.push(number)
+    if (number === 2 && fail) return route.fulfill({ json: { code: 1, message: '模拟列分页失败' } })
+    await route.fulfill({ json: { code: 0, data: { items: state.columns.slice((number - 1) * pageSize, number * pageSize), total: state.columns.length } } })
+  })
+  await page.route('**/api/tasks?**', async route => {
+    const params = new URL(route.request().url()).searchParams
+    const number = Number(params.get('page'))
+    expect(params.get('pageSize')).toBe('100')
+    expect(params.has('get')).toBe(false)
+    taskCalls.push(number)
+    const items = Array.from({ length: number === 1 ? 100 : 1 }, (_, index) => ({ id: String(1000 + number * 100 + index), columnId: '8', content: '分页任务' + number + '-' + index, unCompletedCount: 0 }))
+    await route.fulfill({ json: { code: 0, data: { items, total: null } } })
+  })
+  await page.goto('/#/pages/tasks/todo')
+  await expect(page.getByText('模拟列分页失败', { exact: true })).toBeVisible()
+  expect(calls).toEqual([1, 2])
+  fail = false
+  await page.getByRole('button', { name: '重试', exact: true }).click()
+  await expect(page.getByRole('button', { name: '分页列200', exact: true })).toHaveCount(1)
+  expect(calls).toEqual([1, 2, 1, 2])
+  await expect(page.locator('.task-card')).toHaveCount(101)
+  expect(taskCalls).toEqual([1, 2])
+})
+
+test('待办任务与明细保存使用统一日期时间格式和完整字符串 ID', async ({ page }) => {
+  const state = await setup(page)
+  state.tasks[0].dueDate = '2026-10-22 10:30:45'
+  state.details[0].startTime = '2026-10-22 09:30:45'
+  state.details[0].endTime = '2026-10-22 10:30:45'
+  await page.goto('/#/pages/tasks/todo')
+  await page.locator('[aria-label^="任务详情："]').click()
+  await page.getByRole('button', { name: '编辑任务', exact: true }).click()
+  await page.getByRole('button', { name: '保存', exact: true }).click()
+  await expect(page.getByRole('dialog', { name: '编辑待办', exact: true })).toHaveCount(0)
+  expect(state.writes.at(-1)).toMatchObject({ path: '/api/tasks/' + id, method: 'PUT', body: { columnId: '8', dueDate: '2026-10-22 10:30:45' } })
+  await page.getByRole('button', { name: '编辑明细', exact: true }).click()
+  await page.getByRole('button', { name: '保存', exact: true }).click()
+  await expect(page.getByRole('dialog', { name: '编辑待办', exact: true })).toHaveCount(0)
+  expect(state.writes.at(-1)).toMatchObject({ path: '/api/taskDetails', method: 'PUT', body: { id: '7', taskId: id, startTime: '2026-10-22 09:30:45', endTime: '2026-10-22 10:30:45' } })
+})

@@ -13,6 +13,19 @@ test('目标保留长 ID、父子关联、行动计划和标签，校验数值�
   assert.throws(() => goalPayload({ ...payload, targetValue: '-1' }), /非负整数/)
   assert.throws(() => goalPayload({ ...payload, endDate: '2026-09-01 00:00:00' }), /结束时间/)
 })
+test('待办新增要求字符串关联 ID，日期时间保持统一空格格式且不丢失秒', () => {
+  for (const value of [undefined, null, '', ' ', 12]) {
+    assert.throws(() => taskPayload({ content: '任务', columnId: value }, 'task'), /ID/)
+    assert.throws(() => taskPayload({ content: '明细', taskId: value, priority: 1 }, 'detail'), /ID/)
+  }
+  const task = taskPayload({ content: '任务', columnId: id, dueDate: '2026-10-22 10:30:45' }, 'task')
+  assert.equal(task.columnId, id)
+  assert.equal(task.dueDate, '2026-10-22 10:30:45')
+  const detail = taskPayload({ content: '明细', taskId: id, priority: 1, startTime: '2026-10-22 10:30:45', endTime: '2026-10-22 11:30:45' }, 'detail')
+  assert.equal(detail.taskId, id)
+  assert.equal(detail.startTime, '2026-10-22 10:30:45')
+  assert.equal(detail.endTime, '2026-10-22 11:30:45')
+})
 test('目标周期计算覆盖年末周、季度、半年、终生', () => {
   const now = new Date(2026, 11, 31)
   assert.deepEqual(goalDateRange(2, now), { startDate: '2026-12-27 00:00:00', endDate: '2027-01-02 23:59:59' })
@@ -27,13 +40,13 @@ test('待办排序只提交字符串 ID 和排序字段，越界不请求；明�
   const detail = taskPayload({ id, taskId: '8', content: ' 模拟明细 ', priority: 1, isStarred: 1, isCompleted: 0, sort: 2 }, 'detail')
   assert.equal(detail.isStarred, 1); assert.equal(detail.sort, 2); assert.equal(detail.content, '模拟明细')
 })
-test('待办 API 使用真实 get 分页、PUT路径、数组排序、星标和批删契约', async () => {
+test('待办 API 使用统一 page/pageSize 分页、PUT路径、数组排序、星标和批删契约', async () => {
   const calls = []; globalThis.__recordsRequest = async (...args) => { calls.push(args); return {} }
   let source = await readFile(new URL('../src/pages/tasks/services/tasks.ts', import.meta.url), 'utf8')
   source = source.replace("import { request } from '../../../services/api.ts'", 'const request = globalThis.__recordsRequest').replace("import { recordId } from '../../../services/records/contracts.ts'", `const recordId = ${recordId.toString()}`).replace(/request<any(?:\[\])?>/g, 'request')
   const api = await importSource(source)
   await api.fetchTasks(2); await api.saveTaskRecord('task', { id, columnId: '8', content: '模拟' }); await api.saveTaskRecord('detail', { id }); await api.sortTaskRecords('detail', [{ id, sort: 1 }]); await api.starDetail(id, false); await api.deleteGoal(id)
-  assert.deepEqual(calls, [['/tasks', 'GET', { get: 2, pageSize: 100 }], ['/tasks/' + id, 'PUT', { id, columnId: '8', content: '模拟' }], ['/taskDetails', 'PUT', { id }], ['/taskDetails/reSort', 'POST', [{ id, sort: 1 }]], ['/taskDetails/unstar/' + id, 'POST'], ['/goals/batchDelete', 'POST', { idList: [id] }]])
+  assert.deepEqual(calls, [['/tasks', 'GET', { page: 2, pageSize: 100 }], ['/tasks/' + id, 'PUT', { id, columnId: '8', content: '模拟' }], ['/taskDetails', 'PUT', { id }], ['/taskDetails/reSort', 'POST', [{ id, sort: 1 }]], ['/taskDetails/unstar/' + id, 'POST'], ['/goals/batchDelete', 'POST', { idList: [id] }]])
   delete globalThis.__recordsRequest
 })
 

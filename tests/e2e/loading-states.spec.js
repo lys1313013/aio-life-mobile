@@ -25,7 +25,10 @@ async function fixture(page, hold = {}) {
     let data = dashboardFixture(path) ?? [];
     if (path === '/api/user/info') data = { id: '1', accountUsername: 'fixture', nickname: '模拟用户', roles: ['admin'] };
     if (path === '/api/userbinds/list') data = [{ platform: 'github', platformUsername: 'fixture', accessToken: 'fixture-token' }];
-    if (path === '/api/github/recent-commits') data = Array.from({ length: 20 }, (_, n) => ({ id: String((Number(url.searchParams.get('page') || 1) - 1) * 20 + n), repo: 'fixture/mobile', message: '模拟提交 ' + n, date: '2026-10-02', actor: 'fixture' }));
+    if (path === '/api/github/recent-commits') {
+      expect(url.searchParams.get('pageSize')).toBe('20'); expect(url.searchParams.has('perPage')).toBe(false);
+      data = Array.from({ length: 20 }, (_, n) => ({ id: String((Number(url.searchParams.get('page') || 1) - 1) * 20 + n), repo: 'fixture/mobile', message: '模拟提交 ' + n, date: '2026-10-02', actor: 'fixture' }));
+    }
     await route.fulfill({ json: { code: 0, data } });
   });
   await page.route('https://api.github.com/**', async route => {

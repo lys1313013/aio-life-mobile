@@ -4,8 +4,8 @@ export function fetchGoals(filters = {}) { return request<any[]>('/goals', 'GET'
 export function saveGoal(payload) { return request<any>('/goals', payload.id ? 'PUT' : 'POST', payload) }
 export function setGoalPinned(id, isPinned) { return request<any>('/goals/' + recordId(id) + '/pin', 'PUT', { isPinned }) }
 export function deleteGoal(id) { return request('/goals/batchDelete', 'POST', { idList: [recordId(id)] }) }
-export function fetchColumns() { return request<any>('/taskColumn/query', 'GET', { page: 1, pageSize: 1000 }) }
-export function fetchTasks(page = 1) { return request<any>('/tasks', 'GET', { get: page, pageSize: 100 }) }
+export function fetchColumns(page = 1) { return request<any>('/taskColumn/query', 'GET', { page, pageSize: 200 }) }
+export function fetchTasks(page = 1) { return request<any>('/tasks', 'GET', { page, pageSize: 100 }) }
 export function fetchDetails(taskId) { return request<any[]>('/taskDetails', 'GET', { taskId: recordId(taskId) }) }
 export function saveTaskRecord(kind, payload) {
   const base = kind === 'column' ? '/taskColumn' : kind === 'task' ? '/tasks' : '/taskDetails'

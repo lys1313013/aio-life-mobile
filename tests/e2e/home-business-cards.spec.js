@@ -28,7 +28,7 @@ async function setup(page, { locked = false, failMore = false, readAccess = true
   }
   let failures = failMore ? 1 : 0;
   await page.route('**/api/read-record/page?*', async route => {
-    const current = Number(new URL(route.request().url()).searchParams.get('current'));
+    const current = Number(new URL(route.request().url()).searchParams.get('page'));
     calls.push(current);
     if (current === 2 && failures-- > 0) return route.fulfill({ status: 503, body: 'unavailable' });
     const all = Array.from({ length: 23 }, (_, i) => ({ id: String(i + 1), title: '阅读条目 ' + (i + 1), status: i < 20 ? 'in_progress' : 'not_started', totalProgress: 100, currentProgress: 30 }));
