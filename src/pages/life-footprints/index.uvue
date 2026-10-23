@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import type { Coordinate, Draft, Footprint, LocationGroup, LocationResult, MapConfig } from './model.ts';
-import { computed, ref, watch } from 'vue';
+import type { Coordinate, Draft, Footprint, FootprintPeriod, LocationGroup, LocationResult, MapConfig } from './model.ts';
+import { computed, nextTick, ref, watch } from 'vue';
 import { onHide, onShow, onUnload } from '@dcloudio/uni-app';
 import MobilePage from '../../components/MobilePage.uvue';
 import PageHeader from '../../components/PageHeader.uvue';
@@ -18,10 +18,17 @@ import DateInput from './DateInput.uvue';
 import RegionPicker from './RegionPicker.uvue';
 import type { Region } from './regions.ts';
 import { regionAddress, regionCity, regionName } from './regions.ts';
-import { draftPayload, emptyDraft, PRESENT_DATE, sortFootprints, timeLabel } from './model.ts';
+import { draftPayload, emptyDraft, groupPeriods, PRESENT_DATE, sortFootprints, timeLabel } from './model.ts';
 import { createFootprint, deleteFootprint, geocodeFootprintAddress, getFootprintMapConfig, getFootprints, reverseFootprintLocation, searchFootprintLocations, updateFootprint } from './api.ts';
 
 const records = ref<Footprint[]>([]), selected = ref<Footprint | null>(null), choices = ref<Footprint[]>([]);
+const periods = computed(() => groupPeriods(records.value));
+const selectedIds = computed(() => selected.value ? [selected.value.id] : choices.value.map(record => record.id));
+const editChoices = ref<Footprint[]>([]);
+const pageScrollTop = ref(0);
+let currentScrollTop = 0;
+function scrolled(event) { currentScrollTop = event.detail?.scrollTop || 0; }
+function showMap() { pageScrollTop.value = currentScrollTop; nextTick(() => { if (active) pageScrollTop.value = 0; }); }
 const config = ref<MapConfig>({ searchEnabled: false, coordinateSystem: 'GCJ02' });
 const ready = ref(false), loading = ref(false), refreshing = ref(false), saving = ref(false), searching = ref(false), resolving = ref(false);
 const reloadAvailable = ref(false);
@@ -35,7 +42,7 @@ const point = computed<Coordinate | null>(() => form.value?.longitude == null ||
 let active = false, generation = 0, editRevision = 0, searchRevision = 0;
 let debounce: ReturnType<typeof setTimeout> | undefined;
 function invalidateSearch() { clearTimeout(debounce); searchRevision++; candidates.value = []; searching.value = resolving.value = false; }
-function suspend() { active = false; generation++; editRevision++; invalidateSearch(); loading.value = saving.value = refreshing.value = false; form.value = null; }
+function suspend() { active = false; generation++; editRevision++; invalidateSearch(); loading.value = saving.value = refreshing.value = false; form.value = null; editChoices.value = []; }
 function reset() { suspend(); records.value = []; selected.value = null; choices.value = []; ready.value = false; config.value = { searchEnabled: false, coordinateSystem: 'GCJ02' }; error.value = ''; }
 onHide(suspend); onUnload(reset);
 watch(() => session.token, () => { const wasActive = active; reset(); active = wasActive; if (active && session.token) load(); }, { flush: 'sync' });
@@ -44,7 +51,7 @@ const valid = (revision: number, token: string) => active && revision === genera
 const validEdit = (revision: number, token: string) => active && !!form.value && revision === editRevision && token === session.token;
 
 async function load() {
-  if (!active || loading.value || saving.value || form.value) return;
+  if (!active || loading.value || saving.value || form.value || editChoices.value.length) return;
   const revision = ++generation, token = session.token;
   loading.value = true; error.value = '';
   const results = await Promise.allSettled([getFootprints(), getFootprintMapConfig()]);
@@ -58,14 +65,23 @@ async function load() {
 }
 async function refresh() { if (refreshing.value || form.value || saving.value) return; refreshing.value = true; try { await load(); } finally { refreshing.value = false; } }
 function back() { uni.navigateBack({ fail: () => uni.switchTab({ url: '/pages/life/index' }) }); }
-function choose(record: Footprint) { choices.value = []; selected.value = record; mainMap.value?.focus([record], 16); }
+function choose(record: Footprint) { choices.value = []; selected.value = record; mainMap.value?.focus([record], 16); showMap(); }
+function choosePeriod(period: FootprintPeriod) {
+  selected.value = period.records.length === 1 ? period.records[0] : null;
+  choices.value = period.records.length === 1 ? [] : period.records;
+  mainMap.value?.focus(period.records); showMap();
+}
+function editPeriod(period: FootprintPeriod) {
+  if (period.records.length === 1) edit(period.records[0]);
+  else editChoices.value = period.records;
+}
 function dismiss() { choices.value = []; selected.value = null; }
 function selectGroup(group: LocationGroup) {
   if (group.records.length === 1) { choose(group.records[0]); return; }
   selected.value = null; choices.value = group.records;
   if (!group.records.every(r => r.longitude === group.records[0].longitude && r.latitude === group.records[0].latitude)) mainMap.value?.focus(group.records);
 }
-function edit(record?: Footprint) { reloadAvailable.value = false; editRevision++; invalidateSearch(); formError.value = mapHint.value = ''; regionPath.value = []; form.value = record ? { ...record, regionCode: record.regionCode || null, confirmed: true } : emptyDraft(); }
+function edit(record?: Footprint) { editChoices.value = []; reloadAvailable.value = false; editRevision++; invalidateSearch(); formError.value = mapHint.value = ''; regionPath.value = []; form.value = record ? { ...record, regionCode: record.regionCode || null, confirmed: true } : emptyDraft(); }
 function close() { if (!saving.value) { editRevision++; invalidateSearch(); form.value = null; } }
 function changeRegion(path: Region[]) {
   if (!form.value) return;
@@ -152,27 +168,50 @@ async function remove() {
 }
 </script>
 <template>
-  <MobilePage :refreshing="refreshing" :scroll-locked="!!form" :refresh-disabled="!!form" @refresh="refresh">
+  <MobilePage :scroll-top="pageScrollTop" :refreshing="refreshing" :scroll-locked="!!form || editChoices.length > 0" :refresh-disabled="!!form || editChoices.length > 0" @scroll="scrolled" @refresh="refresh">
     <PageHeader title="生活足迹" back :actions-min-width="44" :content-min-width="100" @back="back"><template #actions><MobileButton label="新增生活足迹" icon="ant-design:plus-outlined" variant="ghost" :disabled="!ready || loading" @click="edit()" /></template></PageHeader>
     <view class="ui-page-body footprint-page">
       <view class="footprint-map-region">
         <view v-if="error" class="footprint-error" :class="themeClass('footprint-error')"><text class="error-text" role="alert">{{ error }}</text><MobileButton label="重试" :loading="loading" variant="quiet" @click="load" /></view>
-        <FootprintMap ref="mainMap" :source="config.tiles" :records="records" :selected-id="selected?.id" :height="mapHeight" @select="selectGroup" />
+        <FootprintMap ref="mainMap" :tencent="config.tencent" :pending="loading && !ready" :records="records" :selected-id="selected?.id" :height="mapHeight" @select="selectGroup" />
         <view v-if="loading" class="footprint-loading"><LoadingIndicator label="读取记录" /></view>
         <view v-if="selected || choices.length > 0" class="footprint-detail" :class="themeClass('footprint-detail')">
           <view class="detail-heading"><text class="detail-name" :class="themeClass('detail-name')">{{ selected?.placeName || choices.length + ' 条记录' }}</text><view class="detail-actions"><MobileButton v-if="selected" label="编辑生活足迹" icon="ant-design:edit-outlined" variant="ghost" @click="edit(selected)" /><MobileButton label="关闭详情" icon="ant-design:close-outlined" variant="ghost" @click="dismiss" /></view></view>
           <scroll-view class="detail-scroll" :scroll-y="true" direction="vertical"><view v-if="selected" class="detail-content"><text class="detail-time" :class="themeClass('detail-time')">{{ timeLabel(selected) }}</text><text v-if="selected.address" class="detail-address" :class="themeClass('detail-address')">{{ selected.address }}</text><text v-if="selected.note" class="detail-note" :class="themeClass('detail-note')">{{ selected.note }}</text></view><view v-else class="detail-content"><button role="button" v-for="record in choices" :key="record.id" class="group-record" @click="choose(record)"><text class="group-name" :class="themeClass('group-name')">{{ record.placeName }}</text><text class="detail-time" :class="themeClass('detail-time')">{{ timeLabel(record) }}</text></button></view></scroll-view>
         </view>
       </view>
+      <view class="footprint-period-list" aria-label="生活足迹记录" :aria-busy="loading">
+        <view v-if="!ready && loading" class="period-skeleton" role="status" aria-label="读取足迹列表">
+          <view v-for="n in 2" :key="n" class="period-block">
+            <view class="period-heading"><view class="period-skeleton-time" :class="themeClass('period-skeleton-time')" /></view>
+            <view class="period-place"><view class="period-skeleton-place" :class="themeClass('period-skeleton-place')" /></view>
+          </view>
+        </view>
+        <template v-else-if="periods.length">
+          <view v-if="loading" class="period-update"><LoadingIndicator compact label="更新足迹列表" /></view>
+          <view v-for="period in periods" :key="period.key" class="period-block">
+            <view class="period-heading">
+              <button role="button" class="period-time-button" :aria-label="'查看时间段 ' + timeLabel(period)" @click="choosePeriod(period)"><text class="period-time" :class="themeClass('period-time')">{{ timeLabel(period) }}</text></button>
+              <MobileButton :label="'编辑时间段 ' + timeLabel(period)" icon="ant-design:edit-outlined" variant="ghost" @click="editPeriod(period)" />
+            </view>
+            <button role="button" v-for="record in period.records" :key="record.id" class="period-place" :aria-pressed="selectedIds.includes(record.id)" :aria-label="'定位地点 ' + record.placeName" @click="choose(record)"><text class="period-place-name" :class="[themeClass('period-place-name'), { 'period-place-selected': selectedIds.includes(record.id) }]">{{ record.placeName }}</text></button>
+          </view>
+        </template>
+        <text v-else-if="ready" class="period-empty" :class="themeClass('period-empty')">暂无足迹</text>
+      </view>
     </view>
     <template #fixed>
+      <AdaptiveModal v-if="editChoices.length" label="选择要编辑的地点" :max-width="480" show-close @close="editChoices = []">
+        <text class="period-time" :class="themeClass('period-time')">{{ timeLabel(editChoices[0]) }}</text>
+        <view class="period-edit-choices"><button role="button" v-for="record in editChoices" :key="record.id" class="group-record" :aria-label="'编辑地点 ' + record.placeName" @click="edit(record)"><text class="group-name" :class="themeClass('group-name')">{{ record.placeName }}</text></button></view>
+      </AdaptiveModal>
       <AdaptiveModal v-if="form" label="编辑生活足迹" :max-width="640" :busy="saving" show-close :content-key="formError + mapHint + candidates.length + String(form.confirmed)" @close="close">
         <view class="footprint-date-row"><view class="footprint-date-cell"><DateInput label="开始" :model-value="form.startDate" :disabled="saving" @update:model-value="form.startDate = $event" /></view><view class="footprint-date-cell"><DateInput label="结束" :model-value="form.endDate === PRESENT_DATE ? '' : form.endDate" :disabled="saving || form.endDate === PRESENT_DATE" @update:model-value="form.endDate = $event"><template #action><checkbox-group @change="form.endDate = $event.detail.value.length > 0 ? PRESENT_DATE : ''"><label class="ongoing-label"><checkbox value="ongoing" :checked="form.endDate === PRESENT_DATE" :disabled="saving" /><text class="ongoing-text" :class="themeClass('ongoing-text')">至今</text></label></checkbox-group></template></DateInput></view></view>
         <FormField label="地点" :model-value="form.placeName" placeholder="搜索地点或填写名称" :disabled="saving" @update:model-value="nameInput"><template #labelAction><LoadingIndicator v-if="searching" compact label="搜索地点" /></template></FormField>
         <view v-if="candidates.length" class="location-results"><button role="button" v-for="(location, index) in candidates" :key="location.providerUid || String(index)" class="location-option" :class="themeClass('location-option')" @click="selectCandidate(location)"><text class="group-name" :class="themeClass('group-name')">{{ location.placeName }}</text><text class="detail-time" :class="themeClass('detail-time')">{{ location.city }} {{ location.address }}</text></button></view>
         <RegionPicker v-model="form.regionCode" :disabled="saving" @ready="regionPath = $event" @change="changeRegion" />
         <FormField label="详细地址" :model-value="form.address || ''" placeholder="街道、门牌号等（选填）" :disabled="saving" @update:model-value="addressInput"><template #labelAction><MobileButton v-if="config.searchEnabled" label="解析地址到地图" icon="ant-design:environment-outlined" variant="ghost" :loading="resolving" :disabled="saving || !(form.address || form.placeName)" @click="geocode" /></template></FormField>
-        <FormField label="地图位置"><FootprintMap ref="editorMap" :source="config.tiles" :point="point" picking :height="220" @pick="pickPosition" /><view class="position-state"><text class="detail-time" :class="themeClass('detail-time')">{{ form.confirmed ? '位置已确认' : point ? '请确认所选位置' : '点选地图标记具体位置' }}</text><MobileButton v-if="point && !form.confirmed" label="确认位置" variant="quiet" :disabled="saving" @click="confirmPosition" /><LoadingIndicator v-if="resolving" compact label="解析地址" /></view><text v-if="mapHint" class="detail-time" :class="themeClass('detail-time')">{{ mapHint }}</text></FormField>
+        <FormField label="地图位置"><FootprintMap ref="editorMap" :tencent="config.tencent" :pending="loading && !ready" :point="point" picking :height="220" @pick="pickPosition" /><view class="position-state"><text class="detail-time" :class="themeClass('detail-time')">{{ form.confirmed ? '位置已确认' : point ? '请确认所选位置' : '点选地图标记具体位置' }}</text><MobileButton v-if="point && !form.confirmed" label="确认位置" variant="quiet" :disabled="saving" @click="confirmPosition" /><LoadingIndicator v-if="resolving" compact label="解析地址" /></view><text v-if="mapHint" class="detail-time" :class="themeClass('detail-time')">{{ mapHint }}</text></FormField>
         <FormField label="备注" :model-value="form.note || ''" kind="textarea" textarea-size="compact" :disabled="saving" @update:model-value="form.note = $event" />
         <view v-if="formError"><text class="error-text" role="alert">{{ formError }}</text><MobileButton v-if="reloadAvailable" label="关闭并重新读取" variant="quiet" :disabled="saving" @click="close(); load()" /></view>
         <FormActions><template v-if="form.id" #secondary><ConfirmAction label="删除" :action="remove" /></template><MobileButton label="取消" variant="quiet" :disabled="saving" @click="close" /><MobileButton label="保存" :loading="saving" @click="save" /></FormActions>
@@ -186,6 +225,29 @@ async function remove() {
 @use '../../styles/typography' as *;
 @use '../../styles/text-colors' as *;
 .footprint-page { width: 100%; }
+.footprint-period-list { position: relative; display: flex; flex-direction: column; gap: $space-section; margin-top: $space-section; padding-bottom: $space-section; }
+.period-block { display: flex; flex-direction: column; }
+.period-heading { display: flex; flex-direction: row; align-items: center; gap: $space-detail; min-height: $space-controlMin; }
+.period-time-button { display: flex; align-items: center; flex: 1; min-width: 0; min-height: $space-controlMin; margin: 0; padding: 0; background: transparent; text-align: left; }
+.period-time { @include type-style('label'); color: $text-secondary-light; }
+.period-time-dark { color: $text-secondary-dark; }
+.period-place { display: flex; flex-direction: row; align-items: center; width: 100%; min-height: $space-controlMin; margin: 0; padding: $space-detail 0; background: transparent; text-align: left; }
+.period-place-name { @include type-style('body'); color: #27272a; flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.period-place-name-dark { color: #eeeeef; }
+.period-place-selected { color: #536cec; }
+.period-empty { @include type-style('body'); color: $text-secondary-light; min-height: $space-controlMin; }
+.period-empty-dark { color: $text-secondary-dark; }
+.period-update { position: absolute; top: 0; right: 0; pointer-events: none; }
+.period-skeleton { display: flex; flex-direction: column; gap: $space-section; }
+.period-skeleton-time { height: type-line('label'); width: 60%; background-color: #e0e4eb; border-radius: $space-detail; }
+.period-skeleton-place { height: type-line('body'); width: 45%; background-color: #e0e4eb; border-radius: $space-detail; }
+.period-skeleton-time-dark { background-color: #30343c; }
+.period-skeleton-place-dark { background-color: #30343c; }
+.period-edit-choices { display: flex; flex-direction: column; gap: $space-detail; margin-top: $space-inline; }
+/* #ifdef WEB || MP-WEIXIN */
+.period-time-button::after { border: 0; }
+.period-place::after { border: 0; }
+/* #endif */
 .footprint-loading { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; pointer-events: none; }
 .footprint-map-region { position: relative; width: 100%; }
 .footprint-error { position: absolute; z-index: 3; top: $space-controlMin + $space-section; left: $space-inline; right: $space-inline; display: flex; align-items: center; justify-content: space-between; flex-direction: row; gap: $space-inline; padding: $space-inline; background-color: #fff; border-radius: 8px; }

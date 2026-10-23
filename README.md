@@ -414,14 +414,14 @@ tests/                契约测试与 Web E2E
 
 ### 生活足迹
 
-「全部 → 记录 → 生活足迹」，路由 `/pages/life-footprints/index`。默认中国地图，点选后展示紧凑详情；起止日期精确到日，“至今”提交结束日期 `9999-12-31`，界面仍显示“至今”，不使用 `ongoing` 或幂等键。支持地点、地址、备注及位置确认。普通点 8px、选中点 10px、聚合点 18px，透明点击范围 44px；业务页面、服务及标记资源归 `pages/life-footprints` 分包。
+「全部 → 记录 → 生活足迹」，路由 `/pages/life-footprints/index`。默认中国地图，点选后展示紧凑详情；起止日期精确到日，“至今”提交结束日期 `9999-12-31`，界面仍显示“至今”，不使用 `ongoing` 或幂等键。支持地点、地址、备注及位置确认。地图下方按相同起止日期分组展示全部地点，日期只展示一次，“至今”不暴露特殊日期；重叠日期及同名地点不会被合并。点击时间段或地点会回到地图并定位，编辑单地点组直接打开表单，多地点组先选择要编辑的地点；保存后局部更新列表。首次读取按时间行与地点行预留占位，刷新保留已有列表及空态。普通点 8px、选中点 10px、聚合点 18px，透明点击范围 44px；业务页面、服务及标记资源归 `pages/life-footprints` 分包。
 
-H5 按需加载随前端打包的 Leaflet，不加载百度 SDK、不需要浏览器 AK；底图采用后端系统配置下发的标准 XYZ 服务，默认 OpenStreetMap，可改为自建服务。WGS84 底图上将 GCJ02 记录转换后显示，选点转回 GCJ02 提交；GCJ02 底图直接使用记录坐标。底图失败保留标记和表单、局部重试，右下角常驻数据署名。地点查询与解析统一走登录后的后端 API，仅需百度服务端 AK。微信及 App 使用原生 `map`，与存储统一为 GCJ02，不请求持续定位。后端建表、菜单和 AK 配置见服务端 README「生活足迹」。
+H5 与 Web 一样按需加载腾讯 GL SDK，使用 `/life-footprints/map/config` 的 `tencent.enabled/mapStyleId` 配置，代理地址由客户端 API 基址拼接为本站 `/api/life-footprints/map/tencent-proxy`。浏览器仅设置 `_TMapSecurityConfig.serviceHost`，不接收或在 SDK URL 中携带 Key；后端注入腾讯 JavaScript Key。底图、记录与选点统一使用 GCJ02，不再做 WGS84 底图转换。SDK 和底图失败可局部重试，保留足迹数据及表单。地点搜索、地址解析与逆解析继续调用登录后的后端 API。微信及 App 使用腾讯原生 `map`，不请求持续定位。后端建表、菜单和地图配置见服务端 README「生活足迹」。
 
-App 的 Android/iOS manifest 已登记 `uni-map.tencent`，源码 key 留空。打包前设置 `AIO_TENCENT_MAP_ANDROID_KEY` / `AIO_TENCENT_MAP_IOS_KEY` 后执行 `npm run prepare:app`；脚本将 key 仅写入 Git 忽略的 App 快照，也保留该快照中已有的 key。需在腾讯控制台匹配各平台包名、签名或 Bundle ID，重新构建自定义基座。配置方式见 [DCloud Android](https://doc.dcloud.net.cn/uni-app-x/collocation/manifest-android.html#uni-map)、[iOS](https://doc.dcloud.net.cn/uni-app-x/collocation/manifest-ios.html#uni-map)。不把百度服务端 AK 填入原生地图 SDK。
+App 的 Android/iOS manifest 已登记 `uni-map.tencent`，源码 key 留空。打包前设置 `AIO_TENCENT_MAP_ANDROID_KEY` / `AIO_TENCENT_MAP_IOS_KEY` 后执行 `npm run prepare:app`；脚本将 key 仅写入 Git 忽略的 App 快照，也保留该快照中已有的 key。需在腾讯控制台匹配各平台包名、签名或 Bundle ID，重新构建自定义基座。配置方式见 [DCloud Android](https://doc.dcloud.net.cn/uni-app-x/collocation/manifest-android.html#uni-map)、[iOS](https://doc.dcloud.net.cn/uni-app-x/collocation/manifest-ios.html#uni-map)。JavaScript、WebService 和各平台原生 SDK 的 Key 按各自用途配置。
 
-专项检查：`node --test tests/life-footprints.test.mjs`；`npx playwright test tests/e2e/life-footprints.spec.js`（真实 Leaflet、模拟 API/底图，覆盖三种宽度、深浅主题、地点确认、真实 picker 操作、失败恢复和旧搜索响应）；`npm run build:weixin` 包含官方编译口径的包体检查。真实百度地址解析 AK 联调、微信模拟器/真机、App 编译/真机、上传与发布尚未验证。
+专项检查：`node --test tests/life-footprints.test.mjs`；`npx playwright test tests/e2e/life-footprints.spec.js`（模拟腾讯 GL SDK、API 和底图，覆盖三种宽度、深浅主题、地点确认、真实 picker 操作、SDK/底图失败重试和旧搜索响应）；`npm run build:weixin` 包含官方编译口径的包体检查。本地 H5 已实查腾讯底图与代理、聚合点击、详情定位和编辑坐标回显；真实地址解析联调、微信模拟器/真机、App 编译/真机、上传与发布尚未验证。
 
 新增／编辑支持从后端 `system_region` 表按需选择省、市、区县、乡镇街道；`GET /system/regions?parentCode=` 加载下一级，`GET /system/regions/{code}/path` 回显路径，只保存最深选中的字符串 `regionCode`。可以停在任一级或不选地区，旧记录兼容 `null`；境外地点继续手动选点。切换地区后清空旧坐标并要求重新选点，地区中心不作为精确位置。地区名称加入地点查询及地址解析上下文；详细地址在地图上方，新增和编辑共用紧凑双列字段及可滚动居中弹窗。微信原生地图使用浅色主题，不依赖 Web 腾讯 JavaScript SDK 或浏览器 Key；不请求持续定位权限。地区数据版本与导入维护以服务端 README 为准。
 
-地图适配与坐标转换分别位于 `src/pages/life-footprints/footprint-map.ts`、`coordinates.ts`，与 Web 的同名模块保持契约一致；仅 H5 条件编译引入 Leaflet 与样式，不进入微信主包或 App 原生地图。验证日志见 Git 忽略的 `artifacts/commit-validation/`。
+腾讯 H5 地图适配位于 `src/pages/life-footprints/tencent-map.ts`，与 Web 保持代理与 GCJ02 坐标契约一致；仅 H5 条件编译加载腾讯 GL SDK 与 DOM 标记样式，不进入微信主包或 App 原生地图。验证日志见 Git 忽略的 `artifacts/commit-validation/`。

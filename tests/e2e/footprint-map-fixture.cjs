@@ -1,4 +1,4 @@
-// API 和底图为模拟数据；地图交互使用真实 Leaflet，不安装百度 SDK 替身。
+// API、腾讯 GL SDK 和底图均使用模拟数据；真实地图另行联调。
 function initialRecords() {
   return [
     ['9223372036854775805', '2016-01-01', '2019-06-01', '丁香公寓', 120.127128, 30.273297],
@@ -19,6 +19,28 @@ async function setupMapFixture(page, options = {}) {
     { code: '1101', name: '市辖区', level: 2, hasChildren: false, parent: '11' },
   ];
   const state = { records: initialRecords(), writes: [], reads: 0, failSave: false, failRead: false, failRegions: false, regionCalls: [], geocodes: [], failTiles: false, invalidTileRequests: [], searchEnabled: true, delay: 0, searches: [], sdkRequests: [], ...options };
+  // Tencent SDK 替身仅用于离线 E2E；真实地图由本地页面人工验证。
+  await page.route('https://map.qq.com/api/gljs?**', route => {
+    state.tencentRequests ??= []; state.tencentRequests.push(route.request().url());
+    if (state.failSdk) return route.abort();
+    const callback = new URL(route.request().url()).searchParams.get('callback');
+    return route.fulfill({ contentType: 'application/javascript', body: `
+      let mapSequence=0;
+      class FixtureMap {
+        constructor(el, options) { this.el=el;this.center=options.center;this.zoom=options.zoom;this.events={};this.click=e=>{const bounds=el.getBoundingClientRect();const scale=256*2**this.zoom;this.emit('click',{latLng:{lat:this.center.lat-(e.clientY-bounds.top-el.clientHeight/2)/scale*360,lng:this.center.lng+(e.clientX-bounds.left-el.clientWidth/2)/scale*360}})};el.addEventListener('click',this.click);this.canvas=document.createElement('canvas');this.canvas.dataset.mapInstance=String(++mapSequence);this.canvas.dataset.zoom=String(this.zoom);this.canvas.className='tencent-fixture-canvas';this.canvas.style.cssText='position:absolute;inset:0;width:100%;height:100%;z-index:2';el.append(this.canvas);this.wheel=e=>{e.preventDefault();this.setZoom(Math.max(3,Math.min(20,this.zoom+(e.deltaY<0?1:-1))))};el.addEventListener('wheel',this.wheel,{passive:false});setTimeout(()=>this.tiles(),0); }
+        on(event,callback) { (this.events[event]??=[]).push(callback); }
+        emit(event,data) { for(const callback of this.events[event]||[])callback(data); }
+        async tiles() { try { const r=await fetch('https://footprint-tiles.test/0/0/0.svg');if(!r.ok)throw Error();this.canvas.dataset.ready='true';this.emit('tilesloaded'); } catch { this.emit('context_lost'); } }
+        getZoom(){return this.zoom}setZoom(z){this.zoom=z;this.canvas.dataset.zoom=String(z);this.emit('zoom');this.tiles()}
+        setCenter(p){this.center=p;this.emit('pan')}
+        setPitch(){this.emit('pitch')}setRotation(){this.emit('rotate')}
+        projectToContainer(p){const scale=256*2**this.zoom;const y=lat=>{const sin=Math.sin(Math.max(-85,Math.min(85,lat))*Math.PI/180);return .5-Math.log((1+sin)/(1-sin))/(4*Math.PI)};return {x:this.el.clientWidth/2+(p.lng-this.center.lng)/360*scale,y:this.el.clientHeight/2+(y(p.lat)-y(this.center.lat))*scale}}
+        fitBounds(b){this.center={lat:(Math.min(...b.points.map(p=>p.lat))+Math.max(...b.points.map(p=>p.lat)))/2,lng:(Math.min(...b.points.map(p=>p.lng))+Math.max(...b.points.map(p=>p.lng)))/2};this.zoom=16;this.emit('zoom')}
+        destroy(){this.el.removeEventListener('wheel',this.wheel);this.el.removeEventListener('click',this.click);this.events={};this.canvas.remove()}
+      }
+      window.TMap={Map:FixtureMap,LatLng:class{constructor(lat,lng){this.lat=lat;this.lng=lng}},LatLngBounds:class{constructor(a,b){this.points=[a,b]}extend(p){this.points.push(p)}}};window['${callback}']();
+    ` });
+  });
   await page.route('https://api.map.baidu.com/**', route => { state.sdkRequests.push(route.request().url()); return route.abort(); });
   await page.route('https://footprint-tiles.test/**', route => {
     const url = new URL(route.request().url());
@@ -42,7 +64,7 @@ async function setupMapFixture(page, options = {}) {
     }
     if (!path.startsWith('/life-footprints')) return false;
     let data;
-    if (path === '/life-footprints/map/config') data = { searchEnabled: state.searchEnabled, coordinateSystem: 'GCJ02', tiles: { url: 'https://footprint-tiles.test/{z}/{x}/{y}.svg', attribution: '模拟底图', attributionUrl: '', coordinateSystem: 'WGS84' } };
+    if (path === '/life-footprints/map/config') data = { tencent: { enabled: state.tencentEnabled !== false, mapStyleId: 'style1' }, searchEnabled: state.searchEnabled, coordinateSystem: 'GCJ02', tiles: { url: 'https://footprint-tiles.test/{z}/{x}/{y}.svg', attribution: '模拟底图', attributionUrl: '', coordinateSystem: 'WGS84' } };
     else if (path === '/life-footprints/map/search') {
       const keyword = url.searchParams.get('keyword'); state.searches.push(keyword);
       if (keyword === '旧搜索') await new Promise(resolve => setTimeout(resolve, 850));

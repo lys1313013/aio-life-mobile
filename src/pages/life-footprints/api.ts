@@ -1,9 +1,17 @@
 import type { Footprint, FootprintRequest, LocationResult, MapConfig } from './model.ts';
-import { request } from '../../services/api.ts';
+import { apiUrl, request } from '../../services/api.ts';
 import type { Region } from './regions.ts';
 
 export function getFootprints() { return request<Footprint[]>('/life-footprints'); }
-export function getFootprintMapConfig() { return request<MapConfig>('/life-footprints/map/config'); }
+export async function getFootprintMapConfig() {
+  const config = await request<MapConfig>('/life-footprints/map/config');
+  // #ifdef WEB
+  if (config.tencent) {
+    config.tencent.serviceHost = new URL(apiUrl('/life-footprints/map/tencent-proxy'), window.location.origin).href;
+  }
+  // #endif
+  return config;
+}
 export function createFootprint(data: FootprintRequest) { return request<Footprint>('/life-footprints', 'POST', data); }
 export function updateFootprint(id: string, data: FootprintRequest) { return request<Footprint>('/life-footprints/' + id, 'PUT', data); }
 export function deleteFootprint(id: string) { return request<void>('/life-footprints/' + id, 'DELETE'); }

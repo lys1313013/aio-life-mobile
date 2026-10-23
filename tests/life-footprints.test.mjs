@@ -6,7 +6,7 @@ async function moduleAt(path) {
   const { code } = await transform(await readFile(new URL(path, import.meta.url), 'utf8'), { loader: 'ts', format: 'esm' });
   return import('data:text/javascript;base64,' + Buffer.from(code).toString('base64'));
 }
-const { PRESENT_DATE, timeLabel, validDate, draftPayload, emptyDraft, groupLocations } = await moduleAt('../src/pages/life-footprints/model.ts');
+const { PRESENT_DATE, timeLabel, validDate, draftPayload, emptyDraft, groupLocations, groupPeriods } = await moduleAt('../src/pages/life-footprints/model.ts');
 const { pickQuery, minimalRequestPayload } = await moduleAt('../src/services/api-payload.ts');
 const draft = () => ({ ...emptyDraft(), startDate: '2016-12-30', endDate: '2016-12-31', placeName: ' 住所 ', longitude: 120.127128, latitude: 30.273297, confirmed: true });
 test('生活足迹仅接受完整日期并校验闰年和起止顺序', () => {
@@ -77,4 +77,18 @@ test('WGS84 底图与 GCJ02 记录明确转换，国内往返精度和境外不�
   const overseas = { longitude: -74.006, latitude: 40.7128 };
   assert.deepEqual(wgs84ToGcj02(overseas), overseas);
   assert.deepEqual(gcj02ToWgs84(overseas), overseas);
+});
+
+
+test('时间段列表仅合并相同起止日期，不丢失重复地点、重叠时间段及大整数 ID', () => {
+  const base = draftPayload(draft());
+  const first = { ...base, id: '9223372036854775807' };
+  const second = { ...first, id: '9223372036854775806' };
+  const overlap = { ...first, id: '9223372036854775805', endDate: PRESENT_DATE };
+  const groups = groupPeriods([first, overlap, second]);
+  assert.equal(groups.length, 2);
+  assert.deepEqual(groups[0].records.map(record => record.id), [overlap.id]);
+  assert.deepEqual(groups[1].records.map(record => record.id), [second.id, first.id]);
+  assert.equal(timeLabel(groups[0]), '2016.12.30 — 至今');
+  assert.deepEqual(groupPeriods([]), []);
 });

@@ -1,4 +1,4 @@
-import type { MapTileSource } from './map-config.ts';
+import type { TencentMapConfig } from './map-config.ts';
 
 /** 结束日期的特殊值；界面展示为“至今”。 */
 export const PRESENT_DATE = '9999-12-31';
@@ -31,7 +31,7 @@ export interface LocationResult extends Coordinate {
   level: string;
 }
 export interface MapConfig {
-  tiles?: MapTileSource;
+  tencent?: TencentMapConfig;
   searchEnabled: boolean;
   coordinateSystem: 'GCJ02';
 }
@@ -132,6 +132,25 @@ export function sortFootprints(records: Footprint[]): Footprint[] {
       a.startDate.localeCompare(b.startDate) || a.id.localeCompare(b.id),
   );
 }
+export interface FootprintPeriod {
+  key: string;
+  startDate: string;
+  endDate: string;
+  records: Footprint[];
+}
+
+/** 与 Web 一致，仅按相同起止日期分组展示，不合并地点或重叠时间段。 */
+export function groupPeriods(records: Footprint[]): FootprintPeriod[] {
+  const periods = new Map<string, FootprintPeriod>();
+  for (const record of sortFootprints(records)) {
+    const key = record.startDate + '/' + record.endDate;
+    const period = periods.get(key);
+    if (period) period.records.push(record);
+    else periods.set(key, { key, startDate: record.startDate, endDate: record.endDate, records: [record] });
+  }
+  return [...periods.values()];
+}
+
 export function timeLabel(
   record: Pick<FootprintRequest, 'endDate' | 'startDate'>,
 ): string {

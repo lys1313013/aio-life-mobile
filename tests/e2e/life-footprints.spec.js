@@ -31,16 +31,18 @@ for (const width of [390, 768, 1440]) for (const theme of ['light', 'dark']) {
     const errors = []; page.on('pageerror', error => errors.push(error.message));
     const state = await setup(page);
     await expect(page.locator('.footprint-map-hit')).toHaveCount(1);
-    await expect(page.getByRole('link', { name: 'Leaflet 开源许可', exact: true })).toHaveAttribute('download', 'Leaflet-LICENSE.txt');
+    await expect(page.locator('.tencent-fixture-canvas')).toHaveCount(1);
+    expect(state.tencentRequests).toHaveLength(1);
+    expect(new URL(state.tencentRequests[0]).searchParams.has('key')).toBe(false);
     await expect(page.locator('.footprint-detail')).toHaveCount(0);
     await page.screenshot({ path: testInfo.outputPath('china.png'), fullPage: true });
     await page.getByRole('button', { name: '3条地点记录', exact: true }).click();
     await expect(page.locator('.group-record')).toHaveCount(3);
     await page.locator('.group-record').first().click();
     await expect(page.locator('.footprint-detail')).toContainText('丁香公寓');
-    const sizes = await page.locator('.footprint-map-dot:not(.footprint-map-cluster)').evaluateAll(elements => elements.map(el => el.getBoundingClientRect().width));
-    expect(sizes.every(size => size <= 10)).toBe(true);
-    expect(await page.locator('.footprint-map-hit').first().evaluate(el => el.getBoundingClientRect().width)).toBe(44);
+    // 腾讯地图在动画帧中更新 DOM 标记，等待本帧完成，避免测量已脱离文档的旧节点。
+    await expect.poll(() => page.locator('.footprint-map-dot:not(.footprint-map-cluster)').evaluateAll(elements => elements.length > 0 && elements.every(el => { const width = el.getBoundingClientRect().width; return width > 0 && width <= 10; }))).toBe(true);
+    await expect.poll(() => page.locator('.footprint-map-hit').first().evaluate(el => el.getBoundingClientRect().width)).toBe(44);
     await page.screenshot({ path: testInfo.outputPath('detail.png'), fullPage: true });
     const reads = state.reads;
     await page.getByRole('button', { name: '编辑生活足迹', exact: true }).click();
@@ -149,7 +151,7 @@ for (const width of [390, 768, 1440]) for (const theme of ['light', 'dark']) {
   });
 }
 
-test('无百度 AK 时仍可显示与选点，底图失败后局部重试保持标记和高度', async ({ page }) => {
+test('腾讯底图失败后重建恢复，搜索关闭时仍可选点', async ({ page }) => {
   const state = await setup(page, { failTiles: true, searchEnabled: false });
   const region = page.locator('.footprint-map-region');
   await expect(page.getByText('底图加载失败', { exact: true })).toBeVisible();
@@ -162,7 +164,7 @@ test('无百度 AK 时仍可显示与选点，底图失败后局部重试保持�
   expect((await region.boundingBox()).height).toBe(initial.height);
   await page.getByRole('button', { name: '新增生活足迹', exact: true }).click();
   const dialog = page.getByRole('dialog');
-  await dialog.locator('[aria-label="地点"] input').fill('无 AK 选点');
+  await dialog.locator('[aria-label="地点"] input').fill('手动选点');
   await dialog.locator('uni-picker[aria-label="开始"]').click();
   const nativeDate = dialog.locator('uni-picker[aria-label="开始"] input[type="date"]');
   if (await nativeDate.count()) await nativeDate.fill('2020-08-01');
@@ -176,15 +178,19 @@ test('无百度 AK 时仍可显示与选点，底图失败后局部重试保持�
 });
 
 
-test('地图缩小及横跨日期变更线时不请求越界瓦片', async ({ page }) => {
+test('腾讯地图缩放与编辑共用 SDK，不暴露 Key', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 1000 });
   const state = await setup(page, { records: [], searchEnabled: false });
   await page.getByRole('button', { name: '新增生活足迹', exact: true }).click();
   const dialog = page.getByRole('dialog');
-  await dialog.getByRole('button', { name: '缩小地图', exact: true }).click();
-  await dialog.getByRole('button', { name: '缩小地图', exact: true }).click();
-  await expect(dialog.locator('.leaflet-tile')).not.toHaveCount(0);
-  await expect.poll(() => page.locator('[role="dialog"] .leaflet-tile').evaluateAll(tiles => tiles.every(tile => tile.complete && tile.naturalWidth > 0))).toBe(true);
+  await expect(dialog.getByRole('button', { name: '缩小地图', exact: true })).toHaveCount(0);
+  await dialog.locator('.footprint-h5-canvas').hover();
+  await page.mouse.wheel(0, 100);
+  await page.mouse.wheel(0, 100);
+  await expect(dialog.locator('.tencent-fixture-canvas[data-ready="true"]')).toHaveCount(1);
+  expect(state.tencentRequests).toHaveLength(1);
+  const proxy = await page.evaluate(() => window._TMapSecurityConfig.serviceHost);
+  expect(proxy).toBe(new URL('/api/life-footprints/map/tencent-proxy', test.info().project.use.baseURL).href);
   expect(state.invalidTileRequests).toEqual([]);
   await expect(dialog.getByText('底图加载失败', { exact: true })).toHaveCount(0);
 });
@@ -230,3 +236,110 @@ test('四级地区按需加载、失败重试、地址解析上下文与编辑�
   await expect(dialog.getByRole('alert')).toContainText('选择并确认地图位置');
   await dialog.getByRole('button', { name: '取消', exact: true }).click();
 });
+
+
+test('腾讯 SDK 失败可重试', async ({ page }) => {
+  const state = await setup(page, { failSdk: true });
+  await expect(page.getByText('地图暂不可用', { exact: true })).toBeVisible();
+  state.failSdk = false;
+  await page.getByRole('button', { name: '重试地图', exact: true }).click();
+  await expect(page.locator('.tencent-fixture-canvas[data-ready="true"]')).toHaveCount(1);
+  await expect(page.locator('.footprint-map-hit')).toHaveCount(1);
+  expect(state.tencentRequests).toHaveLength(2);
+});
+
+test('未配置腾讯地图时不加载 SDK', async ({ page }) => {
+  const state = await setup(page, { tencentEnabled: false });
+  await expect(page.getByText('请在系统配置填写腾讯地图 Key', { exact: true })).toBeVisible();
+  expect(state.tencentRequests || []).toEqual([]);
+});
+
+
+test.describe('地图触屏与刷新保持视角', () => {
+  test.use({ hasTouch: true });
+  async function pull(page, locator, offsetY = 90) {
+    const box = await locator.boundingBox();
+    const cdp = await page.context().newCDPSession(page);
+    const x = box.x + box.width / 2, start = box.y + offsetY;
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y: start, id: 0 }] });
+    for (const offset of [30, 70, 120, 180]) await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x, y: start + offset, id: 0 }] });
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+    await cdp.detach();
+  }
+  test('地图内拖动不触发页面刷新，连续缩放保持地图实例', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 900 });
+    const state = await setup(page);
+    const map = page.locator('.footprint-h5-canvas');
+    const canvas = map.locator('.tencent-fixture-canvas');
+    await expect(canvas).toHaveAttribute('data-ready', 'true');
+    await expect(page.getByRole('button', { name: '放大地图', exact: true })).toHaveCount(0);
+    await map.hover();
+    for (let i = 0; i < 8; i++) { await page.mouse.wheel(0, -100); await expect(canvas).toHaveAttribute('data-zoom', String(5 + i)); }
+    await expect(canvas).toHaveAttribute('data-zoom', '12');
+    const reads = state.reads;
+    await pull(page, map);
+    await page.waitForTimeout(500);
+    expect(state.reads).toBe(reads);
+    await expect(canvas).toHaveAttribute('data-map-instance', '1');
+    await expect(canvas).toHaveAttribute('data-zoom', '12');
+  });
+  test('页面主动下拉刷新相同地图配置时保留缩放和实例', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 900 });
+    const state = await setup(page);
+    const map = page.locator('.footprint-h5-canvas');
+    const canvas = map.locator('.tencent-fixture-canvas');
+    await expect(canvas).toHaveAttribute('data-ready', 'true');
+    await expect(page.getByRole('button', { name: '放大地图', exact: true })).toHaveCount(0);
+    await map.hover();
+    for (let i = 0; i < 8; i++) { await page.mouse.wheel(0, -100); await expect(canvas).toHaveAttribute('data-zoom', String(5 + i)); }
+    const reads = state.reads;
+    // 从标题区域下拉仍可主动刷新，地图保持原有视角。
+    await pull(page, page.locator('.navigation-title'), 10);
+    await expect.poll(() => state.reads).toBeGreaterThan(reads);
+    await expect(page.locator('.footprint-loading')).toHaveCount(0);
+    await expect(canvas).toHaveAttribute('data-map-instance', '1');
+    await expect(canvas).toHaveAttribute('data-zoom', '12');
+  });
+});
+
+
+for (const width of [390, 768, 1440]) for (const theme of ['light', 'dark']) {
+  test(`地图下方时间段列表、地图联动与编辑 ${width} ${theme}`, async ({ page }, testInfo) => {
+    await page.setViewportSize({ width, height: 1000 });
+    await page.emulateMedia({ colorScheme: theme });
+    const { initialRecords } = require('./footprint-map-fixture.cjs');
+    const records = initialRecords();
+    records[1].endDate = records[2].endDate;
+    records[2].startDate = records[1].startDate;
+    const state = await setup(page, { records });
+    const list = page.locator('.footprint-period-list');
+    await expect(list.locator('.period-block')).toHaveCount(2);
+    await expect(list.locator('.period-place')).toHaveCount(3);
+    await expect(list.locator('.period-time')).toHaveText(['2016.01.01 — 2019.06.01', '2019.07.01 — 至今']);
+    await expect(list).not.toContainText('9999');
+    const mapBox = await page.locator('.footprint-map-region').boundingBox();
+    expect((await list.boundingBox()).y).toBeGreaterThanOrEqual(mapBox.y + mapBox.height);
+    await list.locator('.period-block').last().scrollIntoViewIfNeeded();
+    await page.screenshot({ path: testInfo.outputPath('period-list.png'), fullPage: true });
+    await list.getByRole('button', { name: '定位地点 跑马场巷小区', exact: true }).click();
+    await expect(page.locator('.footprint-detail')).toContainText('跑马场巷小区');
+    await expect(list.getByRole('button', { name: '定位地点 跑马场巷小区', exact: true })).toHaveAttribute('aria-pressed', 'true');
+    await expect.poll(() => page.locator('.mobile-page-scroll').filter({ has: list }).locator(':scope > .uni-scroll-view > .uni-scroll-view').evaluate(el => el.scrollTop)).toBe(0);
+    await list.getByRole('button', { name: '编辑时间段 2019.07.01 — 至今', exact: true }).click();
+    const chooser = page.getByRole('dialog', { name: '选择要编辑的地点', exact: true });
+    await expect(chooser).toBeVisible();
+    await chooser.getByRole('button', { name: '编辑地点 跑马场巷小区', exact: true }).click();
+    const editor = page.getByRole('dialog', { name: '编辑生活足迹', exact: true });
+    await expect(editor.locator('[aria-label="地点"] input')).toHaveValue('跑马场巷小区');
+    await editor.locator('[aria-label="地点"] input').fill('更新后的住所');
+    await editor.getByRole('button', { name: '保存', exact: true }).click();
+    await expect(editor).toHaveCount(0);
+    await expect(list.getByRole('button', { name: '定位地点 更新后的住所', exact: true })).toHaveCount(1);
+    await expect(list.locator('.period-block')).toHaveCount(2);
+    expect(state.records.find(record => record.id === records[1].id).placeName).toBe('文三路254号院');
+    await list.getByRole('button', { name: '编辑时间段 2016.01.01 — 2019.06.01', exact: true }).click();
+    await expect(editor.locator('[aria-label="地点"] input')).toHaveValue('丁香公寓');
+    await editor.getByRole('button', { name: '取消', exact: true }).click();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  });
+}
