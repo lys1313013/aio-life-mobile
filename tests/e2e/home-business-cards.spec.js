@@ -158,7 +158,16 @@ test('没有授权菜单的卡片不发业务请求', async ({ page }) => {
 });
 
 async function dragPinned(page, card, from, to, { hold = true, cancel = false } = {}) {
-  const start = await card.locator('.business-row').nth(from).boundingBox();
+  const source = card.locator('.business-row').nth(from);
+  await source.scrollIntoViewIfNeeded();
+  // 短滑后浏览器可能仍在惯性滚动；CDP 不会像 locator 操作一样等待触点稳定。
+  let position = '', stableAt = Date.now();
+  await expect.poll(async () => {
+    const next = JSON.stringify(await source.boundingBox());
+    if (next !== position) { position = next; stableAt = Date.now(); }
+    return Date.now() - stableAt;
+  }, { intervals: [50], message: '等待滚动结束后再开始长按' }).toBeGreaterThanOrEqual(150);
+  const start = await source.boundingBox();
   const end = await card.locator('.business-row').nth(to).boundingBox();
   const client = await page.context().newCDPSession(page);
   const x = start.x + start.width / 2, y = start.y + start.height / 2;
