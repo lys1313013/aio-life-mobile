@@ -4,6 +4,7 @@ const { test, expect } = require('@playwright/test');
 const keys = ['memo', 'finance', 'video', 'device', 'income', 'expense'];
 const titles = ['最近笔记', '收支概览', '视频续看', '我的设备', '收入', '支出'];
 const routes = ['/my-hub/memo', '/finance-management/dashboard', '/finance-management/income', '/finance-management/expense', '/my-hub/videoWatch', '/my-hub/device'];
+const { calendarFixture } = require('./fixtures-finance-calendar');
 async function setup(page, { count = 3, delay = 0, locked = false, fail = false, enabled = true } = {}) {
   const calls = [], imageHeaders = []; let failure = fail;
   const data = {
@@ -22,7 +23,7 @@ async function setup(page, { count = 3, delay = 0, locked = false, fail = false,
     '/quick-nav/candidates': routes.map(path => ({ path })),
   };
   await page.route('**/api/**', async route => {
-    const path = new URL(route.request().url()).pathname.replace('/api', ''); calls.push(path);
+    const url = new URL(route.request().url()); const path = url.pathname.replace('/api', ''); calls.push(path);
     if (path.startsWith('/file/preview/')) {
       imageHeaders.push(route.request().headers().authorization);
       const video = path.includes('video');
@@ -30,7 +31,7 @@ async function setup(page, { count = 3, delay = 0, locked = false, fail = false,
     }
     if (path.startsWith('/home/sections/')) {
       if (delay) await new Promise(resolve => setTimeout(resolve, delay));
-      return route.fulfill({ json: failure ? { code: 1, message: '模拟摘要失败' } : { code: 0, data: data[path.split('/').pop()] } });
+      return route.fulfill({ json: failure ? { code: 1, message: '模拟摘要失败' } : { code: 0, data: path.endsWith('/calendar') ? calendarFixture(url, path.split('/')[3], count) : data[path.split('/').pop()] } });
     }
     return route.fulfill({ json: { code: 0, data: fixtures[path] ?? [] } });
   });
@@ -49,7 +50,7 @@ for (const width of [390, 820, 1440]) for (const theme of ['light', 'dark']) {
     const deviceBefore = await page.locator('[aria-label="我的设备首页卡片"]').boundingBox();
     await page.screenshot({ path: info.outputPath('summary-loading.png'), fullPage: true });
     await expect(memo).toContainText('正文已隐藏');
-    await expect(page.locator('[aria-label="收支概览首页卡片"]')).toContainText('¥10,000.00');
+    await expect(page.locator('[aria-label="收支概览首页卡片"]')).toContainText('10,000.00');
     await expect(page.locator('[aria-label="我的设备首页卡片"]')).toContainText('使用 200 天');
     expect(await page.locator('body').innerText()).not.toContain('不允许泄漏的笔记正文');
     const loadedBox = await memo.boundingBox(); expect(Math.abs(loadingBox.height - loadedBox.height)).toBeLessThanOrEqual(5);
@@ -75,7 +76,7 @@ test('空态仍可新增，刷新保留高度；失败可局部恢复', async ({
 });
 test('财务任一底层业务锁住时不请求摘要，关闭卡片完全无业务请求', async ({ page }) => {
   const locked = await setup(page, { locked: true });
-  await expect(page.locator('[aria-label="收支概览首页卡片"]')).toContainText('点击解锁'); expect(locked.calls).not.toContain('/home/sections/finance');
+  await expect(page.locator('[aria-label="收支概览首页卡片"]')).toContainText('点击解锁'); expect(locked.calls).not.toContain('/home/sections/finance/calendar');
   await page.unrouteAll({ behavior: 'wait' }); await page.goto('about:blank'); const disabled = await setup(page, { enabled: false });
   await expect(page.locator('.summary-card')).toHaveCount(0); expect(disabled.calls.filter(path => path.startsWith('/home/sections/'))).toEqual([]);
 });
@@ -97,19 +98,14 @@ test('最近笔记点击读取完整大整数记录，保存后返回首页更�
   await page.getByRole('button', { name: '返回', exact: true }).click();
   await expect(page.locator('[aria-label="最近笔记首页卡片"]')).toContainText('修改后的笔记标题');
 });
-test('设备卡片进入指定设备原编辑器；记一笔可选择支出与收入', async ({ page }) => {
+test('设备卡片在首页打开指定设备编辑器', async ({ page }) => {
   await setup(page, { count: 1 });
   await page.route('**/api/userDictType/getByDictType?*', route => route.fulfill({ json: { code: 0, data: { dictDetailList: [] } } }));
-  await page.route('**/api/device/query?*', route => route.fulfill({ json: { code: 0, data: { items: [{ id: 'device-0', name: '设备完整名称', purchasePrice: 2460, purchaseDate: '2026-04-01', remark: '完整配置' }], total: 1 } } }));
+  await page.route('**/api/device/device-0', route => route.fulfill({ json: { code: 0, data: { id: 'device-0', name: '设备完整名称', purchasePrice: 2460, purchaseDate: '2026-04-01', remark: '完整配置' } } }));
   await page.getByRole('button', { name: '查看设备0', exact: true }).click();
-  await expect(page).toHaveURL(/devices\?id=device-0/); const device = page.getByRole('dialog', { name: '编辑设备' }); await expect(device).toBeVisible(); await expect(device.getByRole('textbox', { name: '名称', exact: true })).toHaveValue('设备完整名称');
-  await device.getByRole('button', { name: '取消', exact: true }).click(); await page.getByRole('button', { name: '返回', exact: true }).click();
-  for (const kind of ['expense', 'income']) {
-    await page.route('**/api/' + kind + '/query?*', route => route.fulfill({ json: { code: 0, data: { items: [], total: 0 } } }));
-    await page.getByRole('button', { name: '记一笔', exact: true }).click(); await page.getByText(kind === 'expense' ? '记支出' : '记收入', { exact: true }).click();
-    await expect(page).toHaveURL(new RegExp(kind + '\\?create=1')); await expect(page.getByRole('dialog')).toBeVisible();
-    await page.getByRole('dialog').getByRole('button', { name: '取消', exact: true }).click(); await page.getByRole('button', { name: '返回', exact: true }).click();
-  }
+  await expect(page).toHaveURL(/pages\/home\/index/); const device = page.getByRole('dialog', { name: '编辑设备' }); await expect(device).toBeVisible(); await expect(device.getByRole('textbox', { name: '名称', exact: true })).toHaveValue('设备完整名称');
+  await device.getByRole('button', { name: '取消', exact: true }).click(); await expect(page).toHaveURL(/pages\/home\/index/);
+
 });
 test('视频卡片续看打开对应集数且编辑进入完整原表单', async ({ page, context }) => {
   await setup(page, { count: 1 });
@@ -119,24 +115,20 @@ test('视频卡片续看打开对应集数且编辑进入完整原表单', async
   await page.getByRole('button', { name: '编辑视频0', exact: true }).click(); await expect(page).toHaveURL(/video\?id=video-0/); await expect(page.getByRole('dialog')).toBeVisible(); await expect(page.getByRole('dialog').getByRole('textbox', { name: '标题', exact: true })).toHaveValue('完整视频标题');
 });
 test('三财务卡范围切换独立，慢请求与失败保留对应标签和金额', async ({ page }) => {
-  const fixture = await setup(page); const finance = page.locator('[aria-label="收支概览首页卡片"]');
-  await expect(finance).toContainText('¥10,000.00'); const others = fixture.calls.filter(item => item.startsWith('/home/sections/') && !item.endsWith('/finance')).length;
-  let releaseYear; const pendingYear = new Promise(resolve => { releaseYear = resolve; }); let yearFails = false;
-  await page.route('**/api/home/sections/finance?*', async route => {
-    const period = new URL(route.request().url()).searchParams.get('period');
-    if (period === 'year' && !yearFails) await pendingYear;
-    return route.fulfill({ json: yearFails && period === 'year' ? { code: 1, message: '本年请求失败' } : { code: 0, data: { period, label: period === 'all' ? '全部' : '2026年', income: 90000, expense: 10000, balance: period === 'all' ? 80000 : 50000, refreshInterval: 300 } } });
+  await setup(page); const finance = page.locator('[aria-label="收支概览首页卡片"]');
+  await expect(finance).toHaveAttribute('aria-busy', 'false'); let release; let failed = false;
+  await page.route('**/api/home/sections/finance/calendar?*', async route => {
+    const url = new URL(route.request().url());
+    if (url.searchParams.get('granularity') === 'month' && !failed) await new Promise(resolve => { release = resolve; });
+    return route.fulfill({ json: failed ? { code: 1, message: '模拟概览失败' } : { code: 0, data: calendarFixture(url, 'finance') } });
   });
-  await finance.getByRole('button', { name: '收支概览：本年', exact: true }).click();
-  await expect(finance.getByRole('button', { name: '收支概览：本年', exact: true })).toHaveAttribute('aria-busy', 'true');
-  await expect(finance).toContainText('2026年10月'); await expect(finance).toContainText('¥10,000.00'); await expect(finance.getByRole('button', { name: '收支概览：本月', exact: true })).toHaveAttribute('aria-pressed', 'true');
-  await finance.getByRole('button', { name: '收支概览：全部', exact: true }).click(); await expect(finance).toContainText('¥80,000.00'); releaseYear(); await page.waitForTimeout(100); await expect(finance).not.toContainText('¥50,000.00');
-  yearFails = true; await finance.getByRole('button', { name: '收支概览：本年', exact: true }).click(); await expect(finance.getByRole('button', { name: /重试收支概览：本年请求失败/ })).toBeVisible(); await expect(finance.getByRole('button', { name: '收支概览：全部', exact: true })).toHaveAttribute('aria-pressed', 'true'); await expect(finance).toContainText('¥80,000.00');
-  expect(fixture.calls.filter(item => item.startsWith('/home/sections/') && !item.endsWith('/finance')).length).toBe(others);
-  for (const [kind, title] of [['income', '收入'], ['expense', '支出']]) {
-    await page.route('**/api/home/sections/' + kind + '?*', route => route.fulfill({ json: { code: 0, data: { period: 'year', label: '2026年', amount: 98765.43, refreshInterval: 300 } } }));
-    const card = page.locator('[aria-label="' + title + '首页卡片"]'); await card.getByRole('button', { name: title + '：本年', exact: true }).click(); await expect(card).toContainText('2026年'); await expect(card).toContainText('¥98,765.43');
-  }
+  await finance.getByRole('button', { name: '收支概览：月', exact: true }).click(); await expect(finance.getByRole('status')).toBeVisible();
+  await expect(finance.getByRole('button', { name: '收支概览：周', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await finance.getByRole('button', { name: '收支概览：年', exact: true }).click(); await expect(finance.getByRole('button', { name: '收支概览：年', exact: true })).toHaveAttribute('aria-pressed', 'true'); release();
+  failed = true; await finance.getByRole('button', { name: '收支概览：月', exact: true }).click(); await expect(finance).toContainText('模拟概览失败'); await expect(finance.getByRole('button', { name: '收支概览：年', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await expect(finance).toContainText('10,000.00');
+  await expect(page.getByRole('button', { name: '收入：周', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByRole('button', { name: '支出：日', exact: true })).toHaveAttribute('aria-pressed', 'true');
 });
 test('授权图片失败与无图保持固定占位，重试真正显示图片', async ({ page }) => {
   const fixture = await setup(page, { count: 3 }); const card = page.locator('[aria-label="我的设备首页卡片"]');
@@ -147,9 +139,119 @@ test('授权图片失败与无图保持固定占位，重试真正显示图片',
   const failed = await card.locator('.summary-image').first().boundingBox(); expect(failed.width).toBe(before.width); expect(failed.height).toBe(before.height); expect(await card.locator('.summary-image').nth(1).locator('img').count()).toBe(0);
   fail = false; await card.getByRole('button', { name: '重试设备0图片', exact: true }).click(); await expect.poll(() => card.locator('.summary-image').first().locator('img').evaluateAll(nodes => nodes.length === 1 && nodes[0].naturalWidth > 0)).toBe(true);
 });
-test('独立收入卡不依赖支出权限，收入与支出新增直达各自表单', async ({ page }) => {
-  await setup(page, { locked: true }); await expect(page.locator('[aria-label="收入首页卡片"]')).toContainText('¥12,345.67'); await expect(page.locator('[aria-label="支出首页卡片"]')).toContainText('点击解锁');
+test('独立收入卡不依赖支出权限，标题进入账本且没有新增加号', async ({ page }) => {
+  await setup(page, { locked: true }); const income = page.locator('[aria-label="收入首页卡片"]');
+  await expect(income).toContainText('12,345.67'); await expect(page.locator('[aria-label="支出首页卡片"]')).toContainText('点击解锁');
+  await expect(income.getByRole('button', { name: '收入：日', exact: true })).toHaveCount(0);
+  await expect(income.getByRole('button', { name: '记收入', exact: true })).toHaveCount(0);
   await page.route('**/api/userDictType/getByDictType?*', route => route.fulfill({ json: { code: 0, data: { dictDetailList: [] } } }));
   await page.route('**/api/income/query?*', route => route.fulfill({ json: { code: 0, data: { items: [], total: 0 } } }));
-  await page.locator('[aria-label="收入首页卡片"]').getByRole('button', { name: '记收入', exact: true }).click(); await expect(page).toHaveURL(/income\?create=1/); await expect(page.getByRole('dialog')).toBeVisible();
+  await income.getByRole('button', { name: '查看收入', exact: true }).click(); await expect(page).toHaveURL(/pages\/finance\/income/);
+});
+
+for (const width of [390, 820, 1440]) for (const theme of ['light', 'dark']) {
+  test(`首页设备原地编辑保存与删除 ${width} ${theme}`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 960 });
+    await page.addInitScript(theme => localStorage.setItem('aio-life-mobile.theme.v1', JSON.stringify({ type: 'string', data: theme })), theme);
+    const fixture = await setup(page, { count: 1 });
+    const id = '9223372036854775807';
+    fixture.data.device.items[0].id = id;
+    let saved;
+    const detail = { id, name: '设备0', spec: '完整配置', purchasePrice: null, purchaseDate: null, endDate: null, status: '1', type: '81', purchasePlace: '模拟渠道', remark: '需要保留的备注', fileId: '' };
+    await page.route('**/api/*DictType/getByDictType?*', route => route.fulfill({ json: { code: 0, data: { dictDetailList: [] } } }));
+    await page.route('**/api/device/' + id, async route => {
+      if (route.request().method() === 'PUT') { saved = route.request().postDataJSON(); Object.assign(detail, saved); fixture.data.device.items[0].name = saved.name; }
+      if (route.request().method() === 'DELETE') fixture.data.device.items = [];
+      return route.fulfill({ json: { code: 0, data: detail } });
+    });
+    // 摘要首次请求可能先于 fixture 更新，显式刷新后验证长 ID。
+    await page.getByRole('button', { name: '刷新我的设备', exact: true }).click();
+    await page.getByRole('button', { name: '查看设备0', exact: true }).click();
+    const editor = page.getByRole('dialog', { name: '编辑设备' });
+    await expect(editor.getByRole('textbox', { name: '名称', exact: true })).toHaveValue('设备0');
+    await expect(page).toHaveURL(/pages\/home\/index/);
+    const output = path.join(__dirname, '../../artifacts/home-device'); fs.mkdirSync(output, { recursive: true });
+    await page.screenshot({ path: path.join(output, `editor-${width}-${theme}.png`) });
+    await editor.getByRole('textbox', { name: '名称', exact: true }).fill('设备已修改');
+    await editor.getByRole('button', { name: '保存', exact: true }).click();
+    await expect(editor).toHaveCount(0);
+    await expect(page.getByRole('button', { name: '查看设备已修改', exact: true })).toBeVisible();
+    expect(saved.id).toBeUndefined(); expect(saved.remark).toBe(detail.remark); expect(saved.purchasePrice).toBeNull(); expect(saved.purchaseDate).toBeNull();
+    await page.getByRole('button', { name: '查看设备已修改', exact: true }).click();
+    await editor.getByRole('button', { name: '删除设备', exact: true }).click();
+    await page.getByRole('button', { name: '确认', exact: true }).click();
+    await expect(editor).toHaveCount(0);
+    await expect(page.locator('[aria-label="我的设备首页卡片"]')).toContainText('暂无在用设备');
+    await expect(page).toHaveURL(/pages\/home\/index/);
+    expect(fixture.calls.some(path => path.startsWith('/device/query'))).toBe(false);
+  });
+}
+
+test('首页设备详情失败可重试，关闭慢请求不重开弹窗', async ({ page }) => {
+  await setup(page, { count: 1 });
+  let failed = true, release;
+  await page.route('**/api/device/device-0', async route => {
+    if (release === null) await new Promise(resolve => { release = resolve; });
+    return route.fulfill({ json: failed ? { code: 1, message: '模拟加载失败' } : { code: 0, data: { id: 'device-0', name: '设备完整名称' } } });
+  });
+  await page.getByRole('button', { name: '查看设备0', exact: true }).click();
+  const editor = page.getByRole('dialog', { name: '编辑设备' });
+  await expect(editor.getByRole('button', { name: '重新加载详情' })).toBeVisible();
+  failed = false;
+  await editor.getByRole('button', { name: '重新加载详情' }).click();
+  await expect(editor.getByRole('textbox', { name: '名称', exact: true })).toHaveValue('设备完整名称');
+  await editor.getByRole('button', { name: '取消', exact: true }).click();
+  release = null;
+  await page.getByRole('button', { name: '查看设备0', exact: true }).click();
+  await expect.poll(() => typeof release).toBe('function');
+  await editor.getByRole('button', { name: '取消', exact: true }).click();
+  release();
+  await expect(editor).toHaveCount(0);
+  await expect(page).toHaveURL(/pages\/home\/index/);
+});
+
+for (const kind of ['income', 'expense']) test(`${kind} 日历明细弹窗触底分页、失败重试及关闭旧请求`, async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 700 });
+  await setup(page); const title = kind === 'income' ? '收入' : '支出';
+  const card = page.locator('[aria-label="' + title + '首页卡片"]');
+  await expect(card).toHaveAttribute('aria-busy', 'false');
+  const calls = []; let fail = true;
+  await page.route('**/api/userDictType/getByDictType?*', route => route.fulfill({ json: { code: 0, data: { dictDetailList: [{ id: '1', dictLabel: '模拟分类' }] } } }));
+  await page.route('**/api/' + kind + '/query?*', route => {
+    const params = new URL(route.request().url()).searchParams, number = Number(params.get('page')); calls.push(Object.fromEntries(params));
+    return route.fulfill({ json: number === 2 && fail ? { code: 1, message: '模拟明细失败' } : { code: 0, data: { items: Array.from({ length: number === 1 ? 20 : 1 }, (_, index) => ({ id: String((number - 1) * 20 + index + 1), amt: 128.8, remark: '明细' + ((number - 1) * 20 + index + 1) + '：很长的收支描述需要正常换行而且不能撑宽弹窗', incDate: '2026-10-01', expTime: '2026-10-01 10:00:00', incTypeId: '1', expTypeId: '1' })), total: 21 } } });
+  });
+  const before = await card.boundingBox(); await card.locator('.calendar-cell').first().click();
+  const dialog = page.getByRole('dialog', { name: title + '明细' }); await expect(dialog).toBeVisible();
+  await expect(dialog).toContainText('明细20'); await expect(dialog).toContainText('模拟分类');
+  expect(calls[0].endTimeBefore).toBeTruthy(); expect(calls[0].startTime.includes(' ')).toBe(kind === 'expense');
+  await dialog.locator('.modal-scroll .uni-scroll-view-scrollbar-hidden').evaluate(el => { el.scrollTop = el.scrollHeight; });
+  await expect(dialog).toContainText('模拟明细失败'); fail = false;
+  await dialog.getByRole('button', { name: '重试加载', exact: true }).click(); await expect(dialog).toContainText('明细21');
+  expect(calls.map(row => row.page)).toEqual(['1', '2', '2']);
+  await dialog.getByRole('button', { name: '关闭', exact: true }).click(); await expect(dialog).toHaveCount(0);
+  expect((await card.boundingBox()).height).toBe(before.height);
+});
+
+test('收支日历范围独立持久化，切换 loading 保留高度，月年大金额完整展示', async ({ page }, info) => {
+  await page.setViewportSize({ width: 390, height: 900 }); await setup(page);
+  const income = page.locator('[aria-label="收入首页卡片"]'), expense = page.locator('[aria-label="支出首页卡片"]');
+  await expect(income).toHaveAttribute('aria-busy', 'false'); const before = await income.boundingBox();
+  await page.route('**/api/home/sections/income/calendar?*', async route => {
+    const data = calendarFixture(new URL(route.request().url()), 'income'); data.buckets[0].amount = 99999999.99;
+    await new Promise(resolve => setTimeout(resolve, 400)); return route.fulfill({ json: { code: 0, data } });
+  });
+  await income.getByRole('button', { name: '收入：月', exact: true }).click();
+  await expect(income.getByRole('status', { name: '正在加载收入', exact: true })).toBeVisible();
+  expect((await income.boundingBox()).height).toBe(before.height);
+  await expect(income.getByRole('button', { name: '收入：月', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await expect(income).toContainText('99,999,999.99'); await expect(expense.getByRole('button', { name: '支出：日', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  expect(await income.locator('.calendar-amount').evaluateAll(nodes => nodes.every(node => node.scrollWidth <= node.clientWidth + 1))).toBe(true);
+  await income.screenshot({ path: info.outputPath('income-month-large.png') });
+  expect(await page.evaluate(() => Object.keys(localStorage).filter(key => key.includes('granularity')).map(key => [key, localStorage.getItem(key)]))).toEqual(expect.arrayContaining([['aio-life-mobile:home:income:granularity:fixture-user', expect.stringContaining('month')]]));
+  await page.reload(); await expect(income.getByRole('button', { name: '收入：月', exact: true })).toHaveAttribute('aria-pressed', 'true'); await expect(income.locator('.calendar-total')).toHaveText('12,345.67');
+  await income.getByRole('button', { name: '收入：年', exact: true }).click(); await expect(income.getByRole('button', { name: '收入：年', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await expect(income.locator('.calendar-date-controls')).toHaveCount(0);
+  expect((await income.locator('.calendar-year-row').first().boundingBox()).height).toBe(40);
+  await income.screenshot({ path: info.outputPath('income-year-large.png') });
 });

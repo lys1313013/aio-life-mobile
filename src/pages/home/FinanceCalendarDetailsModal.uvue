@@ -1,0 +1,100 @@
+<script setup lang="ts">
+import { computed, onMounted, onUnmounted, reactive, ref } from 'vue'
+import AdaptiveModal from '../../components/AdaptiveModal.uvue'
+import LoadMore from '../../components/LoadMore.uvue'
+import LoadingIndicator from '../../components/LoadingIndicator.uvue'
+import { isDark } from '../../services/theme.ts'
+import { request } from '../../services/api.ts'
+import { session } from '../../services/session.ts'
+import { calendarMoney, calendarPeriod, createDetailsController, detailQuery, detailState } from './services/finance-calendar.ts'
+import type { CalendarBucket, FinanceKind, LedgerKind } from './services/finance-calendar.ts'
+const props = defineProps<{ kind: FinanceKind; initialKind?: LedgerKind; bucket: CalendarBucket }>()
+const emit = defineEmits(['close'])
+const detailKind = ref<LedgerKind>(props.kind === 'finance' ? props.initialKind || 'expense' : props.kind)
+const displayedKind = ref<LedgerKind>(detailKind.value)
+const title = props.kind === 'finance' ? '收支' : props.kind === 'expense' ? '支出' : '收入'
+const detailTitle = computed(() => displayedKind.value === 'income' ? '收入' : '支出')
+const total = computed(() => props.kind === 'finance' ? props.bucket[displayedKind.value] || 0 : props.bucket.amount)
+const state = reactive(detailState()), categories = ref<any[]>([]), payments = ref<any[]>([])
+const token = session.token
+let alive = true
+const dictionaries = new Map()
+function current() { return alive && session.token === token }
+const controller = createDetailsController(state, async page => {
+  const kind = detailKind.value
+  const [result, dicts] = await Promise.all([
+    request('/' + kind + '/query', 'GET', detailQuery(kind, props.bucket, page), true, null, true),
+    dictionaries.get(kind) || Promise.all((kind === 'expense' ? ['exp_type', 'pay_type'] : ['income_type']).map(dictType => request<any>('/userDictType/getByDictType', 'GET', { dictType }, true, null, true))),
+  ])
+  if (current() && kind === detailKind.value) {
+    dictionaries.set(kind, dicts)
+
+  }
+  return { ...result, detailKind: kind, dictionaries: dicts }
+}, current, result => {
+  displayedKind.value = result.detailKind
+  categories.value = result.dictionaries[0]?.dictDetailList || []
+  payments.value = result.dictionaries[1]?.dictDetailList || []
+})
+function description(row) { return displayedKind.value === 'income' ? row.remark || dictionary(categories.value, row.incTypeId) || '收入' : row.expDesc || row.counterparty || row.remark || '未填写描述' }
+function dictionary(rows, id) { const row = rows.find(item => item.id === id); return row?.dictLabel || row?.label || '' }
+function metadata(row) {
+  return [displayedKind.value === 'expense' ? row.expTime?.replace('T', ' ').slice(0, 16) || '未填日期' : row.incDate || '未填日期', dictionary(categories.value, row[displayedKind.value === 'expense' ? 'expTypeId' : 'incTypeId']), dictionary(payments.value, row.payTypeId)].filter(Boolean).join(' · ')
+}
+function switchKind(kind: LedgerKind) {
+  if (kind === detailKind.value) { if (state.error) void controller.load(); return }
+  controller.reset(true); detailKind.value = kind; void controller.load()
+}
+onMounted(() => controller.load())
+onUnmounted(() => { alive = false; controller.invalidate() })
+</script>
+<template>
+  <AdaptiveModal :label="title + '明细'" show-close :content-key="state.items.length + ':' + state.error" @close="emit('close')" @reachbottom="controller.load()">
+    <view class="details-heading"><text class="details-title" :class="{ 'details-text-dark': isDark }">{{ title }}明细</text><text class="details-total" :class="{ 'details-text-dark': isDark }">{{ calendarMoney(total) }}</text></view>
+    <view v-if="kind === 'finance'" class="details-tabs" role="group" aria-label="明细类型"><button v-for="item in [{ key: 'income', label: '收入' }, { key: 'expense', label: '支出' }]" :key="item.key" role="button" class="details-tab" :class="{ 'details-tab-active': displayedKind === item.key, 'details-tab-active-dark': isDark && displayedKind === item.key }" :aria-label="item.label + '明细'" :aria-pressed="displayedKind === item.key" :aria-busy="state.loading && detailKind === item.key" @click="switchKind(item.key)"><text class="details-tab-label" :class="{ 'details-text-dark': isDark }">{{ item.label }}</text></button></view>
+    <text class="details-period" :class="{ 'details-muted-dark': isDark }">{{ calendarPeriod(bucket) }}</text>
+    <view class="details-list" :aria-busy="state.loading">
+      <view v-if="!state.loaded && state.loading" class="details-pending"><LoadingIndicator ring :label="'正在加载' + title + '明细'" /></view>
+      <view v-else-if="state.loaded && !state.items.length" class="details-pending"><text class="details-caption" :class="{ 'details-muted-dark': isDark }">暂无{{ detailTitle }}记录</text></view>
+      <view v-for="row in state.items" :key="row.id" class="details-row">
+        <view class="details-main"><text class="details-description" :class="{ 'details-text-dark': isDark }">{{ description(row) }}</text><text class="details-amount" :class="{ 'details-text-dark': isDark }">{{ row.amt == null ? '—' : calendarMoney(row.amt) }}</text></view>
+        <text v-if="row.counterparty && row.counterparty !== description(row)" class="details-caption" :class="{ 'details-muted-dark': isDark }">{{ row.counterparty }}</text>
+        <text class="details-caption" :class="{ 'details-muted-dark': isDark }">{{ metadata(row) }}</text>
+        <text v-if="row.remark && row.remark !== description(row)" class="details-caption" :class="{ 'details-muted-dark': isDark }">{{ row.remark }}</text>
+        <text v-if="displayedKind === 'income' && row.tax != null" class="details-caption" :class="{ 'details-muted-dark': isDark }">税额：{{ calendarMoney(row.tax) }}</text>
+        <text v-if="row.transactionAmt != null && row.transactionAmt !== row.amt" class="details-caption" :class="{ 'details-muted-dark': isDark }">交易金额：{{ calendarMoney(row.transactionAmt) }}</text>
+        <text v-if="row.transactionStatus" class="details-caption" :class="{ 'details-muted-dark': isDark }">状态：{{ row.transactionStatus }}</text>
+        <text v-if="row.transactionId" class="details-caption" :class="{ 'details-muted-dark': isDark }">交易号：{{ row.transactionId }}</text>
+        <text v-if="row.merchantOrderNo" class="details-caption" :class="{ 'details-muted-dark': isDark }">商户单号：{{ row.merchantOrderNo }}</text>
+      </view>
+      <view v-if="state.loaded && state.page === 0 && (state.loading || state.error)" class="details-switching" :class="{ 'details-switching-dark': isDark }"><LoadingIndicator v-if="state.loading" ring :label="'正在加载' + (detailKind === 'income' ? '收入' : '支出') + '明细'" /><template v-else><text class="details-error" role="alert">{{ state.error }}</text><button role="button" class="details-tab" aria-label="重试切换明细" @click="controller.load()"><text class="details-tab-label" :class="{ 'details-text-dark': isDark }">重试</text></button></template></view>
+      <LoadMore :loading="state.loaded && state.page > 0 && state.loading" :has-more="state.hasMore" :error="state.loaded && state.page === 0 ? '' : state.error" @load="controller.load()" />
+    </view>
+  </AdaptiveModal>
+</template>
+<style scoped lang="scss">
+@use '../../styles/typography' as *;
+@use '../../styles/spacing-tokens' as *;
+.details-tabs { flex-direction: row; margin-top: $space-inline; gap: $space-detail; }
+.details-tab { height: $space-controlMin; flex: 1; padding: 0; margin: 0; border: 0; background-color: transparent; display: flex; align-items: center; justify-content: center; border-radius: 6px; }
+.details-tab-active { background-color: #f4f4f5; }
+.details-tab-active-dark { background-color: #292b30; }
+.details-tab-label { @include type-style('label'); color: #27272a; }
+/* #ifdef WEB || MP-WEIXIN */
+.details-tab::after { border: 0; }
+/* #endif */
+.details-heading, .details-main { flex-direction: row; justify-content: space-between; align-items: baseline; gap: $space-inline; }
+.details-title { @include type-style('title'); color: #27272a; }
+.details-total, .details-amount { @include type-style('label'); color: #27272a; flex-shrink: 0; }
+.details-period, .details-caption { @include type-style('caption'); color: #71717a; overflow-wrap: anywhere; }
+.details-period { margin-top: $space-detail; }
+.details-list { position: relative; min-height: 160px; margin-top: $space-section; }
+.details-switching { position: absolute; top: 0; right: 0; bottom: 0; left: 0; background-color: rgba(255, 255, 255, 0.65); align-items: center; justify-content: center; z-index: 2; }
+.details-switching-dark { background-color: rgba(28, 30, 34, 0.65); }
+.details-error { @include type-style('caption'); color: #bc4949; }
+.details-pending { height: 160px; align-items: center; justify-content: center; }
+.details-row { padding: $space-inline 0; gap: $space-detail; }
+.details-description { @include type-style('body'); color: #27272a; flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.details-text-dark { color: #ececf0; }
+.details-muted-dark { color: #a1a1aa; }
+</style>

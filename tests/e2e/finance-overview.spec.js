@@ -1,205 +1,76 @@
-const { test, expect } = require("@playwright/test");
-const fs = require("node:fs");
-const path = require("node:path");
-const { dashboardFixture } = require("./fixtures");
-
-// Synthetic five-year data: bonuses, a negative month and long category names.
-function statistics(expense) {
-  return Array.from({ length: 63 }, (_, i) => ({
-    year: 2021 + Math.floor((i + 6) / 12),
-    month: ((i + 6) % 12) + 1,
-    detail: expense
-      ? [
-          { typeName: "日常生活", amt: 3100.25 + i * 18 },
-          { typeName: "住房", amt: 2200 },
-          { typeName: "出行与公共交通", amt: 326.5 },
-          { typeName: "数码设备", amt: i === 60 ? 20000 : 88 },
-          { typeName: "学习", amt: 199 },
-          { typeName: "其他", amt: 66 },
-        ]
-      : [
-          { typeName: "工资", amt: 12500.5 + i * 100 },
-          { typeName: "奖金", amt: i % 12 === 5 ? 25000 : 0 },
-        ],
-  }));
-}
-async function setup(page, theme, state = {}) {
-  await page.emulateMedia({ colorScheme: theme });
-  await page.addInitScript(() =>
-    localStorage.setItem(
-      "aio-life-mobile.access-token.v1",
-      "finance-test-only",
-    ),
-  );
-  await page.route("**/api/**", async (route) => {
-    const p = new URL(route.request().url()).pathname;
-    let data = dashboardFixture(p) ?? [];
-    if (p === "/api/user/info")
-      data = { id: "1", nickname: "模拟用户", roles: ["admin"] };
-    if (p.endsWith("/statisticsByMonth")) {
-      if (state.wait) await state.wait;
-      if (state.fail)
-        return route.fulfill({ json: { code: 1, message: "模拟统计失败" } });
-      data = state.empty ? [] : statistics(p.includes("/expense/"));
+const { test, expect } = require('@playwright/test');
+const { calendarFixture } = require('./fixtures-finance-calendar');
+const fs = require('node:fs');
+const path = require('node:path');
+const routes = ['/finance-management/dashboard', '/finance-management/income', '/finance-management/expense'];
+async function setup(page, { theme = 'light', delay = 0, empty = false, fail = false, locked = false } = {}) {
+  const calls = []; const state = { fail };
+  await page.addInitScript(theme => {
+    localStorage.setItem('aio-life-mobile.access-token.v1', JSON.stringify({ type: 'string', data: 'finance-fixture-token' }));
+    localStorage.setItem('aio-life-mobile.theme.v1', JSON.stringify({ type: 'string', data: theme }));
+  }, theme);
+  await page.route('**/api/**', async route => {
+    const url = new URL(route.request().url()), pathname = url.pathname.replace('/api', ''); calls.push(pathname);
+    let data = [];
+    if (pathname === '/user/info') data = { id: 'finance-fixture', nickname: '模拟用户' };
+    if (pathname === '/menu/all') data = routes.map((path, index) => ({ path, meta: { menuId: index === 2 ? 'expense-lock' : 'finance-' + index } }));
+    if (pathname === '/quick-nav/candidates') data = routes.map(path => ({ path }));
+    if (pathname === '/auth/secondary-lock/menus') data = locked ? ['expense-lock'] : [];
+    if (pathname === '/menu/visuals') data = { menus: [], cards: {} };
+    if (pathname.endsWith('/calendar')) {
+      if (delay) await new Promise(resolve => setTimeout(resolve, delay));
+      if (state.fail) return route.fulfill({ json: { code: 1, message: '模拟概览失败' } });
+      data = calendarFixture(url, 'finance', empty ? 0 : 3);
     }
-    await route.fulfill({ json: { code: 0, data } });
+    if (pathname.endsWith('/getByDictType')) data = { dictDetailList: [] };
+    if (pathname.endsWith('/query')) data = { items: [], total: 0 };
+    return route.fulfill({ json: { code: 0, data } });
   });
-  await page.goto("/#/pages/finance/index");
+  await page.goto('/#/pages/finance/index'); return { calls, state };
 }
-async function selectYear(page, year) {
-  await require("./qa-domains-ui").picker(page, "年份", year);
+for (const width of [320, 390, 768, 1440]) for (const theme of ['light', 'dark']) {
+  test(`财务概览日历 ${width} ${theme}`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 900 }); const fixture = await setup(page, { theme, delay: 400 });
+    const card = page.locator('[aria-label="收支概览首页卡片"]');
+    await expect(card.getByRole('status', { name: '正在加载收支概览' })).toBeVisible(); const pending = await card.boundingBox();
+    await expect(card).toHaveAttribute('aria-busy', 'false'); expect((await card.boundingBox()).height).toBe(pending.height);
+    await expect(card.getByRole('button', { name: '查看结余', exact: true })).toHaveAttribute('aria-pressed', 'true');
+    await expect(card).toContainText('12,345.67'); await expect(card).toContainText('2,345.67'); await expect(card).toContainText('10,000.00');
+    await card.getByRole('button', { name: '查看收入', exact: true }).click(); await expect(card.locator('.calendar-amount').first()).toHaveText('12,345.67');
+    await card.getByRole('button', { name: '收支概览：月', exact: true }).click(); await expect(card).toHaveAttribute('aria-busy', 'false'); await expect(card.locator('.calendar-cell')).toHaveCount(12);
+    const folder = path.resolve('artifacts/finance-overview'); fs.mkdirSync(folder, { recursive: true }); await page.screenshot({ path: path.join(folder, `calendar-${width}-${theme}.png`), fullPage: true });
+    expect(await card.evaluate(el => el.scrollWidth > el.clientWidth + 1)).toBe(false);
+    await card.getByRole('button', { name: '收支概览：年', exact: true }).click(); await expect(card).toHaveAttribute('aria-busy', 'false'); await expect(card.locator('.calendar-date-controls')).toHaveCount(0);
+    expect((await card.locator('.calendar-year-row').first().boundingBox()).height).toBe(40);
+    expect(fixture.calls.some(value => value.includes('statisticsByMonth'))).toBe(false);
+  });
 }
-async function screenshot(page, name) {
-  const dir = "/tmp/aio-finance-qa";
-  fs.mkdirSync(dir, { recursive: true });
-  await page.screenshot({ path: path.join(dir, name + ".png") });
-}
-for (const width of [320, 390, 768, 1440])
-  for (const theme of ["light", "dark"]) {
-    test(`财务概览 ${width} ${theme}`, async ({ page }) => {
-      const errors = [];
-      page.on("pageerror", (error) => errors.push(error.message));
-      await page.setViewportSize({ width, height: 1000 });
-      let finish;
-      const wait = new Promise(resolve => { finish = resolve; });
-      await setup(page, theme, { wait });
-      const placeholders = page.locator('.chart-grid').first().locator('.aio-chart');
-      await expect(placeholders.locator('.chart-loading-plot')).toHaveCount(2);
-      const loadingHeights = await placeholders.evaluateAll(nodes => nodes.map(node => node.getBoundingClientRect().height));
-      finish();
-      const monthly = page.locator(".ledger").first();
-      const trend = page.getByRole("figure", {
-        name: "年度收支趋势",
-        exact: true,
-      });
-      await expect(monthly.locator(".ledger-row")).toHaveCount(6);
-      await expect(monthly.locator(".ledger-period").first()).toHaveText(
-        "2026",
-      );
-      await expect(page.locator(".overview-tools")).toHaveCount(0);
-      await expect(trend.locator("uni-picker")).toHaveCount(0);
-      const cumulative = page.getByRole("figure", {
-        name: "累计结余趋势",
-        exact: true,
-      });
-      expect(await page.locator('.chart-grid').first().locator('.aio-chart').evaluateAll(nodes => nodes.map(node => node.getBoundingClientRect().height))).toEqual(loadingHeights);
-      await expect(cumulative.locator("uni-picker")).toHaveCount(0);
-      await expect(cumulative.locator(".chart-y-tick").first()).toBeVisible();
-      await expect.poll(() => cumulative.locator(".aio-chart-canvas canvas").evaluate(canvas => {
-        const pixels = canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height).data;
-        let colored = 0;
-        for (let i = 0; i < pixels.length; i += 4) if (pixels[i + 3] > 0 && Math.max(pixels[i], pixels[i + 1], pixels[i + 2]) - Math.min(pixels[i], pixels[i + 1], pixels[i + 2]) > 50) colored++;
-        return colored;
-      })).toBeGreaterThan(500);
-      for (const chart of [trend, cumulative]) expect(await chart.locator(".chart-y-tick").evaluateAll(nodes =>
-        nodes.every(node => node.getBoundingClientRect().height <= parseFloat(getComputedStyle(node).lineHeight) + 1 && node.scrollWidth <= node.clientWidth + 1),
-      )).toBe(true);
-      await expect(cumulative.locator(".mini-chart-values")).toHaveCount(0);
-      await expect(cumulative.locator(".mini-chart-scale")).toHaveCount(0);
-      await expect(cumulative.getByLabel("累计结余总金额")).toHaveText("676,041.25元");
-      await expect(cumulative.locator(".chart-end-label")).toHaveCount(3);
-      await expect(cumulative.locator(".mini-chart-header .chart-end-label")).toHaveCount(0);
-      await screenshot(page, `${width}-${theme}-overview`);
-      await expect(page.locator(".ledger")).toHaveCount(1);
-      await expect(trend.locator(".chart-x-label")).toHaveText(["2021", "2022", "2023", "2024", "2025", "2026"]);
-      await expect(trend.locator(".chart-selected-label")).toHaveText("2026");
-      await expect(trend.locator(".chart-value-number").first()).toHaveText("164,704.50元");
-      // Legend toggles stay identifiable and retain the series color.
-      const expense = trend
-        .locator(".chart-value-item")
-        .filter({ hasText: "支出" });
-      const color = await expense.evaluate((el) => getComputedStyle(el).color);
-      await trend.getByRole("button", { name: "收入", exact: true }).click();
-      await expect(trend.locator(".chart-value-item")).toHaveCount(2);
-      expect(await expense.evaluate((el) => getComputedStyle(el).color)).toBe(
-        color,
-      );
-      await trend.getByRole("button", { name: "收入", exact: true }).click();
-      const category = page.locator(".category-panel").last();
-      // Both instances must paint independently; duplicate canvas IDs can hide one chart.
-      for (const chart of await page.locator(".category-panel").all()) {
-        await chart.scrollIntoViewIfNeeded();
-        await expect.poll(() => chart.locator(".distribution-canvas canvas").evaluate((canvas) => {
-          const pixels = canvas.getContext("2d").getImageData(0, 0, canvas.width, canvas.height).data;
-          let painted = 0;
-          for (let i = 3; i < pixels.length; i += 4) if (pixels[i] > 0) painted++;
-          return painted;
-        })).toBeGreaterThan(500);
-      }
-      await expect(category.locator(".distribution-row")).toHaveCount(5);
-      await category.getByRole("button", { name: "展开全部" }).click();
-      await expect(category.locator(".distribution-row")).toHaveCount(6);
-      await category.getByRole("button", { name: "收起", exact: true }).click();
-      await category.scrollIntoViewIfNeeded();
-      await screenshot(page, `${width}-${theme}-categories`);
-      await selectYear(page, "2026");
-      await expect(
-        page.getByRole("figure", { name: "月度收支对比", exact: true }),
-      ).toBeVisible();
-      await expect(monthly.locator(".ledger-row")).toHaveCount(9);
-      await expect(monthly.locator(".ledger-detail")).toHaveCount(0);
-      await expect(page.locator(".summary-number").first()).toHaveText(
-        "164,704.50",
-      );
-      await expect(page.getByRole("figure", { name: "收入构成", exact: true }).locator(".distribution-total")).toHaveText("164704.50");
-      await monthly.getByRole("button", { name: "2026-09累计结余" }).click();
-      await expect(monthly.locator(".ledger-detail")).toContainText(
-        "81,578.75 元",
-      );
-      await selectYear(page, "2025");
-      const monthTrend = page.getByRole("figure", { name: "月度收支趋势", exact: true });
-      await expect(monthly.locator(".ledger-row")).toHaveCount(12);
-      await expect(monthly.getByRole("button", { name: "更多月份" })).toHaveCount(0);
-      for (const chart of [monthTrend, cumulative, page.getByRole("figure", { name: "月度收支对比", exact: true })]) {
-        await expect(chart.locator(".chart-x-label")).toHaveText(Array.from({ length: 12 }, (_, i) => String(i + 1).padStart(2, "0")));
-        expect(await chart.locator(".chart-x-label").evaluateAll(nodes => nodes.every((node, i) =>
-          !i || node.getBoundingClientRect().left >= nodes[i - 1].getBoundingClientRect().right + 3,
-        ))).toBe(true);
-      }
-      const plot = monthTrend.getByRole("slider");
-      await plot.scrollIntoViewIfNeeded();
-      const axis = await monthTrend.locator(".chart-y-axis").boundingBox();
-      await plot.click({ position: { x: axis.width + 1, y: 20 } });
-      await expect(plot).toHaveAttribute("aria-valuenow", "0");
-      await expect(monthTrend.locator(".chart-selected-label")).toHaveText("2025-01");
-      await plot.press("ArrowRight");
-      await expect(monthTrend.locator(".chart-selected-label")).toHaveText("2025-02");
-      await screenshot(page, `${width}-${theme}-monthly`);
-      await page
-        .locator(".comparison-tabs")
-        .getByRole("button", { name: "结余率" })
-        .click();
-      await expect(
-        page.getByRole("figure", { name: "月度结余率", exact: true }),
-      ).toBeVisible();
-      await screenshot(page, `${width}-${theme}-comparison`);
-      expect(
-        await page.evaluate(
-          () => document.documentElement.scrollWidth <= innerWidth,
-        ),
-      ).toBe(true);
-      // Every ledger amount stays inside its column, even on phone widths.
-      expect(
-        await monthly
-          .locator(".ledger-number")
-          .evaluateAll((nodes) =>
-            nodes.every((n) => n.scrollWidth <= n.clientWidth + 1),
-          ),
-      ).toBe(true);
-      expect(errors).toEqual([]);
-    });
-  }
-test("统计失败重试和空态", async ({ page }) => {
-  const state = { fail: true };
-  await setup(page, "dark", state);
-  await expect(page.getByText("模拟统计失败", { exact: true })).toBeVisible();
-  state.fail = false;
-  await page.getByRole("button", { name: "重试", exact: true }).click();
-  await expect(
-    page.locator(".ledger").first().locator(".ledger-row"),
-  ).toHaveCount(6);
-  state.empty = true;
-  await page.reload();
-  await expect(page.getByText("暂无记录", { exact: true })).toBeVisible();
-  await expect(page.locator(".ledger")).toHaveCount(0);
+test('概览空态与失败重试保留卡片高度，底层二级锁不读取统计', async ({ page }) => {
+  const fixture = await setup(page, { empty: true, fail: true }); const card = page.locator('[aria-label="收支概览首页卡片"]');
+  await expect(card).toContainText('模拟概览失败'); const before = await card.boundingBox(); fixture.state.fail = false;
+  await card.getByRole('button', { name: '重试', exact: true }).click(); await expect(card).toHaveAttribute('aria-busy', 'false');
+  expect((await card.boundingBox()).height).toBe(before.height); await expect(card.getByRole('button', { name: '查看结余' })).toContainText('0.00');
+  await page.unrouteAll({ behavior: 'wait' }); await page.goto('about:blank'); const locked = await setup(page, { locked: true });
+  await expect(card).toContainText('点击解锁'); expect(locked.calls).not.toContain('/home/sections/finance/calendar');
+});
+test('概览零结余格子可点，明细可切收支，旧类型响应不回填', async ({ page }) => {
+  await setup(page);
+  await page.route('**/api/home/sections/finance/calendar?*', route => {
+    const data = calendarFixture(new URL(route.request().url()), 'finance'); data.buckets[0].amount = 0; data.buckets[0].balance = 0; data.buckets[0].income = 2345.67; data.buckets[0].expense = 2345.67;
+    return route.fulfill({ json: { code: 0, data } });
+  });
+  let release; const queries = [];
+  await page.route('**/api/expense/query?*', route => { queries.push('expense'); return route.fulfill({ json: { code: 0, data: { items: Array.from({ length: 20 }, (_, index) => ({ id: 'expense-' + index, amt: index ? 0 : 2345.67, expDesc: '实际支出明细' + index + ' 保留此前明细直到新类型加载成功', expTime: '2026-10-01 10:00:00' })), total: 20 } } }); });
+  await page.route('**/api/income/query?*', async route => { queries.push('income'); await new Promise(resolve => { release = resolve; }); return route.fulfill({ json: { code: 0, data: { items: [{ id: 'income-1', amt: 2345.67, remark: '迟到收入明细', incDate: '2026-10-01' }], total: 1 } } }); });
+  const card = page.locator('[aria-label="收支概览首页卡片"]'); await expect(card).toHaveAttribute('aria-busy', 'false');
+  await card.getByRole('button', { name: '刷新收支概览', exact: true }).click(); await expect(card).toHaveAttribute('aria-busy', 'false');
+  await card.locator('.calendar-cell').first().click(); const dialog = page.getByRole('dialog', { name: '收支明细' });
+  await expect(dialog).toContainText('实际支出明细'); const previousHeight = (await dialog.boundingBox()).height; await dialog.getByRole('button', { name: '收入明细', exact: true }).click(); await expect.poll(() => typeof release).toBe('function');
+  await expect(dialog).toContainText('实际支出明细'); await expect(dialog.getByRole('button', { name: '支出明细', exact: true })).toHaveAttribute('aria-pressed', 'true'); expect((await dialog.boundingBox()).height).toBe(previousHeight);
+  await dialog.getByRole('button', { name: '支出明细', exact: true }).click(); await expect(dialog).toContainText('实际支出明细'); release(); await expect(dialog).not.toContainText('迟到收入明细');
+  expect(queries).toEqual(['expense', 'income', 'expense']);
+});
+test('概览保留收入支出导航与记一笔入口', async ({ page }) => {
+  await setup(page); await page.getByRole('button', { name: '记一笔', exact: true }).click(); await page.getByText('记收入', { exact: true }).click();
+  await expect(page).toHaveURL(/income\?create=1/); await expect(page.getByRole('dialog')).toBeVisible();
 });

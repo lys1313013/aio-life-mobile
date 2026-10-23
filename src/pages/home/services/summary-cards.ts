@@ -1,4 +1,4 @@
-// 摘要读取仅依赖主包轻量接口，编辑通过业务分包深链复用原有表单。
+// 设备条目复用共享编辑器在首页弹出，其余业务保留各自入口。
 export const summaryCards = {
   memo: { title: '最近笔记', route: '/pages/records/notes?kind=memo', access: ['/pages/records/notes?kind=memo'], empty: '还没有笔记' },
   finance: { title: '收支概览', route: '/pages/finance/index', access: ['/pages/finance/index', '/pages/finance/income', '/pages/finance/expense'], empty: '' },
@@ -45,7 +45,7 @@ export function summaryEntry(key, id = '') {
 export function createSummaryController(key, state, options) {
   let version = 0, pending = null
   const snapshots = new Map()
-  const financial = financeSummaryKinds.includes(key)
+  const financial = !options.query && financeSummaryKinds.includes(key)
   function invalidate(clear = false) {
     version++; pending = null; state.loading = false
     if (clear) { snapshots.clear(); Object.assign(state, summaryState()) }
@@ -54,9 +54,10 @@ export function createSummaryController(key, state, options) {
   async function refresh(force = true) {
     if (!options.active()) return
     if (pending) return pending
-    const current = ++version, revision = options.revision(), period = state.period
-    const bucket = financial ? summaryPeriodKey(period) : key === 'device' ? summaryDay() : ''
-    const valid = () => version === current && options.active() && state.period === period
+    const scope = options.query?.()
+    const current = ++version, revision = options.revision(), period = scope?.key || state.period
+    const bucket = scope ? summaryDay() : financial ? summaryPeriodKey(period) : key === 'device' ? summaryDay() : ''
+    const valid = () => version === current && options.active() && (options.query ? options.query().key === period : state.period === period)
     state.loading = true; state.error = ''
     const task = (async () => {
       try {
@@ -71,7 +72,8 @@ export function createSummaryController(key, state, options) {
           state.data = cached.data; state.at = cached.at; state.revision = revision
           return
         }
-        const data = readSummary(key, await options.fetch('/home/sections/' + key + (financial ? '?period=' + period : '')))
+        const raw = await options.fetch(scope?.path || '/home/sections/' + key + (financial ? '?period=' + period : ''))
+        const data = scope ? options.read(raw, scope) : readSummary(key, raw)
         if (!valid() || options.revision() !== revision) return
         if (financial && data.period !== period) throw Error('统计范围不一致，请重试')
         // 请求过程中二级锁可能到期；完成后再次检查，避免展示过期授权内容。

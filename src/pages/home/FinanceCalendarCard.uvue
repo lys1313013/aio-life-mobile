@@ -1,0 +1,203 @@
+<script setup lang="ts">
+import { computed, onUnmounted, reactive, ref, watch } from 'vue'
+import DashboardSection from '../../components/DashboardSection.uvue'
+import AppIcon from '../../components/AppIcon.uvue'
+import LoadingIndicator from '../../components/LoadingIndicator.uvue'
+import FinanceCalendarDetailsModal from './FinanceCalendarDetailsModal.uvue'
+import { fetchUser, request } from '../../services/api.ts'
+import { session } from '../../services/session.ts'
+import { isDark } from '../../services/theme.ts'
+import { menuVisuals } from '../../services/menu-visuals.ts'
+import { homeDataRevision } from '../../services/home-refresh.ts'
+import { cachedMenuAccess, loadMenuAccess } from '../../services/menu-access-cache.ts'
+import { lockedMenuPaths, matchesNativeMenu } from '../../services/life-catalog.ts'
+import { isMenuUnlocked } from '../../services/secondary-lock.ts'
+import { createHomeRefreshScheduler } from './services/refresh-scheduler.ts'
+import { createSummaryController, summaryCards, summaryState } from './services/summary-cards.ts'
+import { calendarMoney, calendarPlaceholder, calendarScope, chinaDay, modesFor, moveCalendarDate, readCalendar, readCalendarMode, saveCalendarMode, calendarPeriod } from './services/finance-calendar.ts'
+import type { CalendarBucket, FinanceKind, FinanceMetric, Granularity } from './services/finance-calendar.ts'
+const props = defineProps<{ kind: FinanceKind; active: boolean; preparing?: boolean; height?: number; refreshDisabled?: boolean; page?: boolean }>()
+const emit = defineEmits(['visibility'])
+const config = summaryCards[props.kind]
+const state = reactive(summaryState())
+// 显式调用 uni 方法，让跨端编译器保留对应 API；不能把裁剪后的 uni 全局对象传给适配器。
+const storage = { getStorageSync: (key: string) => uni.getStorageSync(key), setStorageSync: (key: string, value: string) => uni.setStorageSync(key, value) }
+const owner = computed(() => String(session.user?.id || ''))
+const mode = ref<Granularity>(readCalendarMode(props.kind, owner.value, storage))
+const metric = ref<FinanceMetric>('balance')
+const metrics = [{ key: 'income', label: '收入' }, { key: 'expense', label: '支出' }, { key: 'balance', label: '结余' }]
+function amount(bucket) { return props.kind === 'finance' ? bucket[metric.value] || 0 : bucket.amount }
+const cursor = ref(''), detail = ref<CalendarBucket | null>(null)
+const visual = computed(() => menuVisuals.visual('section.' + props.kind))
+const modes = modesFor(props.kind), weekdays = ['一', '二', '三', '四', '五', '六', '日']
+const query = () => calendarScope(props.kind, mode.value, cursor.value)
+const display = computed(() => state.data || calendarPlaceholder(query()))
+const titleDate = computed(() => { const date = display.value.date || ''; return display.value.granularity === 'month' ? date + '年' : date.slice(0, 4) + '年' + Number(date.slice(5)) + '月' })
+const initial = computed(() => !state.data)
+const rows = computed(() => {
+  const data = display.value, columns = data.granularity === 'day' ? 7 : data.granularity === 'week' ? 1 : 3
+  const blank = data.granularity === 'day' ? (new Date(data.date + '-01T00:00:00Z').getUTCDay() + 6) % 7 : 0
+  const cells = [...Array(blank).fill(null), ...data.buckets], result = []
+  while (cells.length % columns) cells.push(null)
+  for (let index = 0; index < cells.length; index += columns) result.push(cells.slice(index, index + columns))
+  return result
+})
+const maximum = computed(() => Math.max(1, ...display.value.buckets.map(row => Math.abs(amount(row)))))
+const canNext = computed(() => query().date && query().date < chinaDay().slice(0, mode.value === 'month' ? 4 : 7))
+const canPrevious = computed(() => Number(query().date?.slice(0, 4)) > 1000)
+const years = computed(() => Array.from({ length: Math.max(11, Number(chinaDay().slice(0, 4)) - Number(query().date?.slice(0, 4) || chinaDay().slice(0, 4)) + 1) }, (_, index) => String(Number(chinaDay().slice(0, 4)) - index)))
+const scheduler = createHomeRefreshScheduler()
+const fetch = path => request(path, 'GET', null, true, null, true)
+let candidates = null, candidatesAt = 0, accessRevision = -1
+function lockedRoute(access) { return [...(props.page ? [] : ['/pages/home/index']), ...config.access].find(route => lockedMenuPaths(route, access.menus, access.ids).some(path => !isMenuUnlocked(path))) || '' }
+async function access() {
+  if (!session.user?.id) await fetchUser()
+  const token = session.token, permissions = await loadMenuAccess(fetch)
+  if (!candidates || Date.now() - candidatesAt > 60000 || accessRevision !== homeDataRevision('access')) {
+    const values = await fetch('/quick-nav/candidates?client=mobile')
+    if (!Array.isArray(values) || values.some(row => !row || typeof row.path !== 'string')) throw Error('菜单权限数据异常，请重试')
+    if (token !== session.token) throw Error('登录状态已变化，请重试')
+    candidates = values; candidatesAt = Date.now(); accessRevision = homeDataRevision('access')
+  }
+  const route = lockedRoute(permissions)
+  return { available: config.access.every(route => candidates.some(row => matchesNativeMenu(route, row.path))), locked: !!route, unlockRoute: route }
+}
+const controller = createSummaryController(props.kind, state, { active: () => props.active && !!session.token, revision: () => homeDataRevision(props.kind), access, fetch, query, read: readCalendar })
+function checkAccess() {
+  const access = cachedMenuAccess(), route = access ? lockedRoute(access) : config.route
+  if (route && state.data) { controller.invalidate(true); state.locked = true; state.unlockRoute = route; detail.value = null; scheduler.clear() }
+}
+async function refresh(force = true) {
+  await controller.refresh(force)
+  scheduler.set(props.kind, state.available && !state.locked ? state.data?.refreshInterval : 0, () => refresh())
+  if (props.active) scheduler.resume()
+}
+function changeScope() { detail.value = null; controller.invalidate(); scheduler.pause(); void refresh(false) }
+function selectMode(value: Granularity) {
+  if (!props.active || props.refreshDisabled || state.locked) return
+  if (mode.value === value) { if (state.error) void refresh(); return }
+  mode.value = value; saveCalendarMode(props.kind, owner.value, value, storage); changeScope()
+}
+function move(delta: number) {
+  if (props.refreshDisabled || state.locked || (delta > 0 ? !canNext.value : !canPrevious.value)) return
+  cursor.value = moveCalendarDate(query().date || chinaDay(), mode.value, delta); changeScope()
+}
+function pickDate(value: string) { cursor.value = value; changeScope() }
+function navigate() { if (props.active && !props.refreshDisabled) uni.navigateTo({ url: state.locked ? state.unlockRoute || config.route : config.route }) }
+function openDetail(bucket: CalendarBucket) { if (!initial.value && !state.loading && !state.locked && !props.refreshDisabled && !(bucket.future && !bucket.amount && !bucket.income && !bucket.expense)) detail.value = bucket }
+function heat(bucket: CalendarBucket) {
+  if (!amount(bucket) || initial.value) return {}
+  const hex = visual.value.iconColor || '#d27858', match = /^#([\da-f]{2})([\da-f]{2})([\da-f]{2})$/i.exec(hex)
+  return match ? { backgroundColor: 'rgba(' + match.slice(1).map(part => parseInt(part, 16)).join(',') + ',' + (0.08 + Math.abs(amount(bucket)) / maximum.value * 0.24) + ')' } : {}
+}
+function weekRange(bucket: CalendarBucket) { return calendarPeriod(bucket).replaceAll(/\d{4}-/g, '').replaceAll('-', '/').replace(' — ', ' – ') }
+watch(() => props.active, active => { if (active) { checkAccess(); void refresh(false) } else { detail.value = null; scheduler.pause(); controller.invalidate() } }, { immediate: true })
+watch(() => props.preparing, value => { if (value) checkAccess() })
+watch(() => session.token, () => { detail.value = null; cursor.value = ''; scheduler.clear(); controller.invalidate(true); candidates = null }, { flush: 'sync' })
+watch(owner, () => { detail.value = null; cursor.value = ''; mode.value = readCalendarMode(props.kind, owner.value, storage); controller.invalidate(true); if (props.active) void refresh(false) }, { flush: 'sync' })
+watch(() => [state.locked, state.available], () => { if (state.locked || !state.available) detail.value = null; emit('visibility', state.available) }, { immediate: true })
+onUnmounted(() => { scheduler.clear(); controller.invalidate() })
+defineExpose({ refresh, checkAccess, loading: computed(() => state.loading), error: computed(() => state.error) })
+</script>
+<template>
+  <view v-if="state.available" class="finance-calendar" :class="{ 'finance-calendar-dark': isDark }" :aria-label="config.title + '首页卡片'" :aria-busy="state.loading">
+    <DashboardSection :title="config.title" :icon="visual.icon" :icon-color="visual.iconColor" :height="height || (page ? 420 : 280)" :locked="state.locked" :refresh-disabled="refreshDisabled" :navigable="!page" @navigate="navigate" @refresh="refresh()">
+      <template #actions><view class="calendar-tabs" :class="{ 'calendar-tabs-dark': isDark }" role="group" :aria-label="config.title + '统计粒度'"><button role="button" v-for="item in modes" :key="item.key" class="calendar-tab" :disabled="refreshDisabled || state.locked" :aria-label="config.title + '：' + item.label" :aria-pressed="display.granularity === item.key" @click.stop="selectMode(item.key)"><view class="calendar-tab-surface" :class="{ 'calendar-tab-selected': display.granularity === item.key, 'calendar-tab-selected-dark': isDark && display.granularity === item.key }"><text class="calendar-tab-label" :class="{ 'calendar-tab-label-dark': isDark, 'calendar-tab-label-selected': display.granularity === item.key, 'calendar-tab-label-selected-dark': isDark && display.granularity === item.key }">{{ item.label }}</text></view></button></view></template>
+      <view class="calendar-content">
+        <view class="calendar-toolbar">
+          <view v-if="display.granularity !== 'year'" class="calendar-date-controls">
+            <button role="button" class="calendar-arrow" :disabled="!canPrevious || refreshDisabled" aria-label="上一时间段" @click.stop="move(-1)"><AppIcon name="ant-design:left-outlined" :size="16" :color="isDark ? '#ececf0' : '#27272a'" /></button>
+            <picker v-if="display.granularity === 'month'" mode="selector" :range="years" :value="years.indexOf(display.date)" :disabled="refreshDisabled" @change="pickDate(years[Number($event.detail.value)])"><view class="calendar-date-picker"><text class="calendar-date" :class="{ 'calendar-text-dark': isDark }">{{ titleDate }}</text></view></picker>
+            <picker v-else mode="date" fields="month" :value="display.date" start="1000-01" :end="chinaDay().slice(0, 7)" :disabled="refreshDisabled" @change="pickDate($event.detail.value)"><view class="calendar-date-picker"><text class="calendar-date" :class="{ 'calendar-text-dark': isDark }">{{ titleDate }}</text></view></picker>
+            <button role="button" class="calendar-arrow" :disabled="!canNext || refreshDisabled" aria-label="下一时间段" @click.stop="move(1)"><AppIcon name="ant-design:right-outlined" :size="16" :color="isDark ? '#ececf0' : '#27272a'" /></button>
+          </view>
+          <text v-if="kind !== 'finance'" class="calendar-total" :class="{ 'calendar-text-dark': isDark }" aria-label="范围合计">{{ initial ? '—' : calendarMoney(display.amount) }}</text>
+        </view>
+        <view v-if="kind === 'finance'" class="calendar-metrics" role="group" aria-label="收支指标"><button v-for="item in metrics" :key="item.key" role="button" class="calendar-metric" :class="{ 'calendar-metric-selected': metric === item.key, 'calendar-metric-selected-dark': isDark && metric === item.key }" :aria-label="'查看' + item.label" :aria-pressed="metric === item.key" @click.stop="metric = item.key"><text class="calendar-metric-label" :class="{ 'calendar-muted-dark': isDark }">{{ item.label }}</text><text class="calendar-metric-value" :class="{ 'calendar-text-dark': isDark }">{{ initial ? '—' : calendarMoney(display[item.key]) }}</text></button></view>
+        <view class="calendar-chart">
+          <view v-if="display.granularity === 'day'" class="calendar-weekdays"><text v-for="day in weekdays" :key="day" class="calendar-weekday" :class="{ 'calendar-muted-dark': isDark }">{{ day }}</text></view>
+          <scroll-view direction="vertical" :scroll-y="display.granularity === 'year'" class="calendar-scroll">
+            <view class="calendar-grid" :class="{ 'calendar-grid-year': display.granularity === 'year' }">
+              <view v-for="(row, rowIndex) in rows" :key="rowIndex" class="calendar-row" :class="{ 'calendar-row-last': rowIndex === rows.length - 1, 'calendar-year-row': display.granularity === 'year' }">
+                <view v-for="(bucket, index) in row" :key="bucket ? bucket.key : 'blank-' + index" class="calendar-slot" :class="{ 'calendar-slot-last': index === row.length - 1 }">
+                  <button role="button" v-if="bucket" class="calendar-cell" :class="{ 'calendar-cell-week': display.granularity === 'week', 'calendar-cell-future': bucket.future && !bucket.amount && !bucket.income && !bucket.expense, 'calendar-cell-pending': initial, 'calendar-cell-pending-dark': initial && isDark }" :style="heat(bucket)" :disabled="initial || state.loading || (bucket.future && !bucket.amount && !bucket.income && !bucket.expense)" :aria-label="calendarPeriod(bucket) + '，' + calendarMoney(amount(bucket)) + '，查看' + config.title + '明细'" @click.stop="openDetail(bucket)">
+                    <text class="calendar-cell-label" :class="{ 'calendar-muted-dark': isDark, 'calendar-cell-label-day': display.granularity === 'day', 'calendar-cell-label-compact': kind === 'finance' && !page }">{{ bucket.label }}</text>
+                    <text v-if="display.granularity === 'week'" class="calendar-week-range" :class="{ 'calendar-muted-dark': isDark }">{{ weekRange(bucket) }}</text>
+                    <text class="calendar-amount" :class="{ 'calendar-text-dark': isDark, 'calendar-amount-day': display.granularity === 'day' || (kind === 'finance' && !page), 'calendar-amount-long': display.granularity === 'day' ? calendarMoney(amount(bucket), true).length > 6 : calendarMoney(amount(bucket)).length > 12 }">{{ initial ? ' ' : amount(bucket) ? calendarMoney(amount(bucket), display.granularity === 'day') : '—' }}</text>
+                  </button>
+                </view>
+              </view>
+            </view>
+          </scroll-view>
+          <view v-if="state.loading" class="calendar-loading" :class="{ 'calendar-loading-dark': isDark }"><LoadingIndicator ring :label="'正在加载' + config.title" /></view>
+          <view v-else-if="state.error" class="calendar-error" :class="{ 'calendar-loading-dark': isDark }"><text class="calendar-error-text" role="alert">{{ state.error }}</text><button role="button" class="calendar-retry" @click.stop="refresh()"><text class="calendar-retry-label">重试</text></button></view>
+        </view>
+      </view>
+    </DashboardSection>
+    <FinanceCalendarDetailsModal v-if="detail && active && !state.locked" :key="detail.key" :kind="kind" :initial-kind="metric === 'income' ? 'income' : 'expense'" :bucket="detail" @close="detail = null" />
+  </view>
+</template>
+<style scoped lang="scss">
+@use '../../styles/typography' as *;
+@use '../../styles/spacing-tokens' as *;
+.finance-calendar { width: 100%; }
+/* 底槽与选中块按 Web 比例内缩，透明按钮保留 44px 触控区；整体下移与标题对齐。 */
+.calendar-tabs { z-index: 1; height: $space-controlMin - $space-inline; flex-shrink: 0; flex-direction: row; align-items: center; gap: $space-micro; padding: 0 $space-tight; transform: translateY($space-detail); background-color: #f4f4f5; border-radius: 10px; }
+.calendar-tabs-dark { background-color: #292b30; }
+.calendar-tab { width: $space-controlMin; height: $space-controlMin; min-width: 0; padding: 0; margin: 0; border: 0; display: flex; align-items: center; justify-content: center; border-radius: 8px; background-color: transparent !important; }
+.calendar-tab-surface { width: 100%; height: $space-controlMin - $space-inline - $space-tight * 2; align-items: center; justify-content: center; border-radius: 8px; background-color: transparent; }
+.calendar-tab-selected { background-color: #ffffff; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08); }
+.calendar-tab-selected-dark { background-color: #1c1e22; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2); }
+.calendar-tab-label { @include type-style('label'); color: #71717a; }
+.calendar-tab-label-dark { color: #a1a1aa; }
+.calendar-tab-label-selected { color: #27272a; }
+.calendar-tab-label-selected-dark { color: #ececf0; }
+.calendar-content { flex: 1; min-height: 0; }
+.calendar-toolbar { height: $space-controlMin; flex-shrink: 0; flex-direction: row; align-items: center; justify-content: space-between; }
+.calendar-date-controls { flex-direction: row; align-items: center; }
+.calendar-arrow { display: flex; width: $space-controlMin; height: $space-controlMin; margin: 0; padding: 0; border: 0; align-items: center; justify-content: center; background-color: transparent !important; }
+.calendar-date-picker { height: $space-controlMin; justify-content: center; }
+.calendar-date { @include type-style('caption'); color: #27272a; }
+.calendar-total { @include type-style('label'); color: #27272a; margin-left: auto; }
+.calendar-metrics { flex-direction: row; flex-shrink: 0; gap: $space-detail; margin-bottom: $space-detail; }
+.calendar-metric { display: flex; flex-direction: column; flex: 1; min-width: 0; min-height: $space-controlMin; padding: 0; margin: 0; border: 0; border-radius: 6px; background-color: transparent; align-items: center; justify-content: center; }
+.calendar-metric-selected { background-color: #f4f4f5; }
+.calendar-metric-selected-dark { background-color: #292b30; }
+.calendar-metric-label { @include type-style('chart-label'); color: #71717a; }
+.calendar-metric-value { @include type-style('caption'); color: #27272a; }
+.calendar-chart { flex: 1; min-height: 0; position: relative; }
+.calendar-weekdays { flex-direction: row; flex-shrink: 0; }
+.calendar-weekday { flex: 1; text-align: center; @include type-style('chart-label'); color: #71717a; }
+.calendar-scroll { flex: 1; min-height: 0; height: 100%; }
+.calendar-grid { height: 100%; flex: 1; }
+.calendar-grid-year { height: auto; flex: none; }
+.calendar-row { flex: 1; min-height: 0; flex-direction: row; margin-bottom: $space-micro; }
+.calendar-row-last { margin-bottom: 0; }
+.calendar-year-row { height: 40px; flex: none; margin-bottom: $space-inline; }
+.calendar-slot { flex: 1; min-width: 0; margin-right: $space-micro; }
+.calendar-slot-last { margin-right: 0; }
+/* 日历属于紧凑图表，格子随卡片内容区均分；导航与粒度操作保留标准触控区。 */
+.calendar-cell { display: flex; flex-direction: column; flex: 1; min-width: 0; width: 100%; height: 100%; padding: 0; margin: 0; border: 0; border-radius: 6px; align-items: center; justify-content: center; background-color: transparent; }
+.calendar-cell-week { flex-direction: row; justify-content: space-between; padding: 0 $space-inline; }
+.calendar-cell-label { @include type-style('caption'); color: #71717a; }
+.calendar-cell-label-compact { @include type-style('chart-label'); }
+.calendar-cell-label-day { @include type-style('chart-detail'); }
+.calendar-week-range { @include type-style('caption'); color: #71717a; }
+.calendar-amount { @include type-style('caption'); color: #27272a; }
+.calendar-amount-day { @include type-style('chart-label'); }
+.calendar-amount-long { @include type-style('chart-detail'); }
+.calendar-cell-future { opacity: 0.4; background-color: transparent !important; }
+.calendar-cell-pending { background-color: #f4f4f5; }
+.calendar-cell-pending-dark { background-color: #292b30; }
+.calendar-text-dark { color: #ececf0; }
+.calendar-muted-dark { color: #a1a1aa; }
+.calendar-loading, .calendar-error { position: absolute; top: 0; right: 0; bottom: 0; left: 0; z-index: 2; align-items: center; justify-content: center; background-color: rgba(255, 255, 255, 0.65); }
+.calendar-loading { pointer-events: none; }
+.calendar-loading-dark { background-color: rgba(28, 30, 34, 0.65); }
+.calendar-error-text { @include type-style('caption'); color: #bc4949; }
+.calendar-retry { height: $space-controlMin; padding: 0 $space-card; margin: $space-detail 0 0; border: 0; background-color: transparent; }
+.calendar-retry-label { @include type-style('caption'); color: #5879ce; }
+/* #ifdef WEB || MP-WEIXIN */
+.calendar-metric::after, .calendar-tab::after, .calendar-arrow::after, .calendar-cell::after, .calendar-retry::after { border: 0; }
+/* #endif */
+</style>
