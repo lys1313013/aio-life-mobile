@@ -1,0 +1,184 @@
+<script setup lang="ts">
+import { onUnmounted, ref, watch } from 'vue';
+import AdaptiveModal from '../AdaptiveModal.uvue';
+import FormField from '../FormField.uvue';
+import FormActions from '../FormActions.uvue';
+import MobileButton from '../MobileButton.uvue';
+import ConfirmAction from '../ConfirmAction.uvue';
+import AttachmentField from '../AttachmentField.uvue';
+import LoadingIndicator from '../LoadingIndicator.uvue';
+import { appButtonTextColor } from '../../services/app-layout.ts';
+import { isRequired, missingRequired } from '../../services/form-required.ts';
+import { createRecordScope } from '../../services/records/page-scope.ts';
+import { getDevice, saveDevice, deleteDevice, fetchDeviceEditorOptions } from '../../services/devices.ts';
+import { session } from '../../services/session.ts';
+const props = defineProps<{ record?: any; deviceId?: string }>();
+const emit = defineEmits(['close', 'saved', 'deleted']);
+const form = ref<any>(null), types = ref<any[]>([]), statuses = ref<any[]>([]);
+const loading = ref(false), loadError = ref(''), saving = ref(false), deleting = ref(false), attachmentBusy = ref(false), formError = ref('');
+const scope = createRecordScope(() => emit('close'));
+let generation = 0;
+watch(() => session.token, () => { generation++; emit('close'); }, { flush: 'sync' });
+onUnmounted(() => { generation++; });
+async function load() {
+  const current = ++generation;
+  loading.value = true;
+  loadError.value = '';
+  form.value = null;
+  try {
+    const [[typeDict, statusDict], item] = await scope.wait(Promise.all([
+      fetchDeviceEditorOptions(),
+      props.deviceId ? getDevice(props.deviceId) : Promise.resolve(props.record),
+    ]));
+    if (current !== generation) return;
+    if (props.deviceId && (!item || item.id !== props.deviceId)) throw Error('记录不存在或已删除');
+    types.value = typeDict.dictDetailList || [];
+    statuses.value = statusDict.dictDetailList || [];
+    form.value = {
+      name: '', spec: '', type: types.value[0]?.id || '', status: '1', purchaseDate: '', endDate: '', purchasePrice: '', purchasePlace: '', remark: '', fileId: '',
+      ...item,
+      files: item?.fileId ? [{ id: item.fileId, fileName: item.name + ' 图片' }] : [],
+    };
+  } catch (error) {
+    if (current === generation && error.name !== 'PageInactiveError') loadError.value = error.message || '加载失败';
+  } finally { if (current === generation) loading.value = false; }
+}
+watch(() => [props.deviceId, props.record], load, { immediate: true });
+function statusName(value) {
+  return (
+    statuses.value.find((item) => String(item.value) === String(value))?.label ||
+    { '1': '使用中', '2': '已损坏', '3': '已送人', '4': '吃灰中' }[value] ||
+    value
+  );
+}
+async function save() {
+  if (!form.value || loading.value || saving.value || deleting.value || attachmentBusy.value) return;
+  if (missingRequired('device', form.value)) {
+    formError.value = '请输入设备名称';
+    return;
+  }
+  const price = form.value.purchasePrice == null || form.value.purchasePrice === '' ? null : Number(form.value.purchasePrice);
+  if (price != null && (!Number.isFinite(price) || price < 0)) {
+    formError.value = '购买价格必须为非负数字';
+    return;
+  }
+  if (
+    form.value.endDate &&
+    form.value.purchaseDate &&
+    form.value.endDate < form.value.purchaseDate
+  ) {
+    formError.value = '结束日期不能早于购买日期';
+    return;
+  }
+  const payload = {
+    ...form.value,
+    name: form.value.name.trim(),
+    purchasePrice: price,
+    purchaseDate: form.value.purchaseDate || null,
+    endDate: form.value.endDate || null,
+    fileId: form.value.files.at(-1)?.id || '',
+  };
+  delete payload.files;
+  saving.value = true;
+  formError.value = '';
+  try {
+    const saved = await scope.wait(saveDevice(payload));
+    emit('saved', { ...payload, ...(saved || {}) });
+    emit('close');
+  } catch (e) {
+    if (e.name === 'PageInactiveError') return;
+    formError.value = e.message;
+  } finally {
+    saving.value = false;
+  }
+}
+async function remove(item) {
+  if (!form.value || loading.value || saving.value || deleting.value || attachmentBusy.value) return;
+  deleting.value = true;
+  try {
+    await scope.wait(deleteDevice(item.id));
+    emit('deleted', item.id);
+    emit('close');
+  } finally {
+    deleting.value = false;
+  }
+}
+</script>
+<template>
+      <AdaptiveModal
+        label="编辑设备"
+        :max-width="520"
+        :show-close="false"
+        :busy="saving || deleting || attachmentBusy"
+        @close="emit('close')"
+      >
+        <view v-if="loading || loadError" class="device-loading ui-pad-modal">
+          <LoadingIndicator v-if="loading" />
+          <MobileButton v-else label="重新加载详情" @click="load" />
+          <MobileButton label="取消" variant="quiet" @click="emit('close')" />
+        </view>
+        <template v-else-if="form">
+        <FormField :required="isRequired('device', 'name')" appearance="soft" label="名称" placeholder="设备名称" v-model="form.name" />
+        <FormField appearance="soft" label="配置" placeholder="型号、容量等" v-model="form.spec" />
+        <view class="ui-field-row">
+          <FormField appearance="soft" compact stretch label="类型" kind="selector"
+            :model-value="types.find((t) => t.id === form.type)?.dictLabel || types.find((t) => t.id === form.type)?.label || ''"
+            :options="types.map((t) => t.dictLabel || t.label)"
+            @update:model-value="form.type = types.find((t) => (t.dictLabel || t.label) === $event)?.id || ''" />
+          <FormField appearance="soft" compact stretch label="状态" kind="selector"
+            :model-value="statusName(form.status)"
+            :options="statuses.map((t) => t.label)"
+            @update:model-value="form.status = String(statuses.find((t) => t.label === $event)?.value || '1')" />
+        </view>
+        <view class="ui-field-row">
+          <FormField appearance="soft" compact stretch label="购买价格" placeholder="¥ 0.00" input-type="digit" v-model="form.purchasePrice" />
+          <FormField appearance="soft" compact stretch label="购买平台" placeholder="选填" v-model="form.purchasePlace" />
+        </view>
+        <view class="ui-field-row">
+          <FormField appearance="soft" compact stretch label="购买日期" kind="date" v-model="form.purchaseDate" />
+          <FormField appearance="soft" compact stretch label="退役日期" kind="date" placeholder="未退役" v-model="form.endDate" />
+        </view>
+        <FormField appearance="soft" label="备注" kind="textarea" placeholder="选填" v-model="form.remark" />
+        <AttachmentField images-only :max-count="1"
+          :files="form.files"
+          upload-path="/file/upload"
+          :form-data="{ bizType: 'device' }"
+          :disabled="saving || deleting"
+          @update:files="form.files = $event.slice(-1)"
+          @busy-change="attachmentBusy = $event" /><text
+          v-if="formError"
+          class="goods-error ui-section ui-type-body"
+          >{{ formError }}</text
+        ><FormActions>
+          <template #secondary><ConfirmAction
+            v-if="form.id"
+            label="删除设备"
+            :message="'确定删除设备「' + form.name + '」？'"
+            :action="() => remove(form)"
+          ><template #default="{ open: confirm, busy }"><MobileButton
+            label="删除设备"
+            icon="ant-design:delete-outlined"
+            variant="quiet"
+            :loading="busy"
+            :disabled="saving || attachmentBusy"
+            @click="confirm"
+          /></template></ConfirmAction></template>
+          <MobileButton
+            label="取消"
+            variant="quiet"
+            :disabled="saving || deleting || attachmentBusy"
+            @click="emit('close')"><text :style="appButtonTextColor(false)" class="device-editor-action">取消</text></MobileButton><MobileButton
+            label="保存"
+            :loading="saving"
+            :disabled="deleting || attachmentBusy"
+            @click="save"><text :style="appButtonTextColor()" class="device-editor-action">保存</text></MobileButton>
+        </FormActions></template></AdaptiveModal>
+</template>
+<style scoped lang="scss">
+@use '../../styles/typography' as *;
+@use '../../styles/spacing.scss';
+@include type-utilities('body');
+.device-editor-action { @include type-style('body'); }
+.goods-error { color: #e05252; }
+.device-loading { align-items: center; justify-content: center; min-height: 128px; }
+</style>

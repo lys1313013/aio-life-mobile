@@ -1,12 +1,10 @@
 <script setup lang="ts">
 import { fetchDictionary } from '../../services/dictionary.ts';
 import { usePageRefresh } from '../../services/page-refresh.ts'
-import { useAppLayout, appTextColor, appButtonTextColor } from '../../services/app-layout.ts'
+import { useAppLayout, appTextColor } from '../../services/app-layout.ts'
 const { appGridItem } = useAppLayout()
 
 import { buttonLabelClasses } from '../../services/button-label.ts'
-import FormActions from '../../components/FormActions.uvue';
-import { isRequired, missingRequired } from '../../services/form-required.ts';
 import ContentSkeleton from '../../components/ContentSkeleton.uvue';
 import AppIcon from '../../components/AppIcon.uvue';
 import iconCatalog from '../../services/icons/catalog.ts';
@@ -16,21 +14,15 @@ import MobilePage from '../../components/MobilePage.uvue';
 import PageHeader from '../../components/PageHeader.uvue';
 import MobileButton from '../../components/MobileButton.uvue';
 import FormField from '../../components/FormField.uvue';
-import ConfirmAction from '../../components/ConfirmAction.uvue';
 import PageState from '../../components/PageState.uvue';
-import AdaptiveModal from '../../components/AdaptiveModal.uvue';
 import MetricCard from '../../components/MetricCard.uvue';
-import AttachmentField from '../../components/AttachmentField.uvue';
 import { authFileUrl } from '../../services/attachments.ts';
 import { session } from '../../services/session.ts';
 import { isDark } from '../../services/theme.ts';
 import { createRecordScope } from '../../services/records/page-scope.ts';
 import { useTabSwipe } from '../../services/tab-swipe.ts';
-import {
-  fetchDevicePage,
-  saveDevice,
-  deleteDevice,
-} from './services/devices.ts';
+import { fetchDevicePage } from '../../services/devices.ts';
+import DeviceRecordEditor from '../../components/record-editors/DeviceRecordEditor.uvue';
 const rows = ref<any[]>([]),
   types = ref<any[]>([]),
   statuses = ref<any[]>([]),
@@ -43,12 +35,7 @@ const photos = ref<Record<string, string>>({}),
   loadedPhotoUrls = ref<Record<string, string>>({}),
   photoBusy = ref<Record<string, boolean>>({}),
   photoErrors = ref<Record<string, string>>({});
-const form = ref<any>(null),
-  saving = ref(false),
-  deleting = ref(false),
-  formError = ref(''),
-  attachmentBusy = ref(false),
-  created = ref(false);
+const form = ref<any>(null);
 const deviceTypeVisuals = computed(() => Object.fromEntries(types.value.map((type) => {
   const icon = type.icon?.trim();
   return [type.id, {
@@ -225,8 +212,6 @@ function statusName(value) {
 }
 function open(item = null) {
   if (loading.value || tabSwipe.ignoreClick()) return;
-  created.value = false;
-  formError.value = '';
   form.value = item
     ? {
         ...item,
@@ -249,74 +234,19 @@ function open(item = null) {
         files: [],
       };
 }
-async function save() {
-  if (saving.value || deleting.value || attachmentBusy.value) return;
-  if (missingRequired('device', form.value)) {
-    formError.value = '请输入设备名称';
-    return;
-  }
-  const price = form.value.purchasePrice === '' ? null : Number(form.value.purchasePrice);
-  if (price != null && (!Number.isFinite(price) || price < 0)) {
-    formError.value = '购买价格必须为非负数字';
-    return;
-  }
-  if (
-    form.value.endDate &&
-    form.value.purchaseDate &&
-    form.value.endDate < form.value.purchaseDate
-  ) {
-    formError.value = '结束日期不能早于购买日期';
-    return;
-  }
-  const payload = {
-    ...form.value,
-    name: form.value.name.trim(),
-    purchasePrice: price,
-    purchaseDate: form.value.purchaseDate || null,
-    endDate: form.value.endDate || null,
-    fileId: form.value.files.at(-1)?.id || '',
-  };
-  delete payload.files;
-  saving.value = true;
-  formError.value = '';
-  try {
-    if (!created.value) {
-      await scope.wait(saveDevice(payload));
-      if (!payload.id) created.value = true;
-    }
-    if (payload.id) {
-      const index = rows.value.findIndex((item) => item.id === payload.id);
-      if (index >= 0) rows.value[index] = payload;
-    } else {
-      const data = [];
-      let page = 1;
-      while (true) {
-        const response = await scope.wait(fetchDevicePage(page++, payload.type));
-        data.push(...response.items);
-        if (data.length >= response.total || response.items.length < 100) break;
-      }
-      rows.value = data;
-      typeFilter.value =
-        types.value.find((t) => t.id === payload.type)?.dictLabel || '全部类型';
-    }
-    form.value = null;
-  } catch (e) {
-    if (e.name === 'PageInactiveError') return;
-    formError.value = e.message;
-  } finally {
-    saving.value = false;
-  }
+function deviceSaved(payload) {
+  if (payload.id) {
+    const index = rows.value.findIndex((item) => item.id === payload.id);
+    if (index >= 0) rows.value[index] = payload;
+    else void load();
+    if (payload.fileId) void loadPhoto(payload);
+    else photos.value = { ...photos.value, [payload.id]: '' };
+  } else void load();
+  form.value = null;
 }
-async function remove(item) {
-  if (saving.value || deleting.value || attachmentBusy.value) return;
-  deleting.value = true;
-  try {
-    await scope.wait(deleteDevice(item.id));
-    rows.value = rows.value.filter((r) => r.id !== item.id);
-    if (form.value?.id === item.id) form.value = null;
-  } finally {
-    deleting.value = false;
-  }
+function deviceDeleted(id: string) {
+  rows.value = rows.value.filter(item => item.id !== id);
+  form.value = null;
 }
 </script>
 <template>
@@ -418,69 +348,7 @@ async function remove(item) {
         ></PageState
       >
       </view></view>
-      <AdaptiveModal
-        v-if="form"
-        label="编辑设备"
-        :max-width="520"
-        :show-close="false"
-        :busy="saving || deleting || attachmentBusy"
-        @close="form = null"
-      >
-        <FormField :required="isRequired('device', 'name')" appearance="soft" label="名称" placeholder="设备名称" v-model="form.name" />
-        <FormField appearance="soft" label="配置" placeholder="型号、容量等" v-model="form.spec" />
-        <view class="ui-field-row">
-          <FormField appearance="soft" compact stretch label="类型" kind="selector"
-            :model-value="types.find((t) => t.id === form.type)?.dictLabel || types.find((t) => t.id === form.type)?.label || ''"
-            :options="types.map((t) => t.dictLabel || t.label)"
-            @update:model-value="form.type = types.find((t) => (t.dictLabel || t.label) === $event)?.id || ''" />
-          <FormField appearance="soft" compact stretch label="状态" kind="selector"
-            :model-value="statusName(form.status)"
-            :options="statuses.map((t) => t.label)"
-            @update:model-value="form.status = String(statuses.find((t) => t.label === $event)?.value || '1')" />
-        </view>
-        <view class="ui-field-row">
-          <FormField appearance="soft" compact stretch label="购买价格" placeholder="¥ 0.00" input-type="digit" v-model="form.purchasePrice" />
-          <FormField appearance="soft" compact stretch label="购买平台" placeholder="选填" v-model="form.purchasePlace" />
-        </view>
-        <view class="ui-field-row">
-          <FormField appearance="soft" compact stretch label="购买日期" kind="date" v-model="form.purchaseDate" />
-          <FormField appearance="soft" compact stretch label="退役日期" kind="date" placeholder="未退役" v-model="form.endDate" />
-        </view>
-        <FormField appearance="soft" label="备注" kind="textarea" placeholder="选填" v-model="form.remark" />
-        <AttachmentField images-only :max-count="1"
-          :files="form.files"
-          upload-path="/file/upload"
-          :form-data="{ bizType: 'device' }"
-          :disabled="saving || deleting"
-          @update:files="form.files = $event.slice(-1)"
-          @busy-change="attachmentBusy = $event" /><text
-          v-if="formError"
-          class="goods-error ui-section ui-type-body"
-          >{{ formError }}</text
-        ><FormActions>
-          <template #secondary><ConfirmAction
-            v-if="form.id"
-            label="删除设备"
-            :message="'确定删除设备「' + form.name + '」？'"
-            :action="() => remove(form)"
-          ><template #default="{ open: confirm, busy }"><MobileButton
-            label="删除设备"
-            icon="ant-design:delete-outlined"
-            variant="quiet"
-            :loading="busy"
-            :disabled="saving || attachmentBusy"
-            @click="confirm"
-          /></template></ConfirmAction></template>
-          <MobileButton
-            label="取消"
-            variant="quiet"
-            :disabled="saving || deleting || attachmentBusy"
-            @click="form = null"><text :style="appButtonTextColor(false)" class="device-editor-action">取消</text></MobileButton><MobileButton
-            :label="created ? '重新读取' : '保存'"
-            :loading="saving"
-            :disabled="deleting || attachmentBusy"
-            @click="save"><text :style="appButtonTextColor()" class="device-editor-action">{{ created ? '重新读取' : '保存' }}</text></MobileButton>
-        </FormActions></AdaptiveModal> </view
+      <DeviceRecordEditor v-if="form" :record="form" @close="form = null" @saved="deviceSaved" @deleted="deviceDeleted" /> </view
   ></MobilePage>
 </template>
 <style scoped lang="scss">
@@ -501,7 +369,6 @@ async function remove(item) {
   flex-direction: row;
   align-items: center;
 }
-.device-editor-action { @include type-style('body');   }
 .device-type-scroll {
   width: 100%;
   white-space: nowrap;

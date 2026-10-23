@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { computed, reactive, watch, onUnmounted } from 'vue'
+import { computed, reactive, ref, watch, onUnmounted } from 'vue'
 import DashboardSection from '../../components/DashboardSection.uvue'
 import DashboardAction from '../../components/DashboardAction.uvue'
 import AppIcon from '../../components/AppIcon.uvue'
+import DeviceRecordEditor from '../../components/record-editors/DeviceRecordEditor.uvue'
 import SummaryCover from './SummaryCover.uvue'
 import LoadingIndicator from '../../components/LoadingIndicator.uvue'
 import { request } from '../../services/api.ts'
@@ -20,6 +21,8 @@ const props = defineProps<{ kind: string; active: boolean; preparing?: boolean; 
 const emit = defineEmits(['visibility'])
 const card = summaryCards[props.kind]
 const state = reactive(summaryState())
+const deviceId = ref('')
+watch(() => [props.active, session.token, state.locked, state.available], () => { deviceId.value = '' }, { flush: 'sync' })
 const financial = financeSummaryKinds.includes(props.kind)
 const metrics = props.kind === 'finance' ? [{ key: 'income', label: '收入' }, { key: 'expense', label: '支出' }, { key: 'balance', label: '结余' }] : [{ key: 'amount', label: props.kind === 'income' ? '收入' : '支出' }]
 const actionLabel = props.kind === 'finance' ? '记一笔' : props.kind === 'income' ? '记收入' : props.kind === 'expense' ? '记支出' : '新增' + card.title
@@ -75,6 +78,7 @@ async function changePeriod(period) {
 function manualRefresh() { if (!props.refreshDisabled) void refresh() }
 function navigate(id = '') {
   if (!props.active || props.refreshDisabled) return
+  if (props.kind === 'device' && id && !state.locked && state.available) { deviceId.value = id; return }
   const url = state.locked ? state.unlockRoute || card.route : summaryEntry(props.kind, id)
   if (url === '/pages/home/index') return
   uni.navigateTo({ url })
@@ -114,11 +118,11 @@ function resume(row) { if (props.active && !props.refreshDisabled && !state.lock
         </view>
       </view>
     </DashboardSection>
+    <DeviceRecordEditor v-if="deviceId && active && !state.locked" :device-id="deviceId" @close="deviceId = ''" @saved="refresh()" @deleted="refresh()" />
   </view>
 </template>
 <style scoped lang="scss">
 @use '../../styles/typography' as *;
-@use '../../styles/spacing.scss';
 @use '../../styles/spacing-tokens' as *;
 .summary-card { width: 100%; }
 .summary-pending { padding: 0 $space-card $space-card; }
