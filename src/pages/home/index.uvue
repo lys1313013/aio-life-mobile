@@ -101,6 +101,8 @@ const homeSections = computed(() => cardOrder.ordered('section', homeCardPrefere
 const sectionEnabled = (key: string) => homeCards.enabled('section.' + (key === 'commits' ? 'github' : key))
 const businessActive = ref(false)
 const loading = ref(false)
+// 排序须等待整页布局稳定；卡片交互只等待公共准备完成，不能被其他卡片的慢请求禁用。
+const interactionDisabled = computed(() => !businessActive.value || !!homeCardPreferences.busy || businessSorting.value || quickNavEditing.value || !!cardOrder.dragging.value)
 const refreshing = ref(false)
 async function pullRefresh() {
   if (refreshing.value) return
@@ -833,7 +835,7 @@ function trendLines(points) {
               :loading="states.time.loading && !refreshing && !states.time.loaded"
               :retain-content="states.time.loaded"
               :error="timeDate ? '' : states.time.error"
-              :locked="states.time.locked" :refresh-disabled="orderDisabled"
+              :locked="states.time.locked" :refresh-disabled="interactionDisabled"
               navigable @navigate="openLink('/time/time-tracker')"
               @refresh="loadSection('time')"
             >
@@ -894,7 +896,7 @@ function trendLines(points) {
               :updating="!quickNavEditing && states.links.loading && !refreshing && states.links.loaded"
               :retain-content="states.links.loaded"
               :error="quickNavEditing ? '' : states.links.error"
-              :locked="states.links.locked" :refresh-disabled="orderDisabled || quickNavEditing"
+              :locked="states.links.locked" :refresh-disabled="interactionDisabled"
               @navigate="openQuickNavEditor()"
               @refresh="loadSection('links')"
             >
@@ -933,7 +935,7 @@ function trendLines(points) {
               :updating="states.watched.loading && !refreshing && states.watched.loaded"
               :retain-content="states.watched.loaded"
               :error="states.watched.error"
-              :locked="states.watched.locked" :refresh-disabled="orderDisabled"
+              :locked="states.watched.locked" :refresh-disabled="interactionDisabled"
               navigable @navigate="openLink('/task/todo')"
               @refresh="loadSection('watched')"
               ><template #loading><view class="watched-loading" :class="{ 'watched-loading-auto': watchedAutoHeight }" role="status" aria-label="正在加载待办"><view class="watched-skeleton-row" aria-hidden="true"><view class="watched-skeleton-check" :class="themeClass('time-skeleton-fill')" /><view class="watched-skeleton-copy"><view class="time-skeleton-fill watched-skeleton-line" :class="themeClass('time-skeleton-fill')" /><view class="time-skeleton-fill watched-skeleton-line" :class="themeClass('time-skeleton-fill')" /></view></view></view></template><scroll-view scroll-y :show-scrollbar="false" class="list-scroll" :class="{ 'list-scroll-auto': watchedAutoHeight }" :style="watchedAutoHeight ? { maxHeight: (sectionHeight('watched') - sectionInset('watched')) + 'px' } : {}"
@@ -957,7 +959,7 @@ function trendLines(points) {
               :updating="states.thoughts.loading && !refreshing && states.thoughts.loaded"
               :retain-content="states.thoughts.loaded"
               :error="states.thoughts.error"
-              :locked="states.thoughts.locked" :refresh-disabled="orderDisabled"
+              :locked="states.thoughts.locked" :refresh-disabled="interactionDisabled"
               navigable @navigate="openLink('/record/think')"
               @refresh="loadSection('thoughts')"
               ><template #actions><DashboardAction label="新增闪念" @click="addThought" /></template><template #loading><HomeListSkeleton label="正在加载闪念" :rows="2" :row-height="thoughtRowHeight" single-line /></template><view v-if="thoughts.length === 0" class="empty-state ui-pad-card"
@@ -988,7 +990,7 @@ function trendLines(points) {
               :updating="states.exercise.loading && !refreshing && states.exercise.loaded"
               :retain-content="states.exercise.loaded"
               :error="states.exercise.error"
-              :locked="states.exercise.locked" :refresh-disabled="orderDisabled"
+              :locked="states.exercise.locked" :refresh-disabled="interactionDisabled"
               navigable @navigate="openLink('/record/exercise')"
               @refresh="loadSection('exercise')"
               ><template #actions><DashboardAction label="新增运动" @click="addExercise" /></template><template #loading><HomeListSkeleton label="正在加载运动" :rows="3" :row-height="40" single-line flush-top /></template><scroll-view scroll-y :show-scrollbar="false" class="list-scroll exercise-scroll" :lower-threshold="40" @scrolltolower="maybeLoadMore('exercise')" @touchstart="startCardSwipe('exercise', $event)" @touchend="finishCardSwipe('exercise', $event)"
@@ -1045,7 +1047,7 @@ function trendLines(points) {
               :updating="states.commits.loading && !refreshing && states.commits.loaded"
               :retain-content="states.commits.loaded"
               :error="states.commits.error"
-              :locked="states.commits.locked" :refresh-disabled="orderDisabled"
+              :locked="states.commits.locked" :refresh-disabled="interactionDisabled"
               navigable :title-label="githubProfile ? '访问 GitHub 主页' : '查看 GitHub'" @navigate="openGithub"
               @refresh="loadSection('commits')"
               ><template #loading><HomeListSkeleton label="正在加载最近提交" :rows="2" :row-height="commitRowHeight" /></template><view v-if="commits.length === 0" class="empty-state ui-pad-card"
@@ -1070,9 +1072,9 @@ function trendLines(points) {
             ></view
           >
         <view v-if="section.cardKey === 'section.weread'" class="section-content ui-pad-xs"><WereadRecentCard :height="multiColumnCardHeight" :max-height="cardHeightLimit" :tablet="viewportWidth >= 768 && viewportWidth < 1024" @scrolling="cardOrder.cancel()" :sorting="cardOrder.dragging.value === section.cardKey" :ref="el => { businessCardRefs[section.cardKey] = el }" :active="businessActive" :preparing="loading && !businessActive" @visibility="businessVisibility[section.cardKey] = $event" /></view>
-        <view v-if="['section.memo', 'section.video', 'section.device'].includes(section.cardKey)" class="section-content ui-pad-xs"><SummaryHomeCard :kind="section.cardKey.slice(8)" :height="multiColumnCardHeight" :ref="el => { businessCardRefs[section.cardKey] = el }" :active="businessActive" :preparing="loading && !businessActive" :refresh-disabled="orderDisabled" @visibility="businessVisibility[section.cardKey] = $event" /></view>
-        <view v-if="['section.finance', 'section.income', 'section.expense'].includes(section.cardKey)" class="section-content ui-pad-xs"><FinanceCalendarCard :kind="section.cardKey.slice(8)" :height="multiColumnCardHeight" :ref="el => { businessCardRefs[section.cardKey] = el }" :active="businessActive" :preparing="loading && !businessActive" :refresh-disabled="orderDisabled" @visibility="businessVisibility[section.cardKey] = $event" /></view>
-        <BusinessCards v-if="['section.goal', 'section.anniversary', 'section.reading', 'section.membership', 'section.movie'].includes(section.cardKey)" :height="multiColumnCardHeight" :max-height="cardHeightLimit" :ref="el => { businessCardRefs[section.cardKey] = el }" :only="section.cardKey.slice(8)" :refresh-disabled="orderDisabled" embedded @visibility="businessVisibility[section.cardKey] = $event" :active="businessActive" :preparing="loading && !businessActive" @sorting="businessSorting = $event" />
+        <view v-if="['section.memo', 'section.video', 'section.device'].includes(section.cardKey)" class="section-content ui-pad-xs"><SummaryHomeCard :kind="section.cardKey.slice(8)" :height="multiColumnCardHeight" :ref="el => { businessCardRefs[section.cardKey] = el }" :active="businessActive" :preparing="loading && !businessActive" :refresh-disabled="interactionDisabled" @visibility="businessVisibility[section.cardKey] = $event" /></view>
+        <view v-if="['section.finance', 'section.income', 'section.expense'].includes(section.cardKey)" class="section-content ui-pad-xs"><FinanceCalendarCard :kind="section.cardKey.slice(8)" :height="multiColumnCardHeight" :ref="el => { businessCardRefs[section.cardKey] = el }" :active="businessActive" :preparing="loading && !businessActive" :refresh-disabled="interactionDisabled" @visibility="businessVisibility[section.cardKey] = $event" /></view>
+        <BusinessCards v-if="['section.goal', 'section.anniversary', 'section.reading', 'section.membership', 'section.movie'].includes(section.cardKey)" :height="multiColumnCardHeight" :max-height="cardHeightLimit" :ref="el => { businessCardRefs[section.cardKey] = el }" :only="section.cardKey.slice(8)" :refresh-disabled="interactionDisabled" embedded @visibility="businessVisibility[section.cardKey] = $event" :active="businessActive" :preparing="loading && !businessActive" @sorting="businessSorting = $event" />
         </HomeCardSortCell></view>
       </view></scroll-view
     ><TimeRecordEditor v-if="timeEditor" :record-id="timeEditor.recordId" @close="closeTimeEditor" /><RecordCreateModal v-if="recordCreateKind" :kind="recordCreateKind" :thought-id="recordCreateKind === 'think' ? thoughtEditId : ''" @close="recordCreateKind = null" @saved="handleRecordCreated" @deleted="handleThoughtDeleted" /><WatchedTaskEditModal v-if="watchedEditor" :task="watchedEditor" @close="watchedEditor = null" @saved="handleWatchedSaved" />
