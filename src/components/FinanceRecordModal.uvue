@@ -1,0 +1,71 @@
+<script setup lang="ts">
+import { computed } from 'vue'
+import AdaptiveModal from './AdaptiveModal.uvue'
+import FormField from './FormField.uvue'
+import FormActions from './FormActions.uvue'
+import MobileButton from './MobileButton.uvue'
+import ConfirmAction from './ConfirmAction.uvue'
+import { isRequired } from '../services/form-required.ts'
+import { ledgerId } from '../services/domains/finance-entry.ts'
+import { themeClass } from '../services/theme.ts'
+const props = defineProps<{ kind: string; draft: Record<string, any>; types: any[]; payments: any[]; saving: boolean; formError: string; continuous?: boolean; remove?: () => Promise<void> }>()
+const emit = defineEmits(['close', 'save', 'update:continuous'])
+const expense = computed(() => props.kind === 'expense')
+const field = (key, label, kind = 'text', inputType = 'text') => ({ key, label, kind, inputType })
+const fields = computed(() => expense.value ? [
+  [field('transactionAmt', '交易金额', 'text', 'digit'), field('amt', '记账金额', 'text', 'digit')],
+  [field('expTypeId', '类型', 'selector'), field('payTypeId', '支付方式', 'selector')],
+  [field('date', '日期', 'date'), field('time', '时间', 'time')],
+  [field('remark', '备注', 'textarea')],
+] : [
+  [field('amt', '金额', 'text', 'digit'), field('incTypeId', '类型', 'selector')],
+  [field('incDate', '日期', 'date')],
+  [field('remark', '备注', 'textarea')],
+])
+function options(key) { return key === 'payTypeId' ? props.payments : props.types }
+function value(key) {
+  const draft = props.draft
+  if (key === 'date') return String(draft.expTime || '').slice(0, 10)
+  if (key === 'time') return String(draft.expTime || '').slice(11, 16)
+  if (key.endsWith('TypeId')) return options(key).find(item => item.id === draft[key])?.dictLabel || ''
+  return String(draft[key] ?? '')
+}
+function update(key, value) {
+  if (props.saving) return
+  const draft = props.draft
+  if (key === 'date') draft.expTime = value + ' ' + String(draft.expTime || ' 00:00:00').slice(11, 19)
+  else if (key === 'time') draft.expTime = String(draft.expTime || '').slice(0, 10) + ' ' + value + ':00'
+  else if (key.endsWith('TypeId')) draft[key] = options(key).find(item => item.dictLabel === value)?.id || ''
+  else {
+    if (key === 'transactionAmt' && (draft.amt === '' || String(draft.amt) === String(draft.transactionAmt))) draft.amt = value
+    draft[key] = value
+  }
+}
+function required(key) { return isRequired(expense.value ? 'expense' : 'income', key === 'date' || key === 'time' ? 'expTime' : key) }
+</script>
+<template>
+  <AdaptiveModal :label="expense ? '编辑支出' : '编辑收入'" :busy="saving" @close="emit('close')">
+    <view v-for="(row, index) in fields" :key="index" class="entry-fields">
+      <FormField v-for="item in row" :key="item.key" appearance="soft" compact stretch :label="item.label" :kind="item.kind" :input-type="item.inputType"
+        :required="required(item.key)" :disabled="saving" :options="item.kind === 'selector' ? options(item.key).map(option => option.dictLabel) : []"
+        :model-value="value(item.key)" @update:model-value="update(item.key, $event)" />
+    </view>
+    <view v-if="expense && !ledgerId(draft)" class="entry-continuous"><text class="entry-label" :class="themeClass('entry-label')">连续录入</text><switch aria-label="连续录入" :disabled="saving" :checked="continuous" @change="emit('update:continuous', $event.detail.value)" /></view>
+    <text v-if="formError" class="entry-error" role="alert">{{ formError }}</text>
+    <FormActions>
+      <template v-if="ledgerId(draft) && remove" #secondary><ConfirmAction :label="expense ? '删除支出' : '删除收入'" message="确认删除？" :action="remove" /></template>
+      <MobileButton label="取消" variant="quiet" :disabled="saving" @click="emit('close')" />
+      <MobileButton label="保存" :loading="saving" @click="emit('save')" />
+    </FormActions>
+  </AdaptiveModal>
+</template>
+<style scoped lang="scss">
+@use '../styles/typography' as *;
+@use '../styles/spacing-tokens' as *;
+@use '../styles/text-colors' as *;
+.entry-fields, .entry-continuous { display: flex; flex-direction: row; gap: $space-inline; margin-bottom: $space-form; }
+.entry-continuous { align-items: center; }
+.entry-label { @include type-style('body'); color: $text-secondary-light; }
+.entry-label-dark { color: $text-secondary-dark; }
+.entry-error { @include type-style('body'); color: #df6573; padding: $space-section 0; }
+</style>

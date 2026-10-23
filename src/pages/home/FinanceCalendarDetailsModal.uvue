@@ -3,13 +3,41 @@ import { computed, onMounted, onUnmounted, reactive, ref } from 'vue'
 import AdaptiveModal from '../../components/AdaptiveModal.uvue'
 import LoadMore from '../../components/LoadMore.uvue'
 import LoadingIndicator from '../../components/LoadingIndicator.uvue'
+import FinanceRecordModal from '../../components/FinanceRecordModal.uvue'
+import { saveLedger, deleteLedger } from '../../services/domains/finance-entry.ts'
 import { isDark } from '../../services/theme.ts'
 import { request } from '../../services/api.ts'
 import { session } from '../../services/session.ts'
 import { calendarMoney, calendarPeriod, createDetailsController, detailQuery, detailState } from './services/finance-calendar.ts'
 import type { CalendarBucket, FinanceKind, LedgerKind } from './services/finance-calendar.ts'
 const props = defineProps<{ kind: FinanceKind; initialKind?: LedgerKind; bucket: CalendarBucket }>()
-const emit = defineEmits(['close'])
+const emit = defineEmits(['close', 'saved'])
+const draft = ref<Record<string, any> | null>(null), saving = ref(false), formError = ref('')
+const editingKind = ref<LedgerKind>('expense')
+function edit(row) {
+  if (state.loading || state.page === 0 || saving.value) return
+  editingKind.value = displayedKind.value
+  draft.value = { ...row }
+  formError.value = ''
+}
+async function mutate(action: () => Promise<any>, rethrow = false) {
+  if (!current() || saving.value) return
+  saving.value = true; formError.value = ''
+  controller.invalidate()
+  try {
+    await action()
+    if (!current()) return
+    draft.value = null
+    emit('saved')
+    controller.reset(true)
+    await controller.load()
+  } catch (error) {
+    if (current()) formError.value = error.message || '保存失败，请重试'
+    if (rethrow) throw error
+  } finally { if (current()) saving.value = false }
+}
+function save() { return mutate(() => saveLedger(editingKind.value, draft.value!)) }
+function remove() { return mutate(() => deleteLedger(editingKind.value, draft.value!.id), true) }
 const detailKind = ref<LedgerKind>(props.kind === 'finance' ? props.initialKind || 'expense' : props.kind)
 const displayedKind = ref<LedgerKind>(detailKind.value)
 const title = props.kind === 'finance' ? '收支' : props.kind === 'expense' ? '支出' : '收入'
@@ -41,7 +69,15 @@ function dictionary(rows, id) { const row = rows.find(item => item.id === id); r
 function metadata(row) {
   return [displayedKind.value === 'expense' ? row.expTime?.replace('T', ' ').slice(0, 16) || '未填日期' : row.incDate || '未填日期', dictionary(categories.value, row[displayedKind.value === 'expense' ? 'expTypeId' : 'incTypeId']), dictionary(payments.value, row.payTypeId)].filter(Boolean).join(' · ')
 }
+function captions(row) {
+  const title = description(row)
+  return [row.counterparty !== title ? row.counterparty : '', metadata(row), row.remark !== title ? row.remark : '', displayedKind.value === 'income' && row.tax != null ? '税额：' + calendarMoney(row.tax) : ''].filter(Boolean)
+}
+function transactions(row) {
+  return [row.transactionAmt != null && row.transactionAmt !== row.amt ? '交易金额：' + calendarMoney(row.transactionAmt) : '', row.transactionStatus ? '状态：' + row.transactionStatus : '', row.transactionId ? '交易号：' + row.transactionId : '', row.merchantOrderNo ? '商户单号：' + row.merchantOrderNo : ''].filter(Boolean)
+}
 function switchKind(kind: LedgerKind) {
+  if (draft.value || saving.value) return
   if (kind === detailKind.value) { if (state.error) void controller.load(); return }
   controller.reset(true); detailKind.value = kind; void controller.load()
 }
@@ -49,7 +85,7 @@ onMounted(() => controller.load())
 onUnmounted(() => { alive = false; controller.invalidate() })
 </script>
 <template>
-  <AdaptiveModal :label="title + '明细'" show-close :content-key="state.items.length + ':' + state.error" @close="emit('close')" @reachbottom="controller.load()">
+  <AdaptiveModal :label="title + '明细'" show-close :content-key="state.items.length + ':' + state.error" @close="emit('close')" @reachbottom="!draft && controller.load()">
     <view class="details-heading"><text class="details-title" :class="{ 'details-text-dark': isDark }">{{ title }}明细</text><text class="details-total" :class="{ 'details-text-dark': isDark }">{{ calendarMoney(total) }}</text></view>
     <view v-if="kind === 'finance'" class="details-tabs" role="group" aria-label="明细类型"><button v-for="item in [{ key: 'income', label: '收入' }, { key: 'expense', label: '支出' }]" :key="item.key" role="button" class="details-tab" :class="{ 'details-tab-active': displayedKind === item.key, 'details-tab-active-dark': isDark && displayedKind === item.key }" :aria-label="item.label + '明细'" :aria-pressed="displayedKind === item.key" :aria-busy="state.loading && detailKind === item.key" @click="switchKind(item.key)"><text class="details-tab-label" :class="{ 'details-text-dark': isDark }">{{ item.label }}</text></button></view>
     <text class="details-period" :class="{ 'details-muted-dark': isDark }">{{ calendarPeriod(bucket) }}</text>
@@ -57,20 +93,17 @@ onUnmounted(() => { alive = false; controller.invalidate() })
       <view v-if="!state.loaded && state.loading" class="details-pending"><LoadingIndicator ring :label="'正在加载' + title + '明细'" /></view>
       <view v-else-if="state.loaded && !state.items.length" class="details-pending"><text class="details-caption" :class="{ 'details-muted-dark': isDark }">暂无{{ detailTitle }}记录</text></view>
       <view v-for="row in state.items" :key="row.id" class="details-row">
+        <button role="button" class="details-edit" :aria-label="'编辑' + detailTitle + '：' + description(row)" :disabled="state.loading || state.page === 0" @click.stop="edit(row)">
         <view class="details-main"><text class="details-description" :class="{ 'details-text-dark': isDark }">{{ description(row) }}</text><text class="details-amount" :class="{ 'details-text-dark': isDark }">{{ row.amt == null ? '—' : calendarMoney(row.amt) }}</text></view>
-        <text v-if="row.counterparty && row.counterparty !== description(row)" class="details-caption" :class="{ 'details-muted-dark': isDark }">{{ row.counterparty }}</text>
-        <text class="details-caption" :class="{ 'details-muted-dark': isDark }">{{ metadata(row) }}</text>
-        <text v-if="row.remark && row.remark !== description(row)" class="details-caption" :class="{ 'details-muted-dark': isDark }">{{ row.remark }}</text>
-        <text v-if="displayedKind === 'income' && row.tax != null" class="details-caption" :class="{ 'details-muted-dark': isDark }">税额：{{ calendarMoney(row.tax) }}</text>
-        <text v-if="row.transactionAmt != null && row.transactionAmt !== row.amt" class="details-caption" :class="{ 'details-muted-dark': isDark }">交易金额：{{ calendarMoney(row.transactionAmt) }}</text>
-        <text v-if="row.transactionStatus" class="details-caption" :class="{ 'details-muted-dark': isDark }">状态：{{ row.transactionStatus }}</text>
-        <text v-if="row.transactionId" class="details-caption" :class="{ 'details-muted-dark': isDark }">交易号：{{ row.transactionId }}</text>
-        <text v-if="row.merchantOrderNo" class="details-caption" :class="{ 'details-muted-dark': isDark }">商户单号：{{ row.merchantOrderNo }}</text>
+        <text v-for="(line, index) in captions(row)" :key="index" class="details-caption" :class="{ 'details-muted-dark': isDark }">{{ line }}</text>
+        </button>
+        <text v-for="(line, index) in transactions(row)" :key="index" class="details-caption" :class="{ 'details-muted-dark': isDark }">{{ line }}</text>
       </view>
       <view v-if="state.loaded && state.page === 0 && (state.loading || state.error)" class="details-switching" :class="{ 'details-switching-dark': isDark }"><LoadingIndicator v-if="state.loading" ring :label="'正在加载' + (detailKind === 'income' ? '收入' : '支出') + '明细'" /><template v-else><text class="details-error" role="alert">{{ state.error }}</text><button role="button" class="details-tab" aria-label="重试切换明细" @click="controller.load()"><text class="details-tab-label" :class="{ 'details-text-dark': isDark }">重试</text></button></template></view>
       <LoadMore :loading="state.loaded && state.page > 0 && state.loading" :has-more="state.hasMore" :error="state.loaded && state.page === 0 ? '' : state.error" @load="controller.load()" />
     </view>
   </AdaptiveModal>
+  <FinanceRecordModal v-if="draft" :kind="editingKind" :draft="draft" :types="categories" :payments="payments" :saving="saving" :form-error="formError" :remove="remove" @close="draft = null" @save="save" />
 </template>
 <style scoped lang="scss">
 @use '../../styles/typography' as *;
@@ -94,6 +127,10 @@ onUnmounted(() => { alive = false; controller.invalidate() })
 .details-error { @include type-style('caption'); color: #bc4949; }
 .details-pending { height: 160px; align-items: center; justify-content: center; }
 .details-row { padding: $space-inline 0; gap: $space-detail; }
+.details-edit { display: flex; flex-direction: column; width: 100%; min-height: $space-controlMin; gap: $space-detail; padding: 0; margin: 0; border: 0; border-radius: 6px; text-align: left; background-color: transparent; }
+/* #ifdef WEB || MP-WEIXIN */
+.details-edit::after { border: 0; }
+/* #endif */
 .details-description { @include type-style('body'); color: #27272a; flex: 1; min-width: 0; overflow-wrap: anywhere; }
 .details-text-dark { color: #ececf0; }
 .details-muted-dark { color: #a1a1aa; }

@@ -2,8 +2,6 @@
 import { useAppLayout } from '../../services/app-layout.ts'
 const { appGridItem } = useAppLayout()
 
-import FormActions from '../../components/FormActions.uvue';
-import { isRequired } from '../../services/form-required.ts';
 import ContentSkeleton from '../../components/ContentSkeleton.uvue';
 import { computed, onUnmounted, ref, watch } from 'vue';
 import PageHeader from '../../components/PageHeader.uvue';
@@ -18,7 +16,7 @@ import AioChart from '../../components/AioChart.uvue';
 import TypeDistribution from './components/TypeDistribution.uvue';
 import LedgerRow from './components/LedgerRow.uvue';
 import ExpenseDeviceModal from './components/ExpenseDeviceModal.uvue';
-import AdaptiveModal from '../../components/AdaptiveModal.uvue';
+import FinanceRecordModal from '../../components/FinanceRecordModal.uvue';
 import { themeClass } from '../../services/theme.ts';
 import {
   fetchLedger,
@@ -348,41 +346,6 @@ function edit(row: any = null) {
   continuous.value = false;
   modal.value = true;
 }
-const draftType = computed({
-  get: () => name(types.value, draft.value[expense.value ? 'expTypeId' : 'incTypeId']),
-  set: (value) => {
-    draft.value[expense.value ? 'expTypeId' : 'incTypeId'] =
-      types.value.find((item) => item.dictLabel === value)?.id || '';
-  },
-});
-const draftPayment = computed({
-  get: () => name(payments.value, draft.value.payTypeId),
-  set: (value) => {
-    draft.value.payTypeId =
-      payments.value.find((item) => item.dictLabel === value)?.id || '';
-  },
-});
-const draftDate = computed({
-  get: () => String(draft.value.expTime || '').slice(0, 10),
-  set: (value) => {
-    draft.value.expTime = value + ' ' + String(draft.value.expTime || '').slice(11, 19);
-  },
-});
-const draftTime = computed({
-  get: () => String(draft.value.expTime || '').slice(11, 16),
-  set: (value) => {
-    draft.value.expTime =
-      String(draft.value.expTime || '').slice(0, 10) + ' ' + value + ':00';
-  },
-});
-function transaction(value: string) {
-  if (
-    draft.value.amt === '' ||
-    String(draft.value.amt) === String(draft.value.transactionAmt)
-  )
-    draft.value.amt = value;
-  draft.value.transactionAmt = value;
-}
 async function save() {
   if (saving.value || mutationBusy.value) return;
   saving.value = true;
@@ -614,43 +577,9 @@ async function removeSelected() {
     </view>
     <template #fixed>
     <ExpenseDeviceModal v-if="deviceExpenseId" :expense-id="deviceExpenseId" @close="deviceExpenseId = ''" @updated="updateDevice" />
-    <AdaptiveModal
-      v-if="modal"
-      :label="expense ? '编辑支出' : '编辑收入'"
-      :busy="saving"
-      @close="modal = false"
-    >
-      <view v-if="expense" class="ui-field-row">
-        <FormField :required="isRequired(expense ? 'expense' : 'income', 'transactionAmt')" appearance="soft" compact stretch label="交易金额" input-type="digit"
-          :modelValue="String(draft.transactionAmt)" @update:modelValue="transaction" />
-        <FormField :required="isRequired(expense ? 'expense' : 'income', 'amt')" appearance="soft" compact stretch label="记账金额" input-type="digit" v-model="draft.amt" />
-      </view>
-      <view class="ui-field-row">
-        <FormField :required="isRequired(expense ? 'expense' : 'income', 'amt')" v-if="!expense" appearance="soft" compact stretch label="金额" input-type="digit" v-model="draft.amt" />
-        <FormField :required="isRequired(expense ? 'expense' : 'income', 'expTypeId')" appearance="soft" compact stretch label="类型" kind="selector"
-          :options="types.map((item) => item.dictLabel)" v-model="draftType" />
-        <FormField :required="isRequired(expense ? 'expense' : 'income', 'payTypeId')" v-if="expense" appearance="soft" compact stretch label="支付方式" kind="selector"
-          :options="payments.map((item) => item.dictLabel)" v-model="draftPayment" />
-      </view>
-      <view v-if="expense" class="ui-field-row">
-        <FormField :required="isRequired(expense ? 'expense' : 'income', expense ? 'expTime' : 'incDate')" appearance="soft" compact stretch label="日期" kind="date" v-model="draftDate" />
-        <FormField :required="isRequired(expense ? 'expense' : 'income', 'expTime')" appearance="soft" compact stretch label="时间" kind="time" v-model="draftTime" />
-      </view>
-      <FormField :required="isRequired(expense ? 'expense' : 'income', expense ? 'expTime' : 'incDate')" v-else appearance="soft" label="日期" kind="date" v-model="draft.incDate" />
-      <FormField appearance="soft" label="备注" kind="textarea" v-model="draft.remark" />
-      <view v-if="expense && !ledgerId(draft)" class="tools ui-toolbar"
-        ><text class="continuous-label ui-type-body" :class="themeClass('continuous-label')">连续录入</text
-        ><switch aria-label="连续录入" :checked="continuous" @change="continuous = $event.detail.value"
-      /></view>
-      <text v-if="formError" class="error ui-py-section ui-type-body">{{ formError }}</text>
-      <FormActions>
-        <template v-if="ledgerId(draft)" #secondary>
-          <ConfirmAction :label="expense ? '删除支出' : '删除收入'" :action="removeDraft" />
-        </template>
-        <MobileButton label="取消" variant="quiet" :disabled="saving" @click="modal = false" />
-        <MobileButton label="保存" :loading="saving" @click="save" />
-      </FormActions>
-    </AdaptiveModal>
+    <FinanceRecordModal v-if="modal" :kind="kind" :draft="draft" :types="types" :payments="payments"
+      :saving="saving" :form-error="formError" v-model:continuous="continuous" :remove="removeDraft"
+      @close="modal = false" @save="save" />
     </template>
   </MobilePage>
 </template>
@@ -707,8 +636,6 @@ grid-template-columns: repeat(2, minmax(0, 1fr));
 .tools {
   flex-wrap: wrap;
 }
-.continuous-label { color: $text-secondary-light; }
-.continuous-label-dark { color: $text-secondary-dark; }
 .summary {
 
 /* #ifndef APP */

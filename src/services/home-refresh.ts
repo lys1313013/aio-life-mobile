@@ -1,5 +1,10 @@
 // 仅记录成功写入的版本，不缓存业务数据；首页返回时按区域更新。
 const revisions: Record<string, number> = {}
+const listeners = new Set<(keys: string[]) => void>()
+export function onHomeDataChange(listener: (keys: string[]) => void) {
+  listeners.add(listener)
+  return () => { listeners.delete(listener) }
+}
 export function homeDataRevision(key: string) { return revisions[key] || 0 }
 export function invalidateHomeAfterWrite(path: string, method: string) {
   if (method === 'GET') return
@@ -22,5 +27,7 @@ export function invalidateHomeAfterWrite(path: string, method: string) {
     user: ['profile'], userbinds: ['profile', 'overview', 'weread'],
     auth: ['access'],
   }
-  for (const key of keys[root] || []) revisions[key] = homeDataRevision(key) + 1
+  const changed = keys[root] || []
+  for (const key of changed) revisions[key] = homeDataRevision(key) + 1
+  if (changed.length) for (const listener of listeners) listener(changed)
 }

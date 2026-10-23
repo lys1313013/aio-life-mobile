@@ -8,7 +8,7 @@ import { fetchUser, request } from '../../services/api.ts'
 import { session } from '../../services/session.ts'
 import { isDark } from '../../services/theme.ts'
 import { menuVisuals } from '../../services/menu-visuals.ts'
-import { homeDataRevision } from '../../services/home-refresh.ts'
+import { homeDataRevision, onHomeDataChange } from '../../services/home-refresh.ts'
 import { cachedMenuAccess, loadMenuAccess } from '../../services/menu-access-cache.ts'
 import { lockedMenuPaths, matchesNativeMenu } from '../../services/life-catalog.ts'
 import { isMenuUnlocked } from '../../services/secondary-lock.ts'
@@ -93,10 +93,14 @@ function heat(bucket: CalendarBucket) {
 function weekRange(bucket: CalendarBucket) { return calendarPeriod(bucket).replaceAll(/\d{4}-/g, '').replaceAll('-', '/').replace(' — ', ' – ') }
 watch(() => props.active, active => { if (active) { checkAccess(); void refresh(false) } else { detail.value = null; scheduler.pause(); controller.invalidate() } }, { immediate: true })
 watch(() => props.preparing, value => { if (value) checkAccess() })
+const stopChanges = onHomeDataChange(keys => { if (keys.includes(props.kind) && props.active) void refresh(false) })
+watch(() => state.data, data => {
+  if (detail.value && data) detail.value = data.buckets.find(bucket => bucket.key === detail.value!.key) || { ...detail.value, amount: 0, income: 0, expense: 0, balance: 0 }
+})
 watch(() => session.token, () => { detail.value = null; cursor.value = ''; scheduler.clear(); controller.invalidate(true); candidates = null }, { flush: 'sync' })
 watch(owner, () => { detail.value = null; cursor.value = ''; mode.value = readCalendarMode(props.kind, owner.value, storage); controller.invalidate(true); if (props.active) void refresh(false) }, { flush: 'sync' })
 watch(() => [state.locked, state.available], () => { if (state.locked || !state.available) detail.value = null; emit('visibility', state.available) }, { immediate: true })
-onUnmounted(() => { scheduler.clear(); controller.invalidate() })
+onUnmounted(() => { stopChanges(); scheduler.clear(); controller.invalidate() })
 defineExpose({ refresh, checkAccess, loading: computed(() => state.loading), error: computed(() => state.error) })
 </script>
 <template>
