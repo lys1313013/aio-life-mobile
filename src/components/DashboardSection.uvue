@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { buttonLabelClasses } from '../services/button-label.ts'
 import ContentSkeleton from './ContentSkeleton.uvue';
 import LoadingIndicator from './LoadingIndicator.uvue';
 import CategoryIcon from './CategoryIcon.uvue'
@@ -10,7 +9,7 @@ defineProps<{ title: string; icon?: string; iconColor?: string; height?: number;
 defineEmits<{ refresh: []; navigate: [] }>()
 </script>
 <template>
-  <view class="dashboard-section" :class="themeClass('dashboard-section')" :style="autoHeight ? { height: 'auto' } : height ? { height: height + 'px' } : {}">
+  <view class="dashboard-section" :class="themeClass('dashboard-section')" :style="autoHeight && !locked ? { height: 'auto' } : height ? { height: height + 'px' } : {}">
     <HomeCardHeader class="section-heading" :label="'刷新' + title" :loading="loading || updating" :disabled="refreshDisabled || locked" @refresh="$emit('refresh')">
       <button v-if="navigable" role="button" class="section-label heading-link" :aria-label="titleLabel || '查看' + title" @click.stop="$emit('navigate')"><LifeMenuIcon v-if="icon" :icon="icon" :size="16" :color="iconColor" /><text class="section-title" :class="[{ 'section-title-with-icon': !!icon }, themeClass('section-title')]">{{ title }}</text></button>
       <view v-else class="section-label section-label-static"><LifeMenuIcon v-if="icon" :icon="icon" :size="16" :color="iconColor" /><text class="section-title" :class="[{ 'section-title-with-icon': !!icon }, themeClass('section-title')]">{{ title }}</text></view>
@@ -18,7 +17,7 @@ defineEmits<{ refresh: []; navigate: [] }>()
       <LoadingIndicator v-if="updating" class="section-updating" compact :label="'正在更新' + title" />
       <button v-else-if="error && retainContent" role="button" class="section-update-retry" :disabled="refreshDisabled" :aria-label="'重试' + title + '：' + error" @click.stop="$emit('refresh')"><CategoryIcon icon="lucide:rotate-cw" :size="18" :color="isDark ? '#a9bfff' : '#5879ce'" /></button>
     </HomeCardHeader>
-    <view v-if="locked" class="section-error"><button role="button" class="section-retry" :aria-label="'解锁' + title" @click="$emit('navigate')"><text :class="buttonLabelClasses(['section-retry', themeClass('section-retry')])">点击解锁</text></button></view>
+    <button v-if="locked" role="button" class="section-unlock" :class="themeClass('section-unlock')" :aria-label="'解锁' + title" hover-class="section-unlock-pressed" @click.stop="$emit('navigate')"><CategoryIcon icon="ant-design:lock-outlined" :size="24" :color="isDark ? '#a1a1aa' : '#71717a'" /></button>
     <view v-else-if="error && !retainContent" class="section-error" role="alert">
       <text class="section-error-text" :class="themeClass('section-error-text')">{{ error }}</text>
       <button
@@ -27,16 +26,17 @@ defineEmits<{ refresh: []; navigate: [] }>()
         :aria-label="'重试' + title"
         :disabled="loading || refreshDisabled"
         @click="$emit('refresh')"
-       :class="themeClass('section-retry')"><text :class="buttonLabelClasses(['section-retry', themeClass('section-retry')])">重试</text></button>
+       :class="themeClass('section-retry')"><text class="section-retry-label" :class="themeClass('section-retry-label')">重试</text></button>
     </view>
     <slot v-else-if="loading" name="loading"><view class="section-loading"><ContentSkeleton compact :variant="skeleton || 'list'" :rows="2" :label="'正在加载' + title" /></view></slot>
-    <view v-else class="section-content" :class="{ 'section-content-flush-top': flushTop, 'section-content-auto': autoHeight }"><slot /></view>
+    <view v-else class="section-content" :class="{ 'section-content-auto': autoHeight }"><slot /></view>
   </view>
 </template>
 <style scoped lang="scss">
 @use '../styles/typography' as *;
 @use '../styles/spacing-tokens' as *;
 .dashboard-section {
+  position: relative;
   box-sizing: border-box;
   height: 260px;
   background-color: #ffffff;
@@ -60,7 +60,6 @@ defineEmits<{ refresh: []; navigate: [] }>()
   min-height: 0;
   padding: 0 $space-card $space-card;
 }
-.section-content-flush-top { padding-top: 0; }
 .section-content-auto { flex: none; }
 
 .section-error,
@@ -72,17 +71,21 @@ defineEmits<{ refresh: []; navigate: [] }>()
 .section-error {
   align-items: center;
 }
+.section-unlock { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); display: flex; align-items: center; justify-content: center; width: $space-controlMin; height: $space-controlMin; padding: 0; margin: 0; border: 0; border-radius: 50%; background-color: #f4f4f5; }
+.section-unlock-dark { background-color: #27292f; }
+.section-unlock-pressed { opacity: 0.65; }
 .section-error-text {
   color: #bc4949;
   @include type-style('caption');
   text-align: center;
 }
 .section-retry {
+  display: flex;
+  align-items: center;
+  justify-content: center;
   margin: $space-section 0 0;
   padding: $space-detail $space-card;
   min-height: $space-controlMin;
-  @include type-style('caption');
-  color: #3662da;
   background-color: #eef2ff;
   border-radius: 8px;
 }
@@ -97,19 +100,16 @@ defineEmits<{ refresh: []; navigate: [] }>()
     color: #f7a3a3;
   }
   .section-retry-dark {
-    color: #a9bfff;
     background-color: #29334b;
   }
 
 /* #ifdef WEB || MP-WEIXIN */
-.section-retry::after, .section-update-retry::after, .heading-link::after {
+.section-unlock::after, .section-retry::after, .section-update-retry::after, .heading-link::after {
   border: 0;
 }
 /* #endif */
 
 /* 按钮文字独立声明样式，兼容 App 不继承容器排版。 */
-.app-button-label { @include type-style('body'); color: #27272a; }
-.app-button-label-dark { color: #eeeeef; }
 .section-retry-label { @include type-style('caption'); color: #3662da; }
-.section-retry-dark-label { color: #a9bfff; }
+.section-retry-label-dark { color: #a9bfff; }
 </style>

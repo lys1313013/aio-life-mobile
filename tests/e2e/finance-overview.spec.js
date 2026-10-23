@@ -51,7 +51,7 @@ test('概览空态与失败重试保留卡片高度，底层二级锁不读取�
   await card.getByRole('button', { name: '重试', exact: true }).click(); await expect(card).toHaveAttribute('aria-busy', 'false');
   expect((await card.boundingBox()).height).toBe(before.height); await expect(card.getByRole('button', { name: '查看结余' })).toContainText('0.00');
   await page.unrouteAll({ behavior: 'wait' }); await page.goto('about:blank'); const locked = await setup(page, { locked: true });
-  await expect(card).toContainText('点击解锁'); expect(locked.calls).not.toContain('/home/sections/finance/calendar');
+  await expect(card.getByRole('button', { name: '解锁收支概览', exact: true })).toBeVisible(); expect(locked.calls).not.toContain('/home/sections/finance/calendar');
 });
 test('概览零结余格子可点，明细可切收支，旧类型响应不回填', async ({ page }) => {
   await setup(page);

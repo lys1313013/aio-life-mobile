@@ -103,7 +103,7 @@ test('标题导航不触发刷新，提交可完整查看并访问，GitHub 主�
 test('锁定卡片不调度、不弹密码、不读取业务',async({page})=>{
   await page.clock.install({time:new Date('2026-10-09T10:00:00+08:00')});
   const f=await setup(page,{'/auth/secondary-lock/menus':['github-menu'],'/menu/all':[{path:'/coding/github',meta:{menuId:'github-menu'}}]});
-  await expect(section(page,'最近提交')).toContainText('点击解锁');
+  await expect(section(page,'最近提交').getByRole('button',{name:'解锁最近提交',exact:true})).toBeVisible();
   const count=f.count('/github/recent-commits');await page.clock.fastForward(3601000);
   expect(f.count('/github/recent-commits')).toBe(count);await expect(page.getByRole('dialog',{name:'解锁菜单',exact:true})).toHaveCount(0);
   expect(f.errors).toEqual([]);
@@ -125,7 +125,7 @@ test('主动解锁返回后显示提交，前台锁过期撤下旧内容并停�
   await page.clock.runFor(100);expect(f.errors).toEqual([]);
   const count=f.count('/github/recent-commits');
   await page.clock.fastForward(29*60000+1000);
-  await expect(commits).toContainText('点击解锁');await expect(commits).not.toContainText('fixture/repo');
+  await expect(commits.getByRole('button',{name:'解锁最近提交',exact:true})).toBeVisible();await expect(commits).not.toContainText('fixture/repo');
   await page.clock.fastForward(3601000);expect(f.count('/github/recent-commits')).toBe(count);await expect(modal).toHaveCount(0);
   expect(f.errors).toEqual([]);
 });

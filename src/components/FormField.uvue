@@ -59,8 +59,8 @@ function change(event) {
 }
 </script>
 <template>
-  <view class="form-field ui-form-field" :class="[themeClass('form-field'), { 'ui-field-compact': compact, 'ui-field-stretch': stretch }]">
-    <view v-if="!hideLabel" class="form-field-heading ui-field-label">
+  <view class="form-field" :class="[themeClass('form-field'), { 'form-field-compact': compact, 'form-field-stretch': stretch }]">
+    <view v-if="!hideLabel" class="form-field-heading">
       <RequiredMark v-if="required" />
       <text :style="appearance === 'soft' ? {} : appTextColor()" class="form-field-label" :class="[{ 'form-field-label-soft': appearance === 'soft' }, themeClass({ 'form-field-label-soft': appearance === 'soft' })]">{{ label }}</text>
       <view v-if="$slots.labelAction" class="form-field-label-action"><slot name="labelAction" /></view>
@@ -76,14 +76,14 @@ function change(event) {
         :aria-label="label"
         :aria-required="!!required"
         @change="change"
-        ><view class="form-field-input form-field-picker-input ui-input-inset" :class="inputClasses"
+        ><view class="form-field-input form-field-picker-input" :class="inputClasses"
           ><text :style="modelValue ? appTextColor() : {}" class="form-field-picker-value" :class="[{ 'form-field-placeholder': !modelValue }, themeClass({ 'form-field-placeholder': !modelValue })]">{{ modelValue || placeholder || '请选择' }}</text
           ><view v-if="kind === 'selector'" class="form-field-picker-arrow"><AppIcon name="ant-design:down-outlined" :size="12" /></view></view
         ></picker
       >
       <textarea
         v-else-if="kind === 'textarea'"
-        class="form-field-input ui-input-inset form-field-textarea ui-pad-card"
+        class="form-field-input form-field-textarea"
         :class="inputClasses"
         :value="modelValue"
         :placeholder="placeholder"
@@ -102,7 +102,7 @@ function change(event) {
         :class="inputClasses"
       >
         <input :style="appTextColor()"
-          class="form-field-password-value ui-input-inset"
+          class="form-field-password-value"
           :value="modelValue"
           :password="!passwordVisible"
           :placeholder="placeholder"
@@ -126,7 +126,7 @@ function change(event) {
       </view>
       <input
         v-else
-        class="form-field-input ui-input-inset"
+        class="form-field-input"
         :class="inputClasses"
         :value="modelValue"
         :type="inputType || 'text'"
@@ -146,14 +146,16 @@ function change(event) {
 <style scoped lang="scss">
 @use '../styles/typography' as *;
 @use '../styles/text-colors' as *;
-@use '../styles/spacing.scss';
 @use '../styles/spacing-tokens' as *;
 @include type-utilities('body');
 
 .form-field {
+  margin-bottom: $space-form;
   min-width: 0;
   color: #27272a;
 }
+.form-field-compact { margin-bottom: 0; }
+.form-field-stretch { flex: 1; min-width: 0; }
 .form-field-dark {
   color: #eeeeef;
 }
@@ -162,6 +164,7 @@ function change(event) {
 
 }
 .form-field-heading {
+  margin-bottom: $space-fieldLabel;
   display: flex;
   flex-direction: row;
   align-items: center;
@@ -169,6 +172,7 @@ function change(event) {
 }
 .form-field-label-action { margin-left: auto; flex-shrink: 0; }
 .form-field-input {
+  padding: 0 $space-card;
   min-height: $space-controlMin;
 
   border-radius: 10px;
@@ -188,11 +192,13 @@ function change(event) {
   width: 100%;
 }
 .form-field-password {
+  padding: 0;
   display: flex;
   flex-direction: row;
   align-items: center;
 }
 .form-field-password-value {
+  padding: 0 $space-card;
   flex: 1;
   min-width: 0;
   min-height: $space-controlMin;
@@ -238,6 +244,7 @@ color: inherit;
   flex-shrink: 0;
 }
 .form-field-textarea {
+  padding: $space-card;
   box-sizing: border-box;
   height: 120px;
   width: 100%;

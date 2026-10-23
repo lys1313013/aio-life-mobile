@@ -76,7 +76,7 @@ test('空态仍可新增，刷新保留高度；失败可局部恢复', async ({
 });
 test('财务任一底层业务锁住时不请求摘要，关闭卡片完全无业务请求', async ({ page }) => {
   const locked = await setup(page, { locked: true });
-  await expect(page.locator('[aria-label="收支概览首页卡片"]')).toContainText('点击解锁'); expect(locked.calls).not.toContain('/home/sections/finance/calendar');
+  await expect(page.locator('[aria-label="收支概览首页卡片"]').getByRole('button', { name: '解锁收支概览', exact: true })).toBeVisible(); expect(locked.calls).not.toContain('/home/sections/finance/calendar');
   await page.unrouteAll({ behavior: 'wait' }); await page.goto('about:blank'); const disabled = await setup(page, { enabled: false });
   await expect(page.locator('.summary-card')).toHaveCount(0); expect(disabled.calls.filter(path => path.startsWith('/home/sections/'))).toEqual([]);
 });
@@ -141,7 +141,7 @@ test('授权图片失败与无图保持固定占位，重试真正显示图片',
 });
 test('独立收入卡不依赖支出权限，标题进入账本且没有新增加号', async ({ page }) => {
   await setup(page, { locked: true }); const income = page.locator('[aria-label="收入首页卡片"]');
-  await expect(income).toContainText('12,345.67'); await expect(page.locator('[aria-label="支出首页卡片"]')).toContainText('点击解锁');
+  await expect(income).toContainText('12,345.67'); await expect(page.locator('[aria-label="支出首页卡片"]').getByRole('button', { name: '解锁支出', exact: true })).toBeVisible();
   await expect(income.getByRole('button', { name: '收入：日', exact: true })).toHaveCount(0);
   await expect(income.getByRole('button', { name: '记收入', exact: true })).toHaveCount(0);
   await page.route('**/api/userDictType/getByDictType?*', route => route.fulfill({ json: { code: 0, data: { dictDetailList: [] } } }));
@@ -255,3 +255,24 @@ test('收支日历范围独立持久化，切换 loading 保留高度，月年�
   expect((await income.locator('.calendar-year-row').first().boundingBox()).height).toBe(40);
   await income.screenshot({ path: info.outputPath('income-year-large.png') });
 });
+
+for (const width of [390, 820, 1440]) for (const theme of ['light', 'dark']) {
+  test(`锁定卡片使用居中锁图标 ${width} ${theme}`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 900 });
+    await page.addInitScript(theme => localStorage.setItem('aio-life-mobile.theme.v1', JSON.stringify({ type: 'string', data: theme })), theme);
+    const fixture = await setup(page, { locked: true });
+    const card = page.locator('[aria-label="收支概览首页卡片"]');
+    const unlock = card.getByRole('button', { name: '解锁收支概览', exact: true });
+    await expect(unlock).toBeVisible();
+    await expect(unlock.locator('img')).toBeVisible();
+    const box = await unlock.boundingBox(), area = await card.locator('.dashboard-section').boundingBox();
+    expect(box.width).toBe(44); expect(box.height).toBe(44);
+    expect(Math.abs(box.x + box.width / 2 - area.x - area.width / 2)).toBeLessThanOrEqual(1);
+    expect(Math.abs(box.y + box.height / 2 - area.y - area.height / 2)).toBeLessThanOrEqual(1);
+    expect(fixture.calls).not.toContain('/home/sections/finance/calendar');
+    const folder = path.resolve('artifacts/home-locked'); fs.mkdirSync(folder, { recursive: true });
+    await card.screenshot({ path: path.join(folder, 'locked-' + width + '-' + theme + '.png') });
+    await unlock.click();
+    await expect(page.getByRole('dialog', { name: '解锁菜单', exact: true })).toBeVisible();
+  });
+}

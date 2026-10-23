@@ -149,7 +149,7 @@ onUnmounted(() => {
   <!-- #ifdef MP-WEIXIN -->
   <root-portal :enable="true">
   <!-- #endif -->
-  <view class="modal-mask ui-modal-mask" :class="[themeClass('modal-mask'), { 'modal-mask-loading': bare }, themeClass({ 'modal-mask-loading': bare })]" :style="{ paddingTop: (verticalInset + safeTop) + 'px', paddingBottom: (verticalInset + safeBottom + keyboardHeight) + 'px', ...(fill ? { top: viewportTop + 'px', height: windowHeight + 'px', bottom: 'auto' } : {}) }" @click="!busy && emit('close')">
+  <view class="modal-mask" :class="[themeClass('modal-mask'), { 'modal-mask-loading': bare }, themeClass({ 'modal-mask-loading': bare })]" :style="{ paddingTop: (verticalInset + safeTop) + 'px', paddingBottom: (verticalInset + safeBottom + keyboardHeight) + 'px', ...(fill ? { top: viewportTop + 'px', height: windowHeight + 'px', bottom: 'auto' } : {}) }" @click="!busy && emit('close')">
     <!-- 模糊层独立于内容，避免改变内嵌确认框 / picker 的 fixed 定位参照。 -->
     <!-- #ifdef WEB || MP-WEIXIN -->
     <view v-if="!bare" class="modal-backdrop" aria-hidden="true" />
@@ -166,7 +166,7 @@ onUnmounted(() => {
       <view v-if="!bare" class="modal-surface" :class="themeClass('modal-surface')" aria-hidden="true" />
       <!-- #endif -->
       <view v-if="fill" class="modal-fill" :style="{ height: height + 'px' }">
-        <view class="modal-fill-body ui-modal-content"><slot /></view>
+        <view class="modal-fill-body"><slot /></view>
         <view v-if="$slots.footer" class="modal-fill-footer"><slot name="footer" /></view>
       </view>
       <scroll-view v-else
@@ -177,7 +177,7 @@ onUnmounted(() => {
         class="modal-scroll"
         :style="{ height: height + 'px' }"
       >
-        <view class="modal-content ui-modal-content" :class="{ 'modal-content-bare': bare, 'modal-content-dense': dense }"><view v-if="showClose !== false" class="modal-close ui-mb-sm"><MobileButton label="关闭" icon="ant-design:close-outlined" variant="ghost" :disabled="busy" @click="emit('close')" /></view><slot /></view>
+        <view class="modal-content" :class="{ 'modal-content-bare': bare, 'modal-content-dense': dense }"><view v-if="showClose !== false" class="modal-close"><MobileButton label="关闭" icon="ant-design:close-outlined" variant="ghost" :disabled="busy" @click="emit('close')" /></view><slot /></view>
       </scroll-view>
     </view>
   </view>
@@ -186,9 +186,9 @@ onUnmounted(() => {
   <!-- #endif -->
 </template>
 <style scoped lang="scss">
-@use '../styles/spacing.scss';
 @use '../styles/spacing-tokens' as *;
 .modal-mask {
+  padding: $space-overlayBlock $space-overlayInline;
   position: fixed;
   left: 0;
   right: 0;
@@ -214,14 +214,15 @@ onUnmounted(() => {
   width: 100%;
 }
 .modal-content {
+  padding: $space-modal;
   // 首行内容与弹窗圆角之间保留更充足的留白。
   padding-top: $space-modalTop;
 }
 .modal-content-dense { padding-top: $space-modal; }
-.modal-close { align-items: flex-end;  }
+.modal-close { align-items: flex-end; margin-bottom: $space-inline; }
 .modal-content-bare { padding: 0; }
 .modal-fill { display: flex; flex-direction: column; min-height: 0; }
-.modal-fill-body { display: flex; flex-direction: column; flex: 1; min-height: 0; overflow: hidden; }
+.modal-fill-body { padding: $space-modal; display: flex; flex-direction: column; flex: 1; min-height: 0; overflow: hidden; }
 .modal-fill-footer { flex-shrink: 0; padding: 0 $space-modal $space-modal; }
 .modal-mask-dark {
   background-color: rgba(0, 0, 0, 0.48);

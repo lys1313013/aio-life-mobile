@@ -18,7 +18,7 @@ const emit = defineEmits(['retry']);
 <template>
   <view class="page-state" :class="themeClass('page-state')">
     <template v-if="loading && !(retainContent && (settled || hasContent))"><slot name="loading"><ContentSkeleton :variant="skeleton" /></slot></template>
-    <LoadingIndicator v-else-if="loading" label="正在更新内容" />
+    <LoadingIndicator v-else-if="loading" label="正在更新内容" floating />
     <view v-if="error" class="page-state-notice ui-pad-card ui-gap-md" role="alert"
       ><text class="ui-type-body page-state-message" :class="themeClass('page-state-message')">{{ error }}</text
       ><MobileButton
@@ -28,7 +28,7 @@ const emit = defineEmits(['retry']);
         :loading="loading"
         @click="emit('retry')"
     /></view>
-    <view v-if="empty && !loading && !error" class="page-state-notice ui-pad-card ui-gap-md"
+    <view v-if="empty && !error && (!loading || (retainContent && (settled || hasContent)))" class="page-state-notice ui-pad-card ui-gap-md"
       ><text class="ui-type-body page-state-message" :class="themeClass('page-state-message')">{{ emptyText }}</text></view
     >
     <slot v-if="(!loading && !error) || (retainContent && (settled || hasContent))" />
@@ -42,6 +42,7 @@ const emit = defineEmits(['retry']);
 @include type-utilities('body');
 
 .page-state {
+  position: relative;
   width: 100%;
   color: #27272a;
 }
