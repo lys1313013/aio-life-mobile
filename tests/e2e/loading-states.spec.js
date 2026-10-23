@@ -17,17 +17,17 @@ async function scrollCommitsToBottom(page) {
   await expect.poll(() => scroller.evaluate(el => el.scrollTop)).toBeGreaterThanOrEqual(bottom - 1);
 }
 function gate() { let release; const promise = new Promise(resolve => { release = resolve; }); return { promise, release }; }
-async function fixture(page, hold = {}) {
+async function fixture(page, hold = {}, commitPageSize = 20) {
   await page.addInitScript(() => localStorage.setItem('aio-life-mobile.access-token.v1', 'loading-fixture'));
-  await page.route('http://127.0.0.1:5180/api/**', async route => {
+  await page.route('**/api/**', async route => {
     const url = new URL(route.request().url()), path = url.pathname;
     if (hold[path]) await hold[path].promise;
     let data = dashboardFixture(path) ?? [];
     if (path === '/api/user/info') data = { id: '1', accountUsername: 'fixture', nickname: '模拟用户', roles: ['admin'] };
     if (path === '/api/userbinds/list') data = [{ platform: 'github', platformUsername: 'fixture', accessToken: 'fixture-token' }];
     if (path === '/api/github/recent-commits') {
-      expect(url.searchParams.get('pageSize')).toBe('20'); expect(url.searchParams.has('perPage')).toBe(false);
-      data = Array.from({ length: 20 }, (_, n) => ({ id: String((Number(url.searchParams.get('page') || 1) - 1) * 20 + n), repo: 'fixture/mobile', message: '模拟提交 ' + n, date: '2026-10-02', actor: 'fixture' }));
+      expect(url.searchParams.get('pageSize')).toBe(String(commitPageSize)); expect(url.searchParams.has('perPage')).toBe(false);
+      data = Array.from({ length: commitPageSize }, (_, n) => ({ id: String((Number(url.searchParams.get('page') || 1) - 1) * commitPageSize + n), repo: 'fixture/mobile', message: '模拟提交 ' + n, date: '2026-10-02', actor: 'fixture' }));
     }
     await route.fulfill({ json: { code: 0, data } });
   });
@@ -168,7 +168,7 @@ for (const width of [390, 768, 1440]) for (const theme of ['light', 'dark']) tes
   await page.addInitScript(() => localStorage.setItem('aio-life-mobile.access-token.v1', 'loading-fixture'));
   for (const [route, selector] of scenarios) {
     const pending = gate();
-    await page.route('http://127.0.0.1:5180/api/**', async request => {
+    await page.route('**/api/**', async request => {
       const path = new URL(request.request().url()).pathname;
       if (path === '/api/user/info' && !['profile/settings', 'profile/index'].includes(route)) return request.fulfill({ json: { code: 0, data: { id: '1', nickname: '模拟用户', roles: ['admin'] } } });
       await pending.promise;
@@ -238,7 +238,7 @@ test('all asynchronous business pages expose loading placeholders', async ({ pag
   const routes = ['home/index', 'life/index', 'time/dashboard', 'time/edit', 'profile/bindings', 'profile/preferences?section=menus', 'profile/security', 'profile/notifications', 'categories/index', 'admin/index', 'admin/directory', 'finance/index', 'finance/cards', 'finance/income', 'finance/expense', 'finance/import', 'goods/devices', 'member/index', 'mcp/index', 'messages/index', 'coding/csdn', 'coding/leetcode', 'tasks/todo', 'records/notes', 'records/feedback', 'records/anniversary', 'records/milestones', 'records/honor', 'records/activity', 'records/exercise', 'records/categories', 'records/video', 'records/weread', 'relationship/index', 'personality/mbti', 'personality/cbti', 'vault/index'];
   for (const route of routes) {
     const pending = gate();
-    await page.route('http://127.0.0.1:5180/api/**', async request => {
+    await page.route('**/api/**', async request => {
       const path = new URL(request.request().url()).pathname;
       if (path === '/api/user/info') return request.fulfill({ json: { code: 0, data: { id: '1', nickname: '模拟用户', roles: ['admin'] } } });
       if (route === 'home/index' && path === '/api/home/cards') return request.fulfill({ json: { code: 0, data: dashboardFixture(path) } });
@@ -248,7 +248,7 @@ test('all asynchronous business pages expose loading placeholders', async ({ pag
     });
     try {
       await page.goto('/#/pages/' + route); await page.reload();
-      const loadingSelector = route === 'home/index' ? '.home-list-skeleton' : route === 'finance/index' ? '.chart-loading-plot' : route === 'finance/cards' ? '.card-loading' : route === 'relationship/index' ? '.topology .loading-indicator' : route === 'time/edit' ? '.editor-loading .loading-indicator' : route === 'admin/index' ? '.user-card-loading' : route === 'vault/index' ? '.vault-skeleton-title' : '.content-skeleton';
+      const loadingSelector = route === 'home/index' ? '.home-list-skeleton' : route === 'finance/index' ? '.finance-calendar .calendar-loading .loading-indicator' : route === 'finance/cards' ? '.card-loading' : route === 'relationship/index' ? '.topology .loading-indicator' : route === 'time/edit' ? '.editor-loading .loading-indicator' : route === 'admin/index' ? '.user-card-loading' : route === 'vault/index' ? '.vault-skeleton-title' : '.content-skeleton';
       await expect(page.locator(loadingSelector).first(), route).toBeVisible();
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), route).toBe(true);
       await page.screenshot({ path: info.outputPath(route.replace(/[/?=]/g, '-') + '.png') });
@@ -264,7 +264,8 @@ for (const width of [390, 768, 1440]) for (const theme of ['light', 'dark']) {
     await page.clock.setFixedTime(started);
     const firstLoad = gate();
     const hold = { '/api/timeRecord/query': firstLoad };
-    await fixture(page, hold);
+    // 首页提交摘要每页 10 条，独立 GitHub 页面每页 20 条。
+    await fixture(page, hold, 10);
     await page.goto('/#/pages/time/index');
     await expect(page.getByRole('status', { name: '正在加载时迹', exact: true })).toBeVisible();
     const initial = await page.locator('.timeline').boundingBox();
@@ -329,7 +330,7 @@ for (const width of [390, 768, 1440]) test(`loading matches page grids and cover
   await page.setViewportSize({ width, height: 900 });
   await page.addInitScript(() => localStorage.setItem('aio-life-mobile.access-token.v1', 'loading-fixture'));
   const pending = gate();
-  await page.route('http://127.0.0.1:5180/api/**', async route => {
+  await page.route('**/api/**', async route => {
     if (new URL(route.request().url()).pathname !== '/api/user/info') await pending.promise;
     await route.fulfill({ json: { code: 0, data: { id: '1', nickname: '模拟用户' } } });
   });

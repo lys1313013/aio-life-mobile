@@ -1,5 +1,6 @@
 const { test, expect } = require('@playwright/test');
 const fs = require('node:fs');
+const { calendarFixture } = require('./fixtures-finance-calendar');
 test.use({ hasTouch: true });
 const date = new Date();
 const day = offset => { const d = new Date(date); d.setDate(d.getDate() + offset); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; };
@@ -110,30 +111,44 @@ test('图表上的纵向滚动不会误选日期', async ({ page }) => {
   await cdp.detach();
 });
 for (const kind of ['全零', '单点', '负结余']) {
-  test(`财务折线图 ${kind} 的坐标轴和画布有效`, async ({ page }) => {
+  test(`财务日历 ${kind} 的金额和格子有效`, async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 1000 });
     await page.addInitScript(() => localStorage.setItem('aio-life-mobile.access-token.v1', 'chart-finance-fixture'));
     const errors = [];
     page.on('pageerror', error => errors.push(error.message));
-    const base = test.info().project.use.baseURL;
-    const paths = ['/api/user/info', '/api/auth/secondary-lock/menus', '/api/income/statisticsByMonth', '/api/expense/statisticsByMonth'];
-    for (const path of paths) await page.route(url => url.origin === base && url.pathname === path, route => {
+    const access = ['/finance-management/dashboard', '/finance-management/income', '/finance-management/expense'];
+    const income = kind === '全零' ? 0 : 100;
+    const expense = kind === '全零' ? 0 : kind === '负结余' ? 200 : 50;
+    const balance = income - expense;
+    await page.route('**/api/**', route => {
+      const url = new URL(route.request().url()), path = url.pathname;
       let data = [];
-      if (path === '/api/user/info') data = { id: '1', nickname: '图表模拟用户' };
-      if (path.endsWith('statisticsByMonth')) data = (kind === '负结余' ? [1, 2] : [1]).map(month => ({
-        year: date.getFullYear(), month, detail: [{ typeId: '1', typeName: '模拟分类', amt: kind === '全零' ? 0 : path.includes('/income/') ? 100 : kind === '负结余' ? 200 : 50 }],
-      }));
+      if (path === '/api/user/info') data = { id: '1', nickname: '日历模拟用户' };
+      if (path === '/api/quick-nav/candidates') data = access.map(path => ({ path }));
+      if (path === '/api/home/sections/finance/calendar') {
+        data = calendarFixture(url, 'finance', kind === '全零' ? 0 : 1);
+        Object.assign(data, { income, expense, balance, amount: balance });
+        data.buckets.forEach((bucket, index) => Object.assign(bucket, {
+          income: index ? 0 : income, expense: index ? 0 : expense,
+          balance: index ? 0 : balance, amount: index ? 0 : balance,
+        }));
+      }
       return route.fulfill({ json: { code: 0, data } });
     });
     await page.goto('/#/pages/finance/index');
-    const chart = page.getByRole('figure', { name: '年度收支趋势', exact: true });
-    await expect(chart.locator('.chart-y-tick').first()).toBeVisible();
-    const ticks = await chart.locator('.chart-y-tick').allTextContents();
-    expect(ticks.length).toBeGreaterThanOrEqual(4);
-    expect(ticks.every(value => Number.isFinite(Number(value)))).toBe(true);
-    if (kind === '负结余') expect(ticks.some(value => Number(value) < 0)).toBe(true);
-    if (kind === '单点') await expect.poll(() => painted(chart.locator('.aio-chart-canvas canvas'))).toBeGreaterThan(5);
-    await expect(chart.getByText('图表加载失败', { exact: true })).toHaveCount(0);
+    const card = page.locator('[aria-label="收支概览首页卡片"]');
+    await expect(card).toHaveAttribute('aria-busy', 'false');
+    await expect(card.getByRole('button', { name: '查看收入', exact: true })).toContainText(income.toFixed(2));
+    await expect(card.getByRole('button', { name: '查看支出', exact: true })).toContainText(expense.toFixed(2));
+    await expect(card.getByRole('button', { name: '查看结余', exact: true })).toContainText(balance.toFixed(2));
+    const amounts = card.locator('.calendar-amount');
+    await expect(amounts.first()).toHaveText(balance ? balance.toFixed(2) : '—');
+    if (kind === '全零') expect((await amounts.allTextContents()).every(value => value === '—')).toBe(true);
+    else expect((await amounts.allTextContents()).filter(value => value !== '—')).toEqual([balance.toFixed(2)]);
+    const boxes = await card.locator('.calendar-cell').evaluateAll(nodes => nodes.map(node => node.getBoundingClientRect().toJSON()));
+    expect(boxes.length).toBeGreaterThan(0);
+    expect(boxes.every(box => Number.isFinite(box.width) && box.width > 0 && box.height > 0)).toBe(true);
+    expect(await card.evaluate(node => node.scrollWidth <= node.clientWidth)).toBe(true);
     expect(errors).toEqual([]);
   });
 }

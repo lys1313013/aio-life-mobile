@@ -84,7 +84,7 @@ for (const width of [390, 768, 1440])
         ['member/index', '模拟订阅 1', /^编辑订阅：/],
         ['finance/cards', '模拟银行', '编辑'],
         ['finance/import', '选择账单文件', null],
-        ['finance/index', '结余率', null],
+        ['finance/index', '收支概览', null],
         ['finance/income', '月均收入', '新增'],
         ['finance/expense', '月均支出', '新增'],
       ]) {

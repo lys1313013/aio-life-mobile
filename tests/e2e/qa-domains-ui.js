@@ -1,3 +1,4 @@
+const { calendarFixture } = require('./fixtures-finance-calendar');
 const { dismissModal } = require('./modal');
 const {expect}=require('@playwright/test');
 const {setup}=require('./qa-domains-fixtures.js');
@@ -20,9 +21,9 @@ async function start(page,routeName,options={}){
  if(p==='/api/user/2/basic')data={id:'2',nickname:'模拟对方'};
  if(p==='/api/user/1/basic')data={id:'1',nickname:'模拟用户'};
  if(p==='/api/relationships/persons/search')data=[state.person];
- const list=/(query|statisticsByMonth|statisticsByYear|bank-cards$|message\/list$|relationships\/graph$|mcp\/tools$|password\/list$|csdn\/stats$|userbinds\/list$|getByDictType$)/.test(p);
+ const list=/(calendar|query|statisticsByMonth|statisticsByYear|bank-cards$|message\/list$|relationships\/graph$|mcp\/tools$|password\/list$|csdn\/stats$|userbinds\/list$|getByDictType$)/.test(p);
  if(state.readFail&&list)return route.fulfill({json:{code:1,message:'QA 模拟加载失败'}});
- if(state.empty&&list)data=p.endsWith('getByDictType')?{dictDetailList:[]}:p.endsWith('/graph')?{nodes:[],edges:[]}:p.endsWith('/query')?{items:[],total:0}:[];
+ if(state.empty&&list)data=p.endsWith('/calendar')?calendarFixture(u,'finance',0):p.endsWith('getByDictType')?{dictDetailList:[]}:p.endsWith('/graph')?{nodes:[],edges:[]}:p.endsWith('/query')?{items:[],total:0}:[];
  if(data!==undefined)return route.fulfill({json:{code:0,data}});
  return route.fallback();});
  await page.goto('/');await page.locator('[aria-label="账号"] input').fill('qa-domain');await page.locator('[aria-label="密码"] input').fill('mock-password');await page.getByRole('button',{name:'登录',exact:true}).click();await expect(page.locator('uni-tabbar')).toBeVisible();
