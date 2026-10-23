@@ -40,6 +40,7 @@ const rows = ref<any[]>([]),
   counts = ref<any>({}),
   statistics = ref<any>({}),
   loading = ref(false),
+  refreshing = ref(false),
   error = ref(''),
   status = ref('进行中'),
   keyword = ref(''),
@@ -146,6 +147,11 @@ function videoProgress(item) {
   return Math.max(0, Math.min(100, Math.round(item.duration
     ? Number(item.watchedDuration || 0) / Number(item.duration) * 100
     : Number(item.progress || 0))));
+}
+async function refresh() {
+  if (refreshing.value) return;
+  refreshing.value = true;
+  try { await load(); } finally { refreshing.value = false; }
 }
 async function load() {
   stopCoverPolling();
@@ -336,7 +342,7 @@ function play(url) {
 }
 </script>
 <template>
-  <MobilePage :refreshing="loading" :refresh-disabled="tabSwipeDragging" @refresh="load"
+  <MobilePage :refreshing="refreshing" :refresh-disabled="tabSwipeDragging" @refresh="refresh"
     ><view class="video-page ui-page-body" :class="{ 'video-page-dark': isDark }"
       ><PageHeader title="视频观看" :back="true" @back="uni.navigateBack()" /><view class="ui-toolbar"
         ><FormField compact stretch hide-label label="搜索视频" placeholder="搜索视频、UP主或笔记" v-model="keyword" /></view
