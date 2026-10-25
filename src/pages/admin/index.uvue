@@ -1,12 +1,16 @@
 <script setup lang="ts">
+import MobileSwitch from '../../components/MobileSwitch.uvue';
 import { usePageRefresh } from '../../services/page-refresh.ts'
 import { isRequired } from '../../services/form-required.ts';
 import MenuManager from '../../components/MenuManager.uvue';
 import DictDataPanel from './DictDataPanel.uvue';
 import DictTypePanel from './DictTypePanel.uvue';
 import UserDictPanel from './UserDictPanel.uvue';
+import UserDictAppearancePicker from './UserDictAppearancePicker.uvue';
 import UserPanel from './UserPanel.uvue';
+import AccessLogPanel from './AccessLogPanel.uvue';
 import WechatConfigEditor from './WechatConfigEditor.uvue';
+import StructuredConfigEditor from './StructuredConfigEditor.uvue';
 import { menuMoveChanges } from '../../services/admin/menu-tree.ts';
 import { computed, ref, watch } from 'vue';
 import { onHide, onLoad, onShow, onUnload } from '@dcloudio/uni-app';
@@ -80,6 +84,31 @@ const editorFields = computed(() => kind.value === 'menus' && !menuAdvanced.valu
   ? spec.value.fields.filter(field => !['redirect', 'icon', 'iconColor', 'roles', 'metaText'].includes(field.key))
   : spec.value.fields);
 const configValues = ref<any>({});
+const structuredConfigKeys = ['footprints.baidu', 'footprints.tencent', 'typesafe.recommendation', 'mbti.api'];
+const configMetadata = ref<string[]>([]);
+function toggleConfigMetadata(key: string) {
+  configMetadata.value = configMetadata.value.includes(key)
+    ? configMetadata.value.filter(item => item !== key) : [...configMetadata.value, key];
+}
+function configSaved(updated) {
+  rows.value = rows.value.map(row => row.configKey === updated.configKey ? updated : row);
+  configValues.value[updated.configKey] = updated.configValue || '';
+}
+function feedbackTone(status: string) {
+  return status === 'RESOLVED' ? 'success' : status === 'PROCESSING' ? 'progress'
+    : status === 'PENDING' ? 'pending' : 'muted';
+}
+function feedbackPriority(value: string) {
+  return ({ LOW: '低优先级', MEDIUM: '中优先级', HIGH: '高优先级' })[value] || value || '';
+}
+function closeDetail() {
+  detail.value = null;
+  reply.value = '';
+  replyFiles.value = [];
+  editorError.value = '';
+  detailTask.invalidate();
+}
+
 const task = createLatestTask(),
   detailTask = createLatestTask();
 let active = true;
@@ -121,7 +150,8 @@ onUnload(() => {
   task.invalidate();
   detailTask.invalidate();
 });
-const refreshOnShow = usePageRefresh(() => load(false), { loading: () => loading.value, error: () => error.value, keys: () => [spec.value.base.split('/')[1], 'userDictData', 'userDictType'] })
+// 只读日志没有写入接口 base，刷新依赖应取所有管理页都有的查询路径。
+const refreshOnShow = usePageRefresh(() => load(false), { loading: () => loading.value, error: () => error.value, keys: () => [spec.value.query.split('/')[1], 'userDictData', 'userDictType'] })
 onShow(() => {
   restoreSession();
   if (!session.token) {
@@ -141,6 +171,12 @@ function searchDictionary(value) {
 }
 function searchUsers(value: string) {
   keyword.value = value;
+  load();
+}
+function searchAccessLogs(value) {
+  keyword.value = value.username;
+  startDate.value = value.startDate;
+  endDate.value = value.endDate;
   load();
 }
 function filters() {
@@ -544,6 +580,7 @@ async function download() {
         @update:rows="rows = $event" @search="searchDictionary" @edit="edit" @retry="load()" @more="load(true)" @dragging="dictDragging = $event" @working="dictWorking = $event" @scroll-top="dictScrollTop = $event" />
       <DictDataPanel v-else-if="kind === 'dict-data'" :rows="rows" :options="options" :total="total" :loading="loading" :error="error" :more-error="moreError" :has-more="!pageEnded && rows.length < total" :busy="!!busyId" :remove="remove" @search="searchDictionary" @edit="edit" @retry="load()" @more="load(true)" />
       <DictTypePanel v-else-if="kind === 'dict-types'" :rows="rows" :total="total" :loading="loading" :error="error" :more-error="moreError" :has-more="!pageEnded && rows.length < total" :busy="!!busyId" :remove="remove" @search="searchDictionary" @edit="edit" @retry="load()" @more="load(true)" />
+      <AccessLogPanel v-else-if="kind === 'access'" :rows="rows" :total="total" :loading="loading" :error="error" :more-error="moreError" :has-more="!pageEnded && rows.length < total" :exporting="exporting" @search="searchAccessLogs" @retry="load()" @more="load(true)" @export="download" />
       <template v-else>
       <FormField :label="kind === 'dict-types' ? '字典名称' : kind === 'dict-data' ? '展示值' : kind === 'users' ? '用户名 / 昵称' : '关键词'" v-model="keyword" :disabled="loading" />
       <view class="admin-filters ui-field-row">
@@ -597,7 +634,7 @@ async function download() {
           variant="quiet"
           @click="sortDescending = !sortDescending" /></view
       ><view class="admin-actions ui-toolbar ui-mt-sm"
-        ><MobileButton label="重置筛选" icon="ant-design:undo-outlined" variant="quiet" :disabled="loading" @click="keyword = ''; typeFilter = ''; statusFilter = ''; startDate = ''; endDate = ''; load()" /><MobileButton label="查询" icon="ant-design:search-outlined" :loading="loading" @click="load()" /><MobileButton
+        ><MobileButton v-if="keyword || typeFilter || statusFilter || startDate || endDate" label="重置筛选" icon="ant-design:close-outlined" variant="quiet" :disabled="loading" @click="keyword = ''; typeFilter = ''; statusFilter = ''; startDate = ''; endDate = ''; load()" /><MobileButton label="查询" icon="ant-design:search-outlined" :loading="loading" @click="load()" /><MobileButton
           v-if="isLog"
           label="导出日志"
           icon="ant-design:download-outlined"
@@ -616,15 +653,40 @@ async function download() {
           class="admin-card ui-card"
           :class="themeClass('admin-card')"
         >
-          <WechatConfigEditor v-if="kind === 'config' && row.configKey === 'wechat.mini'" :config-value="row.configValue" :disabled="!!busyId || loading" @saved="updated => rows = rows.map(item => item.configKey === updated.configKey ? updated : item)" />
-          <template v-else>
-          <view v-for="key in spec.display" :key="key" class="admin-value ui-row ui-py-xs"
-            ><text class="admin-label" :class="themeClass('admin-label')">{{ label(key) }}</text
-            ><text class="admin-text">{{ display(row, key) }}</text></view
-          >
+          <template v-if="kind === 'feedback'">
+            <view class="admin-feedback-heading">
+              <text class="admin-title admin-feedback-title" :class="themeClass('admin-ink')">{{ row.title || '未命名反馈' }}</text>
+              <text class="admin-feedback-status" :class="['admin-feedback-' + feedbackTone(row.status), themeClass('admin-feedback-' + feedbackTone(row.status))]">{{ display(row, 'status') }}</text>
+            </view>
+            <view class="admin-feedback-meta">
+              <text class="admin-muted" :class="themeClass('admin-muted')">{{ row.userName || '未知用户' }}</text>
+              <text class="admin-muted" :class="themeClass('admin-muted')">{{ display(row, 'feedbackType') }}</text>
+              <text class="admin-muted" :class="themeClass('admin-muted')">{{ feedbackPriority(row.priority) }}</text>
+            </view>
+            <view class="admin-feedback-footer">
+              <text class="admin-muted" :class="themeClass('admin-muted')">{{ row.createTime }}</text>
+              <text class="admin-muted" :class="themeClass('admin-muted')">{{ row.commentCount ?? 0 }} 条评论</text>
+              <view class="admin-feedback-actions">
+                <MobileButton label="详情" icon="ant-design:right-outlined" variant="ghost" @click="openDetail(row)" />
+                <MobileButton :label="selected.includes(row.id) ? '取消选择反馈' : '选择反馈'" :icon="selected.includes(row.id) ? 'ant-design:check-square-outlined' : 'ant-design:border-outlined'" variant="ghost" @click="toggleSelected(row.id)" />
+              </view>
+            </view>
+          </template>
+          <template v-else-if="kind === 'config'">
+            <view class="admin-config-heading">
+              <text class="admin-title admin-feedback-title" :class="themeClass('admin-ink')">{{ row.description || row.configKey }}</text>
+              <MobileButton label="配置详情" icon="ant-design:info-circle-outlined" variant="ghost" @click="toggleConfigMetadata(row.configKey)" />
+            </view>
+            <view v-if="configMetadata.includes(row.configKey)" class="admin-config-meta">
+              <text class="admin-muted" :class="themeClass('admin-muted')">{{ row.configKey }} · {{ row.configType }}</text>
+              <text v-if="row.updateTime" class="admin-muted" :class="themeClass('admin-muted')">更新于 {{ row.updateTime }}</text>
+            </view>
+            <WechatConfigEditor v-if="row.configKey === 'wechat.mini'" :config-value="row.configValue" :disabled="!!busyId || loading" @saved="configSaved" />
+            <StructuredConfigEditor v-else-if="structuredConfigKeys.includes(row.configKey)" :config="row" :disabled="!!busyId || loading" :save="value => saveConfig(row, value)" @saved="configSaved" />
+            <template v-else>
           <view v-if="kind === 'config'">
             <FormField v-if="row.configType === 'BOOLEAN'" label="启用"
-              ><switch
+              ><MobileSwitch
                 :checked="configValues[row.configKey] === 'true'"
                 :disabled="!!busyId"
                 aria-label="启用配置"
@@ -660,7 +722,14 @@ async function download() {
               @click="mutate(row, () => saveConfig(row, configValues[row.configKey]))"
             />
           </view>
-          <view v-else class="admin-actions ui-toolbar ui-mt-sm">
+            </template>
+          </template>
+          <template v-else>
+          <view v-for="key in spec.display" :key="key" class="admin-value ui-row ui-py-xs">
+            <text class="admin-label" :class="themeClass('admin-label')">{{ label(key) }}</text>
+            <text class="admin-text" :class="themeClass('admin-ink')">{{ display(row, key) }}</text>
+          </view>
+          <view class="admin-actions ui-toolbar ui-mt-sm">
             <template v-if="!spec.readOnly"
               ><MobileButton
                 label="编辑"
@@ -707,7 +776,7 @@ async function download() {
       :content-key="editorError + ':' + menuAdvanced"
       @close="opened = false"
       ><FormField
-        v-for="field in editorFields.filter(item => kind !== 'menus' || !['status', 'mobileStatus'].includes(item.key))"
+        v-for="field in editorFields.filter(item => (kind !== 'menus' || !['status', 'mobileStatus'].includes(item.key)) && (kind !== 'user-dict' || !['icon', 'color'].includes(item.key)))"
         :key="field.key"
         :label="field.label"
         :required="field.required"
@@ -716,38 +785,38 @@ async function download() {
         :model-value="fieldValue(field)"
         :options="fieldOptions(field).map((item) => item.label)"
         :disabled="saving || (kind === 'menus' && protectedMenu(original || form) && ['path', 'status'].includes(field.key))"
-        @update:model-value="(value) => setField(field, value)" /><text
+        @update:model-value="(value) => setField(field, value)" /><UserDictAppearancePicker v-if="kind === 'user-dict'" v-model:icon="form.icon" v-model:color="form.color" :disabled="saving" /><text
         v-if="kind === 'menus' && menuAdvanced && options.length"
         class="admin-muted ui-mb-section" :class="themeClass('admin-muted')"
         >{{ '可用角色：' + options.join('、') }}</text
       ><view v-if="kind === 'menus'" class="ui-mb-section">
         <view v-for="item in [{ key: 'status', label: 'Web 启用' }, { key: 'mobileStatus', label: '移动端启用' }]" :key="item.key" class="admin-menu-switch ui-mb-inline">
-          <text class="ui-type-label">{{ item.label }}</text>
-          <switch :aria-label="item.label" :checked="Number(form[item.key]) === 1" :disabled="saving || protectedMenu(original || form)" @change="form[item.key] = $event.detail.value ? 1 : 0" />
+          <text class="admin-switch-label" :class="themeClass('admin-ink')">{{ item.label }}</text>
+          <MobileSwitch :aria-label="item.label" :checked="Number(form[item.key]) === 1" :disabled="saving || protectedMenu(original || form)" @change="form[item.key] = $event.detail.value ? 1 : 0" />
         </view>
       </view><text v-if="editorError" class="admin-error ui-mb-section ui-mt-section ui-type-body" role="alert">{{ editorError }}</text
-      ><FormActions>
+      ><template #footer><FormActions>
         <template #secondary>
           <MobileButton v-if="kind === 'menus'" :label="menuAdvanced ? '收起高级设置' : '高级设置'" variant="quiet" :disabled="saving" @click="menuAdvanced = !menuAdvanced" />
         </template>
         <MobileButton label="取消" variant="quiet" :disabled="saving" @click="opened = false" />
         <MobileButton label="保存" :loading="saving" @click="save" />
-      </FormActions></AdaptiveModal>
+      </FormActions></template></AdaptiveModal>
     <AdaptiveModal
       v-if="detail"
       label="反馈详情"
       :busy="saving || uploading"
       :content-key="detail.id + ':' + detailLoading + ':' + editorError"
-      @close="
-        detail = null;
-        reply = '';
-        replyFiles = [];
-        editorError = '';
-        detailTask.invalidate();
-      "
+      show-close
+      @close="closeDetail"
       ><PageState skeleton="form" :retain-content="false" :loading="detailLoading" :error="detailError" @retry="openDetail(detail)"
-        ><text class="admin-title ui-mb-section">{{ detail.title }}</text
-        ><text class="admin-content ui-mb-section ui-mt-section">{{ detail.content }}</text
+        ><text class="admin-title ui-mb-section" :class="themeClass('admin-ink')">{{ detail.title }}</text>
+        <view class="admin-feedback-meta ui-mb-section">
+          <text class="admin-muted" :class="themeClass('admin-muted')">{{ detail.userName || '未知用户' }}</text>
+          <text class="admin-muted" :class="themeClass('admin-muted')">{{ display(detail, 'feedbackType') }}</text>
+          <text class="admin-muted" :class="themeClass('admin-muted')">{{ detail.createTime }}</text>
+        </view>
+        <text class="admin-content ui-mb-section" :class="themeClass('admin-ink')">{{ detail.content }}</text
         ><MobileButton
           v-for="file in detail.files || []"
           :key="file.id"
@@ -759,8 +828,8 @@ async function download() {
           v-for="comment in detail.comments || []"
           :key="comment.id"
           class="admin-comment ui-py-card"
-          ><view class="admin-comment-meta ui-row"><text class="admin-comment-author">{{ comment.userName }}</text><text class="admin-muted" :class="themeClass('admin-muted')">{{ comment.createTime }}</text></view
-          ><text class="admin-content ui-mb-section ui-mt-section">{{ comment.content }}</text
+          ><view class="admin-comment-meta ui-row"><text class="admin-comment-author" :class="themeClass('admin-ink')">{{ comment.userName }}</text><text v-if="comment.roleType === 'ADMIN'" class="admin-feedback-status admin-feedback-progress" :class="themeClass('admin-feedback-progress')">管理员</text><text class="admin-muted" :class="themeClass('admin-muted')">{{ comment.createTime }}</text></view
+          ><text class="admin-content ui-mb-section ui-mt-section" :class="themeClass('admin-ink')">{{ comment.content }}</text
           ><MobileButton
             v-for="file in comment.files || []"
             :key="file.id"
@@ -770,7 +839,7 @@ async function download() {
             :loading="busyId === file.id"
             @click="preview(file)" /></view
       ></PageState>
-      <FormField
+      <view class="admin-status-controls ui-field-row"><FormField
         compact stretch label="状态"
         kind="selector"
         :model-value="feedbackStatuses.find((item) => item.value === newStatus)?.label || ''"
@@ -782,39 +851,27 @@ async function download() {
         "
       /><MobileButton
         label="更新状态"
+        icon="ant-design:check-outlined"
         :loading="saving"
         :disabled="detailLoading || !!detailError"
         @click="changeStatus"
-      /><FormField
+      /></view><FormField
         label="回复" :required="isRequired('reply', 'content')"
         kind="textarea"
         v-model="reply"
         :disabled="saving || detailLoading || !!detailError"
-      /><view class="admin-actions ui-toolbar ui-mt-sm"
-        ><MobileButton
-          label="添加图片"
-          icon="ant-design:plus-outlined"
-          variant="quiet"
-          :loading="uploading"
-          :disabled="saving || detailLoading || !!detailError"
-          @click="upload" /><MobileButton
-          v-for="file in replyFiles"
-          :key="file.id"
-          :label="'移除' + (file.fileName || '图片')"
-          icon="ant-design:close-outlined"
-          variant="quiet"
-          :disabled="saving"
-          @click="replyFiles = replyFiles.filter((item) => item.id !== file.id)" /><MobileButton
-          label="回复" :required="isRequired('reply', 'content')"
-          :loading="saving"
-          :disabled="uploading || detailLoading || !!detailError"
-          @click="submitReply" /></view
-      ><view v-if="kind === 'menus'" class="ui-mb-section">
-        <view v-for="item in [{ key: 'status', label: 'Web 启用' }, { key: 'mobileStatus', label: '移动端启用' }]" :key="item.key" class="admin-menu-switch ui-mb-inline">
-          <text class="ui-type-label">{{ item.label }}</text>
-          <switch :aria-label="item.label" :checked="Number(form[item.key]) === 1" :disabled="saving || protectedMenu(original || form)" @change="form[item.key] = $event.detail.value ? 1 : 0" />
-        </view>
-      </view><text v-if="editorError" class="admin-error ui-mb-section ui-mt-section ui-type-body" role="alert">{{ editorError }}</text>
+      />
+      <view v-if="replyFiles.length" class="admin-actions ui-toolbar ui-mt-sm">
+        <MobileButton v-for="file in replyFiles" :key="file.id" :label="'移除' + (file.fileName || '图片')" icon="ant-design:close-outlined" variant="quiet" :disabled="saving" @click="replyFiles = replyFiles.filter(item => item.id !== file.id)" />
+      </view>
+      <text v-if="editorError" class="admin-error ui-mb-section ui-mt-section ui-type-body" role="alert">{{ editorError }}</text>
+      <template #footer><FormActions>
+        <template #secondary>
+          <MobileButton label="添加图片" icon="ant-design:plus-outlined" variant="quiet" :loading="uploading" :disabled="saving || detailLoading || !!detailError" @click="upload" />
+        </template>
+        <MobileButton label="关闭" variant="quiet" :disabled="saving || uploading" @click="closeDetail" />
+        <MobileButton label="回复" :loading="saving" :disabled="uploading || detailLoading || !!detailError" @click="submitReply" />
+      </FormActions></template>
     </AdaptiveModal></view
   >
 </template>
@@ -910,7 +967,29 @@ async function download() {
 .admin-filters { flex-wrap: wrap; }
 
 .admin-label-dark, .admin-muted-dark { color: $text-secondary-dark; }
-.admin-comment-meta { flex-wrap: wrap; }
+.admin-comment-meta { flex-wrap: wrap; gap: $space-inline; }
 .admin-comment-author { @include type-style('body-strong'); overflow-wrap: anywhere; }
-.admin-menu-switch { display: flex; align-items: center; justify-content: space-between; min-height: $space-controlMin; }
+.admin-menu-switch { display: flex; flex-direction: row; align-items: center; justify-content: space-between; min-height: $space-controlMin; }
+
+.admin-ink { color: #27272a; }
+.admin-ink-dark { color: #eeeeef; }
+.admin-switch-label { @include type-style('label'); color: #27272a; }
+.admin-title, .admin-content, .admin-comment-author, .admin-text { color: #27272a; }
+.admin-ink-dark { color: #eeeeef; }
+.admin-feedback-heading, .admin-config-heading, .admin-feedback-meta, .admin-feedback-footer, .admin-feedback-actions { display: flex; flex-direction: row; align-items: center; gap: $space-inline; }
+.admin-feedback-heading { align-items: flex-start; }
+.admin-feedback-title { flex: 1; min-width: 0; }
+.admin-feedback-meta, .admin-feedback-footer { flex-wrap: wrap; margin-top: $space-inline; }
+.admin-feedback-actions { margin-left: auto; }
+.admin-feedback-status { @include type-style('badge'); flex-shrink: 0; border-radius: 6px; padding: $space-micro $space-detail; }
+.admin-feedback-pending { color: #956000; background-color: #fff3da; }
+.admin-feedback-progress { color: #2757ad; background-color: #edf3ff; }
+.admin-feedback-success { color: #217650; background-color: #e5f6ee; }
+.admin-feedback-muted { color: $text-secondary-light; background-color: #f1f3f6; }
+.admin-feedback-pending-dark { color: #edc77b; background-color: #3d3220; }
+.admin-feedback-progress-dark { color: #a9c8ff; background-color: #25344d; }
+.admin-feedback-success-dark { color: #96dcb8; background-color: #233c31; }
+.admin-feedback-muted-dark { color: $text-secondary-dark; background-color: #2a2e35; }
+.admin-config-meta { gap: $space-detail; margin-bottom: $space-section; }
+.admin-status-controls { align-items: flex-end; margin-bottom: $space-section; }
 </style>

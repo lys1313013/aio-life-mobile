@@ -8,14 +8,14 @@ import { getFootprintRegions, getFootprintRegionPath } from './api.ts';
 
 const props = withDefaults(defineProps<{ modelValue?: string | null; disabled?: boolean }>(), { modelValue: null, disabled: false });
 const emit = defineEmits(['update:modelValue', 'change', 'ready']);
-const labels = ['省/直辖市', '市', '区/县', '乡镇/街道'];
+const labels = ['地区（选填）', '市', '区/县', '乡镇/街道'];
 const options = ref<Region[][]>([[], [], [], []]), path = ref<Region[]>([]);
 const loading = ref(false), error = ref('');
 const fields = computed(() => labels.map((label, index) => ({ label, index,
   options: [index === 0 ? '不选择' : '不细分', ...options.value[index].map(item => item.name)],
   value: path.value[index]?.name || '',
   disabled: props.disabled || loading.value || (index > 0 && (!path.value[index - 1]?.hasChildren || !options.value[index].length)),
-})));
+})).filter(field => field.index === 0 || !!path.value[field.index - 1]?.hasChildren));
 let revision = 0, alive = true;
 let retry = () => initialize();
 
@@ -62,7 +62,7 @@ onUnmounted(() => { alive = false; revision++; });
 <template>
   <view class="region-picker" :aria-busy="loading">
     <view class="region-grid">
-      <view v-for="field in fields" :key="field.index" class="region-cell"><FormField :label="field.label" compact stretch kind="selector" :options="field.options" :model-value="field.value" :disabled="field.disabled" :placeholder="field.index === 0 ? '请选择（选填）' : '不细分'" @update:model-value="choose(field.index, $event)"><template #labelAction><LoadingIndicator v-if="loading && field.index === 0" compact label="加载地区" /></template></FormField></view>
+      <view v-for="field in fields" :key="field.index" class="region-cell"><FormField :label="field.label" compact stretch kind="selector" :options="field.options" :model-value="field.value" :disabled="field.disabled" :placeholder="field.index === 0 ? '请选择省/直辖市' : '不细分'" @update:model-value="choose(field.index, $event)"><template #labelAction><LoadingIndicator v-if="loading && field.index === 0" compact label="加载地区" /></template></FormField></view>
     </view>
     <view v-if="error" class="region-error"><text class="region-error-text" role="alert">{{ error }}</text><MobileButton label="重试地区" variant="quiet" icon="ant-design:reload-outlined" :disabled="disabled" @click="retry" /></view>
   </view>

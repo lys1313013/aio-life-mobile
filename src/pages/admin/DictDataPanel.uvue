@@ -102,7 +102,7 @@ onUnmounted(() => clearTimeout(timer));
         </view>
       </picker>
       <text class="dict-count" :class="themeClass('dict-muted')">{{ error ? '加载失败' : loading && !rows.length ? '查询中…' : '共 ' + total + ' 条' }}</text>
-      <MobileButton label="排序设置" icon="ant-design:arrow-up-outlined" variant="ghost" @click="showSort = !showSort" />
+      <MobileButton label="排序设置" icon="ant-design:setting-outlined" variant="ghost" @click="showSort = !showSort" />
     </view>
     <view v-if="showSort" class="dict-sort">
       <FormField label="已加载数据排序" compact stretch kind="selector" v-model="sort" :options="['服务端顺序', ...Object.keys(sortFields)]" />
@@ -119,6 +119,7 @@ onUnmounted(() => clearTimeout(timer));
               <text class="dict-title" :class="themeClass('dict-title')">{{ row.dictLabel || '未命名' }}</text>
               <text class="dict-value" :class="themeClass('dict-muted')">{{ row.dictValue ?? '—' }}</text>
               <view class="dict-status" :class="[String(row.status) === '0' ? 'dict-status-normal' : String(row.status) === '1' ? 'dict-status-disabled' : 'dict-status-unknown']" :aria-label="status(row)" />
+              <text v-if="String(row.status) !== '0'" class="dict-disabled-label" :class="themeClass('dict-muted')">{{ status(row) }}</text>
             </button>
             <MobileButton :label="row.dictLabel + '更多操作'" icon="ant-design:more-outlined" variant="ghost" :disabled="actionBusy" @click="open(row)" />
           </view>
@@ -182,6 +183,7 @@ onUnmounted(() => clearTimeout(timer));
 .dict-title { @include type-style('body'); color: #27272a; flex: 3; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .dict-title-dark { color: #eeeeef; }
 .dict-value { @include type-style('body'); color: $text-secondary-light; flex: 2; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.dict-disabled-label { @include type-style('caption'); flex-shrink: 0; }
 .dict-status { width: $space-inline; height: $space-inline; border-radius: 50%; flex-shrink: 0; }
 .dict-status-normal { background-color: #34b27b; }
 .dict-status-disabled { background-color: #d99a45; }

@@ -10,6 +10,7 @@ import PageHeader from '../../components/PageHeader.uvue';
 import PageState from '../../components/PageState.uvue';
 import FormField from '../../components/FormField.uvue';
 import MobileButton from '../../components/MobileButton.uvue';
+import CodingHeatmap from './CodingHeatmap.uvue';
 import MetricCard from '../../components/MetricCard.uvue';
 import {
   fetchCodingBindings,
@@ -32,6 +33,7 @@ const username = ref(''),
   refreshing = ref(false),
   error = ref(''),
   sort = ref('最近推送'),
+  activeSection = ref('仓库'),
   page = ref(1),
   hasMore = ref(false),
   moreBusy = ref(false),
@@ -85,6 +87,11 @@ const longestStreak = computed(() => {
   }
   return longest;
 });
+function formatCommitDate(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.getFullYear() + '-' + String(date.getMonth() + 1).padStart(2, '0') + '-' + String(date.getDate()).padStart(2, '0') + ' ' + String(date.getHours()).padStart(2, '0') + ':' + String(date.getMinutes()).padStart(2, '0');
+}
 async function load(section = '') {
   if (section ? sections[section].loading : loading.value) return;
   const current = section ? stamp : ++stamp;
@@ -209,7 +216,7 @@ useDomainPage(
 <template>
   <MobilePage
     :refreshing="refreshing"
-    @reachbottom="more()"
+    @reachbottom="activeSection === '最近提交' && more()"
     @refresh="
       refreshing = true;
       load();
@@ -240,18 +247,7 @@ useDomainPage(
             :loading="sections.calendar.loading && !sections.calendar.loaded"
             unit="天" /></view
         ><PageState skeleton="calendar" :loading="sections.calendar.loading" :error="sections.calendar.error" @retry="load('calendar')"
-        ><scroll-view scroll-x class="calendar-scroll ui-card" :class="themeClass('calendar-scroll')"
-          ><view class="calendar ui-gap-xs"
-            ><view
-              v-for="day in days"
-              :key="day.date"
-              class="day"
-              :class="day.count > 0 ? 'active-day' : themeClass('day')"
-              :aria-label="day.date + ' ' + day.count + ' 次贡献'"
-              @click="
-                uni.showToast({ title: day.date + ' · ' + day.count, icon: 'none' })
-              " /></view></scroll-view
-        ></PageState><text class="heading ui-section">仓库</text><view
+        ><view class="calendar-surface ui-card" :class="themeClass('calendar-surface')"><CodingHeatmap :days="days" /></view></PageState><view class="section-tabs ui-toolbar"><MobileButton v-for="tab in ['仓库', '最近提交']" :key="tab" :label="tab" :variant="activeSection === tab ? 'primary' : 'quiet'" @click="activeSection = tab" /></view><view v-show="activeSection === '仓库'"><view
           class="ui-field-row"
           ><FormField
             label="排序"
@@ -272,15 +268,15 @@ useDomainPage(
           </view>
           <text v-if="repo.statsError" class="error ui-type-body">{{ repo.statsError }}</text>
         </view>
-        </PageState><text class="heading ui-section">最近提交</text>
+        </PageState></view><view v-show="activeSection === '最近提交'">
         <PageState skeleton="timeline" :loading="sections.commits.loading" :error="sections.commits.error" :empty="!commits.length" empty-text="暂无提交" @retry="load('commits')">
         <view v-for="(item, index) in commits" :key="item.id || index" class="record ui-card" :class="themeClass('record')">
           <view class="record-head"><view class="record-copy"><text class="repo-label" :class="themeClass('repo-label')">{{ item.repo }}</text><text class="record-title">{{ item.message }}</text></view><MobileButton label="打开提交" icon="ant-design:export-outlined" variant="quiet" @click="openExternal(item.commitUrl || item.repoUrl)" /></view>
-          <text class="muted" :class="themeClass('muted')">{{ item.date }} · {{ item.actor }}</text>
+          <text class="muted" :class="themeClass('muted')">{{ formatCommitDate(item.date) }}<template v-if="item.actor"> · {{ item.actor }}</template></text>
         </view>
         <LoadingIndicator v-if="moreBusy" compact label="正在加载更多" />
         <PageState v-else-if="moreError" :error="moreError" @retry="more()" />
-        </PageState></template></view
+        </PageState></view></template></view
   ></MobilePage>
 </template>
 <style scoped lang="scss">
@@ -345,25 +341,9 @@ display: flex;
 /* #endif */
 
 }
-.calendar-scroll {
-  width: 100%;
-}
-.calendar {
-  display: flex;
-  flex-wrap: wrap;
-  width: 760px;
-  height: 110px;
-  flex-direction: column;
-}
-.day {
-  width: 12px;
-  height: 12px;
-  border-radius: 3px;
-  background-color: #dbe3df;
-}
-.active-day {
-  background-color: #3d9974;
-}
+.calendar-surface { background-color: #ffffff; border-radius: 14px; }
+.calendar-surface-dark { background-color: #1c1e22; }
+
 .error {
   color: #dc5454;
 }
@@ -381,9 +361,6 @@ display: flex;
 
 .language { color: #537cac; background-color: rgba(83,124,172,.1); border-radius: 5px; padding: $space-micro $space-detail; @include type-style('caption'); }
 .repo-label { @include type-style('caption'); color: $text-secondary-light; }
-.calendar-scroll { box-sizing: border-box; border-radius: 14px; background-color: #ffffff; }
-.calendar-scroll-dark { background-color: #1c1e22; }
 .meta-value { @include type-style('caption'); }
-.day-dark { background-color: #2d3433; }
 
 </style>

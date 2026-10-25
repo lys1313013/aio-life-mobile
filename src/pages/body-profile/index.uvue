@@ -36,7 +36,7 @@ const clothing = [{ key: 'topSize', label: '上衣' }, { key: 'trousersSize', la
 const showClothing = ref(false);
 const clothingEdit = computed(() => editing.value === 'all' || clothing.some((field) => field.key === editing.value));
 const genders = ['未设置', '男', '女'], sides = ['未设置', '左侧', '右侧'], states = ['未设置', '自然放松', '屈臂收缩'];
-const shoeSystems = ['欧码（常见的38、42码）', '中国码（毫米）', '美码', '英码'];
+const shoeSystems = ['欧码（EU）', '中国码（mm）', '美码', '英码'];
 const shoeCodes = ['EU', 'CN', 'US', 'UK'];
 
 function valid(version: number, token: string) { return active && generation === version && session.token === token; }
@@ -125,6 +125,9 @@ async function save() {
 function explainBmi() {
   uni.showModal({ title: 'BMI', content: '体重（kg）÷ 身高（m）的平方，根据当前数据自动计算。', showCancel: false });
 }
+function explainForm() {
+  uni.showModal({ title: '填写说明', content: '留空并保存可清除对应数据。鞋码按所选类型填写：欧码例如 38、42，中国码以毫米计。', showCancel: false });
+}
 function metricLabel(key: MeasurementKey) {
   return '编辑' + measurements.find((field) => field.key === key)!.label;
 }
@@ -138,7 +141,7 @@ function back() { uni.navigateBack({ fail: () => uni.switchTab({ url: '/pages/pr
       <view class="body-card" :class="themeClass('body-card')" :aria-busy="loading">
         <view class="body-heading"><text class="body-title" :class="themeClass('body-title')">身体数据</text><MobileButton label="编辑身体数据" icon="ant-design:edit-outlined" variant="ghost" :disabled="!ready || loading" @click="edit()" /></view>
         <view v-if="error" class="body-error" role="alert"><text class="body-error-text" :class="themeClass('body-error-text')">{{ error }}</text><MobileButton label="重试" variant="quiet" :loading="loading" @click="load" /></view>
-        <view class="body-content"><LoadingIndicator v-if="loading" label="正在读取身体数据" />
+        <view class="body-content"><LoadingIndicator v-if="loading" floating label="正在读取身体数据" />
           <view class="body-primary">
             <button role="button" v-for="field in primary" :key="field.key" class="primary-item" :style="primaryStyle" :disabled="!ready || loading" :aria-label="metricLabel(field.key)" @click="edit(field.key)"><text class="metric-label" :class="themeClass('metric-label')">{{ field.label }}</text><view class="metric-row"><text class="metric-value" :class="themeClass('metric-value')">{{ measurementText(profile[field.key]) }}</text><text class="metric-unit" :class="themeClass('metric-unit')">{{ field.unit }}</text></view></button>
             <view class="primary-item" :style="primaryStyle"><view class="bmi-label"><text class="metric-label" :class="themeClass('metric-label')">BMI</text><button role="button" class="bmi-help" aria-label="BMI计算方式" @click="explainBmi"><AppIcon name="ant-design:question-circle-outlined" :size="12" /></button></view><text class="metric-value" :class="themeClass('metric-value')" aria-live="polite" data-testid="body-bmi">{{ measurementText(bmi) }}</text></view>
@@ -157,11 +160,13 @@ function back() { uni.navigateBack({ fail: () => uni.switchTab({ url: '/pages/pr
     <template #fixed>
       <AdaptiveModal v-if="form" label="编辑身体数据" :max-width="editing === 'all' ? 560 : 420" :busy="saving" :content-key="editing + formError" @close="close">
         <FormField v-if="editing === 'all'" v-model="form.gender" label="性别" kind="selector" :options="genders" :disabled="saving" />
-        <view class="editor-grid"><view v-for="field in editingFields" :key="field.key" class="editor-cell" :class="{ 'editor-cell-full': editing !== 'all' }"><FormField v-model="form[field.key]" :label="field.label + '（' + field.unit + '）'" input-type="digit" placeholder="未填写，留空可清除" :disabled="saving" /></view></view>
+        <view class="editor-grid"><view v-for="field in editingFields" :key="field.key" class="editor-cell" :class="{ 'editor-cell-full': editing !== 'all' }"><FormField v-model="form[field.key]" :label="field.label + '（' + field.unit + '）'" input-type="digit" placeholder="未填写" :disabled="saving" /></view></view>
         <view v-if="limbContext" class="editor-grid"><view class="editor-cell"><FormField v-model="form.measurementSide" label="四肢围度测量侧别" kind="selector" :options="sides" :disabled="saving" /></view><view class="editor-cell"><FormField v-model="form.armState" label="上臂测量状态" kind="selector" :options="states" :disabled="saving" /></view></view>
         <view v-if="clothingEdit" class="editor-grid"><view v-if="editing === 'all' || editing === 'topSize'" class="editor-cell"><FormField v-model="form.topSize" label="上衣尺码" placeholder="例如 L" :disabled="saving" /></view><view v-if="editing === 'all' || editing === 'trousersSize'" class="editor-cell"><FormField v-model="form.trousersSize" label="裤子尺码" placeholder="例如 W30 / L32" :disabled="saving" /></view><view v-if="editing === 'all' || editing === 'shoeSize'" class="editor-cell"><FormField v-model="form.shoeSystem" label="鞋码类型" kind="selector" :options="shoeSystems" :disabled="saving" /></view><view v-if="editing === 'all' || editing === 'shoeSize'" class="editor-cell"><FormField v-model="form.shoeSize" label="鞋码" input-type="digit" placeholder="例如 42" :disabled="saving" /></view></view>
-        <text v-if="formError" class="form-error" :class="themeClass('form-error')" role="alert">{{ formError }}</text>
-        <FormActions><template v-if="formError" #secondary><MobileButton label="关闭并重新读取" variant="ghost" :disabled="saving" @click="reload" /></template><MobileButton label="取消" variant="quiet" :disabled="saving" @click="close" /><MobileButton label="保存" :loading="saving" @click="save" /></FormActions>
+        <template #footer>
+          <text v-if="formError" class="form-error" :class="themeClass('form-error')" role="alert">{{ formError }}</text>
+          <FormActions><template #secondary><MobileButton label="填写说明" icon="ant-design:question-circle-outlined" variant="ghost" :disabled="saving" @click="explainForm" /><MobileButton v-if="formError" label="关闭并重新读取" variant="ghost" :disabled="saving" @click="reload" /></template><MobileButton label="取消" variant="quiet" :disabled="saving" @click="close" /><MobileButton label="保存" :loading="saving" @click="save" /></FormActions>
+        </template>
       </AdaptiveModal>
     </template>
   </MobilePage>

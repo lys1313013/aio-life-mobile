@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
+import { displayError } from '../../services/display-error.ts';
 import AppIcon from '../../components/AppIcon.uvue';
 import FormField from '../../components/FormField.uvue';
 import MobileButton from '../../components/MobileButton.uvue';
@@ -37,12 +38,12 @@ function time(value) { return value ? String(value).replace('T', ' ') : '—'; }
       <MobileButton v-if="keyword" label="重置筛选" icon="ant-design:close-outlined" variant="ghost" :disabled="busy" @click="reset" />
     </view>
     <view class="user-toolbar">
-      <text class="user-count" :class="themeClass('user-muted')">{{ initialLoading ? '加载中…' : '共 ' + total + ' 位用户' }}</text>
+      <text class="user-count" :class="themeClass('user-muted')">{{ initialLoading ? '加载中…' : error && !settled && !rows.length ? '用户列表暂不可用' : '共 ' + total + ' 位用户' }}</text>
     </view>
     <view class="user-results" :aria-busy="loading">
       <LoadingIndicator v-if="loading && !initialLoading" floating label="正在更新用户" />
       <view v-if="error" class="user-notice" :class="[themeClass('user-notice'), { 'user-notice-overlay': rows.length > 0 || settled }]" role="alert">
-        <text class="user-notice-text" :class="themeClass('user-muted')">{{ error }}</text>
+        <text class="user-notice-text" :class="themeClass('user-muted')">{{ displayError(error) }}</text>
         <MobileButton label="重试" icon="ant-design:reload-outlined" variant="ghost" :loading="loading" @click="emit('retry')" />
       </view>
       <view v-if="!initialLoading && !rows.length && (!error || settled)" class="user-empty" :class="themeClass('user-empty')">

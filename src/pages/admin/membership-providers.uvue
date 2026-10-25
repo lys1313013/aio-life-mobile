@@ -94,6 +94,7 @@ onUnload(deactivate);
       <FormField appearance="soft" required label="平台名称" v-model="form.name" :disabled="saving" />
       <FormField appearance="soft" required label="分类" kind="selector" :model-value="categoryLabels[categories.indexOf(form.category)]" :options="categoryLabels" :disabled="saving" @update:model-value="form.category = categories[categoryLabels.indexOf($event)]" />
       <FormField appearance="soft" label="图标" compact>
+        <view class="provider-current-icon"><MembershipLogo :icon-key="form.iconKey" :category="form.category" :name="form.name" :size="28" /><text class="icon-label">当前图标</text></view>
         <scroll-view scroll-y class="icon-scroll" :class="{ 'icon-scroll-compact': icons.length < 4 }">
           <view class="icon-options">
             <button role="button" tabindex="0" class="icon-option" :class="{ 'icon-selected': !form.iconKey }" aria-label="使用分类图标" :aria-pressed="!form.iconKey" :disabled="saving" @click="form.iconKey = null" @keydown.enter.prevent="form.iconKey = null" @keydown.space.prevent="form.iconKey = null"><MembershipLogo :category="form.category" :size="28" /><text class="icon-label">分类图标</text></button>
@@ -106,7 +107,7 @@ onUnload(deactivate);
         <FormField appearance="soft" compact stretch label="状态" kind="selector" :model-value="form.isEnabled === 1 ? '启用' : '停用'" :options="['启用', '停用']" :disabled="saving" @update:model-value="form.isEnabled = $event === '启用' ? 1 : 0" />
       </view>
       <text v-if="formError" class="provider-error ui-mt-section" role="alert">{{ formError }}</text>
-      <FormActions><template #secondary><ConfirmAction v-if="original" label="删除平台" :action="remove"><template #default="slot"><MobileButton label="删除平台" icon="ant-design:delete-outlined" variant="quiet" :disabled="saving" :loading="slot.busy" @click="slot.open" /></template></ConfirmAction></template><MobileButton label="取消" variant="quiet" :disabled="saving" @click="close" /><MobileButton label="保存" :loading="saving" @click="save" /></FormActions>
+      <template #footer><FormActions><template #secondary><ConfirmAction v-if="original" label="删除平台" :action="remove"><template #default="slot"><MobileButton label="删除平台" icon="ant-design:delete-outlined" variant="quiet" :disabled="saving" :loading="slot.busy" @click="slot.open" /></template></ConfirmAction></template><MobileButton label="取消" variant="quiet" :disabled="saving" @click="close" /><MobileButton label="保存" :loading="saving" @click="save" /></FormActions></template>
     </AdaptiveModal>
   </view>
 </template>
@@ -128,6 +129,7 @@ onUnload(deactivate);
 // 图标网格最多显示约两行，少量选项不占据空白滚动区。
 .icon-scroll { height: 180px; }
 .icon-scroll-compact { height: calc(64px + #{$space-inline}); }
+.provider-current-icon { flex-direction: row; align-items: center; gap: $space-inline; min-height: $space-controlMin; }
 .icon-options { flex-direction: row; flex-wrap: wrap; gap: $space-inline; }
 .icon-option { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: $space-detail; width: calc((100% - #{$space-inline} * 3) / 4); min-height: 64px; margin: 0; padding: $space-detail; border: 1px solid transparent; border-radius: 8px; background-color: transparent; color: inherit; }
 .icon-selected { border-color: #4285ed; background-color: rgba(66, 133, 237, 0.12); }

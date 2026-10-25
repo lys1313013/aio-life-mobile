@@ -1,0 +1,88 @@
+<script setup lang="ts">
+import { computed, ref } from 'vue';
+import spacing from '../../styles/spacing.json';
+import { themeClass } from '../../services/theme.ts';
+const props = defineProps<{ days: { date: string; count: number }[] }>();
+const selected = ref('');
+const ordered = computed(() => [...props.days].sort((a, b) => a.date.localeCompare(b.date)));
+const range = computed(() => ordered.value.length ? ordered.value[0].date + ' — ' + ordered.value[ordered.value.length - 1].date : '暂无提交记录');
+const peak = computed(() => Math.max(1, ...ordered.value.map(day => day.count)));
+const weeks = computed(() => {
+  if (!ordered.value.length) return [];
+  const first = Date.parse(ordered.value[0].date + 'T00:00:00Z');
+  const last = Date.parse(ordered.value[ordered.value.length - 1].date + 'T00:00:00Z');
+  const start = first - new Date(first).getUTCDay() * 86400000;
+  const lookup = new Map(ordered.value.map(day => [day.date, day.count]));
+  const rows: any[] = [];
+  let previousMonth = '';
+  for (let time = start; time <= last; time += 7 * 86400000) {
+    const cells: any[] = [];
+    let month = '';
+    for (let offset = 0; offset < 7; offset++) {
+      const value = time + offset * 86400000;
+      const date = new Date(value).toISOString().slice(0, 10);
+      const valid = value >= first && value <= last;
+      if (valid && date.slice(0, 7) !== previousMonth) {
+        month = Number(date.slice(5, 7)) + '月';
+        previousMonth = date.slice(0, 7);
+      }
+      const count = lookup.get(date) || 0;
+      cells.push({ date, count, valid, level: count > 0 ? Math.min(4, Math.ceil(count / peak.value * 4)) : 0 });
+    }
+    rows.push({ key: time, month, cells });
+  }
+  return rows;
+});
+// Keep month labels outside the narrow day columns: uni-text caps text to its parent width.
+const chartWidth = computed(() => Math.max(40, weeks.value.length * (12 + spacing.detail) - spacing.detail));
+const monthLabels = computed(() => weeks.value.flatMap((week, index) => week.month ? [{
+  key: week.key,
+  text: week.month,
+  left: Math.min(index * (12 + spacing.detail), chartWidth.value - 40),
+}] : []));
+</script>
+<template>
+  <view class="heatmap" :class="themeClass('heatmap')">
+    <text class="calendar-range" :class="themeClass('calendar-label')">{{ range }}</text>
+    <scroll-view scroll-x class="calendar-scroll">
+      <view class="calendar-canvas" :style="{ width: chartWidth + 'px' }">
+        <view class="month-track"><text v-for="month in monthLabels" :key="month.key" class="month-label" :class="themeClass('calendar-label')" :style="{ left: month.left + 'px' }">{{ month.text }}</text></view>
+        <view class="calendar-weeks">
+        <view v-for="week in weeks" :key="week.key" class="calendar-week">
+          <view v-for="day in week.cells" :key="day.date" class="day" :class="['level-' + day.level, themeClass('level-' + day.level), { 'day-hidden': !day.valid }]" :aria-label="day.valid ? day.date + ' · ' + day.count + ' 次提交' : ''" @click="day.valid && (selected = day.date + ' · ' + day.count + ' 次提交')" />
+        </view>
+        </view>
+      </view>
+    </scroll-view>
+    <view class="calendar-footer"><text class="calendar-detail" :class="themeClass('calendar-label')" aria-live="polite">{{ selected }}</text><view class="legend"><text class="legend-label" :class="themeClass('calendar-label')">少</text><view v-for="level in [0, 1, 2, 3, 4]" :key="level" class="day" :class="['level-' + level, themeClass('level-' + level)]" /><text class="legend-label" :class="themeClass('calendar-label')">多</text></view></view>
+  </view>
+</template>
+<style scoped lang="scss">
+@use '../../styles/typography' as *;
+@use '../../styles/spacing-tokens' as *;
+@use '../../styles/text-colors' as *;
+.heatmap { gap: $space-inline; }
+.calendar-range, .calendar-detail, .legend-label, .month-label { @include type-style('caption'); color: $text-secondary-light; }
+.calendar-label-dark { color: $text-secondary-dark; }
+.calendar-scroll { width: 100%; }
+.calendar-canvas { flex-shrink: 0; gap: $space-detail; }
+.month-track { position: relative; height: 20px; }
+.calendar-weeks { display: flex; flex-direction: row; gap: $space-detail; }
+.calendar-week { flex-shrink: 0; width: 12px; gap: $space-detail; }
+.month-label { position: absolute; top: 0; height: 20px; width: 40px; max-width: none; white-space: nowrap; }
+/* Calendar cells use fixed chart geometry; surrounding spacing uses shared tokens. */
+.day { width: 12px; height: 12px; flex-shrink: 0; border-radius: 3px; }
+.day-hidden { visibility: hidden; }
+.level-0 { background-color: #eef2ef; }
+.level-1 { background-color: #c5e5ce; }
+.level-2 { background-color: #8bc59d; }
+.level-3 { background-color: #559f70; }
+.level-4 { background-color: #33734e; }
+.level-0-dark { background-color: #252e2b; }
+.level-1-dark { background-color: #304d3e; }
+.level-2-dark { background-color: #417957; }
+.level-3-dark { background-color: #63a577; }
+.level-4-dark { background-color: #9bcea6; }
+.calendar-footer { display: flex; flex-direction: row; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: $space-inline; min-height: 20px; }
+.legend { display: flex; flex-direction: row; align-items: center; gap: $space-detail; }
+</style>

@@ -20,6 +20,7 @@ import { themeClass } from '../../services/theme.ts';
 import { fetchUser } from '../../services/api.ts';
 import { restoreSession, session } from '../../services/session.ts';
 import { moveCoverOrder, listCoverTemplates, listCoverBanks, saveCoverTemplate, setCoverEnabled, deleteCoverTemplate, createCoverMutations } from './services/bank-card-covers.ts';
+function explainUsedCover() { uni.showModal({ title: '已使用的卡面', content: '已有银行卡使用，银行和类型不可修改。', showCancel: false }); }
 const rows = ref<any[]>([]), banks = ref<any[]>([]);
 const loading = ref(false), refreshing = ref(false), loaded = ref(false), error = ref('');
 const keyword = ref(''), bankFilter = ref(''), typeFilter = ref('全部类型'), statusFilter = ref('全部状态');
@@ -179,14 +180,15 @@ onUnload(() => { alive = false; order.reset(); generation++; editorGeneration++;
           <FormField compact stretch label="银行" required kind="selector" :model-value="editableBanks.find(bank => bank.id === form.bankId) ? bankLabel(editableBanks.find(bank => bank.id === form.bankId)) : ''" :options="editableBanks.map(bankLabel)" :disabled="locked || !!original?.usageCount" @update:model-value="changeBank" />
           <FormField compact stretch label="银行卡类型" required kind="selector" :model-value="form.cardType === 'credit' ? '信用卡' : '储蓄卡'" :options="['储蓄卡', '信用卡']" :disabled="locked || !!original?.usageCount" @update:model-value="form.cardType = $event === '信用卡' ? 'credit' : 'debit'" />
         </view>
+        <MobileButton v-if="original?.usageCount" label="查看银行与类型不可修改的原因" icon="ant-design:question-circle-outlined" variant="quiet" @click="explainUsedCover" />
         <FormField label="图片出处" v-model="form.sourceUrl" placeholder="https://" :disabled="locked" />
         <view class="ui-field-row">
           <FormField compact stretch label="排序" v-model="form.sortOrder" input-type="number" :disabled="locked" />
           <FormField compact stretch label="状态" kind="selector" :options="['启用', '停用']" :model-value="form.isEnabled === 1 ? '启用' : '停用'" :disabled="locked" @update:model-value="form.isEnabled = $event === '启用' ? 1 : 0" />
         </view>
         <text v-if="editorError" class="cover-error ui-mb-section" role="alert">{{ editorError }}</text>
-        <FormActions><MobileButton label="取消" variant="quiet" :disabled="locked" @click="close" /><MobileButton label="保存" :loading="saving" :disabled="uploading" @click="save" /></FormActions>
       </view>
+      <template #footer><FormActions><MobileButton label="取消" variant="quiet" :disabled="locked" @click="close" /><MobileButton label="保存" :loading="saving" :disabled="uploading" @click="save" /></FormActions></template>
     </AdaptiveModal>
   </view>
 </template>

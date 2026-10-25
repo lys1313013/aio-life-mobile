@@ -30,6 +30,14 @@ onUnmounted(() => {
   alive = false;
   stamp++;
 });
+const expandedArticles = ref<string[]>([]);
+function toggleSummary(id: string) {
+  expandedArticles.value = expandedArticles.value.includes(id) ? expandedArticles.value.filter(value => value !== id) : [...expandedArticles.value, id];
+}
+function groupedCount(value: unknown) {
+  const text = String(value ?? 0);
+  return text.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+}
 async function load() {
   const current = ++stamp;
   loading.value = true;
@@ -96,21 +104,21 @@ useDomainPage(
         >
 <template #loading><view class="metrics ui-row ui-section"><MetricCard :style="appGridItem(2, 'inline', [[768, 3]], false)" v-for="label in ['总访问量', '原创数', '全站排名', '粉丝数', '获赞数', '评论']" :key="label" :label="label" value="" loading /></view><text class="heading ui-section">近期文章</text><view v-for="n in 3" :key="n" class="article ui-card" :class="themeClass('article')"><ContentSkeleton variant="tile" /></view></template>
 <view v-if="stats" class="metrics ui-row ui-section"
-          ><MetricCard :style="appGridItem(2, 'inline', [[768, 3]], false)" label="总访问量" :value="String(stats.viewCount)" /><MetricCard :style="appGridItem(2, 'inline', [[768, 3]], false)"
+          ><MetricCard :style="appGridItem(2, 'inline', [[768, 3]], false)" label="总访问量" :value="groupedCount(stats.viewCount)" /><MetricCard :style="appGridItem(2, 'inline', [[768, 3]], false)"
             label="原创数"
-            :value="String(stats.originalCount)" /><MetricCard :style="appGridItem(2, 'inline', [[768, 3]], false)"
+            :value="groupedCount(stats.originalCount)" /><MetricCard :style="appGridItem(2, 'inline', [[768, 3]], false)"
             label="全站排名"
-            :value="String(stats.rank)" /><MetricCard :style="appGridItem(2, 'inline', [[768, 3]], false)"
+            :value="groupedCount(stats.rank)" /><MetricCard :style="appGridItem(2, 'inline', [[768, 3]], false)"
             label="粉丝数"
-            :value="String(stats.fansCount)" /><MetricCard :style="appGridItem(2, 'inline', [[768, 3]], false)"
+            :value="groupedCount(stats.fansCount)" /><MetricCard :style="appGridItem(2, 'inline', [[768, 3]], false)"
             label="获赞数"
-            :value="String(stats.likeCount)" /><MetricCard :style="appGridItem(2, 'inline', [[768, 3]], false)"
+            :value="groupedCount(stats.likeCount)" /><MetricCard :style="appGridItem(2, 'inline', [[768, 3]], false)"
             label="评论"
-            :value="String(stats.commentCount || 0)" /></view
+            :value="groupedCount(stats.commentCount)" /></view
         ><text class="heading ui-section">近期文章</text><view v-if="!articles.length" class="article empty ui-card" :class="themeClass('article')"><text class="muted" :class="themeClass('muted')">暂无近期文章</text></view><view v-for="item in articles" :key="item.id" class="article ui-card" :class="themeClass('article')"
           ><view class="record-head"><text class="record-title record-copy">{{ item.title }}</text><MobileButton label="打开文章" icon="ant-design:export-outlined" variant="quiet" @click="openExternal(item.url)" /></view>
-          <text v-if="item.description" class="record-description" :class="themeClass('description')">{{ item.description }}</text>
-          <view class="meta-list"><text class="meta-item" :class="themeClass('meta-item')">{{ item.postTime }}</text><view class="meta-item" :class="themeClass('meta-item')" :aria-label="'浏览 ' + item.viewCount"><AppIcon name="ant-design:eye-outlined" :size="13" /><text class="meta-value">{{ item.viewCount }}</text></view><view class="meta-item" :class="themeClass('meta-item')" :aria-label="'评论 ' + item.commentCount"><AppIcon name="ant-design:message-outlined" :size="13" /><text class="meta-value">{{ item.commentCount }}</text></view><view class="meta-item" :class="themeClass('meta-item')" :aria-label="'点赞 ' + (item.likeCount || 0)"><AppIcon name="ant-design:like-outlined" :size="13" /><text class="meta-value">{{ item.likeCount || 0 }}</text></view><view class="meta-item" :class="themeClass('meta-item')" :aria-label="'收藏 ' + (item.collectCount || 0)"><AppIcon name="ant-design:star-outlined" :size="13" /><text class="meta-value">{{ item.collectCount || 0 }}</text></view></view></view></PageState></view
+          <text v-if="item.description" class="record-description" :class="[themeClass('description'), { 'description-collapsed': !expandedArticles.includes(String(item.id)) }]">{{ item.description }}</text><MobileButton v-if="item.description" :label="expandedArticles.includes(String(item.id)) ? '收起摘要' : '展开摘要'" variant="ghost" compact @click="toggleSummary(String(item.id))" />
+          <view class="meta-list"><text class="meta-item" :class="themeClass('meta-item')">{{ item.postTime }}</text><view class="meta-item" :class="themeClass('meta-item')" :aria-label="'浏览 ' + item.viewCount"><AppIcon name="ant-design:eye-outlined" :size="13" /><text class="meta-value">{{ groupedCount(item.viewCount) }}</text></view><view class="meta-item" :class="themeClass('meta-item')" :aria-label="'评论 ' + item.commentCount"><AppIcon name="ant-design:message-outlined" :size="13" /><text class="meta-value">{{ groupedCount(item.commentCount) }}</text></view><view class="meta-item" :class="themeClass('meta-item')" :aria-label="'点赞 ' + (item.likeCount || 0)"><AppIcon name="ant-design:like-outlined" :size="13" /><text class="meta-value">{{ groupedCount(item.likeCount) }}</text></view><view class="meta-item" :class="themeClass('meta-item')" :aria-label="'收藏 ' + (item.collectCount || 0)"><AppIcon name="ant-design:star-outlined" :size="13" /><text class="meta-value">{{ groupedCount(item.collectCount) }}</text></view></view></view></PageState></view
   ></MobilePage>
 </template>
 <style scoped lang="scss">
@@ -183,5 +191,17 @@ display: flex;
 .meta-item { display: flex; flex-direction: row; align-items: center; gap: $space-detail; @include type-style('caption'); color: $text-secondary-light; }
 .description-dark, .muted-dark, .meta-item-dark, .repo-label-dark { color: $text-secondary-dark; }
 
+.description-collapsed {
+  overflow: hidden;
+  /* #ifndef APP */
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  /* #endif */
+  /* #ifdef APP */
+  lines: 2;
+  text-overflow: ellipsis;
+  /* #endif */
+}
 .meta-value { @include type-style('caption'); }
 </style>

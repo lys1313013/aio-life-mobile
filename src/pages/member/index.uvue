@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import MobileSwitch from '../../components/MobileSwitch.uvue';
 import { usePageRefresh } from '../../services/page-refresh.ts'
 import MembershipRecordEditor from '../../components/record-editors/MembershipRecordEditor.uvue';
 
@@ -193,10 +194,7 @@ function deleted(id) {
             </button>
           </view>
         </scroll-view>
-        <button class="member-expired-toggle" role="switch" aria-label="包含过期" :aria-checked="includeExpired" @click="toggleExpired">
-          <text class="member-toggle-label" :class="{ 'secondary-text-dark': isDark }">包含过期</text>
-          <view class="member-switch-track" :class="{ 'member-switch-track-dark': isDark, 'member-switch-track-on': includeExpired }"><view class="member-switch-thumb" :class="{ 'member-switch-thumb-on': includeExpired }" /></view>
-        </button>
+        <MobileSwitch label="包含过期" aria-label="包含过期" :checked="includeExpired" @change="toggleExpired" />
       </view>
       <view class="tab-swipe-viewport" @touchstart="tabSwipe.touchStart" @touchmove="tabSwipe.touchMove" @touchend="tabSwipe.touchEnd" @touchcancel="tabSwipe.cancel">
       <view class="tab-swipe-surface" :style="tabSwipeStyle">
@@ -210,7 +208,7 @@ function deleted(id) {
               <text class="member-title">{{ item.name }}</text>
               <AppIcon v-if="item.autoRenew === 1" name="ant-design:sync-outlined" :size="14" color="#4285ed" />
             </view>
-            <text v-if="item.providerName || item.provider" class="member-provider" :class="{ 'secondary-text-dark': isDark }">{{ item.providerName || item.provider }}</text>
+            <text v-if="!item.providerIconKey && (item.providerName || item.provider) && (item.providerName || item.provider).trim() !== (item.name || '').trim()" class="member-provider" :class="{ 'secondary-text-dark': isDark }">{{ item.providerName || item.provider }}</text>
             <view class="member-tags">
               <text class="member-status" :class="'member-status-' + item.status">{{ statusLabels[statusCodes.indexOf(item.status)] || item.status }}</text>
               <view class="category-tag" :class="{ 'category-tag-dark': isDark }"><AppIcon :name="categoryIcons[categories.indexOf(item.category)] || categoryIcons[categoryIcons.length - 1]" :size="12" /><text class="category-label">{{ categoryLabels[categories.indexOf(item.category)] || '其他' }}</text></view>
@@ -269,14 +267,6 @@ flex-shrink: 0;
 .member-category-count { color: $text-secondary-light; @include type-style('caption'); font-variant-numeric: tabular-nums; }
 .member-category-tab-active { border-bottom-color: #2563eb; }
 .member-category-tab-active-dark { border-bottom-color: #6c9cff; }
-.member-expired-toggle { display: flex; flex-direction: row; align-items: center; justify-content: flex-end; flex-shrink: 0; gap: $space-inline; min-height: $space-controlMin; margin: 0; padding: 0; border: 0; border-radius: 0; background-color: transparent; }
-.member-toggle-label { color: $text-secondary-light; @include type-style('caption'); }
-/* 开关尺寸属于控件几何约束，点击区仍为至少 44px。 */
-.member-switch-track { flex-direction: row; align-items: center; width: 32px; height: 18px; box-sizing: border-box; padding: $space-micro; border-radius: 18px; background-color: #c4cad3; }
-.member-switch-track-dark { background-color: #515660; }
-.member-switch-track-on { background-color: #4285ed; }
-.member-switch-thumb { width: 14px; height: 14px; border-radius: 14px; background-color: #ffffff; }
-.member-switch-thumb-on { margin-left: auto; }
 .member-grid { display: flex; flex-direction: row; flex-wrap: wrap; gap: $space-section; }
 .member-card { display: flex; flex-direction: column; width: calc((100% - #{$space-section}) / 2); min-width: 0; box-sizing: border-box; margin: 0; padding: $space-card; gap: $space-section; color: #27272a; text-align: left; line-height: type-leading('normal'); background-color: #ffffff; border: 1px solid #e4e7ec; border-radius: 16px; }
 .card-heading { flex-direction: row; align-items: center; gap: $space-detail; min-height: 22px; }
@@ -302,11 +292,11 @@ flex-shrink: 0;
 .text-dark { color: #eeeeef; }
 /* #ifdef WEB || MP-WEIXIN */
 .member-card::after { border: 0; }
-.member-category-tab::after, .member-expired-toggle::after { border: 0; }
+.member-category-tab::after { border: 0; }
 /* #endif */
 /* #ifdef WEB */
 .member-card:focus-visible { outline: 2px solid #4285ed; outline-offset: 2px; }
-.member-category-tab:focus-visible, .member-expired-toggle:focus-visible { outline: 2px solid #4285ed; outline-offset: -2px; }
+.member-category-tab:focus-visible { outline: 2px solid #4285ed; outline-offset: -2px; }
 /* #endif */
 @media (min-width: 700px) {
   .member-summary { flex-direction: row; align-items: center; }

@@ -42,9 +42,19 @@ const graph = ref<any>({ nodes: [], edges: [] }),
   showMoreFields = ref(false);
 const contactFieldCount = computed(() => ['birthday', 'phone', 'email', 'school'].filter(key => String(draft.value?.[key] ?? '').trim()).length);
 const moreFieldCount = computed(() => ['avatar', 'tags', 'socialLinks', 'notes'].filter(key => String(draft.value?.[key] ?? '').trim()).length);
-const personDetailFields = computed(() =>
-  ['description', 'tags', 'birthday', 'phone', 'email', 'school', 'socialLinks', 'notes']
-    .filter((key) => String(person.value?.[key] ?? '').trim().length > 0),
+const personDetailLabels = [
+  { key: 'description', label: '简介' },
+  { key: 'tags', label: '标签' },
+  { key: 'birthday', label: '生日' },
+  { key: 'phone', label: '电话' },
+  { key: 'email', label: '邮箱' },
+  { key: 'school', label: '学校' },
+  { key: 'socialLinks', label: '社交链接' },
+  { key: 'notes', label: '备注' },
+];
+const personDetailFields = computed(() => personDetailLabels
+  .map((field) => ({ ...field, value: String(person.value?.[field.key] ?? '').trim() }))
+  .filter((field) => field.value.length > 0),
 );
 let detailStamp = 0,
   stamp = 0,
@@ -367,8 +377,8 @@ function nodeName(id: string) {
               <template v-if="showLabels">
                 <text v-for="(edge, index) in graphEdges.filter(item => item.showLabel)" :key="'label-' + index" class="graph-edge-label" :class="themeClass('graph-edge-label')" :style="{ left: edge.labelX + 'px', top: edge.labelY + 'px', color: relationColor(edge.relationType) }">{{ edge.relationType }}</text>
               </template>
-              <button v-for="node in graphNodes" :key="node.id" role="button" class="graph-node-button ui-type-body" :class="themeClass('graph-node-button')" :aria-label="node.name" :disabled="busy" :style="{ left: node.x - 34 + 'px', top: node.y - 22 + 'px', borderColor: categoryColors[node.category] || '#8392a5' }" @click="graphClick(node.id)">
-                <text class="node-name">{{ node.name }}</text>
+              <button v-for="node in graphNodes" :key="node.id" role="button" class="graph-node-button ui-type-body" :class="themeClass('graph-node-button')" :aria-label="node.name" :aria-disabled="busy" :disabled="busy" :style="{ left: node.x - 34 + 'px', top: node.y - 22 + 'px', borderColor: categoryColors[node.category] || '#8392a5' }" @click="graphClick(node.id)">
+                <text class="node-name" :class="themeClass('node-name')">{{ node.name }}</text>
               </button>
             </view>
           </view>
@@ -380,9 +390,9 @@ function nodeName(id: string) {
           </button>
           <view v-if="showRelations" class="relation-list">
             <view v-for="(edge, index) in filteredEdges" :key="index" class="relation-row" :class="themeClass('relation-row')">
-              <text class="relation-person">{{ nodeName(edge.source) }}</text>
+              <text class="relation-person detail-ink" :class="themeClass('detail-ink')">{{ nodeName(edge.source) }}</text>
               <view class="relation-kind"><text class="ui-type-badge" :style="{ color: relationColor(edge.relationType) }">{{ edge.relationType }}</text><text class="relation-direction ui-type-badge" :class="themeClass('relation-direction')">{{ edge.direction === '双向' ? '↔' : '→' }}</text></view>
-              <text class="relation-person relation-target">{{ nodeName(edge.target) }}</text>
+              <text class="relation-person relation-target detail-ink" :class="themeClass('detail-ink')">{{ nodeName(edge.target) }}</text>
               <text v-if="edge.description" class="relation-description" :class="themeClass('relation-description')">{{ edge.description }}</text>
             </view>
           </view>
@@ -394,14 +404,11 @@ function nodeName(id: string) {
       :label="person.name"
       :busy="busy"
       @close="person = null"
-      ><text class="title">{{ person.name }}</text><text class="detail-caption ui-type-label" :class="themeClass('detail-caption')">{{ person.category }}</text
-      ><text
-        v-for="key in personDetailFields"
-        :key="key"
-        class="detail ui-py-xs ui-type-body"
-        selectable
-        >{{ person[key] }}</text
-      ><view class="actions ui-toolbar"
+      ><text class="title detail-ink" :class="themeClass('detail-ink')">{{ person.name }}</text><text class="detail-caption ui-type-label" :class="themeClass('detail-caption')">{{ person.category }}</text
+      ><view v-for="field in personDetailFields" :key="field.key" class="detail-field">
+        <text class="detail-label" :class="themeClass('detail-label')">{{ field.label }}</text>
+        <text class="detail detail-ink" :class="themeClass('detail-ink')" selectable>{{ field.value }}</text>
+      </view><view class="actions ui-toolbar"
         ><MobileButton label="编辑人物" icon="ant-design:edit-outlined" @click="edit(person)" /><ConfirmAction
           label="删除人物和关联关系"
           :action="remove" /><MobileButton
@@ -409,7 +416,7 @@ function nodeName(id: string) {
           icon="ant-design:plus-outlined"
           @click="editRelation()" /></view
       ><view v-for="item in person.relationships" :key="item.id" class="edge ui-card"
-        ><text class="edge-title ui-type-body-strong">{{ item.target.name }} · {{ item.relationType }} · {{ item.direction }}</text
+        ><text class="edge-title detail-ink ui-type-body-strong" :class="themeClass('detail-ink')">{{ item.target.name }} · {{ item.relationType }} · {{ item.direction }}</text
         ><text class="detail-caption ui-type-label" :class="themeClass('detail-caption')">{{ item.description }} {{ item.tags }}</text
         ><view class="actions ui-row"
           ><MobileButton
@@ -427,7 +434,7 @@ function nodeName(id: string) {
       <FormField appearance="soft" label="介绍" kind="textarea" textarea-size="compact" placeholder="简短描述这个人" v-model="draft.description" />
       <view class="editor-section">
         <button role="button" aria-label="联系信息" :aria-expanded="showContactFields" class="editor-section-toggle" :class="themeClass('editor-section-toggle')" @click="showContactFields = !showContactFields">
-          <text class="editor-section-title">联系信息</text>
+          <text class="editor-section-title" :class="themeClass('editor-section-title')">联系信息</text>
           <text v-if="contactFieldCount" class="editor-section-summary" :class="themeClass('editor-section-summary')">已填写 {{ contactFieldCount }} 项</text>
           <AppIcon :name="showContactFields ? 'ant-design:up-outlined' : 'ant-design:down-outlined'" :size="14" />
         </button>
@@ -442,7 +449,7 @@ function nodeName(id: string) {
       </view>
       <view class="editor-section">
         <button role="button" aria-label="更多资料" :aria-expanded="showMoreFields" class="editor-section-toggle" :class="themeClass('editor-section-toggle')" @click="showMoreFields = !showMoreFields">
-          <text class="editor-section-title">更多资料</text>
+          <text class="editor-section-title" :class="themeClass('editor-section-title')">更多资料</text>
           <text v-if="moreFieldCount" class="editor-section-summary" :class="themeClass('editor-section-summary')">已填写 {{ moreFieldCount }} 项</text>
           <AppIcon :name="showMoreFields ? 'ant-design:up-outlined' : 'ant-design:down-outlined'" :size="14" />
         </button>
@@ -503,7 +510,8 @@ function nodeName(id: string) {
 .actions { flex-wrap: wrap; }
 .editor-section-toggle { width: 100%; min-height: $space-controlMin; margin: 0; padding: 0; display: flex; flex-direction: row; align-items: center; gap: $space-inline; background-color: transparent; color: #52525b; text-align: left; }
 .editor-section-toggle-dark { color: #d4d4d8; }
-.editor-section-title { flex: 1; @include type-style('label'); }
+.editor-section-title { flex: 1; @include type-style('label'); color: $text-secondary-light; }
+.editor-section-title-dark { color: $text-secondary-dark; }
 .editor-section-summary { @include type-style('caption'); color: $text-secondary-light; }
 .editor-section-summary-dark { color: $text-secondary-dark; }
 .editor-section-fields { padding-top: $space-inline; }
@@ -517,7 +525,7 @@ function nodeName(id: string) {
 /* 节点尺寸属于画布几何约束，与布局函数共享 68 × 44 的碰撞边界。 */
 .graph-node-button { position: absolute; width: 68px; height: 44px; margin: 0; padding: 0 $space-detail; display: flex; flex-direction: row; align-items: center; justify-content: center; gap: $space-detail; border: 1px solid; border-radius: 22px; background-color: #ffffff; color: #263248; }
 .graph-node-button-dark { background-color: #252830; color: #e7e9ee; }
-.node-name { flex: 1; width: 100%;
+.node-name { flex: 1; width: 100%; color: #263248;
 /* #ifndef APP */
 display: block;
 /* #endif */
@@ -525,6 +533,7 @@ display: block;
 display: flex;
 /* #endif */
  min-width: 0; text-align: center; @include type-style('caption');  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.node-name-dark { color: #e7e9ee; }
 .graph-arrow { position: absolute; right: 0; top: -3px; width: 0; height: 0; border-top: 3px solid transparent; border-bottom: 3px solid transparent; border-left: 5px solid; }
 .graph-arrow-start { right: auto; left: 0; transform: rotate(180deg); }
 .graph-edge-label { position: absolute; @include type-style('badge');  white-space: nowrap; transform: translate(-50%, -50%); padding: 0 $space-detail; border-radius: 4px; background-color: #ffffff; pointer-events: none; }
@@ -555,6 +564,11 @@ display: flex;
   @include type-style('title');
 
 }
+.detail-ink { color: #263248; }
+.detail-ink-dark { color: #e7e9ee; }
+.detail-field { gap: $space-detail; padding-top: $space-inline; padding-bottom: $space-inline; }
+.detail-label { @include type-style('caption'); color: $text-secondary-light; }
+.detail-label-dark { color: $text-secondary-dark; }
 .detail {
 
 /* #ifndef APP */

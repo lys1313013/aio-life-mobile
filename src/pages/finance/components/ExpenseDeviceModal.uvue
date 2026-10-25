@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { readPageTotal, mergePageItems, hasMorePageItems } from '../../../services/pagination.ts';
 import { computed, onMounted, onUnmounted, ref } from 'vue';
 import AdaptiveModal from '../../../components/AdaptiveModal.uvue';
 import FormField from '../../../components/FormField.uvue';
@@ -16,7 +17,7 @@ const emit = defineEmits(['close', 'updated']);
 const mode = ref('已有设备'), current = ref<any>(null), draft = ref<any>({});
 const selectedId = ref(''), keyword = ref(''), types = ref<any[]>([]);
 const loading = ref(false), ready = ref(false), saving = ref(false), error = ref(''), saveError = ref('');
-const choices = ref<any[]>([]), choicesBusy = ref(false), choicesError = ref(''), total = ref(0);
+const choices = ref<any[]>([]), choicesBusy = ref(false), choicesError = ref(''), total = ref<number | null>(null), choicesEnded = ref(false);
 let alive = true, sequence = 0, page = 0, searchName = '', retryReset = true;
 onUnmounted(() => { alive = false; sequence++; });
 const typeName = computed({
@@ -24,7 +25,7 @@ const typeName = computed({
   set: value => { draft.value.type = String(types.value.find(item => item.dictLabel === value)?.id || ''); },
 });
 async function loadChoices(reset = false) {
-  if (!reset && (choicesBusy.value || choicesError.value || choices.value.length >= total.value)) return;
+  if (!reset && (choicesBusy.value || choicesError.value || !hasMorePageItems(choices.value.length, total.value, choicesEnded.value))) return;
   retryReset = reset;
   const stamp = ++sequence, next = reset ? 1 : page + 1;
   if (reset) searchName = keyword.value.trim();
@@ -32,11 +33,11 @@ async function loadChoices(reset = false) {
   try {
     const result = await searchDevices(next, searchName);
     if (!alive || stamp !== sequence) return;
-    const seen = new Set<string>();
-    choices.value = (reset ? result.items : [...choices.value, ...result.items]).filter(item => {
-      if (seen.has(item.id)) return false; seen.add(item.id); return true;
-    });
-    total.value = result.items.length ? Number(result.total ?? choices.value.length) : choices.value.length;
+    const nextTotal = readPageTotal(result.total);
+    const nextChoices = mergePageItems(reset ? [] : choices.value, result.items);
+    choices.value = nextChoices;
+    total.value = nextTotal;
+    choicesEnded.value = result.items.length === 0;
     page = next;
   } catch (e) { if (alive && stamp === sequence) choicesError.value = e.message; }
   finally { if (alive && stamp === sequence) choicesBusy.value = false; }
@@ -112,7 +113,7 @@ onMounted(initialize);
               :disabled="saving" variant="quiet" @click="selectedId = item.id" />
           </view>
           <text v-if="!choicesBusy && !choicesError && !choices.length" class="device-meta" :class="themeClass('device-meta')">暂无设备</text>
-          <LoadMore :loading="choicesBusy" :error="choicesError" :has-more="choicesBusy || !!choicesError || choices.length < total" @load="retryChoices" />
+          <LoadMore :loading="choicesBusy" :error="choicesError" :has-more="choicesBusy || !!choicesError || hasMorePageItems(choices.length, total, choicesEnded)" @load="retryChoices" />
         </template>
         <template v-else>
           <FormField label="设备名称" required v-model="draft.name" :disabled="saving" />

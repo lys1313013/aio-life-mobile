@@ -11,12 +11,15 @@ import MobilePage from '../../components/MobilePage.uvue';
 import PageHeader from '../../components/PageHeader.uvue';
 import PageState from '../../components/PageState.uvue';
 import MobileButton from '../../components/MobileButton.uvue';
+import FloatingActionButton from '../../components/FloatingActionButton.uvue';
 import ConfirmAction from '../../components/ConfirmAction.uvue';
 import FormField from '../../components/FormField.uvue';
 import FormActions from '../../components/FormActions.uvue';
 import AdaptiveModal from '../../components/AdaptiveModal.uvue';
 import LoadingIndicator from '../../components/LoadingIndicator.uvue';
 import AppIcon from '../../components/AppIcon.uvue';
+import iconCatalog from '../../services/icons/catalog.ts';
+const categoryIconOptions = computed(() => [...new Set([...(form.value.icon ? [form.value.icon] : []), ...Object.keys(iconCatalog.icons)])]);
 import {
   loadWardrobe,
   itemDetail,
@@ -47,6 +50,7 @@ const modal = ref(''),
   formError = ref(''),
   detailBusy = ref('');
 const photos = ref<Record<string, string>>({}),
+  loadedPhotoUrls = ref<Record<string, string>>({}),
   photoErrors = ref<Record<string, string>>({}),
   photoBusy = ref<Record<string, boolean>>({});
 let alive = true,
@@ -57,6 +61,7 @@ function clearPrivate() {
   sequence++;
   photoSequence++;
   photos.value = {};
+  loadedPhotoUrls.value = {};
   photoErrors.value = {};
   photoBusy.value = {};
   modal.value = '';
@@ -100,6 +105,16 @@ async function photo(fileId) {
     if (task === photoSequence) photoBusy.value = { ...photoBusy.value, [fileId]: false };
   }
 }
+function photoFailed(fileId: string) {
+  if (!alive || !visible) return;
+  photos.value = { ...photos.value, [fileId]: '' };
+  loadedPhotoUrls.value = { ...loadedPhotoUrls.value, [fileId]: '' };
+  photoErrors.value = { ...photoErrors.value, [fileId]: '图片加载失败，请重试' };
+}
+function photoLoading(fileId: string) {
+  return !!fileId && !photoErrors.value[fileId] &&
+    (!photos.value[fileId] || loadedPhotoUrls.value[fileId] !== photos.value[fileId]);
+}
 onUnmounted(() => {
   alive = false;
   sequence++;
@@ -119,6 +134,7 @@ const categoryNames = computed(() => [
   '全部分类',
   ...categories.value.map(categoryLabel),
 ]);
+const itemCategoryNames = computed(() => ['未分类', ...categories.value.map(categoryLabel)]);
 const filterName = computed(
   () =>
     categoryNames.value[
@@ -298,7 +314,7 @@ const parentOptions = computed(() => {
   return categories.value.filter((row) => !excluded.has(row.id));
 });
 function chooseCategory(value) {
-  const index = categoryNames.value.indexOf(value) - 1;
+  const index = itemCategoryNames.value.indexOf(value) - 1;
   form.value.categoryId = categories.value[index]?.id || '';
 }
 </script>
@@ -309,9 +325,6 @@ function chooseCategory(value) {
       <view class="section-tabs ui-row ui-section">
         <MobileButton v-for="tab in ['衣物', '分类']" :key="tab" :label="tab" compact
           :variant="section === tab ? 'quiet' : 'ghost'" @click="section = tab" />
-        <view class="toolbar-space" />
-        <MobileButton :label="section === '衣物' ? '新增衣物' : '新增衣柜分类'"
-          icon="ant-design:plus-outlined" @click="section === '衣物' ? openItem() : openCategory()" />
       </view>
       <view class="summary ui-pad-card ui-section" :class="themeClass('summary')">
         <view v-for="metric in summary" :key="metric.label" class="summary-cell">
@@ -342,7 +355,9 @@ function chooseCategory(value) {
         <template #loading>
           <view v-if="section === '衣物'" class="item-grid ui-gap-md ui-section">
             <view v-for="n in 6" :key="n" class="item-card ui-pad-card ui-gap-sm" :class="themeClass('item-card')">
-              <view class="item-photo loading-photo"><ContentSkeleton variant="cover" /></view>
+              <view class="item-photo goods-media" :class="themeClass('goods-media')">
+                <view class="goods-image-skeleton"><ContentSkeleton variant="cover" label="正在加载衣物照片" /></view>
+              </view>
               <ContentSkeleton variant="tile" />
             </view>
           </view>
@@ -351,7 +366,7 @@ function chooseCategory(value) {
         <template v-if="section === '衣物'">
           <view v-if="loaded && !items.length" class="wardrobe-empty filter-empty ui-pad-card ui-gap-sm">
             <AppIcon name="ant-design:skin-outlined" :size="36" color="#8b8f99" />
-            <text class="muted" :class="themeClass('secondary-text')">还没有衣物，点击右上角添加</text>
+            <text class="muted" :class="themeClass('secondary-text')">还没有衣物，点击右下角添加</text>
           </view>
           <view v-if="items.length && !shown.length" class="filter-empty ui-pad-card ui-gap-sm">
             <text class="muted" :class="themeClass('secondary-text')">没有符合筛选条件的衣物</text>
@@ -359,12 +374,18 @@ function chooseCategory(value) {
           </view>
           <view class="item-grid ui-gap-md ui-section">
             <view v-for="row in shown" :key="row.id" class="item-card ui-pad-card ui-gap-sm" :class="themeClass('item-card')">
-              <image v-if="row.fileId" class="item-photo" :src="photos[row.fileId] || ''" mode="aspectFill"
-                :aria-label="row.name + '照片'" @click="preview(row.fileId)" />
-              <view v-else class="item-photo item-placeholder"><AppIcon name="ant-design:skin-outlined" :size="36" color="#8b8f99" /></view>
-              <MobileButton v-if="row.fileId && (photoBusy[row.fileId] || photoErrors[row.fileId])"
-                :label="photoErrors[row.fileId] ? '重试衣物照片' : '加载衣物照片'" variant="quiet"
-                :loading="photoBusy[row.fileId]" @click="photo(row.fileId)" />
+              <view class="item-photo goods-media" :class="[themeClass('goods-media'), { 'goods-media-loaded': photos[row.fileId] && loadedPhotoUrls[row.fileId] === photos[row.fileId] }]">
+                <image v-if="photos[row.fileId]" class="item-photo" :src="photos[row.fileId]" mode="aspectFill"
+                  :aria-label="row.name + '照片'" @load="loadedPhotoUrls[row.fileId] = photos[row.fileId]"
+                  @error="photoFailed(row.fileId)" @click="preview(row.fileId)" />
+                <view v-if="photoLoading(row.fileId)" class="goods-image-skeleton"><ContentSkeleton variant="cover" label="正在加载衣物照片" />
+                </view>
+                <view v-else-if="!photos[row.fileId]" class="item-photo item-placeholder">
+                  <AppIcon name="ant-design:skin-outlined" :size="36" color="#8b8f99" />
+                  <MobileButton v-if="photoErrors[row.fileId]" label="重试衣物照片" icon="ant-design:reload-outlined"
+                    variant="quiet" @click="photo(row.fileId)" />
+                </view>
+              </view>
               <button :style="appTextColor()" role="button" class="item-title-button ui-type-body"
                 :aria-label="'编辑衣物' + row.name" :disabled="detailBusy === row.id" :aria-busy="detailBusy === row.id" @click="edit(row)">
                 <text class="item-title">{{ row.name }}</text>
@@ -384,7 +405,8 @@ function chooseCategory(value) {
           </view>
         </template>
         <template v-else>
-          <view v-for="row in categories" :key="row.id" class="category-row ui-row ui-section" :style="{ marginLeft: row.depth * 16 + 'px' }">
+          <view v-for="row in categories" :key="row.id" class="category-row ui-row" :class="{ 'category-row-preset': row.categoryType === 0 }" :style="{ marginLeft: row.depth * 16 + 'px' }">
+            <AppIcon v-if="row.icon && iconCatalog.icons[row.icon]" :name="row.icon" :size="20" />
             <text class="category-name">{{ row.name }}</text>
             <text v-if="row.categoryType === 0" class="muted" :class="themeClass('secondary-text')">预设</text>
             <view v-else class="tools ui-row">
@@ -397,6 +419,8 @@ function chooseCategory(value) {
       </view>
     </view>
     <template #fixed>
+      <FloatingActionButton v-if="!modal" :label="section === '衣物' ? '新增衣物' : '新增衣柜分类'"
+        @click="section === '衣物' ? openItem() : openCategory()" />
       <AdaptiveModal v-if="modal" :label="modal === 'item' ? '衣物编辑' : '衣柜分类编辑'" :busy="busy || uploading" @close="close">
         <template v-if="modal === 'item'">
           <view class="item-form-heading ui-gap-md">
@@ -407,19 +431,26 @@ function chooseCategory(value) {
                 <template v-else><AppIcon name="ant-design:upload-outlined" :size="24" color="#8b8f99" /><text class="photo-upload-label" :class="themeClass('secondary-text')">添加照片</text></template>
               </button>
               <template v-else>
-                <image class="edit-photo" :src="photos[form.fileId] || ''" mode="aspectFill" aria-label="预览衣物照片" @click="preview(form.fileId)" />
+                <view class="edit-photo goods-media" :class="[themeClass('goods-media'), { 'goods-media-loaded': photos[form.fileId] && loadedPhotoUrls[form.fileId] === photos[form.fileId] }]">
+                  <image v-if="photos[form.fileId]" class="edit-photo" :src="photos[form.fileId]" mode="aspectFill"
+                    aria-label="预览衣物照片" @load="loadedPhotoUrls[form.fileId] = photos[form.fileId]"
+                    @error="photoFailed(form.fileId)" @click="preview(form.fileId)" />
+                  <view v-if="photoLoading(form.fileId)" class="goods-image-skeleton"><ContentSkeleton variant="cover" label="正在加载衣物照片" />
+                  </view>
+                  <view v-else-if="photoErrors[form.fileId]" class="edit-photo item-placeholder">
+                    <MobileButton label="重试编辑照片" icon="ant-design:reload-outlined" variant="quiet" @click="photo(form.fileId)" />
+                  </view>
+                </view>
                 <view class="photo-actions ui-row">
                   <MobileButton label="上传衣物照片" icon="ant-design:upload-outlined" variant="ghost" :loading="uploading" :disabled="busy" @click="upload" />
                   <MobileButton label="移除衣物照片" icon="ant-design:delete-outlined" variant="ghost" :disabled="busy || uploading" @click="form.fileId = ''" />
                 </view>
-                <MobileButton v-if="photoBusy[form.fileId] || photoErrors[form.fileId]" label="重试编辑照片" variant="quiet"
-                  :loading="photoBusy[form.fileId]" @click="photo(form.fileId)" />
               </template>
             </view>
             <view class="item-form-basics">
               <FormField appearance="soft" :required="isRequired('wardrobe', 'name')" label="名称" placeholder="衣物名称" v-model="form.name" :disabled="busy" />
-              <FormField appearance="soft" label="衣物分类" kind="selector" :model-value="categoryNames[categories.findIndex((row) => row.id === form.categoryId) + 1] || '全部分类'"
-                :options="categoryNames" @update:model-value="chooseCategory" />
+              <FormField appearance="soft" label="衣物分类" kind="selector" :model-value="itemCategoryNames[categories.findIndex((row) => row.id === form.categoryId) + 1] || '未分类'"
+                :options="itemCategoryNames" @update:model-value="chooseCategory" />
             </view>
           </view>
           <view class="ui-field-row">
@@ -444,7 +475,10 @@ function chooseCategory(value) {
         </template>
         <template v-else>
           <FormField appearance="soft" :required="isRequired('wardrobe', 'name')" label="名称" v-model="form.name" :disabled="busy" />
-          <FormField appearance="soft" label="分类图标" v-model="form.icon" />
+          <view class="ui-field-row">
+            <FormField appearance="soft" compact stretch label="分类图标（可选）" kind="selector" :options="['无图标', ...categoryIconOptions]" :model-value="form.icon || '无图标'" @update:model-value="form.icon = $event === '无图标' ? '' : $event" />
+            <view class="category-icon-preview"><AppIcon v-if="form.icon && iconCatalog.icons[form.icon]" :name="form.icon" :size="28" /><text v-else class="muted">无预览</text></view>
+          </view>
           <view class="ui-field-row">
             <FormField appearance="soft" compact stretch label="父分类" kind="selector"
               :model-value="form.parentId ? categoryLabel(parentOptions.find((row) => row.id === form.parentId) || { name: '未知', id: form.parentId }) : '无父分类'"
@@ -463,6 +497,7 @@ function chooseCategory(value) {
   </MobilePage>
 </template>
 <style scoped lang="scss">
+@use "./goods-media";
 @use '../../styles/typography' as *;
 @use '../../styles/text-colors' as *;
 @use '../../styles/spacing.scss';
@@ -471,6 +506,8 @@ function chooseCategory(value) {
 
 .wardrobe {
   color: #27272a;
+  /* 为悬浮新增按钮预留滚动空间，确保末行卡片可完整露出。 */
+  padding-bottom: calc(56px + #{$space-page} + #{$space-inline});
 }
 .wardrobe-dark {
   color: #eeeeef;
@@ -507,7 +544,6 @@ function chooseCategory(value) {
 .item-card-dark {
   background-color: #1c1e22;
 }
-.loading-photo { position: relative; }
 .item-photo {
   height: 160px;
   width: 100%;
@@ -546,9 +582,12 @@ flex-shrink: 1;
   padding: $space-card;
   flex-direction: row;
   align-items: center;
-  min-height: 60px;
+  min-height: $space-controlMin;
+  gap: $space-inline;
   border-radius: 12px;
 }
+.category-row-preset { padding-top: $space-inline; padding-bottom: $space-inline; min-height: 0; }
+.category-icon-preview { justify-content: center; align-items: center; min-width: $space-controlMin; }
 .item-form-heading { flex-direction: row; align-items: flex-start; }
 .item-form-basics { flex: 1; min-width: 0; }
 .photo-field { width: 96px; flex-shrink: 0; }
@@ -582,11 +621,9 @@ flex-shrink: 1;
   }
 }
 .section-tabs { align-items: center; }
-.toolbar-space { flex: 1; }
 .item-placeholder {
   align-items: center;
   justify-content: center;
-  background: rgba(128, 134, 146, 0.06);
 }
 .item-title-button {
   display: flex;

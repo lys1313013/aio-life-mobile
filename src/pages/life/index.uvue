@@ -1,4 +1,7 @@
 <script setup lang="ts">
+// #ifdef MP-WEIXIN
+import TabPage from '../../components/TabPage.uvue'
+// #endif
 import { buttonLabelClasses } from '../../services/button-label.ts'
 import ContentSkeleton from '../../components/ContentSkeleton.uvue';
 import LoadingIndicator from '../../components/LoadingIndicator.uvue';
@@ -214,6 +217,9 @@ async function save() {
 </script>
 
 <template>
+  <!-- #ifdef MP-WEIXIN -->
+  <TabPage page-path="pages/life/index">
+  <!-- #endif -->
   <view class="tab-page life-page" :class="themeClass('life-page')">
     <PageHeader title="全部">
       <view class="life-search life-header-search ui-row ui-px-card" :class="themeClass('life-header-search')">
@@ -227,8 +233,7 @@ async function save() {
           :placeholder-style="'color: ' + searchSecondaryColor"
           confirm-type="search"
         />
-        <LoadingIndicator v-if="catalogLoading && catalogLoaded && !refreshing" compact label="正在更新功能目录" />
-        <button v-else-if="catalogError && catalogLoaded" role="button" class="life-action" aria-label="重试功能目录" @click="loadPart('catalog')"><AppIcon name="lucide:rotate-cw" :color="searchSecondaryColor" /></button>
+        <button v-if="catalogError && catalogLoaded" role="button" class="life-action" aria-label="重试功能目录" @click="loadPart('catalog')"><AppIcon name="lucide:rotate-cw" :color="searchSecondaryColor" /></button>
         <button
           role="button"
           v-if="query"
@@ -250,6 +255,7 @@ async function save() {
       @refresherrefresh="refresh"
     >
       <view class="life-content ui-page-inset ui-tab-page-inset">
+        <LoadingIndicator v-if="catalogLoading && catalogLoaded && !refreshing" floating label="正在更新功能目录" />
         <view v-if="catalogLoading && !catalogLoaded && !refreshing" class="life-state ui-px-sm ui-py-card"
           ><ContentSkeleton variant="grid" label="正在加载功能目录" /></view
         >
@@ -483,6 +489,9 @@ async function save() {
     </AdaptiveModal>
   <SecondaryUnlock />
   </view>
+  <!-- #ifdef MP-WEIXIN -->
+  </TabPage>
+  <!-- #endif -->
 </template>
 
 <style scoped lang="scss">
@@ -490,6 +499,8 @@ async function save() {
 @use '../../styles/spacing.scss';
 @use '../../styles/spacing-tokens' as *;
 @include type-utilities('body');
+
+.life-content { position: relative; }
 
 .life-page {
   background-color: #f0f2f5;

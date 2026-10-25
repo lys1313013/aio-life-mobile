@@ -10,6 +10,12 @@ import typography from '../../styles/typography.json';
 import dotIcon from './assets/dot.png';
 import activeIcon from './assets/active.png';
 import clusterIcon from './assets/cluster.png';
+// #ifdef MP-WEIXIN
+import { onShow } from '@dcloudio/uni-app';
+import { useNativeMapTheme } from './native-map-theme.ts';
+const { setting: nativeMapSetting, updated: nativeMapUpdated, sync: syncNativeMapTheme } = useNativeMapTheme();
+onShow(syncNativeMapTheme);
+// #endif
 // #ifdef WEB
 import type { FootprintMapHandle } from './map-handle.ts';
 import { mountTencentFootprintMap } from './tencent-map.ts';
@@ -118,8 +124,11 @@ defineExpose({ focus, china });
     <view v-else-if="!failed && tilesFailed" class="map-tile-error" :class="themeClass('map-tile-error')" role="alert"><text class="map-error" :class="themeClass('map-error')">底图加载失败</text><MobileButton label="重试底图" icon="ant-design:reload-outlined" variant="ghost" @click="retryTiles" /></view>
 
     <!-- #endif -->
-    <!-- #ifndef WEB -->
-    <map :id="mapId" class="footprint-native-canvas" :longitude="center.longitude" :latitude="center.latitude" :scale="zoom" :markers="markers" :enable-zoom="true" :enable-scroll="true" :show-location="false" theme="light" @markertap="markerTap" @tap="mapTap" @regionchange="regionChange" />
+    <!-- #ifdef MP-WEIXIN -->
+    <map :id="mapId" class="footprint-native-canvas" :longitude="center.longitude" :latitude="center.latitude" :scale="zoom" :markers="markers" :enable-zoom="true" :enable-scroll="true" :show-location="false" :setting="nativeMapSetting" @updated="nativeMapUpdated" @markertap="markerTap" @tap="mapTap" @regionchange="regionChange" />
+    <!-- #endif -->
+    <!-- #ifdef APP -->
+    <map :id="mapId" class="footprint-native-canvas" :longitude="center.longitude" :latitude="center.latitude" :scale="zoom" :markers="markers" :enable-zoom="true" :enable-scroll="true" :show-location="false" @markertap="markerTap" @tap="mapTap" @regionchange="regionChange" />
     <!-- #endif -->
     <view v-if="!loading && !failed" class="country-control" :class="themeClass('country-control')"><MobileButton label="返回中国地图" icon="mdi:map-outline" variant="ghost" @click="china" /></view>
   </view>

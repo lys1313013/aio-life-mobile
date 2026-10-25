@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { readPageTotal, mergePageItems, hasMorePageItems } from '../../services/pagination.ts';
 import { fetchDictionary } from '../../services/dictionary.ts';
 import { usePageRefresh } from '../../services/page-refresh.ts'
 import { useAppLayout, appTextColor } from '../../services/app-layout.ts'
@@ -13,6 +14,7 @@ import { onLoad, onShow } from '@dcloudio/uni-app';
 import MobilePage from '../../components/MobilePage.uvue';
 import PageHeader from '../../components/PageHeader.uvue';
 import MobileButton from '../../components/MobileButton.uvue';
+import FloatingActionButton from '../../components/FloatingActionButton.uvue';
 import FormField from '../../components/FormField.uvue';
 import PageState from '../../components/PageState.uvue';
 import MetricCard from '../../components/MetricCard.uvue';
@@ -125,13 +127,14 @@ async function load(refresh = false) {
       (typeDict.dictDetailList || []).find(
         (item) => (item.dictLabel || item.label) === selectedType,
       )?.id || '';
-    const data = [];
+    let data = [];
     let page = 1;
     while (true) {
       const response = await scope.wait(fetchDevicePage(page++, typeId));
       if (!alive || current !== generation) return;
-      data.push(...response.items);
-      if (data.length >= response.total || response.items.length < 100) break;
+      const total = readPageTotal(response.total);
+      data = mergePageItems(data, response.items);
+      if (!hasMorePageItems(data.length, total, response.items.length === 0)) break;
     }
     if (alive && current === generation) {
       rows.value = data;
@@ -254,11 +257,7 @@ function deviceDeleted(id: string) {
     ><view class="goods-page ui-page-body" :class="{ 'goods-page-dark': isDark }"
       ><PageHeader title="设备" :back="true" @back="uni.navigateBack()" /><view
         class="ui-toolbar"
-        ><FormField compact stretch hide-label label="搜索设备" placeholder="搜索设备、配置…" v-model="keyword" /><MobileButton
-          label="新增设备"
-          icon="ant-design:plus-outlined"
-          :disabled="loading || !!error"
-          @click="open()" /></view
+        ><FormField compact stretch hide-label label="搜索设备" placeholder="搜索设备、配置…" v-model="keyword" /></view
       ><scroll-view
         direction="horizontal"
         :scroll-x="true"
@@ -300,7 +299,7 @@ function deviceDeleted(id: string) {
         :empty="!filtered.length"
         @retry="load()"
         >
-<template #loading><view class="goods-grid ui-gap-md" ><view v-for="n in 6" :key="n" class="goods-card ui-pad-card ui-gap-sm" :class="{ 'goods-card-dark': isDark }"><view class="goods-media" :class="{ 'goods-media-dark': isDark }"><view class="goods-image-skeleton" role="status" aria-label="正在加载设备图片"><view class="goods-image-shimmer" :class="{ 'goods-image-shimmer-dark': isDark }" aria-hidden="true" /></view></view><ContentSkeleton variant="tile" /></view></view></template>
+<template #loading><view class="goods-grid ui-gap-md" ><view v-for="n in 6" :key="n" class="goods-card ui-pad-card ui-gap-sm" :class="{ 'goods-card-dark': isDark }"><view class="goods-media" :class="{ 'goods-media-dark': isDark }"><view class="goods-image-skeleton"><ContentSkeleton variant="cover" label="正在加载设备图片" /></view></view><ContentSkeleton variant="tile" /></view></view></template>
 <view class="goods-grid ui-gap-md"
           ><view
             v-for="item in filtered"
@@ -320,9 +319,7 @@ function deviceDeleted(id: string) {
               /><view
                 v-if="item.fileId && !photoErrors[item.id] && (!photos[item.id] || loadedPhotoUrls[item.id] !== photos[item.id])"
                 class="goods-image-skeleton"
-                role="status"
-                aria-label="正在加载设备图片"
-                ><view class="goods-image-shimmer" :class="{ 'goods-image-shimmer-dark': isDark }" aria-hidden="true" /></view
+                ><ContentSkeleton variant="cover" label="正在加载设备图片" /></view
               ><view v-else-if="!photos[item.id]" class="goods-placeholder" :class="{ 'secondary-text-dark': isDark }"
                 ><AppIcon
                   :name="deviceVisual(item.type).icon"
@@ -338,20 +335,25 @@ function deviceDeleted(id: string) {
               }}</text></view
             ><button :style="appTextColor()" role="button" class="goods-title-button ui-type-body" aria-label="编辑设备" @click="open(item)"><text class="goods-title">{{ item.name }}</text></button
             ><text v-if="item.spec" class="goods-content" :class="{ 'secondary-text-dark': isDark }">{{ item.spec }}</text
-            ><text class="goods-price">¥ {{ item.purchasePrice || 0 }}</text
-            ><text class="goods-secondary" :class="{ 'secondary-text-dark': isDark }">{{ item.purchaseDate || '—' }} · {{ usageDays(item) }} 天</text
-            ><text class="goods-secondary" :class="{ 'secondary-text-dark': isDark }">日均 ¥ {{ (Number(item.purchasePrice || 0) / usageDays(item)).toFixed(2) }}</text
             ><text v-if="item.purchasePlace" class="goods-secondary" :class="{ 'secondary-text-dark': isDark }">{{ item.purchasePlace }}</text
             ><text v-if="item.remark" class="goods-content" :class="{ 'secondary-text-dark': isDark }">{{ item.remark }}</text
+            ><view class="goods-cost-summary"><text class="goods-price">¥ {{ item.purchasePrice || 0 }}</text
+            ><text class="goods-secondary" :class="{ 'secondary-text-dark': isDark }">{{ item.purchaseDate || '—' }} · {{ usageDays(item) }} 天</text
+            ><text class="goods-secondary" :class="{ 'secondary-text-dark': isDark }">日均 ¥ {{ (Number(item.purchasePrice || 0) / usageDays(item)).toFixed(2) }}</text></view
             ></view
           ></view
         ></PageState
       >
       </view></view>
       <DeviceRecordEditor v-if="form" :record="form" @close="form = null" @saved="deviceSaved" @deleted="deviceDeleted" /> </view
-  ></MobilePage>
+  >
+    <template #fixed>
+      <FloatingActionButton v-if="!form" label="新增设备" :disabled="loading || !!error" @click="open()" />
+    </template>
+  </MobilePage>
 </template>
 <style scoped lang="scss">
+@use "./goods-media";
 @use '../../styles/typography' as *;
 @use '../../styles/text-colors' as *;
 @use '../../styles/spacing.scss';
@@ -361,6 +363,8 @@ function deviceDeleted(id: string) {
 
 .goods-page {
   color: #27272a;
+  /* 为悬浮新增按钮预留滚动空间，确保末行卡片可完整露出。 */
+  padding-bottom: calc(56px + #{$space-page} + #{$space-inline});
 }
 .goods-page-dark {
   color: #eeeeef;
@@ -472,50 +476,12 @@ grid-column: 1 / -1;
 
   overflow-wrap: anywhere;
 }
-.goods-media {
-  position: relative;
-  border-radius: 10px;
-  background-color: rgba(128, 134, 146, 0.06);
-}
-.goods-media-dark {
-  background-color: rgba(128, 134, 146, 0.12);
-}
-.goods-media-loaded {
-  background-color: transparent;
-}
 .goods-media,
 .goods-photo,
 .goods-placeholder {
   width: 100%;
   height: 150px;
 }
-.goods-image-skeleton {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  border-radius: 10px;
-  overflow: hidden;
-}
-.goods-image-shimmer {
-  width: 100%;
-  height: 100%;
-  background: linear-gradient(90deg, transparent 0%, rgba(255, 255, 255, 0.45) 50%, transparent 100%);
-  animation: goods-shimmer-move 1.4s infinite;
-}
-.goods-image-shimmer-dark {
-  background: linear-gradient(90deg, transparent 0%, rgba(255, 255, 255, 0.08) 50%, transparent 100%);
-}
-@keyframes goods-shimmer-move {
-  0% { transform: translateX(-100%); }
-  100% { transform: translateX(100%); }
-}
-/* #ifdef WEB */
-@media (prefers-reduced-motion: reduce) {
-  .goods-image-shimmer { animation: none; }
-}
-/* #endif */
 .goods-placeholder {
   align-items: center;
   justify-content: center;
@@ -596,6 +562,7 @@ color: inherit;
   text-align: left;
   line-height: type-line('body');
 }
+.goods-cost-summary { margin-top: auto; gap: $space-inline; }
 .goods-price { @include type-style('body-strong');  }
 /* #ifdef WEB || MP-WEIXIN */
 .goods-title-button::after, .device-type-tab::after { border: 0; }

@@ -82,6 +82,11 @@ const catalog: Record<
     summary: "保存一段时间记录",
     group: "time",
   },
+  task_detail_update: {
+    title: "更新待办",
+    summary: "修改待办完成状态、星标及优先级",
+    group: "plan",
+  },
   task_detail_save: {
     title: "添加待办",
     summary: "向任务列表录入一条明细",

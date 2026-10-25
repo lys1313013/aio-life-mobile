@@ -1,0 +1,131 @@
+<script setup lang="ts">
+import { ref } from 'vue';
+import AppIcon from '../../components/AppIcon.uvue';
+import FormField from '../../components/FormField.uvue';
+import FormActions from '../../components/FormActions.uvue';
+import MobileButton from '../../components/MobileButton.uvue';
+import AdaptiveModal from '../../components/AdaptiveModal.uvue';
+import PageState from '../../components/PageState.uvue';
+import LoadMore from '../../components/LoadMore.uvue';
+import { isDark, themeClass } from '../../services/theme.ts';
+
+defineProps<{
+  rows: any[]; total: number; loading: boolean; error: string;
+  moreError: string; hasMore: boolean; exporting: boolean;
+}>();
+const emit = defineEmits(['search', 'retry', 'more', 'export']);
+const keyword = ref(''), startDate = ref(''), endDate = ref('');
+const opened = ref(false), draftStart = ref(''), draftEnd = ref(''), filterError = ref('');
+function search() {
+  emit('search', { username: keyword.value.trim(), startDate: startDate.value, endDate: endDate.value });
+}
+function openFilters() {
+  draftStart.value = startDate.value; draftEnd.value = endDate.value;
+  filterError.value = ''; opened.value = true;
+}
+function applyFilters() {
+  if (draftStart.value && draftEnd.value && draftStart.value > draftEnd.value) {
+    filterError.value = '开始日期不能晚于结束日期'; return;
+  }
+  startDate.value = draftStart.value; endDate.value = draftEnd.value;
+  opened.value = false; search();
+}
+function reset() {
+  keyword.value = ''; startDate.value = ''; endDate.value = '';
+  opened.value = false; search();
+}
+function account(row) {
+  const username = row.username || '—';
+  return row.nickname && row.nickname !== row.username ? username + '（' + row.nickname + '）' : username;
+}
+function time(value) { return value ? String(value).replace('T', ' ') : '—'; }
+function result(row) { return row.success === true ? '成功' : row.success === false ? '失败' : '结果未知'; }
+</script>
+
+<template>
+  <view class="access-panel ui-page-body">
+    <view class="access-toolbar">
+      <view class="access-search access-surface" :class="themeClass('access-surface')">
+        <MobileButton label="查询" icon="ant-design:search-outlined" variant="ghost" :loading="loading" @click="search" />
+        <FormField label="用户账号" hide-label compact stretch>
+          <input class="access-input" :class="themeClass('access-input')" aria-label="用户账号" placeholder="搜索用户账号" :value="keyword" confirm-type="search" @input="keyword = $event.detail.value" @confirm="search" />
+        </FormField>
+      </view>
+      <MobileButton label="日期筛选" icon="ant-design:filter-outlined" :variant="startDate || endDate ? 'primary' : 'ghost'" @click="openFilters" />
+      <MobileButton label="导出日志" icon="ant-design:download-outlined" variant="ghost" :loading="exporting" :disabled="loading" @click="emit('export')" />
+    </view>
+    <view v-if="keyword || startDate || endDate" class="access-filter-summary">
+      <text class="access-meta" :class="themeClass('access-muted')">{{ startDate || endDate ? (startDate || '不限') + ' — ' + (endDate || '不限') : '按账号查询' }}</text>
+      <MobileButton label="重置筛选" icon="ant-design:close-outlined" variant="ghost" :disabled="loading" @click="reset" />
+    </view>
+    <PageState :loading="loading" :error="error" :empty="!rows.length" :has-content="rows.length > 0" @retry="emit('retry')">
+      <template #loading>
+        <view class="access-list access-surface" :class="themeClass('access-surface')" aria-label="正在加载访问日志">
+          <view v-for="item in 8" :key="item" class="access-row" aria-hidden="true">
+            <text class="access-account access-placeholder" :class="themeClass('access-placeholder')">　</text>
+            <text class="access-meta access-placeholder" :class="themeClass('access-placeholder')">　</text>
+          </view>
+        </view>
+      </template>
+      <view v-if="rows.length" class="access-list access-surface" :class="themeClass('access-surface')">
+        <view v-for="row in rows" :key="row.id" class="access-row">
+          <view class="access-primary">
+            <text class="access-account" :class="themeClass('access-account')">{{ account(row) }}</text>
+            <text class="access-method" :class="themeClass('access-muted')">{{ row.accessType || '—' }}</text>
+            <view class="access-result" role="img" :aria-label="result(row)">
+              <AppIcon :name="row.success === true ? 'ant-design:check-circle-outlined' : row.success === false ? 'ant-design:close-outlined' : 'ant-design:question-circle-outlined'" :size="16" :color="row.success === true ? (isDark ? '#63d6a0' : '#168251') : row.success === false ? (isDark ? '#ff8e99' : '#cc354b') : (isDark ? '#b3bdca' : '#64748b')" />
+            </view>
+          </view>
+          <view class="access-secondary">
+            <text class="access-meta access-device" :class="themeClass('access-muted')">{{ row.ipAddress || '—' }} · {{ row.browser || '—' }}</text>
+            <text class="access-meta access-time" :class="themeClass('access-muted')">{{ time(row.createTime) }}</text>
+          </view>
+        </view>
+      </view>
+    </PageState>
+    <LoadMore :loading="loading" :error="moreError" :has-more="hasMore" @load="emit('more')" />
+    <AdaptiveModal v-if="opened" label="筛选访问日志" :content-key="filterError" @close="opened = false">
+      <view class="ui-field-row">
+        <FormField compact stretch label="开始日期" kind="date" v-model="draftStart" />
+        <FormField compact stretch label="结束日期" kind="date" v-model="draftEnd" />
+      </view>
+      <text v-if="filterError" class="access-error" role="alert">{{ filterError }}</text>
+      <FormActions>
+        <template v-if="keyword || startDate || endDate || draftStart || draftEnd" #secondary><MobileButton label="重置筛选" icon="ant-design:close-outlined" variant="ghost" :disabled="loading" @click="reset" /></template>
+        <MobileButton label="取消" variant="quiet" @click="opened = false" />
+        <MobileButton label="查询" :disabled="loading" @click="applyFilters" />
+      </FormActions>
+    </AdaptiveModal>
+  </view>
+</template>
+
+<style scoped lang="scss">
+@use '../../styles/typography' as *;
+@use '../../styles/spacing.scss';
+@use '../../styles/spacing-tokens' as *;
+@use '../../styles/text-colors' as *;
+.access-panel { gap: $space-inline; }
+.access-toolbar, .access-search, .access-primary, .access-secondary, .access-filter-summary { display: flex; flex-direction: row; align-items: center; gap: $space-inline; }
+.access-search { flex: 1; min-width: 0; gap: 0; border-radius: 12px; overflow: hidden; }
+.access-input { @include type-style('body'); width: 100%; min-width: 0; height: $space-controlMin; color: #27272a; }
+.access-input-dark { color: #eeeeef; }
+.access-surface { background-color: #ffffff; }
+.access-surface-dark { background-color: #1c1e22; }
+.access-list { border-radius: 12px; overflow: hidden; }
+.access-row { padding: $space-card; gap: $space-detail; }
+.access-primary { align-items: flex-start; }
+.access-account { @include type-style('body-strong'); flex: 1; min-width: 0; color: #27272a; overflow-wrap: anywhere; }
+.access-account-dark { color: #eeeeef; }
+.access-method { @include type-style('label'); flex-shrink: 0; }
+.access-result { flex-shrink: 0; min-height: type-line('body'); justify-content: center; }
+.access-secondary { flex-wrap: wrap; justify-content: space-between; column-gap: $space-inline; row-gap: $space-detail; }
+.access-meta { @include type-style('caption'); color: $text-secondary-light; }
+.access-device { min-width: 0; overflow-wrap: anywhere; }
+.access-time { flex-shrink: 0; }
+.access-muted { color: $text-secondary-light; }
+.access-muted-dark { color: $text-secondary-dark; }
+.access-filter-summary { justify-content: space-between; }
+.access-placeholder { background-color: #eef1f5; border-radius: 4px; }
+.access-placeholder-dark { background-color: #2a2e35; }
+.access-error { @include type-style('label'); color: #cc354b; }
+</style>

@@ -3,7 +3,7 @@ import { onUnmounted, ref, watch } from 'vue';
 import { authFileUrl } from '../../../services/attachments.ts';
 import { session } from '../../../services/session.ts';
 import { themeClass } from '../../../services/theme.ts';
-import LoadingIndicator from '../../../components/LoadingIndicator.uvue';
+import ContentSkeleton from '../../../components/ContentSkeleton.uvue';
 import MobileButton from '../../../components/MobileButton.uvue';
 const props = defineProps<{ fileId: string; publicUrl?: string; name: string }>();
 const source = ref(''), loading = ref(false), error = ref(false);
@@ -33,7 +33,7 @@ onUnmounted(() => { generation++; release(source.value); });
   <view class="cover-preview" :class="themeClass('cover-preview')">
     <image v-if="source && !error" class="cover-image" :src="source" mode="aspectFit" :aria-label="name" @load="loading = false" @error="error = true; loading = false" />
     <view v-if="!source || loading || error" class="cover-placeholder ui-pad-card">
-      <LoadingIndicator v-if="loading" compact label="正在加载卡面" />
+      <ContentSkeleton v-if="loading" variant="cover" label="正在加载卡面" />
       <template v-else><text class="cover-placeholder-text">{{ error ? '卡面加载失败' : '卡面预览' }}</text><view v-if="error" @click.stop><MobileButton label="重试卡面" icon="ant-design:reload-outlined" variant="quiet" @click="load" /></view></template>
     </view>
   </view>

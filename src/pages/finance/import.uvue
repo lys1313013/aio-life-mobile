@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import { isRequired, missingRequired } from '../../services/form-required.ts';
-import { computed, onMounted, ref } from 'vue';
+import { computed, ref } from 'vue';
 import MobilePage from '../../components/MobilePage.uvue';
 import PageHeader from '../../components/PageHeader.uvue';
 import FormField from '../../components/FormField.uvue';
+import FormActions from '../../components/FormActions.uvue';
 import MobileButton from '../../components/MobileButton.uvue';
 import ConfirmAction from '../../components/ConfirmAction.uvue';
 import AdaptiveModal from '../../components/AdaptiveModal.uvue';
@@ -23,6 +24,10 @@ const text = ref(''),
   ready = ref(false),
   modal = ref(false),
   pasteOpen = ref(false),
+  sourceOpen = ref(false),
+  filtersOpen = ref(false),
+  totalsOpen = ref(false),
+  draftErrors = ref<Record<string, string>>({}),
   draft = ref<any>({}),
   editIndex = ref(-1),
   type = ref(''),
@@ -108,6 +113,24 @@ const categoryTotals = computed(() =>
 const total = computed(
   () => rows.value.reduce((sum, row) => sum + Math.round(Number(row.amt) * 100), 0) / 100,
 );
+function setPreview(transactions: any[]) {
+  rows.value = transactions;
+  selected.value = [];
+  categoryFilter.value = '全部';
+  sourceOpen.value = false;
+  pasteOpen.value = false;
+  filtersOpen.value = false;
+  totalsOpen.value = false;
+}
+function dictionaryLabel(items: any[], id: string, missing: string) {
+  return items.find((item) => item.id === id)?.dictLabel || missing;
+}
+const allVisibleSelected = computed(() =>
+  visibleIndices.value.length > 0 && visibleIndices.value.every((index) => selected.value.includes(index)),
+);
+function toggleVisible() {
+  selected.value = allVisibleSelected.value ? [] : [...visibleIndices.value];
+}
 async function choose() {
   if (busy.value || !ready.value) return;
   busy.value = true;
@@ -131,8 +154,7 @@ async function choose() {
     const result = await parseBillFile(file.name, file.buffer, ctx);
     if (!alive || stamp !== current) return;
     if (!result.transactions.length) throw new Error('账单没有可导入的成功支出');
-    rows.value = result.transactions;
-    selected.value = [];
+    setPreview(result.transactions);
   } catch (e) {
     error.value = e.message;
   } finally {
@@ -160,8 +182,7 @@ function parse() {
       : parseCSV(text.value, ctx);
     if (!result.transactions.length)
       throw new Error('未识别到成功支出记录，请检查账单内容');
-    rows.value = result.transactions;
-    selected.value = [];
+    setPreview(result.transactions);
   } catch (e) {
     error.value = e.message;
   }
@@ -187,6 +208,7 @@ function batch() {
 function edit(row: any, index: number) {
   draft.value = { ...row };
   editIndex.value = index;
+  draftErrors.value = {};
   modal.value = true;
 }
 const draftType = computed({
@@ -206,13 +228,15 @@ const draftPay = computed({
   },
 });
 function saveRow() {
-  if (
-    missingRequired('importExpense', draft.value) ||
-    !Number.isFinite(Number(draft.value.amt))
-  ) {
-    error.value = '请填写有效金额、类型和支付方式';
-    return;
-  }
+  const errors: Record<string, string> = {};
+  if (draft.value.amt == null || String(draft.value.amt).trim() === '' || !Number.isFinite(Number(draft.value.amt)))
+    errors.amt = '请输入有效记账金额';
+  if (draft.value.transactionAmt == null || String(draft.value.transactionAmt).trim() === '' || !Number.isFinite(Number(draft.value.transactionAmt)))
+    errors.transactionAmt = '请输入有效交易金额';
+  if (missingRequired('importExpense', draft.value, 'expTypeId')) errors.expTypeId = '请选择类型';
+  if (missingRequired('importExpense', draft.value, 'payTypeId')) errors.payTypeId = '请选择支付方式';
+  draftErrors.value = errors;
+  if (Object.keys(errors).length) return;
   rows.value[editIndex.value] = {
     ...draft.value,
     amt: Number(draft.value.amt),
@@ -253,133 +277,87 @@ async function removeSelected() {
 }
 </script>
 <template>
-  <MobilePage :refreshing="initializing" @refresh="initialize"
-    ><PageHeader title="账单导入" back @back="uni.navigateBack()" /><view
-      class="body ui-page-body"
-      :class="themeClass('body')"
-      ><PageState skeleton="form" :loading="initializing && !ready" :error="error" @retry="initialize"
-        ><view
-          class="upload-panel ui-pad-card ui-gap-sm"
-          :class="themeClass('upload-panel')"
-          ><text class="upload-title">选择账单文件</text
-          ><text class="upload-hint" :class="themeClass('secondary-text')">支持支付宝 ZIP、CSV 或微信账单 Excel</text
-          ><MobileButton
-            label="选择文件"
-            icon="ant-design:upload-outlined"
-            :loading="busy"
-            :disabled="!ready"
-            @click="choose" /><MobileButton
-            label="粘贴 CSV 内容"
-            variant="quiet"
-            @click="pasteOpen = !pasteOpen" /></view
-        ><view v-if="pasteOpen" class="ui-section"
-          ><FormField
-            label="支付宝 CSV 内容"
-            kind="textarea"
-            v-model="text" /><MobileButton
-            label="解析预览"
-            :disabled="!ready || busy"
-            @click="parse" /></view
-        ><FormField
-          v-if="rows.length"
-          label="默认类型"
-          kind="selector"
-          :options="types.map((item) => item.dictLabel)"
-          v-model="type" /><text v-if="rows.length" class="summary ui-py-section ui-type-body"
-          >{{ rows.length }} 笔 · ¥{{ total.toFixed(2) }}</text
-        ><view v-if="rows.length" class="actions ui-toolbar"
-          ><MobileButton
-            label="全选"
-            variant="quiet"
-            @click="selected = [...visibleIndices]" /><MobileButton
-            label="取消全选"
-            variant="quiet"
-            @click="selected = []" /><ConfirmAction
-            v-if="selected.length"
-            label="删除选中"
-            :action="removeSelected" /></view
-        ><FormField
-          v-if="rows.length"
-          label="批量支付方式"
-          kind="selector"
-          :options="payments.map((item) => item.dictLabel)"
-          v-model="payment" /><MobileButton
-          v-if="selected.length"
-          label="批量设置类型和支付方式"
-          @click="batch" /><view v-if="rows.length"
-          ><FormField
-            label="原交易分类"
-            kind="selector"
-            :options="categoryOptions"
-            v-model="categoryFilter"
-          /><FormField
-            label="排序"
-            kind="selector"
-            :options="['日期降序', '金额降序']"
-            v-model="sort"
-          /><view
-            v-for="group in categoryTotals"
-            :key="group.name"
-            class="actions ui-toolbar"
-            ><text class="ui-type-body"
-              >{{ group.name }} · {{ group.count }} 笔 · ¥{{ group.amt.toFixed(2) }}</text
-            ></view
-          ></view
-        ><view
-          v-for="index in visibleIndices"
-          :key="rows[index].transactionId || index"
-          class="record ui-card"
-          ><view class="actions ui-toolbar"
-            ><MobileButton
-              :label="selected.includes(index) ? '取消选择' : '选择'"
-              :icon="
-                selected.includes(index)
-                  ? 'ant-design:check-square-outlined'
-                  : 'ant-design:border-outlined'
-              "
-              variant="quiet"
-              @click="toggle(index)" /><text class="ui-type-body"
-              >{{ rows[index].expTime }} · ¥{{ rows[index].amt }}</text
-            ><MobileButton
-              label="编辑"
-              icon="ant-design:edit-outlined"
-              variant="quiet"
-              @click="edit(rows[index], index)" /></view
-          ><text class="ui-type-body">{{ rows[index].counterparty }} · {{ rows[index].expDesc }}</text
-          ><text class="ui-type-body"
-            >{{ rows[index].transactionId }} · 退款
-            {{ rows[index].successfulRefund }}</text
-          ></view
-        ><MobileButton
-          v-if="rows.length"
-          label="确认导入"
-          :loading="busy"
-          @click="submit" /></PageState></view
-    ><AdaptiveModal v-if="modal" label="导入记录" @close="modal = false"
-      ><FormField label="记账金额" v-model="draft.amt" /><FormField
-        label="交易金额"
-        v-model="draft.transactionAmt" /><FormField :required="isRequired('importExpense', 'expTypeId')"
-        label="类型"
-        kind="selector"
-        :options="types.map((item) => item.dictLabel)"
-        v-model="draftType" /><FormField :required="isRequired('importExpense', 'payTypeId')"
-        label="支付方式"
-        kind="selector"
-        :options="payments.map((item) => item.dictLabel)"
-        v-model="draftPay" /><FormField
-        label="备注"
-        kind="textarea"
-        v-model="draft.remark" /><MobileButton
-        label="保存预览"
-        @click="saveRow" /></AdaptiveModal
-  ></MobilePage>
+  <MobilePage :refreshing="initializing" @refresh="initialize">
+    <PageHeader title="账单导入" back @back="uni.navigateBack()" />
+    <view class="body ui-page-body" :class="themeClass('body')">
+      <PageState skeleton="form" :loading="initializing && !ready" :error="error" :has-content="rows.length > 0" @retry="initialize">
+        <view v-if="!rows.length || sourceOpen" class="source-section ui-section">
+          <view class="upload-panel ui-pad-card ui-gap-sm" :class="themeClass('upload-panel')">
+            <text class="upload-title" :class="themeClass('primary-text')">选择账单文件</text>
+            <text class="upload-hint" :class="themeClass('secondary-text')">支持支付宝 ZIP、CSV 或微信账单 Excel</text>
+            <MobileButton label="选择文件" icon="ant-design:upload-outlined" :loading="busy" :disabled="!ready" @click="choose" />
+            <MobileButton label="粘贴 CSV 内容" variant="quiet" :disabled="busy" @click="pasteOpen = !pasteOpen" />
+          </view>
+          <FormField class="ui-mt-section" label="默认类型" kind="selector" :options="types.map((item) => item.dictLabel)" v-model="type" :disabled="busy" />
+          <view v-if="pasteOpen">
+            <FormField label="支付宝 CSV 内容" kind="textarea" v-model="text" :disabled="busy" />
+            <MobileButton label="解析预览" :disabled="!ready || busy" @click="parse" />
+          </view>
+        </view>
+        <view v-if="rows.length">
+          <view class="preview-heading ui-toolbar">
+            <text class="summary primary-text" :class="themeClass('primary-text')">{{ rows.length }} 笔 · ¥{{ total.toFixed(2) }}</text>
+            <MobileButton :label="sourceOpen ? '收起文件选择' : '更换账单文件'" icon="ant-design:upload-outlined" variant="ghost" :disabled="busy" @click="sourceOpen = !sourceOpen" />
+            <MobileButton :label="filtersOpen ? '收起筛选排序' : '筛选排序'" icon="ant-design:filter-outlined" :variant="filtersOpen || categoryFilter !== '全部' ? 'primary' : 'ghost'" :disabled="busy" @click="filtersOpen = !filtersOpen" />
+            <MobileButton :label="totalsOpen ? '收起分类统计' : '分类统计'" icon="ant-design:bar-chart-outlined" :variant="totalsOpen ? 'primary' : 'ghost'" :disabled="busy" @click="totalsOpen = !totalsOpen" />
+          </view>
+          <view v-if="filtersOpen" class="ui-field-row">
+            <FormField compact stretch label="原交易分类" kind="selector" :options="categoryOptions" v-model="categoryFilter" :disabled="busy" />
+            <FormField compact stretch label="排序" kind="selector" :options="['日期降序', '金额降序']" v-model="sort" :disabled="busy" />
+          </view>
+          <text v-if="!filtersOpen && categoryFilter !== '全部'" class="filter-summary secondary-text ui-mb-section" :class="themeClass('secondary-text')">{{ categoryFilter }} · {{ visibleIndices.length }} 笔</text>
+          <view v-if="totalsOpen" class="category-totals ui-section ui-gap-sm">
+            <text v-for="group in categoryTotals" :key="group.name" class="secondary-text" :class="themeClass('secondary-text')">{{ group.name }} · {{ group.count }} 笔 · ¥{{ group.amt.toFixed(2) }}</text>
+          </view>
+          <view class="selection-actions ui-toolbar">
+            <MobileButton :label="allVisibleSelected ? '取消全选' : '全选'" :icon="allVisibleSelected ? 'ant-design:check-square-outlined' : 'ant-design:border-outlined'" variant="ghost" :disabled="busy" @click="toggleVisible" />
+            <text v-if="selected.length" class="selection-summary secondary-text" :class="themeClass('secondary-text')">已选 {{ selected.length }} 笔</text>
+            <ConfirmAction v-if="selected.length" label="删除选中" :disabled="busy" :action="removeSelected" />
+          </view>
+          <view v-if="selected.length" class="batch-section ui-section">
+            <view class="ui-field-row">
+              <FormField compact stretch label="批量类型" kind="selector" :options="types.map((item) => item.dictLabel)" v-model="type" :disabled="busy" />
+              <FormField compact stretch label="批量支付方式" kind="selector" :options="payments.map((item) => item.dictLabel)" v-model="payment" :disabled="busy" />
+            </view>
+            <MobileButton label="应用到选中记录" variant="quiet" :disabled="busy" @click="batch" />
+          </view>
+          <text v-if="!visibleIndices.length" class="secondary-text ui-mb-section" :class="themeClass('secondary-text')">没有匹配的账单</text>
+          <view v-for="index in visibleIndices" :key="rows[index].transactionId || index" class="record ui-card" :class="themeClass('record')">
+            <view class="record-heading ui-row">
+              <MobileButton :label="selected.includes(index) ? '取消选择' : '选择'" :icon="selected.includes(index) ? 'ant-design:check-square-outlined' : 'ant-design:border-outlined'" variant="ghost" :disabled="busy" @click="toggle(index)" />
+              <text class="record-date secondary-text" :class="themeClass('secondary-text')">{{ rows[index].expTime }}</text>
+              <text class="record-amount primary-text" :class="themeClass('primary-text')">¥{{ Number(rows[index].amt).toFixed(2) }}</text>
+              <MobileButton label="编辑" icon="ant-design:edit-outlined" variant="ghost" :disabled="busy" @click="edit(rows[index], index)" />
+            </view>
+            <text class="record-description primary-text" :class="themeClass('primary-text')">{{ [rows[index].counterparty, rows[index].expDesc].filter(Boolean).join(' · ') }}</text>
+            <text class="record-mapping secondary-text" :class="themeClass('secondary-text')">{{ dictionaryLabel(types, rows[index].expTypeId, '类型待补全') }} · {{ dictionaryLabel(payments, rows[index].payTypeId, '支付方式待补全') }}</text>
+            <text v-if="Number(rows[index].successfulRefund) > 0" class="secondary-text" :class="themeClass('secondary-text')">退款 ¥{{ Number(rows[index].successfulRefund).toFixed(2) }}</text>
+          </view>
+          <MobileButton label="确认导入" :loading="busy" @click="submit" />
+        </view>
+      </PageState>
+    </view>
+    <AdaptiveModal v-if="modal" label="导入记录" @close="modal = false">
+      <FormField label="记账金额" input-type="digit" v-model="draft.amt" :error="draftErrors.amt" />
+      <FormField label="交易金额" input-type="digit" v-model="draft.transactionAmt" :error="draftErrors.transactionAmt" />
+      <FormField :required="isRequired('importExpense', 'expTypeId')" label="类型" kind="selector" :options="types.map((item) => item.dictLabel)" v-model="draftType" :error="draftErrors.expTypeId" />
+      <FormField :required="isRequired('importExpense', 'payTypeId')" label="支付方式" kind="selector" :options="payments.map((item) => item.dictLabel)" v-model="draftPay" :error="draftErrors.payTypeId" />
+      <FormField label="备注" kind="textarea" v-model="draft.remark" />
+      <text v-if="draft.transactionId" class="transaction-detail secondary-text" :class="themeClass('secondary-text')">交易号 {{ draft.transactionId }}</text>
+      <template #footer>
+        <FormActions>
+          <MobileButton label="取消" variant="quiet" @click="modal = false" />
+          <MobileButton label="保存预览" @click="saveRow" />
+        </FormActions>
+      </template>
+    </AdaptiveModal>
+  </MobilePage>
 </template>
 <style scoped lang="scss">
 @use '../../styles/typography' as *;
 @use '../../styles/text-colors' as *;
 @use '../../styles/spacing.scss';
 @use '../../styles/spacing-tokens' as *;
-@include type-utilities('body');
 
 .upload-panel {
   border: 1px dashed #6c93e7;
@@ -387,41 +365,21 @@ async function removeSelected() {
   background-color: #eef5ff;
   align-items: center;
 }
-.upload-panel-dark {
-  background-color: #202b40;
-}
-.upload-title {
-  @include type-style('title');
-
-}
-.upload-hint {
-  @include type-style('caption');
-  color: $text-secondary-light;
-  text-align: center;
-}
-.body {
-  color: #263248;
-}
-.body-dark {
-  color: #e7e9ee;
-}
-.actions {
-  flex-wrap: wrap;
-}
-.record {
-  display: flex;
-  flex-direction: column;
-}
-.summary {
-
-/* #ifndef APP */
-display: block;
-/* #endif */
-/* #ifdef APP */
-display: flex;
-/* #endif */
-
-}
-
+.upload-panel-dark { background-color: #202b40; }
+.upload-title { @include type-style('title'); color: #263248; }
+.upload-hint { @include type-style('caption'); color: $text-secondary-light; text-align: center; }
+.body, .primary-text { color: #263248; }
+.body-dark, .primary-text-dark { color: #e7e9ee; }
+.secondary-text { @include type-style('caption'); color: $text-secondary-light; }
 .secondary-text-dark { color: $text-secondary-dark; }
+.preview-heading, .selection-actions, .record-heading { align-items: center; flex-wrap: wrap; }
+.summary { flex: 1; @include type-style('body'); min-width: 0; }
+.selection-summary { flex: 1; }
+.record { display: flex; flex-direction: column; border-radius: 12px; background-color: #ffffff; }
+.record-dark { background-color: #1c1e22; }
+.record-date { flex: 1; min-width: 0; }
+.record-amount { @include type-style('body'); flex-shrink: 0; }
+.record-description { @include type-style('body'); overflow-wrap: anywhere; }
+.record-mapping, .transaction-detail { overflow-wrap: anywhere; }
+.category-totals { display: flex; flex-direction: row; flex-wrap: wrap; }
 </style>

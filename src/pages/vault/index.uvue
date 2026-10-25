@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import MobileSwitch from '../../components/MobileSwitch.uvue';
 import { useAppLayout } from '../../services/app-layout.ts'
 const { appGridItem } = useAppLayout()
 
@@ -392,6 +393,7 @@ function back() {
                   <AppIcon name="ant-design:star-filled" :size="20" :color="isDark ? '#f6c94c' : '#bd8700'" />
                 </view>
               </view>
+              <text v-if="row.website" class="vault-website" :class="themeClass('vault-website')">{{ row.website }}</text>
               <view class="vault-card-footer">
                 <view v-if="row.category" class="vault-category-tag" :class="themeClass('vault-category-tag')">
                   <text class="vault-category" :class="themeClass('vault-category')">{{ row.category }}</text>
@@ -446,14 +448,14 @@ function back() {
           :key="key"
           class="vault-row ui-row"
           ><text class="vault-value">{{ label }}</text
-          ><switch
+          ><MobileSwitch
             :checked="generation[key]"
             :aria-label="label"
             @change="generation[key] = $event.detail.value" /></view
         ><MobileButton label="生成密码" :loading="saving" @click="generate" /></view
       ><FormField label="备注" kind="textarea" v-model="form.remark" /><view class="vault-row ui-row"
         ><text class="vault-value">收藏</text
-        ><switch
+        ><MobileSwitch
           :checked="form.favorite"
           aria-label="收藏密码"
           @change="form.favorite = $event.detail.value" /></view
@@ -542,6 +544,8 @@ function back() {
   gap: $space-inline;
 }
 .vault-title { flex: 1; min-width: 0; @include type-style('brand'); overflow-wrap: anywhere; }
+.vault-website { @include type-style('caption'); color: $text-secondary-light; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.vault-website-dark { color: $text-secondary-dark; }
 .vault-favorite { width: $space-controlMin; flex-shrink: 0; align-items: center; justify-content: center; }
 .vault-card-footer { display: flex; flex-direction: row; align-items: center; min-height: $space-controlMin; gap: $space-inline; }
 .vault-category-tag { padding: $space-micro $space-inline; border-radius: 6px; background-color: #eef0f4; }

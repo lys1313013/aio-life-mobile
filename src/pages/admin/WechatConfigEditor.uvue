@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import MobileSwitch from '../../components/MobileSwitch.uvue';
 import { reactive, ref, watch, onUnmounted } from 'vue';
 import { onHide, onShow } from '@dcloudio/uni-app';
 import FormField from '../../components/FormField.uvue';
@@ -56,8 +57,8 @@ async function save() {
   <view>
     <text class="ui-type-title">微信小程序与订阅通知</text>
     <view class="ui-mt-sm">
-      <FormField label="微信登录"><switch :checked="form.enabled" :disabled="saving || disabled" aria-label="启用微信登录" @change="event => form.enabled = event.detail.value" /></FormField>
-      <FormField label="订阅通知"><switch :checked="form.subscribeEnabled" :disabled="saving || disabled" aria-label="启用微信订阅通知" @change="event => form.subscribeEnabled = event.detail.value" /></FormField>
+      <FormField label="微信登录"><MobileSwitch :checked="form.enabled" :disabled="saving || disabled" aria-label="启用微信登录" @change="event => form.enabled = event.detail.value" /></FormField>
+      <FormField label="订阅通知"><MobileSwitch :checked="form.subscribeEnabled" :disabled="saving || disabled" aria-label="启用微信订阅通知" @change="event => form.subscribeEnabled = event.detail.value" /></FormField>
       <FormField label="AppID" v-model="form.appId" :disabled="saving || disabled" />
       <FormField label="AppSecret" kind="password" v-model="form.appSecret" :disabled="saving || disabled" :placeholder="secretConfigured ? '已配置，留空保留' : '填写小程序 AppSecret'" />
       <FormField label="订阅模板 ID" v-model="form.templateId" :disabled="saving || disabled" placeholder="微信后台选用的模板 ID" />
@@ -67,7 +68,7 @@ async function save() {
         <FormField label="内容字段" v-model="form.contentField" :disabled="saving || disabled" placeholder="例如 thing2，不使用则留空" />
         <FormField label="时间字段" v-model="form.timeField" :disabled="saving || disabled" placeholder="例如 time3，不使用则留空" />
         <FormField label="通知打开版本" kind="selector" :disabled="saving || disabled" :model-value="versions.find(item => item.notification === form.environment)?.label || ''" :options="versions.map(item => item.label)" @update:model-value="value => form.environment = versions.find(item => item.label === value)?.notification || 'formal'" />
-        <FormField label="网页微信扫码登录"><switch :checked="form.webScanEnabled" :disabled="saving || disabled" aria-label="启用网页微信扫码登录" @change="event => form.webScanEnabled = event.detail.value" /></FormField>
+        <FormField label="网页微信扫码登录"><MobileSwitch :checked="form.webScanEnabled" :disabled="saving || disabled" aria-label="启用网页微信扫码登录" @change="event => form.webScanEnabled = event.detail.value" /></FormField>
         <FormField label="网页扫码使用版本" kind="selector" :disabled="saving || disabled" :model-value="versions.find(item => item.scan === form.webScanEnvVersion)?.label || ''" :options="versions.map(item => item.label)" @update:model-value="value => form.webScanEnvVersion = versions.find(item => item.label === value)?.scan || 'release'" />
       </view>
       <text v-if="error" class="wechat-error ui-type-body" role="alert">{{ error }}</text>

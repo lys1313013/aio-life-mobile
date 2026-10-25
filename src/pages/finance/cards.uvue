@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import ContentSkeleton from '../../components/ContentSkeleton.uvue';
 import { useWindowResize } from '../../services/window-resize.ts'
 useWindowResize(() => { measureStackFace(); measureCardLayers(); })
 import { useAppLayout, appTextColor } from '../../services/app-layout.ts'
@@ -924,7 +925,7 @@ async function saveTag() {
     tags.value = tagDraft.value.id
       ? tags.value.map((item) => (item.id === result.id ? result : item))
       : [...tags.value, result];
-    tagModal.value = false;
+    editTag();
   } catch (e) {
     formError.value = e.message;
   } finally {
@@ -936,6 +937,7 @@ async function removeTag(value: any) {
   await deleteCardTag(String(value.id));
   if (!alive || stamp !== mutationStamp) return;
   tags.value = tags.value.filter((item) => item.id !== value.id);
+  if (tagDraft.value.id === value.id) editTag();
   await load();
 }
 </script>
@@ -958,7 +960,7 @@ async function removeTag(value: any) {
         <button class="header-action" role="button" :aria-label="viewMode === 'stack' ? '切换为平铺视图' : '切换为堆叠视图'" @click="toggleView">
           <AppIcon :name="viewMode === 'stack' ? 'ant-design:appstore-outlined' : 'mdi:wallet'" :size="20" />
         </button>
-        <button class="header-action" role="button" aria-label="新增标签" @click="editTag()">
+        <button class="header-action" role="button" aria-label="管理标签" @click="editTag()">
           <AppIcon name="ant-design:tags-outlined" :size="20" />
         </button>
         <button class="header-action" role="button" aria-label="新增银行卡" @click="edit()">
@@ -1087,16 +1089,7 @@ async function removeTag(value: any) {
             ><view v-if="cardExpanded(card) && card.tags?.length" class="card-tags ui-row"><text v-for="item in card.tags" :key="item.id" class="card-tag" :class="themeClass('secondary-text')">{{ item.name }}</text></view
             ><text v-if="cardExpanded(card) && card.remark" class="card-meta" :class="themeClass('secondary-text')">{{ card.remark }}</text
             ></view></view></PageState
-      ></view></template></view><view class="tags ui-mt-section"
-        ><view v-for="item in tags" :key="item.id" class="actions ui-toolbar"
-          ><text class="ui-type-body">{{ item.name }}</text
-          ><MobileButton
-            label="编辑标签"
-            icon="ant-design:edit-outlined"
-            variant="quiet"
-            @click="editTag(item)" /><ConfirmAction
-            label="删除标签"
-            :action="() => removeTag(item)" /></view></view></view
+      ></view></template></view></view
     >
     <!-- #ifndef MP-WEIXIN -->
     <view v-if="menuCardId" class="menu-backdrop" @click="menuCardId = ''" />
@@ -1135,17 +1128,21 @@ async function removeTag(value: any) {
         </view>
       </view
       ><view v-if="templateOpen" class="ui-stack ui-gap-sm">
-        <text v-if="templateError" class="ui-type-caption">{{ templateError }}</text>
+        <text v-if="templateError" class="error ui-type-caption">{{ templateError }}</text>
         <MobileButton v-if="templateError" label="重试" variant="quiet" @click="openTemplates" />
-        <text v-if="!templateLoading && !templateError && templates.length === 0" class="ui-type-caption">暂无匹配卡面</text>
+        <text v-if="!templateLoading && !templateError && templates.length === 0" class="secondary-text ui-type-caption" :class="themeClass('secondary-text')">暂无匹配卡面</text>
         <view class="template-grid">
           <view :style="appGridItem(2, 'inline', [], false)" v-for="item in templates" :key="item.id" class="ui-stack ui-gap-xs">
-            <button :style="appTextColor()" role="button" class="template-choice" :aria-label="'选用' + item.name" :disabled="!templateUrls[item.id] || templateImageLoading[item.id] || !!templateImageErrors[item.id]" @click="selectTemplate(item)">
-              <image v-if="templateUrls[item.id]" :src="templateUrls[item.id]" class="template-image" mode="aspectFit" @load="templateImageLoading[item.id] = false" @error="templateImageErrors[item.id] = '图片加载失败'; templateImageLoading[item.id] = false" />
-              <CardFaceLoading v-if="templateImageLoading[item.id]" />
-              <text class="ui-type-label">{{ item.name }}</text>
-            </button>
-            <MobileButton v-if="templateImageErrors[item.id]" label="重试图片" variant="quiet" :loading="templateImageLoading[item.id]" @click="loadTemplateImage(item, templateStamp)" />
+            <view class="template-media">
+              <button :style="appTextColor()" role="button" class="template-choice" :aria-label="'选用' + item.name" :disabled="!templateUrls[item.id] || templateImageLoading[item.id] || !!templateImageErrors[item.id]" @click="selectTemplate(item)">
+                <image v-if="templateUrls[item.id] && !templateImageErrors[item.id]" :src="templateUrls[item.id]" class="template-image" mode="aspectFit" @load="templateImageLoading[item.id] = false" @error="templateImageErrors[item.id] = '图片加载失败'; templateImageLoading[item.id] = false" />
+              </button>
+              <ContentSkeleton v-if="templateImageLoading[item.id]" variant="cover" label="正在加载卡面模板" />
+              <view v-else-if="templateImageErrors[item.id]" class="template-image-error">
+                <MobileButton label="重试图片" icon="ant-design:reload-outlined" variant="quiet" @click="loadTemplateImage(item, templateStamp)" />
+              </view>
+            </view>
+            <text class="editor-text ui-type-label" :class="themeClass('editor-text')">{{ item.name }}</text>
           </view>
         </view>
       </view
@@ -1169,8 +1166,8 @@ async function removeTag(value: any) {
       <FormField appearance="soft" :label="draft.cardNoLast4 ? '新卡号（留空保留）' : '卡号（选填）'" v-model="draft.cardNo" password />
       <FormField v-if="draft.cardType === 'debit'" appearance="soft" label="余额（元）" placeholder="未记录" input-type="digit" v-model="draft.balance" />
       <FormField v-else appearance="soft" label="信用额度（元）" placeholder="未记录" input-type="digit" v-model="draft.creditLimit" />
-      <button class="editor-more" role="button" :aria-expanded="moreInfo" aria-label="更多信息" @click="moreInfo = !moreInfo">
-        <text :style="appTextColor()" class="ui-type-body secondary-text" :class="themeClass('secondary-text')">{{ moreInfo ? '收起更多信息' : '更多信息' }}</text>
+      <button class="editor-more" :class="themeClass('editor-more')" role="button" :aria-expanded="moreInfo" aria-label="更多信息" @click="moreInfo = !moreInfo">
+        <text class="ui-type-body secondary-text" :class="themeClass('secondary-text')">{{ moreInfo ? '收起更多信息' : '更多信息' }}</text>
         <AppIcon :name="moreInfo ? 'ant-design:up-outlined' : 'ant-design:down-outlined'" :size="14" />
       </button>
       <view v-if="moreInfo">
@@ -1204,19 +1201,18 @@ async function removeTag(value: any) {
             :disabled="item.status !== '0' && !draft.tagIds.includes(item.id)"
             variant="quiet"
             @click="toggleTag(item.id)"
-          /><text class="ui-type-body">{{ item.name }}</text></view
-        ></view
-      ><text v-if="formError" class="error ui-py-section ui-type-body">{{ formError }}</text
-      ><FormActions>
-          <MobileButton
-          label="取消"
-          :disabled="saving"
-          variant="quiet"
-          @click="modal = false" /><MobileButton
-          label="保存"
-          :loading="saving"
-          @click="save" />
-        </FormActions></AdaptiveModal
+          /><text class="editor-text ui-type-body" :class="themeClass('editor-text')">{{ item.name }}</text></view
+        ></view>
+      <template #footer>
+        <view class="ui-stack ui-gap-sm">
+          <text v-if="formError" class="error ui-type-body" role="alert">{{ formError }}</text>
+          <FormActions>
+            <MobileButton label="取消" :disabled="saving" variant="quiet" @click="modal = false" />
+            <MobileButton label="保存" :loading="saving" @click="save" />
+          </FormActions>
+        </view>
+      </template>
+    </AdaptiveModal
     ><AdaptiveModal v-if="tagModal" label="标签" :busy="saving" @close="tagModal = false"
       ><FormField :required="isRequired('cardTag', 'name')" label="名称" v-model="tagDraft.name" /><FormField
         label="颜色"
@@ -1224,10 +1220,29 @@ async function removeTag(value: any) {
         label="状态"
         kind="selector"
         :options="['启用', '停用']"
-        v-model="draftTagStatus" /><text v-if="formError" class="error ui-py-section ui-type-body">{{
-        formError
-      }}</text
-      ><MobileButton label="保存" :loading="saving" @click="saveTag" /></AdaptiveModal
+        v-model="draftTagStatus" />
+      <template #footer>
+        <view class="ui-stack ui-gap-sm">
+          <text v-if="formError" class="error ui-type-body" role="alert">{{ formError }}</text>
+          <FormActions>
+            <MobileButton label="取消" variant="quiet" :disabled="saving" @click="tagDraft.id ? editTag() : tagModal = false" />
+            <MobileButton :label="tagDraft.id ? '保存' : '添加'" :loading="saving" @click="saveTag" />
+          </FormActions>
+        </view>
+      </template>
+      <view class="tag-management-list ui-gap-sm ui-mt-section">
+        <view v-for="item in tags" :key="item.id" class="tag-management-row ui-row">
+          <text class="tag-management-name editor-text ui-type-body" :class="themeClass('editor-text')">{{ item.name }}</text>
+          <MobileButton label="编辑标签" icon="ant-design:edit-outlined" variant="quiet" :disabled="saving" @click="editTag(item)" />
+          <ConfirmAction label="删除标签" message="删除标签并移除所有卡片上的关联？" :action="() => removeTag(item)">
+            <template #default="{ open, busy }">
+              <MobileButton label="删除标签" icon="ant-design:delete-outlined" variant="quiet" :disabled="saving" :loading="busy" @click="open" />
+            </template>
+          </ConfirmAction>
+        </view>
+        <text v-if="!tags.length" class="secondary-text ui-type-body" :class="themeClass('secondary-text')">暂无标签</text>
+      </view>
+    </AdaptiveModal
   ></MobilePage>
 </template>
 <style scoped lang="scss">
@@ -1246,6 +1261,18 @@ async function removeTag(value: any) {
 }
 .actions {
   flex-wrap: wrap;
+}
+.tag-management-list {
+  display: flex;
+  flex-direction: column;
+}
+.tag-management-row {
+  align-items: center;
+}
+.tag-management-name {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 .header-actions {
   flex-shrink: 0;
@@ -1633,7 +1660,12 @@ display: flex;
 
 }
 
+.editor-text { color: #263248; }
+.editor-text-dark { color: #e7e9ee; }
+.secondary-text { color: $text-secondary-light; }
 .secondary-text-dark { color: $text-secondary-dark; }
+.editor-more { color: $text-secondary-light; }
+.editor-more-dark { color: $text-secondary-dark; }
 .template-grid {
 
 /* #ifndef APP */
@@ -1649,8 +1681,11 @@ grid-template-columns: repeat(2, minmax(0, 1fr));
 
   gap: $space-inline;
 }
+.template-media { position: relative; width: 100%; aspect-ratio: 1.586; overflow: hidden; border-radius: 8px; }
+.template-image-error { position: absolute; top: 0; left: 0; width: 100%; height: 100%; align-items: center; justify-content: center; }
 .template-choice {
-  position: relative;
+  width: 100%;
+  height: 100%;
   padding: $space-detail;
   border: 0;
   background: transparent;
@@ -1664,5 +1699,5 @@ color: inherit;
   flex-direction: column;
   gap: $space-detail;
 }
-.template-image { width: 100%; aspect-ratio: 1.586; }
+.template-image { width: 100%; height: 100%; }
 </style>

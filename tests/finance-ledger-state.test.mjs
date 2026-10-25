@@ -7,6 +7,8 @@ import { transformSync } from 'esbuild';
 const source = (await readFile(new URL('../src/pages/finance/ledger.uvue', import.meta.url), 'utf8'))
   .split('<script setup lang="ts">')[1].split('</script>')[0]
   .replace(/import[\s\S]*?from\s*['"][^'"]+['"];?/g, '');
+const paginationCode = transformSync(await readFile(new URL('../src/services/pagination.ts', import.meta.url), 'utf8'), { loader: 'ts', format: 'esm' }).code;
+const paginationURL = 'data:text/javascript;base64,' + Buffer.from(paginationCode).toString('base64');
 let fixtureNumber = 0;
 function gate() { let resolve; const promise = new Promise(r => { resolve = r; }); return { promise, resolve }; }
 async function fixture(kind = 'expense', count = 101, initialCreate = false) {
@@ -53,7 +55,8 @@ async function fixture(kind = 'expense', count = 101, initialCreate = false) {
   globalThis.__ledgerFixtures ||= {};
   globalThis.__ledgerFixtures[id] = { api, hooks };
   const vue = new URL('../node_modules/vue/index.mjs', import.meta.url).href;
-  const prefix = `import { ref, computed, watch } from ${JSON.stringify(vue)};
+  const prefix = `import { readPageTotal, hasMorePageItems } from ${JSON.stringify(paginationURL)};
+import { ref, computed, watch } from ${JSON.stringify(vue)};
 const {api,hooks}=globalThis.__ledgerFixtures[${id}];
 const {fetchLedger,fetchDictionary,saveLedger,deleteLedger,deleteExpenses,ledgerId,fetchFinanceStatistics}=api;
 const useAppLayout=()=>({appGridItem:()=>({})});

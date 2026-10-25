@@ -3,6 +3,8 @@ import { computed, ref } from 'vue'
 import MobilePage from '../../components/MobilePage.uvue'
 import PageHeader from '../../components/PageHeader.uvue'
 import MobileButton from '../../components/MobileButton.uvue'
+import DashboardSection from '../../components/DashboardSection.uvue'
+import LoadingIndicator from '../../components/LoadingIndicator.uvue'
 import FinanceCalendarCard from '../home/FinanceCalendarCard.uvue'
 import { useDomainPage } from '../../services/domains/page-session.ts'
 import { useWindowResize } from '../../services/window-resize.ts'
@@ -25,9 +27,9 @@ function create() { uni.showActionSheet({ itemList: ['记支出', '记收入'], 
 </script>
 <template>
   <MobilePage :refreshing="refreshing" @refresh="refresh">
-    <PageHeader title="收支概览" back @back="uni.navigateBack()" />
+    <PageHeader title="财务" back :content-min-width="60" :actions-min-width="132" compact-actions @back="uni.navigateBack()"><template #actions><view class="finance-actions"><MobileButton label="收入" variant="quiet" @click="navigate('income')" /><MobileButton label="支出" variant="quiet" @click="navigate('expense')" /><MobileButton label="记一笔" icon="ant-design:plus-outlined" @click="create" /></view></template></PageHeader>
     <view class="ui-page-body">
-      <view class="finance-actions"><MobileButton label="收入" variant="quiet" @click="navigate('income')" /><MobileButton label="支出" variant="quiet" @click="navigate('expense')" /><MobileButton label="记一笔" icon="ant-design:plus-outlined" @click="create" /></view>
+      <DashboardSection v-if="!mounted" title="收支概览" :height="height" loading><template #loading><LoadingIndicator label="正在加载收支概览" /></template></DashboardSection>
       <FinanceCalendarCard v-if="mounted" ref="calendar" kind="finance" :active="active" :height="height" page @visibility="available = $event" />
       <text v-if="!available" class="finance-unavailable">暂无收支概览访问权限</text>
     </view>
@@ -38,5 +40,5 @@ function create() { uni.showActionSheet({ itemList: ['记支出', '记收入'], 
 @use '../../styles/typography' as *;
 @use '../../styles/spacing-tokens' as *;
 .finance-unavailable { @include type-style('body'); color: #71717a; text-align: center; padding: $space-section; }
-.finance-actions { flex-direction: row; justify-content: flex-end; gap: $space-inline; margin-bottom: $space-section; }
+.finance-actions { flex-direction: row; justify-content: flex-end; gap: $space-inline; }
 </style>

@@ -1,0 +1,103 @@
+<script setup lang="ts">
+import { computed, reactive, ref, watch, onUnmounted } from 'vue';
+import { onHide, onShow } from '@dcloudio/uni-app';
+import FormField from '../../components/FormField.uvue';
+import FormActions from '../../components/FormActions.uvue';
+import MobileButton from '../../components/MobileButton.uvue';
+import MobileSwitch from '../../components/MobileSwitch.uvue';
+import { session } from '../../services/session.ts';
+import { displayError } from '../../services/display-error.ts';
+const props = defineProps<{ config: any; disabled?: boolean; save: (value: string) => Promise<any> }>();
+const emit = defineEmits(['saved']);
+const form = reactive<any>({}), configured = reactive<any>({});
+const advanced = ref(false), saving = ref(false), error = ref(''), invalid = ref(false);
+const schemas = {
+  'footprints.baidu': [
+    { key: 'serviceAk', label: '百度搜索解析 AK', secret: true },
+    { key: 'timeoutMs', label: '请求超时（毫秒）', value: 5000, min: 1000, max: 15000 },
+    { key: 'tileUrl', label: '底图地址', value: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png', advanced: true },
+    { key: 'tileCoordinateSystem', label: '底图坐标系', value: 'WGS84', options: ['WGS84', 'GCJ02'], advanced: true },
+    { key: 'tileAttribution', label: '底图署名', value: '© OpenStreetMap contributors', advanced: true },
+    { key: 'tileAttributionUrl', label: '署名链接', value: 'https://www.openstreetmap.org/copyright', advanced: true },
+  ],
+  'footprints.tencent': [
+    { key: 'browserKey', label: '地图展示 Key', secret: true },
+    { key: 'serviceKey', label: '搜索解析 Key', secret: true },
+    { key: 'mapStyleId', label: '样式编号', value: 'style1', advanced: true },
+    { key: 'timeoutMs', label: '搜索解析超时（毫秒）', value: 5000, min: 1000, max: 15000, advanced: true },
+  ],
+  'typesafe.recommendation': [
+    { key: 'enabled', label: '启用智能推荐', value: true, toggle: true },
+    { key: 'apiKey', label: 'API Key', secret: true },
+    { key: 'model', label: '模型', value: 'jev-latest' },
+    { key: 'requestTimeoutMs', label: '请求超时（毫秒）', value: 1500, min: 1, max: 60000, advanced: true },
+    { key: 'dataCacheTtlMs', label: '数据缓存时长（毫秒，0 为关闭）', value: 18000000, min: 0, max: 604800000, advanced: true },
+  ],
+  'mbti.api': [
+    { key: 'apiKey', label: 'API Key', secret: true },
+    { key: 'baseUrl', label: '接口地址', value: 'https://api.devil.ai' },
+  ],
+};
+const fields = computed<any[]>(() => schemas[props.config.configKey] || []);
+const hasAdvanced = computed(() => fields.value.some(field => field.advanced));
+function clearKey(field) { return 'clear' + field.key.charAt(0).toUpperCase() + field.key.slice(1); }
+function clearSecrets() { fields.value.filter(field => field.secret).forEach(field => { form[field.key] = ''; }); }
+let active = true, revision = 0;
+onHide(() => { active = false; revision++; clearSecrets(); });
+onShow(() => { active = true; });
+watch(() => session.token, () => { revision++; clearSecrets(); });
+onUnmounted(() => { active = false; revision++; clearSecrets(); });
+watch(() => props.config, config => {
+  revision++; error.value = ''; invalid.value = false;
+  let data: any = {};
+  try { data = JSON.parse(config.configValue || '{}'); if (!data || Array.isArray(data) || typeof data !== 'object') throw Error(); }
+  catch { invalid.value = true; error.value = '配置格式异常，请先修复后重试'; }
+  Object.keys(form).forEach(key => delete form[key]);
+  for (const field of fields.value) {
+    form[field.key] = field.secret ? '' : (data[field.key] ?? field.value ?? '');
+    if (field.secret) { configured[field.key] = data[field.key + 'Configured'] === true; form[clearKey(field)] = false; }
+  }
+}, { immediate: true });
+async function submit() {
+  if (saving.value || props.disabled || invalid.value || !active) return;
+  const payload: any = {};
+  for (const field of fields.value) {
+    const value = form[field.key];
+    if (field.min !== undefined) {
+      const number = Number(value);
+      if (String(value).trim() === '' || !Number.isInteger(number) || number < field.min || number > field.max) { error.value = field.label + '应在 ' + field.min + '–' + field.max + ' 之间'; return; }
+      payload[field.key] = number;
+    } else payload[field.key] = value;
+    if (field.secret) payload[clearKey(field)] = form[clearKey(field)];
+  }
+  if ('model' in payload && !/^[\w./:-]{1,128}$/.test(payload.model)) { error.value = '请输入有效模型名称'; return; }
+  if ('baseUrl' in payload && !/^https:\/\/[^\s/]+(?:\/[^\s]*)?$/.test(payload.baseUrl)) { error.value = '请输入有效的 HTTPS 接口地址'; return; }
+  const token = session.token, current = revision;
+  saving.value = true; error.value = '';
+  try {
+    const updated = await props.save(JSON.stringify(payload));
+    if (active && revision === current && token === session.token) { clearSecrets(); emit('saved', updated); uni.showToast({ title: '配置已保存', icon: 'success' }); }
+  } catch (reason) { if (active && revision === current && token === session.token) error.value = displayError(reason.message || '保存失败，请重试'); }
+  finally { saving.value = false; }
+}
+</script>
+<template>
+  <view>
+    <template v-for="field in fields" :key="field.key">
+      <view v-if="!field.advanced || advanced">
+        <FormField v-if="field.toggle" :label="field.label"><MobileSwitch :checked="form[field.key]" :disabled="saving || disabled || invalid" :aria-label="field.label" @change="event => form[field.key] = event.detail.value" /></FormField>
+        <FormField v-else :label="field.label" :kind="field.secret ? 'password' : field.options ? 'selector' : 'text'" :input-type="field.min !== undefined ? 'digit' : 'text'" :options="field.options || []" v-model="form[field.key]" :disabled="saving || disabled || invalid || (field.secret && form[clearKey(field)])" :placeholder="field.secret ? configured[field.key] ? '已配置，留空保留' : '尚未配置' : ''" />
+        <FormField v-if="field.secret && configured[field.key]" :label="'清除' + field.label"><MobileSwitch :checked="form[clearKey(field)]" :disabled="saving || disabled || invalid" :aria-label="'清除' + field.label" @change="event => { form[clearKey(field)] = event.detail.value; form[field.key] = ''; }" /></FormField>
+      </view>
+    </template>
+    <MobileButton v-if="hasAdvanced" :label="advanced ? '收起高级设置' : '高级设置'" variant="quiet" @click="advanced = !advanced" />
+    <text v-if="error" class="config-error ui-type-body" role="alert">{{ error }}</text>
+    <FormActions><MobileButton label="保存配置" icon="ant-design:check-outlined" :loading="saving" :disabled="disabled || invalid" @click="submit" /></FormActions>
+  </view>
+</template>
+<style scoped lang="scss">
+@use '../../styles/spacing.scss';
+@use '../../styles/typography' as *;
+@include type-utilities('body');
+.config-error { color: #e05260; }
+</style>

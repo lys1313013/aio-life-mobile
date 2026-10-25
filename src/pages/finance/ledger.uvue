@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { readPageTotal, hasMorePageItems } from '../../services/pagination.ts';
 import { useAppLayout } from '../../services/app-layout.ts'
 const { appGridItem } = useAppLayout()
 
@@ -15,7 +16,6 @@ import MetricCard from '../../components/MetricCard.uvue';
 import AioChart from '../../components/AioChart.uvue';
 import TypeDistribution from './components/TypeDistribution.uvue';
 import LedgerRow from './components/LedgerRow.uvue';
-import ExpenseDeviceModal from './components/ExpenseDeviceModal.uvue';
 import FinanceRecordModal from '../../components/FinanceRecordModal.uvue';
 import { themeClass } from '../../services/theme.ts';
 import {
@@ -27,13 +27,6 @@ import {
   ledgerId,
   fetchFinanceStatistics,
 } from './services/finance.ts';
-const deviceExpenseId = ref('');
-function updateDevice(change: any) {
-  // 失效进行中的旧列表请求，下一次分页重新从首屏读取；当前列表只更新受影响行。
-  version++; loading.value = false; needsReset = true;
-  const row = rows.value.find(item => ledgerId(item) === change.expenseId);
-  if (row) Object.assign(row, { deviceId: change.deviceId, deviceName: change.deviceName });
-}
 const props = defineProps<{ kind: string; initialCreate?: boolean }>();
 let entryConsumed = false;
 const expense = computed(() => props.kind === 'expense');
@@ -61,7 +54,7 @@ async function loadStatistics() {
   statisticsBusy.value = true;
   statisticsError.value = '';
   try {
-    // 月度概览始终可见，年度明细展开时也要同步刷新它。
+    // 保留月度看板数据，年度明细展开时同步刷新。
     const [monthly, annual] = await Promise.all([
       fetchFinanceStatistics(props.kind, 'Month'),
       ...(period === '年度' ? [fetchFinanceStatistics(props.kind, 'Year')] : []),
@@ -132,7 +125,7 @@ function toggleStatistics() {
   showStatistics.value = !showStatistics.value;
   if (showStatistics.value) loadStatistics();
 }
-const total = ref(0),
+const total = ref<number | null>(null),
   page = ref(1),
   selected = ref<string[]>([]),
   draft = ref<Record<string, any>>({}),
@@ -203,7 +196,7 @@ function loadMore() {
 async function load(reset = true) {
   if (!alive || mutationBusy.value) return;
   reset = reset || needsReset;
-  if (!reset && (loading.value || !rows.value.length || rows.value.length >= total.value || pageEnded.value)) return;
+  if (!reset && (loading.value || !rows.value.length || !hasMorePageItems(rows.value.length, total.value, pageEnded.value))) return;
   const current = ++version;
   loading.value = true;
   error.value = '';
@@ -217,6 +210,7 @@ async function load(reset = true) {
     }
     const result = await fetchLedger(props.kind, condition);
     if (!alive || current !== version) return;
+    const nextTotal = readPageTotal(result.total);
     const items = reset ? result.items || [] : [...rows.value, ...(result.items || [])];
     const seen = new Set<string>();
     rows.value = items.filter((item) => {
@@ -226,7 +220,7 @@ async function load(reset = true) {
       return true;
     });
     pageEnded.value = !(result.items || []).length;
-    total.value = result.total || 0;
+    total.value = nextTotal;
     page.value = nextPage;
     if (reset) { needsReset = false; selected.value = []; openedRow.value = ''; }
   } catch (e) {
@@ -270,13 +264,12 @@ async function initialize() {
 function suspend(clear = false) {
   alive = false; version++; statisticsSequence++; refreshSequence++;
   loading.value = false; statisticsBusy.value = false; refreshing.value = false;
-  deviceExpenseId.value = '';
   modal.value = false; selected.value = []; openedRow.value = '';
   draft.value = {}; formError.value = '';
   if (clear) {
     rows.value = []; types.value = []; payments.value = [];
     statistics.value = []; overviewRows.value = [];
-    page.value = 1; total.value = 0; pageEnded.value = false; needsReset = false;
+    page.value = 1; total.value = null; pageEnded.value = false; needsReset = false;
     error.value = ''; moreError.value = ''; statisticsError.value = '';
   }
 }
@@ -387,7 +380,25 @@ async function removeSelected() {
   <MobilePage :refreshing="refreshing" @refresh="refresh" @reachbottom="loadMore">
     <PageHeader :title="expense ? '支出' : '收入'" back @back="uni.navigateBack()" />
     <view class="body ui-page-body" :class="themeClass('body')"
-      ><PageState skeleton="overview"
+      >
+      <view class="tools ledger-toolbar ui-toolbar"
+        ><text class="section-title">{{ expense ? '支出明细' : '收入明细' }}</text><view class="filter-trigger"><MobileButton :label="activeFilterCount ? '更多筛选，已启用 ' + activeFilterCount + ' 项条件' : '更多筛选'" icon="ant-design:filter-outlined" variant="quiet" @click="showFilters = !showFilters" /><text v-if="activeFilterCount" class="filter-count">{{ activeFilterCount }}</text></view><MobileButton
+          label="统计"
+          icon="ant-design:bar-chart-outlined"
+          :variant="showStatistics ? 'primary' : 'quiet'"
+          :aria-expanded="showStatistics"
+          @click="toggleStatistics" /><MobileButton
+          label="新增"
+          icon="ant-design:plus-outlined"
+          @click="edit()" /><MobileButton
+          v-if="expense"
+          label="导入账单"
+          icon="ant-design:import-outlined"
+          variant="quiet"
+          @click="uni.navigateTo({ url: '/pages/finance/import' })"
+      /></view>
+      <view v-if="showStatistics" class="statistics-panel"
+        ><PageState skeleton="overview"
         :loading="statisticsBusy" :has-content="overviewRows.length > 0"
         :error="statisticsError"
         @retry="types.length ? loadStatistics() : initialize()"
@@ -427,24 +438,7 @@ async function removeSelected() {
           :label="expense ? '支出类型分布' : '收入类型分布'"
           :items="distribution"
       /></view></PageState>
-      <view class="tools ledger-toolbar ui-toolbar"
-        ><text class="section-title">{{ expense ? '支出明细' : '收入明细' }}</text><view class="filter-trigger"><MobileButton :label="activeFilterCount ? '更多筛选，已启用 ' + activeFilterCount + ' 项条件' : '更多筛选'" icon="ant-design:filter-outlined" variant="quiet" @click="showFilters = !showFilters" /><text v-if="activeFilterCount" class="filter-count">{{ activeFilterCount }}</text></view><MobileButton
-          label="统计"
-          icon="ant-design:bar-chart-outlined"
-          :variant="showStatistics ? 'primary' : 'quiet'"
-          :aria-expanded="showStatistics"
-          @click="toggleStatistics" /><MobileButton
-          label="新增"
-          icon="ant-design:plus-outlined"
-          @click="edit()" /><MobileButton
-          v-if="expense"
-          label="导入账单"
-          icon="ant-design:import-outlined"
-          variant="quiet"
-          @click="uni.navigateTo({ url: '/pages/finance/import' })"
-      /></view>
-      <view v-if="showStatistics" class="statistics-panel"
-        ><FormField
+        <FormField
           label="统计周期"
           kind="selector"
           :options="['月度', '年度']"
@@ -553,7 +547,7 @@ async function removeSelected() {
           v-model="sort"
         />
       </view>
-      <view class="filter-footer ui-row" :class="{ 'filter-footer-loading': loading && !rows.length }"><text v-if="!loading || rows.length" class="summary">{{ total }} 笔 · 已加载合计 ¥{{ amount.toFixed(2) }}</text><view class="ui-row"><MobileButton v-if="expense" :label="selecting ? '退出批量选择' : '批量选择'" :icon="selecting ? 'ant-design:close-outlined' : 'ant-design:check-square-outlined'" variant="quiet" @click="toggleSelection" /><MobileButton label="筛选" icon="ant-design:search-outlined" :loading="loading" @click="load()" /></view></view>
+      <view class="filter-footer ui-row" :class="{ 'filter-footer-loading': loading && !rows.length }"><text v-if="!loading || rows.length" class="summary">{{ total == null ? '已加载 ' + rows.length : total }} 笔 · 已加载合计 ¥{{ amount.toFixed(2) }}</text><view class="ui-row"><MobileButton v-if="expense" :label="selecting ? '退出批量选择' : '批量选择'" :icon="selecting ? 'ant-design:close-outlined' : 'ant-design:check-square-outlined'" variant="quiet" @click="toggleSelection" /><MobileButton label="筛选" icon="ant-design:search-outlined" :loading="loading" @click="load()" /></view></view>
       <ConfirmAction
         v-if="expense && selected.length"
         :label="'删除选中 ' + selected.length + ' 笔'"
@@ -570,13 +564,12 @@ async function removeSelected() {
           :payment="expense ? name(payments, row.payTypeId) : ''"
           :first="index === 0" :last="index === sorted.length - 1"
           :opened="openedRow === ledgerId(row)" :selecting="expense && selecting" :selected="selected.includes(ledgerId(row))"
-          :remove="() => remove(row)" @device="deviceExpenseId = ledgerId(row)" @edit="edit(row)" @select="toggle(row)"
+          :remove="() => remove(row)" @edit="edit(row)" @select="toggle(row)"
           @open="openedRow = ledgerId(row)" @close="openedRow === ledgerId(row) && (openedRow = '')" />
-        <LoadMore :error="moreError" :hasMore="!pageEnded && rows.length < total" :loading="loading" @load="load(false)" />
+        <LoadMore :error="moreError" :hasMore="hasMorePageItems(rows.length, total, pageEnded)" :loading="loading" @load="load(false)" />
       </PageState>
     </view>
     <template #fixed>
-    <ExpenseDeviceModal v-if="deviceExpenseId" :expense-id="deviceExpenseId" @close="deviceExpenseId = ''" @updated="updateDevice" />
     <FinanceRecordModal v-if="modal" :kind="kind" :draft="draft" :types="types" :payments="payments"
       :saving="saving" :form-error="formError" v-model:continuous="continuous" :remove="removeDraft"
       @close="modal = false" @save="save" />
@@ -687,13 +680,16 @@ display: flex;
   font-variant-numeric: tabular-nums;
 }
 .statistics-action { flex-shrink: 0; }
-.ledger-toolbar { align-items: center; margin-top: $space-section; }
+.ledger-toolbar { align-items: center; }
+.statistics-panel { margin-bottom: $space-section; }
 .section-title { flex: 1; @include type-style('title');  }
 .filter-trigger { position: relative; flex-shrink: 0; }
 .filter-count { position: absolute; top: 0; right: 0; min-width: 16px; height: 16px; border-radius: 8px; background-color: #427bea; color: #fff; @include type-style('chart-label'); text-align: center;  pointer-events: none; }
 .filter-footer { align-items: center; justify-content: space-between; margin-bottom: $space-section; }
 .summary { @include type-style('caption'); }
 .chart-grid {
+  align-items: start;
+  margin-bottom: $space-section;
 /* #ifndef APP */
 display: grid;
 /* #endif */

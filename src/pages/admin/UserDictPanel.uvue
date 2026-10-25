@@ -23,6 +23,7 @@ const order = useUserDictOrder({ rows: rowsModel, disabled: () => props.loading 
 const { dragging, saving } = order;
 const locked = computed(() => props.busy || !!dragging.value || !!saving.value);
 const selectedType = computed(() => props.options.find(item => item.value === props.type));
+const selectedTypeIndex = computed(() => props.options.findIndex(item => item.value === props.type));
 watch(dragging, value => emit('dragging', !!value));
 watch(saving, value => emit('working', !!value));
 watch(order.scrollTop, value => emit('scrollTop', value));
@@ -40,7 +41,10 @@ function input(value: string) {
   keyword.value = value; clearTimeout(timer);
   timer = setTimeout(() => search(), 300);
 }
-function selectType(event: any) { search(props.options[Number(event.detail.value)]?.value || ''); }
+function selectType(type: string) {
+  if (type === props.type || locked.value) return;
+  search(type);
+}
 function selectStatus(event: any) { status.value = ['', '0', '1'][Number(event.detail.value)] || ''; search(); }
 function resetFilters() { keyword.value = ''; status.value = ''; search(); }
 function cancel() { order.reset(); revealed.value = ''; }
@@ -49,18 +53,24 @@ defineExpose({ cancel, scrolled: order.scrolled });
 </script>
 <template>
   <view class="user-dict-panel ui-page-body" :class="{ 'user-dict-panel-dark': isDark }">
+    <scroll-view v-if="options.length" class="user-dict-type-scroll" direction="horizontal" :scroll-x="true" :show-scrollbar="false"
+      :scroll-into-view="selectedTypeIndex >= 0 ? 'user-dict-type-' + selectedTypeIndex : ''" :scroll-with-animation="true" aria-label="字典分类">
+      <view class="user-dict-types">
+        <button v-for="(item, index) in options" :key="item.value" :id="'user-dict-type-' + index" class="user-dict-type" :plain="true"
+          :aria-label="item.label" :aria-pressed="type === item.value" :disabled="locked" @click="selectType(item.value)">
+          <text class="user-dict-type-label" :class="{ 'user-dict-type-label-dark': isDark, 'user-dict-type-label-active': type === item.value, 'user-dict-type-label-active-dark': isDark && type === item.value }">{{ item.label }}</text>
+        </button>
+      </view>
+    </scroll-view>
     <view class="user-dict-search" :class="{ 'user-dict-surface-dark': isDark }">
       <MobileButton label="查询" icon="ant-design:search-outlined" variant="ghost" :loading="loading" :disabled="locked" @click="search()" />
       <FormField label="字典名称" hide-label compact stretch><input class="user-dict-search-input" :class="{ 'user-dict-text-dark': isDark }" aria-label="字典名称" placeholder="搜索字典名称" :value="keyword" :disabled="locked" @input="input($event.detail.value)" @confirm="search()" /></FormField>
     </view>
     <view class="user-dict-filters">
-      <picker class="user-dict-picker" mode="selector" aria-label="字典类型筛选" :disabled="locked || !options.length" :range="options.map(item => item.label)" :value="Math.max(0, options.findIndex(item => item.value === type))" @change="selectType">
-        <view class="user-dict-control" :class="{ 'user-dict-surface-dark': isDark }"><text class="user-dict-filter-label">{{ selectedType?.label || '字典类型' }}</text><AppIcon name="ant-design:down-outlined" :size="12" /></view>
-      </picker>
       <picker class="user-dict-picker" mode="selector" aria-label="状态筛选" :disabled="locked" :range="['全部状态', '启用', '禁用']" :value="status === '0' ? 1 : status === '1' ? 2 : 0" @change="selectStatus">
         <view class="user-dict-control" :class="{ 'user-dict-surface-dark': isDark }"><text class="user-dict-filter-label">{{ status === '0' ? '启用' : status === '1' ? '禁用' : '全部状态' }}</text><AppIcon name="ant-design:down-outlined" :size="12" /></view>
       </picker>
-      <MobileButton label="重置筛选" icon="ant-design:undo-outlined" variant="ghost" :disabled="locked" @click="resetFilters" />
+      <MobileButton v-if="keyword || status" label="重置筛选" icon="ant-design:close-outlined" variant="ghost" :disabled="locked" @click="resetFilters" />
     </view>
     <view class="user-dict-heading">
       <view class="user-dict-heading-copy"><text class="user-dict-group-name">{{ selectedType?.label || '用户字典' }}</text><text class="user-dict-group-code" :class="{ 'user-dict-muted-dark': isDark }">{{ type || '—' }}</text></view>
@@ -93,6 +103,24 @@ defineExpose({ cancel, scrolled: order.scrolled });
 @use '../../styles/text-colors' as *;
 .user-dict-panel { gap: $space-section; color: #27272a; }
 .user-dict-panel-dark { color: #eeeeef; }
+.user-dict-type-scroll { width: 100%; min-width: 0; white-space: nowrap; }
+.user-dict-types {
+  flex-direction: row;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: $space-section;
+  /* #ifndef APP */
+  width: max-content;
+  /* #endif */
+  /* #ifdef APP */
+  flex-shrink: 0;
+  /* #endif */
+}
+.user-dict-type { display: flex; flex-direction: row; align-items: center; justify-content: center; flex-shrink: 0; min-width: $space-controlMin; min-height: $space-controlMin; margin: 0; padding: 0 $space-detail; border: 0; border-radius: 0; background-color: transparent; }
+.user-dict-type-label { @include type-style('body'); color: #52525b; white-space: nowrap; }
+.user-dict-type-label-dark { color: #b4b4bd; }
+.user-dict-type-label-active { color: #2563eb; }
+.user-dict-type-label-active-dark { color: #7aa7ff; }
 .user-dict-search { flex-direction: row; align-items: center; border-radius: 12px; background-color: #ffffff; padding-right: $space-card; }
 .user-dict-search-input { @include type-style('body'); width: 100%; min-width: 0; height: $space-controlMin; color: #27272a; }
 .user-dict-filters { flex-direction: row; align-items: center; gap: $space-inline; }
