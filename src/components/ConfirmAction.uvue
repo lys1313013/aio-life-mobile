@@ -3,6 +3,9 @@ import spacing from '../styles/spacing.json';
 import { getCurrentInstance, nextTick, onUnmounted, ref, watch } from 'vue';
 import MobileButton from './MobileButton.uvue';
 import { themeClass } from '../services/theme.ts';
+// #ifdef MP-WEIXIN
+import WeixinModalBackGuard from './WeixinModalBackGuard.uvue';
+// #endif
 const props = withDefaults(
   defineProps<{
     label: string;
@@ -97,6 +100,7 @@ onUnmounted(() => {
     <!-- 保留原位按钮测量，只有确认面板脱离滚动容器和卡片的 transform。 -->
     <!-- #ifdef MP-WEIXIN -->
     <root-portal v-if="opened" :enable="true">
+      <WeixinModalBackGuard :busy="busy" @close="opened = false" />
     <!-- #endif -->
     <view
       v-if="opened"

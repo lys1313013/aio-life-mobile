@@ -2,80 +2,88 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { readFile } from 'node:fs/promises'
 import { transform } from 'esbuild'
+import { computed, nextTick, ref, watch } from 'vue'
 
-async function harness(route = 'pages/home/index') {
-  const source = await readFile('src/services/modal-tab-bar.ts', 'utf8')
-  const js = (await transform(source.replace(/export /g, ''), { loader: 'ts' })).code
-  const calls = [], pending = []
-  const invoke = (name, options) => { calls.push(name); pending.push(options) }
-  const { registerModalTabBar } = new Function('uni', 'getCurrentPages', js + '\nreturn { registerModalTabBar }')({
-    hideTabBar: options => invoke('hide', options),
-    showTabBar: options => invoke('show', options),
-  }, () => route ? [{ route }] : [])
-  return { registerModalTabBar, calls, pending, finish: () => pending.shift().success() }
+// 执行真实微信脚本，只模拟窗口、键盘及原生 API，不连接业务服务器。
+async function harness() {
+  const source = await readFile('src/components/AdaptiveModal.uvue', 'utf8')
+  const stack = [true]
+  const script = source.match(/<script setup lang="ts">([\s\S]*?)<\/script>/)[1]
+    .split('\n').filter(line => {
+      const directive = line.match(/\/\/ #(ifdef|ifndef) (\S+)/)
+      if (directive) {
+        const matches = directive[2] === 'MP-WEIXIN'
+        stack.push(stack.at(-1) && (directive[1] === 'ifdef' ? matches : !matches))
+        return false
+      }
+      if (line.includes('// #endif')) { stack.pop(); return false }
+      return stack.at(-1)
+    }).join('\n').replace(/^import[\s\S]*?from ['"][^'"]+['"]\s*;?\n/gm, '')
+  const spacing = JSON.parse(await readFile('src/styles/spacing.json', 'utf8'))
+  const ui = (await readFile('src/services/mobile-ui.ts', 'utf8'))
+    .replace("import spacing from '../styles/spacing.json'", `const spacing = ${JSON.stringify(spacing)}`)
+  const { modalAvailableHeight } = await import(`data:text/javascript;base64,${Buffer.from(ui).toString('base64')}`)
+  const js = (await transform(script, { loader: 'ts' })).code
+  const cleanups = [], mounted = [], keyboardListeners = new Set()
+  const windowInfo = { windowHeight: 700, safeAreaInsets: { top: 24, bottom: 0 } }
+  const fixtures = {
+    computed, nextTick, ref, watch, spacing, modalAvailableHeight,
+    useWindowResize: () => {}, getCurrentInstance: () => ({}),
+    onMounted: callback => mounted.push(callback), onUnmounted: callback => cleanups.push(callback),
+    onUpdated: () => {}, provide: () => {}, defineEmits: () => () => {},
+    defineProps: () => ({ label: '模拟长弹窗' }),
+    withDefaults: (props, defaults) => ({ ...defaults, ...props }),
+    registerModal: () => () => {},
+    uni: {
+      getWindowInfo: () => windowInfo,
+      hideTabBar: () => assert.fail('弹窗不能隐藏原生底栏'),
+      showTabBar: () => assert.fail('弹窗不能改变原生底栏状态'),
+      onKeyboardHeightChange: callback => keyboardListeners.add(callback),
+      offKeyboardHeightChange: callback => keyboardListeners.delete(callback),
+      createSelectorQuery: () => ({ in() { return this }, select() { return this },
+        boundingClientRect(callback) { callback({ height: 1200 }); return this }, exec() {} }),
+    },
+  }
+  const component = new Function(...Object.keys(fixtures), js + '\nreturn { height, windowHeight, keyboardHeight, resize }')(...Object.values(fixtures))
+  for (const callback of mounted) callback()
+  await nextTick()
+  return { ...component, windowInfo, keyboardListeners,
+    keyboard: height => keyboardListeners.forEach(callback => callback({ height })),
+    close: () => cleanups.forEach(callback => callback()),
+  }
 }
 
-test('四个原生 tab 页的弹窗打开后隐藏底栏，关闭后恢复且不使用动画', async () => {
-  for (const page of ['home', 'time', 'life', 'profile']) {
-    const h = await harness(`pages/${page}/index`)
-    const close = h.registerModalTabBar()
-    assert.deepEqual(h.calls, ['hide'])
-    assert.equal(h.pending[0].animation, false)
-    h.finish()
-    close()
-    assert.deepEqual(h.calls, ['hide', 'show'])
-    h.finish()
+test('微信长弹窗使用完整视口，开关不改变窗口和底栏占位', async () => {
+  const h = await harness()
+  assert.equal(h.height.value, 700 - 24 - 24 * 2)
+  assert.equal(h.windowHeight.value, 700)
+  h.close()
+  assert.equal(h.keyboardListeners.size, 0)
+})
+
+test('嵌套弹窗各自避让键盘，关闭内层不影响外层，收起后恢复高度', async () => {
+  const outer = await harness(), inner = await harness()
+  for (const h of [outer, inner]) {
+    h.keyboard(280)
+    assert.equal(h.height.value, 700 - 24 - 48 - 280)
   }
+  inner.close()
+  assert.equal(outer.keyboardListeners.size, 1)
+  outer.keyboard(0)
+  assert.equal(outer.height.value, 628)
+  outer.windowInfo.windowHeight = 540
+  outer.resize()
+  assert.equal(outer.height.value, 468)
+  outer.close()
 })
 
-test('编辑弹窗与时间选择器嵌套时，最后一层关闭才恢复底栏', async () => {
-  const h = await harness()
-  const closeEditor = h.registerModalTabBar()
-  h.finish()
-  const closePicker = h.registerModalTabBar()
-  closePicker(); closePicker()
-  assert.deepEqual(h.calls, ['hide'])
-  closeEditor()
-  assert.deepEqual(h.calls, ['hide', 'show'])
-  h.finish()
-  closeEditor()
-  assert.deepEqual(h.calls, ['hide', 'show'])
-})
-
-test('隐藏尚未完成就关闭，以及恢复尚未完成就重开，最终状态跟随最新弹窗', async () => {
-  const h = await harness()
-  const close = h.registerModalTabBar()
-  close()
-  assert.deepEqual(h.calls, ['hide'])
-  h.finish()
-  assert.deepEqual(h.calls, ['hide', 'show'])
-  const closeAgain = h.registerModalTabBar()
-  h.finish()
-  assert.deepEqual(h.calls, ['hide', 'show', 'hide'])
-  h.finish()
-  closeAgain()
-  assert.deepEqual(h.calls, ['hide', 'show', 'hide', 'show'])
-  h.finish()
-})
-
-test('独立编辑页、业务分包及无页面栈时不调用 tabBar 接口', async () => {
-  for (const route of ['pages/time/edit', 'pages/records/exercise', '']) {
-    const h = await harness(route)
-    const close = h.registerModalTabBar()
-    close(); close()
-    assert.deepEqual(h.calls, [])
+test('Mobile 弹层不隐藏底栏，微信使用页面内底栏并保留四个 tab 路由', async () => {
+  for (const file of ['AdaptiveModal.uvue', 'TimeEndPicker.uvue', 'ConfirmAction.uvue']) {
+    const source = await readFile(`src/components/${file}`, 'utf8')
+    assert.doesNotMatch(source, /registerModalTabBar|hideTabBar|showTabBar/)
   }
-})
-
-test('原生接口失败不会无限重试，后续打开弹窗仍可隐藏和恢复', async () => {
-  const h = await harness()
-  const close = h.registerModalTabBar()
-  h.pending.shift().fail()
-  close()
-  assert.deepEqual(h.calls, ['hide'])
-  const closeAgain = h.registerModalTabBar()
-  h.finish()
-  closeAgain()
-  h.finish()
-  assert.deepEqual(h.calls, ['hide', 'hide', 'show'])
+  const config = JSON.parse((await readFile('src/pages.json', 'utf8')).replace(/^\s*\/\/.*$/gm, ''))
+  assert.equal(config.tabBar.custom, true)
+  assert.deepEqual(config.tabBar.list.map(item => item.pagePath),
+    ['pages/home/index', 'pages/time/index', 'pages/life/index', 'pages/profile/index'])
 })

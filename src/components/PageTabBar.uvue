@@ -1,0 +1,30 @@
+<script setup lang="ts">
+import { computed } from 'vue'
+import tabs from '../services/tab-bar.generated.json'
+import colors from '../theme.json'
+import { isDark, tabIconPath } from '../services/theme.ts'
+import { useTabNavigation } from '../services/weixin-tab-bar.ts'
+const props = defineProps<{ pagePath: string }>()
+const palette = computed(() => isDark.value ? colors.dark : colors.light)
+const { switching, switchTab } = useTabNavigation(props.pagePath)
+</script>
+<template>
+  <view class="page-tab-bar" :style="{ backgroundColor: palette.tabBackgroundColor }" role="navigation" aria-label="底部导航">
+    <view class="page-tab-row">
+      <view v-for="(item, index) in tabs" :key="item.pagePath" class="page-tab-item" role="button" aria-role="button" :aria-label="item.text" :aria-disabled="switching" :aria-current="item.pagePath === pagePath ? 'page' : false" @click="switchTab(index)">
+        <image class="page-tab-icon" :src="'/' + tabIconPath(item.pagePath === pagePath ? item.selectedIconPath : item.iconPath, isDark)" mode="aspectFit" />
+        <text class="page-tab-label" :style="{ color: item.pagePath === pagePath ? palette.tabSelectedColor : palette.tabColor }">{{ item.text }}</text>
+      </view>
+    </view>
+  </view>
+</template>
+<style scoped lang="scss">
+@use '../styles/spacing-tokens' as *;
+@use '../styles/typography' as *;
+// 处于正常文档流：弹窗开关不影响占位，整屏遮罩自然覆盖菜单与安全区。
+.page-tab-bar { display: flex; flex-direction: column; flex-shrink: 0; padding-bottom: env(safe-area-inset-bottom); }
+.page-tab-row { display: flex; flex-direction: row; height: $space-tabBarHeight; }
+.page-tab-item { display: flex; flex: 1; min-height: $space-controlMin; align-items: center; justify-content: center; flex-direction: column; }
+.page-tab-icon { display: block; width: $space-tabBarIcon; height: $space-tabBarIcon; }
+.page-tab-label { @include type-style('navigation-tab'); }
+</style>

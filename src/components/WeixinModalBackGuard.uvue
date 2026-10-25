@@ -1,0 +1,21 @@
+<script setup lang="ts">
+import { getCurrentInstance, onBeforeUnmount } from 'vue'
+import { registerModalBack } from '../services/modal-back.ts'
+
+const props = defineProps<{ busy?: boolean }>()
+const emit = defineEmits(['close'])
+// 小程序的 Vue root 是所属页面，异步挂载时也不会误登记到新页面。
+const instance = getCurrentInstance()!
+const page = instance.root
+const { isHost, shown, beforeLeave, afterLeave, dispose } = registerModalBack(page, () => {
+  if (!props.busy) emit('close')
+}, () => instance.proxy!.$nextTick())
+onBeforeUnmount(dispose)
+</script>
+<template>
+  <!-- 仅提供原生返回栈，不绘制第二张遮罩，也不改变原弹窗的布局和层级。 -->
+  <page-container v-if="isHost" :show="shown" :overlay="false" :duration="0"
+    :close-on-slide-down="false" position="bottom"
+    custom-style="height: 0; min-height: 0; background: transparent; pointer-events: none;"
+    @beforeleave="beforeLeave" @afterleave="afterLeave" />
+</template>

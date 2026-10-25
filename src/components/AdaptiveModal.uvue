@@ -7,7 +7,7 @@ import { modalAvailableHeight } from '../services/mobile-ui.ts'
 import { themeClass } from '../services/theme.ts'
 // #ifdef MP-WEIXIN
 import { registerModal } from '../services/modal-presence.ts'
-import { registerModalTabBar } from '../services/modal-tab-bar.ts'
+import WeixinModalBackGuard from './WeixinModalBackGuard.uvue'
 // #endif
 import {
   computed,
@@ -35,14 +35,15 @@ const emit = defineEmits(['close', 'reachbottom'])
 provide('mobile-modal', true)
 // #ifdef MP-WEIXIN
 const releaseModal = registerModal()
-const releaseTabBar = registerModalTabBar()
-onUnmounted(() => { releaseModal(); releaseTabBar() })
+onUnmounted(releaseModal)
 // #endif
 const instance = getCurrentInstance()
 const contentHeight = ref(props.bare ? spacing.controlMin : 160)
+const footerHeight = ref(0)
 const windowHeight = ref(uni.getWindowInfo().windowHeight)
 const keyboardHeight = ref(0)
 const viewportTop = ref(0)
+const useViewportFrame = ref(!!props.fill)
 // #ifdef APP
 let keyboardListenerId: number | null = null
 // #endif
@@ -50,7 +51,10 @@ const safeTop = ref(uni.getWindowInfo().safeAreaInsets?.top || 0)
 const safeBottom = ref(uni.getWindowInfo().safeAreaInsets?.bottom || 0)
 const verticalInset = computed(() => props.verticalInset ?? spacing.overlayBlock)
 const availableHeight = computed(() => modalAvailableHeight(windowHeight.value, keyboardHeight.value, safeTop.value, safeBottom.value, verticalInset.value))
-const height = computed(() => props.fill ? availableHeight.value : Math.min(contentHeight.value, availableHeight.value))
+// footer 在滚动区域外；短表单仍按内容收缩，长表单仅正文滚动。
+const height = computed(() => props.fill
+  ? availableHeight.value
+  : Math.min(contentHeight.value, Math.max(0, availableHeight.value - footerHeight.value)))
 let active = true
 let measuring = false
 let pending = false
@@ -65,10 +69,23 @@ async function measure() {
   }
   measuring = true
   await nextTick()
-  uni
-    .createSelectorQuery()
-    .in(instance?.proxy)
-    .select('.modal-content')
+  if (!active) { measuring = false; return }
+  // #ifdef WEB
+  const root = instance?.proxy?.$el
+  for (const selector of ['.modal-content', '.modal-footer']) {
+    const node = root?.querySelector?.(selector)
+    if (node) contentObserver?.observe(node)
+  }
+  // #endif
+  const query = uni.createSelectorQuery().in(instance?.proxy)
+  if (instance?.slots?.footer) {
+    query.select('.modal-footer').boundingClientRect((rect) => {
+      if (active) footerHeight.value = rect && !Array.isArray(rect) ? Math.ceil(rect.height) : 0
+    })
+  } else {
+    footerHeight.value = 0
+  }
+  query.select('.modal-content')
     .boundingClientRect((rect) => {
       if (active && rect && !Array.isArray(rect) && rect.height > 0)
         contentHeight.value = Math.ceil(rect.height)
@@ -87,7 +104,8 @@ function resize() {
   safeBottom.value = info.safeAreaInsets?.bottom || 0
   // H5 软键盘可能只缩小 visualViewport，不触发 uni 的窗口高度变化。
   // #ifdef WEB
-  if (props.fill && window.visualViewport) {
+  if (window.visualViewport) {
+    useViewportFrame.value = true
     windowHeight.value = window.visualViewport.height
     viewportTop.value = window.visualViewport.offsetTop
   }
@@ -103,18 +121,10 @@ onMounted(() => {
   measure()
   // Vapor 的插槽内容更新不一定触发容器的 onUpdated。
   // #ifdef WEB
-  if (props.fill) {
-    window.visualViewport?.addEventListener('resize', resize)
-    window.visualViewport?.addEventListener('scroll', resize)
-  }
-  nextTick(() => {
-    if (!active) return
-    const content = instance?.proxy?.$el?.querySelector?.('.modal-content')
-    if (content && typeof ResizeObserver !== 'undefined') {
-      contentObserver = new ResizeObserver(measure)
-      contentObserver.observe(content)
-    }
-  })
+  window.visualViewport?.addEventListener('resize', resize)
+  window.visualViewport?.addEventListener('scroll', resize)
+  if (typeof ResizeObserver !== 'undefined') contentObserver = new ResizeObserver(measure)
+  nextTick(measure)
   // #endif
 
   // #ifdef APP
@@ -126,6 +136,7 @@ onMounted(() => {
 })
 onUpdated(measure)
 watch(() => props.contentKey, measure, { flush: 'post' })
+watch(() => props.fill, resize, { flush: 'post' })
 onUnmounted(() => {
   active = false
   // #ifdef WEB
@@ -148,8 +159,9 @@ onUnmounted(() => {
   <!-- 微信滚动容器会影响 fixed 子节点；整层挂到页面根部，嵌套弹窗也不受父层裁切。 -->
   <!-- #ifdef MP-WEIXIN -->
   <root-portal :enable="true">
+    <WeixinModalBackGuard :busy="busy" @close="emit('close')" />
   <!-- #endif -->
-  <view class="modal-mask" :class="[themeClass('modal-mask'), { 'modal-mask-loading': bare }, themeClass({ 'modal-mask-loading': bare })]" :style="{ paddingTop: (verticalInset + safeTop) + 'px', paddingBottom: (verticalInset + safeBottom + keyboardHeight) + 'px', ...(fill ? { top: viewportTop + 'px', height: windowHeight + 'px', bottom: 'auto' } : {}) }" @click="!busy && emit('close')">
+  <view class="modal-mask" :class="[themeClass('modal-mask'), { 'modal-mask-loading': bare }, themeClass({ 'modal-mask-loading': bare })]" :style="{ paddingTop: (verticalInset + safeTop) + 'px', paddingBottom: (verticalInset + safeBottom + keyboardHeight) + 'px', ...(useViewportFrame ? { top: viewportTop + 'px', height: windowHeight + 'px', bottom: 'auto' } : {}) }" @click="!busy && emit('close')">
     <!-- 模糊层独立于内容，避免改变内嵌确认框 / picker 的 fixed 定位参照。 -->
     <!-- #ifdef WEB || MP-WEIXIN -->
     <view v-if="!bare" class="modal-backdrop" aria-hidden="true" />
@@ -169,7 +181,8 @@ onUnmounted(() => {
         <view class="modal-fill-body"><slot /></view>
         <view v-if="$slots.footer" class="modal-fill-footer"><slot name="footer" /></view>
       </view>
-      <scroll-view v-else
+      <template v-else>
+      <scroll-view
         @scrolltolower="emit('reachbottom')"
         direction="vertical"
         :scroll-y="true"
@@ -177,8 +190,10 @@ onUnmounted(() => {
         class="modal-scroll"
         :style="{ height: height + 'px' }"
       >
-        <view class="modal-content" :class="{ 'modal-content-bare': bare, 'modal-content-dense': dense }"><view v-if="showClose !== false" class="modal-close"><MobileButton label="关闭" icon="ant-design:close-outlined" variant="ghost" :disabled="busy" @click="emit('close')" /></view><slot /></view>
+        <view class="modal-content" :class="{ 'modal-content-bare': bare, 'modal-content-dense': dense, 'modal-content-with-close': showClose !== false }"><view v-if="showClose !== false" class="modal-close"><MobileButton label="关闭" icon="ant-design:close-outlined" variant="ghost" :disabled="busy" @click="emit('close')" /></view><slot /></view>
       </scroll-view>
+      <view v-if="$slots.footer" class="modal-footer"><slot name="footer" /></view>
+      </template>
     </view>
   </view>
   <!-- #ifdef MP-WEIXIN -->
@@ -206,6 +221,7 @@ onUnmounted(() => {
   max-width: 600px;
   border-radius: 20px;
   background-color: #ffffff;
+  color: #27272a;
   box-shadow: 0 24px 80px -16px rgba(15, 23, 42, 0.3), 0 4px 16px -4px rgba(15, 23, 42, 0.14);
   overflow: hidden;
 }
@@ -219,16 +235,19 @@ onUnmounted(() => {
   padding-top: $space-modalTop;
 }
 .modal-content-dense { padding-top: $space-modal; }
+.modal-content-with-close { padding-top: $space-detail; }
 .modal-close { align-items: flex-end; margin-bottom: $space-inline; }
 .modal-content-bare { padding: 0; }
 .modal-fill { display: flex; flex-direction: column; min-height: 0; }
 .modal-fill-body { padding: $space-modal; display: flex; flex-direction: column; flex: 1; min-height: 0; overflow: hidden; }
-.modal-fill-footer { flex-shrink: 0; padding: 0 $space-modal $space-modal; }
+.modal-footer,
+.modal-fill-footer { position: relative; flex-shrink: 0; padding: 0 $space-modal $space-modal; }
 .modal-mask-dark {
   background-color: rgba(0, 0, 0, 0.48);
 }
 .modal-panel-dark {
   background-color: #1c1e22;
+  color: #e7e9ee;
   box-shadow: 0 24px 80px -16px rgba(0, 0, 0, 0.6), 0 4px 16px -4px rgba(0, 0, 0, 0.32);
 }
 /* 原生 App 使用上面的实色面板；H5 / 微信按渲染器能力增强。 */

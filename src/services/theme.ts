@@ -1,4 +1,6 @@
 import { computed, reactive } from 'vue'
+import colors from '../theme.json'
+import tabs from './tab-bar.generated.json'
 
 export type ThemeMode = 'system' | 'light' | 'dark'
 const storageKey = 'aio-life-mobile.theme.v1'
@@ -6,10 +8,20 @@ export const theme = reactive({ mode: 'system' as ThemeMode, system: 'light' })
 export const isDark = computed(
   () => (theme.mode === 'system' ? theme.system : theme.mode) === 'dark'
 )
+// MobileSwitch 统一使用主题开启色。
+export const switchActiveColor = computed(
+  () => (isDark.value ? colors.dark : colors.light).switchActiveColor
+)
 let initialized = false
+
+// 与底栏资源生成器的深色文件名一致；微信页面底栏和 H5 / App 共用。
+export function tabIconPath(path: string, dark: boolean): string {
+  return dark ? path.replace(/\.png$/, '-dark.png') : path
+}
 
 function applyNativeTheme() {
   const dark = isDark.value
+  const palette = dark ? colors.dark : colors.light
   // #ifdef APP
   uni.setAppTheme({ theme: theme.mode === 'system' ? 'auto' : theme.mode })
   // #endif
@@ -24,13 +36,30 @@ function applyNativeTheme() {
   document.documentElement.style.setProperty('--aio-native-accent', dark ? '#9bbcff' : '#1d4ed8')
   document.documentElement.style.setProperty('--aio-native-active', dark ? '#303846' : '#edf3ff')
   // #endif
+  // #ifndef MP-WEIXIN
   uni.setTabBarStyle({
-    color: '#8b8f99',
-    selectedColor: '#5b8ff9',
-    backgroundColor: dark ? '#1c1e22' : '#ffffff',
+    color: palette.tabColor,
+    selectedColor: palette.tabSelectedColor,
+    backgroundColor: palette.tabBackgroundColor,
     borderStyle: dark ? 'black' : 'white',
     fail: () => {}
   })
+  tabs.forEach((tab, index) => {
+    let iconPath = tabIconPath(tab.iconPath, dark)
+    let selectedIconPath = tabIconPath(tab.selectedIconPath, dark)
+    // #ifdef WEB
+    // setTabBarItem 的相对路径会按当前页面解析；H5 静态资源从站点根目录读取。
+    iconPath = '/' + iconPath.replace(/^\/+/, '')
+    selectedIconPath = '/' + selectedIconPath.replace(/^\/+/, '')
+    // #endif
+    uni.setTabBarItem({
+      index,
+      iconPath,
+      selectedIconPath,
+      fail: () => {}
+    })
+  })
+  // #endif
   uni.setNavigationBarColor({
     frontColor: dark ? '#ffffff' : '#000000',
     backgroundColor: dark ? '#111215' : '#f0f2f5',
