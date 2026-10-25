@@ -59,18 +59,25 @@ test('分包副本隔离、嵌套工具跟随归属，但登录状态单例仍�
   const input = path.resolve(root, 'src');
   const plugin = weixinSharedServices();
   plugin.configResolved({ root });
-  plugin.buildStart();
+  const watched = [];
   const context = {
     error: message => { throw Error(message); },
     resolve: async id => ({ id }),
-    addWatchFile() {},
+    addWatchFile: file => watched.push(file),
   };
   const resolve = (source, importer) => plugin.resolveId.call(context, source, importer);
   const finance = await resolve('../../services/use-card-order.ts', `${input}/pages/finance/cards.uvue`);
   const admin = await resolve('../../services/use-card-order.ts', `${input}/pages/admin/bank-card-covers.uvue`);
   assert.notEqual(finance, admin);
   assert.equal(await resolve('./card-order.ts', finance), `${input}/pages/finance/shared/services/card-order.ts`);
-  assert.match(plugin.load.call(context, finance).code, /function useCardOrder/);
+  const firstLoad = plugin.load.call(context, finance);
+  assert.match(firstLoad.code, /function useCardOrder/);
+  // Rollup 的下一轮构建可能复用虚拟 ID，直接 load 而不再次 resolveId。
+  // 重用同一插件实例，校验映射与嵌套依赖归属仍然有效。
+  assert.deepEqual(plugin.load.call(context, finance), firstLoad);
+  assert.deepEqual(watched, [`${input}/services/use-card-order.ts`, `${input}/services/use-card-order.ts`]);
+  assert.equal(await resolve('./card-order.ts', finance), `${input}/pages/finance/shared/services/card-order.ts`);
+  assert.equal(await resolve('./card-order.ts', admin), `${input}/pages/admin/shared/services/card-order.ts`);
   const guard = await resolve('../../../services/domains/session-guard.ts', `${input}/pages/coding/services/coding.ts`);
   assert.equal((await resolve('../session.ts', guard)).id, `${input}/services/session.ts`);
   await assert.rejects(resolve('../../services/use-card-order.ts', `${input}/pages/home/index.uvue`), /主包引用/);

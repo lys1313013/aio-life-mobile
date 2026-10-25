@@ -18,6 +18,8 @@ export function weixinSubpackageVendors() {
   let input;
   const virtual = new Map();
   const bundles = new Map();
+  // uni 的监听构建仅传递变动产物；保留已写出文件以校验完整依赖图。
+  const emitted = new Map();
   let roots = [];
   let chartRuntime;
   const owner = file => roots.find(root => file.startsWith(root + '/')) || '';
@@ -28,7 +30,7 @@ export function weixinSubpackageVendors() {
     configResolved(config) {
       root = config.root;
       input = slash(path.resolve(root, 'src'));
-      const pages = JSON.parse(readFileSync(path.join(input, 'pages.json'), 'utf8'));
+      const pages = JSON.parse(readFileSync(path.join(input, 'pages.json'), 'utf8').replace(/^\s*\/\/.*$/gm, ''));
       roots = (pages.subPackages || []).map(pkg => pkg.root);
       for (const rule of Object.values(policy.scopedDependencies)) {
         for (const declared of rule.roots) {
@@ -37,7 +39,9 @@ export function weixinSubpackageVendors() {
       }
     },
     async buildStart() {
-      virtual.clear();
+      if (!this.meta.watchMode) emitted.clear();
+      // 保留 Rollup 缓存模块对应的虚拟 ID 归属，供增量 load / manualChunks 使用。
+      // 只清理打包内容，避免依赖变更后继续使用旧代码。
       bundles.clear();
       for (const name of ['report.json', 'report.txt', 'chunks.json']) {
         rmSync(path.join(root, 'artifacts/weixin-size', name), { force: true });
@@ -112,7 +116,9 @@ export function weixinSubpackageVendors() {
     generateBundle: {
       order: 'post',
       handler(_options, output) {
-        const app = output['app.json'];
+        for (const [name, file] of Object.entries(output)) emitted.set(name, file);
+        const completeOutput = Object.fromEntries(emitted);
+        const app = completeOutput['app.json'];
         if (!app || app.type !== 'asset') this.error('缺少微信 app.json，无法登记图表引擎分包。');
         const config = JSON.parse(String(app.source));
         const packages = config.subPackages || config.subpackages || [];
@@ -121,8 +127,8 @@ export function weixinSubpackageVendors() {
         }
         config.subPackages = packages;
         app.source = JSON.stringify(config, null, 2);
-        roots.push(policy.chartRuntime.root);
-        const chunks = Object.values(output).filter(file => file.type === 'chunk');
+        if (!roots.includes(policy.chartRuntime.root)) roots.push(policy.chartRuntime.root);
+        const chunks = Object.values(completeOutput).filter(file => file.type === 'chunk');
         const runtimeImports = new Map();
         // A subpackage may synchronously depend on itself or the main package only.
         for (const chunk of chunks) {
@@ -145,7 +151,7 @@ export function weixinSubpackageVendors() {
             }
           }
         }
-        const unused = unusedMainScripts(output, config);
+        const unused = unusedMainScripts(completeOutput, config);
         if (unused.length) this.error(`主包存在未被主包页面、组件或 app 使用的 JS：\n${unused.join('\n')}\n请移动业务源码至所属分包；共享工具需审查状态后配置 scopedSharedServices。`);
         const report = chunks.map(chunk => ({
           file: chunk.fileName,

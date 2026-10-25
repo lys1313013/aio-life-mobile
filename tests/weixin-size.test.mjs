@@ -94,3 +94,86 @@ test('CLI 缺失构建产物时退出失败并删除旧报告，不会伪报上�
     fs.rmSync(temp, { recursive: true, force: true });
   }
 });
+
+test('CLI 在成功、编译失败和超时后均清理隔离的编译缓存与临时项目', async t => {
+  for (const mode of ['success', 'failure', 'timeout']) {
+    await t.test(mode, () => {
+      const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'aio-size-isolation-test-'));
+      try {
+        const project = path.join(temp, 'project');
+        fs.mkdirSync(project);
+        fs.writeFileSync(path.join(project, 'project.config.json'), JSON.stringify(config));
+        fs.writeFileSync(path.join(project, 'app.json'), JSON.stringify({ pages: ['pages/home/index'] }));
+        fs.writeFileSync(path.join(project, 'source-marker.txt'), 'original project');
+        const probe = path.join(temp, 'probe.json');
+        const preload = path.join(temp, 'compiler.cjs');
+        // Exercise the real CLI/worker lifecycle without uploading or compiling the app.
+        // The substitute reproduces miniprogram-ci's cwd-relative cache directory.
+        fs.writeFileSync(preload, `
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
+const { createHash } = require('node:crypto');
+const Module = require('node:module');
+const childProcess = require('node:child_process');
+const spawnSync = childProcess.spawnSync;
+childProcess.spawnSync = (command, args, options) => spawnSync(command, args, {
+  ...options, timeout: ${JSON.stringify(mode)} === 'timeout' ? 3000 : options.timeout,
+});
+const load = Module._load;
+Module._load = function (request, ...args) {
+  if (request === 'miniprogram-ci/dist/config/config') return { DefaultProjectAttr: {} };
+  if (request === 'miniprogram-ci') return {
+    Project: class { constructor(options) { Object.assign(this, options); } },
+    async getCompiledResult({ project }) {
+      const cache = path.resolve(createHash('md5').update(project.projectPath + '|summer').digest('hex'));
+      fs.mkdirSync(cache);
+      fs.writeFileSync(path.join(cache, 'compiler.tmp'), 'temporary cache');
+      fs.writeFileSync(${JSON.stringify(probe)}, JSON.stringify({
+        cwd: process.cwd(),
+        tempDir: fs.realpathSync(os.tmpdir()),
+        project: fs.realpathSync(project.projectPath),
+        cache,
+      }));
+      if (${JSON.stringify(mode)} === 'failure') throw new Error('simulated compiler failure');
+      if (${JSON.stringify(mode)} === 'timeout') await new Promise(() => setInterval(() => {}, 1000));
+      return { 'app.json': JSON.stringify({ pages: ['pages/home/index'] }), 'pages/home/index.js': 'Page({});' };
+    },
+    cleanCache() {},
+  };
+  return load.call(this, request, ...args);
+};
+`);
+        const child = spawnSync(process.execPath, [
+          fileURLToPath(new URL('../scripts/check-weixin-size.cjs', import.meta.url)),
+          '--project', 'project', '--report', 'report.json',
+        ], {
+          cwd: temp,
+          encoding: 'utf8',
+          timeout: 15000,
+          env: { ...process.env, NODE_OPTIONS: `${process.env.NODE_OPTIONS || ''} --require ${JSON.stringify(preload)}` },
+        });
+        assert.ifError(child.error);
+        assert.equal(child.status, mode === 'success' ? 0 : 1, child.stderr);
+        const observed = JSON.parse(fs.readFileSync(probe, 'utf8'));
+        assert.notEqual(observed.cwd, fs.realpathSync(temp));
+        assert.equal(observed.tempDir, observed.cwd);
+        assert.equal(path.dirname(observed.project), observed.cwd);
+        assert.equal(path.dirname(observed.cache), observed.cwd);
+        for (const dir of [observed.cwd, observed.project, observed.cache]) {
+          assert.equal(fs.existsSync(dir), false, `未清理编译目录：${dir}`);
+        }
+        assert.equal(fs.readFileSync(path.join(project, 'source-marker.txt'), 'utf8'), 'original project');
+        assert.equal(fs.existsSync(path.join(temp, 'report.json')), mode === 'success');
+        if (mode === 'success') {
+          assert.equal(JSON.parse(fs.readFileSync(path.join(temp, 'report.json'), 'utf8')).status, 'ok');
+          assert.equal(fs.existsSync(path.join(temp, 'report.txt')), true);
+        } else {
+          assert.match(child.stderr, mode === 'timeout' ? /ETIMEDOUT/ : /simulated compiler failure/);
+        }
+      } finally {
+        fs.rmSync(temp, { recursive: true, force: true });
+      }
+    });
+  }
+});

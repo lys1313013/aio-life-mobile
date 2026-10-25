@@ -15,11 +15,12 @@ export function weixinSharedServices() {
     apply: () => process.env.UNI_PLATFORM === 'mp-weixin',
     configResolved(config) {
       input = slash(path.resolve(config.root, 'src'));
-      roots = JSON.parse(readFileSync(path.join(input, 'pages.json'), 'utf8')).subPackages.map(pkg => pkg.root);
+      roots = JSON.parse(readFileSync(path.join(input, 'pages.json'), 'utf8').replace(/^\s*\/\/.*$/gm, '')).subPackages.map(pkg => pkg.root);
       const policy = JSON.parse(readFileSync(path.resolve(config.root, 'scripts/weixin-package-policy.json'), 'utf8'));
       sources = new Set(policy.scopedSharedServices);
     },
-    buildStart() { copies.clear(); },
+    // Rollup 增量构建会复用已解析的虚拟 ID，不一定再次调用 resolveId。
+    // 映射必须跨轮保留；源码仍由 load / addWatchFile 读取并监听，不缓存内容。
     async resolveId(source, importer) {
       if (!importer) return;
       const original = copies.get(importer);

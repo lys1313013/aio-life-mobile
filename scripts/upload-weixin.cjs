@@ -57,18 +57,24 @@ function main() {
     },
   });
   if (values.help) {
-    console.log('用法：npm run upload:weixin [-- --desc "更新说明"]\n固定版本：0.9.0；默认说明：功能更新。\n执行构建、包体检查和上传；需登录微信开发者工具并开启「设置 → 安全设置 → 服务端口」。');
+    console.log('用法：npm run upload:weixin [-- --desc "更新说明"] 或 pnpm run upload:weixin [--desc "更新说明"]\n固定版本：0.9.0；默认说明：功能更新。\n执行构建、包体检查和上传；需登录微信开发者工具并开启「设置 → 安全设置 → 服务端口」。');
     return;
   }
   if (!values.desc.trim()) throw new Error('更新说明不能为空。');
   const npmCli = process.env.npm_execpath;
-  if (!npmCli) throw new Error('请使用 npm run upload:weixin 执行。');
+  if (!npmCli) throw new Error('请使用 npm run upload:weixin 或 pnpm run upload:weixin 执行。');
   const cli = findCli();
   const appid = readAppId(path.join(root, 'src'));
 
   console.log('[1/2] 构建微信小程序并检查包体…');
-  // Force lifecycle hooks so postbuild:weixin cannot be skipped by npm configuration.
-  run(process.execPath, [npmCli, '--ignore-scripts=false', 'run', 'build:weixin'], '构建或包体检查');
+  // npm_execpath 指向本次调用使用的包管理器；两者的参数与 pre/post 开关不同。
+  // 显式启用钩子，保证生成配置和官方包体检查都不能被用户配置跳过。
+  const pnpm = /^pnpm\//.test(process.env.npm_config_user_agent || '')
+    || /(?:^|[/\\])pnpm(?:\.[cm]?js|\.exe)?$/i.test(npmCli);
+  const lifecycleOptions = pnpm
+    ? ['--config.ignore-scripts=false', '--config.enable-pre-post-scripts=true']
+    : ['--ignore-scripts=false'];
+  run(process.execPath, [npmCli, ...lifecycleOptions, 'run', 'build:weixin'], '构建或包体检查');
 
   const projectPath = path.join(root, 'dist/build/mp-weixin');
   if (readAppId(projectPath) !== appid) throw new Error('构建产物 AppID 与本地配置不一致，已停止上传。');

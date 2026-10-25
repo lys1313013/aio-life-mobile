@@ -74,13 +74,28 @@ async function main() {
   console.log('正在运行微信官方编译器进行本地包体检查（不会上传或更新体验版）…');
   // Node 25 enables an incomplete localStorage without a data file; the compiler assumes a browser API.
   // Pass the flag to its child processes as well. Node 22 in CI supports the same flag.
-  const child = spawnSync(process.execPath, [__filename, '--worker', '--project', projectPath, '--report', reportPath], {
-    cwd: root,
-    env: { ...process.env, NODE_OPTIONS: `${process.env.NODE_OPTIONS || ''} --no-experimental-webstorage` },
-    encoding: 'utf8',
-    timeout: 120000,
-    maxBuffer: 8 * 1024 * 1024,
-  });
+  // miniprogram-ci creates its MD5-named compiler cache relative to cwd and leaves
+  // the empty directory behind. Own both its cwd and temporary files here so a
+  // failed or timed-out worker cannot leave compiler directories in the repository.
+  const workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'aio-weixin-size-worker-'));
+  let child;
+  try {
+    child = spawnSync(process.execPath, [__filename, '--worker', '--project', projectPath, '--report', reportPath], {
+      cwd: workspace,
+      env: {
+        ...process.env,
+        TMPDIR: workspace,
+        TEMP: workspace,
+        TMP: workspace,
+        NODE_OPTIONS: `${process.env.NODE_OPTIONS || ''} --no-experimental-webstorage`,
+      },
+      encoding: 'utf8',
+      timeout: 120000,
+      maxBuffer: 8 * 1024 * 1024,
+    });
+  } finally {
+    fs.rmSync(workspace, { recursive: true, force: true });
+  }
   if (child.error || child.status !== 0) {
     throw new Error(`微信编译失败，包体检查未通过。\n${sanitize(child.error?.message || child.stderr || child.stdout)}`);
   }

@@ -30,7 +30,8 @@ for (const [index, stage] of stages.entries()) {
   try {
     result = spawnSync(process.execPath, [npmCli, ...stage.args], {
       cwd: root,
-      env: process.env,
+      // 提交前必须验证当前源码，不能继承 CI 分片的预构建复用开关。
+      env: { ...process.env, AIO_E2E_PREBUILT: '0' },
       stdio: ['ignore', fd, fd],
     });
   } finally {
