@@ -4,10 +4,15 @@ import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
+// 独立生成手绘底栏时不读取相邻 Web 仓库。
+if (process.argv.includes('--tabs-only')) {
+  await import('./generate-tab-icons.mjs')
+  process.exit(0)
+}
+
 const webIcons = resolve(root, '../aio-life-front/packages/@core/base/icons/src/local-icons/generated')
 const names = new Set()
-// Web 首页菜单的 lucide:home 是 lucide:house 的别名，直接复用原始图形。
-// 更换图形时使用新资源名，避免客户端沿用旧仪表盘 PNG 的缓存。
+// 保留公共操作图标集合中的导航图形；底栏使用独立手绘源文件。
 const tabs = { 'home-house': 'lucide:house', time: 'lucide:clock', life: 'lucide:layout-grid', profile: 'lucide:user' }
 for (const name of Object.values(tabs)) names.add(name)
 function scan(directory) {
@@ -37,21 +42,5 @@ if (!process.argv.includes('--tabs-only')) {
   console.log(`已同步 ${Object.keys(icons).length} 个 Web 同款图标`)
 }
 
-// 原生 tabBar 需要本地 PNG；用现有 Playwright 将同一 SVG 渲染为三倍分辨率资源。
-if (process.argv.includes('--tabs') || process.argv.includes('--tabs-only')) {
-  const { chromium } = await import('@playwright/test')
-  const browser = await chromium.launch({ channel: process.env.CI ? undefined : 'chrome' })
-  try {
-    const page = await browser.newPage({ viewport: { width: 81, height: 81 } })
-    for (const [tab, name] of Object.entries(tabs)) {
-      const icon = icons[name]
-      for (const [suffix, color] of [['', '#8b8f99'], ['-active', '#5b8ff9']]) {
-        await page.setContent(`<style>html,body{margin:0;background:transparent}svg{display:block}</style><svg xmlns="http://www.w3.org/2000/svg" width="81" height="81" viewBox="0 0 ${icon.width} ${icon.height}">${icon.body.replaceAll('currentColor', color)}</svg>`)
-        await page.screenshot({ path: resolve(root, `src/static/tabs/${tab}${suffix}.png`), omitBackground: true })
-      }
-    }
-  } finally {
-    await browser.close()
-  }
-  console.log('已同步 8 张底栏图标')
-}
+// 兼容原有命令；底栏图形与 Web 公共操作图标分别维护。
+if (process.argv.includes('--tabs')) await import('./generate-tab-icons.mjs')

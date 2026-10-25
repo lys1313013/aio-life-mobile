@@ -354,6 +354,7 @@ test("退出再登录清除目录缓存，即使服务端返回相同 Token", as
   const state = await setup(page, options);
   await expect(page.getByRole('button', { name: '运动', exact: true })).toBeVisible();
   await page.locator('uni-tabbar').getByText('我', { exact: true }).click();
+  await page.getByRole('button', { name: '设置', exact: true }).click();
   await page.getByRole('button', { name: '退出登录', exact: true }).click();
   await page.getByRole('button', { name: '退出', exact: true }).click();
   await expect(page.getByRole('button', { name: '登录', exact: true })).toBeVisible();

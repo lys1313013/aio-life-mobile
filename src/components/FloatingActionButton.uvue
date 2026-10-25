@@ -1,5 +1,8 @@
 <script setup lang="ts">
+import { computed, ref } from 'vue'
 import spacing from '../styles/spacing.json'
+import { useWindowResize } from '../services/window-resize.ts'
+import { tabBarInset } from '../services/weixin-tab-bar.ts'
 import AppIcon from './AppIcon.uvue'
 import { isDark, themeClass } from '../services/theme.ts'
 const props = withDefaults(
@@ -13,6 +16,11 @@ const props = withDefaults(
   { label: '新增', disabled: false, loading: false, bottom: spacing.page + spacing.inline, right: spacing.page + spacing.inline },
 )
 const emit = defineEmits(['click'])
+const tabInset = tabBarInset()
+const viewportWidth = ref(uni.getWindowInfo().windowWidth)
+useWindowResize(() => { viewportWidth.value = uni.getWindowInfo().windowWidth })
+// 与 MobilePage 的 ui-page-inset 共用 contentMax，保留原有页内偏移。
+const contentRight = computed(() => Math.max(0, (viewportWidth.value - spacing.contentMax) / 2) + props.right)
 function activate() {
   if (!props.disabled && !props.loading) emit('click')
 }
@@ -20,7 +28,7 @@ function activate() {
 <template>
   <view
     class="floating-action-anchor"
-    :style="{ bottom: bottom + 'px', right: right + 'px' }"
+    :style="{ bottom: (bottom + tabInset) + 'px', right: contentRight + 'px' }"
   >
     <button
       role="button"

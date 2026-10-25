@@ -6,6 +6,7 @@ const tasks = [
   { type: 'SHANBAY', title: '扇贝单词', totalTitle: '今日时长' },
 ];
 function dashboardFixture(path) {
+  if (path === '/api/message/unread-count') return { count: 0 };
   if (path === '/api/home/cards') return homeCardFixture();
   if (path === '/api/auth/secondary-lock/menus') return [];
   if (path === '/api/dashboard/tasks') return tasks;

@@ -7,7 +7,8 @@ import { computed, nextTick, reactive, ref, watch } from 'vue'
 async function harness() {
   const registrySource = (await readFile('src/services/modal-presence.ts', 'utf8'))
     .replace(/import[^\n]+\n/g, '').replace(/export /g, '')
-  const registry = new Function('computed', 'ref', registrySource + '\nreturn { modalOpen, registerModal }')(computed, ref)
+  const registryJs = (await transform(registrySource, { loader: 'ts' })).code
+  const registry = new Function('computed', 'ref', registryJs + '\nreturn { modalOpen, registerModal }')(computed, ref)
   const component = await readFile('src/components/ChartCanvas.uvue', 'utf8')
   const stack = [true]
   const script = component.match(/<script setup lang="ts">([\s\S]*?)<\/script>/)[1]

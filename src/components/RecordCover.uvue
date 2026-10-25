@@ -1,10 +1,10 @@
 <script setup lang="ts">
-import LoadingIndicator from './LoadingIndicator.uvue';
+import ContentSkeleton from './ContentSkeleton.uvue';
 import { onUnmounted, ref, watch } from 'vue';
 import { authFileUrl } from '../services/attachments.ts';
 import { session } from '../services/session.ts';
 import MobileButton from './MobileButton.uvue';
-const props = withDefaults(defineProps<{ fileId?: string; placeholder?: string }>(), { fileId: '', placeholder: '◇' });
+const props = withDefaults(defineProps<{ fileId?: string; placeholder?: string; mode?: 'aspectFill' | 'aspectFit' }>(), { fileId: '', placeholder: '◇', mode: 'aspectFill' });
 const source = ref(''), loading = ref(false), failed = ref(false);
 let generation = 0;
 function release() {
@@ -35,10 +35,10 @@ onUnmounted(() => { generation++; release(); });
 </script>
 <template>
   <view class="record-cover" :aria-busy="loading">
-    <image v-if="source && !failed" class="record-cover-image" :src="source" mode="aspectFill" @load="loading = false" @error="failed = true; loading = false" />
-    <view v-if="!source || failed || loading" class="record-cover-placeholder">
+    <image v-if="source && !failed" class="record-cover-image" :src="source" :mode="mode" @load="loading = false" @error="failed = true; loading = false" />
+    <ContentSkeleton v-if="loading" variant="cover" label="正在加载封面" />
+    <view v-else-if="!source || failed" class="record-cover-placeholder">
       <text class="record-cover-symbol">{{ placeholder }}</text>
-      <LoadingIndicator v-if="loading" compact label="正在加载封面" />
       <view v-if="failed" @click.stop><MobileButton label="重试封面" icon="ant-design:reload-outlined" variant="quiet" @click="load" /></view>
     </view>
   </view>

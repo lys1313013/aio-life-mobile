@@ -314,7 +314,7 @@ try {
       if (!component) throw new Error('Missing MobilePage');
       component.emit('refresh');
     });
-    await notice.waitForFunction(() => document.querySelector('[aria-label="正在更新通知设置"]'));
+    await notice.waitForFunction(() => document.querySelector('[aria-label="正在更新消息通知"]'));
     const after = await notice.locator('.notification-panel').last().boundingBox();
     assert.ok(Math.abs(before.y - after.y) < 2);
     assert.ok(reads > previousReads);

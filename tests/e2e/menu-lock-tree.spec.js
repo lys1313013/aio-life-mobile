@@ -34,24 +34,53 @@ async function setup(page, hasPassword = true) {
     await route.fulfill({ json: { code: 0, data } });
   });
   await page.goto('/#/pages/profile/security');
-  await expect(page.getByRole('button', { name: '收起记录', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: '展开记录', exact: true })).toBeVisible();
   return state;
 }
 
-test('折叠不丢失锁定选择，父子独立切换、失败重试与长 ID 保存', async ({ page }) => {
+test('默认收起、父子联动与半选反馈，失败重试和长 ID 保存', async ({ page }) => {
   const state = await setup(page);
   const note = page.locator('[aria-label="锁定记录 / 笔记"]');
-  await expect(note).toHaveAttribute('aria-checked', 'true');
-  await page.getByRole('button', { name: '收起记录 / 资料', exact: true }).click();
-  await page.getByRole('button', { name: '收起记录', exact: true }).click();
+  const root = page.getByRole('checkbox', { name: '锁定记录', exact: true });
+  const finance = page.getByRole('checkbox', { name: '锁定财务', exact: true });
   await expect(note).toHaveCount(0);
+  await expect(root).toHaveAttribute('aria-checked', 'mixed');
+  await expect(finance).toHaveAttribute('aria-checked', 'false');
   await page.getByRole('button', { name: '展开记录', exact: true }).click();
   await expect(note).toHaveAttribute('aria-checked', 'true');
   await expect(page.getByRole('button', { name: '展开记录 / 资料', exact: true })).toBeVisible();
-  await page.locator('[aria-label="锁定记录"]').click();
+  await root.click();
+  await expect(root).toHaveAttribute('aria-checked', 'true');
+  await page.getByRole('button', { name: '展开记录 / 资料', exact: true }).click();
+  const archive = page.getByRole('checkbox', { name: '锁定记录 / 资料 / 工作与生活资料归档的长菜单名称', exact: true });
+  await expect(archive).toHaveAttribute('aria-checked', 'true');
+  await archive.click();
+  await expect(root).toHaveAttribute('aria-checked', 'mixed');
+  await expect(page.getByRole('checkbox', { name: '锁定记录 / 资料', exact: true })).toHaveAttribute('aria-checked', 'false');
   await expect(note).toHaveAttribute('aria-checked', 'true');
-  await page.locator('[aria-label="锁定财务 / 收入"]').click();
+  await note.click();
+  await expect(root).toHaveAttribute('aria-checked', 'false');
+  await archive.click();
+  await expect(root).toHaveAttribute('aria-checked', 'mixed');
+  await expect(page.getByRole('checkbox', { name: '锁定记录 / 资料', exact: true })).toHaveAttribute('aria-checked', 'true');
+  await archive.click();
+  await note.click();
+  await page.getByRole('button', { name: '收起记录', exact: true }).click();
+  await expect(root).toHaveAttribute('aria-checked', 'mixed');
+  await expect(note).toHaveCount(0);
+  await page.getByRole('button', { name: '展开财务', exact: true }).click();
+  const income = page.getByRole('checkbox', { name: '锁定财务 / 收入', exact: true });
+  const expense = page.getByRole('checkbox', { name: '锁定财务 / 支出', exact: true });
+  await income.click();
+  await expect(finance).toHaveAttribute('aria-checked', 'mixed');
+  await expense.click();
+  await expect(finance).toHaveAttribute('aria-checked', 'true');
+  await finance.click();
+  await expect(income).toHaveAttribute('aria-checked', 'false');
+  await expect(expense).toHaveAttribute('aria-checked', 'false');
+  await income.click();
   await page.getByRole('button', { name: '收起财务', exact: true }).click();
+  await expect(finance).toHaveAttribute('aria-checked', 'mixed');
   state.fail = true;
   await page.getByRole('button', { name: '保存菜单锁', exact: true }).click();
   const dialog = page.getByRole('dialog', { name: '确认菜单锁', exact: true });
@@ -61,7 +90,7 @@ test('折叠不丢失锁定选择，父子独立切换、失败重试与长 ID �
   state.fail = false;
   await dialog.getByRole('button', { name: '保存', exact: true }).click();
   await expect(dialog).toHaveCount(0);
-  expect(state.writes.at(-1)).toEqual({ menuIds: [noteId, 'root', 'income'], secondaryPassword: 'fixture-secondary' });
+  expect(state.writes.at(-1)).toEqual({ menuIds: [noteId, 'income'], secondaryPassword: 'fixture-secondary' });
   await expect(page.getByRole('button', { name: '展开财务', exact: true })).toBeVisible();
 });
 
@@ -69,8 +98,8 @@ test('未设置二级密码时可以展开目录但不可修改菜单锁', async
   await setup(page, false);
   await expect(page.locator('[aria-label="锁定记录"]')).toHaveAttribute('aria-disabled', 'true');
   await expect(page.getByRole('button', { name: '保存菜单锁', exact: true })).toBeDisabled();
-  await page.getByRole('button', { name: '收起记录', exact: true }).click();
-  await expect(page.getByRole('button', { name: '展开记录', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: '展开记录', exact: true }).click();
+  await expect(page.getByRole('button', { name: '收起记录', exact: true })).toBeVisible();
 });
 
 for (const width of [390, 768, 1440]) for (const theme of ['light', 'dark']) {
@@ -78,6 +107,9 @@ for (const width of [390, 768, 1440]) for (const theme of ['light', 'dark']) {
     await page.setViewportSize({ width, height: 1000 });
     await page.emulateMedia({ colorScheme: theme });
     await setup(page);
+    await page.screenshot({ path: `artifacts/menu-lock-tree/${width}-${theme}-collapsed.png`, fullPage: true });
+    await page.getByRole('button', { name: '展开记录', exact: true }).click();
+    await page.getByRole('button', { name: '展开记录 / 资料', exact: true }).click();
     const parent = await page.getByText('记录', { exact: true }).boundingBox();
     const child = await page.getByText('笔记', { exact: true }).boundingBox();
     const nested = await page.getByText('工作与生活资料归档的长菜单名称', { exact: true }).boundingBox();

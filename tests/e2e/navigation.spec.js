@@ -57,13 +57,16 @@ test('四栏切换、日期查询、退出清理与重新登录', async ({ page 
   await page.getByRole('button', { name: '账号与安全', exact: true }).click();
   await expect(page.getByText('fixture@example.com')).toBeVisible();
   await page.getByRole('button', { name: '返回', exact: true }).click();
+  await page.getByRole('button', { name: '设置', exact: true }).click();
   await page.getByRole('button', { name: '退出登录', exact: true }).click();
   await page.getByRole('button', { name: '取消', exact: true }).click();
   await expect(page.getByText('退出当前账号？')).toBeHidden();
+  await page.getByRole('button', { name: '返回', exact: true }).click();
   await page.locator('uni-tabbar').getByText('首页', { exact: true }).click();
   await expect(page.locator('.dashboard-scroll')).toBeVisible();
   await expect(homeIcon).toHaveAttribute('src', /home-house-active\.png(?:\?.*)?$/);
   await page.locator('uni-tabbar').getByText('我', { exact: true }).click();
+  await page.getByRole('button', { name: '设置', exact: true }).click();
   await page.getByRole('button', { name: '退出登录', exact: true }).click();
   await page.getByRole('button', { name: '退出', exact: true }).click();
   await expect(page.getByText('欢迎回来', { exact: true })).toBeVisible();

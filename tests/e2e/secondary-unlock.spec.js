@@ -93,7 +93,7 @@ test('我的入口不重复请求菜单锁，检查服务失败也可进入个�
   state.failCheck = true;
   await page.locator('uni-tabbar').getByText('我', { exact: true }).click();
   await expect(page).toHaveURL(/pages\/profile\/index/);
-  await expect(page.getByRole('button', { name: '退出登录', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: '设置', exact: true })).toBeVisible();
   expect(state.checks).toBe(1);
   expect(state.trees).toBe(1);
   await expect(page.getByText('检查菜单锁', { exact: true })).toHaveCount(0);

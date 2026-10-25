@@ -4,6 +4,7 @@ import ContentSkeleton from './ContentSkeleton.uvue';
 import LoadingIndicator from './LoadingIndicator.uvue';
 import MobileButton from './MobileButton.uvue';
 import { themeClass } from '../services/theme.ts';
+import { displayError } from '../services/display-error.ts';
 const props = withDefaults(
   defineProps<{ loading?: boolean; error?: string; empty?: boolean; emptyText?: string; skeleton?: string; retainContent?: boolean; hasContent?: boolean }>(),
   { emptyText: '暂无记录', skeleton: 'list', retainContent: true },
@@ -18,9 +19,9 @@ const emit = defineEmits(['retry']);
 <template>
   <view class="page-state" :class="themeClass('page-state')">
     <template v-if="loading && !(retainContent && (settled || hasContent))"><slot name="loading"><ContentSkeleton :variant="skeleton" /></slot></template>
-    <LoadingIndicator v-else-if="loading" label="正在更新内容" floating />
+    <slot v-else-if="loading" name="refreshing"><LoadingIndicator label="正在更新内容" floating /></slot>
     <view v-if="error" class="page-state-notice ui-pad-card ui-gap-md" role="alert"
-      ><text class="ui-type-body page-state-message" :class="themeClass('page-state-message')">{{ error }}</text
+      ><text class="ui-type-body page-state-message" :class="themeClass('page-state-message')">{{ displayError(error) }}</text
       ><MobileButton
         label="重试"
         icon="ant-design:reload-outlined"

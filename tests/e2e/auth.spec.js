@@ -43,6 +43,7 @@ async function signOut(page) {
   await expect(page.locator('.dashboard-scroll')).toBeVisible();
   await page.getByText('我', { exact: true }).last().click();
   await expect(page.getByText(profile.nickname)).toBeVisible();
+  await page.getByRole('button', { name: '设置', exact: true }).click();
   await page.getByRole('button', { name: '退出登录', exact: true }).click();
   await page.getByRole('button', { name: '退出', exact: true }).click();
   await expect(page.getByText('欢迎回来', { exact: true })).toBeVisible();
@@ -124,6 +125,7 @@ test('登录后携带 Bearer，刷新恢复会话，退出后不能访问首页'
   expect(requests.login).toBe(1);
   await page.getByText('我', { exact: true }).last().click();
   await expect(page.getByText(profile.nickname)).toBeVisible();
+  await page.getByRole('button', { name: '设置', exact: true }).click();
   await page.getByRole('button', { name: '退出登录', exact: true }).click();
   await page.getByRole('button', { name: '退出', exact: true }).click();
   await expect(page.getByText('欢迎回来', { exact: true })).toBeVisible();
@@ -154,6 +156,7 @@ test('暂时断网保留会话，重试成功，注销断网也清理本机会�
   expect(requests.login).toBe(1);
   await page.getByText('我', { exact: true }).last().click();
   await expect(page.getByText(profile.nickname)).toBeVisible();
+  await page.getByRole('button', { name: '设置', exact: true }).click();
   await page.getByRole('button', { name: '退出登录', exact: true }).click();
   await page.getByRole('button', { name: '退出', exact: true }).click();
   await expect(page.getByText('欢迎回来', { exact: true })).toBeVisible();

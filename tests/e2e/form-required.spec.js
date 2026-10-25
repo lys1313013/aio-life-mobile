@@ -12,8 +12,8 @@ for (const width of [390, 768, 1440]) {
       const dialog = page.getByRole('dialog', { name: '新增订阅', exact: true });
       await expect(dialog.locator('.required-mark')).toHaveCount(2);
       await expect(dialog.getByRole('textbox', { name: '名称', exact: true })).toHaveAttribute('aria-required', 'true');
-      await expect(dialog.locator('uni-picker[aria-label="到期日期"]')).toHaveAttribute('aria-required', 'true');
-      await expect(dialog.locator('uni-picker[aria-label="开通日期"]')).toHaveAttribute('aria-required', 'false');
+      await expect(dialog.locator('.calendar-trigger[aria-label="到期日期"]')).toHaveAttribute('aria-required', 'true');
+      await expect(dialog.locator('.calendar-trigger[aria-label="开通日期"]')).toHaveAttribute('aria-required', 'false');
       await expect(dialog.locator('.required-mark').first()).toHaveCSS('color', 'rgb(224, 82, 96)');
       await dialog.getByRole('button', { name: '保存', exact: true }).click();
       await expect(dialog.getByRole('alert')).toHaveText('请输入会员名称和到期日期');

@@ -1,3 +1,4 @@
+const { selectCalendarDate } = require('./calendar');
 const { test, expect } = require('@playwright/test');
 const { dashboardFixture } = require('./fixtures.js');
 const { setupMapFixture } = require('./footprint-map-fixture.cjs');
@@ -66,10 +67,7 @@ for (const width of [390, 768, 1440]) for (const theme of ['light', 'dark']) {
     await dialog.locator('.ongoing-label').click();
     await dialog.getByRole('button', { name: '保存', exact: true }).click();
     await expect(dialog.getByRole('alert')).toContainText('完整日期');
-    await dialog.locator('uni-picker[aria-label="结束"]').click();
-    const endDate = dialog.locator('uni-picker[aria-label="结束"] input[type="date"]');
-    if (await endDate.count()) await endDate.fill('2020-06-30');
-    else await page.locator('.uni-picker-action-confirm:visible').click();
+    await selectCalendarDate(page, dialog.getByRole('button', { name: '结束', exact: true }), '2020-06-30');
     await dialog.getByRole('button', { name: '保存', exact: true }).click();
     await expect(dialog).toHaveCount(0);
     expect(state.writes.at(-1).endDate).toMatch(/^\d{4}-\d{2}-\d{2}$/);
@@ -96,11 +94,8 @@ test('生活足迹旧搜索不覆盖新结果、手动选点与备注新增', as
   await expect(dialog.getByRole('button', { name: '确认位置', exact: true })).toBeVisible();
   await dialog.getByRole('button', { name: '确认位置', exact: true }).click();
   await dialog.locator('[aria-label="备注"] textarea').fill('新的备注');
-  await dialog.locator('uni-picker[aria-label="开始"]').click();
-  const nativeDate = dialog.locator('uni-picker[aria-label="开始"] input[type="date"]');
-  if (await nativeDate.count()) await nativeDate.fill('2020-08-01');
-  else await page.locator('.uni-picker-action-confirm:visible').click();
-  await expect(dialog.locator('uni-picker[aria-label="开始"]')).not.toContainText('请选择');
+  await selectCalendarDate(page, dialog.getByRole('button', { name: '开始', exact: true }), '2020-08-01');
+  await expect(dialog.locator('.calendar-trigger[aria-label="开始"]')).not.toContainText('请选择');
   // 地图选点会保持自己填写的名称，并将点选坐标用于逆解析。
   await dialog.locator('.footprint-h5-canvas').click({ position: { x: 90, y: 110 } });
   await expect(dialog).toContainText('位置已确认');
@@ -165,10 +160,7 @@ test('腾讯底图失败后重建恢复，搜索关闭时仍可选点', async ({
   await page.getByRole('button', { name: '新增生活足迹', exact: true }).click();
   const dialog = page.getByRole('dialog');
   await dialog.locator('[aria-label="地点"] input').fill('手动选点');
-  await dialog.locator('uni-picker[aria-label="开始"]').click();
-  const nativeDate = dialog.locator('uni-picker[aria-label="开始"] input[type="date"]');
-  if (await nativeDate.count()) await nativeDate.fill('2020-08-01');
-  else await page.locator('.uni-picker-action-confirm:visible').click();
+  await selectCalendarDate(page, dialog.getByRole('button', { name: '开始', exact: true }), '2020-08-01');
   await dialog.locator('.footprint-h5-canvas').click({ position: { x: 130, y: 110 } });
   await expect(dialog).toContainText('位置已确认');
   await dialog.getByRole('button', { name: '保存', exact: true }).click();
@@ -219,10 +211,7 @@ test('四级地区按需加载、失败重试、地址解析上下文与编辑�
   await dialog.getByRole('button', { name: '解析地址到地图', exact: true }).click();
   await expect.poll(() => state.geocodes.at(-1)).toBe('浙江省杭州市西湖区三墩镇甲路1号');
   await dialog.getByRole('button', { name: '确认位置', exact: true }).click();
-  await dialog.locator('uni-picker[aria-label="开始"]').click();
-  const date = dialog.locator('uni-picker[aria-label="开始"] input[type="date"]');
-  if (await date.count()) await date.fill('2020-08-01');
-  else await page.locator('.uni-picker-action-confirm:visible').click();
+  await selectCalendarDate(page, dialog.getByRole('button', { name: '开始', exact: true }), '2020-08-01');
   await page.screenshot({ path: testInfo.outputPath('regions-editor.png'), fullPage: true });
   await dialog.getByRole('button', { name: '保存', exact: true }).click();
   await expect(dialog).toHaveCount(0);

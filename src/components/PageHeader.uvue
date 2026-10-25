@@ -14,6 +14,7 @@ const props = defineProps({
   back: { type: Boolean, default: false },
   contentMinWidth: { type: Number, default: 0 },
   actionsMinWidth: { type: Number, default: 0 },
+  compactActions: { type: Boolean, default: false },
 })
 defineEmits(['back'])
 const statusBarHeight = ref(0)
@@ -21,7 +22,8 @@ const navigationHeight = ref(48)
 const rightInset = ref(spacing.page)
 const availableWidth = ref(0)
 const wrapActions = computed(() => props.actionsMinWidth > 0 && availableWidth.value < props.contentMinWidth + spacing.inline + props.actionsMinWidth)
-const headerHeight = computed(() => navigationHeight.value + (wrapActions.value ? spacing.controlMin + spacing.detail : 0))
+const actionsHeight = computed(() => spacing.controlMin + (props.compactActions ? 0 : spacing.detail))
+const headerHeight = computed(() => navigationHeight.value + (wrapActions.value ? actionsHeight.value : 0))
 function updateLayout() {
   const windowInfo = uni.getWindowInfo()
   let capsule = null
@@ -59,12 +61,12 @@ onMounted(() => {
       </button>
       <view class="navigation-content" :class="{ 'navigation-content-wide': !back }">
         <slot><text class="navigation-title" :class="themeClass('navigation-title')">{{ title }}</text></slot>
-        <view v-if="actionsMinWidth > 0 && !wrapActions" class="navigation-actions"><slot name="actions" /></view>
+        <view v-if="actionsMinWidth > 0 && !wrapActions" class="navigation-actions"><slot name="actions" :wrapped="false" /></view>
       </view>
       <LoadingIndicator v-if="secondaryLock.checking" compact label="正在加载" />
     </view>
-    <view v-if="wrapActions" class="navigation-actions-row ui-header-inset">
-      <view class="navigation-actions-content"><slot name="actions" /></view>
+    <view v-if="wrapActions" class="navigation-actions-row ui-header-inset" :class="{ 'navigation-actions-compact': compactActions }" :style="{ height: actionsHeight + 'px' }">
+      <view class="navigation-actions-content"><slot name="actions" :wrapped="true" /></view>
     </view>
   </view>
   </view>
@@ -115,9 +117,11 @@ onMounted(() => {
   padding-left: $space-inline;
 }
 .navigation-actions-row {
-  height: $space-controlMin + $space-detail;
   box-sizing: border-box;
   padding-bottom: $space-detail;
+}
+.navigation-actions-compact {
+  padding-bottom: 0;
 }
 .navigation-actions-content {
   width: 100%;

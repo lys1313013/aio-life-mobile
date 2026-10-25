@@ -8,7 +8,7 @@ withDefaults(defineProps<{ variant?: string; rows?: number; label?: string; comp
 <template>
   <view class="content-skeleton" :class="[themeClass('content-skeleton'), { 'skeleton-cover-root': variant === 'cover' }]" role="status" :aria-label="label" aria-live="polite">
     <view class="skeleton-content" :class="{ 'skeleton-cover-content': variant === 'cover' }" aria-hidden="true">
-      <view v-if="variant === 'cover'" class="skeleton-shape skeleton-cover" :class="themeClass('skeleton-shape')" />
+      <view v-if="variant === 'cover'" class="skeleton-cover" :class="themeClass('skeleton-cover')"><view class="skeleton-cover-shimmer" :class="themeClass('skeleton-cover-shimmer')" /></view>
       <view v-if="variant === 'caption'" class="skeleton-shape skeleton-short" :class="themeClass('skeleton-shape')" />
       <view v-if="variant === 'tile' || variant === 'goal-tile' || variant === 'date-tile'" class="skeleton-tile">
         <view class="skeleton-shape skeleton-label" :class="themeClass('skeleton-shape')" />
@@ -115,9 +115,14 @@ grid-template-columns: repeat(4, minmax(0, 1fr));
 .skeleton-row-compact { min-height: 60px; }
 .skeleton-row-dark { border-left-color: #3b4658; }
 .skeleton-connection-dark { border-color: #30343c; }
-.skeleton-cover-root { position: absolute; left: 0; right: 0; top: 0; bottom: 0; height: 100%; }
+.skeleton-cover-root { overflow: hidden; position: absolute; left: 0; right: 0; top: 0; bottom: 0; height: 100%; }
 .skeleton-cover-content, .skeleton-cover { height: 100%; width: 100%; }
-.skeleton-cover {
+// Match device image loading: fixed media bounds, one sweep, no extra text or controls.
+.skeleton-cover-content { animation: none; }
+.skeleton-cover-shimmer { width: 100%; height: 100%; background: linear-gradient(90deg, transparent 0%, rgba(255, 255, 255, 0.45) 50%, transparent 100%); animation: skeleton-cover-sweep 1.4s infinite; }
+.skeleton-cover-shimmer-dark { background: linear-gradient(90deg, transparent 0%, rgba(255, 255, 255, 0.08) 50%, transparent 100%); }
+@keyframes skeleton-cover-sweep { from { transform: translateX(-100%); } to { transform: translateX(100%); } }
+.skeleton-cover { overflow: hidden; background-color: #f7f8f8;
 /* #ifndef APP */
 border-radius: inherit;
 /* #endif */
@@ -125,6 +130,7 @@ border-radius: inherit;
 border-radius: 8px;
 /* #endif */
  }
+.skeleton-cover-dark { background-color: #282a2f; }
 .skeleton-tile { gap: $space-section; min-height: 96px; }
 .skeleton-date-value { width: 48%; height: 36px; }
 .skeleton-progress { width: 100%; height: 5px; margin-top: auto; }
@@ -141,6 +147,6 @@ grid-template-columns: repeat(6, minmax(0, 1fr));
 /* #endif */
  } }
 /* #ifdef WEB */
-@media (prefers-reduced-motion: reduce) { .skeleton-content { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .skeleton-content, .skeleton-cover-shimmer { animation: none; } }
 /* #endif */
 </style>

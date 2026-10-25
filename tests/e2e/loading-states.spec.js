@@ -155,7 +155,7 @@ test('GitHub pagination failure retains commits and retries the failed page', as
 const scenarios = [
   ['records/library?kind=read', '.library-poster .skeleton-cover'],
   ['tasks/goals', '.goal-grid .skeleton-tile'],
-  ['goods/wardrobe', '.item-photo .skeleton-cover'],
+  ['goods/wardrobe', '.item-photo .goods-image-skeleton'],
   ['profile/settings', '.skeleton-input'],
   ['profile/index', '.skeleton-profile-avatar'],
   ['time/index', '.timeline[aria-busy="true"]'],

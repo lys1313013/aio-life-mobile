@@ -179,8 +179,8 @@ const extremeLabels = computed(() => {
         <button v-for="item in colored" :key="item.name" class="chart-legend-button" role="button"
           :class="{ 'chart-legend-hidden': hidden.includes(item.name) }" :aria-label="item.name"
           :disabled="loading" :aria-pressed="!hidden.includes(item.name)" @click="toggle(item.name)">
-          <view class="chart-stack-swatch" :style="{ backgroundColor: item.color }" />
-          <text class="chart-legend-name" :style="appTextColor()">{{ item.name }}</text>
+          <view class="chart-stack-swatch" :class="{ 'chart-legend-swatch-hidden': hidden.includes(item.name) }" :style="{ backgroundColor: item.color }" />
+          <text class="chart-legend-name" :class="[themeClass('chart-legend-name'), { 'chart-legend-name-hidden': hidden.includes(item.name), 'chart-legend-name-hidden-dark': hidden.includes(item.name) && isDark }]">{{ item.name }}</text>
         </button>
       </view>
     </scroll-view>
@@ -188,8 +188,8 @@ const extremeLabels = computed(() => {
       <button v-for="item in colored" :key="item.name" class="chart-legend-button" role="button"
         :class="{ 'chart-legend-hidden': hidden.includes(item.name) }" :aria-label="item.name"
         :disabled="loading" :aria-pressed="!hidden.includes(item.name)" @click="toggle(item.name)">
-        <view class="chart-legend-swatch" :style="{ backgroundColor: item.color }" />
-        <text class="chart-legend-name" :style="appTextColor()">{{ item.name }}</text>
+        <view class="chart-legend-swatch" :class="{ 'chart-legend-swatch-hidden': hidden.includes(item.name) }" :style="{ backgroundColor: item.color }" />
+        <text class="chart-legend-name" :class="[themeClass('chart-legend-name'), { 'chart-legend-name-hidden': hidden.includes(item.name), 'chart-legend-name-hidden-dark': hidden.includes(item.name) && isDark }]">{{ item.name }}</text>
       </button>
     </view>
     <text v-if="error" class="mini-chart-error" role="alert">{{ error }}</text>
@@ -290,8 +290,11 @@ const extremeLabels = computed(() => {
 .chart-stack-swatch { width: 18px; height: 10px; border-radius: 2px; flex-shrink: 0; }
 .chart-stack-label { position: absolute; text-align: center; @include type-style('chart-label'); pointer-events: none; }
 .chart-legend-button { display: flex; flex-direction: row; flex-shrink: 0; align-items: center; gap: $space-detail; min-width: $space-controlMin; min-height: $space-controlMin; padding: 0; margin: 0; border: 0; background-color: transparent; }
-.chart-legend-name { @include type-style('caption'); }
-.chart-legend-hidden { opacity: 0.4; }
+.chart-legend-name { @include type-style('caption'); color: #27272a; }
+.chart-legend-name-dark { color: #eeeeef; }
+.chart-legend-name-hidden { color: $text-secondary-light; }
+.chart-legend-name-hidden-dark { color: $text-secondary-dark; }
+.chart-legend-swatch-hidden { opacity: 0.4; }
 .chart-legend-swatch { width: 6px; height: 6px; border-radius: 3px; }
 .mini-chart-values { display: flex; flex-direction: row; flex-wrap: wrap; gap: $space-inline; margin-top: $space-inline; }
 .chart-values-compact { flex-wrap: nowrap; }

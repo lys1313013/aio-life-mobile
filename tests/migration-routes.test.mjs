@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import {readFile,access} from 'node:fs/promises'
 const source=await readFile(new URL('../src/services/life-catalog.ts',import.meta.url),'utf8')
 const {nativeDestination}=await import(`data:text/javascript;base64,${Buffer.from(source).toString('base64')}`)
-const pages=JSON.parse(await readFile(new URL('../src/pages.json',import.meta.url),'utf8'))
+const pages=JSON.parse((await readFile(new URL('../src/pages.json',import.meta.url),'utf8')).replace(/^\s*\/\/.*$/gm, ''))
 const routes=[...pages.pages.map(p=>p.path),...(pages.subPackages||[]).flatMap(pack=>pack.pages.map(p=>pack.root+'/'+p.path))]
 const businessPaths=[
  '/analytics','/workspace','/profile','/vben-admin/about',

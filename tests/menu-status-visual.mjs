@@ -42,7 +42,7 @@ try {
   await expect(mobileSwitch).toBeVisible();await mobileSwitch.click();
   await expect.poll(()=>state.row.mobileStatus).toBe(1);await expect.poll(()=>state.writes.length).toBe(1);
   if(state.row.status!==1||state.writes[0].path!=='mobile-status')throw Error('mobile toggle changed Web');
-  const checked=async()=>platform==='web'?expect(mobileSwitch).toHaveAttribute('aria-checked','true'):expect(mobileSwitch.locator('.uni-switch-input')).toHaveClass(/uni-switch-input-checked/);
+  const checked=async()=>expect(mobileSwitch).toHaveAttribute('aria-checked','true');
   await checked();state.fail=true;await mobileSwitch.click();await expect.poll(()=>state.writes.length).toBe(2);
   if(platform==='mobile')await expect(page.getByRole('dialog',{name:'菜单详情'}).getByRole('alert')).toContainText('模拟切换失败');
   await checked();state.fail=false;await webSwitch.click();await expect.poll(()=>state.row.status).toBe(0);

@@ -8,8 +8,13 @@ const stateCode = (await transform(await readFile(new URL('../src/services/page-
 const stateURL = encode(stateCode)
 const state = await import(stateURL)
 const source = (await readFile(new URL('../src/services/page-refresh.ts', import.meta.url), 'utf8')).replace(/^import .*$/gm, '')
+const { specs } = await import(encode((await transform(await readFile(new URL('../src/pages/admin/services/specs.ts', import.meta.url), 'utf8'), { loader: 'ts', format: 'esm' })).code))
+const adminSource = await readFile(new URL('../src/pages/admin/index.uvue', import.meta.url), 'utf8')
+// 执行页面真实的刷新注册，避免只测公共 hook 而漏掉页面配置错误。
+const adminRefresh = new Function('usePageRefresh', 'load', 'loading', 'error', 'spec',
+  adminSource.slice(adminSource.indexOf('const refreshOnShow ='), adminSource.indexOf('onShow(() => {')) + '\nreturn refreshOnShow')
 let sequence = 0
-async function fixture({ fail = false, pending = null } = {}) {
+async function fixture({ fail = false, pending = null, adminKind = null } = {}) {
   const id = ++sequence
   const hooks = { show: [], hide: [] }
   const session = reactive({ token: 'fixture-account' })
@@ -30,7 +35,7 @@ const lockedMenuPaths=url=>{access.url=url;return access.paths},isMenuUnlocked=(
   let calls = 0, generation = 0
   let failNext = fail
   const scope = effectScope()
-  const refresh = scope.run(() => module.usePageRefresh(async () => {
+  const load = async () => {
     calls++; const version = ++generation, owner = session.token
     loading.value = true; error.value = ''
     if (pending) { const task = pending; pending = null; await task }
@@ -38,7 +43,10 @@ const lockedMenuPaths=url=>{access.url=url;return access.paths},isMenuUnlocked=(
     if (failNext) { error.value = '模拟失败'; failNext = false }
     else rows.value = [owner + '-' + calls]
     loading.value = false
-  }, { loading: () => loading.value, error: () => error.value, keys: () => ['fixture-goals-' + id] }))
+  }
+  const refresh = scope.run(() => adminKind
+    ? adminRefresh(module.usePageRefresh, load, loading, error, ref(specs[adminKind]))
+    : module.usePageRefresh(load, { loading: () => loading.value, error: () => error.value, keys: () => ['fixture-goals-' + id] }))
   return {
     session, loading, error, rows, access, refresh,
     get calls() { return calls },
@@ -47,6 +55,25 @@ const lockedMenuPaths=url=>{access.url=url;return access.paths},isMenuUnlocked=(
     write(related = true) { state.invalidatePageAfterWrite('/' + (related ? 'fixture-goals-' + id : 'other-business'), 'PUT') },
     close() { scope.stop(); delete globalThis.__pageRefreshFixtures[id] },
   }
+}
+for (const adminKind of ['access', 'operation']) {
+  test(`${adminKind} 只读日志首次进入自动加载，返回复用，失败后可恢复`, async () => {
+    const f = await fixture({ adminKind, fail: true })
+    try {
+      await f.show()
+      assert.equal(f.calls, 1)
+      assert.equal(f.error.value, '模拟失败')
+      f.hide(); await f.show()
+      assert.equal(f.calls, 2)
+      assert.equal(f.error.value, '')
+      assert.equal(f.rows.value.length, 1)
+      f.hide(); await f.show()
+      assert.equal(f.calls, 2)
+      state.invalidatePageAfterWrite('/system/logs/' + adminKind, 'POST')
+      f.hide(); await f.show()
+      assert.equal(f.calls, 3)
+    } finally { f.close() }
+  })
 }
 test('成功加载后 60 分钟内复用，整 60 分钟及跨账号必须重新查询', () => {
   const cache = state.createPageFreshness()

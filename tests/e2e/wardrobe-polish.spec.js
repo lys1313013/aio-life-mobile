@@ -71,7 +71,7 @@ for (const width of [390, 768, 1440]) for (const theme of ['light', 'dark']) {
     await expect(page.locator('.item-title')).toHaveCount(6);
     await page.getByRole('button', { name: '编辑衣物' + clothes[0].name, exact: true }).click();
     const dialog = page.getByRole('dialog', { name: '衣物编辑', exact: true });
-    await expect(dialog.locator('.edit-photo')).toBeVisible();
+    await expect(dialog.locator('.edit-photo.goods-media')).toBeVisible();
     await shot(page, `${width}-${theme}-edit`);
     await dialog.locator('[aria-label="名称"] input').fill('优化后衬衫');
     state.saveFail = true;
@@ -100,7 +100,7 @@ for (const width of [390, 768, 1440]) for (const theme of ['light', 'dark']) {
     for (const count of [0, 1, 6]) {
       state.rows = structuredClone(clothes.slice(0, count)); state.hold = gate();
       await page.goto('/#/pages/goods/wardrobe'); await page.reload();
-      await expect(page.locator('.item-photo .skeleton-cover').first()).toBeVisible();
+      await expect(page.locator('.item-photo .goods-image-skeleton').first()).toBeVisible();
       const initial = await page.locator('.item-grid').first().boundingBox();
       await shot(page, `${width}-${theme}-${count}-loading`);
       state.hold.release(); state.hold = null;

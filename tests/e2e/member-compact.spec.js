@@ -43,7 +43,7 @@ for (const width of [320, 390, 768, 1440]) {
       await expect(dialog.getByRole('button', { name: '保存', exact: true })).toBeInViewport();
       await page.screenshot({ path: `artifacts/member-compact/${width}-${theme}-collapsed.png` });
       await dialog.getByRole('button', { name: '1月', exact: true }).click();
-      await expect(dialog.locator('uni-picker[aria-label="到期日期"]')).toContainText('2026-02-28');
+      await expect(dialog.locator('.calendar-trigger[aria-label="到期日期"]')).toContainText('2026-02-28');
       await details.click();
       await expect(details).toHaveAttribute('aria-expanded', 'true');
       await expect(dialog.locator('textarea')).toHaveValue('模拟备注，折叠后必须保留');
