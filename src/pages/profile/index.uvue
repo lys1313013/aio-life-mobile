@@ -1,23 +1,32 @@
 <script setup lang="ts">
+// #ifdef MP-WEIXIN
+import TabPage from '../../components/TabPage.uvue'
+// #endif
 import { usePageRefresh } from '../../services/page-refresh.ts'
 import { buttonLabelClasses } from '../../services/button-label.ts'
 import ContentSkeleton from '../../components/ContentSkeleton.uvue';
 import AppIcon from '../../components/AppIcon.uvue'
-import MobileButton from '../../components/MobileButton.uvue'
 import SecondaryUnlock from "../../components/SecondaryUnlock.uvue";
-import { themeClass } from '../../services/theme.ts'
+import { isDark, themeClass } from '../../services/theme.ts'
 import { useRefreshTheme } from '../../services/refresh-theme.ts'
 const refreshTheme = useRefreshTheme()
-import { nextTick, computed, ref } from 'vue'
-import { onShow, onHide } from '@dcloudio/uni-app'
+import { nextTick, computed, ref, watch } from 'vue'
+import { onShow, onHide, onUnload } from '@dcloudio/uni-app'
 import PageHeader from '../../components/PageHeader.uvue'
-import { fetchUser, logout } from '../../services/api.ts'
+import { fetchUser, request } from '../../services/api.ts'
 import { restoreSession, session } from '../../services/session.ts'
 
+const shortcutLinks = [
+  { title: '消息中心', path: '/pages/messages/index', icon: 'ant-design:message-outlined', message: true },
+  { title: '账号绑定', path: 'bindings', icon: 'lucide:link', message: false },
+  { title: '首页卡片', path: '/pages/home-settings/index', icon: 'lucide:layout-dashboard', message: false },
+  { title: '菜单显示', path: 'preferences?section=menus', icon: 'lucide:layout-grid', message: false },
+]
 const preferenceLinks = [
-  { title: '消息中心', path: '/pages/messages/index' },
-  { title: '账号与安全', path: 'account-security' },
-  { title: '设置', path: 'preferences?section=general' },
+  { title: '数据导出', path: '/pages/data-export/index', icon: 'ant-design:download-outlined' },
+  { title: '消息通知', path: 'notifications', icon: 'lucide:bell' },
+  { title: '分类管理', path: '/pages/records/categories', icon: 'lucide:settings-2' },
+  { title: '设置', path: 'preferences?section=general', icon: 'ant-design:setting-outlined' },
 ]
 
 function openPage(name: string) {
@@ -28,20 +37,39 @@ const loading = ref(false)
 const refreshing = ref(false)
 async function pullRefresh() {
   if (refreshing.value) return
+  const version = revision
   refreshing.value = true
   await nextTick()
   try {
     if (loadTask) await loadTask
-    await load()
+    if (version === revision) await load()
   } finally {
-    refreshing.value = false
+    if (version === revision) refreshing.value = false
   }
 }
-const leaving = ref(false)
-const confirmLogout = ref(false)
 const errorText = ref('')
+const unreadCount = ref(0)
+const unreadError = ref('')
+// 未读数后台更新；仅用请求状态防重入，不展示加载动画或清空已有角标。
+const unreadLoading = ref(false)
+const unreadLabel = computed(() => unreadCount.value > 99 ? '99+' : String(unreadCount.value))
+const shortcutColor = computed(() => isDark.value ? '#9dbcfa' : '#4e7ee3')
 let loadTask: Promise<void> | null = null
 let visible = false
+let revision = 0
+function suspend() {
+  revision++
+  loadTask = null
+  loading.value = false
+  unreadLoading.value = false
+  refreshing.value = false
+}
+watch(() => session.token, () => {
+  suspend()
+  unreadCount.value = 0
+  unreadError.value = ''
+  errorText.value = ''
+}, { flush: 'sync' })
 const refreshOnShow = usePageRefresh(() => load(), { loading: () => loading.value, error: () => errorText.value, keys: () => ['user', 'users', 'userbinds', 'message'] })
 onShow(() => {
   visible = true
@@ -51,55 +79,70 @@ onShow(() => {
     return
   }
   refreshOnShow()
+  loadUnread()
 })
 onHide(() => {
   visible = false
-  confirmLogout.value = false
+  suspend()
+})
+onUnload(() => {
+  visible = false
+  suspend()
 })
 function load() {
+  if (!visible || !session.token) return Promise.resolve()
   if (loadTask) return loadTask
-  loadTask = loadProfile().finally(() => {
-    loadTask = null
+  const task = Promise.all([loadProfile(), loadUnread()]).then(() => {}).finally(() => {
+    if (loadTask === task) loadTask = null
   })
+  loadTask = task
   return loadTask
 }
 async function loadProfile() {
+  const version = revision, token = session.token
   loading.value = true
   errorText.value = ''
   try {
     await fetchUser()
   } catch (error) {
-    if (!visible) return
+    if (!visible || revision !== version || token !== session.token) return
     if (error.name === 'SessionExpiredError') {
       uni.reLaunch({ url: '/pages/login/index' })
       return
     }
     errorText.value = error.message || '加载失败，请重试'
   } finally {
-    loading.value = false
+    if (revision === version) loading.value = false
   }
 }
-async function signOut() {
-  if (leaving.value) return
-  leaving.value = true
+async function loadUnread() {
+  if (!visible || !session.token || unreadLoading.value) return
+  const version = revision, token = session.token
+  unreadLoading.value = true
+  unreadError.value = ''
   try {
-    await logout()
-  } catch (_) {
-    uni.showToast({ title: '已退出本机，服务端注销未完成', icon: 'none' })
+    const data = await request<{ count: number }>('/message/unread-count')
+    if (!visible || revision !== version || token !== session.token) return
+    if (!data || typeof data.count !== 'number' || !Number.isInteger(data.count) || data.count < 0 || data.count > 2147483647) throw new Error('未读消息数量异常，请重试')
+    unreadCount.value = data.count
+  } catch (reason) {
+    if (visible && revision === version && token === session.token) unreadError.value = reason.message || '未读消息加载失败'
   } finally {
-    uni.reLaunch({ url: '/pages/login/index' })
-    leaving.value = false
+    if (revision === version) unreadLoading.value = false
   }
 }
 </script>
 
 <template>
+  <!-- #ifdef MP-WEIXIN -->
+  <TabPage page-path="pages/profile/index">
+  <!-- #endif -->
   <view class="tab-page" :class="themeClass('tab-page')">
     <PageHeader title="" :actions-min-width="44">
       <template #actions>
         <!-- #ifndef WEB -->
         <button role="button" class="profile-icon-button" aria-label="扫码登录" @click="openPage('/pages/scan-login/index')">
-          <AppIcon name="lucide:scan" />
+          <AppIcon name="lucide:scan-line" />
         </button>
         <!-- #endif -->
       </template>
@@ -152,53 +195,41 @@ async function signOut() {
             >{{ user.introduction }}</text
           >
           </view>
+          <AppIcon name="ant-design:right-outlined" :size="16" />
         </button>
         <view
           v-else-if="loading"
           class="profile-loading"
           ><ContentSkeleton variant="profile-row" label="正在加载个人资料" /></view
         >
-        <view class="profile-menu ui-pad-card ui-mt-section" :class="themeClass('profile-menu')">
-          <button v-for="entry in preferenceLinks" :key="entry.path" role="button" class="menu-row ui-type-body" :aria-label="entry.title" @click="openPage(entry.path)"><text class="menu-label" :class="themeClass('menu-label')">{{ entry.title }}</text><AppIcon name="ant-design:right-outlined" /></button>
+        <view class="profile-shortcuts ui-pad-card" :class="themeClass('profile-shortcuts')">
+          <button v-for="entry in shortcutLinks" :key="entry.path" role="button" class="shortcut-button" :aria-label="entry.title" @click="openPage(entry.path)">
+            <view class="shortcut-icon" :class="themeClass('shortcut-icon')">
+              <AppIcon :name="entry.icon" :color="shortcutColor" />
+              <text v-if="entry.message && unreadCount > 0" class="unread-badge" :aria-label="unreadCount + '条未读消息'">{{ unreadLabel }}</text>
+            </view>
+            <text class="shortcut-label" :class="themeClass('shortcut-label')">{{ entry.title }}</text>
+          </button>
         </view>
-        <view class="signout-anchor ui-mt-section">
-          <view
-            v-if="confirmLogout"
-            class="signout-confirm"
-            :class="themeClass('signout-confirm')"
-            role="alertdialog"
-            aria-label="退出当前账号？"
-            ><text class="signout-message"
-              >退出当前账号？</text
-            ><view class="signout-actions"
-              ><MobileButton
-                label="取消"
-                compact
-                variant="quiet"
-                :disabled="leaving"
-                @click="confirmLogout = false"
-              /><MobileButton
-                label="退出"
-                compact
-                :danger="true"
-                :loading="leaving"
-                @click="signOut"
-              /></view
-            ><view class="signout-arrow" :class="themeClass('signout-arrow')" /></view
-          >
-          <button
-            role="button"
-            class="signout-button"
-            :aria-expanded="confirmLogout"
-            :disabled="leaving" :aria-disabled="leaving"
-            @click="confirmLogout = !confirmLogout"
-            :class="themeClass('signout-button')"
-          ><text :class="buttonLabelClasses(['signout-button', themeClass('signout-button')])">退出登录</text></button>
+        <view v-if="unreadError" class="unread-error ui-mt-section">
+          <text class="error-text" role="alert" :class="themeClass('error-text')">{{ unreadError }}</text>
+          <button role="button" class="text-action" aria-label="重试未读消息" :disabled="unreadLoading" @click="loadUnread"><text :class="buttonLabelClasses(['text-action'])">重试</text></button>
+        </view>
+        <view class="profile-menu ui-pad-card ui-mt-section" :class="themeClass('profile-menu')">
+          <button role="button" class="menu-row" aria-label="账号与安全" @click="openPage('account-security')">
+            <AppIcon name="mdi:shield-account-outline" /><text class="menu-label" :class="themeClass('menu-label')">账号与安全</text><AppIcon name="ant-design:right-outlined" :size="16" />
+          </button>
+        </view>
+        <view class="profile-menu ui-pad-card ui-mt-section" :class="themeClass('profile-menu')">
+          <button v-for="entry in preferenceLinks" :key="entry.path" role="button" class="menu-row" :aria-label="entry.title" @click="openPage(entry.path)"><AppIcon :name="entry.icon" /><text class="menu-label" :class="themeClass('menu-label')">{{ entry.title }}</text><AppIcon name="ant-design:right-outlined" :size="16" /></button>
         </view>
       </view>
     </scroll-view>
   <SecondaryUnlock />
   </view>
+  <!-- #ifdef MP-WEIXIN -->
+  </TabPage>
+  <!-- #endif -->
 </template>
 
 <style scoped lang="scss">
@@ -217,8 +248,8 @@ async function signOut() {
   display: flex;
   flex-direction: row;
   align-items: center;
-  justify-content: space-between;
-  min-height: 48px;
+  gap: $space-section;
+  min-height: $space-controlMin + $space-detail;
   width: 100%;
   margin: 0;
   padding: 0;
@@ -227,10 +258,13 @@ async function signOut() {
   border-radius: 0;
 }
 .menu-label {
+  flex: 1;
+  text-align: left;
   color: #27272a;
   @include type-style('body');
 }
 /* #ifdef WEB || MP-WEIXIN */
+.shortcut-button::after,
 .menu-row::after,
 .profile-icon-button::after,
 .profile-card::after {
@@ -297,87 +331,6 @@ async function signOut() {
   text-align: left;
   word-break: break-all;
 }
-.signout-anchor {
-  position: relative;
-  // 提升整个锚点层级，让向上展开的确认框覆盖前一张菜单卡片。
-  z-index: 3;
-  overflow: visible;
-}
-.signout-button {
-  display: flex;
-  flex-direction: row;
-  align-items: center;
-  justify-content: center;
-  width: 100%;
-  height: 48px;
-  margin: 0;
-  padding: 0;
-  border: 0;
-  border-radius: 14px;
-  background-color: #ffffff;
-  color: #c65353;
-  @include type-style('body');
-  line-height: type-leading('tallControl');
-}
-.signout-confirm {
-  position: absolute;
-  bottom: calc(100% + $space-inline);
-  z-index: 2;
-  left: 50%;
-  transform: translateX(-50%);
-  // 限制浮层宽度，手机与宽屏都保持紧凑，并避免窄屏溢出。
-  width: 264px;
-
-/* #ifndef APP */
-max-width: 100%;
-/* #endif */
-/* #ifdef APP */
-flex-shrink: 1;
-/* #endif */
-
-  box-sizing: border-box;
-  overflow: visible;
-  padding: $space-modal;
-  // 按钮自带透明触摸边缘，底部只留细节间距，避免留白叠加。
-  padding-bottom: $space-detail;
-  border-radius: 16px;
-  background-color: #ffffff;
-  color: #27272a;
-  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.16);
-}
-.signout-message {
-  @include type-style('body-strong');
-
-}
-.signout-actions {
-  display: flex;
-  flex-direction: row;
-  justify-content: flex-end;
-  gap: $space-inline;
-  margin-top: $space-section;
-}
-.signout-arrow {
-  // 小箭头是定位几何，指向下方退出入口。
-  position: absolute;
-  bottom: -5px;
-  left: 50%;
-  width: 10px;
-  height: 10px;
-  transform: translateX(-50%) rotate(45deg);
-  background-color: #ffffff;
-}
-
-@media (min-width: 640px) {
-  .profile-menu {
-    flex-direction: row;
-    flex-wrap: wrap;
-    column-gap: $space-section;
-  }
-  .menu-row {
-    width: calc((100% - $space-section) / 2);
-  }
-}
-
 .profile-menu-dark {
   background-color: #1c1e22;
 }
@@ -396,25 +349,66 @@ flex-shrink: 1;
 .profile-intro-dark {
   color: #9c9ca6;
 }
-.signout-button-dark {
-  background-color: #1c1e22;
-}
-.signout-button-dark {
-  color: #ed9191;
-}
-.signout-confirm-dark {
-  color: #eeeeef;
-  background-color: #303238;
-  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.32);
-}
-.signout-arrow-dark {
-  background-color: #303238;
-}
-
 /* 按钮文字独立声明样式，兼容 App 不继承容器排版。 */
 .app-button-label { @include type-style('body'); color: #27272a; }
 .app-button-label-dark { color: #eeeeef; }
 .text-action-label { @include type-style('body'); color: #5b8ff9; }
-.signout-button-label { color: #c65353; @include type-style('body'); }
-.signout-button-dark-label { color: #ed9191; }
+.profile-shortcuts {
+  display: flex;
+  flex-direction: row;
+  border-radius: 16px;
+  background-color: #ffffff;
+}
+.profile-shortcuts-dark { background-color: #1c1e22; }
+.shortcut-button {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+  min-width: 0;
+  min-height: $space-controlMin;
+  gap: $space-inline;
+  padding: $space-detail 0;
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  background-color: transparent;
+  overflow: visible;
+}
+.shortcut-icon {
+  position: relative;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 12px;
+  background-color: #eaf0fc;
+}
+.shortcut-icon-dark { background-color: #243451; }
+.shortcut-label {
+  @include type-style('caption');
+  color: #27272a;
+  text-align: center;
+}
+.shortcut-label-dark { color: #eeeeef; }
+// 未读角标绝对定位，不改变快捷入口的占位高度。
+.unread-badge {
+  position: absolute;
+  top: -$space-detail;
+  left: 100%;
+  transform: translateX(-50%);
+  min-width: 18px;
+  padding: 0 $space-detail;
+  border-radius: 10px;
+  background-color: #c65353;
+  color: #ffffff;
+  @include type-style('badge-strong');
+  text-align: center;
+}
+.unread-error {
+  flex-direction: row;
+  align-items: center;
+  gap: $space-inline;
+}
 </style>

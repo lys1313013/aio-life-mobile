@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import MobileSwitch from '../../components/MobileSwitch.uvue';
 import { usePageRefresh } from '../../services/page-refresh.ts'
 import { ref, watch } from 'vue';
 import { onShow, onHide } from '@dcloudio/uni-app';
@@ -209,7 +210,7 @@ function back() {
 </script>
 <template>
   <view class="tab-page" :class="themeClass('tab-page')"
-    ><PageHeader title="通知设置" back @back="back" /><MobilePage
+    ><PageHeader title="消息通知" back @back="back" /><MobilePage
       :refreshing="loading"
       @refresh="load"
       ><PageState skeleton="form" :loading="loading && !ready" :error="error" :has-content="ready" @retry="load"
@@ -233,7 +234,7 @@ function back() {
               message="删除飞书应用凭证和接收人配置？"
               :action="removeChannel" /></view></view
         ><view v-if="ready" class="notification-panel ui-card" :class="themeClass('notification-panel')">
-          <LoadingIndicator v-if="loading" floating label="正在更新通知设置" />
+          <LoadingIndicator v-if="loading" floating label="正在更新消息通知" />
           <view class="notification-row ui-row">
             <text class="notification-name">微信 · {{ !wechat.enabled ? '未开通' : wechat.bound ? '已绑定' : '待绑定' }}</text>
           </view>
@@ -256,12 +257,12 @@ function back() {
             v-for="item in preferences.filter((x) => x.visible)"
             :key="item.bizType"
             class="notification-group ui-section"
-            ><text class="notification-name">{{ item.description }}</text
+            ><text class="notification-group-title" :class="themeClass('notification-group-title')">{{ item.description }}</text
             ><view v-for="channel in item.channels" :key="channel.channel" class="notification-row ui-row"
               ><text class="notification-name">{{
                 channels[channel.channel] || channel.channel
               }}</text
-              ><switch
+              ><MobileSwitch
                 :checked="channel.enabled"
                 :disabled="saving || subscribing || (channel.channel === 'WECHAT_MINI' && (!wechat.enabled || !wechat.bound))"
                 :aria-label="item.description + channels[channel.channel]"
@@ -295,7 +296,7 @@ function back() {
         variant="quiet"
         @click="form.openId = person.openId" /><view class="notification-row ui-row"
         ><text class="notification-name">启用</text
-        ><switch
+        ><MobileSwitch
           :checked="form.enabled"
           aria-label="启用飞书通知"
           @change="form.enabled = $event.detail.value" /></view
@@ -341,9 +342,13 @@ function back() {
   color: $text-secondary-light;
 
 }
-.notification-group {
-
+.notification-group-title {
+  @include type-style('body-strong');
+  color: #27272a;
+  margin-bottom: $space-detail;
 }
+.notification-group-title-dark { color: #eeeeef; }
+.notification-group { gap: $space-detail; }
 .notification-muted-dark {
   color: $text-secondary-dark;
 }

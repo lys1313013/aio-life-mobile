@@ -1,6 +1,7 @@
 <script setup lang="ts">
+import { readPageTotal, mergePageItems, hasMorePageItems } from '../../services/pagination.ts';
 import { isRequired, missingRequired } from '../../services/form-required.ts';
-import { computed, nextTick, onUnmounted, ref } from 'vue';
+import { computed, nextTick, onUnmounted, ref, watch } from 'vue';
 import { conversationMessages, groupConversations } from './services/conversations.ts';
 import LoadingIndicator from '../../components/LoadingIndicator.uvue';
 import MobilePage from '../../components/MobilePage.uvue';
@@ -48,12 +49,48 @@ const mode = ref('消息'),
   adminRows = ref<any[]>([]),
   adminUser = ref(''),
   adminPage = ref(1),
-  adminTotal = ref(0);
+  adminTotal = ref<number | null>(null);
+const recipientInfo = ref<any>(null), recipientLoading = ref(false), recipientError = ref('');
+const verifiedRecipient = ref('');
+let recipientStamp = 0, recipientTimer: ReturnType<typeof setTimeout> | null = null;
+function clearRecipientCheck() {
+  recipientStamp++;
+  if (recipientTimer !== null) clearTimeout(recipientTimer);
+  recipientTimer = null;
+  recipientInfo.value = null;
+  verifiedRecipient.value = '';
+  recipientLoading.value = false;
+  recipientError.value = '';
+}
+async function checkRecipient() {
+  const id = draftReceiver.value.trim(), current = ++recipientStamp;
+  if (!modal.value || !id || !alive) return;
+  recipientLoading.value = true;
+  recipientError.value = '';
+  try {
+    const user = await fetchUserBasic(id);
+    if (!alive || !modal.value || current !== recipientStamp || draftReceiver.value.trim() !== id) return;
+    if (!user) throw new Error('用户不存在');
+    recipientInfo.value = user;
+    verifiedRecipient.value = id;
+  } catch (_) {
+    if (alive && modal.value && current === recipientStamp) recipientError.value = '无法核对接收用户，请检查 ID 后重试';
+  } finally {
+    if (alive && current === recipientStamp) recipientLoading.value = false;
+  }
+}
+watch([draftReceiver, modal], () => {
+  clearRecipientCheck();
+  if (!modal.value || !draftReceiver.value.trim()) return;
+  recipientLoading.value = true;
+  recipientTimer = setTimeout(() => { recipientTimer = null; checkRecipient(); }, 350);
+});
 const admin = computed(() => session.user?.roles?.includes('admin') || false);
 let alive = true, stamp = 0;
 onUnmounted(() => {
   alive = false;
   stamp++;
+  clearRecipientCheck();
 });
 const own = computed(() => String(session.user?.id || ''));
 const conversations = computed(() => groupConversations(messages.value, own.value, userInfo.value));
@@ -105,7 +142,7 @@ function loadMore() {
   load(true);
 }
 async function load(more = false) {
-  if (more && (loading.value || mode.value !== '管理' || !adminRows.value.length || adminEnded.value || adminRows.value.length >= adminTotal.value)) return;
+  if (more && (loading.value || mode.value !== '管理' || !adminRows.value.length || !hasMorePageItems(adminRows.value.length, adminTotal.value, adminEnded.value))) return;
   const nextPage = more ? adminPage.value + 1 : 1;
   const current = ++stamp;
   loading.value = true;
@@ -119,10 +156,11 @@ async function load(more = false) {
         userId: adminUser.value,
       });
       if (alive && current === stamp) {
-        adminRows.value = more ? [...adminRows.value, ...(data.items || [])] : data.items || [];
+        const nextTotal = readPageTotal(data.total);
+        adminRows.value = mergePageItems(more ? adminRows.value : [], data.items || []);
         adminPage.value = nextPage;
         adminEnded.value = !(data.items || []).length;
-        adminTotal.value = data.total || 0;
+        adminTotal.value = nextTotal;
       }
     } else {
       const rows = await fetchMessages();
@@ -146,6 +184,7 @@ useDomainPage(
   (clear) => {
     alive = false;
     stamp++;
+    clearRecipientCheck();
     if (clear) messages.value = [];
     if (clear) adminRows.value = [];
     if (clear) receiver.value = '';
@@ -233,6 +272,7 @@ async function removeConversation() {
 async function send() {
   const mutationStamp = stamp;
   if (sending.value || missingRequired('message', { content: content.value, receiver: draftReceiver.value })) return;
+  if (verifiedRecipient.value !== draftReceiver.value.trim()) return;
   sending.value = true;
   error.value = '';
   try {
@@ -339,7 +379,7 @@ async function adminRemove(row: any) {
             <text class="bubble-text" :class="themeClass('bubble-text')" selectable>{{ item.content }}</text>
             <view class="conversation-line"><text class="meta" :class="themeClass('meta')">{{ item.receiverId }} · {{ messageTime(item.createTime) }}</text><ConfirmAction label="管理员删除" :action="() => adminRemove(item)" /></view>
           </view>
-          <LoadMore :loading="loading" :error="moreError" :has-more="!adminEnded && adminRows.length < adminTotal" @load="load(true)" />
+          <LoadMore :loading="loading" :error="moreError" :has-more="hasMorePageItems(adminRows.length, adminTotal, adminEnded)" @load="load(true)" />
         </PageState>
       </view>
     </template>
@@ -351,9 +391,9 @@ async function adminRemove(row: any) {
             <template #default="{ open, busy }"><MobileButton label="删除当前会话" icon="ant-design:more-outlined" variant="ghost" :loading="busy" @click="open" /></template>
           </ConfirmAction>
         </PageHeader>
-        <LoadingIndicator v-if="readBusy" label="正在更新已读状态" />
         <scroll-view class="chat-scroll" direction="vertical" :scroll-y="true" :scroll-into-view="chatScrollTarget" :scroll-with-animation="false">
           <view class="chat-messages ui-page-inset">
+            <LoadingIndicator v-if="readBusy" floating label="正在更新已读状态" />
             <view v-for="(item, index) in chatMessages" :key="item.id" class="chat-entry">
               <text v-if="showTime(index)" class="chat-time" :class="themeClass('chat-time')">{{ messageTime(item.createTime) }}</text>
               <view class="bubble-row" :class="{ 'bubble-row-own': isOwn(item) }">
@@ -384,11 +424,19 @@ async function adminRemove(row: any) {
         </view>
       </view>
       <AdaptiveModal v-if="modal" label="发送消息" :busy="sending" @close="modal = false">
-        <FormField label="接收用户 ID" :required="isRequired('message', 'receiver')" v-model="draftReceiver" />
+        <FormField label="接收用户 ID" :required="isRequired('message', 'receiver')" v-model="draftReceiver" :disabled="sending" />
+        <view v-if="draftReceiver.trim()" class="recipient-check ui-mb-section" aria-live="polite">
+          <LoadingIndicator v-if="recipientLoading" label="正在核对接收用户" />
+          <template v-else-if="recipientInfo">
+            <image v-if="recipientInfo.avatarUrl || recipientInfo.avatar" :src="recipientInfo.avatarUrl || recipientInfo.avatar" mode="aspectFill" class="chat-avatar" />
+            <text class="recipient-name" :class="themeClass('recipient-name')">{{ recipientInfo.nickname || '未设置昵称' }}</text>
+          </template>
+          <template v-else-if="recipientError"><text class="chat-error" role="alert">{{ recipientError }}</text><MobileButton label="重试核对接收用户" icon="ant-design:reload-outlined" variant="ghost" @click="checkRecipient" /></template>
+        </view>
         <FormField v-if="mode === '管理'" label="标题" v-model="title" />
         <FormField label="内容" :required="isRequired('message', 'content')" kind="textarea" v-model="content" />
         <text v-if="error" class="chat-error ui-mb-section" role="alert">{{ error }}</text>
-        <FormActions><MobileButton label="取消" variant="quiet" :disabled="sending" @click="modal = false" /><MobileButton label="发送" :loading="sending" @click="send" /></FormActions>
+        <template #footer><FormActions><MobileButton label="取消" variant="quiet" :disabled="sending" @click="modal = false" /><MobileButton label="发送" :loading="sending" :disabled="!verifiedRecipient || verifiedRecipient !== draftReceiver.trim()" @click="send" /></FormActions></template>
       </AdaptiveModal>
     </template>
   </MobilePage>
@@ -398,6 +446,9 @@ async function adminRemove(row: any) {
 @use '../../styles/spacing.scss';
 @use '../../styles/spacing-tokens' as *;
 @use '../../styles/text-colors' as *;
+.recipient-check { display: flex; align-items: center; gap: $space-inline; }
+.recipient-name { @include type-style('label'); color: #27272a; flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.recipient-name-dark { color: #eeeeef; }
 .header-title { @include type-style('title'); color: #27272a; flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .header-title-dark { color: #eeeeef; }
 .list-toolbar, .filter-tabs, .conversation-line, .bubble-actions, .composer-row, .chat-error-row { display: flex; flex-direction: row; align-items: center; gap: $space-inline; }
@@ -431,7 +482,7 @@ async function adminRemove(row: any) {
 .chat-shell { position: absolute; top: 0; right: 0; bottom: 0; left: 0; display: flex; flex-direction: column; background-color: #f0f2f5; }
 .chat-shell-dark { background-color: #111215; }
 .chat-scroll { flex: 1; height: 0; min-height: 0; width: 100%; }
-.chat-messages { display: flex; flex-direction: column; gap: $space-section; }
+.chat-messages { position: relative; display: flex; flex-direction: column; gap: $space-section; }
 .chat-entry { width: 100%; }
 .chat-time { @include type-style('caption'); color: $text-secondary-light; text-align: center; margin-bottom: $space-section; }
 .chat-time-dark { color: $text-secondary-dark; }

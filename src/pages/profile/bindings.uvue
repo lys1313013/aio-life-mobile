@@ -1,7 +1,10 @@
 <script setup lang="ts">
 import { usePageRefresh } from '../../services/page-refresh.ts'
 import { buttonLabelClasses } from '../../services/button-label.ts'
-import RequiredMark from '../../components/RequiredMark.uvue';
+import FormField from '../../components/FormField.uvue'
+import FormActions from '../../components/FormActions.uvue'
+import MobileButton from '../../components/MobileButton.uvue'
+import FloatingActionButton from '../../components/FloatingActionButton.uvue'
 import { isRequired } from '../../services/form-required.ts';
 import ContentSkeleton from '../../components/ContentSkeleton.uvue';
 import LoadingIndicator from '../../components/LoadingIndicator.uvue';
@@ -230,7 +233,7 @@ function back() {
 }
 </script>
 <template>
-  <view class="tab-page" :class="themeClass('tab-page')">
+  <view class="tab-page bindings-page" :class="themeClass('tab-page')">
     <PageHeader title="账号绑定" back @back="back" />
     <scroll-view
       scroll-y
@@ -241,19 +244,7 @@ function back() {
       :refresher-default-style="refreshTheme"
       @refresherrefresh="pullRefresh"
     >
-      <view class="tab-content ui-page-inset">
-        <view class="binding-toolbar ui-toolbar"
-          ><button
-            role="button"
-            class="binding-add"
-            aria-label="新增绑定"
-            :disabled="!loaded || loading || saving || !!deleting"
-            :aria-disabled="!loaded || loading || saving || !!deleting"
-            @click="edit()"
-          >
-<AppIcon name="ant-design:plus-outlined" />
-</button></view
-        >
+      <view class="tab-content ui-page-inset bindings-content">
         <view v-if="loading" class="binding-status ui-mb-section"
           ><LoadingIndicator v-if="loaded" label="正在更新账号绑定" /><ContentSkeleton v-else variant="list" :rows="3" label="正在加载账号绑定" /></view
         >
@@ -286,6 +277,14 @@ function back() {
           :class="themeClass('binding-card')"
         >
           <view class="binding-row ui-row">
+            <button
+              role="button"
+              class="binding-edit"
+              :aria-label="'编辑' + platformInfo(record.platform).label + '绑定'"
+              :disabled="loading || saving || !!deleting"
+              :aria-disabled="loading || saving || !!deleting"
+              @click="edit(record)"
+            >
             <view class="platform-mark"
               ><PlatformIcon :platform="record.platform"
             /></view>
@@ -299,22 +298,6 @@ function back() {
                 >{{ record.platformUsername }}</text
               ><text v-else class="binding-account" :class="themeClass('binding-account')">已绑定</text></view
             >
-            <button
-              role="button"
-              class="binding-action"
-              :aria-label="
-                '编辑' + platformInfo(record.platform).label + '绑定'
-              "
-              :disabled="loading || !!deleting"
-              :aria-disabled="loading || !!deleting"
-              @click="edit(record)"
-              :class="themeClass('binding-action')"
-            >
-              <CategoryIcon
-                icon="lucide:pencil"
-                :size="18"
-                :color="isDark ? '#b4b4bd' : '#71717a'"
-              />
             </button>
             <button
               role="button"
@@ -328,9 +311,9 @@ function back() {
               :class="themeClass('binding-action')"
             >
               <CategoryIcon
-                icon="lucide:unlink"
+                icon="lucide:link"
                 :size="18"
-                :color="isDark ? '#b4b4bd' : '#71717a'"
+                :color="isDark ? '#6c9cff' : '#427bea'"
               />
             </button>
           </view>
@@ -364,130 +347,103 @@ function back() {
         </view>
       </view>
     </scroll-view>
+    <FloatingActionButton
+      v-if="!editing"
+      label="新增绑定"
+      :disabled="!loaded || loading || saving || !!deleting"
+      @click="edit()"
+    />
     <AdaptiveModal
       v-if="editing"
       label="绑定账号"
       :busy="saving"
-      :max-width="480"
+      :max-width="420"
+      dense
       :content-key="form.platform + showHelp + modalError + verified"
       @close="closeEditor()"
     >
-      <text class="binding-label ui-mb-section ui-mt-section" :class="themeClass('binding-label')"
-        ><RequiredMark v-if="isRequired('binding', 'platform', form)" /> 平台</text
-      >
-      <picker
-        :range="platforms"
-        range-key="label"
-        :value="platformIndex"
-        :aria-required="isRequired('binding', 'platform', form)"
-        :disabled="!!form.id || saving"
-        :aria-disabled="!!form.id || saving"
-        @change="selectPlatform"
-        ><view class="binding-input ui-px-card" :class="themeClass('binding-input')"
-          ><text class="binding-name" :class="themeClass('binding-name')">{{
-            currentPlatform.label
-          }}</text
-          ><AppIcon name="ant-design:down-outlined" /></view
-        ></picker
-      >
-      <view class="binding-label-row ui-mt-sm"
-        ><text class="binding-label ui-mb-section ui-mt-section" :class="themeClass('binding-label')"><RequiredMark v-if="isRequired('binding', form.platform === 'weread' ? 'accessToken' : 'platformUsername', form)" /> {{
-          form.platform === 'weread'
-            ? 'API Key'
-            : form.platform === 'douban'
-              ? '豆瓣账号 ID'
-              : '账号 / 用户名'
-        }}</text
-        ><button
-          role="button"
-          class="binding-help"
-          aria-label="填写说明"
+      <view class="binding-editor-heading">
+        <view class="binding-editor-identity">
+          <PlatformIcon v-if="form.id" :platform="form.platform" />
+          <text class="binding-editor-title" :class="themeClass('binding-editor-title')">{{ form.id ? currentPlatform.label : '绑定账号' }}</text>
+        </view>
+        <MobileButton
+          label="填写说明"
+          icon="ant-design:question-circle-outlined"
+          variant="ghost"
           @click="showHelp = !showHelp"
-        ><text :class="buttonLabelClasses(['binding-help'])">?</text></button></view
-      >
-      <text v-if="showHelp" class="binding-hint ui-mb-section" :class="themeClass('binding-hint')">{{
-        currentPlatform.hint
-      }}</text>
-      <input
-        v-if="form.platform !== 'weread'"
-        v-model="form.platformUsername"
-        :aria-required="isRequired('binding', 'platformUsername', form)"
-        class="binding-field ui-px-card"
-        aria-label="账号或用户名"
-        :disabled="saving"
-        :aria-disabled="saving"
-        :maxlength="255"
-        placeholder="填写账号或用户名"
-        @input="resetVerification"
-        :class="themeClass('binding-field')"
-      />
-      <view v-if="form.platform === 'douban'" class="verify-row"
-        ><text
-          v-if="verified"
-          class="verified-text ui-mt-section"
-          :class="themeClass('verified-text')"
-          >{{ verified }}</text
-        ><button
-          role="button"
-          class="text-action"
-          :loading="verifying"
-          :disabled="verifying || saving"
-          :aria-disabled="verifying || saving"
-          @click="verify"
-        ><text :class="buttonLabelClasses(['text-action'])">验证账号</text></button></view
-      >
-      <text
-        v-if="form.platform === 'github'"
-        class="binding-label ui-mb-section ui-mt-section"
-        :class="themeClass('binding-label')"
-        >Access Token</text
-      >
-      <input
-        v-if="form.platform === 'github' || form.platform === 'weread'"
-        v-model="form.accessToken"
-        :aria-required="isRequired('binding', 'accessToken', form)"
-        class="binding-field ui-px-card"
-        :password="true"
-        :aria-label="form.platform === 'weread' ? 'API Key' : 'Access Token'"
-        :disabled="saving"
-        :aria-disabled="saving"
-        :maxlength="4096"
-        :placeholder="
-          form.id
-            ? '留空保留原凭证'
-            : form.platform === 'weread'
-              ? 'wrk-xxxxxxxx'
-              : '选填'
-        "
-        :class="themeClass('binding-field')"
-      />
-      <text
-        v-if="modalError"
-        role="alert"
-        class="error-text binding-error ui-mt-section"
-        :class="themeClass('error-text')"
-        >{{ modalError }}</text
-      >
-      <view class="binding-actions modal-actions ui-row ui-mt-section"
-        ><button
-          role="button"
-          class="binding-cancel"
+        />
+      </view>
+      <text v-if="showHelp" class="binding-hint ui-mb-section" :class="themeClass('binding-hint')">{{ currentPlatform.hint }}</text>
+      <FormField v-if="!form.id" label="平台" :required="isRequired('binding', 'platform', form)" appearance="soft">
+        <picker
+          :range="platforms"
+          range-key="label"
+          :value="platformIndex"
+          aria-label="平台"
+          :aria-required="isRequired('binding', 'platform', form)"
           :disabled="saving"
           :aria-disabled="saving"
-          @click="closeEditor()"
-          :class="themeClass('binding-cancel')"
-        ><text :class="buttonLabelClasses(['binding-cancel', themeClass('binding-cancel')])">取消</text></button
-        ><button
-          role="button"
-          class="binding-save"
-          :loading="saving"
-          :disabled="saving || verifying"
-          :aria-disabled="saving || verifying"
-          @click="save"
+          @change="selectPlatform"
         >
-          <text :class="buttonLabelClasses(['binding-save'])">{{ saving ? '保存中…' : '保存' }}</text>
-        </button></view
+          <view class="binding-input ui-px-card" :class="themeClass('binding-input')">
+            <view class="binding-editor-identity">
+              <PlatformIcon :platform="form.platform" />
+              <text class="binding-name" :class="themeClass('binding-name')">{{ currentPlatform.label }}</text>
+            </view>
+            <AppIcon name="ant-design:down-outlined" :size="14" />
+          </view>
+        </picker>
+      </FormField>
+      <FormField
+        v-if="form.platform !== 'weread'"
+        :label="form.platform === 'douban' ? '豆瓣账号 ID' : '账号 / 用户名'"
+        :required="isRequired('binding', 'platformUsername', form)"
+        appearance="soft"
       >
+        <input
+          v-model="form.platformUsername"
+          :aria-required="isRequired('binding', 'platformUsername', form)"
+          class="binding-field ui-px-card"
+          :class="themeClass('binding-field')"
+          aria-label="账号或用户名"
+          :disabled="saving"
+          :aria-disabled="saving"
+          :adjust-position="false"
+          :maxlength="255"
+          :placeholder="form.platform === 'douban' ? '填写豆瓣账号 ID' : '填写账号或用户名'"
+          @input="resetVerification"
+        />
+        <view v-if="form.platform === 'douban'" class="verify-row">
+          <text v-if="verified" class="verified-text" :class="themeClass('verified-text')">{{ verified }}</text>
+          <MobileButton label="验证账号" variant="ghost" :loading="verifying" :disabled="saving" @click="verify" />
+        </view>
+      </FormField>
+      <FormField
+        v-if="form.platform === 'github' || form.platform === 'weread'"
+        :label="form.platform === 'weread' ? 'API Key' : 'Access Token'"
+        :required="isRequired('binding', 'accessToken', form)"
+        appearance="soft"
+      >
+        <input
+          v-model="form.accessToken"
+          :aria-required="isRequired('binding', 'accessToken', form)"
+          class="binding-field ui-px-card"
+          :class="themeClass('binding-field')"
+          :password="true"
+          :aria-label="form.platform === 'weread' ? 'API Key' : 'Access Token'"
+          :disabled="saving"
+          :aria-disabled="saving"
+          :adjust-position="false"
+          :maxlength="4096"
+          :placeholder="form.id ? '留空保留原凭证' : form.platform === 'weread' ? 'wrk-xxxxxxxx' : '选填'"
+        />
+      </FormField>
+      <text v-if="modalError" role="alert" class="error-text ui-mb-section" :class="themeClass('error-text')">{{ modalError }}</text>
+      <FormActions>
+        <MobileButton label="取消" variant="quiet" :disabled="saving" @click="closeEditor()" />
+        <MobileButton label="保存" :loading="saving" :disabled="verifying" @click="save" />
+      </FormActions>
     </AdaptiveModal>
   <SecondaryUnlock />
   </view>
@@ -497,24 +453,12 @@ function back() {
 @use '../../styles/text-colors' as *;
 @use '../../styles/spacing.scss';
 @use '../../styles/spacing-tokens' as *;
-.binding-toolbar {
-  flex-direction: row;
-  justify-content: flex-end;
-
+.bindings-page {
+  position: relative;
 }
-.binding-add {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 44px;
-  height: 44px;
-  line-height: $space-controlMin;
-  padding: 0;
-  margin: 0;
-  background-color: transparent;
-  color: #4e7ee3;
-  @include type-style('glyph-action');
-  border: 0;
+.bindings-content {
+  // 避让统一悬浮按钮的最大直径、底部偏移及安全区，让末行完整露出。
+  padding-bottom: calc(56px + #{$space-page} + #{$space-inline} + #{$space-section} + env(safe-area-inset-bottom));
 }
 .binding-status {
 
@@ -527,6 +471,20 @@ function back() {
 .binding-row {
   flex-direction: row;
   align-items: center;
+}
+.binding-edit {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  flex: 1;
+  min-width: 0;
+  min-height: $space-controlMin;
+  padding: 0;
+  margin: 0;
+  border: 0;
+  background-color: transparent;
+  text-align: left;
+  @include type-style('body');
 }
 .platform-mark {
   width: 42px;
@@ -580,7 +538,6 @@ function back() {
 
 }
 .binding-cancel,
-.binding-save,
 .binding-danger {
   min-width: 80px;
   height: 44px;
@@ -595,35 +552,28 @@ function back() {
   color: #71717a;
   background-color: #f0f2f5;
 }
-.binding-save {
-  color: #ffffff;
-  background-color: #4e7ee3;
-}
 .binding-danger {
   color: #ffffff;
   background-color: #c65353;
 }
-.binding-label {
-  color: #52525b;
-  @include type-style('label');
-
-}
-.binding-label-row {
+.binding-editor-heading {
+  display: flex;
   flex-direction: row;
   align-items: center;
   justify-content: space-between;
-
+  gap: $space-inline;
+  margin-bottom: $space-section;
 }
-.binding-help {
-  width: 44px;
-  height: 44px;
-  padding: 0;
-  margin: 0;
-  border: 0;
-  background-color: transparent;
-  color: #8b8f99;
+.binding-editor-identity {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: $space-inline;
+  min-width: 0;
+}
+.binding-editor-title {
+  color: #27272a;
   @include type-style('title');
-  line-height: $space-controlMin;
 }
 .binding-hint {
   color: $text-secondary-light;
@@ -631,7 +581,7 @@ function back() {
 
 }
 .binding-input {
-  min-height: 48px;
+  min-height: $space-controlMin;
   flex-direction: row;
   align-items: center;
   justify-content: space-between;
@@ -640,7 +590,7 @@ function back() {
   background-color: #f5f6f8;
 }
 .binding-field {
-  height: 48px;
+  height: $space-controlMin;
 
   border-radius: 12px;
   background-color: #f5f6f8;
@@ -648,29 +598,29 @@ function back() {
   @include type-style('body');
 }
 .verify-row {
-  align-items: flex-end;
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: $space-inline;
+  margin-top: $space-detail;
 }
 .verified-text {
   color: #39765e;
   @include type-style('label');
 
 }
-.binding-error {
-
-}
-.modal-actions {
-
-}
 
 .binding-card-dark {
   background-color: #1c1e22;
 }
+.binding-editor-title-dark,
 .binding-name-dark,
 .binding-field-dark {
   color: #eeeeef;
 }
-.binding-action-dark,
-.binding-label-dark {
+.binding-action-dark {
   color: #b4b4bd;
 }
 .binding-input-dark,
@@ -687,11 +637,9 @@ function back() {
 }
 
 /* #ifdef WEB || MP-WEIXIN */
-.binding-add::after,
+.binding-edit::after,
 .binding-action::after,
-.binding-help::after,
 .binding-cancel::after,
-.binding-save::after,
 .binding-danger::after {
   border: 0;
 }
@@ -707,10 +655,8 @@ function back() {
 .app-button-label { @include type-style('body'); color: #27272a; }
 .app-button-label-dark { color: #eeeeef; }
 .text-action-label { @include type-style('body'); color: #5b8ff9; }
-.binding-cancel-label, .binding-save-label, .binding-danger-label { @include type-style('body'); }
+.binding-cancel-label, .binding-danger-label { @include type-style('body'); }
 .binding-cancel-label { color: #71717a; }
-.binding-save-label { color: #ffffff; }
 .binding-danger-label { color: #ffffff; }
-.binding-help-label { color: #8b8f99; @include type-style('title'); }
 .binding-cancel-dark-label { color: #b4b4bd; }
 </style>

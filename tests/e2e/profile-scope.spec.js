@@ -27,6 +27,7 @@ async function setup(page) {
 // 从真实登录入口切换账号，不依赖开发服务器导出的源码模块。
 async function signInAsB(page) {
   await page.goto('/#/pages/profile/index');
+  await page.getByRole('button', { name: '设置', exact: true }).click();
   await page.getByRole('button', { name: '退出登录', exact: true }).click();
   await page.getByRole('button', { name: '退出', exact: true }).click();
   await page.locator('[aria-label="账号"] input').fill('account-b');

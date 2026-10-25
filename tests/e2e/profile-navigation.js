@@ -9,7 +9,7 @@ const retainedProfilePages = Object.freeze({
   '管理与配置': '/pages/admin/directory',
 });
 
-const settingsProfileEntries = ['菜单显示', '首页卡片', '通知设置', '自定义设置', '反馈', '关于'];
+const settingsProfileEntries = ['反馈', '关于', '退出登录'];
 
 function createProfileNavigation(click) {
   async function openProfileEntry(page, name) {

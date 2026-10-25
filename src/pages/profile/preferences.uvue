@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import MobileSwitch from '../../components/MobileSwitch.uvue';
 import AppIcon from '../../components/AppIcon.uvue';
 import { buttonLabelClasses } from '../../services/button-label.ts';
 import { usePageRefresh } from '../../services/page-refresh.ts'
@@ -9,14 +10,15 @@ import PageHeader from '../../components/PageHeader.uvue';
 import MobilePage from '../../components/MobilePage.uvue';
 import MobileButton from '../../components/MobileButton.uvue';
 import FormField from '../../components/FormField.uvue';
+import FormActions from '../../components/FormActions.uvue';
 import PageState from '../../components/PageState.uvue';
 import ConfirmAction from '../../components/ConfirmAction.uvue';
 import AdaptiveModal from '../../components/AdaptiveModal.uvue';
-import { request } from '../../services/api.ts';
+import { logout, request } from '../../services/api.ts';
 import { session, restoreSession } from '../../services/session.ts';
 import { clearLifeCatalogCache } from '../../services/life-catalog-cache.ts';
 import type { ThemeMode } from '../../services/theme.ts';
-import { themeClass, setThemeMode, theme } from '../../services/theme.ts';
+import { isDark, themeClass, setThemeMode, theme } from '../../services/theme.ts';
 import {
   flattenMenuOptions,
   passwordPayload,
@@ -28,20 +30,25 @@ const titles = {
   system: '系统设置',
 };
 const mode = ref('general');
-const preferenceLinks = [
-  { title: '菜单显示', path: '/pages/profile/preferences?section=menus' },
-  { title: '首页卡片', path: '/pages/home-settings/index' },
-  { title: '通知设置', path: '/pages/profile/notifications' },
-  { title: '自定义设置', path: '/pages/records/categories' },
-];
 const supportLinks = [
-  { title: '反馈', path: '/pages/records/feedback' },
-  { title: '关于', path: '/pages/about/index' },
+  { title: '关于', path: '/pages/about/index', icon: 'lucide:copyright' },
+  { title: '反馈', path: '/pages/records/feedback', icon: 'ant-design:comment-outlined' },
 ];
+const themePickerOpen = ref(false);
+const leaving = ref(false);
+const confirmLogout = ref(false);
+const themeLabel = computed(() => ({ system: '跟随系统', light: '浅色', dark: '深色' })[theme.mode]);
+async function signOut() {
+  if (leaving.value) return;
+  leaving.value = true;
+  try { await logout(); }
+  catch (_) { uni.showToast({ title: '已退出本机，服务端注销未完成', icon: 'none' }); }
+  finally { uni.reLaunch({ url: '/pages/login/index' }); leaving.value = false; }
+}
 const themeOptions: { label: string; value: ThemeMode }[] = [
   { label: '跟随系统', value: 'system' },
-  { label: '日间', value: 'light' },
-  { label: '夜间', value: 'dark' },
+  { label: '浅色', value: 'light' },
+  { label: '深色', value: 'dark' },
 ];
 function openPage(path: string) {
   uni.navigateTo({ url: path });
@@ -49,6 +56,7 @@ function openPage(path: string) {
 function changeTheme(mode: ThemeMode) {
   try {
     setThemeMode(mode);
+    themePickerOpen.value = false;
   } catch (error) {
     uni.showToast({ title: error.message, icon: 'none' });
   }
@@ -58,11 +66,28 @@ const loading = ref(false),
   saving = ref(false),
   ready = ref(false),
   error = ref(''),
-  formError = ref(''),
-  editing = ref(false);
+  formError = ref('');
 const menuItems = ref<any[]>([]),
-  hidden = ref<string[]>([]);
-const form = ref<any>({});
+  menuRoots = ref<any[]>([]),
+  hidden = ref<string[]>([]),
+  menuQuery = ref(''),
+  collapsedMenuGroups = ref<string[]>([]);
+const menuGroups = computed(() => {
+  const query = menuQuery.value.trim().toLowerCase();
+  return menuRoots.value.map((root) => {
+    const grouped = !!root.children?.length;
+    const items = flattenMenuOptions(grouped ? root.children : [root], grouped ? [root.title] : [])
+      .map((item) => ({ ...item, label: grouped ? item.title.slice(root.title.length + 3) : item.title }))
+      .filter((item) => !query || item.title.toLowerCase().includes(query));
+    return { id: root.id, title: grouped ? root.title : '', items };
+  }).filter((group) => group.items.length);
+});
+function toggleMenuGroup(id: string) {
+  collapsedMenuGroups.value = collapsedMenuGroups.value.includes(id)
+    ? collapsedMenuGroups.value.filter((value) => value !== id)
+    : [...collapsedMenuGroups.value, id];
+}
+const form = ref<any>({ oldPassword: '', password: '', confirm: '' });
 let revision = 0,
   active = true;
 let legacyKeys = false;
@@ -71,12 +96,13 @@ watch(
   () => {
     revision++;
     menuItems.value = [];
+    menuRoots.value = [];
+    menuQuery.value = '';
+    collapsedMenuGroups.value = [];
     hidden.value = [];
-    form.value = {};
-    editing.value = false;
+    resetPasswordForm();
     ready.value = false;
     error.value = '';
-    formError.value = '';
   },
   { flush: 'sync' },
 );
@@ -101,9 +127,10 @@ onShow(() => {
 });
 onHide(() => {
   active = false;
+  confirmLogout.value = false;
+  themePickerOpen.value = false;
   revision++;
-  editing.value = false;
-  form.value = {};
+  resetPasswordForm();
   loading.value = false;
 });
 async function load() {
@@ -117,6 +144,7 @@ async function load() {
       const flat = flattenMenuOptions(data.menus, [], false, data.hiddenMenuIds);
       if (!active || version !== revision || token !== session.token) return;
       menuItems.value = flat;
+      menuRoots.value = data.menus;
       hidden.value = flat.filter((x) => x.hidden).map((x) => x.id);
     }
     if (version === revision && active) ready.value = true;
@@ -129,10 +157,9 @@ async function load() {
     if (version === revision) loading.value = false;
   }
 }
-function edit() {
+function resetPasswordForm() {
   formError.value = '';
   form.value = { oldPassword: '', password: '', confirm: '' };
-  editing.value = true;
 }
 async function save() {
   if (saving.value) return;
@@ -144,11 +171,10 @@ async function save() {
     if (mode.value === 'password')
       await request('/auth/change-password', 'POST', passwordPayload(form.value));
     if (!active || token !== session.token || version !== revision) return;
-    editing.value = false;
-    form.value = {};
-    await load();
+    resetPasswordForm();
+    uni.showToast({ title: '密码修改成功', icon: 'success' });
   } catch (reason) {
-    if (active && token === session.token) formError.value = reason.message;
+    if (active && token === session.token && version === revision) formError.value = reason.message;
   } finally {
     saving.value = false;
   }
@@ -196,62 +222,95 @@ function back() {
 </script>
 <template>
   <view class="tab-page" :class="themeClass('tab-page')">
-    <PageHeader :title="title" back @back="back" />
+    <PageHeader :title="title" back :actions-min-width="mode === 'menus' ? 96 : 0" @back="back">
+      <template v-if="mode === 'menus'" #actions>
+        <ConfirmAction
+          label="恢复默认菜单"
+          message="恢复全部菜单的默认显示设置？"
+          :action="resetMenus"
+          v-if="ready && !loading && !saving"
+          icon="ant-design:undo-outlined"
+          :danger="false"
+        />
+        <MobileButton label="保存" icon="ant-design:check-outlined" variant="ghost" :loading="saving" :disabled="!ready || loading" @click="saveMenus" />
+      </template>
+    </PageHeader>
     <MobilePage :refreshing="loading" @refresh="load">
       <view v-if="mode === 'general'" class="ui-page-body ui-gap-section">
         <view class="preference-surface ui-pad-card" :class="themeClass('preference-surface')">
-          <view class="theme-row">
-            <text class="preference-name entry-label" :class="themeClass('entry-label')">外观</text>
-            <view class="theme-options" :class="themeClass('theme-options')">
-              <button
-                v-for="option in themeOptions"
-                :key="option.value"
-                role="button"
-                class="theme-option ui-px-card"
-                :class="[themeClass('theme-option'), { 'theme-selected': theme.mode === option.value }, themeClass({ 'theme-selected': theme.mode === option.value })]"
-                :aria-pressed="theme.mode === option.value"
-                @click="changeTheme(option.value)"
-              ><text :class="buttonLabelClasses(['theme-option', themeClass('theme-option'), { 'theme-selected': theme.mode === option.value }, themeClass({ 'theme-selected': theme.mode === option.value })])">{{ option.label }}</text></button>
-            </view>
-          </view>
-          <button v-for="entry in preferenceLinks" :key="entry.path" role="button" class="settings-entry" :aria-label="entry.title" @click="openPage(entry.path)">
-            <text class="entry-label" :class="themeClass('entry-label')">{{ entry.title }}</text><AppIcon name="ant-design:right-outlined" />
+          <button role="button" class="settings-entry" aria-label="外观" @click="themePickerOpen = true">
+            <AppIcon name="lucide:moon" /><text class="entry-label" :class="themeClass('entry-label')">外观</text><text class="theme-value" :class="themeClass('theme-value')">{{ themeLabel }}</text><AppIcon name="ant-design:right-outlined" :size="16" />
+          </button>
+          <button v-for="entry in supportLinks" :key="entry.path" role="button" class="settings-entry" :aria-label="entry.title" @click="openPage(entry.path)">
+            <AppIcon :name="entry.icon" /><text class="entry-label" :class="themeClass('entry-label')">{{ entry.title }}</text><AppIcon name="ant-design:right-outlined" :size="16" />
           </button>
         </view>
-        <view class="preference-surface ui-pad-card" :class="themeClass('preference-surface')">
-          <button v-for="entry in supportLinks" :key="entry.path" role="button" class="settings-entry" :aria-label="entry.title" @click="openPage(entry.path)">
-            <text class="entry-label" :class="themeClass('entry-label')">{{ entry.title }}</text><AppIcon name="ant-design:right-outlined" />
-          </button>
+        <view class="signout-anchor">
+          <view
+            v-if="confirmLogout"
+            class="signout-confirm"
+            :class="themeClass('signout-confirm')"
+            role="alertdialog"
+            aria-label="退出当前账号？"
+            ><text class="signout-message" :class="themeClass('signout-message')"
+              >退出当前账号？</text
+            ><view class="signout-actions"
+              ><MobileButton
+                label="取消"
+                compact
+                variant="quiet"
+                :disabled="leaving"
+                @click="confirmLogout = false"
+              /><MobileButton
+                label="退出"
+                compact
+                :danger="true"
+                :loading="leaving"
+                @click="signOut"
+              /></view
+            ><view class="signout-arrow" :class="themeClass('signout-arrow')" /></view
+          >
+          <button
+            role="button"
+            class="signout-button"
+            :aria-expanded="confirmLogout"
+            :disabled="leaving" :aria-disabled="leaving"
+            @click="confirmLogout = !confirmLogout"
+            :class="themeClass('signout-button')"
+          ><AppIcon name="ant-design:export-outlined" :color="isDark ? '#ed9191' : '#c65353'" /><text :class="buttonLabelClasses(['signout-button', themeClass('signout-button')])">退出登录</text></button>
         </view>
       </view>
       <PageState v-else skeleton="form" :loading="loading" :error="error" @retry="load">
-        <view
-          v-if="mode === 'password'"
-          class="preference-surface ui-card"
-          :class="themeClass('preference-surface')"
-          ><MobileButton label="修改密码" @click="edit()"
-        /></view>
-        <view
-          v-if="mode === 'menus' && ready"
-          class="preference-surface ui-card"
-          :class="themeClass('preference-surface')"
-        >
-          <view v-for="item in menuItems" :key="item.id" class="preference-row ui-row"
-            ><text class="preference-name">{{ item.title }}</text
-            ><switch
-              :checked="!hidden.includes(item.id)"
-              :disabled="saving"
-              :aria-label="'显示' + item.title"
-              @change="toggle(item.id)"
-          /></view>
-          <view class="preference-actions ui-row ui-mt-section"
-            ><MobileButton label="保存" :loading="saving" @click="saveMenus" /><ConfirmAction
-              label="恢复默认菜单"
-              message="恢复全部菜单的默认显示设置？"
-              :action="resetMenus"
-              icon="ant-design:undo-outlined"
-              :danger="false"
-          /></view>
+        <view v-if="mode === 'password'" class="ui-page-body">
+          <view class="preference-surface ui-card" :class="themeClass('preference-surface')" role="form" aria-label="修改密码">
+            <FormField :required="isRequired('password', 'oldPassword')" label="旧密码" kind="password" v-model="form.oldPassword" :disabled="saving" />
+            <FormField :required="isRequired('password', 'password')" label="新密码" kind="password" v-model="form.password" :disabled="saving" />
+            <FormField :required="isRequired('password', 'confirm')" label="确认密码" kind="password" v-model="form.confirm" :disabled="saving" />
+            <text v-if="formError" class="error-text" role="alert">{{ formError }}</text>
+            <FormActions>
+              <MobileButton label="取消" variant="quiet" :disabled="saving" @click="back" />
+              <MobileButton label="保存" :loading="saving" @click="save" />
+            </FormActions>
+          </view>
+        </view>
+        <view v-if="mode === 'menus' && ready" class="ui-page-body ui-gap-section">
+          <FormField label="搜索菜单" placeholder="搜索菜单" v-model="menuQuery" compact />
+          <view v-for="group in menuGroups" :key="group.id" class="preference-surface ui-pad-card" :class="themeClass('preference-surface')">
+            <button v-if="group.title" role="button" class="menu-group-toggle" :aria-label="(collapsedMenuGroups.includes(group.id) && !menuQuery.trim() ? '展开' : '收起') + group.title" :aria-expanded="!!menuQuery.trim() || !collapsedMenuGroups.includes(group.id)" @click="toggleMenuGroup(group.id)">
+              <text class="menu-group-title" :class="themeClass('menu-group-title')">{{ group.title }}</text>
+              <AppIcon :name="collapsedMenuGroups.includes(group.id) && !menuQuery.trim() ? 'ant-design:right-outlined' : 'ant-design:down-outlined'" :size="16" />
+            </button>
+            <view v-if="!group.title || menuQuery.trim() || !collapsedMenuGroups.includes(group.id)">
+              <view v-for="item in group.items" :key="item.id" class="preference-row ui-row">
+                <text class="preference-name" :class="themeClass('preference-name')">{{ item.label }}</text>
+                <MobileSwitch :checked="!hidden.includes(item.id)" :disabled="saving" :aria-label="'显示' + item.title" @change="toggle(item.id)" />
+              </view>
+            </view>
+          </view>
+          <view v-if="!menuGroups.length" class="menu-empty">
+            <text class="preference-name" :class="themeClass('preference-name')">{{ menuQuery.trim() ? '未找到匹配菜单' : '暂无可配置菜单' }}</text>
+            <MobileButton v-if="menuQuery.trim()" label="清空搜索" variant="ghost" @click="menuQuery = ''" />
+          </view>
         </view>
         <view
           v-if="mode === 'system'"
@@ -281,24 +340,10 @@ function back() {
         </view>
       </PageState>
     </MobilePage>
-    <AdaptiveModal
-      v-if="editing"
-      :label="title"
-      :busy="saving"
-      :max-width="520"
-      @close="editing = false"
-    >
-      <view v-if="mode === 'password'"
-        ><FormField :required="isRequired('password', 'oldPassword')" label="旧密码" kind="password" v-model="form.oldPassword" /><FormField :required="isRequired('password', 'password')"
-          label="新密码"
-          kind="password"
-          v-model="form.password" /><FormField :required="isRequired('password', 'confirm')"
-          label="确认密码"
-          kind="password"
-          v-model="form.confirm"
-      /></view>
-      <text v-if="formError" class="error-text" role="alert">{{ formError }}</text
-      ><MobileButton label="保存" :loading="saving" @click="save" />
+    <AdaptiveModal v-if="themePickerOpen" label="外观" :max-width="360" :show-close="true" @close="themePickerOpen = false">
+      <button v-for="option in themeOptions" :key="option.value" role="button" class="theme-option" :aria-label="option.label" :aria-pressed="theme.mode === option.value" @click="changeTheme(option.value)">
+        <text class="entry-label" :class="themeClass('entry-label')">{{ option.label }}</text><AppIcon v-if="theme.mode === option.value" name="ant-design:check-outlined" />
+      </button>
     </AdaptiveModal>
   </view>
 </template>
@@ -313,7 +358,8 @@ function back() {
   flex-direction: row;
   align-items: center;
   justify-content: space-between;
-  min-height: 48px;
+  min-height: $space-controlMin + $space-detail;
+  gap: $space-section;
   width: 100%;
   margin: 0;
   padding: 0;
@@ -321,42 +367,25 @@ function back() {
   border-radius: 0;
   background-color: transparent;
 }
-.entry-label { @include type-style('body'); color: #27272a; }
+.entry-label { flex: 1; text-align: left; @include type-style('body'); color: #27272a; }
 .entry-label-dark { color: #eeeeef; }
-.theme-row {
-  flex-direction: row;
-  align-items: center;
-  justify-content: space-between;
-  gap: $space-inline;
-  min-height: 48px;
-  padding-top: $space-detail;
-  padding-bottom: $space-detail;
-}
-.theme-options {
-  flex-direction: row;
-  background-color: #f0f2f5;
-  padding: $space-tight;
-  border-radius: 12px;
-}
+.theme-value { @include type-style('caption'); color: #71717a; }
+.theme-value-dark { color: #9c9ca6; }
 .theme-option {
   display: flex;
   flex-direction: row;
   align-items: center;
-  justify-content: center;
+  justify-content: space-between;
   min-height: $space-controlMin;
+  width: 100%;
   margin: 0;
+  padding: 0;
   border: 0;
-  border-radius: 9px;
+  border-radius: 0;
   background-color: transparent;
 }
-.theme-selected { background-color: #ffffff; }
-.theme-options-dark { background-color: #111215; }
-.theme-selected-dark { background-color: #303238; }
-.theme-option-label { @include type-style('caption'); color: #71717a; }
-.theme-option-dark-label { color: #b4b4bd; }
-.theme-selected-label { color: #4e7ee3; }
-.theme-selected-dark-label { color: #9dbcfa; }
 /* #ifdef WEB || MP-WEIXIN */
+.signout-button::after,
 .settings-entry::after,
 .theme-option::after { border: 0; }
 /* #endif */
@@ -379,12 +408,122 @@ function back() {
 }
 .preference-name {
   flex: 1;
+  min-width: 0;
   @include type-style('body');
+  color: #27272a;
 }
+.preference-name-dark { color: #eeeeef; }
+.menu-group-toggle {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  width: 100%;
+  min-height: $space-controlMin;
+  margin: 0;
+  padding: 0;
+  gap: $space-inline;
+  background-color: transparent;
+  border: 0;
+}
+.menu-group-title { flex: 1; text-align: left; @include type-style('body-strong'); color: #27272a; }
+.menu-group-title-dark { color: #eeeeef; }
+.menu-empty { align-items: center; gap: $space-inline; padding: $space-section; }
+/* #ifdef WEB || MP-WEIXIN */
+.menu-group-toggle::after { border: 0; }
+/* #endif */
 .preference-actions {
   flex-direction: row;
 
   align-items: center;
 
 }
+.signout-anchor {
+  position: relative;
+  // 提升整个锚点层级，让向上展开的确认框覆盖前一张菜单卡片。
+  z-index: 3;
+  overflow: visible;
+}
+.signout-button {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: $space-controlMin + $space-detail;
+  gap: $space-inline;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 14px;
+  background-color: #ffffff;
+  color: #c65353;
+  @include type-style('body');
+  line-height: type-leading('tallControl');
+}
+.signout-confirm {
+  position: absolute;
+  bottom: calc(100% + $space-inline);
+  z-index: 2;
+  left: 50%;
+  transform: translateX(-50%);
+  // 限制浮层宽度，手机与宽屏都保持紧凑，并避免窄屏溢出。
+  width: 264px;
+
+/* #ifndef APP */
+max-width: 100%;
+/* #endif */
+/* #ifdef APP */
+flex-shrink: 1;
+/* #endif */
+
+  box-sizing: border-box;
+  overflow: visible;
+  padding: $space-modal;
+  // 按钮自带透明触摸边缘，底部只留细节间距，避免留白叠加。
+  padding-bottom: $space-detail;
+  border-radius: 16px;
+  background-color: #ffffff;
+  color: #27272a;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.16);
+}
+.signout-message {
+  @include type-style('body-strong');
+  color: #27272a;
+}
+.signout-message-dark { color: #eeeeef; }
+.signout-actions {
+  display: flex;
+  flex-direction: row;
+  justify-content: flex-end;
+  gap: $space-inline;
+  margin-top: $space-section;
+}
+.signout-arrow {
+  // 小箭头是定位几何，指向下方退出入口。
+  position: absolute;
+  bottom: -5px;
+  left: 50%;
+  width: 10px;
+  height: 10px;
+  transform: translateX(-50%) rotate(45deg);
+  background-color: #ffffff;
+}
+
+.signout-button-dark {
+  background-color: #1c1e22;
+}
+.signout-button-dark {
+  color: #ed9191;
+}
+.signout-confirm-dark {
+  color: #eeeeef;
+  background-color: #303238;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.32);
+}
+.signout-arrow-dark {
+  background-color: #303238;
+}
+
+.signout-button-label { color: #c65353; @include type-style('body'); }
+.signout-button-dark-label { color: #ed9191; }
 </style>

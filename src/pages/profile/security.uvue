@@ -42,8 +42,25 @@ function flatten(nodes, parents = [], ancestors = []) {
     return [{ id, key, title, path: path.join(' / '), ancestors, hasChildren: children.length > 0 }, ...children];
   });
 }
+// 与 Web 树选择一致：父级锁覆盖后代，子级选择向祖先汇总。
+function selectionStates(ids: string[]) {
+  const selected = new Set(ids);
+  const byKey = new Map(menus.value.map((item) => [item.key, item]));
+  const states: Record<string, string> = {};
+  for (const item of [...menus.value].reverse()) {
+    const inherited = item.ancestors.some((key) => selected.has(byKey.get(key)?.id));
+    const children = menus.value.filter((child) => child.ancestors[child.ancestors.length - 1] === item.key);
+    states[item.key] = selected.has(item.id) || inherited
+      || (children.length > 0 && children.every((child) => states[child.key] === 'true'))
+      ? 'true'
+      : children.some((child) => states[child.key] !== 'false') ? 'mixed' : 'false';
+  }
+  return states;
+}
+const checkedStates = computed(() => selectionStates(locked.value));
 const visibleMenus = computed(() =>
-  menus.value.filter((item) => !item.ancestors.some((key) => collapsed.value.includes(key))),
+  menus.value.filter((item) => !item.ancestors.some((key) => collapsed.value.includes(key)))
+    .map((item) => ({ ...item, checked: checkedStates.value[item.key] })),
 );
 const menuGroups = computed(() =>
   menus.value.filter((item) => !item.ancestors.length).map((root) => ({
@@ -106,9 +123,14 @@ async function load() {
       request('/auth/secondary-password/status'),
     ]);
     if (v !== revision || !active || token !== session.token) return;
-    menus.value = flatten(tree);
     if (!Array.isArray(ids) || ids.some((x) => typeof x !== 'string'))
       throw new Error('菜单锁ID数据异常');
+    const rows = flatten(tree);
+    // 新目录默认收起；刷新和保存后保留用户已展开的目录。
+    const knownKeys = new Set(menus.value.map((item) => item.key));
+    collapsed.value = rows.filter((item) => item.hasChildren
+      && (!knownKeys.has(item.key) || collapsed.value.includes(item.key))).map((item) => item.key);
+    menus.value = rows;
     locked.value = ids;
     hasPassword.value = !!status.hasPassword;
     ready.value = true;
@@ -118,11 +140,25 @@ async function load() {
     if (v === revision) loading.value = false;
   }
 }
-function toggle(id) {
+function toggle(item) {
   if (saving.value || !hasPassword.value) return;
-  locked.value = locked.value.includes(id)
-    ? locked.value.filter((x) => x !== id)
-    : [...locked.value, id];
+  const selected = new Set(locked.value);
+  // 先展开已有父级锁，取消某个后代时仍保留其他兄弟的选择。
+  for (const row of menus.value) {
+    if (row.id && checkedStates.value[row.key] === 'true') selected.add(row.id);
+  }
+  const checked = checkedStates.value[item.key] !== 'true';
+  for (const row of menus.value) {
+    if (row.key === item.key || row.ancestors.includes(item.key)) {
+      if (row.id && checked) selected.add(row.id);
+      else selected.delete(row.id);
+    } else if (item.ancestors.includes(row.key)) selected.delete(row.id);
+  }
+  const states = selectionStates([...selected]);
+  for (const row of menus.value) {
+    if (row.id && states[row.key] === 'true') selected.add(row.id);
+  }
+  locked.value = [...selected];
 }
 function open(value) {
   mode.value = value;
@@ -229,18 +265,17 @@ function back() {
                 <text class="security-name" :class="themeClass('security-name')">{{ item.title }}</text>
               </view>
               <button
-                v-if="item.id"
-                role="switch"
+                role="checkbox"
                 class="security-check ui-type-body"
                 :class="{ 'security-disabled': saving || !hasPassword }"
                 :disabled="saving || !hasPassword"
-                :aria-checked="locked.includes(item.id)"
+                :aria-checked="item.checked"
                 :aria-disabled="saving || !hasPassword"
                 :aria-label="'锁定' + item.path"
-                @click="toggle(item.id)"
+                @click="toggle(item)"
               >
-                <view class="security-check-ring" :class="[{ 'security-check-selected': locked.includes(item.id) }, themeClass('security-check-ring')]">
-                  <AppIcon v-if="locked.includes(item.id)" name="ant-design:check-outlined" :size="13" color="#ffffff" />
+                <view class="security-check-ring" :class="[{ 'security-check-selected': item.checked !== 'false' }, themeClass('security-check-ring')]">
+                  <AppIcon v-if="item.checked !== 'false'" :name="item.checked === 'mixed' ? 'ant-design:minus-outlined' : 'ant-design:check-outlined'" :size="13" color="#ffffff" />
                 </view>
               </button>
             </view>

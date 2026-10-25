@@ -1,0 +1,110 @@
+<script setup lang="ts">
+import { isDark, switchActiveColor } from '../services/theme.ts';
+
+const props = withDefaults(defineProps<{
+  checked?: boolean;
+  disabled?: boolean;
+  loading?: boolean;
+  ariaLabel: string;
+  label?: string;
+}>(), { checked: false, disabled: false, loading: false, label: '' });
+const emit = defineEmits(['change']);
+
+function activate() {
+  if (props.disabled || props.loading) return;
+  // 受控状态：只通知意图，由调用方确认 checked；请求失败无需重建控件。
+  emit('change', { detail: { value: !props.checked } });
+}
+</script>
+
+<template>
+  <button class="mobile-switch" role="switch" :aria-label="ariaLabel"
+    :tabindex="disabled || loading ? -1 : 0"
+    :aria-checked="checked" :aria-disabled="disabled || loading" :aria-busy="loading"
+    :style="{ backgroundColor: 'transparent' }"
+    :disabled="disabled || loading" :class="{ 'mobile-switch-disabled': disabled && !loading }"
+    :hover-class="disabled || loading ? 'none' : 'mobile-switch-pressed'"
+    @click.stop="activate" @keydown.enter.prevent="activate" @keydown.space.prevent="activate">
+    <text v-if="label" class="mobile-switch-label" :class="{ 'mobile-switch-label-dark': isDark }">{{ label }}</text>
+    <view class="mobile-switch-control" aria-hidden="true">
+      <view class="mobile-switch-track" :class="{ 'mobile-switch-track-dark': isDark }"
+        :style="checked ? { backgroundColor: switchActiveColor } : {}">
+        <view class="mobile-switch-thumb" :class="{ 'mobile-switch-thumb-on': checked }">
+          <view v-if="loading" class="mobile-switch-spinner" :style="{ borderTopColor: switchActiveColor }" />
+        </view>
+      </view>
+    </view>
+  </button>
+</template>
+
+<style scoped lang="scss">
+@use '../styles/spacing' as *;
+@use '../styles/spacing-tokens' as *;
+@use '../styles/typography' as *;
+.mobile-switch {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  align-self: flex-start;
+  flex-shrink: 0;
+  min-width: $space-controlMin;
+  min-height: $space-controlMin;
+  gap: $space-detail;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: $space-detail;
+  background-color: transparent;
+  @include type-style('body');
+}
+.mobile-switch-label { @include type-style('caption'); color: #707784; }
+.mobile-switch-label-dark { color: #a0a6b1; }
+// 视觉几何尺寸由统一配置生成，透明点击区不随轨道缩小。
+.mobile-switch-control { display: flex; align-items: center; justify-content: center; width: $space-controlMin; height: $space-controlMin; flex-shrink: 0; }
+.mobile-switch-track {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  box-sizing: border-box;
+  width: $space-switchTrackWidth;
+  height: $space-switchTrackHeight;
+  padding: $space-micro;
+  border-radius: $space-switchTrackHeight;
+  background-color: #a1a8b3;
+}
+.mobile-switch-track-dark { background-color: #626976; }
+.mobile-switch-thumb {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: $space-switchThumb;
+  height: $space-switchThumb;
+  border-radius: $space-switchThumb;
+  background-color: #ffffff;
+  transition: transform 0.16s ease;
+}
+.mobile-switch-thumb-on { transform: translateX($space-switchTrackWidth - $space-switchThumb - $space-micro * 2); }
+.mobile-switch-spinner {
+  width: $space-switchThumb - $space-micro * 2;
+  height: $space-switchThumb - $space-micro * 2;
+  box-sizing: border-box;
+  border: $space-micro solid #dce2eb;
+  border-radius: $space-switchThumb;
+  animation: mobile-switch-spin 0.8s linear infinite;
+}
+.mobile-switch-disabled { opacity: 0.45; }
+.mobile-switch-pressed { opacity: 0.75; }
+@keyframes mobile-switch-spin { to { transform: rotate(360deg); } }
+/* #ifdef WEB || MP-WEIXIN */
+.mobile-switch::after { border: 0; }
+/* #endif */
+/* #ifdef WEB */
+.mobile-switch:focus-visible { outline: $space-micro solid #7198df; outline-offset: -$space-micro; }
+@media (prefers-reduced-motion: reduce) {
+  .mobile-switch-thumb { transition: none; }
+  .mobile-switch-spinner { animation: none; }
+}
+/* #endif */
+</style>

@@ -3,7 +3,7 @@ const { dashboardFixture } = require('./fixtures.js');
 const { retainedProfilePages } = require('./profile-navigation');
 
 async function setup(page) {
-  const state = { profile: { id: '9223372036854775807', accountUsername: 'fixture', nickname: '测试用户', email: 'fixture@example.com', introduction: '测试简介', avatarFileId: null }, binds: [], writes: [], failSave: false, failList: false, failDelete: false, expired: false, delay: 0 };
+  const state = { unread: 3, failUnread: false, profile: { id: '9223372036854775807', accountUsername: 'fixture', nickname: '测试用户', email: 'fixture@example.com', introduction: '测试简介', avatarFileId: null }, binds: [], writes: [], failSave: false, failList: false, failDelete: false, expired: false, delay: 0 };
   await page.route(new URL('/api/**', test.info().project.use.baseURL).href, async route => {
     const path = new URL(route.request().url()).pathname;
     const method = route.request().method();
@@ -11,6 +11,10 @@ async function setup(page) {
     let data = dashboardFixture(path);
     if (path === '/api/auth/login') data = { accessToken: 'profile-fixture' };
     if (path === '/api/user/info') data = state.profile;
+    if (path === '/api/message/unread-count') {
+      if (state.failUnread) return route.fulfill({ json: { code: 1, message: '未读消息加载失败' } });
+      data = { count: state.unread };
+    }
     if (path === '/api/users') {
       state.writes.push({ path, method, data: route.request().postDataJSON() });
       if (state.delay) await new Promise(resolve => setTimeout(resolve, state.delay));
@@ -55,34 +59,42 @@ for (const width of [390, 768, 1440]) {
       await page.emulateMedia({ colorScheme: system });
       const errors = []; page.on('pageerror', e => errors.push(e.message));
       await setup(page);
-      await expect(page.locator('.profile-menu')).toBeVisible();
+      await expect(page.locator('.profile-menu')).toHaveCount(2);
       for (const name of Object.keys(retainedProfilePages)) {
         await expect(page.getByRole('button', { name, exact: true })).toHaveCount(0);
       }
       await expect(page.getByRole('button', { name: '账号与安全', exact: true })).toBeVisible();
-      await expect(page.getByRole('button', { name: '账号绑定', exact: true })).toHaveCount(0);
+      await expect(page.getByRole('button', { name: '账号绑定', exact: true })).toBeVisible();
       await expect(page.locator('.account-card')).toHaveCount(0);
-      await expect(page.locator('.profile-menu .menu-row')).toHaveCount(3);
-      for (const name of ['消息中心', '账号与安全', '设置']) {
+      await expect(page.locator('.profile-menu .menu-row')).toHaveCount(5);
+      await expect(page.locator('.profile-shortcuts .shortcut-button')).toHaveCount(4);
+      await expect(page.locator('.unread-badge')).toHaveText('3');
+      for (const name of ['消息中心', '账号绑定', '首页卡片', '菜单显示']) {
+        await expect(page.locator('.profile-shortcuts').getByRole('button', { name, exact: true })).toBeVisible();
+      }
+      for (const name of ['账号与安全', '消息通知', '分类管理', '设置']) {
         await expect(page.locator('.profile-menu').getByRole('button', { name, exact: true })).toBeVisible();
       }
       await expect(page.locator('.profile-edit')).toHaveCount(0);
       await expect(page.getByRole('button', { name: '编辑资料', exact: true })).toHaveCount(1);
-      for (const name of ['菜单显示', '首页卡片', '通知设置', '自定义设置', '反馈', '关于']) {
+      for (const name of ['外观', '反馈', '关于', '退出登录']) {
         await expect(page.getByRole('button', { name, exact: true })).toHaveCount(0);
       }
+      await page.screenshot({ path: `test-results/profile-shortcuts-${width}-${system}.png`, fullPage: true });
       await page.getByRole('button', { name: '设置', exact: true }).click();
-      for (const name of ['菜单显示', '首页卡片', '通知设置', '自定义设置', '反馈', '关于']) {
+      for (const name of ['外观', '反馈', '关于', '退出登录']) {
         await expect(page.getByRole('button', { name, exact: true })).toBeVisible();
       }
       await page.screenshot({ path: `test-results/settings-center-${width}-${system}.png`, fullPage: true });
-      const selected = system === 'dark' ? '日间' : '夜间';
-      const bg = selected === '夜间' ? 'rgb(17, 18, 21)' : 'rgb(240, 242, 245)';
+      const selected = system === 'dark' ? '浅色' : '深色';
+      const bg = selected === '深色' ? 'rgb(17, 18, 21)' : 'rgb(240, 242, 245)';
+      await page.getByRole('button', { name: '外观', exact: true }).click();
+      await page.screenshot({ path: `test-results/profile-appearance-${width}-${system}.png`, fullPage: true });
       await page.getByRole('button', { name: selected, exact: true }).click();
       await expect(page.locator('.tab-page').last()).toHaveCSS('background-color', bg);
       await expect(page.locator('.page-navigation').last()).toHaveCSS('background-color', bg);
       await page.getByRole('button', { name: '返回', exact: true }).last().click();
-      await expect(page.locator('uni-tabbar .uni-tabbar')).toHaveCSS('background-color', selected === '夜间' ? 'rgb(28, 30, 34)' : 'rgb(255, 255, 255)');
+      await expect(page.locator('uni-tabbar .uni-tabbar')).toHaveCSS('background-color', selected === '深色' ? 'rgb(28, 30, 34)' : 'rgb(255, 255, 255)');
       const menu = await page.locator('.menu-row').first().boundingBox();
       expect(menu.height).toBeLessThanOrEqual(60);
       await page.screenshot({ path: `test-results/profile-manual-${width}-${system}.png`, fullPage: true });
@@ -99,7 +111,7 @@ for (const width of [390, 768, 1440]) {
       await page.getByRole('button', { name: '账号绑定', exact: true }).click();
       await page.getByRole('button', { name: '新增绑定', exact: true }).click();
       await expect(page.getByRole('dialog')).toBeVisible();
-      await expect(page.locator('.modal-surface')).toHaveCSS('background-color', selected === '夜间' ? 'rgba(28, 30, 34, 0.97)' : 'rgba(255, 255, 255, 0.97)');
+      await expect(page.locator('.modal-surface')).toHaveCSS('background-color', selected === '深色' ? 'rgba(28, 30, 34, 0.97)' : 'rgba(255, 255, 255, 0.97)');
       await page.screenshot({ path: `test-results/bindings-${width}-${system}.png`, fullPage: true });
       const box = await page.locator('.modal-panel').boundingBox();
       expect(box.width).toBeLessThanOrEqual(Math.min(480, width - 32));
@@ -110,13 +122,16 @@ for (const width of [390, 768, 1440]) {
       await page.getByRole('button', { name: '返回', exact: true }).last().click();
       await page.reload();
       await page.getByRole('button', { name: '设置', exact: true }).click();
+      await page.getByRole('button', { name: '外观', exact: true }).click();
       await expect(page.getByRole('button', { name: selected, exact: true })).toHaveAttribute('aria-pressed', 'true');
+      await page.getByRole('button', { name: selected, exact: true }).click();
       await expect(page.locator('.tab-page').last()).toHaveCSS('background-color', bg);
       await page.getByRole('button', { name: '返回', exact: true }).last().click();
       await page.locator('uni-tabbar').getByText('时迹', { exact: true }).click();
       await expect(page.locator('.tab-page').last()).toHaveCSS('background-color', bg);
       await page.locator('uni-tabbar').getByText('我', { exact: true }).click();
       await page.getByRole('button', { name: '设置', exact: true }).click();
+      await page.getByRole('button', { name: '外观', exact: true }).click();
       await page.getByRole('button', { name: '跟随系统', exact: true }).click();
       await expect(page.locator('.tab-page').last()).toHaveCSS('background-color', system === 'dark' ? 'rgb(17, 18, 21)' : 'rgb(240, 242, 245)');
       await page.emulateMedia({ colorScheme: system === 'dark' ? 'light' : 'dark' });
@@ -242,4 +257,24 @@ test('微信读书新建必填密钥，编辑不回显且留空保留', async ({
   await page.getByRole('button', { name: '保存', exact: true }).click();
   await expect(page.getByRole('dialog')).toBeHidden();
   expect(state.writes.at(-1).data.accessToken).toBeUndefined();
+});
+
+
+test('未读角标返回时刷新、零值隐藏、失败保留旧值并局部重试', async ({ page }) => {
+  const state = await setup(page);
+  await expect(page.locator('.unread-badge')).toHaveText('3');
+  state.unread = 123;
+  await page.getByRole('button', { name: '设置', exact: true }).click();
+  await page.getByRole('button', { name: '返回', exact: true }).click();
+  await expect(page.locator('.unread-badge')).toHaveText('99+');
+  state.failUnread = true;
+  await page.getByRole('button', { name: '设置', exact: true }).click();
+  await page.getByRole('button', { name: '返回', exact: true }).click();
+  await expect(page.getByRole('alert')).toHaveText('未读消息加载失败');
+  await expect(page.locator('.unread-badge')).toHaveText('99+');
+  state.failUnread = false;
+  state.unread = 0;
+  await page.getByRole('button', { name: '重试未读消息', exact: true }).click();
+  await expect(page.locator('.unread-badge')).toHaveCount(0);
+  await expect(page.getByRole('alert')).toHaveCount(0);
 });

@@ -34,11 +34,13 @@ async function setup(page) {
  await expect(page.locator('.dashboard-scroll')).toBeVisible();
  return state;
 }
-test('修改密码校验、失败保留和重试',async({page})=>{
+test('账号与安全直接进入修改密码表单，校验、失败保留和重试',async({page})=>{
  const state=await setup(page);
- await page.goto('/#/pages/profile/preferences?section=password');
+ await page.goto('/#/pages/profile/account-security');
  await page.getByRole('button',{name:'修改密码',exact:true}).click();
- const dialog=page.getByRole('dialog',{name:'修改密码',exact:true});
+ const dialog=page.getByRole('form',{name:'修改密码',exact:true});
+ await expect(dialog).toBeVisible();
+ await expect(page.getByRole('button',{name:'修改密码',exact:true})).toHaveCount(0);
  await dialog.locator('[aria-label="旧密码"] input').fill('old-fixture');
  await dialog.locator('[aria-label="新密码"] input').fill('new-fixture');
  await dialog.locator('[aria-label="确认密码"] input').fill('bad');
@@ -50,9 +52,12 @@ test('修改密码校验、失败保留和重试',async({page})=>{
  await expect(dialog.getByRole('alert')).toContainText('保存失败');
  await expect(dialog.locator('[aria-label="新密码"] input')).toHaveValue('new-fixture');state.fail=false;
  await dialog.getByRole('button',{name:'保存',exact:true}).click();
- await expect(dialog).toHaveCount(0);
+ await expect(dialog.locator('[aria-label="新密码"] input')).toHaveValue('');
+ await expect(dialog.locator('[aria-label="旧密码"] input')).toHaveValue('');
+ await expect(dialog.locator('[aria-label="确认密码"] input')).toHaveValue('');
  expect(state.writes.at(-1).body).toEqual({oldPassword:'old-fixture',newPassword:'new-fixture'});
-
+ await dialog.getByRole('button',{name:'取消',exact:true}).click();
+ await expect(page).toHaveURL(/\/pages\/profile\/account-security$/);
 });
 test('接口菜单锁解锁后重试一次，隐藏菜单保留长ID',async({page})=>{
  const state=await setup(page);
@@ -76,9 +81,8 @@ for(const width of [390,768,1440])for(const theme of ['light','dark'])test(`设�
  await page.setViewportSize({width,height:900});await page.emulateMedia({colorScheme:theme});await setup(page);
  await page.goto('/#/pages/profile/preferences?section=password');
  await page.reload();
- await page.getByRole('button',{name:'修改密码',exact:true}).click();
- const panel=page.getByRole('dialog',{name:'修改密码',exact:true});await expect(panel).toBeVisible();
- const box=await panel.boundingBox();expect(box.width).toBeLessThanOrEqual(Math.min(width-32,520));expect(box.y).toBeGreaterThanOrEqual(0);expect(box.y+box.height).toBeLessThanOrEqual(901);
+ const panel=page.getByRole('form',{name:'修改密码',exact:true});await expect(panel).toBeVisible();
+ const box=await panel.boundingBox();expect(box.width).toBeLessThanOrEqual(width-24);expect(box.y).toBeGreaterThanOrEqual(0);expect(box.y+box.height).toBeLessThanOrEqual(901);
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
  await page.screenshot({path:`test-results/preferences-${width}-${theme}.png`,fullPage:true});
 });
@@ -86,13 +90,14 @@ for(const width of [390,768,1440])for(const theme of ['light','dark'])test(`设�
 test('菜单锁使用完整字符串ID与二级密码；通知留空保留应用凭证',async({page})=>{
  const state=await setup(page);
  await page.goto('/#/pages/profile/security');
+ await page.getByRole('button',{name:'展开记录',exact:true}).click();
  await page.locator('[aria-label="锁定记录 / 笔记"]').click();
  await page.getByRole('button',{name:'保存菜单锁',exact:true}).click();
  const lock=page.getByRole('dialog',{name:'确认菜单锁',exact:true});
  await lock.locator('[aria-label="二级密码"] input').fill('secondary-fixture');
  await lock.getByRole('button',{name:'保存',exact:true}).click();
  await expect(lock).toHaveCount(0);
- expect(state.security[0]).toEqual({menuIds:['9223372036854775807'],secondaryPassword:'secondary-fixture'});
+ expect(state.security[0]).toEqual({menuIds:['9223372036854775807','root'],secondaryPassword:'secondary-fixture'});
  await page.goto('/#/pages/profile/notifications');
  await page.getByRole('button',{name:'配置飞书',exact:true}).click();
  const notification=page.getByRole('dialog',{name:'飞书通知配置',exact:true});
