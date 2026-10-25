@@ -1,8 +1,10 @@
 <script setup lang="ts">
+import CalendarPicker from '../../components/CalendarPicker.uvue';
 import { computed } from 'vue';
 import FormField from '../../components/FormField.uvue';
+import AppIcon from '../../components/AppIcon.uvue';
 import { themeClass } from '../../services/theme.ts';
-const props = withDefaults(defineProps<{ label: string; modelValue: string; disabled?: boolean }>(), { disabled: false });
+const props = withDefaults(defineProps<{ label: string; modelValue: string; disabled?: boolean; placeholder?: string }>(), { disabled: false, placeholder: '请选择' });
 const emit = defineEmits(['update:modelValue']);
 const today = new Date(Date.now() + 8 * 3600000).toISOString().slice(0, 10);
 const pickerDate = computed(() => props.modelValue || today);
@@ -11,8 +13,9 @@ function changeDate(event) { emit('update:modelValue', String(event.detail.value
 <template>
   <FormField :label="label" compact stretch :disabled="disabled">
     <template #labelAction><view class="date-label-action"><slot name="action" /></view></template>
-    <view class="date-controls" :class="themeClass('date-controls')">
-      <picker class="date-value" mode="date" :value="pickerDate" :end="today" fields="day" start="1000-01-01" :disabled="disabled" :aria-label="label" @change="changeDate"><text class="date-text" :class="themeClass('date-text')">{{ modelValue ? modelValue.replaceAll('-', '.') : '请选择' }}</text></picker>
+    <view class="date-controls" :class="[themeClass('date-controls'), { 'date-controls-disabled': disabled }]" :aria-disabled="disabled">
+      <view v-if="disabled" class="date-value"><view class="date-display"><text class="date-text" :class="themeClass('date-text')">{{ modelValue ? modelValue.replaceAll('-', '.') : placeholder }}</text><AppIcon name="ant-design:calendar-outlined" :size="20" /></view></view>
+      <CalendarPicker v-else class="date-value" :value="pickerDate" :end="today" fields="day" start="1000-01-01" :disabled="disabled" :label="label" @change="changeDate"><view class="date-display"><text class="date-text" :class="themeClass('date-text')">{{ modelValue ? modelValue.replaceAll('-', '.') : placeholder }}</text><AppIcon name="ant-design:calendar-outlined" :size="20" /></view></CalendarPicker>
     </view>
   </FormField>
 </template>
@@ -22,7 +25,9 @@ function changeDate(event) { emit('update:modelValue', String(event.detail.value
 .date-label-action { min-height: $space-controlMin; display: flex; align-items: center; }
 .date-controls { display: flex; flex-direction: row; align-items: center; min-height: $space-controlMin; border: 1px solid #e4e6eb; border-radius: 8px; background-color: #fff; }
 .date-controls-dark { background-color: #1c1e22; border-color: #373b44; }
+.date-controls-disabled { opacity: 0.75; }
 .date-value { flex: 1; min-width: 0; padding: $space-inline; }
+.date-display { display: flex; flex-direction: row; align-items: center; justify-content: space-between; gap: $space-inline; }
 .date-text { @include type-style('body'); color: #27272a; }
 .date-text-dark { color: #eeeeef; }
 </style>

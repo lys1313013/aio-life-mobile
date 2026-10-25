@@ -1,0 +1,147 @@
+<script setup lang="ts">
+import { computed, ref, watch } from 'vue';
+import AdaptiveModal from './AdaptiveModal.uvue';
+import AppIcon from './AppIcon.uvue';
+import MobileButton from './MobileButton.uvue';
+import { themeClass } from '../services/theme.ts';
+import { calendarBounds, calendarDate, calendarMonth, calendarPeriodAllowed, calendarToday, validCalendarDate } from '../services/calendar.ts';
+const props = withDefaults(defineProps<{
+  value?: string; label?: string; disabled?: boolean; required?: boolean;
+  start?: string; end?: string; fields?: string;
+}>(), { value: '', label: '选择日期', start: '', end: '', fields: 'day' });
+const emit = defineEmits(['change']);
+const opened = ref(false);
+const panel = ref('day');
+const year = ref(2000);
+const month = ref(1);
+const today = ref(calendarToday());
+const bounds = computed(() => calendarBounds(props.start, props.end, props.fields));
+const days = computed(() => calendarMonth(year.value, month.value));
+const weeks = computed(() => Array.from({ length: 6 }, (_, i) => days.value.slice(i * 7, i * 7 + 7)));
+const yearStart = computed(() => Math.floor(year.value / 12) * 12);
+const years = computed(() => Array.from({ length: 12 }, (_, i) => yearStart.value + i));
+const months = Array.from({ length: 12 }, (_, i) => i + 1);
+const weekdays = ['一', '二', '三', '四', '五', '六', '日'];
+function allowed(first: string, last = first) {
+  return validCalendarDate(first) && validCalendarDate(last) && calendarPeriodAllowed(first, last, bounds.value.start, bounds.value.end);
+}
+function monthAllowed(y: number, m: number) {
+  return allowed(calendarDate(y, m, 1), calendarDate(y, m, new Date(y, m, 0).getDate()));
+}
+function yearAllowed(y: number) { return allowed(calendarDate(y, 1, 1), calendarDate(y, 12, 31)); }
+function open() {
+  if (props.disabled) return;
+  today.value = calendarToday();
+  const value = props.fields === 'month' ? props.value + '-01' : props.value;
+  let initial = validCalendarDate(value) ? value : today.value;
+  initial = initial < bounds.value.start ? bounds.value.start : initial > bounds.value.end ? bounds.value.end : initial;
+  year.value = Number(initial.slice(0, 4));
+  month.value = Number(initial.slice(5, 7));
+  panel.value = props.fields === 'month' ? 'month' : 'day';
+  opened.value = true;
+}
+function canMove(step: number) {
+  if (panel.value === 'year') {
+    const first = yearStart.value + step * 12;
+    if (first > 9999 || first + 11 < 1000) return false;
+    return allowed(calendarDate(Math.max(1000, first), 1, 1), calendarDate(Math.min(9999, first + 11), 12, 31));
+  }
+  if (panel.value === 'month') return yearAllowed(year.value + step);
+  const next = new Date(year.value, month.value - 1 + step, 1);
+  return monthAllowed(next.getFullYear(), next.getMonth() + 1);
+}
+function move(step: number) {
+  if (!canMove(step)) return;
+  if (panel.value === 'year') year.value += step * 12;
+  else if (panel.value === 'month') year.value += step;
+  else {
+    const next = new Date(year.value, month.value - 1 + step, 1);
+    year.value = next.getFullYear(); month.value = next.getMonth() + 1;
+  }
+}
+function select(value: string) {
+  if (props.disabled || !allowed(value)) return;
+  opened.value = false;
+  emit('change', { detail: { value: props.fields === 'month' ? value.slice(0, 7) : value } });
+}
+function selectMonth(value: number) {
+  if (!monthAllowed(year.value, value)) return;
+  month.value = value;
+  if (props.fields === 'month') {
+    const first = calendarDate(year.value, value, 1);
+    select(first < bounds.value.start ? bounds.value.start : first);
+  } else panel.value = 'day';
+}
+function selectYear(value: number) {
+  if (!yearAllowed(value)) return;
+  year.value = value; panel.value = 'month';
+}
+watch(() => props.disabled, value => { if (value) opened.value = false; });
+</script>
+<template>
+  <view class="calendar-picker">
+    <button class="calendar-trigger" :class="{ 'calendar-trigger-disabled': disabled }" role="button" :aria-label="label" :aria-required="!!required" :aria-expanded="opened" aria-haspopup="dialog" :disabled="disabled" @click.stop="open">
+      <slot><view class="calendar-default"><text class="calendar-text" :class="themeClass('calendar-text')">{{ value || '请选择日期' }}</text><AppIcon name="ant-design:calendar-outlined" :size="20" /></view></slot>
+    </button>
+    <AdaptiveModal v-if="opened" :label="label + '日历'" :max-width="388" dense :content-key="panel" @close="opened = false">
+      <view class="calendar-heading"><text class="calendar-title" :class="themeClass('calendar-text')">{{ label }}</text></view>
+      <view class="calendar-navigation">
+        <MobileButton :label="panel === 'day' ? '上个月' : panel === 'month' ? '上一年' : '上一组年份'" icon="ant-design:left-outlined" variant="ghost" :disabled="!canMove(-1)" @click="move(-1)" />
+        <view class="calendar-period">
+          <button class="calendar-heading-button" role="button" aria-label="选择年份" @click="panel = 'year'"><text class="calendar-title" :class="themeClass('calendar-text')">{{ panel === 'year' ? yearStart + ' — ' + (yearStart + 11) : year + '年' }}</text></button>
+          <button v-if="panel === 'day'" class="calendar-heading-button" role="button" aria-label="选择月份" @click="panel = 'month'"><text class="calendar-title" :class="themeClass('calendar-text')">{{ month }}月</text></button>
+        </view>
+        <MobileButton :label="panel === 'day' ? '下个月' : panel === 'month' ? '下一年' : '下一组年份'" icon="ant-design:right-outlined" variant="ghost" :disabled="!canMove(1)" @click="move(1)" />
+      </view>
+      <!-- 七列各保留 44px 点击区；极窄设备允许横向滚动，不压缩点击区。 -->
+      <scroll-view v-if="panel === 'day'" scroll-x direction="horizontal" class="calendar-scroll">
+        <view class="calendar-days">
+          <view class="calendar-week"><view v-for="weekday in weekdays" :key="weekday" class="calendar-cell"><text class="calendar-caption calendar-muted" :class="themeClass('calendar-muted')">{{ weekday }}</text></view></view>
+          <view v-for="(week, index) in weeks" :key="index" class="calendar-week">
+            <button v-for="day in week" :key="day.value" class="calendar-cell calendar-day" :class="{ 'calendar-selected': day.value === value, 'calendar-today': day.value === today, 'calendar-unavailable': !allowed(day.value) }" role="button" :aria-label="day.value" :aria-pressed="day.value === value" :disabled="!allowed(day.value)" @click="select(day.value)">
+              <text class="calendar-text" :class="[themeClass('calendar-text'), { 'calendar-muted': day.outside, 'calendar-selected-text': day.value === value }, themeClass({ 'calendar-muted': day.outside })]">{{ day.day }}</text>
+            </button>
+          </view>
+        </view>
+      </scroll-view>
+      <view v-else class="calendar-options">
+        <template v-if="panel === 'month'"><button v-for="item in months" :key="item" class="calendar-option" :class="{ 'calendar-selected': value.slice(0, 7) === calendarDate(year, item, 1).slice(0, 7), 'calendar-unavailable': !monthAllowed(year, item) }" role="button" :aria-label="item + '月'" :disabled="!monthAllowed(year, item)" @click="selectMonth(item)"><text class="calendar-text" :class="[themeClass('calendar-text'), { 'calendar-selected-text': value.slice(0, 7) === calendarDate(year, item, 1).slice(0, 7) }]">{{ item }}月</text></button></template>
+        <template v-else><button v-for="item in years" :key="item" class="calendar-option" :class="{ 'calendar-unavailable': !yearAllowed(item) }" role="button" :aria-label="item + '年'" :disabled="!yearAllowed(item)" @click="selectYear(item)"><text class="calendar-text" :class="themeClass('calendar-text')">{{ item }}</text></button></template>
+      </view>
+      <view class="calendar-footer"><MobileButton :label="fields === 'month' ? '本月' : '今天'" variant="ghost" :disabled="!allowed(today)" @click="select(today)" /></view>
+    </AdaptiveModal>
+  </view>
+</template>
+<style scoped lang="scss">
+@use '../styles/spacing-tokens' as *;
+@use '../styles/typography' as *;
+.calendar-picker { min-width: 0; }
+.calendar-trigger { display: block; width: 100%; min-height: $space-controlMin; padding: 0; margin: 0; border: 0; background-color: transparent; text-align: left; border-radius: 0; }
+.calendar-trigger-disabled { opacity: 0.5; }
+.calendar-default { display: flex; flex-direction: row; align-items: center; justify-content: space-between; min-height: $space-controlMin; gap: $space-inline; }
+.calendar-heading { display: flex; flex-direction: row; align-items: center; justify-content: space-between; }
+.calendar-navigation { display: flex; flex-direction: row; align-items: center; justify-content: space-between; margin-bottom: $space-detail; }
+.calendar-period { display: flex; flex-direction: row; align-items: center; justify-content: center; }
+.calendar-heading-button { min-height: $space-controlMin; min-width: $space-controlMin; padding: 0 $space-detail; margin: 0; border: 0; background-color: transparent; display: flex; align-items: center; justify-content: center; }
+.calendar-title { @include type-style('label'); }
+.calendar-text { @include type-style('body'); color: #27272a; }
+.calendar-text-dark { color: #eeeeef; }
+.calendar-caption { @include type-style('caption'); }
+.calendar-muted { color: #8b8f99; }
+.calendar-muted-dark { color: #9298a3; }
+.calendar-scroll { width: 100%; height: 7 * $space-controlMin; }
+.calendar-days { min-width: 7 * $space-controlMin; }
+.calendar-week { display: flex; flex-direction: row; }
+.calendar-cell { flex: 1; min-width: $space-controlMin; height: $space-controlMin; display: flex; align-items: center; justify-content: center; box-sizing: border-box; }
+.calendar-day { padding: 0; margin: 0; border: 1px solid transparent; border-radius: 10px; background-color: transparent; }
+.calendar-today { border-color: #427bea; }
+.calendar-options { display: flex; flex-direction: row; flex-wrap: wrap; }
+.calendar-option { width: 33.3333%; min-height: $space-controlMin; margin: $space-detail 0; padding: 0; border: 0; border-radius: 10px; background-color: transparent; display: flex; align-items: center; justify-content: center; }
+.calendar-selected { background-color: #427bea; }
+.calendar-selected-text { color: #ffffff; }
+.calendar-unavailable { opacity: 0.3; }
+.calendar-footer { display: flex; align-items: center; margin-top: $space-inline; }
+/* #ifdef WEB || MP-WEIXIN */
+.calendar-trigger::after, .calendar-heading-button::after, .calendar-day::after, .calendar-option::after { border: 0; }
+/* #endif */
+</style>

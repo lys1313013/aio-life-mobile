@@ -6,6 +6,7 @@ import { themeClass } from '../services/theme.ts';
 import { pickerValue } from '../services/mobile-ui.ts';
 import AppIcon from './AppIcon.uvue';
 import RequiredMark from './RequiredMark.uvue';
+import CalendarPicker from './CalendarPicker.uvue';
 // 弹窗自行处理键盘避让，原生输入控件不能再次上推背景页面。
 const insideModal = inject('mobile-modal', false);
 const props = withDefaults(
@@ -17,6 +18,8 @@ const props = withDefaults(
     stretch?: boolean;
     modelValue?: string;
     kind?: string;
+    start?: string;
+    end?: string;
     options?: string[];
     error?: string;
     disabled?: boolean;
@@ -66,8 +69,14 @@ function change(event) {
       <view v-if="$slots.labelAction" class="form-field-label-action"><slot name="labelAction" /></view>
     </view>
     <slot>
+      <CalendarPicker v-if="kind === 'date'" class="form-field-picker" :value="modelValue" :label="label" :required="required" :disabled="disabled" :start="start" :end="end" @change="change">
+        <view class="form-field-input form-field-picker-input" :class="inputClasses">
+          <text :style="modelValue ? appTextColor() : {}" class="form-field-picker-value" :class="[{ 'form-field-placeholder': !modelValue }, themeClass({ 'form-field-placeholder': !modelValue })]">{{ modelValue || placeholder || '请选择日期' }}</text>
+          <view class="form-field-picker-arrow"><AppIcon name="ant-design:calendar-outlined" :size="20" /></view>
+        </view>
+      </CalendarPicker>
       <picker
-        v-if="kind === 'date' || kind === 'time' || kind === 'selector'"
+        v-else-if="kind === 'time' || kind === 'selector'"
         class="form-field-picker"
         :mode="kind"
         :value="kind === 'selector' ? Math.max(0, options.indexOf(modelValue)) : modelValue"
