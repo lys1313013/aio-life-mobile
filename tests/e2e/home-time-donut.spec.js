@@ -211,3 +211,77 @@ for (const width of [390, 820, 1440]) for (const theme of ['light', 'dark']) {
     await page.locator('.donut').screenshot({ path: info.outputPath('donut-after-reorder.png') });
   });
 }
+
+
+test.describe('首页时迹日期横滑', () => {
+  test.use({ hasTouch: true });
+
+  async function swipe(page, dx, dy = 0, cancel = false) {
+    const surface = page.locator('.time-layout').last();
+    await surface.scrollIntoViewIfNeeded();
+    const box = await surface.boundingBox();
+    const x = box.x + (dx < 0 ? box.width * 0.8 : box.width * 0.2);
+    const y = box.y + box.height / 2;
+    const client = await page.context().newCDPSession(page);
+    try {
+      await client.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y }] });
+      for (let step = 1; step <= 6; step++) {
+        await client.send('Input.dispatchTouchEvent', {
+          type: 'touchMove', touchPoints: [{ x: x + dx * step / 6, y: y + dy * step / 6 }],
+        });
+        await page.waitForTimeout(20);
+      }
+      await client.send('Input.dispatchTouchEvent', { type: cancel ? 'touchCancel' : 'touchEnd', touchPoints: [] });
+      await page.waitForTimeout(450);
+    } finally { await client.detach(); }
+  }
+
+  for (const [today, previous] of [['2026-03-01', '2026-02-28'], ['2026-01-01', '2025-12-31']]) {
+    test(`左滑上一天、右滑回今天，跨月跨年及失败恢复 ${today}`, async ({ page }) => {
+      await page.setViewportSize({ width: 390, height: 900 });
+      await page.clock.install({ time: new Date(today + 'T12:00:00') });
+      await setup(page);
+      const dates = [];
+      let fail = false;
+      await page.route('**/api/timeRecord/query?*', route => {
+        const date = new URL(route.request().url()).searchParams.get('date');
+        dates.push(date);
+        return route.fulfill({ json: fail
+          ? { code: 1, message: '模拟日期加载失败' }
+          : { code: 0, data: date === today ? [{ id: 'today-row', categoryId: '0', startTime: 0, endTime: 59 }] : [] } });
+      });
+      const title = page.locator('[data-card-key="section.time"] .section-title');
+      // 明细上的左滑不能误开编辑；纵向、短滑及取消均不切换日期。
+      await swipe(page, 20);
+      await swipe(page, 5, -60);
+      await swipe(page, -120, 0, true);
+      await swipe(page, 120);
+      expect(dates).toEqual([]);
+      await swipe(page, -120);
+      await expect(title).toHaveText('时迹 ' + previous);
+      await expect(page.locator('.empty-label')).toHaveText(previous + '暂无记录');
+      await expect(page.getByRole('dialog')).toHaveCount(0);
+      expect(dates).toEqual([previous]);
+
+      // 每分钟时钟及卡片刷新均保留历史日期。
+      await page.clock.fastForward(61000);
+      await expect(title).toHaveText('时迹 ' + previous);
+      await page.getByRole('button', { name: '刷新时迹 ' + previous, exact: true }).press('Enter');
+      await expect.poll(() => dates.length).toBe(2);
+      expect(dates.at(-1)).toBe(previous);
+
+      fail = true;
+      await swipe(page, 120);
+      await expect(page.getByRole('button', { name: '时迹更新失败，点击重试' })).toBeVisible();
+      await expect(title).toHaveText('时迹 ' + previous);
+      fail = false;
+      await page.getByRole('button', { name: '时迹更新失败，点击重试' }).click();
+      await expect(title).toHaveText('时迹');
+      await expect(page.locator('.donut-total')).toHaveText('1h');
+      expect(dates.slice(-2)).toEqual([today, today]);
+      const count = dates.length;
+      await swipe(page, 120);
+      expect(dates).toHaveLength(count);
+    });
+  }
+});

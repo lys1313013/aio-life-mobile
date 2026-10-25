@@ -65,7 +65,7 @@ export function getRelated(
   page: number,
   all: boolean,
 ) {
-  return request<{ items: RelatedRecord[]; total: number }>(
+  return request<{ items: RelatedRecord[]; total: number | null }>(
     (type === 1 ? '/read-record/page' : '/movie/page') +
       '?page=' +
       page +

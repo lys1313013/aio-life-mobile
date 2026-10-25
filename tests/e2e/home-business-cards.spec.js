@@ -244,7 +244,7 @@ test('首页目标直接弹窗编辑、新增和取消固定，保存失败保�
   expect(written.content).toBe('保留行动计划');
   expect(written.tags).toBe('["运动"]');
   await card.getByRole('button', { name: '编辑更新目标', exact: true }).click();
-  await dialog.locator('uni-switch[aria-label="添加到首页"]').click();
+  await dialog.locator('[role="switch"][aria-label="添加到首页"]').click();
   await dialog.getByRole('button', { name: '保存', exact: true }).click();
   await expect(card.locator('.business-row')).toHaveCount(1);
   expect(written.isPinned).toBe(0);
@@ -416,7 +416,7 @@ for (const kind of ['read', 'movie', 'member']) {
     await expect(page).toHaveURL(/#\/(?:pages\/home\/index)?$/);
     if (kind === 'member') {
       await dialog.getByRole('button', { name: '1年', exact: true }).click();
-      await expect(dialog.locator('uni-picker[aria-label="到期日期"]')).toContainText('2027-01-01');
+      await expect(dialog.locator('.calendar-trigger[aria-label="到期日期"]')).toContainText('2027-01-01');
     } else {
       await expect(dialog.locator('[aria-label="名称"] input')).toHaveValue(row.title);
       await dialog.locator('uni-picker[aria-label="状态"]').click();

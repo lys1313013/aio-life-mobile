@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import CalendarPicker from '../../components/CalendarPicker.uvue';
 import { computed, onUnmounted, reactive, ref, watch } from 'vue'
 import DashboardSection from '../../components/DashboardSection.uvue'
 import AppIcon from '../../components/AppIcon.uvue'
@@ -112,7 +113,7 @@ defineExpose({ refresh, checkAccess, loading: computed(() => state.loading), err
           <view v-if="display.granularity !== 'year'" class="calendar-date-controls">
             <button role="button" class="calendar-arrow" :disabled="!canPrevious || refreshDisabled" aria-label="上一时间段" @click.stop="move(-1)"><AppIcon name="ant-design:left-outlined" :size="16" :color="isDark ? '#ececf0' : '#27272a'" /></button>
             <picker v-if="display.granularity === 'month'" mode="selector" :range="years" :value="years.indexOf(display.date)" :disabled="refreshDisabled" @change="pickDate(years[Number($event.detail.value)])"><view class="calendar-date-picker"><text class="calendar-date" :class="{ 'calendar-text-dark': isDark }">{{ titleDate }}</text></view></picker>
-            <picker v-else mode="date" fields="month" :value="display.date" start="1000-01" :end="chinaDay().slice(0, 7)" :disabled="refreshDisabled" @change="pickDate($event.detail.value)"><view class="calendar-date-picker"><text class="calendar-date" :class="{ 'calendar-text-dark': isDark }">{{ titleDate }}</text></view></picker>
+            <CalendarPicker v-else fields="month" :value="display.date" start="1000-01" :end="chinaDay().slice(0, 7)" :disabled="refreshDisabled" @change="pickDate($event.detail.value)" label="选择月份"><view class="calendar-date-picker"><text class="calendar-date" :class="{ 'calendar-text-dark': isDark }">{{ titleDate }}</text></view></CalendarPicker>
             <button role="button" class="calendar-arrow" :disabled="!canNext || refreshDisabled" aria-label="下一时间段" @click.stop="move(1)"><AppIcon name="ant-design:right-outlined" :size="16" :color="isDark ? '#ececf0' : '#27272a'" /></button>
           </view>
           <text v-if="kind !== 'finance'" class="calendar-total" :class="{ 'calendar-text-dark': isDark }" aria-label="范围合计">{{ initial ? '—' : calendarMoney(display.amount) }}</text>

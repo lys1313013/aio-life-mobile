@@ -1,6 +1,8 @@
 <script setup lang="ts">
+import CalendarPicker from './CalendarPicker.uvue';
 import { buttonLabelClasses } from '../services/button-label.ts'
 import LoadingIndicator from './LoadingIndicator.uvue';
+import ContentSkeleton from './ContentSkeleton.uvue';
 import spacing from '../styles/spacing.json'
 import AppIcon from './AppIcon.uvue'
 import { themeClass } from '../services/theme.ts'
@@ -512,7 +514,7 @@ function closeSelection() {
   <AdaptiveModal
     :label="id ? '编辑时迹' : '记录时间'"
     :show-close="false"
-    :max-width="loading ? 280 : compact ? 440 : 600"
+    :max-width="compact ? 440 : 600"
     :vertical-inset="spacing.overlayBlock + spacing.modal"
     :busy="saving || deleting"
     :content-key="layoutKey"
@@ -520,16 +522,29 @@ function closeSelection() {
   >
     <view class="editor-content">
       <view v-if="loading" class="editor-loading">
-        <LoadingIndicator compact label="正在加载时迹详情" />
-        <text class="loading-label" :class="themeClass('loading-label')" aria-hidden="true">正在加载</text>
+        <view v-if="compact" class="editor-loading-skeleton" aria-hidden="true">
+          <view class="compact-fields">
+            <view class="compact-row editor-placeholder editor-loading-row" :class="themeClass('editor-placeholder')" />
+            <view class="compact-row editor-placeholder editor-loading-row" :class="themeClass('editor-placeholder')" />
+            <view class="compact-time-range editor-placeholder" :class="themeClass('editor-placeholder')"><view class="compact-time-field" /></view>
+          </view>
+          <view class="compact-notes">
+            <view class="compact-title editor-placeholder" :class="themeClass('editor-placeholder')" />
+            <view class="compact-description editor-placeholder" :class="themeClass('editor-placeholder')" />
+          </view>
+        </view>
+        <ContentSkeleton v-else variant="form" :rows="4" label="正在加载时迹详情" />
+        <view class="editor-loading-status">
+          <LoadingIndicator compact label="正在加载时迹详情" />
+          <text class="loading-label" :class="themeClass('loading-label')" aria-hidden="true">正在加载</text>
+        </view>
       </view>
       <view v-if="full" class="state-card"
          :class="themeClass('state-card')"><text class="empty-title" :class="themeClass('empty-title')">该天已录入完毕</text
-        ><picker mode="date" :value="date" @change="changeDate"
-          ><view class="picker-field"
+        ><CalendarPicker :value="date" @change="changeDate"
+           label="选择日期"><view class="picker-field"
             ><text class="action-label ui-type-body">选择其他日期</text></view
-          ></picker
-        ></view
+          ></CalendarPicker></view
       >
       <view v-if="!ready && errorText" class="state-card"
          :class="themeClass('state-card')"><text class="error-text" role="alert" :class="themeClass('error-text')">{{ errorText }}</text
@@ -537,13 +552,13 @@ function closeSelection() {
       >
       <view v-if="ready" class="editor-form">
         <view v-if="compact" class="compact-fields">
-          <picker class="compact-date" mode="date" :value="date" :disabled="!!id || saving || deleting"
-            aria-label="记录日期" @change="changeDate">
+          <CalendarPicker class="compact-date" :value="date" :disabled="!!id || saving || deleting"
+            label="记录日期" @change="changeDate">
             <view class="compact-row" :class="themeClass('compact-row')">
               <AppIcon name="ant-design:calendar-outlined" :size="22" color="#8b8f99" />
               <text class="compact-value" :class="themeClass('compact-value')">{{ displayDate }}</text>
             </view>
-          </picker>
+          </CalendarPicker>
           <button role="button" aria-label="选择分类" class="compact-row compact-category ui-type-body"
             :class="themeClass('compact-row')" :disabled="saving || deleting"
             @click="choosingCategory = true">
@@ -581,17 +596,15 @@ function closeSelection() {
         </view>
         <template v-else>
         <view class="form-card">
-          <picker
+          <CalendarPicker
             v-if="!id"
-            mode="date"
             :value="date"
             :disabled="!!id || saving || deleting"
             @change="changeDate"
-            ><view class="field-row"
+             label="选择日期"><view class="field-row"
               ><view class="required-field-label"><text class="required-mark">*</text><text class="field-label">日期</text></view
               ><text class="field-value" :class="themeClass('field-value')">{{ date }}</text></view
-            ></picker
-          >
+            ></CalendarPicker>
           <view class="title-field"
             ><text class="field-label">标题</text
             ><input
@@ -789,8 +802,13 @@ function closeSelection() {
         <view v-if="ready && errorText" class="form-error"
           ><text class="error-text" role="alert" :class="themeClass('error-text')">{{ errorText }}</text></view
         >
-        <view class="editor-actions">
-          <view v-if="id" class="delete-anchor"
+
+      </view>
+    </view>
+    <template #footer>
+        <FormActions>
+          <template #secondary>
+          <view v-if="ready && id" class="delete-anchor"
             ><button
               role="button"
               class="delete-button"
@@ -821,8 +839,8 @@ function closeSelection() {
               ></view
             ></view
           >
-          <view v-if="!compact" class="actions-spacer" /><button
-            v-if="!compact"
+          </template>
+          <button
             role="button"
             class="cancel-action"
             :disabled="saving || deleting"
@@ -830,10 +848,11 @@ function closeSelection() {
            :class="themeClass('cancel-action')">
             <text class="action-label action-label-cancel" :class="themeClass('action-label-cancel')">取消</text>
           </button>
+          <view v-if="loading" class="editor-loading-action editor-placeholder" :class="themeClass('editor-placeholder')" aria-hidden="true" />
           <button
             role="button"
+            v-if="ready"
             class="save-button"
-            :class="{ 'compact-save': compact }"
             :disabled="saving || deleting"
             :aria-disabled="saving || deleting"
             :loading="saving"
@@ -841,18 +860,9 @@ function closeSelection() {
             @click="submit"
           >
             <text class="action-label">保存</text>
-          </button></view
-        >
-      </view>
-      <button
-        v-if="!ready && !loading"
-        role="button"
-        class="cancel-action state-cancel"
-        @click="goBack"
-       :class="themeClass('cancel-action')">
-        <text class="action-label action-label-cancel" :class="themeClass('action-label-cancel')">取消</text>
-      </button>
-    </view>
+          </button>
+        </FormActions>
+    </template>
   </AdaptiveModal>
   <AdaptiveModal
     v-if="choosingCategory"
@@ -1154,14 +1164,6 @@ function closeSelection() {
 .form-error {
   padding: $space-inline $space-detail $space-section;
 }
-.editor-actions {
-  position: relative;
-  overflow: visible;
-  z-index: 2;
-  flex-direction: row;
-  align-items: center;
-  margin-top: $space-inline;
-}
 .cancel-action {
   box-sizing: border-box;
   display: flex;
@@ -1170,7 +1172,7 @@ function closeSelection() {
   width: $space-modalActionMin;
   height: $space-controlMin;
   line-height: $space-controlMin;
-  margin: 0 $space-inline 0 0;
+  margin: 0;
   padding: 0;
   border: $space-hairline solid #e5e7eb;
   border-radius: 10px;
@@ -1206,9 +1208,6 @@ function closeSelection() {
 }
 .action-label-cancel { color: #71717a; }
 .action-label-cancel-dark { color: #b4b4bd; }
-.actions-spacer {
-  flex: 1;
-}
 .state-cancel {
   align-self: flex-end;
   margin-top: $space-section;
@@ -1371,9 +1370,18 @@ function closeSelection() {
   }
 }
 
-.editor-loading {
-  position: relative;
-  min-height: 104px;
+.editor-loading { position: relative; }
+.editor-loading-skeleton { width: 100%; }
+.editor-placeholder { background-color: #edf0f4; border-color: transparent; }
+.editor-placeholder-dark { background-color: #2b3038; }
+.editor-loading-row { margin-bottom: $space-form; }
+.editor-loading-action { width: $space-modalActionMin; height: $space-controlMin; border-radius: 10px; }
+.editor-loading-status {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  bottom: 0;
   align-items: center;
   justify-content: center;
   gap: $space-detail;
@@ -1525,7 +1533,6 @@ function closeSelection() {
 .compact-value { margin-left: $space-section; margin-right: $space-section; }
 .compact-duration { margin-bottom: $space-detail; }
 /* #endif */
-.compact-save { flex: 1; @include type-style('body'); border-radius: 10px; }
 .compact-row-dark,
 .compact-time-range-dark,
 .compact-title-dark,

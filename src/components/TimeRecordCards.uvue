@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { createDaySwipe, daySwipeStyle } from '../services/day-swipe.ts'
-import ContentSkeleton from './ContentSkeleton.uvue'
 import { themeClass } from '../services/theme.ts'
 import { computed, ref } from 'vue'
 import CategoryIcon from './CategoryIcon.uvue'
@@ -45,54 +44,56 @@ const groups = computed(() => {
 <template>
   <view class="day-swipe-viewport" @touchstart="daySwipe.touchStart" @touchmove="daySwipe.touchMove" @touchend="daySwipe.touchEnd" @touchcancel="daySwipe.cancel">
   <view class="record-groups day-swipe-surface day-swipe-panel" :style="daySwipeStyle(swipeOffset, swipeDragging)" :class="{ 'day-swipe-empty': !records.length }">
-    <view v-if="loading" class="record-card-grid"><view v-for="n in 6" :key="n" class="record-card-cell"><view class="record-card" :class="themeClass('record-card')"><ContentSkeleton variant="tile" compact label="正在加载时迹卡片" /></view></view></view>
+    <view v-if="loading && !records.length" class="record-list" :class="themeClass('record-list')" role="status" aria-label="正在加载时迹清单">
+      <view v-for="n in 6" :key="n" class="record-card-cell" :class="[themeClass('record-card-cell'), { 'record-row-divider': n > 1 }]" aria-hidden="true">
+        <view class="record-card record-card-summary">
+          <view class="record-card-heading"><view class="record-placeholder record-placeholder-category" :class="themeClass('record-placeholder')" /></view>
+          <view class="record-card-time"><view class="record-placeholder record-placeholder-time" :class="themeClass('record-placeholder')" /></view>
+          <view class="record-card-duration"><view class="record-placeholder record-placeholder-duration" :class="themeClass('record-placeholder')" /></view>
+        </view>
+      </view>
+    </view>
     <view v-for="group in groups" :key="group.date" class="record-group">
       <text v-if="showDate" class="record-group-date" :class="themeClass('record-group-date')"
         >{{ group.date.slice(5) }} · {{ group.weekday }}</text
       >
-      <view class="record-card-grid">
+      <view class="record-list" :class="themeClass('record-list')">
         <view
-          v-for="item in group.entries"
+          v-for="(item, index) in group.entries"
           :key="item.id"
           class="record-card-cell"
+          :class="[themeClass('record-card-cell'), { 'record-row-divider': index > 0 }]"
         >
           <button
             role="button"
             class="record-card ui-type-body"
-            :style="{ borderLeftColor: item.category?.color || '#94a3b8' }"
             :aria-label="
               '编辑记录 ' + (item.title || item.category?.name || '未分类')
             "
             @click="edit(item)"
-            :class="themeClass('record-card')"
           >
-            <view class="record-card-heading"
-              ><CategoryIcon
-                :icon="item.category?.icon"
-                :color="item.category?.color"
-                :size="20"
-              /><text
-                class="record-card-category"
-                :class="themeClass('record-card-category')"
-                >{{ item.name }}</text
-              ></view
-            >
-            <text
-              class="record-card-time"
-              :class="themeClass('record-card-time')"
-              >{{ clockLabel(item.startTime) }}–{{
-                clockLabel(item.endTime)
-              }}</text
-            >
-            <view class="record-card-footer"
-              ><text
+            <view class="record-card-summary">
+              <view class="record-card-heading">
+                <CategoryIcon
+                  :icon="item.category?.icon"
+                  :color="item.category?.color"
+                  :size="16"
+                />
+                <text
+                  class="record-card-category"
+                  :class="themeClass('record-card-category')"
+                >{{ item.name }}</text>
+              </view>
+              <text
+                class="record-card-time"
+                :class="themeClass('record-card-time')"
+              >{{ clockLabel(item.startTime) }}–{{ clockLabel(item.endTime) }}</text>
+              <text
                 class="record-card-duration"
                 :class="themeClass('record-card-duration')"
-                >{{ durationLabel(recordMinutes(item)) }}</text
-              ><text v-if="item.title" class="record-card-title" :class="themeClass('record-card-title')">{{
-                item.title
-              }}</text></view
-            >
+              >{{ durationLabel(recordMinutes(item)) }}</text>
+            </view>
+            <text v-if="item.title" class="record-card-title" :class="themeClass('record-card-title')">{{ item.title }}</text>
           </button>
         </view>
       </view>
@@ -127,37 +128,52 @@ min-height: 25vh;
   color: $text-secondary-light;
   padding: 0 0 $space-inline;
 }
-.record-card-grid {
-  flex-direction: row;
-  flex-wrap: wrap;
-  margin: 0 (-$space-detail);
+.record-list {
+  padding: $space-detail $space-card;
+  border-radius: 12px;
+  background-color: #ffffff;
+  overflow: hidden;
 }
 .record-card-cell {
-  width: 50%;
-  padding: $space-detail;
+  width: 100%;
   box-sizing: border-box;
+  border-top-color: #eef1f4;
+}
+.record-row-divider {
+  border-top-width: $space-hairline;
+  border-top-style: solid;
 }
 .record-card {
   display: flex;
   flex-direction: column;
   width: 100%;
-  min-height: 116px;
+  min-height: $space-controlMin;
   margin: 0;
-  padding: $space-card;
+  padding: $space-inline 0;
   border: 0;
-  border-left: 3px solid #94a3b8;
-  border-radius: 12px;
-  background-color: #ffffff;
+  border-radius: 0;
+  background-color: transparent;
   text-align: left;
   line-height: type-line('label');
 }
-.record-card-heading {
+.record-card-summary {
+  display: flex;
   flex-direction: row;
   align-items: center;
+  width: 100%;
+}
+.record-card-heading {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  flex: 1;
+  min-width: 0;
+  margin-right: $space-inline;
 }
 .record-card-category {
   flex: 1;
-  margin-left: $space-inline;
+  min-width: 0;
+  margin-left: $space-detail;
   @include type-style('caption');
   color: #71717a;
   overflow: hidden;
@@ -165,38 +181,46 @@ min-height: 25vh;
   text-overflow: ellipsis;
 }
 .record-card-time {
-  @include type-style('metric-small');
-
+  @include type-style('body-strong');
+  flex-shrink: 0;
+  // 固定数字列宽，长分类和时长变化不挤动起止时间。
+  width: 100px;
+  white-space: nowrap;
   color: #27272a;
-  margin-top: $space-inline;
-}
-.record-card-footer {
-  flex-direction: row;
-  align-items: center;
-  margin-top: $space-inline;
 }
 .record-card-duration {
   @include type-style('caption');
+  flex-shrink: 0;
+  // 预留最长单日时长（23h59m）的数字列，保持行间对齐。
+  width: 52px;
+  margin-left: $space-inline;
+  white-space: nowrap;
+  text-align: right;
   color: #71717a;
 }
 .record-card-title {
-  flex: 1;
-  margin-left: $space-inline;
+  margin-top: $space-detail;
   @include type-style('caption');
   color: $text-secondary-light;
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
-  text-align: right;
 }
-@media (min-width: 700px) {
-  .record-card-cell {
-    width: 33.333%;
-  }
-}
-.record-card-dark {
+.record-list-dark {
   background-color: #1c1e22;
 }
+.record-card-cell-dark {
+  border-top-color: #2c3038;
+}
+.record-placeholder {
+  height: 12px;
+  border-radius: 4px;
+  background-color: #e8ecf1;
+}
+.record-placeholder-category { width: 80%; }
+.record-placeholder-time { width: 88px; }
+.record-placeholder-duration { width: 100%; }
+.record-placeholder-dark { background-color: #30343c; }
 .record-card-time-dark {
   color: #eeeeef;
 }

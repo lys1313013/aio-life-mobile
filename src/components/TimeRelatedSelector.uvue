@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { readPageTotal, mergePageItems, hasMorePageItems } from '../services/pagination.ts'
+import MobileSwitch from './MobileSwitch.uvue';
 import { computed, onUnmounted, ref, watch } from 'vue'
 import AdaptiveModal from './AdaptiveModal.uvue'
 import AppIcon from './AppIcon.uvue'
@@ -14,7 +16,7 @@ const emit = defineEmits(['select', 'clear', 'resize', 'status-change'])
 const selected = ref<RelatedRecord | null>(null)
 const detailLoading = ref(false), detailError = ref('')
 const visible = ref(false), loading = ref(false), error = ref('')
-const keyword = ref(''), all = ref(false), page = ref(0), total = ref(0)
+const keyword = ref(''), all = ref(false), page = ref(0), total = ref<number | null>(null)
 const items = ref<RelatedRecord[]>([])
 const kind = computed(() => props.type === 1 ? 'read' : 'movie')
 const label = computed(() => props.type === 1 ? '阅读' : '观影')
@@ -57,17 +59,18 @@ function loadMore() {
   load(true)
 }
 async function load(more = false) {
-  if (more && (loading.value || !items.value.length || pageEnded.value || items.value.length >= total.value)) return
+  if (more && (loading.value || !items.value.length || !hasMorePageItems(items.value.length, total.value, pageEnded.value))) return
   const serial = ++listSerial, type = props.type, next = more ? page.value + 1 : 1
   loading.value = true
   error.value = ''
   try {
     const result = await getRelated(type, keyword.value.trim(), next, all.value)
     if (!active || serial !== listSerial || type !== props.type) return
-    items.value = more ? [...items.value, ...result.items.filter(item => !items.value.some(old => old.id === item.id))] : result.items
+    const nextTotal = readPageTotal(result.total)
+    items.value = mergePageItems(more ? items.value : [], result.items)
     pageEnded.value = !result.items.length
     page.value = next
-    total.value = Number(result.total)
+    total.value = nextTotal
   } catch (e) {
     if (active && serial === listSerial) { failedMore.value = more; error.value = e.message || '关联记录加载失败' }
   } finally {
@@ -89,7 +92,7 @@ function search() {
   clearTimeout(searchTimer)
   items.value = []
   page.value = 0
-  total.value = 0
+  total.value = null
   load()
 }
 function select(item: RelatedRecord) {
@@ -161,7 +164,7 @@ onUnmounted(() => { active = false; detailSerial++; listSerial++; clearTimeout(s
         <input v-model="keyword" class="related-search" :class="themeClass('related-search')" :placeholder="type === 1 ? '搜索书名或作者' : '搜索影视名称或导演'" aria-label="搜索关联记录" confirm-type="search" @confirm="search" />
         <button role="button" class="related-icon-button ui-type-body" aria-label="搜索关联记录" @click="search"><AppIcon name="ant-design:search-outlined" :size="20" /></button>
       </view>
-      <view class="related-scope"><text class="related-muted" :class="themeClass('related-muted')">显示全部</text><switch :checked="all" aria-label="显示全部记录" @change="changeScope" /></view>
+      <view class="related-scope"><text class="related-muted" :class="themeClass('related-muted')">显示全部</text><MobileSwitch :checked="all" aria-label="显示全部记录" @change="changeScope" /></view>
       <view class="related-grid">
         <view v-for="item in items" :key="item.id" class="related-card" role="button" tabindex="0"
           :aria-label="item.title + (statusLabel(item.status) ? '，' + statusLabel(item.status) : '')"

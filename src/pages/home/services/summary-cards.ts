@@ -4,7 +4,7 @@ export const summaryCards = {
   finance: { title: '收支概览', route: '/pages/finance/index', access: ['/pages/finance/index', '/pages/finance/income', '/pages/finance/expense'], empty: '' },
   income: { title: '收入', route: '/pages/finance/income', access: ['/pages/finance/income'], empty: '' },
   expense: { title: '支出', route: '/pages/finance/expense', access: ['/pages/finance/expense'], empty: '' },
-  video: { title: '视频续看', route: '/pages/records/video', access: ['/pages/records/video'], empty: '暂无正在观看的视频' },
+  video: { title: '视频', route: '/pages/records/video', access: ['/pages/records/video'], empty: '暂无正在观看的视频' },
   device: { title: '我的设备', route: '/pages/goods/devices', access: ['/pages/goods/devices'], empty: '暂无在用设备' },
 }
 export function summaryState() {

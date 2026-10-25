@@ -1,4 +1,8 @@
 <script setup lang="ts">
+import CalendarPicker from '../../components/CalendarPicker.uvue';
+// #ifdef MP-WEIXIN
+import TabPage from '../../components/TabPage.uvue'
+// #endif
 import { usePageRefresh } from '../../services/page-refresh.ts'
 import { buttonLabelClasses } from '../../services/button-label.ts'
 import ContentSkeleton from '../../components/ContentSkeleton.uvue';
@@ -9,7 +13,8 @@ import { isDark, themeClass } from '../../services/theme.ts'
 import { useRefreshTheme } from '../../services/refresh-theme.ts'
 const refreshTheme = useRefreshTheme()
 import { takeRecordChange } from '../../services/time-changes.ts'
-import { nextTick, computed, ref } from 'vue'
+import { nextTick, computed, ref, getCurrentInstance, onMounted } from 'vue'
+import { useWindowResize } from '../../services/window-resize.ts'
 import { onShow, onHide } from '@dcloudio/uni-app'
 import PageHeader from '../../components/PageHeader.uvue'
 import spacing from '../../styles/spacing.json'
@@ -50,6 +55,20 @@ try {
   /* 默认时间轴 */
 }
 const viewMode = ref(savedView)
+const pageInstance = getCurrentInstance()
+const timelineHeight = ref(0)
+async function measureTimelineHeight() {
+  await nextTick()
+  // 滚动容器已扣除导航、底栏和安全区；滚动后仍使用容器高度，避免时间轴越滚越长。
+  uni.createSelectorQuery().in(pageInstance?.proxy).select('.tab-scroll')
+    .boundingClientRect((rect) => {
+      if (rect && !Array.isArray(rect) && rect.height > 0) {
+        timelineHeight.value = Math.max(0, rect.height - spacing.detail)
+      }
+    }).exec()
+}
+useWindowResize(measureTimelineHeight)
+onMounted(measureTimelineHeight)
 const revision = ref(0)
 function selectView(value: string) {
   viewMode.value = value
@@ -132,6 +151,7 @@ const average = computed(() =>
 let generation = 0
 const refreshOnShow = usePageRefresh(() => load(), { loading: () => loading.value, error: () => errorText.value, keys: () => ['timeRecord', 'timeTrackerCategory', 'exerciseRecord'], context: () => todayDate() })
 onShow(() => {
+  measureTimelineHeight()
   restoreSession()
   if (!session.token) {
     uni.reLaunch({ url: '/pages/login/index' })
@@ -249,28 +269,33 @@ function closeEditor() {
 </script>
 
 <template>
+  <!-- #ifdef MP-WEIXIN -->
+  <TabPage page-path="pages/time/index">
+  <!-- #endif -->
   <view class="tab-page" :class="themeClass('tab-page')">
-    <PageHeader title="时迹" :content-min-width="4 * spacing.controlMin" :actions-min-width="6 * spacing.controlMin + 2 * spacing.inline">
+    <PageHeader title="时迹" compact-actions :content-min-width="4 * spacing.controlMin" :actions-min-width="6 * spacing.controlMin + 2 * spacing.inline">
       <template #default>
       <view class="date-switch" :class="themeClass('date-switch')">
         <button role="button" class="date-step" hover-class="control-pressed" :hover-stay-time="100" :aria-label="mode === 'day' ? '前一天' : '上一周期'" @click="moveDate(-1)"><AppIcon name="ant-design:left-outlined" :size="16" /></button>
-        <picker mode="date" aria-label="选择日期" :value="date" @change="selectDate"><view class="date-picker"><text class="date-value" :class="themeClass('date-value')">{{ date }}</text></view></picker>
+        <CalendarPicker label="选择日期" :value="date" @change="selectDate"><view class="date-picker"><text class="date-value" :class="themeClass('date-value')">{{ date }}</text></view></CalendarPicker>
         <button role="button" class="date-step" hover-class="control-pressed" :hover-stay-time="100" :aria-label="mode === 'day' ? '后一天' : '下一周期'" @click="moveDate(1)"><AppIcon name="ant-design:right-outlined" :size="16" /></button>
       </view>
       </template>
-      <template #actions>
-          <view class="toolbar-view-group ui-row">
+      <template #actions="{ wrapped }">
+          <view class="toolbar-view-group" :class="{ 'toolbar-view-group-wide': wrapped }">
             <view class="period-tabs" :class="themeClass('period-tabs')" role="group" aria-label="统计周期">
-              <button v-for="(item, index) in modeOptions" :key="item.key" role="button" :aria-label="item.label + '视图'" :aria-pressed="mode === item.key" class="period-tab" hover-class="control-pressed" :hover-stay-time="100" :class="[{ 'segment-first': index === 0, 'segment-last': index === modeOptions.length - 1, 'period-active': mode === item.key }, themeClass(['period-tab', { 'period-active': mode === item.key }])]" @click="selectMode(item.key)"><text :class="buttonLabelClasses(['period-tab', [{ 'period-active': mode === item.key }, themeClass(['period-tab', { 'period-active': mode === item.key }])]])">{{ item.label }}</text></button>
+              <button v-for="item in modeOptions" :key="item.key" role="button" :aria-label="item.label + '视图'" :aria-pressed="mode === item.key" class="period-tab" hover-class="control-pressed" :hover-stay-time="100" :class="[{ 'period-active': mode === item.key }, themeClass(['period-tab', { 'period-active': mode === item.key }])]" @click="selectMode(item.key)"><view class="segment-face" :class="[themeClass({ 'segment-selected': mode === item.key }), { 'segment-selected': mode === item.key }]"><text :class="buttonLabelClasses(['period-tab', [{ 'period-active': mode === item.key }, themeClass(['period-tab', { 'period-active': mode === item.key }])]])">{{ item.label }}</text></view></button>
             </view>
+            <view class="view-tools">
             <view class="view-tabs" :class="themeClass('view-tabs')" role="group" aria-label="记录展示方式">
-              <button role="button" class="view-tab segment-first" hover-class="control-pressed" :hover-stay-time="100" :class="[{ 'view-active': viewMode === 'timeline' }, themeClass(['view-tab', { 'view-active': viewMode === 'timeline' }])]" aria-label="时间轴视图" :aria-pressed="viewMode === 'timeline'" @click="selectView('timeline')"><AppIcon name="lucide:clock" :size="18" :color="viewMode === 'timeline' ? (isDark ? '#4096ff' : '#1677ff') : (isDark ? '#c6ced8' : '#737985')" /></button>
-              <button role="button" class="view-tab segment-last" hover-class="control-pressed" :hover-stay-time="100" :class="[{ 'view-active': viewMode === 'card' }, themeClass(['view-tab', { 'view-active': viewMode === 'card' }])]" aria-label="卡片视图" :aria-pressed="viewMode === 'card'" @click="selectView('card')"><AppIcon name="lucide:layout-grid" :size="18" :color="viewMode === 'card' ? (isDark ? '#4096ff' : '#1677ff') : (isDark ? '#c6ced8' : '#737985')" /></button>
+              <button role="button" class="view-tab" hover-class="control-pressed" :hover-stay-time="100" :class="[{ 'view-active': viewMode === 'timeline' }, themeClass(['view-tab', { 'view-active': viewMode === 'timeline' }])]" aria-label="时间轴视图" :aria-pressed="viewMode === 'timeline'" @click="selectView('timeline')"><view class="segment-face" :class="[themeClass({ 'segment-selected': viewMode === 'timeline' }), { 'segment-selected': viewMode === 'timeline' }]"><AppIcon name="lucide:clock" :size="18" :color="viewMode === 'timeline' ? (isDark ? '#4096ff' : '#1677ff') : (isDark ? '#c6ced8' : '#737985')" /></view></button>
+              <button role="button" class="view-tab" hover-class="control-pressed" :hover-stay-time="100" :class="[{ 'view-active': viewMode === 'card' }, themeClass(['view-tab', { 'view-active': viewMode === 'card' }])]" aria-label="卡片视图" :aria-pressed="viewMode === 'card'" @click="selectView('card')"><view class="segment-face" :class="[themeClass({ 'segment-selected': viewMode === 'card' }), { 'segment-selected': viewMode === 'card' }]"><AppIcon name="lucide:layout-grid" :size="18" :color="viewMode === 'card' ? (isDark ? '#4096ff' : '#1677ff') : (isDark ? '#c6ced8' : '#737985')" /></view></button>
             </view>
             <button role="button" class="filter-trigger" hover-class="control-pressed" :hover-stay-time="100" :class="[themeClass(['filter-trigger', { 'filter-active': selectedCategories.length > 0 }]), { 'filter-active': selectedCategories.length > 0 }]" aria-label="筛选分类" :aria-description="filterLabel" @click="openFilters">
               <AppIcon name="ant-design:filter-outlined" :size="18" :color="selectedCategories.length ? (isDark ? '#4096ff' : '#1677ff') : (isDark ? '#a4a8b2' : '#737985')" />
               <view v-if="selectedCategories.length" class="filter-dot" />
             </button>
+            </view>
           </view>
       </template>
     </PageHeader>
@@ -302,6 +327,7 @@ function closeEditor() {
           <TimeTimeline
             v-if="viewMode === 'timeline'"
             :key="mode"
+            :available-height="timelineHeight"
             :loading="loading && !records.length"
             :records="records"
             :selected="selectedCategories"
@@ -411,6 +437,9 @@ function closeEditor() {
       @close="closeEditor"
     />
   </view>
+  <!-- #ifdef MP-WEIXIN -->
+  </TabPage>
+  <!-- #endif -->
 </template>
 
 <style scoped lang="scss">
@@ -420,7 +449,8 @@ function closeEditor() {
 @use '../../styles/text-colors' as *;
 @include type-utilities('body');
 
-.time-content { max-width: $space-contentMax; }
+// 顶部工具栏与正文只留细节间距，页面左右仍由 ui-page-inset 负责。
+.time-content { max-width: $space-contentMax; padding-top: $space-detail; }
 // 条件内容使用可参与原生布局的容器，避免 Vapor 多根模板块丢失正文。
 .time-body, .time-statistics-content { width: 100%; }
 /* #ifdef APP */
@@ -428,27 +458,24 @@ function closeEditor() {
 .time-main-panel, .time-stats-panel { width: 100%; flex-grow: 0; flex-shrink: 0; flex-basis: auto; }
 .time-stats-panel { margin-top: $space-section; }
 /* #endif */
-// 工具栏按实际可用宽度换行；分组不加内垫，所有按钮保留 44px 触控区。
-.toolbar-view-group { flex-direction: row; flex-wrap: nowrap; flex-shrink: 0; align-items: center; gap: $space-inline; }
-.date-switch, .period-tabs, .view-tabs { flex-direction: row; flex-shrink: 0; align-items: center; }
+// 胶囊可见高度为紧凑行高，按钮保留完整触控区，不压缩系统导航与微信胶囊避让。
+.toolbar-view-group, .view-tools { display: flex; flex-direction: row; flex-wrap: nowrap; flex-shrink: 0; align-items: center; gap: $space-inline; }
+.toolbar-view-group { min-height: $space-controlMin; }
+.toolbar-view-group-wide { width: 100%; justify-content: space-between; }
+.date-switch, .period-tabs, .view-tabs { display: flex; flex-direction: row; flex-shrink: 0; align-items: center; }
 .date-switch { background-color: transparent; }
-.period-tabs, .view-tabs { border-radius: 8px; }
-.date-step, .period-tab, .view-tab, .filter-trigger, .today-button { display: flex; flex-direction: row; align-items: center; justify-content: center; flex-shrink: 0; box-sizing: border-box; width: $space-controlMin; height: $space-controlMin; margin: 0; padding: 0; border: 0; border-radius: 0; background-color: transparent; color: #737985; @include type-style('body'); }
-.date-step { border-radius: 8px; }
+.period-tabs, .view-tabs { height: $space-compactRowMin; border-radius: $space-controlMin; background-color: #e8ebf0; }
+.date-step, .period-tab, .view-tab, .filter-trigger, .today-button { display: flex; flex-direction: row; align-items: center; justify-content: center; flex-shrink: 0; box-sizing: border-box; width: $space-controlMin; height: $space-controlMin; margin: 0; padding: 0; border: 0; border-radius: $space-controlMin; background-color: transparent; color: #737985; @include type-style('body'); }
 .date-picker { width: 2 * $space-controlMin; min-height: $space-controlMin; box-sizing: border-box; align-items: center; justify-content: center; padding: 0 $space-micro; }
 .date-value { @include type-style('label-strong'); color: #343944; white-space: nowrap; }
-.period-tab, .view-tab, .filter-trigger { border: $space-hairline solid #d4d4d8; background-color: transparent; }
-// 相邻边框合为一条，选中按钮盖住共享边；不用阴影，避免厚重底座。
-.period-tab, .view-tab { margin-left: -$space-hairline; }
-.segment-first { margin-left: 0; border-top-left-radius: 8px; border-bottom-left-radius: 8px; }
-.segment-last { border-top-right-radius: 8px; border-bottom-right-radius: 8px; }
-.filter-trigger { position: relative; border-radius: 8px; }
-.filter-active { border-color: #1677ff; background-color: transparent; }
+.segment-face { display: flex; flex-direction: row; align-items: center; justify-content: center; width: $space-controlMin; height: $space-compactRowMin; border-radius: $space-controlMin; }
+.segment-selected { background-color: #ffffff; }
+.filter-trigger { position: relative; }
+.filter-active { background-color: #e3ecff; }
 .filter-dot { position: absolute; top: $space-detail; right: $space-detail; width: 5px; height: 5px; border-radius: 3px; background-color: #1677ff; }
-.period-active, .view-active { z-index: 1; border-color: #1677ff; color: #1677ff; background-color: transparent; }
 .control-pressed { opacity: 0.65; }
 /* #ifdef WEB */
-.date-step, .period-tab, .view-tab, .filter-trigger, .today-button { transition: background-color 160ms ease, border-color 160ms ease, color 160ms ease, opacity 120ms ease; }
+.date-step, .period-tab, .view-tab, .filter-trigger, .today-button { transition: background-color 160ms ease, color 160ms ease, opacity 120ms ease; }
 .date-step:focus-visible, .period-tab:focus-visible, .view-tab:focus-visible, .filter-trigger:focus-visible, .today-button:focus-visible { outline: 2px solid #5b8ff9; outline-offset: -2px; }
 @media (prefers-reduced-motion: reduce) {
   .date-step, .period-tab, .view-tab, .filter-trigger, .today-button { transition: none; }
@@ -468,9 +495,9 @@ function closeEditor() {
 .diff-down { color: #20a574; }
 .date-value-dark, .summary-value-dark { color: #eeeeef; }
 .summary-card-dark { background-color: #1c1e22; }
-.period-tabs-dark, .view-tabs-dark, .filter-trigger-dark { background-color: transparent; }
-.period-tab-dark, .view-tab-dark, .filter-trigger-dark { border-color: #3f4147; color: #aeb8c5; }
-.period-active-dark, .view-active-dark, .filter-active-dark { border-color: #4096ff; background-color: transparent; color: #4096ff; }
+.period-tabs-dark, .view-tabs-dark { background-color: #1c1e22; }
+.segment-selected-dark { background-color: #343842; }
+.filter-active-dark { background-color: #24364f; }
 /* #ifndef APP */
 @media (min-width: 1025px) {
   .time-layout { flex-direction: row; align-items: flex-start; }

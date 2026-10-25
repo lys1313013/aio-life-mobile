@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, watch, onUnmounted } from 'vue'
 import AppIcon from '../../components/AppIcon.uvue'
-import LoadingIndicator from '../../components/LoadingIndicator.uvue'
+import ContentSkeleton from '../../components/ContentSkeleton.uvue'
 import { authFileUrl } from '../../services/attachments.ts'
 import { request } from '../../services/api.ts'
 import { session } from '../../services/session.ts'
@@ -71,7 +71,7 @@ onUnmounted(() => { stop(); release(source.value) })
   <view class="summary-cover" :class="{ 'summary-cover-dark': isDark }" :aria-label="label + '图片'" :aria-busy="loading || coverState === 'PENDING'">
     <image v-if="source && !failed" class="summary-cover-image" :src="source" mode="aspectFill" :aria-label="label + '图片'" @load="loading = false" @error="failed = true; loading = false" />
     <view v-if="!source || failed || loading" class="summary-cover-placeholder">
-      <LoadingIndicator v-if="loading || (coverState === 'PENDING' && !failed)" compact label="正在加载图片" />
+      <ContentSkeleton v-if="loading || (coverState === 'PENDING' && !failed)" variant="cover" label="正在加载图片" />
       <button v-else-if="failed || coverState === 'FAILED'" class="summary-cover-retry" role="button" :aria-label="'重试' + label + '图片'" @click.stop="retry"><AppIcon name="lucide:rotate-cw" :size="18" color="#8b8f99" /></button>
       <AppIcon v-else :name="videoId ? 'lucide:clapperboard' : 'lucide:image'" :size="20" color="#8b8f99" />
     </view>

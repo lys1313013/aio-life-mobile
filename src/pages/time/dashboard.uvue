@@ -7,7 +7,10 @@ import PageHeader from '../../components/PageHeader.uvue';
 import MobilePage from '../../components/MobilePage.uvue';
 import MobileButton from '../../components/MobileButton.uvue';
 import PageState from '../../components/PageState.uvue';
-import FormField from '../../components/FormField.uvue';
+import CalendarPicker from '../../components/CalendarPicker.uvue';
+import AdaptiveModal from '../../components/AdaptiveModal.uvue';
+import FormActions from '../../components/FormActions.uvue';
+import AppIcon from '../../components/AppIcon.uvue';
 import TimeStatistics from '../../components/TimeStatistics.uvue';
 import AioChart from '../../components/AioChart.uvue';
 import { request } from '../../services/api.ts';
@@ -34,6 +37,8 @@ const date = ref(todayDate()),
   refreshing = ref(false),
   error = ref(''),
   revision = ref(0);
+const showFilters = ref(false);
+const draftSelected = ref<string[]>([]);
 const task = createLatestTask();
 let active = true;
 const modes = [
@@ -124,10 +129,18 @@ function move(delta) {
   date.value = shiftDate(date.value, delta, mode.value);
   load();
 }
+function openFilters() {
+  draftSelected.value = [...selected.value];
+  showFilters.value = true;
+}
 function toggle(id) {
-  selected.value = selected.value.includes(id)
-    ? selected.value.filter((value) => value !== id)
-    : [...selected.value, id];
+  draftSelected.value = draftSelected.value.includes(id)
+    ? draftSelected.value.filter((value) => value !== id)
+    : [...draftSelected.value, id];
+}
+function applyFilters() {
+  selected.value = [...draftSelected.value];
+  showFilters.value = false;
 }
 </script>
 <template>
@@ -135,44 +148,38 @@ function toggle(id) {
     ><PageHeader title="时间看板" back @back="uni.navigateBack()" /><MobilePage
       :refreshing="refreshing"
       @refresh="load(true)"
-      ><view class="time-dashboard-actions ui-toolbar"
-        ><MobileButton
-          v-for="item in modes"
-          :key="item.value"
-          :label="item.label"
-          :variant="mode === item.value ? 'primary' : 'quiet'"
-          @click="setMode(item.value)" /><MobileButton
-          label="上一时段"
-          icon="ant-design:left-outlined"
-          variant="quiet"
-          @click="move(-1)" /><MobileButton
-          label="下一时段"
-          icon="ant-design:right-outlined"
-          variant="quiet"
-          @click="move(1)" /></view
-      ><FormField label="日期" kind="date" :model-value="date" @update:model-value="setDate" /><text
-        class="time-dashboard-range"
-        >{{ range.start }} — {{ range.end }}</text
-      ><view class="time-dashboard-actions ui-toolbar"
-        ><MobileButton
-          label="全部分类"
-          :variant="!selected.length ? 'primary' : 'quiet'"
-          @click="selected = []" /><MobileButton
-          v-for="category in categories"
-          :key="category.id"
-          :label="categoryPath(category.id, categories)"
-          :variant="selected.includes(category.id) ? 'primary' : 'quiet'"
-          @click="toggle(category.id)" /></view
-      ><PageState skeleton="dashboard" :loading="loading" :error="error" :empty="!records.length" @retry="load()"
+      ><view class="time-dashboard-toolbar">
+        <view class="time-dashboard-mode-bar">
+          <view class="time-dashboard-actions">
+            <MobileButton v-for="item in modes" :key="item.value" :label="item.label"
+              :variant="mode === item.value ? 'primary' : 'quiet'" @click="setMode(item.value)" />
+          </view>
+          <view class="time-dashboard-filter-trigger">
+            <MobileButton :label="selected.length ? '筛选分类（' + selected.length + '）' : '筛选分类'" icon="ant-design:filter-outlined" :variant="selected.length ? 'primary' : 'quiet'" @click="openFilters" />
+          </view>
+        </view>
+        <view class="time-dashboard-date-row">
+          <MobileButton label="上一时段" icon="ant-design:left-outlined" variant="quiet" @click="move(-1)" />
+          <CalendarPicker class="time-dashboard-date" label="选择日期" :value="date" @change="setDate">
+            <view class="time-dashboard-date-face" :class="themeClass('time-dashboard-date-face')">
+              <AppIcon name="ant-design:calendar-outlined" :size="18" color="#8b8f99" />
+              <text class="time-dashboard-date-value" :class="themeClass('time-dashboard-date-value')">{{ date }}</text>
+            </view>
+          </CalendarPicker>
+          <MobileButton label="下一时段" icon="ant-design:right-outlined" variant="quiet" @click="move(1)" />
+        </view>
+        <text v-if="mode !== 'day'" class="time-dashboard-range" :class="themeClass('time-dashboard-range')">{{ range.start }} — {{ range.end }}</text>
+      </view>
+      <PageState skeleton="dashboard" :loading="loading" :error="error" :empty="!records.length" @retry="load()"
         ><template #loading><view class="time-dashboard-cards ui-row"><view v-for="n in 2" :key="n" class="time-dashboard-card ui-card" :class="themeClass('time-dashboard-card')"><ContentSkeleton variant="summary" /></view></view><ContentSkeleton variant="chart" /><ContentSkeleton variant="distribution" :rows="2" /></template><view class="time-dashboard-cards ui-row"
           ><view
             v-for="card in cards"
             :key="card.id"
             class="time-dashboard-card ui-card"
             :class="themeClass('time-dashboard-card')"
-            ><text class="time-dashboard-name">{{ card.name }}</text
-            ><text class="time-dashboard-value">{{ card.duration }}</text
-            ><text class="time-dashboard-diff">{{
+            ><text class="time-dashboard-name" :class="themeClass('time-dashboard-name')">{{ card.name }}</text
+            ><text class="time-dashboard-value" :class="themeClass('time-dashboard-value')">{{ card.duration }}</text
+            ><text class="time-dashboard-diff" :class="themeClass('time-dashboard-diff')">{{
               card.difference === 0
                 ? '与上期相同'
                 : (card.difference > 0 ? '↑ ' : '↓ ') + durationLabel(Math.abs(card.difference))
@@ -194,10 +201,32 @@ function toggle(id) {
           :date="date"
           :mode="mode"
           :revision="revision" /></PageState></MobilePage
-  ></view>
+  >
+    <AdaptiveModal v-if="showFilters" label="筛选分类" :max-width="420" @close="showFilters = false">
+      <view class="time-dashboard-filter-heading">
+        <text class="time-dashboard-filter-title" :class="themeClass('time-dashboard-filter-title')">分类筛选</text>
+        <MobileButton label="重置" variant="ghost" :disabled="!draftSelected.length" @click="draftSelected = []" />
+      </view>
+      <text v-if="!categories.length" class="time-dashboard-range" :class="themeClass('time-dashboard-range')">暂无分类</text>
+      <view class="time-dashboard-filter-options">
+        <MobileButton v-for="category in categories" :key="category.id"
+          :label="categoryPath(category.id, categories)"
+          :variant="draftSelected.includes(category.id) ? 'primary' : 'quiet'"
+          :aria-pressed="draftSelected.includes(category.id)"
+          @click="toggle(category.id)" />
+      </view>
+      <template #footer>
+        <FormActions>
+          <MobileButton label="取消" variant="quiet" @click="showFilters = false" />
+          <MobileButton label="应用筛选" @click="applyFilters" />
+        </FormActions>
+      </template>
+    </AdaptiveModal>
+  </view>
 </template>
 <style scoped lang="scss">
 @use '../../styles/typography' as *;
+@use '../../styles/text-colors' as *;
 @use '../../styles/spacing.scss';
 @use '../../styles/spacing-tokens' as *;
 .time-dashboard-page {
@@ -205,15 +234,20 @@ function toggle(id) {
   flex: 1;
   min-height: 0;
 }
-.time-dashboard-actions {
-  flex-direction: row;
-  flex-wrap: wrap;
-
-}
-.time-dashboard-range {
-  color: #808692;
-  @include type-style('label');
-}
+.time-dashboard-toolbar { gap: $space-inline; margin-bottom: $space-section; }
+.time-dashboard-mode-bar { flex-direction: row; align-items: center; justify-content: space-between; gap: $space-inline; }
+.time-dashboard-actions, .time-dashboard-date-row, .time-dashboard-filter-trigger { flex-direction: row; align-items: center; gap: $space-inline; }
+.time-dashboard-filter-trigger { min-width: 0; }
+.time-dashboard-date { flex: 1; min-width: 0; }
+.time-dashboard-date-face { flex-direction: row; align-items: center; justify-content: center; gap: $space-inline; min-height: $space-controlMin; border-radius: 12px; background-color: #ffffff; }
+.time-dashboard-date-face-dark { background-color: #1c1e22; }
+.time-dashboard-date-value { @include type-style('body'); color: #27272a; }
+.time-dashboard-range { color: $text-secondary-light; @include type-style('label'); }
+.time-dashboard-filter-heading { flex-direction: row; justify-content: space-between; align-items: center; gap: $space-inline; margin-bottom: $space-section; }
+.time-dashboard-filter-title { @include type-style('title'); color: #27272a; }
+.time-dashboard-filter-options { flex-direction: row; flex-wrap: wrap; gap: $space-inline; }
+.time-dashboard-range-dark { color: $text-secondary-dark; }
+.time-dashboard-date-value-dark, .time-dashboard-filter-title-dark { color: #eeeeef; }
 .time-dashboard-cards {
   flex-direction: row;
   flex-wrap: wrap;
@@ -234,13 +268,16 @@ function toggle(id) {
 }
 .time-dashboard-name {
   @include type-style('body');
+  color: #27272a;
 }
 .time-dashboard-value {
   @include type-style('metric');
-
+  color: #27272a;
 }
 .time-dashboard-diff {
   @include type-style('label');
-  color: #808692;
+  color: $text-secondary-light;
 }
+.time-dashboard-name-dark, .time-dashboard-value-dark { color: #eeeeef; }
+.time-dashboard-diff-dark { color: $text-secondary-dark; }
 </style>

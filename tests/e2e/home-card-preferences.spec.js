@@ -47,11 +47,11 @@ test('开关即时保存、失败回退、拖动排序和刷新恢复', async ({
   await page.setViewportSize({width:390,height:844});
   const state = await setup(page);
   const first = page.locator('.preference-row').first();
-  await first.locator('uni-switch').click();
+  await first.getByRole('switch').click();
   await expect.poll(() => state.items[0].enabled).toBe(false);
   state.fail = true;
-  await first.locator('uni-switch').click();
-  await expect(page.locator('.uni-switch-input').first()).not.toHaveClass(/uni-switch-input-checked/);
+  await first.getByRole('switch').click();
+  await expect(first.getByRole('switch')).toHaveAttribute('aria-checked', 'false');
   expect(state.items[0].enabled).toBe(false);
   state.fail = false;
   await touchDrag(page, first.locator('.drag-handle'), page.locator('.preference-row').nth(2).locator('.drag-handle'));

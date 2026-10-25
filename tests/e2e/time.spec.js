@@ -1,6 +1,8 @@
+const { dismissModal } = require('./modal');
 const { test, expect } = require('@playwright/test');
 const { dashboardFixture } = require('./fixtures.js');
 const { pullDown } = require('./gestures.js');
+const spacing = require('../../src/styles/spacing.json');
 const today = (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; })();
 async function setup(page, options = {}) {
   const state = { queries: 0, ranges: [], creates: [], updates: [], updateIds: [], deletes: 0, profiles: 0, relatedQueries: [], relatedUpdates: [], coverAuth: [], failRefresh: false, failSave: false, failDelete: false, detailFailure: false, full: false,
@@ -87,6 +89,22 @@ async function setup(page, options = {}) {
 
 async function closeEditor(page) {
   await page.locator('.modal-mask').last().click({ position: { x: 8, y: 8 } });
+}
+async function expectTabBarState(page, original, masked = true) {
+  const bar = page.locator('uni-tabbar');
+  await expect(bar).toBeVisible();
+  const box = await bar.locator('.uni-tabbar').boundingBox();
+  if (original) expect(box).toEqual(original);
+  // 菜单保留原位；打开弹窗后，四个菜单中心必须实际命中遮罩而非菜单。
+  expect(await bar.locator('.uni-tabbar__item').evaluateAll(items => items.map(item => {
+    const rect = item.getBoundingClientRect();
+    return item.contains(document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2));
+  }))).toEqual(Array(4).fill(!masked));
+  for (const mask of await page.locator('.modal-mask, .time-end-mask').all()) {
+    const rect = await mask.boundingBox();
+    expect(rect.y + rect.height).toBeGreaterThanOrEqual(box.y + box.height - 1);
+  }
+  return box;
 }
 async function previousMinute(page, label, delta = -1, confirm = true) {
   await page.locator(`[aria-label="${label}"]`).click();
@@ -496,11 +514,15 @@ for (const width of [390, 768, 1440]) for (const colorScheme of ['light', 'dark'
     const dialog = page.locator('.modal-panel[aria-label="编辑时迹"]');
     await expect(dialog.locator('[aria-label="记录标题"] input')).toHaveValue('专注学习');
     await expect.poll(async () => (await dialog.boundingBox()).height).toBeGreaterThan(400);
+    const tabbar = await expectTabBarState(page);
+    await expect.poll(async () => {
+      const box = await dialog.boundingBox();
+      return Math.abs(box.y + box.height / 2 - page.viewportSize().height / 2);
+    }).toBeLessThan(2);
     const simple = await dialog.boundingBox();
     const content = await dialog.locator('.modal-content').boundingBox();
     expect(Math.abs(simple.height - content.height)).toBeLessThan(2);
     expect(simple.height).toBeLessThan(700);
-    expect(Math.abs(simple.y + simple.height / 2 - 450)).toBeLessThan(2);
     const times = await dialog.locator('.compact-time-field').evaluateAll(items => items.map(item => item.getBoundingClientRect().height));
     expect(times).toHaveLength(2);
     expect(times.every(height => height >= 44)).toBe(true);
@@ -555,12 +577,15 @@ for (const width of [390, 768, 1440]) for (const colorScheme of ['light', 'dark'
     }
     const large = await dialog.boundingBox();
     expect(large.height).toBeLessThanOrEqual(820);
-    expect(large.y).toBeGreaterThanOrEqual(40);
+    expect(large.y).toBeGreaterThanOrEqual(spacing.overlayBlock);
+    expect(large.y + large.height).toBeLessThanOrEqual(page.viewportSize().height - spacing.overlayBlock + 1);
     await dialog.getByRole('button', { name: '保存', exact: true }).scrollIntoViewIfNeeded();
     await expect(dialog.getByRole('button', { name: '保存', exact: true })).toBeVisible();
+    await expectTabBarState(page, tabbar);
     await page.screenshot({ path: `artifacts/time-compact/time-long-${width}-${colorScheme}.png` });
     await closeEditor(page);
     await expect(dialog).toHaveCount(0);
+    await expectTabBarState(page, tabbar, false);
     await expect(page).toHaveURL(/pages\/time\/index/);
   });
 }
@@ -588,6 +613,35 @@ for (const width of [390, 768, 1440]) for (const colorScheme of ['light', 'dark'
   expect(state.updates[0]).toMatchObject({ date: today, endTime: width === 390 ? 598 : 599, description: '保留原有备注', relateId: '9223372036854775805', exercises: [{ id: '9223372036854775001', exerciseTypeId: '9223372036854775806', exerciseCount: 20, description: '三组' }] });
 });
 
+for (const colorScheme of ['light', 'dark']) test(`短视口长表单滚动与窗口恢复 ${colorScheme}`, async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 560 });
+  await page.emulateMedia({ colorScheme });
+  await setup(page, { records: [{ id: '9223372036854775807', date: today, categoryId: '2', startTime: 540, endTime: 599,
+    title: '晨间运动', description: '模拟长备注：缩小窗口后保留内容，保存按钮在弹窗内部滚动可达。',
+    exercises: Array.from({ length: 20 }, (_, index) => ({ id: String(100 + index), exerciseTypeId: '9223372036854775806', exerciseCount: 10 + index })) }] });
+  const track = await page.locator('.day-track').boundingBox();
+  const tabbar = await expectTabBarState(page, null, false);
+  await page.getByRole('button', { name: '编辑记录 晨间运动', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: '编辑时迹', exact: true });
+  const save = dialog.getByRole('button', { name: '保存', exact: true });
+  await save.scrollIntoViewIfNeeded();
+  await expect(save).toBeInViewport();
+  await expectTabBarState(page, tabbar);
+  expect(await page.locator('.day-track').boundingBox()).toEqual(track);
+  const box = await dialog.boundingBox();
+  expect(box.y).toBeGreaterThanOrEqual(spacing.overlayBlock);
+  expect(box.y + box.height).toBeLessThan(tabbar.y);
+  await page.screenshot({ path: `artifacts/modal-tab-bar/short-${colorScheme}.png` });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect.poll(() => dialog.locator('.modal-scroll').evaluate(element => element.getBoundingClientRect().height)).toBeGreaterThan(box.height);
+  await save.scrollIntoViewIfNeeded();
+  await expect(save).toBeInViewport();
+  await expect(dialog.locator('[aria-label="记录备注"] textarea')).toHaveValue('模拟长备注：缩小窗口后保留内容，保存按钮在弹窗内部滚动可达。');
+  await expectTabBarState(page);
+  await closeEditor(page);
+  await expect(dialog).toHaveCount(0);
+});
+
 
 for (const width of [390, 768, 1440]) for (const colorScheme of ['light', 'dark']) {
   test(`时迹编辑保持时间轴高度与底部导航 ${width}px ${colorScheme}`, async ({ page }) => {
@@ -595,7 +649,7 @@ for (const width of [390, 768, 1440]) for (const colorScheme of ['light', 'dark'
     await page.emulateMedia({ colorScheme });
     await setup(page, { records: timelineRecords(), categories: categoryPalette });
     const track = page.locator('.day-track');
-    const tabbar = page.locator('uni-tabbar');
+    const tabbar = page.locator('uni-tabbar .uni-tabbar');
     const add = page.getByRole('button', { name: '新增时迹', exact: true });
     const before = { track: await track.boundingBox(), tabbar: await tabbar.boundingBox(), add: await add.boundingBox() };
     for (const entry of ['编辑记录 一分钟回顾', '新增时迹']) {
@@ -603,17 +657,41 @@ for (const width of [390, 768, 1440]) for (const colorScheme of ['light', 'dark'
       const dialog = page.getByRole('dialog', { name: entry === '新增时迹' ? '记录时间' : '编辑时迹', exact: true });
       await expect(dialog.getByRole('button', { name: '保存', exact: true })).toBeVisible();
       await expect(tabbar).toBeVisible();
+      await expectTabBarState(page, before.tabbar);
+      const dialogBox = await dialog.boundingBox();
+      expect(dialogBox.y + dialogBox.height).toBeLessThan(before.tabbar.y);
       expect(await track.boundingBox()).toEqual(before.track);
       expect(await tabbar.boundingBox()).toEqual(before.tabbar);
       await expect.poll(() => add.boundingBox()).toEqual(before.add);
+      await dialog.getByRole('button', { name: '结束时间', exact: true }).click();
+      const picker = page.getByRole('dialog', { name: '选择结束时间', exact: true });
+      await expect(picker).toBeVisible();
+      await expectTabBarState(page, before.tabbar);
+      const pickerBox = await picker.boundingBox();
+      expect(pickerBox.y + pickerBox.height).toBeLessThanOrEqual(before.tabbar.y + before.tabbar.height + 1);
+      await picker.getByRole('button', { name: '取消', exact: true }).click();
+      await expect(picker).toHaveCount(0);
+      await expectTabBarState(page, before.tabbar);
       await page.screenshot({ path: `artifacts/time-editor-stable/${width}-${colorScheme}-${entry === '新增时迹' ? 'create' : 'edit'}.png` });
       await closeEditor(page);
       await expect(tabbar).toBeVisible();
       expect(await track.boundingBox()).toEqual(before.track);
       await expect.poll(() => add.boundingBox()).toEqual(before.add);
     }
+    // 实际点击菜单位置先由遮罩接收并关闭弹窗，不能穿透切换后台页面。
+    await add.click();
+    await expectTabBarState(page, before.tabbar);
+    const firstItem = await tabbar.locator('.uni-tabbar__item').first().boundingBox();
+    await page.mouse.click(firstItem.x + firstItem.width / 2, firstItem.y + firstItem.height / 2);
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    await expect(page).toHaveURL(/pages\/time\/index/);
+    await expectTabBarState(page, before.tabbar, false);
     await tabbar.getByText('首页', { exact: true }).click();
     await expect(page.getByText('记录想法，让行动更清晰。')).toBeVisible();
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    await tabbar.getByText('时迹', { exact: true }).click();
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    await expectTabBarState(page, before.tabbar, false);
   });
 
   test(`视图切换、多选筛选与通用新增按钮 ${width}px ${colorScheme}`, async ({ page }) => {
@@ -626,8 +704,10 @@ for (const width of [390, 768, 1440]) for (const colorScheme of ['light', 'dark'
     expect(initial.height).toBe(width <= 1024 ? 48 : 56);
     expect(initial.y + initial.height).toBeLessThan(tabbar.y);
     await expect(add).toHaveCSS('background-color', colorScheme === 'dark' ? 'rgba(255, 255, 255, 0.08)' : 'rgba(255, 255, 255, 0.85)');
-    const track = await page.locator('.day-track').boundingBox();
-    expect(track.height).toBeLessThanOrEqual(700);
+    const timeline = await page.locator('.timeline').boundingBox();
+    const viewport = await page.locator('.tab-scroll').boundingBox();
+    expect(Math.abs(timeline.y - viewport.y - spacing.detail)).toBeLessThan(1);
+    expect(Math.abs(timeline.y + timeline.height - viewport.y - viewport.height)).toBeLessThan(1);
     await page.screenshot({ path: `test-results/time-aligned-${width}-${colorScheme}.png` });
     await page.getByRole('button', { name: '卡片视图', exact: true }).click();
     await expect(page.locator('.record-card')).toHaveCount(7);
@@ -694,27 +774,24 @@ for (const width of [320, 390, 768, 1440]) for (const colorScheme of ['light', '
     await page.getByRole('button', { name: '吃饭', exact: true }).click();
     await expect(dialog.locator('.compact-description')).toBeVisible();
     await expect(dialog.locator('.compact-title')).toBeVisible();
-    await expect(dialog.locator('uni-picker[aria-label="记录日期"]')).not.toContainText('>');
-    await expect(dialog.locator('uni-picker[aria-label="记录日期"] .category-icon')).toHaveCount(1);
+    await expect(dialog.locator('.calendar-trigger[aria-label="记录日期"]')).not.toContainText('>');
+    await expect(dialog.locator('.calendar-trigger[aria-label="记录日期"] .category-icon')).toHaveCount(1);
     await expect(dialog.getByText('选填', { exact: false })).toHaveCount(0);
     const panel = await dialog.boundingBox();
     const save = await dialog.getByRole('button', { name: '保存', exact: true }).boundingBox();
     expect(save.width).toBeCloseTo(panel.width - 32, 0);
     expect(panel.height).toBeLessThan(520);
-    expect(Math.abs(panel.y + panel.height / 2 - 422)).toBeLessThan(2);
+    const tabbar = await expectTabBarState(page);
+    await expect.poll(async () => {
+      const box = await dialog.boundingBox();
+      return Math.abs(box.y + box.height / 2 - page.viewportSize().height / 2);
+    }).toBeLessThan(2);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     await page.screenshot({ path: `test-results/time-compact-${width}-${colorScheme}.png` });
-    await dialog.locator('uni-picker[aria-label="记录日期"]').click();
-    // DCloud 仅在 Windows/macOS 桌面使用原生日期输入；Linux CI 使用滚轮。
-    const nativeDate = dialog.locator('uni-picker[aria-label="记录日期"] input[type="date"]');
-    if (await nativeDate.count()) {
-      await expect(nativeDate).toHaveValue(today);
-      await nativeDate.press('Escape');
-      await nativeDate.press('Tab');
-    } else {
-      await expect(page.locator('.uni-picker-action-confirm:visible')).toBeVisible();
-      await page.locator('.uni-picker-action-cancel:visible').click();
-    }
+    await dialog.locator('.calendar-trigger[aria-label="记录日期"]').click();
+    const calendar = page.getByRole('dialog', { name: '记录日期日历', exact: true });
+    await expect(calendar.getByRole('button', { name: today, exact: true })).toHaveAttribute('aria-pressed', 'true');
+    await dismissModal(page);
     await closeEditor(page);
     await expect(dialog).toHaveCount(0);
   });
@@ -1071,7 +1148,7 @@ for (const type of [1, 2]) for (const width of [390, 768, 1440]) for (const colo
     await expect(picker.locator('.related-card')).toHaveCount(4);
     expect(state.relatedQueries.at(-1).activeOnly).toBe('true');
     if (type === 1) expect(state.relatedQueries.at(-1).inProgressFirst).toBe('true');
-    await picker.locator('uni-switch').click();
+    await picker.getByRole('switch').click();
     await expect(picker.locator('.related-card')).toHaveCount(6);
     const positions = await picker.locator('.related-card').evaluateAll(nodes => nodes.map(n => n.getBoundingClientRect().toJSON()));
     expect(new Set(positions.slice(0, width < 600 ? 3 : 4).map(r => r.y)).size).toBe(1);
@@ -1115,7 +1192,7 @@ test('关联卡片详情列表封面失败恢复与分页', async ({ page }) => 
   state.relatedListFailure = false;
   await picker.getByRole('button', { name: '重试关联列表' }).click();
   await expect(picker.locator('.related-card')).toHaveCount(16);
-  await picker.locator('uni-switch').click();
+  await picker.getByRole('switch').click();
   await expect(picker.locator('.related-card')).toHaveCount(24);
   await expect(picker.getByRole('button', { name: '加载更多' })).toHaveCount(0);
   await picker.locator('.modal-scroll').hover();

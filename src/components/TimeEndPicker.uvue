@@ -5,15 +5,17 @@ import { clampTimeSelection, resolveTimeWheelSelection } from '../services/time-
 import spacing from '../styles/spacing.json'
 import { isDark, themeClass } from '../services/theme.ts'
 // #ifdef MP-WEIXIN
-import { registerModalTabBar } from '../services/modal-tab-bar.ts'
-const releaseTabBar = registerModalTabBar()
-onUnmounted(releaseTabBar)
+import { registerModal } from '../services/modal-presence.ts'
+import WeixinModalBackGuard from './WeixinModalBackGuard.uvue'
 // #endif
 
 const props = withDefaults(defineProps<{ value: number; min?: number; max?: number; label?: string; showNow?: boolean }>(), {
   min: 0, max: 1439, label: '结束时间', showNow: true,
 })
 const emit = defineEmits(['change', 'close', 'preview'])
+// #ifdef MP-WEIXIN
+onUnmounted(registerModal())
+// #endif
 const selected = ref(props.min <= props.max ? clampTimeSelection(props.value, props.min, props.max) : props.value)
 // 分钟列使用当天绝对分钟，00/59 两侧天然相邻，小时跟随选中分钟。
 const hourSelection = ref([Math.floor(selected.value / 60)])
@@ -96,6 +98,7 @@ function useCurrentTime() {
   <!-- 微信端从编辑弹窗内部滚动区脱离，时间选择层始终贴齐视口底部。 -->
   <!-- #ifdef MP-WEIXIN -->
   <root-portal :enable="true">
+    <WeixinModalBackGuard @close="emit('close')" />
   <!-- #endif -->
   <view class="time-end-mask" @click="emit('close')">
     <view class="time-end-panel" :class="themeClass('time-end-panel')"

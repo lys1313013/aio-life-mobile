@@ -5,6 +5,7 @@ import { transformSync } from 'esbuild';
 
 const id = '9223372036854775807';
 const moduleUrl = source => 'data:text/javascript;base64,' + Buffer.from(transformSync(source, { loader: 'ts', format: 'esm' }).code).toString('base64');
+const pagination = await import(moduleUrl(await readFile(new URL('../src/services/pagination.ts', import.meta.url), 'utf8')));
 let sequence = 0;
 
 async function pageLoadFixture(page, functionEnd) {
@@ -13,9 +14,9 @@ async function pageLoadFixture(page, functionEnd) {
   const source = pageSource.slice(start, pageSource.indexOf(functionEnd, start));
   const fixture = { selected: null, fail: false, missing: false, detailCalls: [] };
   const key = `__homeEntry${++sequence}`;
-  globalThis[key] = fixture;
+  globalThis[key] = { fixture, pagination };
   const code = `
-const fixture = globalThis[${JSON.stringify(key)}];
+const { fixture, pagination: { readPageTotal, mergePageItems, hasMorePageItems } } = globalThis[${JSON.stringify(key)}];
 let requestedEdit = ${JSON.stringify(id)}, requestedCreate = false, alive = true, generation = 0;
 const rows = {value:[]}, page={value:1}, total={value:0}, keyword={value:''}, loading={value:false}, refreshing={value:false}, error={value:''}, moreError={value:''}, pageEnded={value:false};
 const kind={value:'memo'}, status={value:'全部状态'}, statusLabels={}, statuses=[], typeFilter={value:'全部类型'}, types={value:[]}, counts={value:{}}, statistics={value:{}};

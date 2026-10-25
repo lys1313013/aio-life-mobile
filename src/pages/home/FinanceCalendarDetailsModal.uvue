@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, reactive, ref } from 'vue'
 import AdaptiveModal from '../../components/AdaptiveModal.uvue'
+import MobileButton from '../../components/MobileButton.uvue'
 import LoadMore from '../../components/LoadMore.uvue'
 import LoadingIndicator from '../../components/LoadingIndicator.uvue'
 import FinanceRecordModal from '../../components/FinanceRecordModal.uvue'
@@ -85,16 +86,28 @@ onMounted(() => controller.load())
 onUnmounted(() => { alive = false; controller.invalidate() })
 </script>
 <template>
-  <AdaptiveModal :label="title + '明细'" show-close :content-key="state.items.length + ':' + state.error" @close="emit('close')" @reachbottom="!draft && controller.load()">
-    <view class="details-heading"><text class="details-title" :class="{ 'details-text-dark': isDark }">{{ title }}明细</text><text class="details-total" :class="{ 'details-text-dark': isDark }">{{ calendarMoney(total) }}</text></view>
+  <AdaptiveModal :label="title + '明细'" dense :max-width="520" :content-key="state.items.length + ':' + state.loaded + ':' + state.loading + ':' + state.error" @close="emit('close')" @reachbottom="!draft && controller.load()">
+    <view class="details-heading">
+      <text class="details-title" :class="{ 'details-text-dark': isDark }">{{ title }}明细</text>
+      <MobileButton label="关闭" icon="ant-design:close-outlined" variant="ghost" @click="emit('close')" />
+    </view>
     <view v-if="kind === 'finance'" class="details-tabs" role="group" aria-label="明细类型"><button v-for="item in [{ key: 'income', label: '收入' }, { key: 'expense', label: '支出' }]" :key="item.key" role="button" class="details-tab" :class="{ 'details-tab-active': displayedKind === item.key, 'details-tab-active-dark': isDark && displayedKind === item.key }" :aria-label="item.label + '明细'" :aria-pressed="displayedKind === item.key" :aria-busy="state.loading && detailKind === item.key" @click="switchKind(item.key)"><text class="details-tab-label" :class="{ 'details-text-dark': isDark }">{{ item.label }}</text></button></view>
-    <text class="details-period" :class="{ 'details-muted-dark': isDark }">{{ calendarPeriod(bucket) }}</text>
+    <view class="details-summary" :class="{ 'details-summary-dark': isDark }">
+      <text class="details-period" :class="{ 'details-muted-dark': isDark }">{{ calendarPeriod(bucket) }}</text>
+      <view class="details-summary-main">
+        <text class="details-caption" :class="{ 'details-muted-dark': isDark }">{{ detailTitle }}合计</text>
+        <view class="details-total-group" :aria-label="detailTitle + '合计，' + calendarMoney(total) + '元'">
+          <text class="details-currency" :class="{ 'details-muted-dark': isDark }">¥</text>
+          <text class="details-total" :class="{ 'details-text-dark': isDark }">{{ calendarMoney(total) }}</text>
+        </view>
+      </view>
+    </view>
     <view class="details-list" :aria-busy="state.loading">
       <view v-if="!state.loaded && state.loading" class="details-pending"><LoadingIndicator ring :label="'正在加载' + title + '明细'" /></view>
       <view v-else-if="state.loaded && !state.items.length" class="details-pending"><text class="details-caption" :class="{ 'details-muted-dark': isDark }">暂无{{ detailTitle }}记录</text></view>
       <view v-for="row in state.items" :key="row.id" class="details-row">
         <button role="button" class="details-edit" :aria-label="'编辑' + detailTitle + '：' + description(row)" :disabled="state.loading || state.page === 0" @click.stop="edit(row)">
-        <view class="details-main"><text class="details-description" :class="{ 'details-text-dark': isDark }">{{ description(row) }}</text><text class="details-amount" :class="{ 'details-text-dark': isDark }">{{ row.amt == null ? '—' : calendarMoney(row.amt) }}</text></view>
+        <view class="details-main"><text class="details-description" :class="{ 'details-text-dark': isDark }">{{ description(row) }}</text><text class="details-amount" :class="{ 'details-text-dark': isDark }">{{ row.amt == null ? '—' : '¥' + calendarMoney(row.amt) }}</text></view>
         <text v-for="(line, index) in captions(row)" :key="index" class="details-caption" :class="{ 'details-muted-dark': isDark }">{{ line }}</text>
         </button>
         <text v-for="(line, index) in transactions(row)" :key="index" class="details-caption" :class="{ 'details-muted-dark': isDark }">{{ line }}</text>
@@ -116,22 +129,28 @@ onUnmounted(() => { alive = false; controller.invalidate() })
 /* #ifdef WEB || MP-WEIXIN */
 .details-tab::after { border: 0; }
 /* #endif */
-.details-heading, .details-main { flex-direction: row; justify-content: space-between; align-items: baseline; gap: $space-inline; }
+.details-heading { flex-direction: row; justify-content: space-between; align-items: center; gap: $space-inline; }
+.details-main { width: 100%; flex-direction: row; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: $space-inline; }
 .details-title { @include type-style('title'); color: #27272a; }
-.details-total, .details-amount { @include type-style('label'); color: #27272a; flex-shrink: 0; }
+.details-summary { margin-top: $space-inline; padding: $space-card; gap: $space-detail; border-radius: 12px; background-color: #f5f6f8; }
+.details-summary-dark { background-color: #25282e; }
+.details-summary-main { flex-direction: row; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: $space-inline; }
+.details-total-group { flex-direction: row; align-items: baseline; gap: $space-detail; max-width: 100%; }
+.details-currency { @include type-style('label'); color: #71717a; }
+.details-total { @include type-style('metric'); color: #27272a; min-width: 0; flex-shrink: 1; overflow-wrap: anywhere; }
+.details-amount { @include type-style('body-strong'); color: #27272a; max-width: 100%; overflow-wrap: anywhere; }
 .details-period, .details-caption { @include type-style('caption'); color: #71717a; overflow-wrap: anywhere; }
-.details-period { margin-top: $space-detail; }
-.details-list { position: relative; min-height: 160px; margin-top: $space-section; }
+.details-list { position: relative; margin-top: $space-section; }
 .details-switching { position: absolute; top: 0; right: 0; bottom: 0; left: 0; background-color: rgba(255, 255, 255, 0.65); align-items: center; justify-content: center; z-index: 2; }
 .details-switching-dark { background-color: rgba(28, 30, 34, 0.65); }
 .details-error { @include type-style('caption'); color: #bc4949; }
-.details-pending { height: 160px; align-items: center; justify-content: center; }
+.details-pending { min-height: $space-controlMin; padding: $space-inline 0; align-items: center; justify-content: center; }
 .details-row { padding: $space-inline 0; gap: $space-detail; }
 .details-edit { display: flex; flex-direction: column; width: 100%; min-height: $space-controlMin; gap: $space-detail; padding: 0; margin: 0; border: 0; border-radius: 6px; text-align: left; background-color: transparent; }
 /* #ifdef WEB || MP-WEIXIN */
 .details-edit::after { border: 0; }
 /* #endif */
-.details-description { @include type-style('body'); color: #27272a; flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.details-description { @include type-style('body'); color: #27272a; flex: 1; min-width: $space-controlMin; overflow-wrap: anywhere; }
 .details-text-dark { color: #ececf0; }
 .details-muted-dark { color: #a1a1aa; }
 </style>

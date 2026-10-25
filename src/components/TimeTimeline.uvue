@@ -5,6 +5,8 @@ import { createDaySwipe, daySwipeStyle } from '../services/day-swipe.ts'
 import LoadingIndicator from './LoadingIndicator.uvue'
 import AppIcon from './AppIcon.uvue'
 import { themeClass } from '../services/theme.ts'
+import spacing from '../styles/spacing.json'
+import typography from '../styles/typography.json'
 import { computed, ref, watch, onMounted, onUnmounted, getCurrentInstance, nextTick } from 'vue'
 import CategoryIcon from './CategoryIcon.uvue'
 import AdaptiveModal from './AdaptiveModal.uvue'
@@ -26,6 +28,7 @@ const props = defineProps<{
   days: number
   selected?: string[]
   loading?: boolean
+  availableHeight: number
 }>()
 const emit = defineEmits(['edit', 'change-period'])
 const selectedDay = ref('')
@@ -71,17 +74,15 @@ function openDay(date: string) {
   if (!props.loading && !daySwipe.ignoreClick()) selectedDay.value = date
 }
 // 全天随视口缩放；短记录从日期列表 / 卡片进入，保持真实时间比例。
-const windowHeight = ref(uni.getWindowInfo().windowHeight)
 const windowWidth = ref(uni.getWindowInfo().windowWidth)
 const columnsMinWidth = computed(() => props.days > 7 ? props.days * (windowWidth.value > 1024 ? 80 : 45) : props.days > 1 ? 308 : 0)
 const now = ref(new Date())
 let clock: ReturnType<typeof setInterval> | undefined
 const trackHeight = computed(() =>
-  Math.max(300, windowHeight.value - 206),
+  Math.max(spacing.controlMin, props.availableHeight - spacing.controlMin),
 )
 const minuteHeight = computed(() => trackHeight.value / 1440)
 function resize() {
-  windowHeight.value = uni.getWindowInfo().windowHeight
   windowWidth.value = uni.getWindowInfo().windowWidth
   measureViewport()
 }
@@ -123,6 +124,8 @@ const columns = computed(() =>
           highlighted,
           future,
           height: minutes * minuteHeight.value,
+          showTitle: minutes * minuteHeight.value >= typography.roles['timeline-small'].lineHeight + spacing.detail * 2,
+          showDetails: minutes * minuteHeight.value >= spacing.controlMin,
           style: {
             top: record.startTime * minuteHeight.value + 'px',
             height: minutes * minuteHeight.value + 'px',
@@ -226,13 +229,13 @@ function edit(record: TimeRecord) {
                 ]),
               ]"
               :style="item.style"
-              :aria-label="'编辑记录 ' + item.title"
+              :aria-label="'编辑记录 ' + item.title + '，' + clockLabel(item.startTime) + ' - ' + clockLabel(item.endTime) + '，' + durationLabel(item.minutes)"
               @click="edit(item)"
             >
-              <view class="event-info" :class="{ 'event-info-column': days > 1 }">
-                <CategoryIcon v-if="item.height >= 40 && item.icon" :icon="item.icon" color="#ffffff" :size="days > 1 ? 14 : 16" />
+              <view v-if="item.showTitle" class="event-info" :class="{ 'event-info-column': days > 1 }">
+                <CategoryIcon v-if="item.showDetails && item.icon" :icon="item.icon" color="#ffffff" :size="days > 1 ? 14 : 16" />
                 <text class="event-title" :class="{ 'event-title-small': item.height < 40 || days > 1 }">{{ item.title }}</text>
-                <text class="event-time">{{ (days === 1 ? clockLabel(item.startTime) + ' - ' + clockLabel(item.endTime) + '  ' : '') + durationLabel(item.minutes) }}</text>
+                <text v-if="item.showDetails" class="event-time">{{ (days === 1 ? clockLabel(item.startTime) + ' - ' + clockLabel(item.endTime) + '  ' : '') + durationLabel(item.minutes) }}</text>
               </view>
             </button>
           </view>
@@ -301,13 +304,13 @@ function edit(record: TimeRecord) {
 
 .timeline { position: relative; flex-direction: row; background-color: #ffffff; border-radius: 6px; overflow: hidden; }
 .timeline-axis { width: 28px; flex-shrink: 0; border-right: 1px solid #eef0f3; }
-.axis-heading { height: $space-controlMin; border-bottom: 1px solid #eef0f3; }
+.axis-heading { height: $space-controlMin; box-sizing: border-box; border-bottom: 1px solid #eef0f3; }
 .axis-hours { position: relative; }
 .hour-label { position: absolute; right: 0; width: 100%; text-align: center; @include type-style('chart-label');  color: #8b8f99; transform: translateY(-7px); }
 .timeline-scroll { flex: 1; width: 0; }
 .timeline-columns { flex-direction: row; width: 100%; }
 .timeline-column { flex: 1; min-width: 0; }
-.column-heading { display: flex; flex-direction: column; justify-content: center; align-items: center; height: $space-controlMin; width: 100%; margin: 0; padding: 0; border: 0; border-bottom: 1px solid #eef0f3; background-color: transparent; border-radius: 0; line-height: type-line('caption'); }
+.column-heading { display: flex; flex-direction: column; justify-content: center; align-items: center; height: $space-controlMin; box-sizing: border-box; width: 100%; margin: 0; padding: 0; border: 0; border-bottom: 1px solid #eef0f3; background-color: transparent; border-radius: 0; line-height: type-line('caption'); }
 .column-weekday { @include type-style('caption'); color: #52525b; }
 .column-date { @include type-style('chart-detail');  color: #8b8f99; }
 .day-track { position: relative; border-right: 1px solid #eef0f3; }

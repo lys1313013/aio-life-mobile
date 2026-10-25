@@ -1,4 +1,7 @@
 <script setup lang="ts">
+// #ifdef MP-WEIXIN
+import TabPage from '../../components/TabPage.uvue'
+// #endif
 import { appTextColor } from '../../services/app-layout.ts'
 
 import { buttonLabelClasses } from '../../services/button-label.ts'
@@ -58,7 +61,9 @@ import TimeRecordEditor from '../../components/TimeRecordEditor.uvue'
 import RecordCreateModal from './RecordCreateModal.uvue'
 import WatchedTaskEditModal from './WatchedTaskEditModal.uvue'
 import { takeRecordChange } from '../../services/time-changes.ts'
-import { elapsedSinceRecord } from '../../services/time-format.ts'
+import { elapsedSinceRecord, shiftDate } from '../../services/time-format.ts'
+import { daySwipeStyle } from '../../services/day-swipe.ts'
+import { createTimeCardSwipe } from './services/time-card-swipe.ts'
 import { todayDate } from '../../services/dashboard.ts'
 import { durationLabel, summaryDonutLabels, timeSummary } from '../../services/dashboard-format.ts'
 import { openBusinessLink } from '../../services/navigation.ts'
@@ -76,7 +81,7 @@ const quickNavDragging = ref(false)
 const quickNavStartPicker = ref(false)
 const quickNavSaveSignal = ref(0)
 const quickIconSize = computed(() => viewportWidth.value < 640 ? 20 : 24)
-onResize(event => { viewportWidth.value = event.size.windowWidth; cardOrder.cancel() })
+onResize(event => { viewportWidth.value = event.size.windowWidth; cardOrder.cancel(); timeSwipe.cancel() })
 const businessSorting = ref(false)
 const businessVisibility = reactive<Record<string, boolean>>({})
 const orderDisabled = computed(() => !active || homeCardPreferences.loading || !!homeCardPreferences.busy || loading.value || businessSorting.value || quickNavEditing.value)
@@ -178,6 +183,37 @@ function sectionHeight(section: string) {
 // 图表明细沿用 Web 的紧凑五行布局，按内容区高度均分，不撑高卡片。
 const timeRecordHeight = computed(() => (sectionHeight('time') - sectionInset('time')) / 5)
 const timeDate = ref('')
+// 空值跟随今天；历史日期独立保存，周期刷新仍读取正在浏览的日期。
+const selectedTimeDate = ref('')
+const timeDayLabel = computed(() => !timeDate.value || timeDate.value === todayDate() ? '今日' : timeDate.value)
+const timeCardTitle = computed(() => timeDayLabel.value === '今日' ? '时迹' : '时迹 ' + timeDayLabel.value)
+const timeSwipeOffset = ref(0)
+const timeSwipeDragging = ref(false)
+const timeSwipeVisual = computed(() => daySwipeStyle(timeSwipeOffset.value, timeSwipeDragging.value))
+const timeSwipe = createTimeCardSwipe(
+  () => !interactionDisabled.value && !states.time.loading && !states.time.locked && !!timeDate.value && !timeEditor.value,
+  step => {
+    const next = shiftDate(timeDate.value || todayDate(), step)
+    selectedTimeDate.value = next === todayDate() ? '' : next
+    void loadSection('time', true)
+  },
+  step => shiftDate(timeDate.value || todayDate(), step) <= todayDate(),
+  (offset, dragging) => { timeSwipeOffset.value = offset; timeSwipeDragging.value = dragging },
+)
+// #ifdef WEB
+// 监听窗口以处理拖出卡片后松手；触屏仍走跨端 touch 事件。
+onMounted(() => {
+  window.addEventListener('mousemove', timeSwipe.mouseMove)
+  window.addEventListener('mouseup', timeSwipe.mouseEnd)
+  window.addEventListener('blur', timeSwipe.cancel)
+})
+onBeforeUnmount(() => {
+  timeSwipe.cancel()
+  window.removeEventListener('mousemove', timeSwipe.mouseMove)
+  window.removeEventListener('mouseup', timeSwipe.mouseEnd)
+  window.removeEventListener('blur', timeSwipe.cancel)
+})
+// #endif
 const timeChartActive = ref(true)
 const nowMinutes = ref(0)
 let minuteTimer: ReturnType<typeof setInterval> | null = null
@@ -185,7 +221,7 @@ function tickTime() {
   const now = new Date()
   nowMinutes.value = now.getHours() * 60 + now.getMinutes()
   if (refreshedAt) discardExpiredHomeContent()
-  if (active && timeDate.value && timeDate.value !== todayDate()) void loadSection('time', true)
+  if (active && !selectedTimeDate.value && timeDate.value && timeDate.value !== todayDate()) void loadSection('time', true)
 }
 const timeElapsed = computed(() => {
   if (timeDate.value !== todayDate()) return ''
@@ -197,7 +233,10 @@ const recordCreateKind = ref<'think' | 'exercise' | null>(null)
 const thoughtEditId = ref('')
 const watchedEditor = ref<WatchedTask | null>(null)
 const editVersions = { thoughts: 0, watched: 0 }
-function openTimeRecord(id = '') { timeEditor.value = { recordId: id } }
+function openTimeRecord(id = '') {
+  if (timeSwipe.ignoreClick() || states.time.loading) return
+  timeEditor.value = { recordId: id }
+}
 function closeTimeEditor() {
   timeEditor.value = null
   if (takeRecordChange()) {
@@ -269,7 +308,7 @@ watch(() => session.token, () => {
   githubProfile.value = ''
   homeGeneration++; refreshTask = null; cards.value = []; githubBound.value = false
   businessActive.value = false; overview.loading = false; overview.loaded = false
-  refreshedAt = 0; timeDate.value = ''; loading.value = false
+  refreshedAt = 0; timeDate.value = ''; selectedTimeDate.value = ''; timeSwipe.cancel(); loading.value = false
   preferencesRevision = profileRevision = overviewRevision = -1
   for (const key of Object.keys(cardRevisions)) delete cardRevisions[key]
   for (const key of Object.keys(states)) { states[key].loading = false; states[key].error = ''; states[key].loaded = false; states[key].locked = false; states[key].revision = -1 }
@@ -318,7 +357,7 @@ async function requireHomeAccess(paths: string[]) {
 function lockSection(key: string) {
   sectionVersions[key] = (sectionVersions[key] || 0) + 1
   Object.assign(states[key], { loaded: true, locked: true, loading: false, error: '', revision: -1 })
-  if (key === 'time') { time.value = timeSummary([], []); timeDate.value = ''; timeEditor.value = null }
+  if (key === 'time') { time.value = timeSummary([], []); timeDate.value = ''; selectedTimeDate.value = ''; timeSwipe.cancel(); timeEditor.value = null }
   if (key === 'thoughts') { thoughts.value = []; if (recordCreateKind.value === 'think') { recordCreateKind.value = null; thoughtEditId.value = '' } }
   if (key === 'watched') { watched.value = []; watchedEditor.value = null }
   if (key === 'exercise') { exercise.value = { days: [] }; if (recordCreateKind.value === 'exercise') recordCreateKind.value = null }
@@ -393,12 +432,13 @@ function showHome() {
     if (key === 'commits' && !githubBound.value) continue
     const state = states[key]
     if (!state.loaded || state.error || state.locked || state.revision !== homeDataRevision(key)
+      || (key === 'time' && timeDate.value !== (selectedTimeDate.value || todayDate()))
       || homeScheduler.due('section.' + key) || (recordChange && ['time', 'exercise'].includes(key))) void loadSection(key)
   }
   syncHomeSchedule(); homeScheduler.resume()
 }
 function suspendHome(closeEditors = true) {
-  homeScheduler.pause(); cardOrder.cancel()
+  homeScheduler.pause(); cardOrder.cancel(); timeSwipe.cancel()
   homeGeneration++; refreshTask = null; loading.value = false; refreshing.value = false; overview.loading = false
   for (const key of Object.keys(states)) states[key].loading = false
   for (const card of cards.value) card.loading = false
@@ -553,9 +593,9 @@ async function loadSection(key: string, force = false) {
     await requireHomeAccess(sectionRoutes[key])
     if (!current()) return
     if (key === 'time') {
-      const requestedDate = todayDate()
+      const requestedDate = selectedTimeDate.value || todayDate()
       const data = await getTime(requestedDate)
-      if (requestedDate !== todayDate() && current()) { void loadSection('time', true); return }
+      if (requestedDate !== (selectedTimeDate.value || todayDate()) && current()) { void loadSection('time', true); return }
       if (accept()) {
         time.value = timeSummary(data.categories, data.records)
         timeDate.value = requestedDate
@@ -769,6 +809,9 @@ function trendLines(points) {
 </script>
 
 <template>
+  <!-- #ifdef MP-WEIXIN -->
+  <TabPage page-path="pages/home/index">
+  <!-- #endif -->
   <view class="dashboard-page" :class="themeClass('dashboard-page')">
     <!-- #ifndef WEB -->
     <!-- 保留状态栏与微信胶囊的安全空间。 -->
@@ -830,7 +873,7 @@ function trendLines(points) {
   </view><view v-if="homeCardPreferences.ready" class="section-grid"><HomeCardSortCell v-for="section in homeSections" :key="section.cardKey" :visible="sectionVisible(section)" :card-key="section.cardKey" :title="section.title" group="section" :order="cardOrder" :disabled="orderDisabled">
           <view v-if="section.cardKey === 'section.time'" class="section-content ui-pad-xs"
             ><DashboardSection
-              title="时迹" :icon="menuVisuals.visual('section.time').icon" :icon-color="menuVisuals.visual('section.time').iconColor"
+              :title="timeCardTitle" title-label="查看时迹" :icon="menuVisuals.visual('section.time').icon" :icon-color="menuVisuals.visual('section.time').iconColor"
               :height="sectionHeight('time')"
               :loading="states.time.loading && !refreshing && !states.time.loaded"
               :retain-content="states.time.loaded"
@@ -855,7 +898,11 @@ function trendLines(points) {
                     </view></view>
                   </view>
                 </view>
-              </template><view class="time-layout" :style="{ height: (sectionHeight('time') - sectionInset('time')) + 'px' }">
+              </template><view class="time-layout time-swipe-surface"
+                @touchstart="timeSwipe.touchStart" @touchmove="timeSwipe.touchMove"
+                @touchend="timeSwipe.touchEnd" @touchcancel="timeSwipe.cancel"
+                @mousedown="timeSwipe.mouseStart" @wheel="timeSwipe.wheel"
+                :style="{ ...timeSwipeVisual, height: (sectionHeight('time') - sectionInset('time')) + 'px' }">
                 <view class="timeline-labels"
                   ><text class="axis-label">0</text
                   ><view class="timeline"
@@ -869,7 +916,7 @@ function trendLines(points) {
                 ><view class="donut-stage"><view
                   class="donut"
                   role="img"
-                  :aria-label="'今日已记录 ' + time.total"
+                  :aria-label="timeDayLabel + '已记录 ' + time.total"
                   ><TimeDonut :groups="time.groups" :active="timeChartActive" /><view v-if="time.groups.length" class="donut-center"><text class="donut-total" :class="themeClass('donut-total')">{{ time.total }}</text></view><view v-for="label in timeDonutLabels" :key="label.id" class="donut-annotation">
                     <view class="donut-label" :class="['donut-label-' + label.side, themeClass('donut-label')]" :style="label.position">
                       <text class="donut-label-name" :class="themeClass('donut-label-text')">{{ label.name }}</text><text class="donut-label-duration" :class="themeClass('donut-label-text')">{{ label.duration }}</text>
@@ -877,7 +924,7 @@ function trendLines(points) {
                   </view>
                 </view></view><scroll-view scroll-y :show-scrollbar="false" class="recent-times ui-ml-sm"><view class="recent-time-list"
                   ><text v-if="time.recent.length === 0" class="empty-label"
-                     :class="themeClass('empty-label')">今日暂无记录</text
+                     :class="themeClass('empty-label')">{{ timeDayLabel }}暂无记录</text
                   ><button role="button"
                     v-for="record in time.recent"
                     :key="record.id"
@@ -1079,12 +1126,18 @@ function trendLines(points) {
       </view></scroll-view
     ><TimeRecordEditor v-if="timeEditor" :record-id="timeEditor.recordId" @close="closeTimeEditor" /><RecordCreateModal v-if="recordCreateKind" :kind="recordCreateKind" :thought-id="recordCreateKind === 'think' ? thoughtEditId : ''" @close="recordCreateKind = null" @saved="handleRecordCreated" @deleted="handleThoughtDeleted" /><WatchedTaskEditModal v-if="watchedEditor" :task="watchedEditor" @close="watchedEditor = null" @saved="handleWatchedSaved" />
   </view>
+  <!-- #ifdef MP-WEIXIN -->
+  </TabPage>
+  <!-- #endif -->
 </template>
 
 <style scoped lang="scss">
 @use '../../styles/typography' as *;
 @use '../../styles/spacing.scss';
 @use '../../styles/spacing-tokens' as *;
+/* #ifdef WEB */
+.time-swipe-surface { touch-action: pan-y; user-select: none; }
+/* #endif */
 @include type-utilities('body');
 
 .time-record { padding: 0; margin: 0; border: 0; background-color: transparent; text-align: left; line-height: type-line('label'); }
@@ -1105,9 +1158,12 @@ function trendLines(points) {
   flex: 1;
   height: 0;
 }
+/* #ifdef MP-WEIXIN */
 .dashboard-content {
-
+  // PageHeader 已预留状态栏和胶囊高度，首行卡片自身也有间距，避免再叠加页面顶部内边距。
+  padding-top: 0;
 }
+/* #endif */
 .overview-grid,
 .section-grid {
   flex-direction: row;
@@ -1688,9 +1744,11 @@ align-items: flex-end;
   .time-record, .record-clock, .record-duration, .record-name { @include type-style('caption'); }
 }
 @media (min-width: 1200px) {
-  /* 内容最大宽度下三列卡片较窄，为圆环标签与记录保留各自空间。 */
+  /* 三列卡片按可用宽度分配明细，名称独占一行，时间与时长保留在次级行。 */
   .donut { transform: scale(0.8); }
-  .recent-times { width: 100px; }
+  .recent-times { width: 32%; }
+  .time-record-content { flex-wrap: wrap; align-content: center; height: auto; }
+  .record-name { order: -1; width: 100%; max-width: 100%; margin-left: 0; }
   .dashboard-content {
 
   }

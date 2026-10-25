@@ -10,7 +10,7 @@ const complete = source.slice(source.indexOf('async function completeWatched('),
 const code = (await transform(`
 export function fixture(getTime, getWatched, update = async () => true) {
   const states = {time: {loading:false,error:'',loaded:false,revision:-1},watched:{loading:false,error:'',loaded:true,revision:0}};
-  const time = {value:{records:[]}}, timeDate = {value:''}, sectionVersions = {};
+  const time = {value:{records:[]}}, timeDate = {value:''}, selectedTimeDate = {value:''}, sectionVersions = {};
   const watched = {value:[{id:'9223372036854775807',content:'模拟待办',isCompleted:0}]}, taskBusy = {value:''};
   let revision = 0, homeGeneration = 0, active = true;
   const session = {token:'fixture'}, editVersions = {watched:0}, pageVersions = {};

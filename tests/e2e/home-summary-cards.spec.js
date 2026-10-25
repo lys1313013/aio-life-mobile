@@ -2,7 +2,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { test, expect } = require('@playwright/test');
 const keys = ['memo', 'finance', 'video', 'device', 'income', 'expense'];
-const titles = ['最近笔记', '收支概览', '视频续看', '我的设备', '收入', '支出'];
+const titles = ['最近笔记', '收支概览', '视频', '我的设备', '收入', '支出'];
 const routes = ['/my-hub/memo', '/finance-management/dashboard', '/finance-management/income', '/finance-management/expense', '/my-hub/videoWatch', '/my-hub/device'];
 const { calendarFixture } = require('./fixtures-finance-calendar');
 async function setup(page, { count = 3, delay = 0, locked = false, fail = false, enabled = true } = {}) {
@@ -46,7 +46,7 @@ for (const width of [390, 820, 1440]) for (const theme of ['light', 'dark']) {
     const memo = page.locator('[aria-label="最近笔记首页卡片"]');
     await expect(memo.getByRole('status')).toBeVisible();
     const loadingBox = await memo.boundingBox();
-    const videoBefore = await page.locator('[aria-label="视频续看首页卡片"]').boundingBox();
+    const videoBefore = await page.locator('[aria-label="视频首页卡片"]').boundingBox();
     const deviceBefore = await page.locator('[aria-label="我的设备首页卡片"]').boundingBox();
     await page.screenshot({ path: info.outputPath('summary-loading.png'), fullPage: true });
     await expect(memo).toContainText('正文已隐藏');
@@ -62,7 +62,7 @@ for (const width of [390, 820, 1440]) for (const theme of ['light', 'dark']) {
     expect(fixture.imageHeaders).toEqual(Array(6).fill('Bearer fixture-summary'));
     const folder = path.resolve('artifacts/home-summary'); fs.mkdirSync(folder, { recursive: true });
     await page.screenshot({ path: path.join(folder, 'summary-' + width + '-' + theme + '.png'), fullPage: true });
-    for (const [title, before] of [['视频续看', videoBefore], ['我的设备', deviceBefore]]) expect(Math.abs((await page.locator('[aria-label="' + title + '首页卡片"]').boundingBox()).height - before.height)).toBeLessThanOrEqual(5);
+    for (const [title, before] of [['视频', videoBefore], ['我的设备', deviceBefore]]) expect(Math.abs((await page.locator('[aria-label="' + title + '首页卡片"]').boundingBox()).height - before.height)).toBeLessThanOrEqual(5);
     if (width === 390) { await page.locator('[aria-label="收入首页卡片"]').scrollIntoViewIfNeeded(); await page.screenshot({ path: path.join(folder, 'summary-finance-' + width + '-' + theme + '.png'), fullPage: true }); }
     const overflowing = await memo.evaluate(el => el.scrollWidth > el.clientWidth + 1); expect(overflowing).toBe(false);
   });
@@ -107,12 +107,15 @@ test('设备卡片在首页打开指定设备编辑器', async ({ page }) => {
   await device.getByRole('button', { name: '取消', exact: true }).click(); await expect(page).toHaveURL(/pages\/home\/index/);
 
 });
-test('视频卡片续看打开对应集数且编辑进入完整原表单', async ({ page, context }) => {
+test('视频卡片续看打开对应集数且标题进入视频列表', async ({ page, context }) => {
   await setup(page, { count: 1 });
   await context.route('https://www.bilibili.com/**', route => route.fulfill({ contentType: 'text/html', body: '<p>模拟视频页面</p>' }));
   const popup = context.waitForEvent('page'); await page.getByRole('button', { name: '继续观看视频0', exact: true }).click(); const video = await popup; await video.waitForLoadState(); expect(video.url()).toContain('BV1234567890?p=3'); await video.close();
   await page.route('**/api/b-video/query?*', route => route.fulfill({ json: { code: 0, data: { items: [{ id: 'video-0', title: '完整视频标题', currentEpisode: 3, episodes: 10, status: 'in_progress', duration: 100, watchedDuration: 25 }], total: 1 } } }));
-  await page.getByRole('button', { name: '编辑视频0', exact: true }).click(); await expect(page).toHaveURL(/video\?id=video-0/); await expect(page.getByRole('dialog')).toBeVisible(); await expect(page.getByRole('dialog').getByRole('textbox', { name: '标题', exact: true })).toHaveValue('完整视频标题');
+  const card = page.locator('[aria-label="视频首页卡片"]');
+  await expect(card.getByRole('button', { name: /^编辑/ })).toHaveCount(0);
+  await card.getByRole('button', { name: '查看视频', exact: true }).click(); await expect(page).toHaveURL(/pages\/records\/video$/);
+  await expect(page.getByText('完整视频标题', { exact: true })).toBeVisible();
 });
 test('三财务卡范围切换独立，慢请求与失败保留对应标签和金额', async ({ page }) => {
   await setup(page); const finance = page.locator('[aria-label="收支概览首页卡片"]');
