@@ -22,49 +22,93 @@ export function apiUrl(path: string) {
 export function request<T>(path: string, method: 'GET' | 'POST' | 'PUT' | 'DELETE' = 'GET', data: any = null, authenticated = true, tokenOverride: string | null = null, unlockAttempt = false, timeoutMs = 15000): Promise<T> {
   const token = tokenOverride != null ? tokenOverride : (authenticated ? session.token : '')
   const navigationRevision = unlockNavigationRevision()
+  const sessionToken = session.token
   return new Promise<T>((resolve, reject) => {
     const header: Record<string, string> = { 'Content-Type': 'application/json' }
     if (token.length > 0) header.Authorization = 'Bearer ' + token
-    uni.request({
-      url: apiUrl(path),
-      method,
-      data: minimalRequestPayload(path, method, data),
-      header,
-      timeout: timeoutMs,
-      success: (response) => {
-        if (authenticated && tokenOverride == null && token && token !== session.token) {
-          const stale = new Error('登录状态已变化，请重试'); stale.name = 'StaleSessionError'; reject(stale); return
-        }
-        try {
-          const result = readResponse(response.statusCode, response.data)
-          if (token && token === session.token) {
-            invalidateMenuAccessAfterWrite(path, method)
-            menuVisuals.afterWrite(path, method)
-            invalidateHomeAfterWrite(path, method)
-            invalidatePageAfterWrite(path, method)
-          }
-          resolve(result)
-        } catch (error) {
-          if (error.name === 'SecondaryLockRequiredError' && token && session.token === token) invalidateMenuAccessCache()
-          if (error.name === 'SecondaryLockRequiredError' && !unlockAttempt && token && session.token === token) {
-            if (navigationRevision !== unlockNavigationRevision()) { reject(new Error('页面已变化，请重新操作')); return }
-            // 2001 是服务端在执行操作前拒绝的请求，解锁后仅重发一次。
-            requestUnlock(error.menuPath, token)
-              .then(() => {
-                if (session.token !== token) throw new Error('登录状态已变化，请重试')
-                return request<T>(path, method, data, authenticated, token, true, timeoutMs)
-              }).then(resolve, reject)
-            return
-          }
-          if (error.name === 'SessionExpiredError' && token.length > 0 && session.token === token) {
-            clearSession()
-            uni.reLaunch({ url: '/pages/login/index' })
-          }
-          reject(error)
-        }
-      },
-      fail: () => reject(new Error('连接失败，请检查网络后重试')),
-    })
+    const url = apiUrl(path)
+    const payload = minimalRequestPayload(path, method, data)
+    let retries = 0
+    const rejectStaleSession = () => {
+      if (authenticated && (session.token !== sessionToken || (tokenOverride == null && token && token !== session.token))) {
+        const error = new Error('登录状态已变化，请重试')
+        error.name = 'StaleSessionError'
+        reject(error)
+        return true
+      }
+      return false
+    }
+    // 只重试传输失败，业务解包、解锁和成功后的缓存更新仍只执行一次。
+    const retry = () => {
+      if (method !== 'GET' || retries >= 3) return false
+      const delay = 300 * 2 ** retries
+      retries++
+      setTimeout(send, delay)
+      return true
+    }
+    const send = () => {
+      if (rejectStaleSession()) return
+      if (retries > 0 && navigationRevision !== unlockNavigationRevision()) {
+        const error = new Error('页面已变化，请重新操作')
+        error.name = 'RequestCancelledError'
+        reject(error)
+        return
+      }
+      try {
+        uni.request({
+          url,
+          method,
+          data: payload,
+          header,
+          timeout: timeoutMs,
+          success: (response) => {
+            if (rejectStaleSession()) return
+            if (response.statusCode >= 500 && response.statusCode < 600 && retry()) return
+            try {
+              const result = readResponse(response.statusCode, response.data)
+              if (token && token === session.token) {
+                invalidateMenuAccessAfterWrite(path, method)
+                menuVisuals.afterWrite(path, method)
+                invalidateHomeAfterWrite(path, method)
+                invalidatePageAfterWrite(path, method)
+              }
+              resolve(result)
+            } catch (error) {
+              if (error.name === 'SecondaryLockRequiredError' && token && session.token === token) invalidateMenuAccessCache()
+              if (error.name === 'SecondaryLockRequiredError' && !unlockAttempt && token && session.token === token) {
+                if (navigationRevision !== unlockNavigationRevision()) { reject(new Error('页面已变化，请重新操作')); return }
+                // 2001 是服务端在执行操作前拒绝的请求，解锁后仅重发一次。
+                requestUnlock(error.menuPath, token)
+                  .then(() => {
+                    if (session.token !== token) throw new Error('登录状态已变化，请重试')
+                    return request<T>(path, method, data, authenticated, token, true, timeoutMs)
+                  }).then(resolve, reject)
+                return
+              }
+              if (error.name === 'SessionExpiredError' && token.length > 0 && session.token === token) {
+                clearSession()
+                uni.reLaunch({ url: '/pages/login/index' })
+              }
+              reject(error)
+            }
+          },
+          fail: (error) => {
+            if (rejectStaleSession()) return
+            if (/abort|cancel/i.test(error.errMsg || '')) {
+              const cancelled = new Error('请求已取消')
+              cancelled.name = 'RequestCancelledError'
+              reject(cancelled)
+              return
+            }
+            if (retry()) return
+            reject(new Error('连接失败，请检查网络后重试'))
+          },
+        })
+      } catch (error) {
+        reject(error)
+      }
+    }
+    send()
   })
 }
 
