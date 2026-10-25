@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { readPageTotal, mergePageItems, hasMorePageItems } from '../../services/pagination.ts';
 import { usePageRefresh } from '../../services/page-refresh.ts'
 import LibraryRecordEditor from '../../components/record-editors/LibraryRecordEditor.uvue';
 import ContentSkeleton from '../../components/ContentSkeleton.uvue';
@@ -10,6 +11,7 @@ import MobilePage from '../../components/MobilePage.uvue';
 import PageHeader from '../../components/PageHeader.uvue';
 import MobileButton from '../../components/MobileButton.uvue';
 import FormField from '../../components/FormField.uvue';
+import FormActions from '../../components/FormActions.uvue';
 import PageState from '../../components/PageState.uvue';
 import LoadMore from '../../components/LoadMore.uvue';
 import AdaptiveModal from '../../components/AdaptiveModal.uvue';
@@ -41,7 +43,7 @@ const statusLabels = computed(() =>
 );
 const rows = ref<any[]>([]),
   page = ref(1),
-  total = ref(0),
+  total = ref<number | null>(null),
   keyword = ref(''),
   typeFilter = ref('全部类型'),
   statusFilter = ref('全部状态'),
@@ -51,6 +53,7 @@ const rows = ref<any[]>([]),
   error = ref(''),
   editing = ref('');
 const form = ref<any>(null);
+const advancedImport = ref(false);
 const importingOpen = ref(false),
   importRequest = ref<any>(null),
   preview = ref<any>(null),
@@ -99,7 +102,7 @@ function loadMore() {
   load(false, true);
 }
 async function load(refresh = false, more = false) {
-  if (more && (loading.value || !rows.value.length || rows.value.length >= total.value || pageEnded.value)) return;
+  if (more && (loading.value || !rows.value.length || !hasMorePageItems(rows.value.length, total.value, pageEnded.value))) return;
   const current = ++generation,
     next = more ? page.value + 1 : 1;
   loading.value = true;
@@ -119,10 +122,11 @@ async function load(refresh = false, more = false) {
       }),
     );
     if (alive && current === generation) {
-      rows.value = more ? [...rows.value, ...data.items] : data.items;
+      const nextTotal = readPageTotal(data.total);
+      rows.value = mergePageItems(more ? rows.value : [], data.items);
       page.value = next;
       pageEnded.value = !data.items.length;
-      total.value = data.total;
+      total.value = nextTotal;
       if (requestedEdit) {
         // 首页入口可能不在列表首屏，始终读取完整详情后再允许编辑。
         entryLoading.value = true;
@@ -201,11 +205,12 @@ function saved(updated) {
 }
 function deleted(id) {
   rows.value = rows.value.filter(row => row.id !== id);
-  total.value = Math.max(0, total.value - 1);
+  if (total.value != null) total.value = Math.max(0, total.value - 1);
   form.value = null;
 }
 function openImport() {
   importingOpen.value = true;
+  advancedImport.value = false;
   importRequest.value = null;
   preview.value = null;
   localIssues.value = [];
@@ -371,9 +376,9 @@ async function submitImport() {
             ><AppIcon name="ant-design:down-outlined" /></view
           >
         </picker>
-        <text v-if="!loading || rows.length" class="library-count" :class="{ 'record-secondary-dark': isDark }">{{ total }} 条</text>
+        <text v-if="!loading || rows.length" class="library-count" :class="{ 'record-secondary-dark': isDark }">{{ total == null ? '已加载 ' + rows.length : total }} 条</text>
       </view>
-      <LoadingIndicator v-if="entryLoading" label="正在加载记录详情" />
+      <LoadingIndicator v-if="entryLoading" floating label="正在加载记录详情" />
       <PageState skeleton="media"
         :loading="loading && !rows.length"
         :error="error"
@@ -421,7 +426,7 @@ async function submitImport() {
       </PageState>
       <LoadMore :error="moreError"
         :loading="loading"
-        :has-more="!pageEnded && rows.length < total"
+        :has-more="hasMorePageItems(rows.length, total, pageEnded)"
         @load="load(false, true)"
       />
       <LibraryRecordEditor v-if="form" :record="form" :kind="kind" @close="form = null" @saved="saved" @deleted="deleted" />
@@ -430,15 +435,16 @@ async function submitImport() {
         label="豆瓣观影导入"
         :busy="importBusy"
         @close="importingOpen = false"
-        ><MobileButton
+        ><text class="library-secondary" :class="{ 'record-secondary-dark': isDark }">选择 douban-exporter 导出的 .xlsx 文件，预览无误后再导入。</text><MobileButton
           label="选择 Excel"
+          variant="quiet"
           :loading="importBusy"
           @click="chooseWorkbook" /><text
           v-if="importName"
           class="library-secondary"
            :class="{ 'record-secondary-dark': isDark }">{{ importName }}</text
-        ><FormField
-          label="导入内容"
+        ><MobileButton :label="advancedImport ? '收起 JSON 导入' : '更多方式：JSON 导入'" variant="quiet" :disabled="importBusy" @click="advancedImport = !advancedImport" /><view v-if="advancedImport"><text class="library-secondary" :class="{ 'record-secondary-dark': isDark }">粘贴与 Excel 导入请求相同的 JSON 对象：format 为 aio-life-movie-import，version 为 1，source 为 douban，另含 doubanUserId 和 records 数组。每条记录包含 rowNumber、doubanSubjectId、title、type、status；type 可为 movie / series / animation / documentary / other，status 可为 not_started / in_progress / completed / on_hold，markedDate 使用 yyyy-MM-dd。</text><FormField
+          label="JSON 导入内容"
           kind="textarea"
           v-model="importText" /><view class="ui-toolbar"
           ><MobileButton
@@ -449,7 +455,7 @@ async function submitImport() {
             @click="pasteImport" /><MobileButton
             label="预览内容"
             :loading="importBusy"
-            @click="previewText" /></view
+            @click="previewText" /></view></view
         ><template v-if="preview"
           ><view class="metrics ui-row ui-section"
             ><MetricCard label="可新增" :value="preview.newCount" /><MetricCard
@@ -489,7 +495,7 @@ async function submitImport() {
           >新增 {{ importResult.createdCount }} · 覆盖
           {{ importResult.updatedCount }} · 跳过
           {{ importResult.skippedCount }}</text
-        ><view class="toolbar ui-row"
+        ><template #footer><FormActions
           ><MobileButton
             label="关闭导入"
             variant="quiet"
@@ -498,7 +504,7 @@ async function submitImport() {
             label="导入"
             :loading="importBusy"
             :disabled="!preview || !!issues.length || !!importResult"
-            @click="submitImport" /></view
+            @click="submitImport" /></FormActions></template
       ></AdaptiveModal> </view
     ><template #fixed
       ><FloatingActionButton
@@ -515,6 +521,7 @@ async function submitImport() {
 @include type-utilities('body', 'label');
 
 .library-page {
+  position: relative;
   padding-bottom: 64px;
   color: #27272a;
 }

@@ -83,7 +83,14 @@ async function load(refresh = false) {
 const refreshOnShow = usePageRefresh(() => load(), { loading: () => loading.value, error: () => error.value, keys: () => ['goals'] })
 onShow(() => refreshOnShow());
 function goalTags(value) { return textTags(value).split(/[,，]/).map((tag) => tag.trim()).filter(Boolean); }
-function shortDate(value) { return value ? String(value).slice(5, 10) : ''; }
+function goalDates(item) {
+  const start = item.startDate ? String(item.startDate).slice(0, 10) : '';
+  const end = item.endDate ? String(item.endDate).slice(0, 10) : '';
+  if (!start && !end) return '无期限';
+  const year = String(new Date().getFullYear());
+  const showYear = item.type >= 6 || !start || !end || start.slice(0, 4) !== end.slice(0, 4) || start.slice(0, 4) !== year;
+  return (start ? (showYear ? start : start.slice(5)) : '—') + ' ~ ' + (end ? (showYear ? end : end.slice(5)) : '—');
+}
 function resetFilters() { keyword.value = ''; typeFilter.value = '全部类型'; statusFilter.value = '全部状态'; load(); }
 function open(item = null, pinned = false) {
   if (!pinningId.value) editor.value?.open(item, pinned);
@@ -124,7 +131,7 @@ async function togglePinned(item) {
           label="搜索目标"
           icon="ant-design:search-outlined"
           :loading="loading"
-          @click="load()" /><MobileButton label="重置筛选" icon="ant-design:undo-outlined" variant="quiet" @click="resetFilters()"
+          @click="load()" /><MobileButton v-if="keyword || typeFilter !== '全部类型' || statusFilter !== '全部状态'" label="重置筛选" icon="ant-design:close-outlined" variant="quiet" :disabled="loading" @click="resetFilters()"
       /></view>
       <view class="filters ui-field-row"
         ><FormField compact stretch
@@ -151,7 +158,7 @@ async function togglePinned(item) {
             <view class="goal-heading ui-row"><text :max-lines="2" class="record-title">{{ item.title }}</text><view @click.stop @keydown.enter.stop @keydown.space.stop><MobileButton :label="item.isPinned === 1 ? '取消固定到首页' : '固定到首页'" :icon="item.isPinned === 1 ? 'ant-design:pushpin-filled' : 'ant-design:pushpin-outlined'" variant="ghost" :loading="pinningId === item.id" :disabled="!!pinningId" @click="togglePinned(item)" /></view></view>
             <view v-if="goalTags(item.tags).length" class="goal-tags"><text v-for="tag in goalTags(item.tags)" :key="tag" class="goal-tag" :class="{ 'goal-tag-dark': isDark }">{{ tag }}</text></view>
             <text :max-lines="3" v-if="item.description" class="record-content" :class="{ 'secondary-text-dark': isDark }">{{ item.description }}</text>
-            <view class="goal-progress"><view class="goal-footer ui-row"><text class="record-secondary" :class="{ 'secondary-text-dark': isDark }">{{ item.startDate || item.endDate ? (shortDate(item.startDate) || '—') + ' ~ ' + (shortDate(item.endDate) || '—') : '无期限' }}</text><text class="record-secondary" :class="{ 'secondary-text-dark': isDark }">{{ progress(item) }}%</text></view>
+            <view class="goal-progress"><view class="goal-footer ui-row"><text class="record-secondary goal-dates" :class="{ 'secondary-text-dark': isDark }">{{ goalDates(item) }}</text><text class="record-secondary" :class="{ 'secondary-text-dark': isDark }">{{ progress(item) }}%</text></view>
             <view class="progress-track" :class="{ 'progress-track-dark': isDark }"><view class="progress-fill" :class="{ 'progress-completed': item.status === 'completed' }" :style="{ width: progress(item) + '%' }" /></view></view>
           </view>
         </view>
@@ -188,6 +195,7 @@ async function togglePinned(item) {
 .goal-grid { display: flex; flex-direction: row; flex-wrap: wrap; gap: $space-section; align-items: stretch; }
 .record-card { box-sizing: border-box; min-width: 0; width: calc((100% - #{$space-section}) / 2); }
 .goal-meta, .goal-footer { justify-content: space-between; align-items: center; flex-wrap: wrap; gap: $space-detail; }
+.goal-dates { flex: 1; min-width: 0; }
 .goal-status { align-items: center; gap: $space-detail; color: $text-secondary-light; @include type-style('caption'); }
 .goal-status-text { @include type-style('caption'); color: $text-secondary-light; }
 .goal-type { color: #6366a5; background-color: #f0effa; border-radius: 4px; padding: $space-detail; @include type-style('caption'); }

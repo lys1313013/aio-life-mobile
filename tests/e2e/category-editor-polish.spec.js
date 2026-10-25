@@ -43,6 +43,13 @@ for (const width of [390, 768, 1440]) for (const theme of ['light', 'dark']) {
     await expect(dialog.locator('textarea')).toHaveCount(0);
     await expect(dialog.getByRole('button', { name: '上移分类', exact: true })).toBeVisible();
     await expect(dialog.getByRole('button', { name: '保存', exact: true })).toBeInViewport();
+    const toggle = dialog.getByRole('switch', { name: '启用分类', exact: true });
+    const hitBox = await toggle.boundingBox();
+    const trackBox = await toggle.locator('.mobile-switch-track').boundingBox();
+    expect(hitBox.width).toBeGreaterThanOrEqual(44);
+    expect(hitBox.height).toBeGreaterThanOrEqual(44);
+    expect(trackBox.width).toBe(36);
+    expect(trackBox.height).toBe(20);
     await screenshot(page, `${width}-${theme}-compact`);
     await dialog.getByRole('button', { name: '分类描述', exact: true }).click();
     await dialog.getByRole('button', { name: '自定义颜色', exact: true }).click();
@@ -61,6 +68,24 @@ for (const width of [390, 768, 1440]) for (const theme of ['light', 'dark']) {
     expect(errors).toEqual([]);
   });
 }
+
+test('统一开关支持键盘切换且表单保留布尔契约', async ({ page }) => {
+  const state = await start(page);
+  const dialog = editor(page);
+  const toggle = dialog.getByRole('switch', { name: '启用分类', exact: true });
+  await toggle.focus();
+  await expect(toggle).toBeFocused();
+  await toggle.press('Space');
+  await expect(toggle).toHaveAttribute('aria-checked', 'false');
+  await toggle.press('Enter');
+  await expect(toggle).toHaveAttribute('aria-checked', 'true');
+  await toggle.click();
+  await expect(toggle).toHaveAttribute('aria-checked', 'false');
+  await dialog.getByRole('button', { name: '保存', exact: true }).click();
+  await expect(dialog).toHaveCount(0);
+  expect(state.writes).toHaveLength(1);
+  expect(state.writes[0]).toMatchObject({ isEnabled: 0, isTrackTime: 1 });
+});
 
 test('category editor preserves values, supports visual/custom choices, resets panels and retries saves', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });

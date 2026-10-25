@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { readPageTotal, mergePageItems, hasMorePageItems } from '../../services/pagination.ts';
 import { usePageRefresh } from '../../services/page-refresh.ts'
 import { useWindowResize } from '../../services/window-resize.ts'
 useWindowResize(resizeNotes)
@@ -25,14 +26,14 @@ const kind = ref('think'),
   title = computed(() => (kind.value === 'think' ? '闪念' : '笔记'));
 const rows = ref<any[]>([]),
   page = ref(1),
-  total = ref(0),
+  total = ref<number | null>(null),
   keyword = ref(''),
   loading = ref(false),
   refreshing = ref(false),
   error = ref(''),
   busy = ref('');
 const windowWidth = ref(uni.getWindowInfo().windowWidth);
-const noteColumnCount = computed(() => kind.value === 'memo' ? (windowWidth.value >= 1000 ? 3 : 2) : 1);
+const noteColumnCount = computed(() => kind.value === 'memo' && windowWidth.value >= 1000 ? 3 : 2);
 const noteColumns = computed(() => {
   // 与 Web 一样按顺序分列；追加分页不会移动已有卡片。
   const count = noteColumnCount.value;
@@ -52,7 +53,7 @@ const scope = createRecordScope((clearData) => {
   form.value = null;
   if (clearData) {
     rows.value = [];
-    total.value = 0;
+    total.value = null;
     created.value = false;
     requestedEdit = '';
     requestedCreate = false;
@@ -79,7 +80,7 @@ function loadMore() {
   load(false, true);
 }
 async function load(refresh = false, more = false) {
-  if (more && (loading.value || !rows.value.length || rows.value.length >= total.value || pageEnded.value)) return;
+  if (more && (loading.value || !rows.value.length || !hasMorePageItems(rows.value.length, total.value, pageEnded.value))) return;
   const current = ++generation,
     nextPage = more ? page.value + 1 : 1;
   loading.value = true;
@@ -89,9 +90,10 @@ async function load(refresh = false, more = false) {
   try {
     const data = await scope.wait(fetchNotes(kind.value, nextPage, keyword.value.trim()));
     if (alive && current === generation) {
-      rows.value = more ? [...rows.value, ...data.items] : data.items;
+      const nextTotal = readPageTotal(data.total);
+      rows.value = mergePageItems(more ? rows.value : [], data.items);
       pageEnded.value = !data.items.length;
-      total.value = data.total;
+      total.value = nextTotal;
       page.value = nextPage;
       if (requestedEdit) {
         const selected = kind.value === 'memo'
@@ -151,9 +153,11 @@ async function save() {
       if (index >= 0) rows.value[index] = selected;
     } else {
       const data = await scope.wait(fetchNotes(kind.value, 1, keyword.value.trim()));
-      rows.value = data.items;
+      const nextTotal = readPageTotal(data.total);
+      rows.value = mergePageItems([], data.items);
       page.value = 1;
-      total.value = data.total;
+      pageEnded.value = !data.items.length;
+      total.value = nextTotal;
     }
     form.value = null;
   } catch (e) {
@@ -180,7 +184,7 @@ async function toggle(item, field) {
 async function remove(item) {
   await scope.wait(deleteNote(kind.value, item.id));
   rows.value = rows.value.filter((row) => row.id !== item.id);
-  total.value--;
+  if (total.value != null) total.value = Math.max(0, total.value - 1);
 }
 function displayDate(value) {
   if (kind.value !== 'memo') return String(value || '').slice(0, 16);
@@ -208,8 +212,8 @@ function displayDate(value) {
       >
 <template #loading>
           <view class="notes-grid">
-            <view v-for="column in noteColumnCount" :key="column" :class="kind === 'memo' ? 'notes-column' : 'notes-thoughts'">
-              <view v-for="n in 3" :key="n" class="note-card ui-card" :class="{ 'note-card-dark': isDark, 'note-card-memo': kind === 'memo' }"><ContentSkeleton variant="tile" /></view>
+            <view v-for="column in noteColumnCount" :key="column" class="notes-column">
+              <view v-for="n in 3" :key="n" class="note-card ui-card" :class="{ 'note-card-dark': isDark }"><ContentSkeleton variant="tile" /></view>
             </view>
           </view>
         </template>
@@ -217,12 +221,12 @@ function displayDate(value) {
         <view class="notes-grid"><view
           v-for="(column, columnIndex) in noteColumns"
           :key="columnIndex"
-          :class="kind === 'memo' ? 'notes-column' : 'notes-thoughts'"
+          class="notes-column"
         ><view
           v-for="item in column"
           :key="item.id"
           class="note-card ui-card"
-          :class="{ 'note-card-dark': isDark, 'note-card-memo': kind === 'memo' }"
+          :class="{ 'note-card-dark': isDark }"
           role="button" :aria-label="'编辑' + title + (!item.hiddenContent && item.title ? '：' + item.title : '')" tabindex="0" @click="open(item)" @keydown.enter.self="open(item)" @keydown.space.self.prevent="open(item)"
         >
           <view
@@ -245,7 +249,7 @@ function displayDate(value) {
             </button>
           </view>
         </view></view></view> </PageState
-      ><LoadMore :error="moreError" :loading="loading" :has-more="!pageEnded && rows.length < total" @load="load(false, true)" />
+      ><LoadMore :error="moreError" :loading="loading" :has-more="hasMorePageItems(rows.length, total, pageEnded)" @load="load(false, true)" />
       <NoteEditor v-if="form && kind === 'memo'" :form="form" :saving="saving" :created="created" :error="formError" :remove="async () => { await remove(form); form = null; }" @save="save" @close="form = null" />
       <AdaptiveModal v-if="form && kind === 'think'" :label="form.id ? '编辑闪念' : '新增闪念'" :max-width="560" :busy="saving" :content-key="JSON.stringify([form.events.length, formError])" @close="form = null">
         <ThoughtForm :form="form" :editing="!!form.id" :disabled="saving || created" :error="formError">
@@ -278,7 +282,6 @@ function displayDate(value) {
 .notes-grid { display: flex; flex-direction: row; flex-wrap: wrap; gap: $space-section; align-items: flex-start; }
 .note-card { width: 100%; min-width: 0; box-sizing: border-box; }
 .notes-column { display: flex; flex: 1; flex-direction: column; min-width: 0; gap: $space-section; }
-.notes-thoughts { display: flex; width: 100%; flex-direction: row; flex-wrap: wrap; gap: $space-section; align-items: flex-start; }
 .note-preview { position: relative; overflow: hidden; border-radius: 6px; }
 .note-preview-text { display: flex; flex-direction: column; gap: $space-inline; }
 .note-preview-hidden { user-select: none; }
@@ -307,8 +310,6 @@ function displayDate(value) {
   background: radial-gradient(ellipse at 35% 25%, rgba(28, 30, 34, 0.35), rgba(28, 30, 34, 0.08) 75%);
 }
 /* #endif */
-@media (min-width: 600px) { .note-card { width: calc((100% - #{$space-section}) / 2); } }
-@media (min-width: 1000px) { .note-card { width: calc((100% - #{$space-section} * 2) / 3); } }
 .note-footer { align-items: center; justify-content: space-between; gap: $space-detail; margin-top: $space-inline; }
 .note-card {
   margin: 0;
@@ -394,7 +395,6 @@ word-break: break-all;
 .note-visibility::after { border: 0; }
 .note-card:focus-visible { outline: 2px solid #417ce8; outline-offset: 2px; }
 /* #endif */
-.note-card-memo { width: 100%; }
 
 .secondary-text-dark { color: $text-secondary-dark; }
 </style>

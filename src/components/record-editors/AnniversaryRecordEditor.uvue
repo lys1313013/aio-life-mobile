@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import MobileSwitch from '../../components/MobileSwitch.uvue';
 import { computed, ref, watch } from 'vue';
 import { session } from '../../services/session.ts';
 import AdaptiveModal from '../AdaptiveModal.uvue';
@@ -37,7 +38,9 @@ function cardStyle(color) {
   const palette = gradients[colors.indexOf(color)] || gradients[0];
   return { backgroundColor: palette[1], backgroundImage: `linear-gradient(135deg, ${palette[0]}, ${palette[1]})` };
 }
-const emoji = ['🎉', '🎂', '❤️', '💍', '🎓', '👶', '🏠', '🚗', '✈️', '💼', '💪', '🌟'];
+const emoji = ['🎉', '🎂', '❤️', '💍', '🎓', '👶', '🏠', '🚗', '✈️', '💼', '💪', '🌟', '💐', '🥂', '🎁', '🍼', '🧸', '🏢', '🖥️', '🤝', '📚', '🔑', '🌱', '🧳', '🌍', '🏖️', '🏆', '🎯', '🐱', '🐶', '🎨', '📷'];
+const showAppearance = ref(false);
+const iconOptions = computed(() => form.value?.icon && !emoji.includes(form.value.icon) ? [form.value.icon, ...emoji] : emoji);
 function open(item = null) {
   formError.value = '';
   form.value = item
@@ -93,12 +96,13 @@ async function remove(item) {
 </script>
 <template>
 <AdaptiveModal v-if="form" label="编辑纪念日" :busy="deleting || saving" @close="emit('close')"
-          ><view class="anniversary-preview ui-section" :style="cardStyle(form.color)"><text class="preview-emoji">{{ form.icon }}</text></view>
+          >
           <FormField :required="isRequired('anniversary', 'title')" label="标题" v-model="form.title" />
           <FormField :required="isRequired('anniversary', 'targetDate')" label="日期" kind="date" v-model="form.targetDate" />
-          <text class="choice-label" :class="{ 'choice-label-dark': isDark }">选择图标</text>
+          <view class="appearance-row ui-row ui-section"><view class="anniversary-preview" :style="cardStyle(form.color)"><text class="preview-emoji">{{ form.icon }}</text></view><MobileButton :label="showAppearance ? '收起外观设置' : '外观设置'" variant="quiet" :aria-expanded="showAppearance" @click="showAppearance = !showAppearance" /></view>
+          <view v-if="showAppearance"><text class="choice-label" :class="{ 'choice-label-dark': isDark }">选择图标</text>
           <view class="emoji-options ui-section">
-            <button v-for="icon in emoji" :key="icon" role="button" class="emoji-choice" :class="{ 'choice-active': form.icon === icon }" :aria-label="'图标 ' + icon" :aria-pressed="form.icon === icon" @click="form.icon = icon"><text :class="buttonLabelClasses(['emoji-choice', { 'choice-active': form.icon === icon }])">{{ icon }}</text></button>
+            <button v-for="icon in iconOptions" :key="icon" role="button" class="emoji-choice" :class="{ 'choice-active': form.icon === icon }" :aria-label="'图标 ' + icon" :aria-pressed="form.icon === icon" @click="form.icon = icon"><text :class="buttonLabelClasses(['emoji-choice', { 'choice-active': form.icon === icon }])">{{ icon }}</text></button>
           </view>
           <text class="choice-label" :class="{ 'choice-label-dark': isDark }">选择主题色</text>
           <view class="color-options ui-section">
@@ -106,12 +110,12 @@ async function remove(item) {
               <view class="color-swatch" :class="{ 'swatch-active': form.color === color }" :style="cardStyle(color)" />
             </button>
           </view>
-          <FormField label="备注" kind="textarea" v-model="form.note" />
-          <FormField label="添加到首页"><switch :checked="form.isPinned === 1" :disabled="deleting || saving" aria-label="添加到首页" @change="form.isPinned = $event.detail.value ? 1 : 0" /></FormField><text
+          </view><FormField label="备注" kind="textarea" textarea-size="compact" v-model="form.note" />
+          <FormField label="添加到首页"><MobileSwitch :checked="form.isPinned === 1" :disabled="deleting || saving" aria-label="添加到首页" @change="form.isPinned = $event.detail.value ? 1 : 0" /></FormField><text
             v-if="formError"
             class="event-error ui-section ui-type-body"
             >{{ formError }}</text
-          ><FormActions><template #secondary><ConfirmAction v-if="form.id && !saving" label="删除纪念日" confirm-label="删除" compact :action="() => remove(form)" /></template>
+          ><template #footer><FormActions><template #secondary><ConfirmAction v-if="form.id && !saving" label="删除纪念日" confirm-label="删除" compact :action="() => remove(form)" /></template>
           <MobileButton
               label="取消"
               variant="quiet"
@@ -120,15 +124,16 @@ async function remove(item) {
               label="保存"
               :loading="saving" :disabled="deleting"
               @click="save" />
-        </FormActions></AdaptiveModal>
+        </FormActions></template></AdaptiveModal>
 </template>
 <style scoped lang="scss">
 @use '../../styles/typography' as *;
 @use '../../styles/spacing.scss';
 @use '../../styles/spacing-tokens' as *;
 @include type-utilities('body');
-.anniversary-preview { height: 96px; align-items: center; justify-content: center; border-radius: 12px; }
-.preview-emoji { @include type-style('emoji-preview'); }
+.appearance-row { align-items: center; }
+.anniversary-preview { width: $space-controlMin; height: $space-controlMin; flex-shrink: 0; align-items: center; justify-content: center; border-radius: 12px; }
+.preview-emoji { @include type-style('glyph-large'); }
 .choice-label { @include type-style('label'); color: #27272a; margin-bottom: $space-fieldLabel; }
 .choice-label-dark { color: #eeeeef; }
 .emoji-options, .color-options { flex-direction: row; flex-wrap: wrap; gap: $space-detail; }

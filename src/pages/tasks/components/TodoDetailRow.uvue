@@ -1,0 +1,46 @@
+<script setup lang="ts">
+import MobileButton from '../../../components/MobileButton.uvue';
+import { isDark } from '../../../services/theme.ts';
+defineProps<{ detail: any; busy: string; disabled: boolean }>();
+const emit = defineEmits(['change', 'edit']);
+</script>
+<template>
+  <view class="todo-row">
+    <MobileButton :label="detail.isCompleted === 1 ? '标为未完成' : '完成明细'"
+      :icon="detail.isCompleted === 1 ? 'ant-design:check-circle-outlined' : 'ant-design:border-outlined'"
+      variant="ghost" :loading="busy === detail.id + ':isCompleted'" :disabled="disabled"
+      @click="emit('change', detail, 'isCompleted')" />
+    <view class="todo-content" role="button" tabindex="0" :aria-label="'编辑明细：' + detail.content"
+      :aria-disabled="disabled" @click="!disabled && emit('edit', detail)"
+      @keydown.enter.prevent="!disabled && emit('edit', detail)" @keydown.space.prevent="!disabled && emit('edit', detail)">
+      <text class="todo-title" :class="{ 'todo-title-dark': isDark, 'todo-completed': detail.isCompleted === 1 }">{{ detail.content }}</text>
+      <view v-if="detail.isCompleted !== 1 && (detail.priority === 1 || detail.startTime || detail.endTime)" class="todo-meta">
+        <text v-if="detail.priority === 1" class="todo-priority" :class="{ 'todo-priority-dark': isDark }">高优先级</text>
+        <text v-if="detail.startTime || detail.endTime" class="todo-date" :class="{ 'todo-date-dark': isDark }">{{ detail.startTime ? detail.startTime.slice(5, 16).replace('T', ' ') : '' }}{{ detail.startTime && detail.endTime ? ' → ' : '' }}{{ detail.endTime ? detail.endTime.slice(5, 16).replace('T', ' ') : '' }}</text>
+      </view>
+    </view>
+    <MobileButton :label="detail.isStarred === 1 ? '取消关注' : '关注明细'"
+      :icon="detail.isStarred === 1 ? 'ant-design:star-filled' : 'ant-design:star-outlined'"
+      variant="ghost" :loading="busy === detail.id + ':isStarred'" :disabled="disabled"
+      @click="emit('change', detail, 'isStarred')" />
+  </view>
+</template>
+<style scoped lang="scss">
+@use '../../../styles/spacing-tokens' as *;
+@use '../../../styles/typography' as *;
+@use '../../../styles/text-colors' as *;
+.todo-row { display: flex; flex-direction: row; align-items: center; gap: $space-detail; }
+.todo-content { flex: 1; min-width: 0; min-height: $space-controlMin; display: flex; flex-direction: column; justify-content: center; padding: $space-inline 0; gap: $space-detail; }
+.todo-title { @include type-style('body'); color: #27272a; overflow-wrap: anywhere; }
+.todo-title-dark { color: #eeeeef; }
+.todo-completed { color: #858c98; text-decoration: line-through; }
+.todo-meta { display: flex; flex-direction: row; flex-wrap: wrap; gap: $space-inline; }
+.todo-priority { @include type-style('caption'); color: #ba6636; }
+.todo-priority-dark { color: #edb38e; }
+.todo-date { @include type-style('caption'); color: $text-secondary-light; }
+.todo-date-dark { color: $text-secondary-dark; }
+/* #ifdef WEB */
+.todo-content { cursor: pointer; }
+.todo-content:focus-visible { outline: 2px solid #427bea; border-radius: 6px; }
+/* #endif */
+</style>

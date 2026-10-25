@@ -11,13 +11,14 @@ async function setup(page) {
     if (path === '/api/goals' && method === 'GET') data = state.goals
     if (path === '/api/taskColumn/query') data = { items: state.columns, total: 1 }
     if (path === '/api/tasks' && method === 'GET') data = { items: state.tasks, total: 1 }
-    if (path === '/api/taskDetails' && method === 'GET') data = state.details
+    if (path === '/api/taskDetails' && method === 'GET') data = state.details.filter(item => item.taskId === new URL(request.url()).searchParams.get('taskId'))
     if (method !== 'GET' && path !== '/api/auth/login') {
       const body = request.postData() ? request.postDataJSON() : null
       state.writes.push({ path, method, body })
       if (state.failSave) return route.fulfill({ json: { code: 1, message: '模拟保存失败' } })
       if (path === '/api/goals') { data = { ...body }; Object.assign(state.goals.find(g => g.id === body.id), body) }
-      else if (path === '/api/taskDetails' && method === 'PUT') { Object.assign(state.details[0], body); data = true }
+      else if (path === '/api/taskDetails' && method === 'PUT') { Object.assign(state.details.find(item => item.id === body.id), body); data = true }
+      else if (path === '/api/taskDetails' && method === 'POST') { data = { ...body, id: '9223372036854775805' }; state.details.push(data) }
       else if (path.startsWith('/api/taskDetails/star/')) { state.details[0].isStarred = 1; data = true }
       else data = true
     }
@@ -54,9 +55,10 @@ for (const width of [390, 768, 1440]) for (const theme of ['light', 'dark']) {
 test('待办明细完成和关注保留关联', async ({ page }) => {
   const state = await setup(page)
   await page.goto('/#/pages/tasks/todo')
-  await page.locator('[aria-label^="任务详情："]').click()
   await expect(page.getByText('模拟明细', { exact: true })).toBeVisible()
   await page.locator('[aria-label="完成明细"]').click()
+  await expect(page.locator('[aria-label="标为未完成"]')).toHaveCount(0)
+  await page.getByRole('button', { name: '展开已完成：模拟待办', exact: true }).click()
   await expect(page.locator('[aria-label="标为未完成"]')).toBeVisible()
   expect(state.writes.at(-1).body.taskId).toBe(id)
   await page.locator('[aria-label="关注明细"]').click()
@@ -103,13 +105,63 @@ test('待办任务与明细保存使用统一日期时间格式和完整字符�
   state.details[0].startTime = '2026-10-22 09:30:45'
   state.details[0].endTime = '2026-10-22 10:30:45'
   await page.goto('/#/pages/tasks/todo')
-  await page.locator('[aria-label^="任务详情："]').click()
-  await page.getByRole('button', { name: '编辑任务', exact: true }).click()
+  await page.getByRole('button', { name: '编辑清单：模拟待办', exact: true }).click()
   await page.getByRole('button', { name: '保存', exact: true }).click()
   await expect(page.getByRole('dialog', { name: '编辑待办', exact: true })).toHaveCount(0)
   expect(state.writes.at(-1)).toMatchObject({ path: '/api/tasks/' + id, method: 'PUT', body: { columnId: '8', dueDate: '2026-10-22 10:30:45' } })
-  await page.getByRole('button', { name: '编辑明细', exact: true }).click()
+  await page.getByRole('button', { name: '编辑明细：模拟明细', exact: true }).click()
   await page.getByRole('button', { name: '保存', exact: true }).click()
   await expect(page.getByRole('dialog', { name: '编辑待办', exact: true })).toHaveCount(0)
   expect(state.writes.at(-1)).toMatchObject({ path: '/api/taskDetails', method: 'PUT', body: { id: '7', taskId: id, startTime: '2026-10-22 09:30:45', endTime: '2026-10-22 10:30:45' } })
+})
+
+
+test('组内快速添加失败保留输入，回车重试不重复提交且保留大整数归属', async ({ page }) => {
+  const state = await setup(page)
+  await page.goto('/#/pages/tasks/todo')
+  await expect(page.getByText('模拟明细', { exact: true })).toBeVisible()
+  const input = page.locator('[aria-label="添加待办到模拟待办"] input')
+  await input.fill('模拟快速添加')
+  state.failSave = true
+  await input.press('Enter')
+  await expect(page.getByText('模拟保存失败', { exact: true })).toBeVisible()
+  await expect(input).toHaveValue('模拟快速添加')
+  state.failSave = false
+  await input.press('Enter')
+  await expect(page.getByText('模拟快速添加', { exact: true })).toBeVisible()
+  await expect(input).toHaveValue('')
+  await expect(page.getByRole('dialog')).toHaveCount(0)
+  expect(state.writes.filter(write => write.path === '/api/taskDetails' && write.method === 'POST')).toHaveLength(2)
+  expect(state.writes.at(-1).body).toMatchObject({ taskId: id, content: '模拟快速添加', priority: 20, isCompleted: 0 })
+})
+
+test('清单加载失败独立重试，搜索包含明细，已完成按清单展开', async ({ page }) => {
+  const state = await setup(page)
+  state.tasks.push({ id: '9223372036854775806', columnId: '8', content: '第二清单' })
+  let fail = true
+  await page.route('**/api/taskDetails?*', async route => {
+    const taskId = new URL(route.request().url()).searchParams.get('taskId')
+    if (taskId === id) return route.fulfill({ json: { code: 0, data: state.details } })
+    if (fail) return route.fulfill({ json: { code: 1, message: '模拟第二清单失败' } })
+    return route.fulfill({ json: { code: 0, data: [{ id: '88', taskId, content: '已完成的模拟事项', priority: 20, isCompleted: 1 }] } })
+  })
+  await page.goto('/#/pages/tasks/todo')
+  await expect(page.getByText('模拟明细', { exact: true })).toBeVisible()
+  await expect(page.getByText('模拟第二清单失败', { exact: true })).toBeVisible()
+  fail = false
+  await page.getByRole('button', { name: '重试', exact: true }).click()
+  await expect(page.getByRole('button', { name: '展开已完成：第二清单', exact: true })).toBeVisible()
+  await expect(page.getByText('已完成的模拟事项', { exact: true })).toHaveCount(0)
+  await page.locator('[aria-label="搜索任务"] input').fill('已完成的模拟事项')
+  await expect(page.locator('.task-card')).toHaveCount(1)
+  await page.getByRole('button', { name: '展开已完成：第二清单', exact: true }).click()
+  await expect(page.getByText('已完成的模拟事项', { exact: true })).toBeVisible()
+  expect(state.writes).toEqual([])
+})
+
+test('首页明细深链仍直接打开编辑器', async ({ page }) => {
+  await setup(page)
+  await page.goto('/#/pages/tasks/todo?taskId=' + id + '&detailId=7')
+  await expect(page.getByRole('dialog', { name: '编辑待办', exact: true })).toBeVisible()
+  await expect(page.locator('[aria-label="内容"] input')).toHaveValue('模拟明细')
 })

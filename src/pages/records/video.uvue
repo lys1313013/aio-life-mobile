@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { readPageTotal, mergePageItems, hasMorePageItems } from '../../services/pagination.ts';
 import { usePageRefresh } from '../../services/page-refresh.ts'
 import { appTextColor } from '../../services/app-layout.ts'
 
@@ -50,6 +51,8 @@ const rows = ref<any[]>([]),
   formError = ref(''),
   saved = ref(false);
 const showMore = ref(false);
+const durationInput = ref('00:00:00');
+const watchedDurationInput = ref('00:00:00');
 const statusLabels = {
   not_started: '未开始',
   in_progress: statusNames[1],
@@ -142,6 +145,20 @@ function clockDuration(value) {
   return [Math.floor(seconds / 3600), Math.floor(seconds / 60) % 60, seconds % 60]
     .map((part) => String(part).padStart(2, '0')).join(':');
 }
+// 与 Web 一致显示 HH:mm:ss；只在提交边界转换为接口秒数。
+function parseClockDuration(value: string) {
+  const match = /^(\d+):([0-5]\d):([0-5]\d)$/.exec(value.trim());
+  if (!match) return NaN;
+  const seconds = Number(match[1]) * 3600 + Number(match[2]) * 60 + Number(match[3]);
+  return Number.isSafeInteger(seconds) ? seconds : NaN;
+}
+function syncDurationInputs() {
+  durationInput.value = clockDuration(form.value.duration);
+  watchedDurationInput.value = clockDuration(form.value.watchedDuration);
+}
+function canPlay(url) {
+  return /^https:\/\/([\w-]+\.)?bilibili\.com\//.test(String(url || ''));
+}
 function videoProgress(item) {
   if (item.status === 'completed') return 100;
   return Math.max(0, Math.min(100, Math.round(item.duration
@@ -164,15 +181,16 @@ async function load() {
       Promise.all([fetchVideoCounts(), fetchVideoStatistics()]),
     );
     if (current !== generation) return;
-    const data = [];
+    let data = [];
     let page = 1;
     while (true) {
       const result = await scope.wait(
         fetchVideoPage(page++, selectedStatus),
       );
       if (current !== generation) return;
-      data.push(...result.items);
-      if (data.length >= result.total || result.items.length < 100) break;
+      const total = readPageTotal(result.total);
+      data = mergePageItems(data, result.items);
+      if (!hasMorePageItems(data.length, total, result.items.length === 0)) break;
     }
     if (current === generation) {
       rows.value = data;
@@ -231,6 +249,7 @@ function open(item = null) {
         ownerName: '',
         pagesInfo: '[]',
       };
+  syncDurationInputs();
 }
 async function parse() {
   if (parsing.value || saving.value) return;
@@ -239,7 +258,7 @@ async function parse() {
   formError.value = '';
   try {
     const result = await scope.wait(parseVideoLink(form.value.url));
-    if (current === formRevision && form.value)
+    if (current === formRevision && form.value) {
       form.value = {
         ...form.value,
         ...result,
@@ -248,6 +267,8 @@ async function parse() {
         episodes: String(result.episodes),
         currentEpisode: String(result.currentEpisode),
       };
+      syncDurationInputs();
+    }
   } catch (e) {
     if (e.name !== 'PageInactiveError' && current === formRevision) {
       formError.value = e.message;
@@ -268,6 +289,7 @@ function updateEpisode(value) {
           .slice(0, Math.max(0, episode - 1))
           .reduce((sum, p) => sum + Number(p.duration || 0), 0),
       );
+      watchedDurationInput.value = clockDuration(form.value.watchedDuration);
     }
   } catch {}
 }
@@ -277,8 +299,8 @@ async function save() {
     formError.value = '请输入标题和视频链接';
     return;
   }
-  const duration = Number(form.value.duration),
-    watchedDuration = Number(form.value.watchedDuration),
+  const duration = parseClockDuration(durationInput.value),
+    watchedDuration = parseClockDuration(watchedDurationInput.value),
     episodes = Number(form.value.episodes),
     currentEpisode = Number(form.value.currentEpisode);
   if (
@@ -293,7 +315,7 @@ async function save() {
     currentEpisode > episodes
   ) {
     showMore.value = true;
-    formError.value = '请检查时长与当前集数范围';
+    formError.value = '时长请用 时:分:秒（如 01:20:00），并检查时长与集数范围';
     return;
   }
   saving.value = true;
@@ -329,7 +351,7 @@ async function remove(item) {
   if (error.value) throw new Error(error.value);
 }
 function play(url) {
-  if (!/^https:\/\/([\w-]+\.)?bilibili\.com\//.test(url)) return;
+  if (!canPlay(url)) return;
   // #ifdef WEB
   window.open(url, '_blank', 'noopener,noreferrer');
   // #endif
@@ -375,8 +397,8 @@ function play(url) {
             <template #labelAction><text class="video-field-context" :class="{ 'record-secondary-dark': isDark }">共 {{ form.episodes }} 集</text></template>
           </FormField>
         </view>
-        <FormField appearance="soft" label="已学习时长（秒）" input-type="number" v-model="form.watchedDuration">
-          <template #labelAction><text class="video-field-context" :class="{ 'record-secondary-dark': isDark }">共 {{ formatSeconds(form.duration) }}</text></template>
+        <FormField appearance="soft" label="已学习时长" placeholder="00:00:00（时:分:秒）" v-model="watchedDurationInput">
+          <template #labelAction><text class="video-field-context" :class="{ 'record-secondary-dark': isDark }">共 {{ durationInput }}</text></template>
         </FormField>
         <FormField appearance="soft" label="学习笔记" kind="textarea" textarea-size="compact" placeholder="记下收获或下次继续的位置" v-model="form.notes" />
         <button class="video-more-toggle" :class="{ 'video-more-toggle-dark': isDark }" role="button"
@@ -389,7 +411,7 @@ function play(url) {
           <FormField appearance="soft" label="封面链接" v-model="form.cover" />
           <view class="ui-field-row">
             <FormField appearance="soft" compact stretch label="总集数" input-type="number" v-model="form.episodes" />
-            <FormField appearance="soft" compact stretch label="总时长（秒）" input-type="number" v-model="form.duration" />
+            <FormField appearance="soft" compact stretch label="总时长" placeholder="00:00:00（时:分:秒）" v-model="durationInput" />
           </view>
           <view class="ui-field-row">
             <FormField appearance="soft" compact stretch label="最近观看日期" kind="date" v-model="form.date" />
@@ -398,12 +420,12 @@ function play(url) {
           <FormField appearance="soft" label="视频简介" kind="textarea" textarea-size="compact" v-model="form.description" />
         </view>
         <text v-if="formError" class="error ui-section ui-type-body" role="alert">{{ formError }}</text>
-        <FormActions>
-          <template #secondary><ConfirmAction v-if="form.id" label="删除视频" :action="() => remove(form)" /><MobileButton label="播放视频" icon="ant-design:play-circle-outlined" variant="quiet" @click="play(form.url)" /></template>
+        <template #footer><FormActions>
+          <template #secondary><ConfirmAction v-if="form.id" label="删除视频" :action="() => remove(form)" /><MobileButton v-if="canPlay(form.url)" label="播放视频" icon="ant-design:play-circle-outlined" variant="quiet" @click="play(form.url)" /></template>
           <MobileButton label="取消" variant="quiet" :disabled="saving || parsing"
             @click="formRevision++; form = null;" />
           <MobileButton :label="saved ? '重新读取' : '保存'" :loading="saving" :disabled="parsing" @click="save" />
-        </FormActions></AdaptiveModal></view>
+        </FormActions></template></AdaptiveModal></view>
     <template #fixed><FloatingActionButton label="新增视频" :disabled="loading || !!error" @click="open()" /></template>
   </MobilePage>
 </template>

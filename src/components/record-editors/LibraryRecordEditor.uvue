@@ -10,6 +10,7 @@ import { isRequired, missingRequired } from '../../services/form-required.ts';
 import { createRecordScope } from '../../services/records/page-scope.ts';
 import { request } from '../../services/api.ts';
 import AttachmentField from '../AttachmentField.uvue';
+import LibraryCover from '../LibraryCover.uvue';
 import { statuses, dateTime } from '../../services/records/contracts.ts';
 const props = defineProps<{ kind: string; record?: any }>();
 const kind = computed(() => props.kind);
@@ -209,20 +210,21 @@ async function remove(item) {
           label="作者"
           v-model="form.author" /><view class="ui-field-row">
           <FormField compact stretch
-          :label="kind === 'movie' ? '当前集数/时长' : '当前页数/进度'"
+          :label="kind === 'movie' ? (form.type === 1 ? '已看时长（分钟）' : form.type === 2 ? '当前集数' : '当前进度') : '当前页数/进度'"
           input-type="number"
           v-model="form.currentProgress" />
           <FormField compact stretch
-          :label="kind === 'movie' ? '总集数/时长' : '总页数/进度'"
+          :label="kind === 'movie' ? (form.type === 1 ? '总时长（分钟）' : form.type === 2 ? '总集数' : '总进度') : '总页数/进度'"
           input-type="number"
           v-model="form.totalProgress" />
-        </view><view class="ui-field-row">
+        </view><text v-if="kind === 'movie' && form.type > 2" class="library-progress-hint">按集数或分钟填写，保持两项单位一致</text><view class="ui-field-row">
           <FormField compact stretch
           label="开始日期"
           kind="date"
           :model-value="form.startTime?.slice(0, 10) || ''"
           @update:model-value="setDate('startTime', $event)" />
           <FormField compact stretch
+          v-if="form.status === 'completed' || form.finishTime"
           label="完成日期"
           kind="date"
           :model-value="form.finishTime?.slice(0, 10) || ''"
@@ -230,7 +232,7 @@ async function remove(item) {
         </view><FormField
           :label="kind === 'movie' ? '短评/备注' : '书评'"
           kind="textarea" textarea-size="compact"
-          v-model="form.remark" /><AttachmentField
+          v-model="form.remark" /><view v-if="!form.fileId && form.coverImgUrl" class="library-external-cover"><LibraryCover file-id="" :url="form.coverImgUrl" :title="form.title" :kind="kind" /></view><AttachmentField
           :files="form.files"
           images-only :max-count="1"
           upload-path="/file/upload"
@@ -245,7 +247,7 @@ async function remove(item) {
           v-if="formError"
           class="library-error ui-section ui-type-body"
           >{{ formError }}</text
-        ><FormActions>
+        ><template #footer><FormActions>
           <template #secondary><ConfirmAction
             v-if="form.id && !saving && !parsing && !attachmentBusy"
             label="删除记录"
@@ -260,7 +262,7 @@ async function remove(item) {
             :loading="saving"
             :disabled="deleting || parsing || attachmentBusy"
             @click="save" />
-        </FormActions></AdaptiveModal>
+        </FormActions></template></AdaptiveModal>
 </template>
 <style scoped lang="scss">
 @use '../../styles/typography' as *;
@@ -269,6 +271,8 @@ async function remove(item) {
 @include type-utilities('body');
 .library-link-row { flex-direction: row; align-items: flex-end; }
 .library-link-field { flex: 1; min-width: 0; }
+.library-external-cover { width: 96px; height: 144px; margin-bottom: $space-inline; }
+.library-progress-hint { @include type-style('caption'); margin-bottom: $space-inline; }
 .library-error { color: #e05252; }
 
 </style>

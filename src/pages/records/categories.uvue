@@ -1,14 +1,17 @@
 <script setup lang="ts">
+import { readPageTotal, mergePageItems, hasMorePageItems } from '../../services/pagination.ts';
+import MobileSwitch from '../../components/MobileSwitch.uvue';
 import { usePageRefresh } from '../../services/page-refresh.ts'
 import FormActions from '../../components/FormActions.uvue';
 import { isRequired, missingRequired } from '../../services/form-required.ts';
 import { computed, ref } from 'vue';
 import { onShow } from '@dcloudio/uni-app';
 import CategoryIcon from '../../components/CategoryIcon.uvue';
-import iconCatalog, { exerciseIconPresets } from '../../services/icons/catalog.ts';
+import CategoryAppearancePicker from './CategoryAppearancePicker.uvue';
 import MobilePage from '../../components/MobilePage.uvue';
 import PageHeader from '../../components/PageHeader.uvue';
 import MobileButton from '../../components/MobileButton.uvue';
+import FloatingActionButton from '../../components/FloatingActionButton.uvue';
 import FormField from '../../components/FormField.uvue';
 import PageState from '../../components/PageState.uvue';
 import ConfirmAction from '../../components/ConfirmAction.uvue';
@@ -32,36 +35,57 @@ const rows = ref<any[]>([]),
   busyId = ref(''),
   saved = ref(false);
 const statusFilter = ref('全部');
-const iconOptions = computed(() => type.value === 'exercise_type'
-  ? [...exerciseIconPresets, ...Object.keys(iconCatalog.icons).filter(icon => !exerciseIconPresets.includes(icon))]
-  : Object.keys(iconCatalog.icons));
-const visibleRows = computed(() => rows.value.map((item, index) => ({item, index})).filter(({item}) => statusFilter.value === '全部' || (statusFilter.value === '已启用' ? item.status !== '1' : item.status === '1')));
+const refreshing = ref(false);
+const loadedType = ref('');
+const editingIndex = computed(() => form.value?.id ? rows.value.findIndex((item) => item.id === form.value.id) : -1);
+const categoryTabs = computed(() => types.value.filter((item) => item.value !== 'bank_tag'));
+const categoryIndex = computed(() => Math.max(0, categoryTabs.value.findIndex((item) => item.value === type.value)));
+const visibleRows = computed(() => rows.value.filter((item) => statusFilter.value === '全部' || (statusFilter.value === '已启用' ? item.status !== '1' : item.status === '1')));
 let generation = 0;
 const scope = createRecordScope((clear) => {
   form.value = null;
   if (clear) {
     rows.value = [];
     types.value = [];
+    loadedType.value = '';
   }
 });
 const refreshOnShow = usePageRefresh(() => load(), { loading: () => loading.value, error: () => error.value, keys: () => ['userDictData', 'userDictType'] })
 onShow(() => refreshOnShow());
+function selectType(value: string) {
+  if (type.value === value) return;
+  type.value = value;
+  load();
+}
+async function refresh() {
+  if (refreshing.value) return;
+  refreshing.value = true;
+  try {
+    await load();
+  } finally {
+    refreshing.value = false;
+  }
+}
 async function load() {
   const current = ++generation;
+  const selectedType = type.value;
   loading.value = true;
   error.value = '';
   try {
     const options = await scope.wait(fetchCategoryTypes());
-    const data = [];
+    let data = [];
     let page = 1;
     while (true) {
-      const result = await scope.wait(fetchCategoryPage(page++, type.value));
-      data.push(...result.items);
-      if (data.length >= result.total || result.items.length < 100) break;
+      const result = await scope.wait(fetchCategoryPage(page++, selectedType));
+      if (current !== generation) return;
+      const total = readPageTotal(result.total);
+      data = mergePageItems(data, result.items);
+      if (!hasMorePageItems(data.length, total, result.items.length === 0)) break;
     }
     if (current === generation) {
       types.value = options;
       rows.value = data.sort((a, b) => Number(a.dictSort || 0) - Number(b.dictSort || 0));
+      loadedType.value = selectedType;
     }
   } catch (e) {
     if (e.name !== 'PageInactiveError' && current === generation) error.value = e.message;
@@ -86,7 +110,7 @@ function open(item = null) {
       };
 }
 async function save() {
-  if (saving.value) return;
+  if (saving.value || busyId.value || loading.value) return;
   if (missingRequired('recordCategory', form.value)) {
     formError.value = '请输入分类名称';
     return;
@@ -112,14 +136,18 @@ async function save() {
     saving.value = false;
   }
 }
-async function toggle(item) {
-  if (busyId.value) return;
+async function toggle(item, enabled: boolean) {
+  if (busyId.value || loading.value) return;
+  const selectedType = type.value;
   busyId.value = item.id;
+  error.value = '';
   try {
-    await scope.wait(saveCategory({ ...item, status: item.status === '1' ? '0' : '1' }));
-    await load();
+    await scope.wait(saveCategory({ ...item, status: enabled ? '0' : '1' }));
+    if (type.value === selectedType) {
+      rows.value = rows.value.map((row) => row.id === item.id ? { ...row, status: enabled ? '0' : '1' } : row);
+    }
   } catch (e) {
-    if (e.name !== 'PageInactiveError') error.value = e.message;
+    if (e.name !== 'PageInactiveError' && type.value === selectedType) error.value = e.message;
   } finally {
     busyId.value = '';
   }
@@ -130,11 +158,13 @@ async function remove(item) {
   if (error.value) throw new Error(error.value);
 }
 async function move(index, offset) {
-  if (busyId.value) return;
+  if (busyId.value || saving.value || loading.value) return;
   const item = rows.value[index],
     other = rows.value[index + offset];
-  if (!other || item.isReadonly === 'Y' || other.isReadonly === 'Y') return;
-  busyId.value = item.id;
+  if (!item || !other || item.isReadonly === 'Y' || other.isReadonly === 'Y') return;
+  const movedId = item.id;
+  busyId.value = movedId;
+  formError.value = '';
   try {
     const ordered = [...rows.value];
     [ordered[index], ordered[index + offset]] = [ordered[index + offset], ordered[index]];
@@ -142,115 +172,128 @@ async function move(index, offset) {
       if (ordered[i].isReadonly === 'Y') continue;
       await scope.wait(saveCategory({ ...ordered[i], dictSort: i * 10 }));
     }
+    // 同步已保存的顺序，避免并发刷新使表单回填旧排序。
+    if (form.value?.id === movedId) form.value = { ...form.value, dictSort: String((index + offset) * 10) };
     await load();
+    if (error.value) formError.value = error.value;
   } catch (e) {
-    if (e.name !== 'PageInactiveError') error.value = e.message;
+    if (e.name !== 'PageInactiveError') formError.value = e.message;
   } finally {
     busyId.value = '';
   }
 }
+function cannotMove(offset: number) {
+  const index = editingIndex.value;
+  return loading.value || saving.value || !!busyId.value || index < 0 || !rows.value[index + offset]
+    || rows.value[index]?.isReadonly === 'Y' || rows.value[index + offset]?.isReadonly === 'Y';
+}
 </script>
 <template>
-  <MobilePage :refreshing="loading" @refresh="load"
+  <MobilePage :refreshing="refreshing" @refresh="refresh"
     ><view class="categories-page ui-page-body" :class="{ 'categories-page-dark': isDark }"
-      ><PageHeader title="自定义设置" :back="true" @back="uni.navigateBack()" /><view class="ui-toolbar"
-        ><FormField compact stretch
-          label="分类类型"
-          kind="selector"
-          :model-value="types.find((t) => t.value === type)?.label || '运动分类'"
-          :options="types.filter((t) => t.value !== 'bank_tag').map((t) => t.label)"
-          @update:model-value="
-            type = types.find((t) => t.label === $event)?.value || 'exercise_type';
-            load();
-          " /><MobileButton
-          label="新增分类"
-          icon="ant-design:plus-outlined"
-          :disabled="loading || !!error"
-          @click="open()" /></view
-      ><FormField label="状态" kind="selector" :options="['全部', '已启用', '已禁用']" v-model="statusFilter" /><PageState skeleton="list" :loading="loading" :error="error" :empty="!rows.length" @retry="load"
-        ><view
-          v-for="{item, index} in visibleRows"
-          :key="item.id"
-          class="card ui-card"
-          :class="{ 'card-dark': isDark }"
-          ><view class="toolbar ui-row"
-            ><CategoryIcon :icon="item.icon" :color="item.color" /><text
-              class="title ui-type-body"
-              >{{ item.dictLabel }}</text
-            ><MobileButton
-              :label="item.status === '1' ? '启用分类' : '停用分类'"
-              :icon="item.status === '1' ? 'ant-design:stop-outlined' : 'ant-design:check-circle-outlined'"
-              variant="quiet"
-              :loading="busyId === item.id"
-              :disabled="!!busyId && busyId !== item.id"
-              @click="toggle(item)" /><MobileButton
-              label="编辑分类"
-              icon="ant-design:edit-outlined"
-              variant="quiet"
-              :disabled="item.isReadonly === 'Y' || !!busyId"
-              @click="open(item)" /><ConfirmAction
-              label="删除分类"
-              :message="item.userId === '0' ? '公共分类会在你的分类列表中停用' : '确认删除分类？'"
-              :action="() => remove(item)" /></view
-          ><text class="secondary"
-             :class="{ 'record-secondary-dark': isDark }">{{ item.status === '1' ? '已停用' : '已启用'
-            }}{{ item.isReadonly === 'Y' ? ' · 只读分类' : '' }}</text
-          ><view class="toolbar ui-row"
-            ><MobileButton
-              label="上移分类"
-              icon="ant-design:arrow-up-outlined"
-              variant="quiet"
-              :disabled="
-                index === 0 ||
-                item.isReadonly === 'Y' ||
-                rows[index - 1]?.isReadonly === 'Y' ||
-                !!busyId
-              "
-              @click="move(index, -1)" /><MobileButton
-              label="下移分类"
-              icon="ant-design:arrow-down-outlined"
-              variant="quiet"
-              :disabled="
-                index === rows.length - 1 ||
-                item.isReadonly === 'Y' ||
-                rows[index + 1]?.isReadonly === 'Y' ||
-                !!busyId
-              "
-              @click="move(index, 1)" /></view></view></PageState
-      ><AdaptiveModal v-if="form" label="编辑分类" :busy="saving" @close="form = null"
+      ><PageHeader title="分类管理" :back="true" @back="uni.navigateBack()" /><view class="ui-toolbar"
+        ><scroll-view
+          class="category-type-scroll"
+          direction="horizontal"
+          :scroll-x="true"
+          :show-scrollbar="false"
+          :scroll-into-view="'category-type-' + categoryIndex"
+          :scroll-with-animation="true"
+        >
+          <view class="category-type-tabs" role="group" aria-label="分类类型">
+            <view
+              v-for="(tab, index) in categoryTabs"
+              :key="tab.value"
+              :id="'category-type-' + index"
+              class="category-type-tab"
+              role="button"
+              tabindex="0"
+              :aria-label="tab.label"
+              :aria-pressed="type === tab.value"
+              @click="selectType(tab.value)"
+              @keydown.enter.prevent="selectType(tab.value)"
+              @keydown.space.prevent="selectType(tab.value)"
+            >
+              <text class="category-type-label" :class="{
+                'category-type-label-dark': isDark,
+                'category-type-selected': type === tab.value,
+                'category-type-selected-dark': type === tab.value && isDark,
+              }">{{ tab.label }}</text>
+            </view>
+          </view>
+        </scroll-view></view>
+      <FormField label="状态" kind="selector" :options="['全部', '已启用', '已禁用']" v-model="statusFilter" />
+      <view class="category-list">
+        <PageState :loading="loading" :retain-content="loadedType === type" :error="error" :empty="!visibleRows.length" empty-text="暂无符合条件的分类" @retry="load">
+          <template #refreshing>
+            <view v-if="!refreshing" class="category-update-progress" role="status" aria-label="正在更新分类">
+              <view class="category-update-runner" :class="{ 'category-update-runner-dark': isDark }" />
+            </view>
+          </template>
+          <template #loading>
+            <view v-for="n in 5" :key="n" class="category-row category-row-skeleton" :class="{ 'category-row-dark': isDark }" aria-hidden="true">
+              <view class="category-placeholder category-placeholder-icon" :class="{ 'category-placeholder-dark': isDark }" />
+              <view class="category-placeholder category-placeholder-name" :class="{ 'category-placeholder-dark': isDark }" />
+              <view class="category-placeholder category-placeholder-actions" :class="{ 'category-placeholder-dark': isDark }" />
+            </view>
+          </template>
+          <view v-for="item in visibleRows" :key="item.id" class="category-row" :class="{ 'category-row-dark': isDark }">
+            <CategoryIcon :icon="item.icon" :color="item.color" />
+            <view class="category-copy">
+              <text class="category-name" :class="{ 'category-name-dark': isDark, 'category-name-disabled': item.status === '1', 'category-name-disabled-dark': item.status === '1' && isDark }">{{ item.dictLabel }}</text>
+              <text v-if="item.isReadonly === 'Y'" class="secondary" :class="{ 'record-secondary-dark': isDark }">只读分类</text>
+            </view>
+            <view class="category-actions">
+              <MobileSwitch :checked="item.status !== '1'" :disabled="!!busyId || loading"
+                :loading="busyId === item.id" :aria-label="'启用分类：' + item.dictLabel"
+                @change="toggle(item, $event.detail.value)" />
+              <MobileButton label="编辑分类" icon="ant-design:edit-outlined" variant="ghost"
+                :disabled="item.isReadonly === 'Y' || !!busyId || loading" @click="open(item)" />
+              <ConfirmAction label="删除分类" :message="item.userId === '0' ? '公共分类会在你的分类列表中停用' : '确认删除分类？'" :action="() => remove(item)">
+                <template #default="{ open: confirmRemove, busy }">
+                  <MobileButton label="删除分类" icon="ant-design:delete-outlined" variant="ghost"
+                    :loading="busy" :disabled="!!busyId || loading" @click="confirmRemove" />
+                </template>
+              </ConfirmAction>
+            </view>
+          </view>
+        </PageState>
+      </view>
+    </view>
+    <template #fixed>
+      <FloatingActionButton v-if="!form" label="新增分类" :disabled="loading || !!error || !!busyId" @click="open()" />
+      <AdaptiveModal v-if="form" :label="form.id ? '编辑分类' : '新增分类'" :busy="saving || !!busyId" @close="form = null"
         ><FormField :required="isRequired('recordCategory', 'dictLabel')" label="名称" v-model="form.dictLabel" /><FormField
           label="分类标识"
           v-model="form.dictValue" />
+        <CategoryAppearancePicker v-model:icon="form.icon" v-model:color="form.color" :disabled="saving || !!busyId" />
         <view class="ui-field-row">
-          <FormField compact stretch label="颜色" v-model="form.color" />
           <FormField compact stretch label="排序" input-type="number" v-model="form.dictSort" />
-        </view>
-        <view class="ui-field-row">
-          <FormField compact stretch label="图标" v-model="form.icon" />
-          <FormField compact stretch label="选择图标" kind="selector" :options="iconOptions" v-model="form.icon" />
-        </view>
-        <view class="ui-field-row category-status-row">
-          <FormField compact stretch label="状态" kind="selector"
-            :model-value="form.status === '1' ? '停用' : '启用'"
-            :options="['启用', '停用']"
-            @update:model-value="form.status = $event === '停用' ? '1' : '0'" />
-          <view class="category-icon-preview"><CategoryIcon :icon="form.icon" :color="form.color" /></view>
+          <FormField compact stretch label="状态" kind="selector" :model-value="form.status === '1' ? '停用' : '启用'" :options="['启用', '停用']" @update:model-value="form.status = $event === '停用' ? '1' : '0'" />
         </view>
         <FormField
           label="备注"
           kind="textarea"
           v-model="form.remark" /><text v-if="formError" class="error ui-section ui-type-body">{{ formError }}</text
-        ><FormActions>
+        ><template #footer><FormActions>
+          <template #secondary>
+            <MobileButton v-if="form.id" label="上移分类" icon="ant-design:arrow-up-outlined" variant="ghost"
+              :disabled="cannotMove(-1)" @click="move(editingIndex, -1)" />
+            <MobileButton v-if="form.id" label="下移分类" icon="ant-design:arrow-down-outlined" variant="ghost"
+              :disabled="cannotMove(1)" @click="move(editingIndex, 1)" />
+          </template>
           <MobileButton
             label="取消"
             variant="quiet"
-            :disabled="saving"
+            :disabled="saving || !!busyId"
             @click="form = null" /><MobileButton
             :label="saved ? '重新读取' : '保存'"
             :loading="saving"
+            :disabled="!!busyId || loading"
             @click="save" />
-        </FormActions></AdaptiveModal></view
-  ></MobilePage>
+        </FormActions></template></AdaptiveModal>
+    </template>
+  </MobilePage>
 </template>
 <style scoped lang="scss">
 @use '../../styles/typography' as *;
@@ -265,31 +308,75 @@ async function move(index, offset) {
 .categories-page-dark {
   color: #eeeeef;
 }
-.toolbar {
-  flex-direction: row;
-  align-items: center;
-  flex-wrap: wrap;
-}
-.card {
-  border-radius: 16px;
-  background-color: #ffffff;
-}
-.card-dark {
-  background-color: #1c1e22;
-}
-.title {
+.category-type-scroll {
   flex: 1;
   min-width: 0;
+  min-height: $space-controlMin;
+  white-space: nowrap;
+}
+.category-type-tabs {
+  flex-direction: row;
+  flex-wrap: nowrap;
+  gap: $space-section;
+  /* #ifndef APP */
+  width: max-content;
+  /* #endif */
+  /* #ifdef APP */
+  flex-shrink: 0;
+  /* #endif */
+}
+.category-type-tab {
+  flex-shrink: 0;
+  min-width: $space-controlMin;
+  min-height: $space-controlMin;
+  padding: 0 $space-detail;
+  align-items: center;
+  justify-content: center;
+}
+.category-type-label {
+  color: #52525b;
+  @include type-style('body');
+}
+.category-type-label-dark { color: #b7bac4; }
+.category-type-selected { color: #2563eb; }
+.category-type-selected-dark { color: #6c9cff; }
+.category-list {
+  // 末行滚动到顶部后，仍可避开通用悬浮新增按钮。
+  padding-bottom: 80px;
+}
+// 更新进度放在列表上方已有的间距内，不覆盖分类操作，也不改变内容高度。
+.category-update-progress { position: absolute; top: -$space-inline; left: 0; right: 0; height: $space-micro; overflow: hidden; pointer-events: none; }
+.category-update-runner { width: 30%; height: 100%; background-color: #7198df; border-radius: $space-micro; animation: category-update-slide 1.35s ease-in-out infinite; }
+.category-update-runner-dark { background-color: #91b4ff; }
+@keyframes category-update-slide { from { transform: translateX(-100%); } to { transform: translateX(434%); } }
+.category-row {
+  flex-direction: row;
+  align-items: center;
+  gap: $space-inline;
+  padding: $space-inline $space-card;
+  margin-bottom: $space-inline;
+  border-radius: 12px;
+  background-color: #ffffff;
+}
+.category-row-dark { background-color: #1c1e22; }
+.category-copy { flex: 1; min-width: 0; gap: $space-detail; }
+.category-name {
+  color: #27272a;
   overflow-wrap: anywhere;
   @include type-style('body-strong');
 }
+.category-name-dark { color: #eeeeef; }
+.category-name-disabled { color: $text-secondary-light; }
+.category-name-disabled-dark { color: $text-secondary-dark; }
+.category-actions { flex-direction: row; align-items: center; flex-shrink: 0; gap: $space-detail; }
+.category-row-skeleton { min-height: $space-controlMin + $space-inline * 2; box-sizing: border-box; }
+.category-placeholder { background-color: #e8ecf1; border-radius: 6px; }
+.category-placeholder-dark { background-color: #30343c; }
+.category-placeholder-icon { width: 24px; height: 24px; flex-shrink: 0; }
+.category-placeholder-name { flex: 1; height: type-line('body'); }
+.category-placeholder-actions { width: $space-controlMin * 3 + $space-detail * 2; height: 24px; flex-shrink: 0; }
 .category-status-row { align-items: flex-end; }
 .category-icon-preview { min-height: $space-controlMin; width: $space-controlMin; align-items: center; justify-content: center; }
-.swatch {
-  width: 14px;
-  height: 14px;
-  border-radius: 7px;
-}
 .secondary {
   color: $text-secondary-light;
   @include type-style('label');

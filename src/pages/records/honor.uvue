@@ -173,8 +173,9 @@ function categoryName(item) {
     ><view class="honor-page ui-page-body" :class="{ 'honor-page-dark': isDark }"
       ><PageHeader title="荣誉" :back="true" @back="uni.navigateBack()" /><view class="ui-toolbar"
         ><FormField compact stretch hide-label label="搜索" placeholder="搜索标题、描述、机构…" v-model="keyword" /><MobileButton
+          v-if="keyword || categoryFilter !== '全部分类' || levelFilter !== '全部级别'"
           label="重置筛选"
-          icon="ant-design:reload-outlined" variant="quiet"
+          icon="ant-design:close-outlined" variant="quiet"
           @click="keyword = ''; categoryFilter = '全部分类'; levelFilter = '全部级别'" /></view
       ><view class="filters ui-field-row"
         ><FormField compact stretch hide-label
@@ -227,7 +228,7 @@ function categoryName(item) {
           v-model="form.customCategory" /><FormField appearance="soft"
           label="描述"
           kind="textarea"
-          v-model="form.description" /><view class="ui-field-row"><FormField appearance="soft" compact stretch label="标签" v-model="form.tags" /><FormField appearance="soft" compact stretch
+          v-model="form.description" /><view class="ui-field-row"><FormField appearance="soft" compact stretch label="标签" placeholder="多个标签用逗号分隔" v-model="form.tags" /><FormField appearance="soft" compact stretch
           label="公开"
           kind="selector"
           :model-value="form.isPublic === 1 ? '公开' : '私密'"
@@ -240,7 +241,7 @@ function categoryName(item) {
           @busy-change="attachmentBusy = $event" /><text v-if="formError" class="honor-error ui-section ui-type-body">{{
           formError
         }}</text
-        ><FormActions>
+        ><template #footer><FormActions>
           <template #secondary><ConfirmAction v-if="form.id" label="删除荣誉" :action="() => remove(form)" @success="form = null" /><MobileButton v-if="form.id" :label="form.isTop === 1 ? '取消置顶' : '置顶荣誉'" :icon="form.isTop === 1 ? 'ant-design:star-filled' : 'ant-design:star-outlined'" variant="quiet" :loading="!!busy" @click="top(form)" /></template>
           <MobileButton
             label="取消"
@@ -251,7 +252,7 @@ function categoryName(item) {
             :loading="saving"
             :disabled="attachmentBusy"
             @click="save" />
-        </FormActions></AdaptiveModal></view
+        </FormActions></template></AdaptiveModal></view
   ><template #fixed><FloatingActionButton label="新增荣誉" :disabled="loading || !!error" @click="open()" /></template></MobilePage>
 </template>
 <style scoped lang="scss">

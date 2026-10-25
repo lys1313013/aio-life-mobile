@@ -13,7 +13,6 @@ import MobileButton from '../../components/MobileButton.uvue';
 import FormField from '../../components/FormField.uvue';
 import FormActions from '../../components/FormActions.uvue';
 import PageState from '../../components/PageState.uvue';
-import ConfirmAction from '../../components/ConfirmAction.uvue';
 import AdaptiveModal from '../../components/AdaptiveModal.uvue';
 import MetricCard from '../../components/MetricCard.uvue';
 import AioChart from '../../components/AioChart.uvue';
@@ -27,7 +26,6 @@ import { openWereadBook, openWereadWeb } from '../../uni_modules/aio-weread-laun
 import {
   fetchWereadConnection,
   connectWeread,
-  disconnectWeread,
   syncWeread,
   fetchWereadStats,
   fetchWereadNotes,
@@ -126,7 +124,6 @@ async function openWebBook(book) {
 }
 const { appGridItem } = useAppLayout();
 const modes = { 周: 'weekly', 月: 'monthly', 年: 'annually', 累计: 'overall' };
-const disconnecting = ref(false);
 let generation = 0,
   statsRevision = 0,
   detailRevision = 0,
@@ -254,6 +251,13 @@ async function initialize() {
     const result = await scope.wait(fetchWereadConnection());
     if (current !== generation) return;
     connection.value = result;
+    if (!result.connected) {
+      snapshot.value = null;
+      stats.value = {};
+      notes.value = null;
+      detail.value = null;
+      selectedBook.value = '';
+    }
     if (result.connected && !snapshot.value) await refresh();
   } catch (e) {
     if (e.name !== 'PageInactiveError') error.value = e.message;
@@ -312,7 +316,7 @@ async function changeMode() {
   }
 }
 async function saveConnection() {
-  if (saving.value || disconnecting.value) return;
+  if (saving.value || connection.value.connected) return;
   if (missingRequired('weread', { keyInput: keyInput.value }) || !/^wrk-[\w-]+$/.test(keyInput.value.trim())) {
     settingsError.value = '请输入有效的微信读书 Key';
     return;
@@ -335,26 +339,6 @@ async function saveConnection() {
     if (e.name !== 'PageInactiveError') settingsError.value = e.message;
   } finally {
     saving.value = false;
-  }
-}
-async function disconnect() {
-  if (saving.value || disconnecting.value) return;
-  disconnecting.value = true;
-  try {
-    await scope.wait(disconnectWeread());
-    connection.value = { connected: false };
-    snapshot.value = null;
-    stats.value = {};
-    notes.value = null;
-    detail.value = null;
-    selectedBook.value = '';
-    tab.value = '设置';
-    keyInput.value = '';
-    settingsError.value = '';
-    notesRevision++;
-    detailRevision++;
-  } finally {
-    disconnecting.value = false;
   }
 }
 async function showBook(book) {
@@ -395,13 +379,6 @@ function showNotes() {
   tab.value = '阅读笔记';
   selectNotebook(id);
 }
-function selectTab(label: string) {
-  if (tab.value === '设置' && label !== '设置') {
-    keyInput.value = '';
-    settingsError.value = '';
-  }
-  tab.value = label;
-}
 function copy(text) {
   copyError.value = '';
   uni.setClipboardData({
@@ -431,8 +408,8 @@ function openLink(url) {
   <MobilePage :refreshing="syncing || loading" @refresh="connection.connected ? refresh() : initialize()"
     ><view class="weread-page ui-page-body" :class="{ 'weread-page-dark': isDark }"
       ><PageHeader title="微信读书" :back="true" @back="uni.navigateBack()" /><PageState skeleton="media" :loading="loading" :error="error" @retry="connection.connected ? refresh() : initialize()"
-        ><template v-if="snapshot"
-          ><view class="weread-tabs ui-row ui-section"><button v-for="label in ['阅读看板', '我的书架', '阅读笔记', '设置']" :key="label" role="button" class="weread-tab" :class="{ 'weread-tab-dark': isDark, 'weread-tab-active': tab === label, 'weread-tab-settings': label === '设置' }" :aria-pressed="tab === label" @click="selectTab(label)"><text :class="buttonLabelClasses(['weread-tab', { 'weread-tab-dark': isDark, 'weread-tab-active': tab === label }])">{{ label }}</text></button></view><view v-if="tab === '阅读看板'"
+        ><template v-if="connection.connected && snapshot"
+          ><view class="weread-tabs ui-row ui-section"><button v-for="label in ['阅读看板', '我的书架', '阅读笔记']" :key="label" role="button" class="weread-tab" :class="{ 'weread-tab-dark': isDark, 'weread-tab-active': tab === label }" :aria-pressed="tab === label" @click="tab = label"><text :class="buttonLabelClasses(['weread-tab', { 'weread-tab-dark': isDark, 'weread-tab-active': tab === label }])">{{ label }}</text></button></view><view v-if="tab === '阅读看板'"
             ><view class="toolbar dashboard-filters ui-row ui-section"
               ><view class="dashboard-filter"><FormField compact
                 label="周期"
@@ -524,7 +501,7 @@ function openLink(url) {
               @update:model-value="
                 selectNotebook(notebooks.find((n) => n.book.title === $event)?.bookId || '')
               "
-            /><view class="toolbar ui-row"
+            /><view class="toolbar ui-row ui-section"
               ><FormField compact stretch
                 label="笔记类型"
                 kind="selector"
@@ -553,12 +530,12 @@ function openLink(url) {
               ></PageState
             ><text v-if="copyError" class="error ui-section ui-type-body">{{ copyError }}</text></view
           ></template
-        ><view v-if="tab === '设置' || !connection.connected" class="weread-settings-panel"
+        ><view v-if="!loading && !error && !connection.connected" class="weread-binding-panel"
           ><FormField :required="isRequired('weread', 'keyInput')"
           label="微信读书 Key"
           v-model="keyInput"
           :password="true"
-          :disabled="saving || disconnecting" /><text class="secondary ui-section"
+          :disabled="saving" /><text class="secondary ui-section"
            :class="{ 'record-secondary-dark': isDark }">凭证保存在账号绑定中，仅用于读取你的微信读书数据。</text
         ><MobileButton
           class="weread-key-link ui-section"
@@ -569,18 +546,14 @@ function openLink(url) {
           class="error ui-section ui-type-body"
           >{{ settingsError }}</text
         ><FormActions
-          ><template #secondary><ConfirmAction
-            v-if="connection.connected"
-            label="断开微信读书"
-            message="断开连接并清除保存的 Key？"
-            :action="disconnect" /></template><MobileButton
+          ><MobileButton
             label="验证并保存"
             :loading="saving"
-            :disabled="disconnecting"
             @click="saveConnection" /></FormActions></view></PageState
       ><AdaptiveModal
         v-if="detail"
         label="书籍详情"
+        show-close
         :content-key="String(detailLoading)"
         @close="
           detailRevision++;
@@ -667,7 +640,6 @@ function openLink(url) {
 
 .weread-tabs { flex-direction: row; align-items: center; }
 .weread-tab { flex: 1; margin: 0; padding: 0 $space-inline; min-height: $space-controlMin; border-radius: 0; background-color: transparent; color: $text-secondary-light; @include type-style('body'); }
-.weread-tab-settings { flex: none; width: $space-controlMin; padding: 0; }
 .weread-tab::after { border: 0; }
 .weread-tab-dark { color: $text-secondary-dark; }
 .weread-tab-active { color: #427bea; border-bottom: 2px solid #427bea; }

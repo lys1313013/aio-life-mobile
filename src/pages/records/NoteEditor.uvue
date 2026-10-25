@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, getCurrentInstance, nextTick, onMounted, onUpdated, ref } from 'vue';
+import { computed, getCurrentInstance, nextTick, onMounted, onUnmounted, onUpdated, ref } from 'vue';
 import AdaptiveModal from '../../components/AdaptiveModal.uvue';
 import ConfirmAction from '../../components/ConfirmAction.uvue';
 import FormActions from '../../components/FormActions.uvue';
@@ -7,6 +7,7 @@ import MobileButton from '../../components/MobileButton.uvue';
 import { isDark } from '../../services/theme.ts';
 import { useWindowResize } from '../../services/window-resize.ts';
 import spacing from '../../styles/spacing.json';
+import typography from '../../styles/typography.json';
 
 const props = defineProps<{
   form: any;
@@ -24,7 +25,20 @@ async function removeNote() {
   try { await props.remove(); } finally { removing.value = false; }
 }
 const width = ref(uni.getWindowInfo().windowWidth);
-useWindowResize(() => { width.value = uni.getWindowInfo().windowWidth; });
+const windowHeight = ref(uni.getWindowInfo().windowHeight);
+const expanded = ref(false);
+function resizeEditor() {
+  const info = uni.getWindowInfo();
+  width.value = info.windowWidth;
+  windowHeight.value = info.windowHeight;
+  // #ifdef WEB
+  if (window.visualViewport) windowHeight.value = Math.min(windowHeight.value, window.visualViewport.height);
+  // #endif
+}
+useWindowResize(resizeEditor);
+// 普通笔记提供6–10行的编辑区，长文在textarea内滚动，也可主动展开。
+const contentHeight = computed(() => Math.min(typography.roles.prose.lineHeight * 10,
+  Math.max(typography.roles.prose.lineHeight * 6, windowHeight.value * 0.3)));
 // 窄屏取消按钮采用公共 compact 变体，给两枚辅助图标保留完整触控区。
 const compactActions = computed(() => width.value < 360);
 const instance = getCurrentInstance();
@@ -40,12 +54,24 @@ function syncWebLabels() {
   });
   // #endif
 }
-onMounted(syncWebLabels);
+onMounted(() => {
+  syncWebLabels();
+  resizeEditor();
+  // #ifdef WEB
+  window.visualViewport?.addEventListener('resize', resizeEditor);
+  // #endif
+});
+onUnmounted(() => {
+  // #ifdef WEB
+  window.visualViewport?.removeEventListener('resize', resizeEditor);
+  // #endif
+});
 onUpdated(syncWebLabels);
 </script>
 
 <template>
-  <AdaptiveModal label="编辑笔记" fill :max-width="spacing.contentMax" :vertical-inset="spacing.page" :busy="busy" @close="emit('close')">
+  <AdaptiveModal label="编辑笔记" :fill="expanded" :max-width="expanded ? spacing.contentMax : 720" :vertical-inset="spacing.page" :busy="busy" @close="emit('close')">
+    <view class="note-editor-heading">
     <input
       v-model="form.title"
       class="note-editor-title"
@@ -57,10 +83,13 @@ onUpdated(syncWebLabels);
       :disabled="busy"
       :adjust-position="false"
     />
+      <MobileButton :label="expanded ? '收起编辑区' : '展开编辑区'" icon="ant-design:fullscreen-outlined" :variant="expanded ? 'quiet' : 'ghost'" :aria-pressed="expanded" :disabled="busy" @click="expanded = !expanded" />
+    </view>
     <textarea
       v-model="form.content"
       class="note-editor-content"
-      :class="{ 'note-editor-input-dark': isDark }"
+      :class="{ 'note-editor-input-dark': isDark, 'note-editor-content-expanded': expanded }"
+      :style="expanded ? {} : { height: contentHeight + 'px' }"
       placeholder="记下你的想法…"
       aria-label="内容"
       :aria-required="true"
@@ -95,12 +124,19 @@ onUpdated(syncWebLabels);
 <style scoped lang="scss">
 @use '../../styles/typography' as *;
 @use '../../styles/spacing-tokens' as *;
+.note-editor-heading {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  flex-shrink: 0;
+  gap: $space-inline;
+  margin-bottom: $space-section;
+}
 .note-editor-title {
   @include type-style('heading');
-  flex-shrink: 0;
-  width: 100%;
+  flex: 1;
+  min-width: 0;
   min-height: $space-controlMin;
-  margin-bottom: $space-section;
   padding: 0;
   border: 0;
   background-color: transparent;
@@ -108,15 +144,15 @@ onUpdated(syncWebLabels);
 }
 .note-editor-content {
   @include type-style('prose');
-  flex: 1;
+  flex-shrink: 0;
   min-height: 0;
-  height: 0;
   width: 100%;
   padding: 0;
   border: 0;
   background-color: transparent;
   color: #27272a;
 }
+.note-editor-content-expanded { flex: 1; height: 0; }
 .note-editor-input-dark { color: #eeeeef; }
 /* #ifdef WEB */
 .note-editor-title, .note-editor-content { color-scheme: light; }

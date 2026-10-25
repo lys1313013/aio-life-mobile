@@ -13,29 +13,48 @@ for (const width of [390, 768, 1440]) for (const theme of ['light', 'dark']) {
       { id: '103', columnId: '8', content: '整理读书笔记与本周练习计划', detail: '将新学到的方法整理成清单，周末回顾实践进展。', unCompletedCount: 2 },
     ];
     await page.route('**/api/tasks?*', route => route.fulfill({ json: { code: 0, data: { items: rows, total: rows.length } } }));
-    await page.route('**/api/taskDetails?*', route => route.fulfill({ json: { code: 0, data: [
+    await page.route('**/api/taskDetails?*', route => route.fulfill({ json: { code: 0, data: new URL(route.request().url()).searchParams.get('taskId') === '101' ? [
       { id: '201', taskId: '101', content: '整理完成的项目记录并补充关键指标与复盘结论', priority: 1, isCompleted: 0, isStarred: 1, startTime: '2026-10-10 09:00:00', endTime: '2026-10-15 18:00:00' },
       { id: '202', taskId: '101', content: '确认团队分享时间', priority: 20, isCompleted: 1, isStarred: 0 },
       { id: '203', taskId: '101', content: '准备分享材料和下一季度行动清单', priority: 10, isCompleted: 0, isStarred: 0 },
-    ] } }));
+    ] : [] } }));
     await page.goto('/#/pages/tasks/todo');
-    const cards = page.locator('[aria-label^="任务详情："]');
+    const cards = page.locator('.task-card');
     await expect(cards).toHaveCount(3);
+    await expect(page.getByText('整理完成的项目记录并补充关键指标与复盘结论', { exact: true })).toBeVisible();
+    await expect(page.getByText('确认团队分享时间', { exact: true })).toHaveCount(0);
     const boxes = await cards.evaluateAll(nodes => nodes.map(node => ({ x: node.getBoundingClientRect().x, y: node.getBoundingClientRect().y, width: node.getBoundingClientRect().width })));
-    if (width === 390) expect(boxes[1].y).toBeGreaterThan(boxes[0].y);
-    else { expect(Math.abs(boxes[1].y - boxes[0].y)).toBeLessThan(2); expect(boxes[1].x).toBeGreaterThan(boxes[0].x + boxes[0].width); }
-    if (width === 768) expect(boxes[2].y).toBeGreaterThan(boxes[0].y);
-    if (width === 1440) expect(Math.abs(boxes[2].y - boxes[0].y)).toBeLessThan(2);
+    if (width >= 768) {
+      expect(Math.abs(boxes[1].y - boxes[0].y)).toBeLessThan(2);
+      expect(boxes[1].x).toBeGreaterThan(boxes[0].x + boxes[0].width);
+      expect(boxes[2].y).toBeGreaterThan(boxes[0].y);
+    } else {
+      expect(boxes[1].y).toBeGreaterThan(boxes[0].y);
+      expect(boxes[2].y).toBeGreaterThan(boxes[1].y);
+    }
     fs.mkdirSync(output, { recursive: true });
     await page.screenshot({ path: `${output}/todo-${width}-${theme}-page.png` });
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
-    await cards.first().press('Enter');
-    await expect(page.getByRole('dialog')).toBeVisible();
+    await page.getByRole('button', { name: /^展开已完成：/ }).click();
     await expect(page.getByText('确认团队分享时间', { exact: true })).toBeVisible();
+    await page.screenshot({ path: `${output}/todo-${width}-${theme}-expanded.png` });
+    await page.getByRole('button', { name: /^编辑明细：/ }).first().press('Enter');
+    await expect(page.getByRole('dialog')).toBeVisible();
+    const content = page.locator('textarea[aria-label="内容"]');
+    await expect(content).toBeVisible();
+    const shortHeight = await content.evaluate(node => node.getBoundingClientRect().height);
+    await content.fill('模拟长待办：整理项目资料、准备复盘会议并逐项核对后续安排。'.repeat(8));
+    await expect.poll(() => content.evaluate(node => node.getBoundingClientRect().height)).toBeGreaterThan(shortHeight);
+    await expect.poll(() => content.evaluate(node => node.scrollHeight - node.clientHeight)).toBeLessThan(3);
     await page.screenshot({ path: `${output}/todo-${width}-${theme}-modal.png` });
-    await page.getByRole('button', { name: '新增明细', exact: true }).scrollIntoViewIfNeeded();
+    await expect(page.getByRole('button', { name: '保存', exact: true })).toBeInViewport();
+    await expect(page.getByRole('button', { name: '取消', exact: true })).toBeInViewport();
     await page.screenshot({ path: `${output}/todo-${width}-${theme}-modal-footer.png` });
-    await page.getByRole('button', { name: '关闭详情', exact: true }).click();
+    await page.getByRole('button', { name: '取消', exact: true }).click();
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    await page.getByRole('button', { name: '管理任务列', exact: true }).click();
+    await expect(page.getByRole('dialog', { name: '管理任务列' })).toBeVisible();
+    await page.getByRole('dialog').getByRole('button', { name: '关闭', exact: true }).click();
     await expect(page.getByRole('dialog')).toHaveCount(0);
     const search = page.locator('input[aria-label="搜索任务"]');
     await search.fill('体检');

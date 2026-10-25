@@ -1,90 +1,95 @@
 <script setup lang="ts">
-import { usePageRefresh } from '../../services/page-refresh.ts'
-import { appTextColor } from '../../services/app-layout.ts'
-
-import FormActions from '../../components/FormActions.uvue';
-import { isRequired } from '../../services/form-required.ts';
-import ContentSkeleton from '../../components/ContentSkeleton.uvue';
 import { computed, onUnmounted, ref } from 'vue';
 import { onLoad, onShow } from '@dcloudio/uni-app';
 import MobilePage from '../../components/MobilePage.uvue';
 import PageHeader from '../../components/PageHeader.uvue';
 import MobileButton from '../../components/MobileButton.uvue';
 import FormField from '../../components/FormField.uvue';
+import FormActions from '../../components/FormActions.uvue';
 import ConfirmAction from '../../components/ConfirmAction.uvue';
 import PageState from '../../components/PageState.uvue';
+import ContentSkeleton from '../../components/ContentSkeleton.uvue';
 import AdaptiveModal from '../../components/AdaptiveModal.uvue';
-import { createRecordScope } from '../../services/records/page-scope.ts';
+import AppIcon from '../../components/AppIcon.uvue';
+import TodoDetailRow from './components/TodoDetailRow.uvue';
+import { appTextColor, useAppLayout } from '../../services/app-layout.ts';
+import { isRequired } from '../../services/form-required.ts';
 import { isDark } from '../../services/theme.ts';
-import {
-  fetchColumns,
-  fetchTasks,
-  fetchDetails,
-  saveTaskRecord,
-  deleteTaskRecord,
-  sortTaskRecords,
-  starDetail,
-  fetchWatchedDetails,
-} from './services/tasks.ts';
+import { usePageRefresh } from '../../services/page-refresh.ts';
+import { createRecordScope } from '../../services/records/page-scope.ts';
 import { dateTime, taskPayload, reordered } from '../../services/records/contracts.ts';
-const columns = ref<any[]>([]),
-  tasks = ref<any[]>([]),
-  details = ref<any[]>([]);
-const selected = ref(''),
-  keyword = ref(''),
-  loading = ref(false),
-  refreshing = ref(false),
-  error = ref('');
-const currentTask = ref<any>(null),
-  detailLoading = ref(false),
-  detailError = ref('');
-const form = ref<any>(null),
-  kind = ref('task'),
-  saving = ref(false),
-  formError = ref(''),
-  busy = ref('');
-const priorityLabels = ['高', '中', '低'],
-  priorityValues = [1, 10, 20];
+import { fetchColumns, fetchTasks, fetchDetails, saveTaskRecord, deleteTaskRecord, sortTaskRecords, starDetail } from './services/tasks.ts';
+
+const columns = ref<any[]>([]), tasks = ref<any[]>([]), groups = ref<any>({});
+const { appGridItem } = useAppLayout();
+const selected = ref('all'), keyword = ref(''), loading = ref(false), refreshing = ref(false), error = ref('');
+const form = ref<any>(null), kind = ref('task'), saving = ref(false), formError = ref(''), busy = ref(''), managing = ref(false);
+const priorityLabels = ['高', '中', '低'], priorityValues = [1, 10, 20];
 const colors = ['', '#e8f4ff', '#e6ffed', '#fff7e6', '#fff0f6', '#f9f0ff', '#e6fffb', '#ffece8'];
 const colorLabels = ['默认', '蓝', '绿', '橙', '粉', '紫', '青', '红'];
+let alive = true, generation = 0, requestedDetail = '', requestedTask = '';
 const scope = createRecordScope((clearData) => {
-  form.value = null;
-  currentTask.value = null;
-  if (clearData) {
-    columns.value = [];
-    tasks.value = [];
-    details.value = [];
-  }
-});
-let requestedDetail = '',
-  requestedTask = '';
-onLoad((options) => {
-  requestedDetail = options?.detailId || '';
-  requestedTask = options?.taskId || '';
-});
-let alive = true,
-  generation = 0,
-  detailGeneration = 0;
-onUnmounted(() => {
-  alive = false;
   generation++;
-  detailGeneration++;
+  form.value = null;
+  managing.value = false;
+  loading.value = false;
+  refreshing.value = false;
+  Object.values(groups.value).forEach((group: any) => { group.revision++; group.loading = false; });
+  if (clearData) { columns.value = []; tasks.value = []; groups.value = {}; keyword.value = ''; selected.value = 'all'; }
 });
-async function load(refresh = false) {
-  const current = ++generation;
-  loading.value = true;
-  refreshing.value = refresh;
-  error.value = '';
+onUnmounted(() => { alive = false; generation++; });
+onLoad((options) => { requestedDetail = options?.detailId || ''; requestedTask = options?.taskId || ''; });
+function groupFor(id) {
+  if (!groups.value[id]) groups.value[id] = { items: [], loaded: false, loading: false, error: '', draft: '', adding: false, addError: '', expanded: false, revision: 0 };
+  return groups.value[id];
+}
+const writing = computed(() => saving.value || !!busy.value || Object.values(groups.value).some((group: any) => group.adding));
+function updateCount(taskId) {
+  const task = tasks.value.find((item) => item.id === taskId);
+  if (task) task.unCompletedCount = groupFor(taskId).items.filter((item) => item.isCompleted !== 1).length;
+}
+function openRequested(taskId) {
+  if (requestedTask && requestedTask !== taskId) return;
+  const group = groupFor(taskId);
+  if (requestedDetail) {
+    const detail = group.items.find((item) => item.id === requestedDetail);
+    if (!detail) return;
+    open('detail', detail);
+  } else if (requestedTask) {
+    open('task', tasks.value.find((item) => item.id === taskId));
+  } else return;
+  requestedDetail = ''; requestedTask = '';
+}
+async function loadDetails(taskId) {
+  const group = groupFor(taskId);
+  if (group.loading || group.adding || group.items.some((item) => busy.value.startsWith(item.id + ':'))) return;
+  const revision = ++group.revision;
+  group.loading = true; group.error = '';
   try {
-    const columnRows = [];
-    let columnPage = 1;
+    const rows = await scope.wait(fetchDetails(taskId));
+    if (!alive || revision !== group.revision || !tasks.value.some((task) => task.id === taskId)) return;
+    // Always keep the owning ID, including responses from older servers without taskId.
+    group.items = rows.map((item) => ({ ...item, taskId }));
+    group.loaded = true;
+    updateCount(taskId);
+  } catch (e) {
+    if (e.name !== 'PageInactiveError' && revision === group.revision) group.error = e.message;
+  } finally {
+    if (revision === group.revision) { group.loading = false; if (group.loaded && !group.error) openRequested(taskId); }
+  }
+}
+async function load(refresh = false) {
+  if (writing.value || loading.value) return;
+  const current = ++generation;
+  loading.value = true; refreshing.value = refresh; error.value = '';
+  try {
+    const columnRows = [], rows = [];
+    let columnPage = 1, page = 1;
     while (true) {
       const response = await scope.wait(fetchColumns(columnPage++));
       columnRows.push(...response.items);
       if (!response.items.length || (response.total != null && columnRows.length >= Number(response.total)) || response.items.length < 200) break;
     }
-    const rows = [];
-    let page = 1;
     while (true) {
       const response = await scope.wait(fetchTasks(page++));
       rows.push(...response.items);
@@ -93,344 +98,184 @@ async function load(refresh = false) {
     if (!alive || current !== generation) return;
     columns.value = columnRows;
     tasks.value = rows;
-    if (!columns.value.some((c) => c.id === selected.value))
-      selected.value = columns.value[0]?.id || '';
-    if (requestedDetail || requestedTask) {
-      if (!requestedTask) {
-        const watched = await scope.wait(fetchWatchedDetails());
-        requestedTask = watched.find((item) => item.id === requestedDetail)?.taskId || '';
+    rows.forEach((task) => groupFor(task.id));
+    Object.keys(groups.value).forEach((id) => { if (!rows.some((task) => task.id === id)) delete groups.value[id]; });
+    if (!['all', 'unassigned'].includes(selected.value) && !columnRows.some((column) => column.id === selected.value)) selected.value = 'all';
+    // Each group settles independently; a slow or failed group does not hide the rest.
+    // Bound fan-out because the existing API returns details for one task at a time.
+    let cursor = 0;
+    async function worker() {
+      while (cursor < rows.length && alive && current === generation) {
+        const task = rows[cursor++];
+        await loadDetails(task.id);
       }
-      const task = tasks.value.find((item) => item.id === requestedTask);
-      if (task) {
-        await showTask(task);
-        const detail = details.value.find((item) => item.id === requestedDetail);
-        if (detail) open('detail', detail);
-      }
-      requestedTask = '';
-      requestedDetail = '';
     }
+    await Promise.all(Array.from({ length: Math.min(4, rows.length) }, () => worker()));
   } catch (e) {
-    if (e.name === 'PageInactiveError') return;
-    if (alive && current === generation) error.value = e.message;
+    if (e.name !== 'PageInactiveError' && alive && current === generation) error.value = e.message;
   } finally {
-    if (current === generation) {
-      loading.value = false;
-      refreshing.value = false;
-    }
+    if (current === generation) { loading.value = false; refreshing.value = false; }
   }
 }
-const refreshOnShow = usePageRefresh(() => load(), { loading: () => loading.value, error: () => error.value, keys: () => ['tasks', 'taskColumn', 'taskDetails'] })
+const refreshOnShow = usePageRefresh(() => load(), { loading: () => loading.value, error: () => (error.value || Object.values(groups.value).some((group: any) => group.error || !group.loaded)) ? '待办加载未完成' : '', keys: () => ['tasks', 'taskColumn', 'taskDetails'] });
 onShow(() => refreshOnShow());
-const visibleTasks = computed(() =>
-  tasks.value.filter(
-    (t) =>
-      (selected.value === 'unassigned'
-        ? !columns.value.some((c) => c.id === t.columnId)
-        : t.columnId === selected.value) &&
-      (!keyword.value ||
-        t.content.includes(keyword.value) ||
-        (t.detail || '').includes(keyword.value)),
-  ),
-);
-const selectedColumn = computed(() => columns.value.find((column) => column.id === selected.value));
-function taskCount(columnId) { return tasks.value.filter((task) => task.columnId === columnId).length; }
-const orphanCount = computed(
-  () => tasks.value.filter((t) => !columns.value.some((c) => c.id === t.columnId)).length,
-);
-async function showTask(task) {
-  currentTask.value = task;
-  await loadDetails();
-}
-async function loadDetails() {
-  if (!currentTask.value) return;
-  const taskId = currentTask.value.id,
-    current = ++detailGeneration;
-  detailLoading.value = true;
-  detailError.value = '';
-  details.value = [];
-  try {
-    const data = await scope.wait(fetchDetails(taskId));
-    if (alive && current === detailGeneration && currentTask.value?.id === taskId)
-      details.value = data;
-  } catch (e) {
-    if (e.name === 'PageInactiveError') return;
-    if (current === detailGeneration) detailError.value = e.message;
-  } finally {
-    if (current === detailGeneration) detailLoading.value = false;
-  }
-}
-function closeTask() {
-  currentTask.value = null;
-  detailGeneration++;
-  detailLoading.value = false;
-}
+const orphanCount = computed(() => tasks.value.filter((task) => !columns.value.some((column) => column.id === task.columnId)).length);
+const visibleGroups = computed(() => {
+  const search = keyword.value.trim().toLowerCase();
+  return tasks.value.filter((task) => selected.value === 'all' || (selected.value === 'unassigned' ? !columns.value.some((column) => column.id === task.columnId) : task.columnId === selected.value))
+    .map((task) => {
+      const state = groups.value[task.id];
+      const matchesGroup = !search || (task.content + ' ' + (task.detail || '')).toLowerCase().includes(search);
+      const items = state.items.filter((item) => matchesGroup || item.content.toLowerCase().includes(search));
+      return { task, state, pending: items.filter((item) => item.isCompleted !== 1), completed: items.filter((item) => item.isCompleted === 1), matches: matchesGroup || items.length > 0 || !state.loaded || !!state.error };
+    }).filter((group) => group.matches);
+});
 function open(type, item = null) {
-  kind.value = type;
-  formError.value = '';
-  form.value = item
-    ? { ...item }
-    : type === 'column'
-      ? { title: '', bgColor: '' }
-      : type === 'task'
-        ? {
-            content: '',
-            detail: '',
-            columnId: selected.value === 'unassigned' ? columns.value[0]?.id : selected.value,
-            dueDate: null,
-          }
-        : {
-            content: '',
-            taskId: currentTask.value.id,
-            priority: 20,
-            isCompleted: 0,
-            isStarred: 0,
-            startTime: null,
-            endTime: null,
-          };
+  if (writing.value || (item && type === 'detail' && groupFor(item.taskId).loading)) return;
+  kind.value = type; formError.value = '';
+  form.value = item ? { ...item } : type === 'column' ? { title: '', bgColor: '' } : { content: '', detail: '', columnId: columns.value.some((column) => column.id === selected.value) ? selected.value : columns.value[0]?.id, dueDate: null };
 }
-function setDate(key, date) {
-  form.value[key] = dateTime(date, form.value[key]?.slice(11, 16) || '00:00');
-}
+function setDate(key, date) { form.value[key] = dateTime(date, form.value[key]?.slice(11, 16) || '00:00'); }
 function setTime(key, time) {
-  form.value[key] = dateTime(
-    form.value[key]?.slice(0, 10) || new Date().toISOString().slice(0, 10),
-    time,
-  );
+  const now = new Date();
+  const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  form.value[key] = dateTime(form.value[key]?.slice(0, 10) || today, time);
+}
+async function quickAdd(task) {
+  const group = groupFor(task.id), draft = group.draft, content = draft.trim();
+  if (!content || group.adding || group.loading || !group.loaded || saving.value || busy.value) return;
+  group.adding = true; group.addError = '';
+  const payload = taskPayload({ content, taskId: task.id, priority: 20, isCompleted: 0, isStarred: 0, startTime: null, endTime: null }, 'detail');
+  try {
+    const response = await scope.wait(saveTaskRecord('detail', payload));
+    group.items.push({ ...payload, ...response, taskId: task.id });
+    if (group.draft === draft) group.draft = '';
+    updateCount(task.id);
+  } catch (e) {
+    if (e.name !== 'PageInactiveError') group.addError = e.message;
+  } finally { group.adding = false; }
 }
 async function save() {
-  if (saving.value) return;
+  if (writing.value || loading.value) return;
   let payload;
   try {
     payload = taskPayload(form.value, kind.value);
     if (kind.value === 'task' && !payload.columnId) throw new Error('请先创建任务列');
-  } catch (e) {
-    if (e.name === 'PageInactiveError') return;
-    formError.value = e.message;
-    return;
-  }
-  saving.value = true;
-  formError.value = '';
+  } catch (e) { formError.value = e.message; return; }
+  saving.value = true; formError.value = '';
+  const type = kind.value;
   try {
-    const response = await scope.wait(saveTaskRecord(kind.value, payload));
+    const response = await scope.wait(saveTaskRecord(type, payload));
     const row = payload.id ? payload : { ...payload, ...response };
-    const list = kind.value === 'column' ? columns : kind.value === 'task' ? tasks : details;
-    const index = list.value.findIndex((item) => item.id === row.id);
-    if (index >= 0) list.value[index] = row;
-    else list.value.push(row);
-    if (kind.value === 'column') selected.value = row.id;
-    if (kind.value === 'task' && currentTask.value?.id === row.id) currentTask.value = row;
-    updateCount();
+    const list = type === 'column' ? columns.value : type === 'task' ? tasks.value : groupFor(payload.taskId).items;
+    const index = list.findIndex((item) => item.id === row.id);
+    if (index >= 0) list[index] = row; else list.push(row);
+    if (type === 'task') {
+      const group = groupFor(row.id);
+      if (!payload.id) group.loaded = true;
+      if (selected.value !== 'all') selected.value = row.columnId;
+    }
+    if (type === 'detail') updateCount(payload.taskId);
     form.value = null;
   } catch (e) {
-    if (e.name === 'PageInactiveError') return;
-    formError.value = e.message;
-  } finally {
-    saving.value = false;
-  }
-}
-function updateCount() {
-  if (currentTask.value) {
-    const task = tasks.value.find((t) => t.id === currentTask.value.id);
-    if (task) task.unCompletedCount = details.value.filter((d) => d.isCompleted !== 1).length;
-  }
+    if (e.name !== 'PageInactiveError') formError.value = e.message;
+  } finally { saving.value = false; }
 }
 async function remove(type, item) {
-  await scope.wait(deleteTaskRecord(type, item.id));
-  if (type === 'column') {
-    columns.value = columns.value.filter((c) => c.id !== item.id);
-    selected.value = columns.value[0]?.id || 'unassigned';
-  } else if (type === 'task') {
-    tasks.value = tasks.value.filter((t) => t.id !== item.id);
-    if (currentTask.value?.id === item.id) closeTask();
-  } else {
-    details.value = details.value.filter((d) => d.id !== item.id);
-    updateCount();
-  }
+  if (writing.value || loading.value) throw new Error('正在更新，请稍后重试');
+  saving.value = true;
+  try {
+    await scope.wait(deleteTaskRecord(type, item.id));
+    if (type === 'column') { columns.value = columns.value.filter((column) => column.id !== item.id); selected.value = 'all'; }
+    else if (type === 'task') { tasks.value = tasks.value.filter((task) => task.id !== item.id); delete groups.value[item.id]; }
+    else { const group = groupFor(item.taskId); group.items = group.items.filter((detail) => detail.id !== item.id); updateCount(item.taskId); }
+    form.value = null;
+  } finally { saving.value = false; }
 }
 async function changeDetail(item, field) {
-  if (busy.value) return;
-  busy.value = item.id + ':' + field;
+  const group = groupFor(item.taskId);
+  if (writing.value || group.loading) return;
+  busy.value = item.id + ':' + field; group.error = '';
   const payload = { ...item, [field]: item[field] === 1 ? 0 : 1 };
   try {
     if (field === 'isStarred') await scope.wait(starDetail(item.id, payload.isStarred === 1));
     else await scope.wait(saveTaskRecord('detail', payload));
-    Object.assign(item, payload);
-    updateCount();
+    Object.assign(item, payload); updateCount(item.taskId);
   } catch (e) {
-    if (e.name === 'PageInactiveError') return;
-    detailError.value = e.message;
-  } finally {
-    busy.value = '';
-  }
+    if (e.name !== 'PageInactiveError') group.error = e.message;
+  } finally { busy.value = ''; }
 }
 async function move(type, item, offset) {
-  if (busy.value) return;
-  const list = type === 'column' ? columns : type === 'detail' ? details : tasks;
-  const subset =
-    type === 'task' ? tasks.value.filter((t) => t.columnId === item.columnId) : list.value;
-  const result = reordered(subset, item.id, offset, type);
+  if (writing.value || loading.value) return;
+  const list = type === 'column' ? columns.value : type === 'task' ? tasks.value.filter((task) => task.columnId === item.columnId) : groupFor(item.taskId).items;
+  const result = reordered(list, item.id, offset, type);
   if (!result) return;
-  busy.value = type + ':' + item.id;
+  busy.value = type + ':' + item.id; formError.value = '';
   try {
     await scope.wait(sortTaskRecords(type, result.payload));
-    list.value =
-      type === 'task'
-        ? [...tasks.value.filter((t) => t.columnId !== item.columnId), ...result.items]
-        : result.items;
+    const sortField = type === 'detail' ? 'sort' : 'sortOrder';
+    result.items.forEach((row, index) => { row[sortField] = index + 1; });
+    if (form.value?.id === item.id) form.value[sortField] = result.items.find((row) => row.id === item.id)?.[sortField];
+    if (type === 'column') columns.value = result.items;
+    else if (type === 'task') tasks.value = [...tasks.value.filter((task) => task.columnId !== item.columnId), ...result.items];
+    else groupFor(item.taskId).items = result.items;
   } catch (e) {
-    if (e.name === 'PageInactiveError') return;
-    if (type === 'detail') detailError.value = e.message;
-    else error.value = e.message;
-  } finally {
-    busy.value = '';
-  }
-}
-async function moveColumn(task, columnTitle) {
-  const column = columns.value.find((c) => c.title === columnTitle);
-  if (!column || busy.value) return;
-  busy.value = 'task:' + task.id;
-  const payload = [
-    {
-      id: task.id,
-      columnId: column.id,
-      sortOrder: tasks.value.filter((t) => t.columnId === column.id).length + 1,
-    },
-  ];
-  try {
-    await scope.wait(sortTaskRecords('task', payload));
-    task.columnId = column.id;
-  } catch (e) {
-    if (e.name === 'PageInactiveError') return;
-    detailError.value = e.message;
-  } finally {
-    busy.value = '';
-  }
+    if (e.name !== 'PageInactiveError') formError.value = e.message;
+  } finally { busy.value = ''; }
 }
 </script>
 <template>
-  <MobilePage :refreshing="refreshing" @refresh="load(true)"
-    ><view class="todo-page ui-page-body" :class="{ 'todo-page-dark': isDark }">
+  <MobilePage :refreshing="refreshing" @refresh="load(true)">
+    <view class="todo-page ui-page-body" :class="{ 'todo-page-dark': isDark }">
       <PageHeader title="待办" :back="true" @back="uni.navigateBack()" />
-      <view class="ui-toolbar"
-        ><FormField compact stretch hide-label placeholder="搜索任务" label="搜索任务" v-model="keyword" /><MobileButton
-          label="新增列"
-          icon="ant-design:file-text-outlined"
-          @click="open('column')" /><MobileButton
-          label="新增任务"
-          icon="ant-design:plus-outlined"
-          :disabled="!columns.length"
-          @click="open('task')"
-      /></view>
-      <scroll-view direction="horizontal" :scroll-x="true" class="column-scroll ui-section"
-        ><view class="column-tabs ui-row"
-          ><view
-            v-for="column in columns"
-            :key="column.id"
-            class="column-tab" :class="{ 'column-tab-active': selected === column.id, 'column-tab-dark': isDark, 'column-tab-active-dark': isDark && selected === column.id }"
-            role="button" tabindex="0" :aria-label="column.title" :aria-pressed="selected === column.id"
-            @click="selected = column.id" @keydown.enter.prevent="selected = column.id" @keydown.space.prevent="selected = column.id"
-            ><text :style="appTextColor(selected === column.id)" class="column-tab-title ui-type-body">{{ column.title }}</text><text class="column-count" :class="{ 'secondary-text-dark': isDark }">{{ taskCount(column.id) }}</text></view>
-          <view v-if="orphanCount" class="column-tab" :class="{ 'column-tab-active': selected === 'unassigned', 'column-tab-dark': isDark, 'column-tab-active-dark': isDark && selected === 'unassigned' }" role="button" tabindex="0" aria-label="未归类" :aria-pressed="selected === 'unassigned'" @click="selected = 'unassigned'" @keydown.enter.prevent="selected = 'unassigned'" @keydown.space.prevent="selected = 'unassigned'"><text :style="appTextColor(selected === 'unassigned')" class="column-tab-title ui-type-body">未归类</text><text class="column-count" :class="{ 'secondary-text-dark': isDark }">{{ orphanCount }}</text></view></view
-      ></scroll-view>
-      <view class="kanban-column ui-pad-card" :style="{ backgroundColor: isDark ? '#232830' : selectedColumn?.bgColor || '#edf1f7' }"><view v-if="selectedColumn || selected === 'unassigned'" class="column-tools ui-row ui-section"><view class="column-heading"><text class="column-name">{{ selectedColumn?.title || '未归类' }}</text><text v-if="!loading || tasks.length" class="column-count" :class="{ 'secondary-text-dark': isDark }">{{ visibleTasks.length }}</text></view><MobileButton v-if="selectedColumn" label="编辑任务列" icon="ant-design:more-outlined" variant="quiet" @click="open('column', selectedColumn)" /></view><PageState skeleton="list" :loading="loading" :error="error" :empty="!visibleTasks.length" @retry="load()">
-<template #loading><view class="task-grid" ><view v-for="n in 6" :key="n" class="task-card ui-card" :class="{ 'task-card-dark': isDark }"><ContentSkeleton variant="tile" /></view></view></template>
-
-        <view class="task-grid"><view
-          v-for="task in visibleTasks"
-          :key="task.id"
-          class="task-card ui-card"
-          :class="{ 'task-card-dark': isDark }"
-          role="button" tabindex="0" :aria-label="'任务详情：' + task.content" @click="showTask(task)" @keydown.enter.prevent="showTask(task)" @keydown.space.prevent="showTask(task)"
-        >
-          <text class="task-title task-card-title">{{ task.content }}</text>
-          <text :max-lines="3" v-if="task.detail" class="task-content task-preview" :class="{ 'secondary-text-dark': isDark }">{{ task.detail }}</text>
-          <view class="task-footer"><text class="task-secondary" :class="[{ 'task-complete': task.unCompletedCount === 0 }, { 'secondary-text-dark': isDark }]">{{ task.unCompletedCount === 0 ? '✓ 全部完成' : '◷ 待办 ' + (task.unCompletedCount || 0) }}</text><text v-if="task.dueDate" class="task-due" :class="{ 'task-due-dark': isDark }">{{ task.dueDate.slice(5, 10) }}</text></view>
-        </view></view>
-      </PageState><MobileButton label="添加任务" icon="ant-design:plus-outlined" variant="quiet" :disabled="!columns.length" @click="open('task')" /></view>
-      <AdaptiveModal v-if="currentTask && !form" label="任务详情" :content-key="String(detailLoading) + String(details.length)" :show-close="false" :busy="!!busy" @close="closeTask">
-        <view class="toolbar ui-row ui-mb-sm"
-          ><text class="task-title">{{ currentTask.content }}</text
-          ><MobileButton
-            label="编辑任务"
-            icon="ant-design:edit-outlined"
-            variant="quiet"
-            @click="open('task', currentTask)" /><MobileButton
-            label="关闭详情"
-            icon="ant-design:close-outlined"
-            variant="quiet"
-            :disabled="!!busy"
-            @click="closeTask"
-        /></view>
-        <text class="task-content ui-mb-sm">{{ currentTask.detail }}</text
-        ><text v-if="currentTask.dueDate" class="task-secondary ui-mb-sm"
-          :class="{ 'secondary-text-dark': isDark }">截止 {{ currentTask.dueDate }}</text
-        >
-        <FormField
-          label="移至任务列"
-          kind="selector"
-          :model-value="columns.find((c) => c.id === currentTask.columnId)?.title || ''"
-          :options="columns.map((c) => c.title)"
-          :disabled="!!busy"
-          @update:model-value="moveColumn(currentTask, $event)"
-        />
-        <PageState skeleton="form" :retain-content="false"
-          :loading="detailLoading"
-          :error="detailError"
-          :empty="!details.length"
-          @retry="loadDetails"
-        >
-          <view v-for="detail in details" :key="detail.id" class="detail-card ui-section ui-gap-sm" :class="{ 'detail-card-dark': isDark }">
-            <view class="toolbar ui-row"
-              ><MobileButton
-                :label="detail.isCompleted ? '标为未完成' : '完成明细'"
-                :icon="detail.isCompleted ? 'ant-design:check-square-outlined' : 'ant-design:border-outlined'"
-                variant="quiet"
-                :loading="busy === detail.id + ':isCompleted'"
-                :disabled="!!busy"
-                @click="changeDetail(detail, 'isCompleted')" /><text class="task-title" :class="{ 'detail-completed': detail.isCompleted === 1 }">{{
-                detail.content
-              }}</text
-              ><MobileButton
-                :label="detail.isStarred ? '取消关注' : '关注明细'"
-                :icon="detail.isStarred ? 'ant-design:star-filled' : 'ant-design:star-outlined'"
-                variant="quiet"
-                :loading="busy === detail.id + ':isStarred'"
-                :disabled="!!busy"
-                @click="changeDetail(detail, 'isStarred')"
-            /></view>
-            <text class="task-secondary"
-              :class="{ 'secondary-text-dark': isDark }">{{ priorityLabels[priorityValues.indexOf(detail.priority)] }}优先级{{
-                detail.startTime ? ' · ' + detail.startTime : ''
-              }}{{ detail.endTime ? ' → ' + detail.endTime : '' }}</text
-            >
-            <view class="toolbar ui-row"
-              ><MobileButton
-                label="编辑明细"
-                icon="ant-design:edit-outlined"
-                variant="quiet"
-                @click="open('detail', detail)" /><MobileButton
-                label="明细向前移动"
-                icon="ant-design:arrow-up-outlined"
-                variant="quiet"
-                :loading="busy === 'detail:' + detail.id"
-                @click="move('detail', detail, -1)" /><MobileButton
-                label="明细向后移动"
-                icon="ant-design:arrow-down-outlined"
-                variant="quiet"
-                :disabled="!!busy"
-                @click="move('detail', detail, 1)" /><ConfirmAction
-                label="删除明细"
-                :action="() => remove('detail', detail)"
-            /></view>
-          </view> </PageState
-        ><MobileButton
-          label="新增明细"
-          icon="ant-design:plus-outlined"
-          :disabled="detailLoading || !!detailError"
-          @click="open('detail')"
-        />
+      <view class="ui-toolbar">
+        <FormField compact stretch hide-label placeholder="搜索待办或清单" label="搜索任务" v-model="keyword" />
+        <MobileButton label="新增清单" icon="ant-design:plus-outlined" :disabled="!columns.length || loading || writing" @click="open('task')" />
+        <MobileButton label="管理任务列" icon="ant-design:more-outlined" variant="ghost" @click="managing = true" />
+      </view>
+      <scroll-view direction="horizontal" :scroll-x="true" class="column-scroll ui-section">
+        <view class="column-tabs">
+          <view class="column-tab" :class="{ 'column-tab-active': selected === 'all', 'column-tab-active-dark': isDark && selected === 'all' }" role="button" tabindex="0" aria-label="全部清单" :aria-pressed="selected === 'all'" @click="selected = 'all'" @keydown.enter.prevent="selected = 'all'" @keydown.space.prevent="selected = 'all'"><text :style="appTextColor(selected === 'all')" class="column-tab-title">全部</text></view>
+          <view v-for="column in columns" :key="column.id" class="column-tab" :class="{ 'column-tab-active': selected === column.id, 'column-tab-active-dark': isDark && selected === column.id }" role="button" tabindex="0" :aria-label="column.title" :aria-pressed="selected === column.id" @click="selected = column.id" @keydown.enter.prevent="selected = column.id" @keydown.space.prevent="selected = column.id"><text :style="appTextColor(selected === column.id)" class="column-tab-title">{{ column.title }}</text></view>
+          <view v-if="orphanCount" class="column-tab" :class="{ 'column-tab-active': selected === 'unassigned', 'column-tab-active-dark': isDark && selected === 'unassigned' }" role="button" tabindex="0" aria-label="未归类" :aria-pressed="selected === 'unassigned'" @click="selected = 'unassigned'" @keydown.enter.prevent="selected = 'unassigned'" @keydown.space.prevent="selected = 'unassigned'"><text :style="appTextColor(selected === 'unassigned')" class="column-tab-title">未归类</text></view>
+        </view>
+      </scroll-view>
+      <PageState :loading="loading" :error="error" :empty="!visibleGroups.length" :has-content="tasks.length > 0" :empty-text="keyword ? '没有找到相关待办' : '还没有清单'" @retry="load()">
+        <template #loading><view class="task-card ui-pad-card"><ContentSkeleton variant="list" /></view></template>
+        <view class="task-groups">
+          <view v-for="group in visibleGroups" :key="group.task.id" class="task-card ui-pad-card" :style="appGridItem(1, 'section', [[768, 2]])" :class="{ 'task-card-dark': isDark }" :aria-label="'清单：' + group.task.content">
+            <view class="group-heading">
+              <text class="group-title" :class="{ 'primary-text-dark': isDark }">{{ group.task.content }}</text>
+              <text v-if="group.state.loaded" class="group-count" :class="{ 'secondary-text-dark': isDark }">{{ group.task.unCompletedCount }}</text>
+              <MobileButton :label="'编辑清单：' + group.task.content" icon="ant-design:more-outlined" variant="ghost" :disabled="loading || writing" @click="open('task', group.task)" />
+            </view>
+            <PageState :loading="group.state.loading || (!group.state.loaded && !group.state.error)" :error="group.state.error" :has-content="group.state.loaded" @retry="loadDetails(group.task.id)">
+              <template #loading><view class="group-skeleton"><view v-for="n in Math.min(3, Math.max(1, Number(group.task.unCompletedCount) || 1))" :key="n" class="skeleton-todo-row"><view class="skeleton-check" :class="{ 'skeleton-dark': isDark }" /><view class="skeleton-line" :class="{ 'skeleton-dark': isDark }" /></view><view class="skeleton-todo-row"><view class="skeleton-add" :class="{ 'skeleton-dark': isDark }" /></view></view></template>
+              <TodoDetailRow v-for="detail in group.pending" :key="detail.id" :detail="detail" :busy="busy" :disabled="writing || group.state.loading" @change="changeDetail" @edit="open('detail', $event)" />
+              <view class="quick-add" >
+                <view class="quick-add-icon"><AppIcon name="ant-design:plus-outlined" :size="18" :color="isDark ? '#8f9bab' : '#8893a3'" /></view>
+                <input class="quick-add-input" :style="appTextColor()" :aria-label="'添加待办到' + group.task.content" :value="group.state.draft" placeholder="添加待办…" :maxlength="-1" confirm-type="done" :disabled="saving || !!busy || group.state.loading || !group.state.loaded" @input="group.state.draft = $event.detail.value" @confirm="quickAdd(group.task)" />
+                <MobileButton v-if="group.state.draft.trim() || group.state.adding" label="添加待办" icon="ant-design:arrow-up-outlined" variant="ghost" :loading="group.state.adding" :disabled="writing || group.state.loading || !group.state.loaded" @click="quickAdd(group.task)" />
+              </view>
+              <text v-if="group.state.addError" class="task-error" role="alert">{{ group.state.addError }}</text>
+              <view v-if="group.completed.length" class="completed-toggle" role="button" tabindex="0" :aria-label="(group.state.expanded ? '收起' : '展开') + '已完成：' + group.task.content" :aria-expanded="group.state.expanded" @click="group.state.expanded = !group.state.expanded" @keydown.enter.prevent="group.state.expanded = !group.state.expanded" @keydown.space.prevent="group.state.expanded = !group.state.expanded">
+                <AppIcon :name="group.state.expanded ? 'ant-design:down-outlined' : 'ant-design:right-outlined'" :size="12" :color="isDark ? '#a1aaba' : '#8893a3'" />
+                <text class="completed-label" :class="{ 'secondary-text-dark': isDark }">已完成 · {{ group.completed.length }}</text>
+              </view>
+              <template v-if="group.state.expanded"><TodoDetailRow v-for="detail in group.completed" :key="detail.id" :detail="detail" :busy="busy" :disabled="writing || group.state.loading" @change="changeDetail" @edit="open('detail', $event)" /></template>
+            </PageState>
+          </view>
+        </view>
+        <MobileButton v-if="!tasks.length && !loading && !error" :label="columns.length ? '新增清单' : '新增任务列'" variant="quiet" @click="open(columns.length ? 'task' : 'column')" />
+      </PageState>
+      <AdaptiveModal v-if="managing && !form" label="管理任务列" show-close @close="managing = false">
+        <view v-for="column in columns" :key="column.id" class="group-heading">
+          <text class="group-title" :class="{ 'primary-text-dark': isDark }">{{ column.title }}</text>
+          <MobileButton label="编辑任务列" icon="ant-design:edit-outlined" variant="ghost" :disabled="loading || writing" @click="open('column', column)" />
+        </view>
+        <MobileButton label="新增列" icon="ant-design:plus-outlined" variant="ghost" :disabled="loading || writing" @click="open('column')" />
       </AdaptiveModal>
-      <AdaptiveModal v-if="form" label="编辑待办" :busy="saving" @close="form = null">
+      <AdaptiveModal v-if="form" label="编辑待办" :busy="writing" @close="form = null">
         <template v-if="kind === 'column'"
           ><FormField :required="isRequired('column', 'title')" label="列名称" v-model="form.title" /><FormField
             label="背景"
@@ -440,7 +285,11 @@ async function moveColumn(task, columnTitle) {
             @update:model-value="form.bgColor = colors[colorLabels.indexOf($event)]"
         /></template>
         <template v-else
-          ><FormField :required="isRequired(kind, 'content')" label="内容" v-model="form.content" /><FormField
+          ><FormField :required="isRequired(kind, 'content')" :label="kind === 'task' ? '清单名称' : '内容'">
+            <textarea class="task-content-input" :class="{ 'task-content-input-dark': isDark }"
+              v-model="form.content" :auto-height="true" :fixed="true" :adjust-position="false" :maxlength="-1"
+              :aria-label="kind === 'task' ? '清单名称' : '内容'" :aria-required="isRequired(kind, 'content')" :disabled="writing" />
+          </FormField><FormField v-if="kind === 'task'" label="任务列" kind="selector" :model-value="columns.find((column) => column.id === form.columnId)?.title || ''" :options="columns.map((column) => column.title)" @update:model-value="form.columnId = columns.find((column) => column.title === $event)?.id" /><FormField
             v-if="kind === 'task'"
             label="说明"
             kind="textarea"
@@ -487,15 +336,15 @@ async function moveColumn(task, columnTitle) {
               @update:model-value="setTime('dueDate', $event)"
           /></view> </template
         ><text v-if="formError" class="task-error ui-section ui-type-body">{{ formError }}</text
-        ><FormActions>
-          <template #secondary><ConfirmAction v-if="form.id" :label="kind === 'column' ? '删除列' : kind === 'task' ? '删除任务' : '删除明细'" :action="() => remove(kind, form)" /><MobileButton v-if="form.id" label="向前移动" icon="ant-design:arrow-up-outlined" variant="quiet" :disabled="!!busy" @click="move(kind, form, -1)" /><MobileButton v-if="form.id" label="向后移动" icon="ant-design:arrow-down-outlined" variant="quiet" :disabled="!!busy" @click="move(kind, form, 1)" /></template>
+        ><template #footer><FormActions>
+          <template #secondary><ConfirmAction v-if="form.id" :label="kind === 'column' ? '删除列' : kind === 'task' ? '删除清单' : '删除明细'" :action="() => remove(kind, form)" /><MobileButton v-if="form.id" label="向前移动" icon="ant-design:arrow-up-outlined" variant="quiet" :disabled="writing || loading" @click="move(kind, form, -1)" /><MobileButton v-if="form.id" label="向后移动" icon="ant-design:arrow-down-outlined" variant="quiet" :disabled="writing || loading" @click="move(kind, form, 1)" /></template>
           <MobileButton
             label="取消"
             variant="quiet"
-            :disabled="saving"
-            @click="form = null" /><MobileButton label="保存" :loading="saving" @click="save"
+            :disabled="writing"
+            @click="form = null" /><MobileButton label="保存" :loading="saving" :disabled="writing || loading" @click="save"
         />
-        </FormActions>
+        </FormActions></template>
       </AdaptiveModal> </view
   ></MobilePage>
 </template>
@@ -505,109 +354,42 @@ async function moveColumn(task, columnTitle) {
 @use '../../styles/spacing.scss';
 @use '../../styles/spacing-tokens' as *;
 @include type-utilities('body');
-
-.todo-page {
-  color: #27272a;
-}
-.todo-page-dark {
-  color: #eeeeef;
-}
-.toolbar {
-  flex-direction: row;
-  align-items: center;
-}
-.column-scroll {
-  width: 100%;
-}
-.column-tabs {
-  flex-direction: row;
-}
-.column-tools {
-  flex-direction: row;
-  justify-content: space-between;
-  align-items: center;
-}
-.kanban-column { border-radius: 14px; }
-.task-grid { display: flex; flex-direction: row; flex-wrap: wrap; gap: $space-section; margin-bottom: $space-section; align-items: stretch; }
-.task-card {
-  width: 100%;
-  min-width: 0;
-  margin-bottom: 0;
-  background-color: #ffffff;
-  border-radius: 10px;
-  display: flex;
-  flex-direction: column;
-  gap: $space-inline;
-  border: $space-hairline solid #e9ebef;
-}
-.task-card-dark {
-  background-color: #1c1e22;
-  border-color: #30343b;
-}
-.task-title {
-  flex: 1;
-  @include type-style('title');
-
-  min-width: 0;
-  overflow-wrap: anywhere;
-
-}
-.task-content {
-  @include type-style('body');
-
-}
-.task-secondary {
-  color: $text-secondary-light;
-  @include type-style('label');
-}
-.task-error {
-  color: #e05252;
-}
-.field-pair {
-  flex-direction: row;
-  flex-wrap: wrap;
-}
-.column-heading { display: flex; flex-direction: row; align-items: center; gap: $space-inline; min-width: 0; }
-.column-name { @include type-style('body-strong');  overflow-wrap: anywhere; }
-.column-tab { display: flex; flex-direction: row; align-items: center; gap: $space-inline; min-height: $space-controlMin; padding: 0 $space-card; border-radius: 10px; flex-shrink: 0; color: #747c8a; @include type-style('body'); }
-.column-tab-active { background-color: #e8effc; color: #3265bc; font-weight: type-weight('medium'); }
-.column-tab-dark { color: #a2abba; }
-.column-tab-active-dark { background-color: #263a58; color: #95b9f8; }
-.column-tab-title { @include type-style('body');
-/* #ifndef APP */
-color: inherit;
-/* #endif */
- }
-.column-count { @include type-style('caption'); color: $text-secondary-light; }
-.task-card-title { flex: none; }
-.task-footer { margin-top: auto; display: flex; flex-direction: row; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: $space-detail; }
-.task-preview {
-/* #ifndef APP */
-display: -webkit-box;
-/* #endif */
+.todo-page { color: #27272a; }
+.todo-page-dark { color: #eeeeef; }
+.column-scroll { width: 100%; }
+.column-tabs { display: flex; flex-direction: row; gap: $space-detail; }
+.column-tab { display: flex; flex-direction: row; align-items: center; min-height: $space-controlMin; padding: 0 $space-card; border-radius: 12px; flex-shrink: 0; }
+.column-tab-active { background-color: #e8effc; }
+.column-tab-active-dark { background-color: #263a58; }
+.column-tab-title { @include type-style('body'); }
+.task-groups { display: flex; flex-direction: row; flex-wrap: wrap; align-items: flex-start; gap: $space-section; }
+.task-card { width: 100%; box-sizing: border-box; min-width: 0; background-color: #ffffff; border-radius: 16px; }
+@media (min-width: 768px) { .task-card { width: calc((100% - #{$space-section}) / 2); } }
 /* #ifdef APP */
-text-overflow: ellipsis;
+.task-groups { justify-content: space-between; }
 /* #endif */
-
-/* #ifndef APP */
--webkit-line-clamp: 3;
-/* #endif */
-
-/* #ifndef APP */
--webkit-box-orient: vertical;
-/* #endif */
- overflow: hidden; overflow-wrap: anywhere; color: $text-secondary-light; }
-.task-complete { color: #55a77a; }
-.task-due { padding: $space-micro $space-detail; color: #6a7485; background-color: #f2f4f7; border-radius: 5px; @include type-style('caption'); }
-.task-due-dark { color: #adb5c3; background-color: #2c323d; }
-.detail-card { padding: $space-inline 0; border-bottom: $space-hairline solid #eceef2; }
-.detail-card-dark { border-color: #30343b; }
-.detail-completed { color: #858c98; text-decoration: line-through; }
-@media (min-width: 600px) { .task-card { width: calc((100% - #{$space-section}) / 2); } }
-@media (min-width: 960px) { .task-card { width: calc((100% - #{$space-section} * 2) / 3); } }
-/* #ifdef WEB */
-.task-card:focus-visible, .column-tab:focus-visible { outline: 2px solid #427bea; outline-offset: 2px; }
-/* #endif */
-
+.task-card-dark { background-color: #1c1e22; }
+.task-content-input { width: 100%; min-height: $space-controlMin; padding: $space-card; box-sizing: border-box; border: $space-hairline solid #d8dde4; border-radius: 10px; background-color: #ffffff; color: #27272a; @include type-style('body'); }
+.task-content-input-dark { background-color: #1c1e22; border-color: #363940; color: #eeeeef; }
+.group-heading { display: flex; flex-direction: row; align-items: center; gap: $space-inline; min-height: $space-controlMin; }
+.group-title { flex: 1; min-width: 0; @include type-style('body-strong'); color: #27272a; overflow-wrap: anywhere; }
+.group-count { @include type-style('caption'); color: $text-secondary-light; }
+.quick-add { display: flex; flex-direction: row; align-items: center; min-height: $space-controlMin; gap: $space-detail; }
+.quick-add-icon { width: $space-controlMin; height: $space-controlMin; flex-shrink: 0; display: flex; align-items: center; justify-content: center; }
+.quick-add-input { flex: 1; min-width: 0; min-height: $space-controlMin; @include type-style('body'); }
+.completed-toggle { display: flex; flex-direction: row; align-items: center; gap: $space-inline; min-height: $space-controlMin; padding: 0 $space-card; }
+.completed-label { @include type-style('caption'); color: $text-secondary-light; }
+.skeleton-todo-row { display: flex; flex-direction: row; align-items: center; min-height: $space-controlMin; gap: $space-inline; padding: 0 $space-card; }
+.skeleton-check { width: 18px; height: 18px; border-radius: 4px; background-color: #eef1f5; }
+.skeleton-line { width: 60%; height: 14px; border-radius: 4px; background-color: #eef1f5; }
+.skeleton-add { width: 30%; height: 14px; border-radius: 4px; background-color: #eef1f5; }
+.skeleton-dark { background-color: #2b3039; }
+.task-error { @include type-style('label'); color: #d45454; padding: $space-detail $space-card; }
+.field-pair { flex-direction: row; flex-wrap: wrap; }
+.primary-text-dark { color: #eeeeef; }
 .secondary-text-dark { color: $text-secondary-dark; }
+/* #ifdef WEB */
+.column-tab, .completed-toggle { cursor: pointer; }
+.column-tab:focus-visible, .completed-toggle:focus-visible { outline: 2px solid #427bea; outline-offset: 2px; }
+/* #endif */
 </style>

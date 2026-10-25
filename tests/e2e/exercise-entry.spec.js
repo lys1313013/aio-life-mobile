@@ -41,7 +41,7 @@ for (const width of [390, 768, 1440]) for (const theme of ['light', 'dark']) {
     await page.getByRole('button', { name: '新增运动', exact: true }).tap();
     const dialog = page.getByRole('dialog');
     await expect(dialog).toBeVisible();
-    const date = dialog.locator('uni-picker[aria-label="运动日期"]');
+    const date = dialog.locator('.calendar-trigger[aria-label="运动日期"]');
     await expect(date.locator('.form-field-picker-value')).toHaveText('2026-10-19');
     await expect(page.locator('.mobile-page-scroll [role="dialog"]')).toHaveCount(0);
     const scrollTop = await scroll.evaluate(el => el.scrollTop);
@@ -54,14 +54,7 @@ for (const width of [390, 768, 1440]) for (const theme of ['light', 'dark']) {
     await expect(description).toBeFocused();
     await page.keyboard.insertText('模拟触摸录入');
     await date.tap();
-    const nativeDate = date.locator('input[type="date"]');
-    if (await nativeDate.count()) {
-      await nativeDate.fill('2026-10-19');
-    } else {
-      await expect(page.locator('.uni-picker-content:visible')).toBeVisible();
-      await page.locator('.uni-picker-action-confirm:visible').tap();
-      await expect(page.locator('.uni-picker-content:visible')).toHaveCount(0);
-    }
+    await page.getByRole('dialog', { name: '运动日期日历', exact: true }).getByRole('button', { name: '2026-10-19', exact: true }).tap();
     await expect(dialog).toBeVisible();
     expect(await scroll.evaluate(el => el.scrollTop)).toBe(scrollTop);
     await page.screenshot({ path: info.outputPath('exercise-entry.png') });

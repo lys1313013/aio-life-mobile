@@ -1,0 +1,55 @@
+<script setup lang="ts">
+import { computed, ref } from 'vue';
+import CategoryIcon from '../../components/CategoryIcon.uvue';
+import FormField from '../../components/FormField.uvue';
+import MobileButton from '../../components/MobileButton.uvue';
+import catalog, { exerciseIconPresets } from '../../services/icons/catalog.ts';
+import { isDark } from '../../services/theme.ts';
+const props = defineProps<{ icon?: string; color?: string; disabled?: boolean }>();
+const emit = defineEmits(['update:icon', 'update:color']);
+const search = ref(''), expanded = ref(false), advanced = ref(false);
+const colors = ['#4ecdc4', '#1890ff', '#6366f1', '#a855f7', '#ec4899', '#ef4444', '#f97316', '#eab308', '#22c55e', '#64748b'];
+const options = computed(() => {
+  const all = Object.keys(catalog.icons);
+  const ordered = [...exerciseIconPresets, ...all.filter(key => !exerciseIconPresets.includes(key))];
+  const query = search.value.trim().toLowerCase();
+  const matches = query ? ordered.filter(key => key.toLowerCase().includes(query)) : ordered;
+  return expanded.value || query ? matches : matches.slice(0, 18);
+});
+</script>
+<template>
+  <FormField label="图标" compact>
+    <view class="appearance-current"><CategoryIcon :icon="icon" :color="color" :size="28" /><text class="appearance-caption" :class="{ 'appearance-caption-dark': isDark }">{{ icon || '使用颜色标记' }}</text></view>
+    <FormField label="搜索图标" hide-label compact><input class="appearance-search" :class="{ 'appearance-search-dark': isDark }" aria-label="搜索图标" placeholder="搜索图标名称，如 run、book" :value="search" :disabled="disabled" @input="search = $event.detail.value" /></FormField>
+    <scroll-view scroll-y class="appearance-scroll">
+      <view class="appearance-grid">
+        <button v-for="key in options" :key="key" class="appearance-option" :class="{ 'appearance-selected': icon === key }" :aria-label="'选择图标 ' + key" :aria-pressed="icon === key" :disabled="disabled" @click="emit('update:icon', key)"><CategoryIcon :icon="key" :color="color" :size="26" /></button>
+      </view>
+      <text v-if="!options.length" class="appearance-caption" :class="{ 'appearance-caption-dark': isDark }">没有匹配图标</text>
+    </scroll-view>
+    <view class="appearance-actions"><MobileButton :label="expanded ? '常用图标' : '全部图标'" variant="quiet" :disabled="disabled" @click="expanded = !expanded" /><MobileButton label="清除图标" variant="quiet" :disabled="disabled || !icon" @click="emit('update:icon', '')" /></view>
+  </FormField>
+  <FormField label="颜色">
+    <view class="appearance-grid"><button v-for="value in colors" :key="value" class="appearance-option" :class="{ 'appearance-selected': color === value }" :aria-label="'选择颜色 ' + value" :aria-pressed="color === value" :disabled="disabled" @click="emit('update:color', value)"><view class="appearance-swatch" :style="{ backgroundColor: value }" /></button></view>
+  </FormField>
+  <MobileButton :label="advanced ? '收起自定义值' : '自定义图标与颜色值'" variant="quiet" :disabled="disabled" @click="advanced = !advanced" />
+  <view v-if="advanced" class="ui-field-row"><FormField compact stretch label="图标代码" :model-value="icon" :disabled="disabled" @update:model-value="emit('update:icon', $event)" /><FormField compact stretch label="颜色值" placeholder="#1890ff" :model-value="color" :disabled="disabled" @update:model-value="emit('update:color', $event)" /></view>
+</template>
+<style scoped lang="scss">
+@use '../../styles/spacing.scss';
+@use '../../styles/spacing-tokens' as *;
+@use '../../styles/typography' as *;
+.appearance-current { flex-direction: row; align-items: center; gap: $space-inline; min-height: $space-controlMin; }
+.appearance-caption { @include type-style('caption'); color: #64748b; overflow-wrap: anywhere; }
+.appearance-caption-dark { color: #b4bdca; }
+.appearance-search { @include type-style('body'); min-height: $space-controlMin; color: #27272a; }
+.appearance-search-dark { color: #eeeeef; }
+// 有界图标目录避免长表单被全部选项撑开。
+.appearance-scroll { height: calc(#{$space-controlMin} * 3 + #{$space-detail} * 2); }
+.appearance-grid { flex-direction: row; flex-wrap: wrap; gap: $space-detail; }
+.appearance-option { display: flex; align-items: center; justify-content: center; width: $space-controlMin; height: $space-controlMin; flex-shrink: 0; margin: 0; padding: 0; border: 1px solid transparent; border-radius: $space-inline; background: transparent; }
+.appearance-option::after { border: 0; }
+.appearance-selected { border-color: #4285ed; background-color: rgba(66, 133, 237, .12); }
+.appearance-swatch { width: 24px; height: 24px; border-radius: 50%; }
+.appearance-actions { flex-direction: row; justify-content: flex-end; gap: $space-inline; }
+</style>

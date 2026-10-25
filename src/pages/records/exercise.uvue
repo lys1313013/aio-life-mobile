@@ -19,6 +19,7 @@ import FloatingActionButton from '../../components/FloatingActionButton.uvue';
 import MetricCard from '../../components/MetricCard.uvue';
 import AioChart from '../../components/AioChart.uvue';
 import AppIcon from '../../components/AppIcon.uvue';
+import CategoryIcon from '../../components/CategoryIcon.uvue';
 import { exerciseDistributionChart, exerciseMonthlyChart } from './services/exercise-chart.ts';
 import ExerciseDistributionChart from './components/ExerciseDistributionChart.uvue';
 import ExerciseMonthlyChart from './components/ExerciseMonthlyChart.uvue';
@@ -50,6 +51,9 @@ const rows = ref<any[]>([]),
   selected = ref<string[]>([]);
 const renderPageSize = 20;
 const selecting = ref(false), swipedId = ref('');
+const choosingExercise = ref(false);
+const selectedExerciseType = computed(() => exerciseType(form.value?.exerciseTypeId));
+watch(form, () => { choosingExercise.value = false; });
 const page = ref(0), hasMoreRows = ref(false), revealing = ref(false), moreError = ref('');
 const statisticsLoading = ref(false), statisticsError = ref('');
 const chartType = ref('');
@@ -253,6 +257,11 @@ function open(item = null) {
         description: '',
       };
 }
+function selectExerciseType(id: string) {
+  if (!form.value || saving.value) return;
+  form.value.exerciseTypeId = id;
+  choosingExercise.value = false;
+}
 async function save() {
   if (saving.value) return;
   if (missingRequired('exercise', form.value)) {
@@ -325,11 +334,11 @@ function toggleSelection() {
           " /></view
       ><text v-if="startDate && endDate && startDate > endDate" class="error ui-section ui-type-body"
         >开始日期不能晚于结束日期</text
-      ><view class="metrics ui-row ui-section"
-        ><MetricCard :style="appGridItem(2, 'inline', [[600, 3]], false)" :loading="statisticsLoading && !statisticsReady" label="运动次数" :value="statisticsReady ? counts : '—'" /><MetricCard :style="appGridItem(2, 'inline', [[600, 3]], false)" :loading="statisticsLoading && !statisticsReady"
+      ><view class="metrics ui-row ui-section" :class="{ 'metrics-three': typeFilter !== '全部类型' }"
+        ><MetricCard :style="appGridItem(2, 'inline', [[600, typeFilter === '全部类型' ? 2 : 3]], false)" :loading="statisticsLoading && !statisticsReady" label="运动次数" :value="statisticsReady ? counts : '—'" /><MetricCard :style="appGridItem(2, 'inline', [[600, typeFilter === '全部类型' ? 2 : 3]], false)" :loading="statisticsLoading && !statisticsReady"
           v-if="typeFilter !== '全部类型'"
           label="运动量"
-          :value="statisticsReady ? quantity : '—'" /><MetricCard :style="appGridItem(2, 'inline', [[600, 3]], false)" :loading="statisticsLoading && !statisticsReady" label="记录" :value="statisticsReady ? recordCount : '—'" /></view
+          :value="statisticsReady ? quantity : '—'" /><MetricCard :style="appGridItem(2, 'inline', [[600, typeFilter === '全部类型' ? 2 : 3]], false)" :loading="statisticsLoading && !statisticsReady" label="记录" :value="statisticsReady ? recordCount : '—'" /></view
       ><view class="statistics-region">
         <LoadingIndicator v-if="statisticsLoading && statisticsReady" floating label="正在更新统计" />
         <PageState v-if="statisticsError" :error="statisticsError" @retry="loadStatistics()" />
@@ -393,15 +402,17 @@ function toggleSelection() {
     <template #fixed>
       <FloatingActionButton v-if="!form" label="新增运动" :disabled="loading || !!error" @click="open()" />
       <!-- 录入层放在页面滚动容器外，避免微信原生输入和背景滚动相互影响。 -->
-      <AdaptiveModal v-if="form" label="编辑运动记录" :busy="saving" @close="form = null"
+      <AdaptiveModal v-if="form" :label="form.id ? '编辑运动记录' : '新增运动记录'" :busy="saving" @close="form = null"
         ><FormField :required="isRequired('exercise', 'exerciseTypeId')"
-          label="运动类型"
-          kind="selector"
-          :model-value="name(form.exerciseTypeId)"
-          :options="types.map((t) => t.dictLabel || t.label)"
-          @update:model-value="
-            form.exerciseTypeId = types.find((t) => (t.dictLabel || t.label) === $event)?.id || ''
-          " /><view class="ui-field-row">
+          label="运动类型">
+          <button role="button" class="exercise-type-control" :class="{ 'exercise-type-control-dark': isDark }"
+            aria-label="选择运动类型" :aria-expanded="choosingExercise" :aria-required="isRequired('exercise', 'exerciseTypeId')"
+            :disabled="saving" @click="choosingExercise = true">
+            <CategoryIcon :icon="selectedExerciseType?.icon || 'lucide:dumbbell'" :color="selectedExerciseType?.color || '#1890ff'" :size="24" />
+            <text class="exercise-type-value" :class="{ 'exercise-type-text-dark': isDark }">{{ name(form.exerciseTypeId) || '请选择' }}</text>
+            <AppIcon name="ant-design:down-outlined" :size="12" />
+          </button>
+        </FormField><view class="ui-field-row">
           <FormField compact stretch :required="isRequired('exercise', 'exerciseDate')" label="运动日期" kind="date" v-model="form.exerciseDate" />
           <FormField compact stretch
           label="运动数量"
@@ -421,6 +432,19 @@ function toggleSelection() {
             :loading="saving"
             @click="save" />
         </FormActions></AdaptiveModal>
+      <AdaptiveModal v-if="form && choosingExercise" label="选择运动" :max-width="500"
+        :content-key="JSON.stringify(types)" @close="choosingExercise = false">
+        <view class="exercise-type-grid">
+          <button v-for="item in types" :key="item.id" role="button" class="exercise-type-option"
+            :aria-label="item.dictLabel || item.label || item.id" :aria-pressed="item.id === form.exerciseTypeId"
+            :class="{ 'exercise-type-selected': item.id === form.exerciseTypeId, 'exercise-type-selected-dark': isDark && item.id === form.exerciseTypeId }"
+            @click="selectExerciseType(item.id)">
+            <CategoryIcon :icon="item.icon || 'lucide:dumbbell'" :color="item.color || '#1890ff'" :size="24" />
+            <text class="exercise-type-name" :class="{ 'exercise-type-text-dark': isDark }">{{ item.dictLabel || item.label || item.id }}</text>
+          </button>
+          <text v-if="!types.length" class="exercise-type-empty" :class="{ 'exercise-type-text-dark': isDark }">暂无运动类型</text>
+        </view>
+      </AdaptiveModal>
     </template>
   </MobilePage>
 </template>
@@ -447,6 +471,45 @@ function toggleSelection() {
 .error {
   color: #e05252;
 }
+.exercise-type-control {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: $space-inline;
+  width: 100%;
+  min-height: $space-controlMin;
+  margin: 0;
+  padding: $space-inline $space-card;
+  border: 1px solid #d8dde4;
+  border-radius: 10px;
+  background-color: #ffffff;
+  text-align: left;
+}
+.exercise-type-control-dark { background-color: #1c1e22; border-color: #363940; }
+.exercise-type-value { @include type-style('body'); flex: 1; min-width: 0; color: #27272a; }
+.exercise-type-grid { display: flex; flex-direction: row; flex-wrap: wrap; }
+.exercise-type-option {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  width: 25%;
+  min-height: 76px; /* 与时迹图标网格一致的触控区域 */
+  margin: 0;
+  padding: $space-inline $space-detail;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background-color: transparent;
+}
+.exercise-type-name { @include type-style('label'); color: #52525b; text-align: center; margin-top: $space-inline; }
+.exercise-type-empty { @include type-style('body'); color: $text-secondary-light; }
+.exercise-type-text-dark { color: #d4d4d8; }
+.exercise-type-selected { border-color: #52525b; }
+.exercise-type-selected-dark { border-color: #d4d4d8; }
+/* #ifdef WEB || MP-WEIXIN */
+.exercise-type-control::after, .exercise-type-option::after { border: 0; }
+/* #endif */
 .statistics-region { position: relative; }
 .daily-type-picker { min-width: 0; max-width: 50%; flex-shrink: 1; }
 .daily-type-control { display: flex; flex-direction: row; align-items: center; justify-content: flex-end; gap: $space-detail; min-width: $space-controlMin; min-height: $space-controlMin; }
@@ -472,7 +535,7 @@ display: flex; flex-direction: row; flex-wrap: wrap; justify-content: space-betw
 grid-template-columns: repeat(2, minmax(0, 1fr));
 /* #endif */
  gap: $space-inline; }
-@media (min-width: 600px) { .metrics {
+@media (min-width: 600px) { .metrics-three {
 /* #ifndef APP */
 grid-template-columns: repeat(3, minmax(0, 1fr));
 /* #endif */

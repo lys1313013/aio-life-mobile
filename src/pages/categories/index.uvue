@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import MobileSwitch from '../../components/MobileSwitch.uvue';
 import { usePageRefresh } from '../../services/page-refresh.ts'
 import { isRequired } from '../../services/form-required.ts';
 import AppIcon from '../../components/AppIcon.uvue'
@@ -37,6 +38,8 @@ const saving = ref(false);
 const opened = ref(false);
 const editorError = ref('');
 const search = ref('');
+const expandedActions = ref('');
+const searchQuery = computed(() => search.value.trim().toLowerCase());
 const collapsed = ref<string[]>([]);
 const original = ref<any>(null);
 const form = ref<any>({});
@@ -62,7 +65,8 @@ function selectIcon(icon: string) {
 const shown = computed(() =>
   orderCategories(rows.value).filter(
     (row) =>
-      row.name.includes(search.value) && (!row.parentId || !collapsed.value.includes(row.parentId)),
+      String(row.name || '').toLowerCase().includes(searchQuery.value) &&
+      (searchQuery.value || !row.parentId || !collapsed.value.includes(row.parentId)),
   ),
 );
 const parents = computed(() => [
@@ -117,6 +121,7 @@ async function load(refresh = false) {
 }
 function edit(row = null, parentId = '0') {
   if (loading.value || busyId.value) return;
+  expandedActions.value = '';
   original.value = row;
   form.value = row
     ? { ...row, parentId: row.parentId || '0' }
@@ -223,28 +228,46 @@ function privateCategory(row) {
       back
       @back="uni.navigateBack()" /><MobilePage :refreshing="refreshing" @refresh="load(true)">
       <FormField label="搜索分类" v-model="search" />
-      <PageState skeleton="list" :loading="loading" :error="error" :empty="!rows.length" @retry="load()">
+      <PageState skeleton="list" :loading="loading" :error="error" :empty="!shown.length" :empty-text="searchQuery ? '未找到匹配分类' : '暂无分类'" @retry="load()">
+        <view v-if="searchQuery && !shown.length && !loading && !error" class="category-search-empty">
+          <MobileButton label="清空搜索" variant="quiet" @click="search = ''" />
+        </view>
         <view
           v-for="row in shown"
           :key="row.id"
           class="category-card ui-card"
           :class="themeClass('category-card')"
         >
-          <view class="category-heading ui-row"
-            ><CategoryIcon :icon="row.icon" :color="row.color" /><AppIcon v-if="row.parentId && row.parentId !== '0'" name="lucide:corner-down-right" :size="16" /><text class="category-name" :class="themeClass('category-name')">{{ row.name }}</text><text class="category-type">{{ types[(row.timeType || 1) - 1] }}</text><switch :checked="row.isTrackTime === 1" :disabled="!!busyId || loading" aria-label="卡片统计" @change="change(row, { isTrackTime: $event.detail.value ? 1 : 0 })" /><MobileButton
+          <view class="category-heading ui-row">
+            <CategoryIcon :icon="row.icon" :color="row.color" />
+            <AppIcon v-if="row.parentId && row.parentId !== '0'" name="lucide:corner-down-right" :size="16" />
+            <view class="category-summary">
+              <text class="category-name" :class="themeClass('category-name')">{{ row.name }}</text>
+              <view class="category-summary-meta">
+                <text class="category-type" :class="['category-type-' + (row.timeType || 1), themeClass('category-type-' + (row.timeType || 1))]">{{ types[(row.timeType || 1) - 1] }}</text>
+                <text v-if="row.isTrackTime === 1" class="category-meta" :class="themeClass('category-meta')">参与统计</text>
+                <text v-if="row.isEnabled === 0" class="category-meta" :class="themeClass('category-meta')">已隐藏</text>
+              </view>
+            </view>
+            <MobileButton
               v-if="hasChildren(row)"
               :label="collapsed.includes(row.id) ? '展开子分类' : '收起子分类'"
               :icon="collapsed.includes(row.id) ? 'ant-design:right-outlined' : 'ant-design:down-outlined'"
               variant="quiet"
               @click="toggle(row)"
-          /></view>
+            />
+          </view>
           <view class="category-actions ui-row"
             ><MobileButton
               label="编辑分类"
               icon="ant-design:edit-outlined"
               variant="quiet"
               :disabled="!!busyId || loading"
-              @click="edit(row)" /><MobileButton
+              @click="edit(row)" />
+            <MobileButton label="更多分类操作" :icon="expandedActions === row.id ? 'ant-design:up-outlined' : 'lucide:ellipsis'" variant="ghost" :aria-expanded="expandedActions === row.id" :disabled="!!busyId || loading" @click="expandedActions = expandedActions === row.id ? '' : row.id" />
+          </view>
+          <view v-if="expandedActions === row.id" class="category-extra-actions">
+            <MobileButton
               v-if="!row.parentId || row.parentId === '0'"
               label="新增子分类"
               icon="ant-design:plus-outlined"
@@ -261,7 +284,8 @@ function privateCategory(row) {
               label="删除分类"
               message="确定删除分类？已有记录或子分类时无法删除。"
               :action="() => remove(row)"
-          /></view>
+            />
+          </view>
         </view>
       </PageState>
       <template #fixed
@@ -330,11 +354,11 @@ function privateCategory(row) {
         <view class="category-toggle-row">
           <view class="category-toggle" :class="themeClass('category-toggle')">
             <text class="category-toggle-label" :class="themeClass('category-toggle-label')">卡片统计</text>
-            <switch :checked="form.isTrackTime === 1" :disabled="saving" aria-label="卡片统计" @change="(event) => (form.isTrackTime = event.detail.value ? 1 : 0)" />
+            <MobileSwitch :checked="form.isTrackTime === 1" :disabled="saving" aria-label="卡片统计" @change="(event) => (form.isTrackTime = event.detail.value ? 1 : 0)" />
           </view>
           <view class="category-toggle" :class="themeClass('category-toggle')">
             <text class="category-toggle-label" :class="themeClass('category-toggle-label')">启用</text>
-            <switch :checked="form.isEnabled === 1" :disabled="saving" aria-label="启用分类" @change="(event) => (form.isEnabled = event.detail.value ? 1 : 0)" />
+            <MobileSwitch :checked="form.isEnabled === 1" :disabled="saving" aria-label="启用分类" @change="(event) => (form.isEnabled = event.detail.value ? 1 : 0)" />
           </view>
         </view>
         <button role="button" class="category-description-toggle" :disabled="saving" :aria-expanded="showDescription" aria-label="分类描述" @click="showDescription = !showDescription">
@@ -395,12 +419,21 @@ function privateCategory(row) {
 }
 .category-heading {
   flex: 1;
-  min-width: 220px;
+  min-width: 0;
   flex-direction: row;
-
+  gap: $space-inline;
   align-items: center;
 }
-.category-type { @include type-style('caption'); color: #fff; background-color: #5b8ff9; padding: $space-detail; border-radius: 4px; }
+.category-summary { flex: 1; min-width: 0; gap: $space-detail; }
+.category-summary-meta { flex-direction: row; flex-wrap: wrap; align-items: center; gap: $space-inline; }
+.category-type { @include type-style('caption'); padding: 0 $space-detail; border-radius: 4px; }
+// 与 Web TIME_TYPE_CONFIG 的蓝 / 绿 / 琥珀语义一致，浅底提高列表辨识度。
+.category-type-1 { color: #1d4ed8; background-color: #eff6ff; }
+.category-type-2 { color: #047857; background-color: #ecfdf5; }
+.category-type-3 { color: #92400e; background-color: #fffbeb; }
+.category-type-1-dark { color: #93c5fd; background-color: #1e3a5f; }
+.category-type-2-dark { color: #6ee7b7; background-color: #064e3b; }
+.category-type-3-dark { color: #fcd34d; background-color: #573b16; }
 .category-name {
   color: #27272a;
   min-width: 0;
@@ -410,15 +443,17 @@ function privateCategory(row) {
 .category-name-dark { color: #eeeeef; }
 .category-meta {
   color: #808692;
-  @include type-style('label');
+  @include type-style('caption');
 
 }
+.category-meta-dark { color: #a0a6b1; }
 .category-actions {
   flex-direction: row;
-  flex-wrap: wrap;
-
+  flex-shrink: 0;
   overflow: visible;
 }
+.category-extra-actions { width: 100%; flex-direction: row; justify-content: flex-end; gap: $space-inline; }
+.category-search-empty { align-items: center; padding-bottom: $space-section; }
 .category-error {
   color: #e05260;
 
