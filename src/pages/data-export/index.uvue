@@ -1,0 +1,477 @@
+<script setup lang="ts">
+import { computed, ref, watch } from "vue";
+import { onShow, onHide, onUnload } from "@dcloudio/uni-app";
+import MobilePage from "../../components/MobilePage.uvue";
+import PageHeader from "../../components/PageHeader.uvue";
+import LoadMore from "../../components/LoadMore.uvue";
+import FormField from "../../components/FormField.uvue";
+import { session } from "../../services/session.ts";
+import { requestUnlock } from "../../services/secondary-lock.ts";
+import { themeClass } from "../../services/theme.ts";
+import * as api from "./service.ts";
+import type { ExportCatalog, ExportJob, ExportQuota } from "./service.ts";
+
+const catalog = ref<ExportCatalog | null>(null);
+const quota = ref<ExportQuota | null>(null);
+const jobs = ref<ExportJob[]>([]);
+const selected = ref<string[]>([]);
+const password = ref("");
+const target = ref<ExportJob | null>(null);
+const verifying = ref(false);
+const expanded = ref(false);
+const loading = ref(false);
+const busy = ref("");
+const errorText = ref("");
+const nextPageError = ref("");
+const exhausted = ref(false);
+const page = ref(1);
+const total = ref(0);
+let visible = false,
+  revision = 0,
+  requestKey = "";
+let timer: ReturnType<typeof setTimeout> | null = null;
+const active = computed(() =>
+  jobs.value.some((job) => ["QUEUED", "RUNNING"].includes(job.status)),
+);
+const canCreate = computed(
+  () =>
+    selected.value.length > 0 &&
+    (quota.value?.remaining || 0) > 0 &&
+    !active.value &&
+    !busy.value,
+);
+const labels: Record<string, string> = {
+  QUEUED: "排队中",
+  RUNNING: "生成中",
+  SUCCEEDED: "已完成",
+  FAILED: "生成失败",
+  CANCELLED: "已取消",
+  REVOKED: "已撤销",
+};
+function stop() {
+  if (timer) clearTimeout(timer);
+  timer = null;
+}
+function current(version: number) {
+  return visible && version === revision;
+}
+function schedule() {
+  stop();
+  if (visible && active.value) timer = setTimeout(() => load(false), 5000);
+}
+async function load(includeCatalog = true, append = false) {
+  if (loading.value) return;
+  const version = revision;
+  loading.value = true;
+  errorText.value = "";
+  nextPageError.value = "";
+  const nextPage = append ? page.value + 1 : 1;
+  try {
+    const [balance, result, directory] = await Promise.all([
+      api.quota(),
+      api.history(nextPage),
+      includeCatalog ? api.catalog() : Promise.resolve(null),
+    ]);
+    if (!current(version)) return;
+    quota.value = balance;
+    // 后台刷新只更新首页任务；已有后续页保留，避免轮询打断滚动。
+    if (append)
+      jobs.value = [
+        ...jobs.value,
+        ...result.items.filter(
+          (row) => !jobs.value.some((existing) => existing.id === row.id),
+        ),
+      ];
+    else
+      jobs.value = [
+        ...result.items,
+        ...jobs.value.filter(
+          (row) => !result.items.some((fresh) => fresh.id === row.id),
+        ),
+      ].slice(0, Math.max(20, jobs.value.length));
+    if (append) page.value = nextPage;
+    total.value = result.total;
+    if (append && result.items.length === 0) exhausted.value = true;
+    else exhausted.value = jobs.value.length >= result.total;
+    if (directory) {
+      if (!catalog.value)
+        selected.value = directory.datasets
+          .filter((item) => item.state !== "UNAVAILABLE")
+          .map((item) => item.key);
+      catalog.value = directory;
+    }
+  } catch (error) {
+    if (current(version)) {
+      if (append) nextPageError.value = error.message || "加载失败，请重试";
+      else errorText.value = error.message || "加载失败，请重试";
+    }
+  } finally {
+    if (current(version)) {
+      loading.value = false;
+      schedule();
+    }
+  }
+}
+function more() {
+  if (!loading.value && !exhausted.value && jobs.value.length < total.value)
+    load(false, true);
+}
+function select(key: string) {
+  if (busy.value) return;
+  selected.value = selected.value.includes(key)
+    ? selected.value.filter((value) => value !== key)
+    : [...selected.value, key];
+  requestKey = "";
+}
+function verify(job: ExportJob | null = null) {
+  target.value = job;
+  verifying.value = true;
+  password.value = "";
+  errorText.value = "";
+}
+async function submit() {
+  if (!password.value || busy.value) return;
+  const version = revision,
+    token = session.token;
+  const job = target.value;
+  busy.value = job?.id || "create";
+  try {
+    const keys = [...selected.value];
+    const directoryVersion = catalog.value!.version;
+    const { grant } = await api.authorize(
+      password.value,
+      keys,
+      job?.id || null,
+    );
+    password.value = "";
+    if (!current(version) || token !== session.token) return;
+    if (job) await api.download(job, grant);
+    else {
+      // 非秘密随机幂等键；只用于去重，安全性由会话和授权决定。
+      requestKey ||=
+        "export-" +
+        Date.now().toString(36) +
+        "-" +
+        Math.random().toString(36).slice(2) +
+        Math.random().toString(36).slice(2);
+      await api.create(keys, directoryVersion, requestKey, grant);
+      requestKey = "";
+    }
+    if (current(version)) {
+      verifying.value = false;
+      await load(false);
+    }
+  } catch (error) {
+    if (current(version)) errorText.value = error.message || "操作失败，请重试";
+  } finally {
+    if (current(version)) {
+      busy.value = "";
+      password.value = "";
+    }
+  }
+}
+async function change(job: ExportJob, remove: boolean) {
+  if (busy.value) return;
+  const version = revision;
+  uni.showModal({
+    confirmText: '确定',
+    cancelText: '取消',
+    title: remove ? "删除导出文件" : "取消导出",
+    content: remove
+      ? "立即删除文件，不退还生成次数。"
+      : "已开始处理的任务取消后仍计次。",
+    success: async (result) => {
+      if (!result.confirm || !current(version)) return;
+      busy.value = job.id;
+      try {
+        if (remove) await api.remove(job.id);
+        else await api.cancel(job.id);
+        if (current(version)) await load(false);
+      } catch (error) {
+        if (current(version)) errorText.value = error.message || "操作失败";
+      } finally {
+        if (current(version)) busy.value = "";
+      }
+    },
+  });
+}
+function unlock(path: string | null) {
+  if (path)
+    requestUnlock(path, session.token).then(
+      () => load(),
+      (error) => {
+        errorText.value = error.message;
+      },
+    );
+}
+function reset() {
+  revision++;
+  stop();
+  catalog.value = null;
+  quota.value = null;
+  jobs.value = [];
+  selected.value = [];
+  password.value = "";
+  busy.value = "";
+  verifying.value = false;
+  loading.value = false;
+  page.value = 1;
+  total.value = 0;
+  requestKey = "";
+  nextPageError.value = "";
+  exhausted.value = false;
+}
+watch(
+  () => session.token,
+  () => {
+    reset();
+    if (visible && session.token) load();
+  },
+);
+onShow(() => {
+  visible = true;
+  load();
+});
+onHide(() => {
+  visible = false;
+  revision++;
+  stop();
+  password.value = "";
+  loading.value = false;
+  busy.value = "";
+  verifying.value = false;
+});
+onUnload(() => {
+  visible = false;
+  reset();
+});
+</script>
+<template>
+  <MobilePage
+    :refreshing="loading && !!catalog"
+    @refresh="load()"
+    @reachbottom="more"
+  >
+    <view class="ui-page-body export-page" :class="themeClass('export-page')">
+      <PageHeader title="数据导出" back @back="uni.navigateBack()" />
+      <view class="export-toolbar">
+        <text class="export-body"
+          >本月剩余 {{ quota?.remaining ?? "—" }} /
+          {{ quota?.limit ?? 5 }} 次</text
+        >
+        <button
+          role="button"
+          class="export-button"
+          :disabled="!canCreate"
+          :aria-disabled="!canCreate"
+          :loading="busy === 'create'"
+          @click="verify()"
+        >
+          <text class="export-label">生成 Excel</text>
+        </button>
+      </view>
+      <text v-if="errorText" class="export-error" @click="load()">{{
+        errorText
+      }}</text>
+      <text v-if="loading && !catalog" class="export-body">加载中</text>
+      <view v-if="catalog" class="export-section">
+        <text class="export-label" @click="expanded = !expanded"
+          >导出范围（{{ selected.length }} 项）
+          {{ expanded ? "收起" : "展开" }}</text
+        >
+        <view v-if="expanded" class="export-section">
+          <view
+            v-for="item in catalog.datasets"
+            :key="item.key"
+            class="export-toolbar"
+          >
+            <text
+              class="export-body"
+              :class="{ 'export-muted': item.state === 'UNAVAILABLE' }"
+              @click="item.state !== 'UNAVAILABLE' && select(item.key)"
+              >{{ selected.includes(item.key) ? "☑" : "☐" }} {{ item.title
+              }}{{ item.state === "UNAVAILABLE" ? "（不可用）" : "" }}</text
+            >
+            <text
+              v-if="item.state === 'LOCKED'"
+              class="export-label"
+              @click="unlock(item.lockedMenu)"
+              >解锁</text
+            >
+          </view>
+          <text
+            v-for="note in catalog.exclusions"
+            :key="note"
+            class="export-caption"
+            >{{ note }}</text
+          >
+        </view>
+        <text class="export-caption"
+          >文件保留{{
+            catalog.artifactHours ?? 24
+          }}小时。系统失败退还次数，开始处理后主动取消仍计次。</text
+        >
+      </view>
+      <view v-if="verifying" class="export-section">
+        <FormField
+          :label="
+            catalog?.verificationMethod === 'SECONDARY_PASSWORD'
+              ? '二级密码'
+              : '登录密码'
+          "
+        >
+          <input
+            v-model="password"
+            class="export-input"
+            password
+            :disabled="!!busy"
+            placeholder="验证导出身份"
+            @confirm="submit"
+          />
+        </FormField>
+        <view class="export-toolbar"
+          ><button
+            role="button"
+            class="export-button"
+            :loading="!!busy"
+            :disabled="!password || !!busy"
+            :aria-disabled="!password || !!busy"
+            @click="submit"
+          >
+            <text class="export-label">确认</text></button
+          ><text
+            class="export-caption"
+            @click="
+              verifying = false;
+              password = '';
+            "
+            >取消</text
+          ></view
+        >
+      </view>
+      <text v-if="!loading && jobs.length === 0" class="export-caption"
+        >暂无导出记录</text
+      >
+      <view v-for="job in jobs" :key="job.id" class="export-section">
+        <view class="export-toolbar"
+          ><text class="export-body">{{ job.createTime }}</text
+          ><text class="export-label">{{
+            labels[job.status] || job.status
+          }}</text></view
+        >
+        <text v-if="job.status === 'SUCCEEDED'" class="export-caption"
+          >{{ job.rowCount }} 条 ·
+          {{
+            job.artifactStatus === "AVAILABLE"
+              ? "到期 " + job.expiresAt
+              : "文件已失效"
+          }}</text
+        >
+        <text v-if="job.errorCode" class="export-caption"
+          >生成未完成，请检查范围或稍后重试</text
+        >
+        <view class="export-toolbar">
+          <button
+            role="button"
+            v-if="
+              job.status === 'SUCCEEDED' && job.artifactStatus === 'AVAILABLE'
+            "
+            class="export-button"
+            :loading="busy === job.id"
+            @click="verify(job)"
+          >
+            <text class="export-label">下载</text>
+          </button>
+          <text
+            v-if="
+              job.status === 'SUCCEEDED' && job.artifactStatus === 'AVAILABLE'
+            "
+            class="export-caption"
+            @click="change(job, true)"
+            >删除文件</text
+          >
+          <text
+            v-if="['QUEUED', 'RUNNING'].includes(job.status)"
+            class="export-caption"
+            @click="change(job, false)"
+            >取消导出</text
+          >
+        </view>
+      </view>
+      <LoadMore
+        :loading="loading && !!catalog"
+        :has-more="!exhausted"
+        :error="nextPageError"
+        @load="more"
+      />
+    </view>
+  </MobilePage>
+</template>
+<style scoped lang="scss">
+@use "../../styles/spacing.scss";
+@use "../../styles/spacing-tokens" as *;
+@use "../../styles/typography" as *;
+.export-page {
+  gap: $space-section;
+}
+.export-toolbar {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: $space-inline;
+}
+.export-section {
+  display: flex;
+  flex-direction: column;
+  gap: $space-inline;
+  padding-top: $space-section;
+  padding-bottom: $space-section;
+}
+.export-body {
+  @include type-style("body");
+  color: #303133;
+}
+.export-label {
+  @include type-style("label");
+  color: #303133;
+}
+.export-caption {
+  @include type-style("caption");
+  color: #707780;
+}
+.export-error {
+  @include type-style("body");
+  color: #d03050;
+}
+.export-input {
+  @include type-style("body");
+  padding: $space-inline;
+  min-height: $space-controlMin;
+  color: #303133;
+}
+.export-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0;
+  padding-left: $space-card;
+  padding-right: $space-card;
+  min-height: $space-controlMin;
+}
+.export-muted {
+  color: #909399;
+}
+.export-page-dark .export-body {
+  color: #e6e8eb;
+}
+.export-page-dark .export-label {
+  color: #e6e8eb;
+}
+.export-page-dark .export-input {
+  color: #e6e8eb;
+}
+.export-page-dark .export-caption {
+  color: #a2a8b0;
+}
+</style>
