@@ -98,6 +98,20 @@ test('清空隔离目录和失败编译均不影响开发目录；成功后同�
   const deadline = Date.now() + 3000;
   while (JSON.parse(fs.readFileSync(path.join(f.destination, 'theme.json'))).light.color !== '#eee' && Date.now() < deadline) await delay(30);
   assert.equal(JSON.parse(fs.readFileSync(path.join(f.destination, 'theme.json'))).light.color, '#eee');
+  // New directories and same-path inode replacements must remain watched.
+  const nested = 'static/new/icons/fixture.png';
+  f.write(nested, 'first');
+  async function waitForAsset(expected) {
+    const target = path.join(f.destination, nested), deadline = Date.now() + 3000;
+    while ((!fs.existsSync(target) || fs.readFileSync(target, 'utf8') !== expected) && Date.now() < deadline) await delay(30);
+    assert.equal(fs.readFileSync(target, 'utf8'), expected);
+  }
+  await waitForAsset('first');
+  fs.unlinkSync(path.join(f.staging, nested));
+  f.write(nested, 'replacement');
+  await waitForAsset('replacement');
+  f.write(nested, 'updated');
+  await waitForAsset('updated');
   assert.deepEqual(errors, []);
 });
 

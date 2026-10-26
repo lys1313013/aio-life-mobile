@@ -83,6 +83,50 @@ export function publishWeixinOutput(staging, destination) {
   return changed.length;
 }
 
+// Watch directories rather than individual file inodes. Linux recursive fs.watch
+// can lose a file watch when the compiler deletes and recreates the same path.
+function watchOutputDirectories(root, onChange) {
+  const watchers = new Map();
+  function refresh() {
+    const directories = new Map();
+    function visit(directory) {
+      try {
+        const stat = fs.statSync(directory);
+        if (!stat.isDirectory()) return;
+        directories.set(directory, stat.ino);
+        for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+          if (entry.isDirectory()) visit(path.join(directory, entry.name));
+        }
+      } catch (error) {
+        if (error.code !== 'ENOENT') throw error;
+      }
+    }
+    visit(root);
+    for (const [directory, entry] of watchers) {
+      if (directories.get(directory) !== entry.inode) {
+        entry.watcher.close();
+        watchers.delete(directory);
+      }
+    }
+    for (const [directory, inode] of directories) {
+      if (watchers.has(directory)) continue;
+      const watcher = fs.watch(directory, event => {
+        if (event === 'rename') refresh();
+        onChange();
+      });
+      watchers.set(directory, { inode, watcher });
+    }
+  }
+  refresh();
+  return {
+    refresh,
+    close() {
+      for (const { watcher } of watchers.values()) watcher.close();
+      watchers.clear();
+    },
+  };
+}
+
 export function weixinOutput() {
   let staging, destination, logger, watcher, timer;
   let building = true, healthy = false;
@@ -109,7 +153,7 @@ export function weixinOutput() {
       if (config.build.watch) {
         // Static copies bypass Rollup. Publish them after the compiler's copy
         // watcher finishes its synchronous writes, unless a bundle is in flight.
-        watcher = fs.watch(staging, { recursive: true }, () => {
+        watcher = watchOutputDirectories(staging, () => {
           cancel();
           timer = setTimeout(() => {
             if (building || !healthy) return;
@@ -133,6 +177,7 @@ export function weixinOutput() {
       handler() {
         cancel();
         healthy = false;
+        watcher?.refresh();
         const changed = publish();
         if (process.env.AIO_WEIXIN_RESULT_FILE) fs.writeFileSync(process.env.AIO_WEIXIN_RESULT_FILE, 'published\n');
         healthy = true;
