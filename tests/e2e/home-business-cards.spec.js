@@ -469,13 +469,31 @@ test('成功写入后返回首页只更新受影响的目标卡片', async ({ pa
 });
 
 
-test('菜单依赖刷新失败保留已展示目标和阅读，局部重试恢复', async ({ page }) => {
+test('首页多张业务卡片及下拉刷新共用一次候选菜单请求', async ({ page }) => {
+  const requests = [];
+  await setup(page, { requests });
+  const reading = page.locator('[aria-label="阅读首页卡片"]');
+  await expect(reading.locator('.reading-book')).toHaveCount(20);
+  const count = () => requests.filter(item => item === 'GET /quick-nav/candidates').length;
+  expect(count()).toBe(1);
+  const goalReads = requests.filter(item => item === 'GET /goals').length;
+  await page.locator('.dashboard-scroll .uni-scroll-view-scrollbar-hidden').first().evaluate(el => { el.scrollTop = 0 });
+  await pullDown(page, '.dashboard-scroll');
+  await expect.poll(() => requests.filter(item => item === 'GET /goals').length).toBeGreaterThan(goalReads);
+  await expect(page.locator('[aria-label="目标首页卡片"]')).toContainText('固定目标');
+  expect(count()).toBe(1);
+});
+
+test('菜单依赖缓存到期后刷新失败保留已展示目标和阅读，局部重试恢复', async ({ page }) => {
+  await page.clock.install();
   await page.setViewportSize({width:390,height:1000});
   await setup(page);
   const goal=page.locator('[aria-label="目标首页卡片"]');
   const reading=page.locator('[aria-label="阅读首页卡片"]');
   await expect(reading.locator('.reading-book')).toHaveCount(20);
   await page.route('**/api/quick-nav/candidates?*', route => route.fulfill({status:503,body:'offline'}));
+  // 只推进业务时钟，避免实际等待缓存到期或触发无关的周期任务。
+  await page.clock.setFixedTime(new Date(Date.now() + 61000));
   await page.locator('.dashboard-scroll .uni-scroll-view-scrollbar-hidden').first().evaluate(el=>{el.scrollTop=0});
   await pullDown(page,'.dashboard-scroll');
   await expect(goal.getByRole('button',{name:/^重试目标：/})).toBeVisible();

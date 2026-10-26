@@ -11,6 +11,7 @@ import { isDark } from '../../services/theme.ts'
 import { menuVisuals } from '../../services/menu-visuals.ts'
 import { homeDataRevision, onHomeDataChange } from '../../services/home-refresh.ts'
 import { cachedMenuAccess, loadMenuAccess } from '../../services/menu-access-cache.ts'
+import { loadQuickNavCandidates } from '../../services/quick-nav-candidates.ts'
 import { lockedMenuPaths, matchesNativeMenu } from '../../services/life-catalog.ts'
 import { isMenuUnlocked } from '../../services/secondary-lock.ts'
 import { createHomeRefreshScheduler } from './services/refresh-scheduler.ts'
@@ -49,17 +50,12 @@ const canPrevious = computed(() => Number(query().date?.slice(0, 4)) > 1000)
 const years = computed(() => Array.from({ length: Math.max(11, Number(chinaDay().slice(0, 4)) - Number(query().date?.slice(0, 4) || chinaDay().slice(0, 4)) + 1) }, (_, index) => String(Number(chinaDay().slice(0, 4)) - index)))
 const scheduler = createHomeRefreshScheduler()
 const fetch = path => request(path, 'GET', null, true, null, true)
-let candidates = null, candidatesAt = 0, accessRevision = -1
 function lockedRoute(access) { return [...(props.page ? [] : ['/pages/home/index']), ...config.access].find(route => lockedMenuPaths(route, access.menus, access.ids).some(path => !isMenuUnlocked(path))) || '' }
 async function access() {
   if (!session.user?.id) await fetchUser()
-  const token = session.token, permissions = await loadMenuAccess(fetch)
-  if (!candidates || Date.now() - candidatesAt > 60000 || accessRevision !== homeDataRevision('access')) {
-    const values = await fetch('/quick-nav/candidates?client=mobile')
-    if (!Array.isArray(values) || values.some(row => !row || typeof row.path !== 'string')) throw Error('菜单权限数据异常，请重试')
-    if (token !== session.token) throw Error('登录状态已变化，请重试')
-    candidates = values; candidatesAt = Date.now(); accessRevision = homeDataRevision('access')
-  }
+  const token = session.token
+  const [permissions, candidates] = await Promise.all([loadMenuAccess(fetch), loadQuickNavCandidates(fetch)])
+  if (token !== session.token) throw Error('登录状态已变化，请重试')
   const route = lockedRoute(permissions)
   return { available: config.access.every(route => candidates.some(row => matchesNativeMenu(route, row.path))), locked: !!route, unlockRoute: route }
 }
@@ -98,7 +94,7 @@ const stopChanges = onHomeDataChange(keys => { if (keys.includes(props.kind) && 
 watch(() => state.data, data => {
   if (detail.value && data) detail.value = data.buckets.find(bucket => bucket.key === detail.value!.key) || { ...detail.value, amount: 0, income: 0, expense: 0, balance: 0 }
 })
-watch(() => session.token, () => { detail.value = null; cursor.value = ''; scheduler.clear(); controller.invalidate(true); candidates = null }, { flush: 'sync' })
+watch(() => session.token, () => { detail.value = null; cursor.value = ''; scheduler.clear(); controller.invalidate(true) }, { flush: 'sync' })
 watch(owner, () => { detail.value = null; cursor.value = ''; mode.value = readCalendarMode(props.kind, owner.value, storage); controller.invalidate(true); if (props.active) void refresh(false) }, { flush: 'sync' })
 watch(() => [state.locked, state.available], () => { if (state.locked || !state.available) detail.value = null; emit('visibility', state.available) }, { immediate: true })
 onUnmounted(() => { stopChanges(); scheduler.clear(); controller.invalidate() })

@@ -7,6 +7,7 @@ import AppIcon from '../../components/AppIcon.uvue'
 import LoadingIndicator from '../../components/LoadingIndicator.uvue'
 import { useQuickNavDrag } from './services/use-quick-nav-drag.ts'
 import { request } from '../../services/api.ts'
+import { loadQuickNavCandidates } from '../../services/quick-nav-candidates.ts'
 import { saveLifeQuickLinks } from '../../services/life.ts'
 import { QUICK_NAV_MAX } from '../../services/life-catalog.ts'
 import { menuVisuals } from '../../services/menu-visuals.ts'
@@ -63,7 +64,7 @@ async function loadCandidates() {
   loading.value = true
   error.value = ''
   try {
-    const available = await request<QuickLink[]>('/quick-nav/candidates?client=mobile')
+    const available = await loadQuickNavCandidates(request)
     if (!active) return
     if (!Array.isArray(available) || available.some(item => !item || typeof item.menuId !== 'string' || typeof item.path !== 'string' || typeof item.title !== 'string'))
       throw new Error('功能目录数据异常，请重试')

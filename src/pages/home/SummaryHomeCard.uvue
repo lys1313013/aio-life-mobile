@@ -11,6 +11,7 @@ import { isDark } from '../../services/theme.ts'
 import { menuVisuals } from '../../services/menu-visuals.ts'
 import { homeDataRevision } from '../../services/home-refresh.ts'
 import { cachedMenuAccess, loadMenuAccess } from '../../services/menu-access-cache.ts'
+import { loadQuickNavCandidates } from '../../services/quick-nav-candidates.ts'
 import { lockedMenuPaths, matchesNativeMenu } from '../../services/life-catalog.ts'
 import { isMenuUnlocked } from '../../services/secondary-lock.ts'
 import { openExternalLink } from '../../services/external-link.ts'
@@ -28,19 +29,13 @@ const actionLabel = props.kind === 'finance' ? '记一笔' : props.kind === 'inc
 const visual = computed(() => menuVisuals.visual('section.' + props.kind))
 const scheduler = createHomeRefreshScheduler()
 const fetch = path => request(path, 'GET', null, true, null, true)
-let candidates = null, candidatesAt = 0, accessRevision = -1
 function lockedRoute(config) {
   return ['/pages/home/index', ...card.access].find(route => lockedMenuPaths(route, config.menus, config.ids).some(path => !isMenuUnlocked(path))) || ''
 }
 async function access() {
   const owner = session.token
-  const config = await loadMenuAccess(fetch)
-  if (!candidates || Date.now() - candidatesAt > 60000 || accessRevision !== homeDataRevision('access')) {
-    const rows = await fetch('/quick-nav/candidates?client=mobile')
-    if (!Array.isArray(rows) || rows.some(row => !row || typeof row.path !== 'string')) throw Error('菜单权限数据异常，请重试')
-    if (session.token !== owner) throw Error('登录状态已变化，请重试')
-    candidates = rows; candidatesAt = Date.now(); accessRevision = homeDataRevision('access')
-  }
+  const [config, candidates] = await Promise.all([loadMenuAccess(fetch), loadQuickNavCandidates(fetch)])
+  if (session.token !== owner) throw Error('登录状态已变化，请重试')
   const unlockRoute = lockedRoute(config)
   return { available: card.access.every(route => candidates.some(row => matchesNativeMenu(route, row.path))), locked: !!unlockRoute, unlockRoute }
 }
@@ -63,7 +58,7 @@ watch(() => props.active, active => {
   else { scheduler.pause(); controller.invalidate() }
 }, { immediate: true })
 watch(() => props.preparing, preparing => { if (preparing) checkAccess() })
-watch(() => session.token, () => { scheduler.clear(); controller.invalidate(true); candidates = null }, { flush: 'sync' })
+watch(() => session.token, () => { scheduler.clear(); controller.invalidate(true) }, { flush: 'sync' })
 watch(() => state.available, available => emit('visibility', available), { immediate: true })
 onUnmounted(() => { scheduler.clear(); controller.invalidate() })
 defineExpose({ refresh, checkAccess })
