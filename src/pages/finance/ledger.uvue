@@ -16,6 +16,7 @@ import MetricCard from '../../components/MetricCard.uvue';
 import AioChart from '../../components/AioChart.uvue';
 import TypeDistribution from './components/TypeDistribution.uvue';
 import LedgerRow from './components/LedgerRow.uvue';
+import ExpenseDeviceModal from './components/ExpenseDeviceModal.uvue';
 import FinanceRecordModal from '../../components/FinanceRecordModal.uvue';
 import { themeClass } from '../../services/theme.ts';
 import {
@@ -27,6 +28,10 @@ import {
   ledgerId,
   fetchFinanceStatistics,
 } from './services/finance.ts';
+const deviceExpense = ref('');
+function updateDevice(value: any) {
+  rows.value = rows.value.map(row => ledgerId(row) === value.expenseId ? { ...row, deviceId: value.deviceId, deviceName: value.deviceName } : row);
+}
 const props = defineProps<{ kind: string; initialCreate?: boolean }>();
 let entryConsumed = false;
 const expense = computed(() => props.kind === 'expense');
@@ -264,7 +269,7 @@ async function initialize() {
 function suspend(clear = false) {
   alive = false; version++; statisticsSequence++; refreshSequence++;
   loading.value = false; statisticsBusy.value = false; refreshing.value = false;
-  modal.value = false; selected.value = []; openedRow.value = '';
+  modal.value = false; selected.value = []; openedRow.value = ''; deviceExpense.value = '';
   draft.value = {}; formError.value = '';
   if (clear) {
     rows.value = []; types.value = []; payments.value = [];
@@ -559,7 +564,7 @@ async function removeSelected() {
         :empty="!loading && rows.length === 0"
         @retry="initialize"
       >
-        <LedgerRow v-for="(row, index) in sorted" :key="ledgerId(row)"
+        <LedgerRow :busy="mutationBusy" @device="deviceExpense = ledgerId(row)" v-for="(row, index) in sorted" :key="ledgerId(row)"
           :kind="kind" :row="row" :category="name(types, row[expense ? 'expTypeId' : 'incTypeId'])"
           :payment="expense ? name(payments, row.payTypeId) : ''"
           :first="index === 0" :last="index === sorted.length - 1"
@@ -570,7 +575,7 @@ async function removeSelected() {
       </PageState>
     </view>
     <template #fixed>
-    <FinanceRecordModal v-if="modal" :kind="kind" :draft="draft" :types="types" :payments="payments"
+    <ExpenseDeviceModal v-if="deviceExpense" :expense-id="deviceExpense" @close="deviceExpense = ''" @updated="updateDevice" /><FinanceRecordModal v-if="modal" :kind="kind" :draft="draft" :types="types" :payments="payments"
       :saving="saving" :form-error="formError" v-model:continuous="continuous" :remove="removeDraft"
       @close="modal = false" @save="save" />
     </template>

@@ -15,11 +15,12 @@ const props = defineProps<{
   selected: boolean;
   first: boolean;
   last: boolean;
+  busy?: boolean;
   remove: () => Promise<unknown>;
 }>();
 const expense = computed(() => props.kind === 'expense');
 const kindLabel = computed(() => expense.value ? '支出' : '收入');
-const emit = defineEmits(['edit', 'select', 'open', 'close']);
+const emit = defineEmits(['edit', 'select', 'open', 'close', 'device']);
 // 操作区容纳一个至少 44px 的按钮，两侧留公共行内间距。
 const actionWidth = spacing.controlMin + spacing.inline * 2;
 const offset = ref(0);
@@ -112,6 +113,9 @@ function activate() {
           <text v-if="expense && row.deviceName" class="ledger-detail" :class="themeClass('ledger-detail')">{{ row.deviceName }}</text>
           <text v-if="differentAmount" class="ledger-detail" :class="themeClass('ledger-detail')">交易金额 ¥{{ Number(row.transactionAmt).toFixed(2) }}</text>
         </view>
+        <view v-if="expense && !selecting" class="ledger-device">
+          <MobileButton label="关联设备" icon="ant-design:link-outlined" variant="quiet" :disabled="busy" @click="emit('device')" />
+        </view>
       </view>
     </view>
     <!-- 确认框放在裁剪区和 transform 外，保持相对于屏幕定位。 -->
@@ -145,6 +149,7 @@ border-radius: 12px;
 .ledger-content { display: flex; flex-direction: row; align-items: center; gap: $space-inline; background-color: #fff; transition: transform 180ms ease; touch-action: pan-y; }
 .ledger-content-dark { background-color: #1c1e22; }
 .ledger-dragging { transition: none; }
+.ledger-device { padding-right: $space-inline; flex-shrink: 0; }
 .ledger-select { padding-left: $space-card; flex-shrink: 0; }
 .ledger-body { flex: 1; min-width: 0; min-height: $space-controlMin; padding: $space-card; display: flex; flex-direction: column; gap: $space-detail; cursor: pointer; }
 .ledger-heading { display: flex; flex-direction: row; align-items: flex-start; justify-content: space-between; gap: $space-inline; }
