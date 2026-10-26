@@ -186,7 +186,6 @@ const timeDate = ref('')
 // 空值跟随今天；历史日期独立保存，周期刷新仍读取正在浏览的日期。
 const selectedTimeDate = ref('')
 const timeDayLabel = computed(() => !timeDate.value || timeDate.value === todayDate() ? '今日' : timeDate.value)
-const timeCardTitle = computed(() => timeDayLabel.value === '今日' ? '时迹' : '时迹 ' + timeDayLabel.value)
 const timeSwipeOffset = ref(0)
 const timeSwipeDragging = ref(false)
 const timeSwipeVisual = computed(() => daySwipeStyle(timeSwipeOffset.value, timeSwipeDragging.value))
@@ -873,7 +872,7 @@ function trendLines(points) {
   </view><view v-if="homeCardPreferences.ready" class="section-grid"><HomeCardSortCell v-for="section in homeSections" :key="section.cardKey" :visible="sectionVisible(section)" :card-key="section.cardKey" :title="section.title" group="section" :order="cardOrder" :disabled="orderDisabled">
           <view v-if="section.cardKey === 'section.time'" class="section-content ui-pad-xs"
             ><DashboardSection
-              :title="timeCardTitle" title-label="查看时迹" :icon="menuVisuals.visual('section.time').icon" :icon-color="menuVisuals.visual('section.time').iconColor"
+              title="时迹" :caption="timeDayLabel === '今日' ? '' : timeDayLabel" title-label="查看时迹" :icon="menuVisuals.visual('section.time').icon" :icon-color="menuVisuals.visual('section.time').iconColor"
               :height="sectionHeight('time')"
               :loading="states.time.loading && !refreshing && !states.time.loaded"
               :retain-content="states.time.loaded"

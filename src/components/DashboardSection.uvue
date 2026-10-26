@@ -5,14 +5,15 @@ import CategoryIcon from './CategoryIcon.uvue'
 import LifeMenuIcon from './LifeMenuIcon.uvue'
 import HomeCardHeader from './HomeCardHeader.uvue'
 import { isDark, themeClass } from '../services/theme.ts'
-defineProps<{ title: string; icon?: string; iconColor?: string; height?: number; autoHeight?: boolean; loading?: boolean; updating?: boolean; retainContent?: boolean; error?: string; compact?: boolean; flushTop?: boolean; skeleton?: string; navigable?: boolean; titleLabel?: string; locked?: boolean; refreshDisabled?: boolean }>()
+defineProps<{ title: string; caption?: string; icon?: string; iconColor?: string; height?: number; autoHeight?: boolean; loading?: boolean; updating?: boolean; retainContent?: boolean; error?: string; compact?: boolean; flushTop?: boolean; skeleton?: string; navigable?: boolean; titleLabel?: string; locked?: boolean; refreshDisabled?: boolean }>()
 defineEmits<{ refresh: []; navigate: [] }>()
 </script>
 <template>
   <view class="dashboard-section" :class="themeClass('dashboard-section')" :style="autoHeight && !locked ? { height: 'auto' } : height ? { height: height + 'px' } : {}">
-    <HomeCardHeader class="section-heading" :label="'刷新' + title" :loading="loading || updating" :disabled="refreshDisabled || locked" @refresh="$emit('refresh')">
+    <HomeCardHeader class="section-heading" :label="'刷新' + title + (caption ? ' ' + caption : '')" :loading="loading || updating" :disabled="refreshDisabled || locked" @refresh="$emit('refresh')">
       <button v-if="navigable" role="button" class="section-label heading-link" :aria-label="titleLabel || '查看' + title" @click.stop="$emit('navigate')"><LifeMenuIcon v-if="icon" :icon="icon" :size="16" :color="iconColor" /><text class="section-title" :class="[{ 'section-title-with-icon': !!icon }, themeClass('section-title')]">{{ title }}</text></button>
       <view v-else class="section-label section-label-static"><LifeMenuIcon v-if="icon" :icon="icon" :size="16" :color="iconColor" /><text class="section-title" :class="[{ 'section-title-with-icon': !!icon }, themeClass('section-title')]">{{ title }}</text></view>
+      <text v-if="caption" class="section-caption" :class="themeClass('section-caption')">{{ caption }}</text>
       <slot name="actions" />
       <LoadingIndicator v-if="updating" class="section-updating" compact :label="'正在更新' + title" />
       <button v-else-if="error && retainContent" role="button" class="section-update-retry" :disabled="refreshDisabled" :aria-label="'重试' + title + '：' + error" @click.stop="$emit('refresh')"><CategoryIcon icon="lucide:rotate-cw" :size="18" :color="isDark ? '#a9bfff' : '#5879ce'" /></button>
@@ -55,6 +56,18 @@ defineEmits<{ refresh: []; navigate: [] }>()
 .heading-link { box-sizing: border-box; height: $space-controlMin; min-width: $space-controlMin; margin: 0; padding: $space-inline 0 0; border: 0; border-radius: 0; background-color: transparent; }
 .section-label-static { transform: translateY($space-detail); }
 .section-title-with-icon { margin-left: $space-inline; }
+.section-caption {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  max-width: 50%;
+  @include type-style('caption');
+  color: #71717a;
+  text-align: center;
+  pointer-events: none;
+}
+.section-caption-dark { color: #a1a1aa; }
 .section-content {
   flex: 1;
   min-height: 0;

@@ -251,6 +251,7 @@ test.describe('首页时迹日期横滑', () => {
           : { code: 0, data: date === today ? [{ id: 'today-row', categoryId: '0', startTime: 0, endTime: 59 }] : [] } });
       });
       const title = page.locator('[data-card-key="section.time"] .section-title');
+      const dateCaption = page.locator('[data-card-key="section.time"] .section-caption');
       // 明细上的右滑不能误开编辑；纵向、短滑及取消均不切换日期。
       await swipe(page, -20);
       await swipe(page, -5, -60);
@@ -258,7 +259,8 @@ test.describe('首页时迹日期横滑', () => {
       await swipe(page, -120);
       expect(dates).toEqual([]);
       await swipe(page, 120);
-      await expect(title).toHaveText('时迹 ' + previous);
+      await expect(title).toHaveText('时迹');
+      await expect(dateCaption).toHaveText(previous);
       await expect(page.locator('.empty-label')).toHaveText(previous + '暂无记录');
       await expect(page.getByRole('dialog')).toHaveCount(0);
       expect(dates).toEqual([previous]);
@@ -280,7 +282,7 @@ test.describe('首页时迹日期横滑', () => {
 
       // 每分钟时钟及卡片刷新均保留历史日期。
       await page.clock.fastForward(61000);
-      await expect(title).toHaveText('时迹 ' + previous);
+      await expect(dateCaption).toHaveText(previous);
       await page.getByRole('button', { name: '刷新时迹 ' + previous, exact: true }).press('Enter');
       await expect.poll(() => dates.length).toBe(2);
       expect(dates.at(-1)).toBe(previous);
@@ -288,10 +290,11 @@ test.describe('首页时迹日期横滑', () => {
       fail = true;
       await swipe(page, -120);
       await expect(page.getByRole('button', { name: '时迹更新失败，点击重试' })).toBeVisible();
-      await expect(title).toHaveText('时迹 ' + previous);
+      await expect(dateCaption).toHaveText(previous);
       fail = false;
       await page.getByRole('button', { name: '时迹更新失败，点击重试' }).click();
       await expect(title).toHaveText('时迹');
+      await expect(dateCaption).toHaveCount(0);
       await expect(page.locator('.donut-total')).toHaveText('1h');
       expect(dates.slice(-2)).toEqual([today, today]);
       const count = dates.length;
