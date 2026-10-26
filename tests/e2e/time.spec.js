@@ -335,7 +335,7 @@ test('时迹新增、失败保留、重复提交、编辑保留附属字段、�
   expect(state.updates[0]).not.toHaveProperty('duration');
   await page.getByRole('button', { name: '编辑记录 专注学习' }).click();
   await page.getByRole('button', { name: '删除记录', exact: true }).click();
-  await page.locator('.delete-confirm').getByRole('button', { name: '取消', exact: true }).click();
+  await page.getByRole('dialog', { name: '删除记录', exact: true }).getByRole('button', { name: '取消', exact: true }).click();
   expect(state.deletes).toBe(0);
   state.failDelete = true;
   await page.getByRole('button', { name: '删除记录', exact: true }).click();
@@ -695,9 +695,12 @@ for (const width of [390, 768, 1440]) for (const colorScheme of ['light', 'dark'
     const track = page.locator('.day-track');
     const tabbar = page.locator('uni-tabbar .uni-tabbar');
     const add = page.getByRole('button', { name: '新增时迹', exact: true });
-    // 点击较晚时段前浏览器会先滚动到该条目；只比较打开弹窗造成的布局变化。
-    await page.getByRole('button', { name: /^编辑记录 一分钟回顾(?:，|$)/ }).scrollIntoViewIfNeeded();
-    const before = { track: await track.boundingBox(), tabbar: await tabbar.boundingBox(), add: await add.boundingBox() };
+    // 浏览器可为极短记录滚动定位；比较内容坐标中的尺寸和位置，单独验证固定入口的视口坐标。
+    const trackGeometry = () => track.evaluate(element => {
+      const box = element.getBoundingClientRect(), content = element.closest('.time-content').getBoundingClientRect();
+      return { width: box.width, height: box.height, x: box.x - content.x, y: box.y - content.y };
+    });
+    const before = { track: await trackGeometry(), tabbar: await tabbar.boundingBox(), add: await add.boundingBox() };
     for (const entry of ['编辑记录 一分钟回顾', '新增时迹']) {
       await page.getByRole('button', { name: entry === '新增时迹' ? entry : new RegExp('^' + entry + '(?:，|$)'), exact: entry === '新增时迹' }).click();
       const dialog = page.getByRole('dialog', { name: entry === '新增时迹' ? '记录时间' : '编辑时迹', exact: true });
@@ -706,7 +709,7 @@ for (const width of [390, 768, 1440]) for (const colorScheme of ['light', 'dark'
       await expectTabBarState(page, before.tabbar);
       const dialogBox = await dialog.boundingBox();
       expect(dialogBox.y + dialogBox.height).toBeLessThan(before.tabbar.y);
-      expect(await track.boundingBox()).toEqual(before.track);
+      expect(await trackGeometry()).toEqual(before.track);
       expect(await tabbar.boundingBox()).toEqual(before.tabbar);
       await expect.poll(() => add.boundingBox()).toEqual(before.add);
       await dialog.getByRole('button', { name: '结束时间', exact: true }).click();
@@ -721,7 +724,7 @@ for (const width of [390, 768, 1440]) for (const colorScheme of ['light', 'dark'
       await page.screenshot({ path: `artifacts/time-editor-stable/${width}-${colorScheme}-${entry === '新增时迹' ? 'create' : 'edit'}.png` });
       await closeEditor(page);
       await expect(tabbar).toBeVisible();
-      expect(await track.boundingBox()).toEqual(before.track);
+      expect(await trackGeometry()).toEqual(before.track);
       await expect.poll(() => add.boundingBox()).toEqual(before.add);
     }
     // 实际点击菜单位置先由遮罩接收并关闭弹窗，不能穿透切换后台页面。
