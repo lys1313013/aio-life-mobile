@@ -1,3 +1,4 @@
+const { dismissModal } = require('./modal');
 const { test, expect } = require('@playwright/test');
 const { calendarFixture } = require('./fixtures-finance-calendar');
 
@@ -45,7 +46,7 @@ for (const width of [390, 820, 1440]) for (const theme of ['light', 'dark']) {
         await card.locator('.calendar-date-picker').click();
         const calendar = page.getByRole('dialog', { name: /日历$/ });
         await expect(calendar).toBeVisible();
-        await calendar.getByRole('button', { name: '关闭', exact: true }).click();
+        await dismissModal(page);
         await expect(card.locator('.calendar-date')).toHaveText(originalDate);
         await card.getByRole('button', { name: '上一时间段', exact: true }).click();
         await expect.poll(() => calendars.some(row => row.kind === kind && row.date === previous)).toBe(true);

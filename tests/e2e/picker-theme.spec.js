@@ -1,3 +1,4 @@
+const { dismissModal } = require('./modal');
 const { test, expect } = require('@playwright/test');
 const { setup } = require('./qa-domains-fixtures');
 
@@ -95,7 +96,7 @@ for (const mode of ['light', 'dark']) {
     const text = calendar.locator('.calendar-text').first();
     expect(contrast(await text.evaluate(node => getComputedStyle(node).color), calendarBackground)).toBeGreaterThanOrEqual(4.5);
     await page.screenshot({ path: `artifacts/picker-theme/记录日期-${mode}.png` });
-    await calendar.getByRole('button', { name: '关闭', exact: true }).click();
+    await dismissModal(page);
     await expect(calendar).toHaveCount(0);
     await expect(dialog).toBeVisible();
     await dialog.getByRole('button', { name: '开始时间', exact: true }).click();
