@@ -9,7 +9,7 @@ import { buttonLabelClasses } from '../../services/button-label.ts'
 import ContentSkeleton from '../../components/ContentSkeleton.uvue';
 import AppIcon from '../../components/AppIcon.uvue';
 import iconCatalog from '../../services/icons/catalog.ts';
-import { computed, onUnmounted, ref } from 'vue';
+import { computed, onUnmounted, ref, watch } from 'vue';
 import { onLoad, onShow } from '@dcloudio/uni-app';
 import MobilePage from '../../components/MobilePage.uvue';
 import PageHeader from '../../components/PageHeader.uvue';
@@ -22,7 +22,6 @@ import { authFileUrl } from '../../services/attachments.ts';
 import { session } from '../../services/session.ts';
 import { isDark } from '../../services/theme.ts';
 import { createRecordScope } from '../../services/records/page-scope.ts';
-import { useTabSwipe } from '../../services/tab-swipe.ts';
 import { fetchDevicePage } from '../../services/devices.ts';
 import DeviceRecordEditor from '../../components/record-editors/DeviceRecordEditor.uvue';
 const rows = ref<any[]>([]),
@@ -31,7 +30,7 @@ const rows = ref<any[]>([]),
   loading = ref(false),
   refreshing = ref(false),
   error = ref(''),
-  typeFilter = ref('全部类型'),
+  typeFilter = ref(''),
   keyword = ref('');
 const photos = ref<Record<string, string>>({}),
   loadedPhotoUrls = ref<Record<string, string>>({}),
@@ -48,18 +47,21 @@ const deviceTypeVisuals = computed(() => Object.fromEntries(types.value.map((typ
 function deviceVisual(type: string) {
   return deviceTypeVisuals.value[type] || { icon: 'solar:devices-line-duotone' };
 }
-const typeLabels = computed(() => ['全部类型', ...types.value.map((t) => t.dictLabel || t.label)]);
-const typeIndex = computed(() => typeLabels.value.indexOf(typeFilter.value));
-const { swipe: tabSwipe, style: tabSwipeStyle, dragging: tabSwipeDragging } = useTabSwipe(
-  () => typeIndex.value,
-  () => typeLabels.value.length,
-  () => loading.value || !!form.value,
-  (index) => selectType(typeLabels.value[index]),
-);
-function selectType(label: string) {
-  if (!label || label === typeFilter.value || form.value) return;
-  typeFilter.value = label;
-  load();
+// 分类以完整设备列表为准，搜索和切换分类不会让其他有数据的分类消失。
+const availableTypes = computed(() => {
+  const used = new Set(rows.value.map((item) => item.type));
+  return types.value.filter((type) => used.has(type.id));
+});
+const typeTabs = computed(() => [
+  { id: '', label: '全部' },
+  ...availableTypes.value.map((type) => ({ id: type.id, label: type.dictLabel || type.label })),
+]);
+watch(availableTypes, (options) => {
+  if (typeFilter.value && !options.some((type) => type.id === typeFilter.value)) typeFilter.value = '';
+});
+function selectType(id: string) {
+  if (id === typeFilter.value || form.value) return;
+  typeFilter.value = id;
 }
 let requestedEdit = '';
 let requestedCreate = false;
@@ -79,13 +81,15 @@ const scope = createRecordScope((clear) => {
     rows.value = [];
     types.value = [];
     statuses.value = [];
+    typeFilter.value = '';
   }
 });
 const filtered = computed(() =>
   rows.value.filter(
     (item) =>
-      !keyword.value ||
-      (item.name + ' ' + item.spec + ' ' + item.remark).includes(keyword.value),
+      (!typeFilter.value || item.type === typeFilter.value) &&
+      (!keyword.value ||
+      (item.name + ' ' + item.spec + ' ' + item.remark).includes(keyword.value)),
   ),
 );
 const amount = computed(() =>
@@ -111,7 +115,6 @@ onShow(() => {
 });
 async function load(refresh = false) {
   const current = ++generation;
-  const selectedType = typeFilter.value;
   loading.value = true;
   refreshing.value = refresh;
   error.value = '';
@@ -123,14 +126,10 @@ async function load(refresh = false) {
       ]),
     );
     if (!alive || current !== generation) return;
-    const typeId =
-      (typeDict.dictDetailList || []).find(
-        (item) => (item.dictLabel || item.label) === selectedType,
-      )?.id || '';
     let data = [];
     let page = 1;
     while (true) {
-      const response = await scope.wait(fetchDevicePage(page++, typeId));
+      const response = await scope.wait(fetchDevicePage(page++));
       if (!alive || current !== generation) return;
       const total = readPageTotal(response.total);
       data = mergePageItems(data, response.items);
@@ -214,7 +213,7 @@ function statusName(value) {
   );
 }
 function open(item = null) {
-  if (loading.value || tabSwipe.ignoreClick()) return;
+  if (loading.value) return;
   form.value = item
     ? {
         ...item,
@@ -224,7 +223,7 @@ function open(item = null) {
         name: '',
         spec: '',
         type:
-          types.value.find((t) => (t.dictLabel || t.label) === typeFilter.value)?.id ||
+          typeFilter.value ||
           types.value[0]?.id ||
           '',
         status: '1',
@@ -253,32 +252,28 @@ function deviceDeleted(id: string) {
 }
 </script>
 <template>
-  <MobilePage :refreshing="refreshing" :refresh-disabled="tabSwipeDragging" @refresh="load(true)"
+  <MobilePage :refreshing="refreshing" @refresh="load(true)"
     ><view class="goods-page ui-page-body" :class="{ 'goods-page-dark': isDark }"
       ><PageHeader title="设备" :back="true" @back="uni.navigateBack()" /><view
         class="ui-toolbar"
         ><FormField compact stretch hide-label label="搜索设备" placeholder="搜索设备、配置…" v-model="keyword" /></view
       ><scroll-view
+        v-if="availableTypes.length"
         direction="horizontal"
         :scroll-x="true"
         :show-scrollbar="false"
-        :scroll-into-view="'device-type-' + typeIndex"
-        :scroll-with-animation="true"
         class="device-type-scroll ui-section"
       ><view class="device-type-tabs" aria-label="设备类型筛选"
         ><button :style="appTextColor()"
-          v-for="(label, index) in typeLabels"
-          :key="label"
-          :id="'device-type-' + index"
+          v-for="type in typeTabs"
+          :key="type.id"
           role="button"
           class="device-type-tab"
-          :class="{ 'device-type-tab-active': typeFilter === label, 'device-type-tab-active-dark': typeFilter === label && isDark }"
-          :aria-pressed="typeFilter === label"
-          @click="selectType(label)"
-        ><text :class="buttonLabelClasses(['device-type-tab', { 'device-type-tab-active': typeFilter === label, 'device-type-tab-active-dark': typeFilter === label && isDark }])">{{ label === '全部类型' ? '全部' : label }}</text></button
+          :class="{ 'device-type-tab-active': typeFilter === type.id, 'device-type-tab-active-dark': typeFilter === type.id && isDark }"
+          :aria-pressed="typeFilter === type.id"
+          @click="selectType(type.id)"
+        ><text :class="buttonLabelClasses(['device-type-tab', { 'device-type-tab-active': typeFilter === type.id, 'device-type-tab-active-dark': typeFilter === type.id && isDark }])">{{ type.label }}</text></button
       ></view></scroll-view>
-      <view class="tab-swipe-viewport" @touchstart="tabSwipe.touchStart" @touchmove="tabSwipe.touchMove" @touchend="tabSwipe.touchEnd" @touchcancel="tabSwipe.cancel">
-      <view class="tab-swipe-surface" :style="tabSwipeStyle">
       <view class="metrics ui-row ui-section"
         ><MetricCard :style="appGridItem(2, 'section', [[700, 3]], true)" :loading="loading && !rows.length"
           class="metric-wide"
@@ -329,7 +324,7 @@ function deviceDeleted(id: string) {
                   v-if="photoErrors[item.id]"
                   label="重试设备图片"
                   variant="quiet"
-                  @click="!tabSwipe.ignoreClick() && loadPhoto(item)" /></view
+                  @click="loadPhoto(item)" /></view
               ><text class="goods-badge status-tag" :class="'status-' + item.status">{{
                 statusName(item.status)
               }}</text></view
@@ -344,7 +339,6 @@ function deviceDeleted(id: string) {
           ></view
         ></PageState
       >
-      </view></view>
       <DeviceRecordEditor v-if="form" :record="form" @close="form = null" @saved="deviceSaved" @deleted="deviceDeleted" /> </view
   >
     <template #fixed>
@@ -357,7 +351,6 @@ function deviceDeleted(id: string) {
 @use '../../styles/typography' as *;
 @use '../../styles/text-colors' as *;
 @use '../../styles/spacing.scss';
-@use '../../styles/tab-swipe.scss';
 @use '../../styles/spacing-tokens' as *;
 @include type-utilities('body');
 
@@ -375,6 +368,7 @@ function deviceDeleted(id: string) {
 }
 .device-type-scroll {
   width: 100%;
+  min-width: 0;
   white-space: nowrap;
 }
 .device-type-tabs {

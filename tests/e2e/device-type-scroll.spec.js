@@ -10,16 +10,19 @@ for (const width of [390, 768, 1440]) {
       await page.emulateMedia({ colorScheme });
       await setup(page);
       await page.route('**/api/userDictType/getByDictType?*', route => route.fulfill({
-        json: { code: 0, data: { dictDetailList: labels.map((dictLabel, index) => ({ id: String(index + 1), dictLabel })) } },
+        json: { code: 0, data: { dictDetailList: [...labels, '相机'].map((dictLabel, index) => ({ id: String(index + 1), dictLabel })) } },
       }));
+      let requests = 0;
       await page.route('**/api/device/query?*', route => {
-        const type = new URL(route.request().url()).searchParams.get('type');
+        requests++;
         return route.fulfill({ json: { code: 0, data: {
-          items: [{ id: '1', name: type ? `模拟${labels[Number(type) - 1]}` : '模拟全部设备', purchasePrice: 100, status: '1' }], total: 1,
+          items: labels.map((label, index) => ({ id: String(index + 1), type: String(index + 1), name: `模拟${label}`, purchasePrice: 100, status: '1' })), total: labels.length,
         } } });
       });
       await page.goto('/#/pages/goods/devices');
-      await expect(page.getByText('模拟全部设备', { exact: true })).toBeVisible();
+      await expect(page.getByText('模拟手机', { exact: true })).toBeVisible();
+      await expect(page.locator('.goods-card')).toHaveCount(labels.length);
+      await expect(page.getByRole('button', { name: '相机', exact: true })).toHaveCount(0);
       const scroll = page.locator('.device-type-scroll .uni-scroll-view').last();
       const box = await scroll.boundingBox();
       const sizes = await scroll.evaluate(el => ({ width: el.clientWidth, scroll: el.scrollWidth }));
@@ -41,9 +44,14 @@ for (const width of [390, 768, 1440]) {
         const lastBox = await last.boundingBox();
         return lastBox.x >= box.x && lastBox.x + lastBox.width <= box.x + box.width + 1;
       }).toBe(true);
+      const beforeSelection = await scroll.evaluate(el => el.scrollLeft);
       await last.click();
       await expect(page.getByText('模拟其他', { exact: true })).toBeVisible();
+      await expect(page.locator('.goods-card')).toHaveCount(1);
       await expect(last).toHaveAttribute('aria-pressed', 'true');
+      await expect(page.locator('.device-type-tab')).toHaveCount(labels.length + 1);
+      expect(requests, '切换分类复用已加载设备，不重新请求或触发加载闪烁').toBe(1);
+      expect(await scroll.evaluate(el => el.scrollLeft), '选中分类应保留横向滚动位置').toBeCloseTo(beforeSelection, 0);
       await page.screenshot({ path: `test-results/device-type-scroll-${width}-${colorScheme}.png` });
     });
   }

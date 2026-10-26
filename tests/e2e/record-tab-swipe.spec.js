@@ -2,14 +2,7 @@ const { test, expect } = require('@playwright/test');
 
 test.use({ hasTouch: true });
 
-const deviceLabels = ['手机', '电脑', '平板电脑', '手表', '显示器', '鼠标', '键盘', '耳机', '其他'];
 const cases = [
-  {
-    name: '设备类型', route: 'goods/devices', api: 'device', param: 'type',
-    tabs: ['', ...deviceLabels.map((_, index) => String(index + 1))], initial: 0,
-    tab: '.device-type-tab', bar: '.device-type-scroll', card: '.goods-title-button',
-    row: (value) => ({ id: '1', name: '模拟设备 ' + value, status: '1', purchasePrice: 100 }),
-  },
   {
     name: '视频状态', route: 'records/video', api: 'b-video', param: 'status',
     tabs: ['not_started', 'in_progress', 'on_hold', 'completed', ''], initial: 1,
@@ -50,9 +43,6 @@ for (const scenario of cases) {
     await page.addInitScript(() => localStorage.setItem('aio-life-mobile.access-token.v1', 'tab-swipe-fixture'));
     const fulfill = (route, data) => route.fulfill({ json: { code: 0, data } });
     await page.route('**/api/auth/secondary-lock/menus', route => fulfill(route, []));
-    await page.route('**/api/userDictType/getByDictType?*', route => fulfill(route, {
-      dictDetailList: deviceLabels.map((dictLabel, index) => ({ id: String(index + 1), dictLabel })),
-    }));
     await page.route('**/api/sysDictType/getByDictType?*', route => fulfill(route, {
       dictDetailList: [{ value: '1', label: '使用中' }],
     }));
