@@ -228,14 +228,14 @@ const timeElapsed = computed(() => {
   const minutes = elapsedSinceRecord(time.value.recent, nowMinutes.value)
   return minutes == null ? '' : durationLabel(minutes)
 })
-const timeEditor = ref<{ recordId: string } | null>(null)
+const timeEditor = ref<{ recordId: string; initialDate: string } | null>(null)
 const recordCreateKind = ref<'think' | 'exercise' | null>(null)
 const thoughtEditId = ref('')
 const watchedEditor = ref<WatchedTask | null>(null)
 const editVersions = { thoughts: 0, watched: 0 }
 function openTimeRecord(id = '') {
   if (timeSwipe.ignoreClick() || states.time.loading) return
-  timeEditor.value = { recordId: id }
+  timeEditor.value = { recordId: id, initialDate: id ? timeDate.value : todayDate() }
 }
 function closeTimeEditor() {
   timeEditor.value = null
@@ -1124,7 +1124,7 @@ function trendLines(points) {
         <BusinessCards v-if="['section.goal', 'section.anniversary', 'section.reading', 'section.membership', 'section.movie'].includes(section.cardKey)" :height="multiColumnCardHeight" :max-height="cardHeightLimit" :ref="el => { businessCardRefs[section.cardKey] = el }" :only="section.cardKey.slice(8)" :refresh-disabled="interactionDisabled" embedded @visibility="businessVisibility[section.cardKey] = $event" :active="businessActive" :preparing="loading && !businessActive" @sorting="businessSorting = $event" />
         </HomeCardSortCell></view>
       </view></scroll-view
-    ><TimeRecordEditor v-if="timeEditor" :record-id="timeEditor.recordId" @close="closeTimeEditor" /><RecordCreateModal v-if="recordCreateKind" :kind="recordCreateKind" :thought-id="recordCreateKind === 'think' ? thoughtEditId : ''" @close="recordCreateKind = null" @saved="handleRecordCreated" @deleted="handleThoughtDeleted" /><WatchedTaskEditModal v-if="watchedEditor" :task="watchedEditor" @close="watchedEditor = null" @saved="handleWatchedSaved" />
+    ><TimeRecordEditor v-if="timeEditor" :record-id="timeEditor.recordId" :initial-date="timeEditor.initialDate" @close="closeTimeEditor" /><RecordCreateModal v-if="recordCreateKind" :kind="recordCreateKind" :thought-id="recordCreateKind === 'think' ? thoughtEditId : ''" @close="recordCreateKind = null" @saved="handleRecordCreated" @deleted="handleThoughtDeleted" /><WatchedTaskEditModal v-if="watchedEditor" :task="watchedEditor" @close="watchedEditor = null" @saved="handleWatchedSaved" />
   </view>
   <!-- #ifdef MP-WEIXIN -->
   </TabPage>

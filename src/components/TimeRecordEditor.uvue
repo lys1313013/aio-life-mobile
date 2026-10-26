@@ -227,20 +227,28 @@ async function initialize() {
   choosingTime.value = ''
   const serial = ++generation,
     token = session.token
+  const targetDate = date.value
   loading.value = true
   ready.value = false
   errorText.value = ''
   full.value = false
   try {
-    const cats = await getCategories()
-    if (!active || serial !== generation || token !== session.token) return
-    categories.value = cats
     if (id.value) {
-      const detail = await getRecord(id.value)
-      if (!detail) throw new Error('这条记录已不存在')
-      const day = detail.date || date.value
-      const records = await getDateRecords(day)
+      // 列表入口已有日期，三个请求同时发起；兼容只有 ID 的独立编辑入口。
+      const [cats, detail, initialRecords] = await Promise.all([
+        getCategories(),
+        getRecord(id.value),
+        props.initialDate ? getDateRecords(targetDate) : Promise.resolve(null),
+      ])
       if (!active || serial !== generation || token !== session.token) return
+      if (!detail) throw new Error('这条记录已不存在')
+      const day = detail.date || targetDate
+      // 详情日期为准，避免使用过期列表日期的记录进行重叠校验。
+      const records = initialRecords !== null && day === targetDate
+        ? initialRecords
+        : await getDateRecords(day)
+      if (!active || serial !== generation || token !== session.token) return
+      categories.value = cats
       date.value = day
       existing.value = records
       form.value = {
@@ -254,8 +262,12 @@ async function initialize() {
         })),
       }
     } else {
-      const result = await recommendNext(date.value)
+      const [cats, result] = await Promise.all([
+        getCategories(),
+        recommendNext(targetDate),
+      ])
       if (!active || serial !== generation || token !== session.token) return
+      categories.value = cats
       existing.value = result.records
       if (!result.recommend) {
         full.value = true
@@ -277,7 +289,7 @@ async function initialize() {
     ready.value = true
     loadOptions()
   } catch (error) {
-    if (active && serial === generation) errorText.value = report(error)
+    if (active && serial === generation && token === session.token) errorText.value = report(error)
   } finally {
     if (serial === generation) loading.value = false
   }
