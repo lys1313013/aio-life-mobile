@@ -61,7 +61,7 @@ test('账号与安全直接进入修改密码表单，校验、失败保留和�
 });
 test('接口菜单锁解锁后重试一次，隐藏菜单保留长ID',async({page})=>{
  const state=await setup(page);
- await page.goto('/#/pages/profile/preferences?section=keys');
+ await page.goto('/#/pages/mcp/api-keys');
  await expect(page).toHaveURL(/#\/pages\/mcp\/api-keys$/);
  const dialog=page.getByRole('dialog',{name:'解锁菜单',exact:true});
  await expect(dialog).toBeVisible();
@@ -109,7 +109,7 @@ test('菜单锁使用完整字符串ID与二级密码；通知留空保留应用
 
 test('离开锁定页面取消等待，返回不保留二级密码',async({page})=>{
  await setup(page);
- await page.goto('/#/pages/profile/preferences?section=keys');
+ await page.goto('/#/pages/mcp/api-keys');
  await expect(page).toHaveURL(/#\/pages\/mcp\/api-keys$/);
  const dialog=page.getByRole('dialog',{name:'解锁菜单',exact:true});
  await expect(dialog).toBeVisible();

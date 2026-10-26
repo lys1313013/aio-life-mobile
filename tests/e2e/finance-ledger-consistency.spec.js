@@ -50,11 +50,13 @@ for (const kind of ['expense', 'income']) test(`${kind} 删除首屏后真实滚
   expect(summaries).toContain('模拟账单51');
   expect(new Set(summaries).size).toBe(100);
   expect(state.requests).toEqual([1, 1, 2]);
+  await page.getByRole('button', { name: '统计', exact: true }).click();
   await expect(page.locator('.summary-total .metric-number')).toHaveText('100.00');
 });
 test('保存及下拉刷新同步统计，统计失败保留内容且可以独立重试', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 850 });
   const state = await ledger(page, 'income', 1);
+  await page.getByRole('button', { name: '统计', exact: true }).click();
   await expect(page.locator('.summary-total .metric-number')).toHaveText('1.00');
   await page.locator('.ledger-body').first().click();
   const dialog = page.getByRole('dialog', { name: '编辑收入', exact: true });

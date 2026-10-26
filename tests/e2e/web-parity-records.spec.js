@@ -23,7 +23,7 @@ for(const width of [390,768,1440])for(const dark of [false,true])for(const entry
   else await page.getByRole('button',{name:new RegExp('^编辑'+entry.title+'：')}).first().click();
   const dialog=page.locator('[role=dialog]:visible');await expect(dialog).toBeVisible();
   await page.screenshot({path:prefix+'-dialog.png'});
-  if(entry.menuId==='anniversary') {await expect(page.getByRole('button',{name:'浪漫粉',exact:true})).toBeVisible();await page.getByRole('button',{name:'清新蓝',exact:true}).click();}
+  if(entry.menuId==='anniversary') {await dialog.getByRole('button',{name:'外观设置',exact:true}).click();await expect(page.getByRole('button',{name:'浪漫粉',exact:true})).toBeVisible();await page.getByRole('button',{name:'清新蓝',exact:true}).click();}
   await dialog.getByRole('button',{name:'取消',exact:true}).click();await expect(dialog).toHaveCount(0);
   expect(state.writes).toHaveLength(0);
 });

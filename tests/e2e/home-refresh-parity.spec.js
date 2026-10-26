@@ -115,8 +115,9 @@ test('主动解锁返回后显示提交，前台锁过期撤下旧内容并停�
   const f=await setup(page,{'/auth/secondary-lock/menus':['github-menu'],'/menu/all':[{path:'/coding/github',meta:{menuId:'github-menu'}}]});
   const commits=section(page,'最近提交'), modal=page.getByRole('dialog',{name:'解锁菜单',exact:true});
   await commits.getByRole('button',{name:'解锁最近提交',exact:true}).click();await expect(modal).toBeVisible();
-  await modal.locator('input').fill('mock-secondary-password');await modal.getByRole('button',{name:'解锁',exact:true}).click();
+  await modal.locator('input').fill('001234');await modal.getByRole('button',{name:'确认密码',exact:true}).click();
   await expect(page).toHaveURL(/pages\/coding\/github/);
+  await page.getByRole('button',{name:'最近提交',exact:true}).click();
   await expect(page.locator('.record-title').filter({hasText:'模拟提交：'}).last()).toBeVisible();
   await page.clock.runFor(100);
   await page.getByRole('button',{name:'返回',exact:true}).click();

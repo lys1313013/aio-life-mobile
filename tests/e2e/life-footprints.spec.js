@@ -201,7 +201,7 @@ test('四级地区按需加载、失败重试、地址解析上下文与编辑�
   state.failRegions = false;
   await dialog.getByRole('button', { name: '重试地区', exact: true }).click();
   await expect(dialog.getByRole('alert')).toHaveCount(0);
-  await selectRegion(page, '省/直辖市', '浙江省');
+  await selectRegion(page, '地区（选填）', '浙江省');
   await expect.poll(() => state.regionCalls.some(path => path.includes('parentCode=33'))).toBe(true);
   await selectRegion(page, '市', '杭州市');
   await selectRegion(page, '区/县', '西湖区');
@@ -218,7 +218,7 @@ test('四级地区按需加载、失败重试、地址解析上下文与编辑�
   expect(state.writes.at(-1)).toMatchObject({ regionCode: '330106012', city: '杭州市' });
   await page.getByRole('button', { name: '编辑生活足迹', exact: true }).click();
   await expect(dialog.locator('uni-picker[aria-label="乡镇/街道"]')).toContainText('三墩镇');
-  await selectRegion(page, '省/直辖市', '北京市');
+  await selectRegion(page, '地区（选填）', '北京市');
   await expect(dialog.locator('uni-picker[aria-label="市"]')).toContainText('不细分');
   await expect(dialog).toContainText('点选地图标记具体位置');
   await dialog.getByRole('button', { name: '保存', exact: true }).click();

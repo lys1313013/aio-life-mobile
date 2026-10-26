@@ -6,6 +6,7 @@ async function openExpense(page, data) {
   await setup(page);
   await page.route('**/api/expense/statisticsByMonth', (route) => route.fulfill({ json: { code: 0, data } }));
   await page.goto('/#/pages/finance/expense');
+  await page.getByRole('button', { name: '统计', exact: true }).click();
   await expect(page.getByText('支出走势', { exact: true })).toBeVisible();
 }
 const year = new Date().getFullYear();
@@ -80,6 +81,7 @@ test('支出图表空数据和全零金额不会生成无效饼图', async ({ pa
   await page.unroute('**/api/expense/statisticsByMonth');
   await page.route('**/api/expense/statisticsByMonth', (route) => route.fulfill({ json: { code: 0, data: [{ year, month: 1, detail: [{ typeName: '餐饮', amt: 0 }] }] } }));
   await page.reload();
+  await page.getByRole('button', { name: '统计', exact: true }).click();
   await expect(page.locator('.distribution')).toContainText('暂无数据');
   await expect(page.locator('.distribution-row')).toHaveCount(0);
 });

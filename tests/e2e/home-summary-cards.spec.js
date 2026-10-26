@@ -139,7 +139,7 @@ test('授权图片失败与无图保持固定占位，重试真正显示图片',
   await page.route('**/api/file/preview/device-photo-fail', route => fail ? route.fulfill({ status: 503, body: 'failed' }) : route.fulfill({ contentType: 'image/svg+xml', body: '<svg xmlns="http://www.w3.org/2000/svg" width="44" height="44"><rect width="44" height="44" fill="green"/></svg>' }));
   fixture.data.device.items[0].fileId = 'device-photo-fail'; fixture.data.device.items[1].fileId = null;
   await card.getByRole('button', { name: '刷新我的设备', exact: true }).click(); await expect(card.getByRole('button', { name: '重试设备0图片', exact: true })).toBeVisible();
-  const failed = await card.locator('.summary-image').first().boundingBox(); expect(failed.width).toBe(before.width); expect(failed.height).toBe(before.height); expect(await card.locator('.summary-image').nth(1).locator('img').count()).toBe(0);
+  const failed = await card.locator('.summary-image').first().boundingBox(); expect(failed.width).toBe(before.width); expect(failed.height).toBe(before.height); await expect(card.locator('.summary-image').nth(1).locator('.summary-cover-image')).toHaveCount(0);
   fail = false; await card.getByRole('button', { name: '重试设备0图片', exact: true }).click(); await expect.poll(() => card.locator('.summary-image').first().locator('img').evaluateAll(nodes => nodes.length === 1 && nodes[0].naturalWidth > 0)).toBe(true);
 });
 test('独立收入卡不依赖支出权限，标题进入账本且没有新增加号', async ({ page }) => {

@@ -46,7 +46,7 @@ test('统计卡和内容卡独立失败、重试恢复，隐藏闪念不暴露�
   let cards = 0, thoughts = 0;
   await setup(page, async (route, path) => {
     if ((path === '/api/dashboard/card/GITHUB' && ++cards === 1) || (path === '/api/thought/dashboard' && ++thoughts === 1)) {
-      await route.fulfill({ status: 503, body: 'unavailable' }); return true;
+      await route.fulfill({ json: { code: 1, message: '模拟分区加载失败' } }); return true;
     }
   });
   await expect(page.getByText('1h30m')).toBeVisible();
@@ -93,7 +93,7 @@ test('运动分页失败保留已有记录，重试使用同一游标', async ({
     const cursor = new URL(route.request().url()).searchParams.get('lastDate');
     if (cursor) {
       expect(cursor).toBe('2026-09-28');
-      if (++next === 1) { await route.abort(); return true; }
+      if (++next === 1) { await route.fulfill({ json: { code: 1, message: '模拟运动分页失败' } }); return true; }
       await route.fulfill({ json: { code: 0, data: { days: [{ date: '2026-09-27', items: [{ exerciseTypeId: '2', typeLabel: '骑行', count: 15 }] }], hasMore: false } } }); return true;
     }
     await route.fulfill({ json: { code: 0, data: { ...dashboardFixture(path), hasMore: true, lastDate: '2026-09-28' } } }); return true;

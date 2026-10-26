@@ -56,15 +56,18 @@ for (const width of [320, 390, 768, 1440]) for (const theme of ['light', 'dark']
     await input.fill('LONG');
     await dialog.getByRole('button', { name: '选择' + banks.at(-1).name, exact: true }).click();
     await expect(dialog.locator('.draft-bank-name')).toHaveText(banks.at(-1).name);
-    // 余额字段加入储蓄卡表单后增加约 13px；仍需在 900px 视口中留出至少 50px 上下空间。
-    await expect.poll(async () => (await dialog.boundingBox()).height).toBeLessThan(viewportHeight - 100);
+    // 随表单内容自适应，并满足公共弹窗的视口安全边距。
+    await expect.poll(async () => (await dialog.boundingBox()).height).toBeLessThan(viewportHeight - 48);
     const bounds = await dialog.boundingBox();
+    expect(bounds.y).toBeGreaterThanOrEqual(24);
+    expect(bounds.y + bounds.height).toBeLessThanOrEqual(viewportHeight - 24);
+    expect(Math.abs(bounds.y + bounds.height / 2 - viewportHeight / 2)).toBeLessThan(2);
     const field = await input.boundingBox();
     const preview = await dialog.locator('.draft-face').boundingBox();
     expect(field.y).toBeLessThan(preview.y);
     expect(preview.height).toBeGreaterThan(150);
     expect(preview.height).toBeLessThan(180);
-    expect(bounds.height).toBeLessThan(viewportHeight - 100);
+    expect(bounds.height).toBeLessThan(viewportHeight - 48);
     for (const button of await dialog.getByRole('button').all()) {
       if (!(await button.isVisible())) continue;
       const box = await button.boundingBox();

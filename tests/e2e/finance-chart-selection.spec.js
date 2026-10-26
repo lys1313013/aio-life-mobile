@@ -22,6 +22,7 @@ test('收入类型饼图切换年份后保留分类占比', async ({ page }) => 
     },
   }));
   await page.goto('/#/pages/finance/income');
+  await page.getByRole('button', { name: '统计', exact: true }).click();
   const chart = page.getByRole('figure', { name: '收入类型分布', exact: true });
   await expect(chart).toBeVisible();
   await expect(page.locator('.mini-chart uni-picker')).toHaveCount(0);

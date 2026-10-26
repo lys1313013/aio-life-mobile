@@ -78,7 +78,7 @@ for (const width of [390, 768, 1440]) {
 }
 
 for (const mode of ['light', 'dark']) {
-  test(`日期和时间滚轮 应用${mode} 系统相反主题`, async ({ page, baseURL }) => {
+  test(`日期日历和时间滚轮 应用${mode} 系统相反主题`, async ({ page, baseURL }) => {
     await page.setViewportSize({ width: 390, height: 844 });
     await prepare(page, baseURL, mode, mode === 'light' ? 'dark' : 'light');
     await page.route('**/api/timeRecord/recommendNext?*', route => route.fulfill({ json: {
@@ -87,15 +87,17 @@ for (const mode of ['light', 'dark']) {
     await page.goto('/#/pages/time/index');
     await page.getByRole('button', { name: '新增时迹', exact: true }).click();
     const dialog = page.getByRole('dialog', { name: '记录时间', exact: true });
-    for (const label of ['记录日期']) {
-      await dialog.locator(`uni-picker[aria-label="${label}"]`).click();
-      await page.waitForTimeout(350);
-      await checkWheel(page, mode === 'dark');
-      await page.screenshot({ path: `artifacts/picker-theme/${label}-${mode}.png` });
-      await page.locator('.uni-picker-action-cancel:visible').click();
-      await expect(dialog).toBeVisible();
-      await expect(page.locator('.uni-picker-content:visible')).toHaveCount(0);
-    }
+    await dialog.getByRole('button', { name: '记录日期', exact: true }).click();
+    const calendar = page.getByRole('dialog', { name: '记录日期日历', exact: true });
+    await expect(calendar).toBeVisible();
+    const calendarBackground = await calendar.evaluate(node => getComputedStyle(node).backgroundColor);
+    expect(calendarBackground).toBe(mode === 'dark' ? 'rgb(28, 30, 34)' : 'rgb(255, 255, 255)');
+    const text = calendar.locator('.calendar-text').first();
+    expect(contrast(await text.evaluate(node => getComputedStyle(node).color), calendarBackground)).toBeGreaterThanOrEqual(4.5);
+    await page.screenshot({ path: `artifacts/picker-theme/记录日期-${mode}.png` });
+    await calendar.getByRole('button', { name: '关闭', exact: true }).click();
+    await expect(calendar).toHaveCount(0);
+    await expect(dialog).toBeVisible();
     await dialog.getByRole('button', { name: '开始时间', exact: true }).click();
     const timePicker = page.getByRole('dialog', { name: '选择开始时间', exact: true });
     await expect(timePicker).toBeVisible();

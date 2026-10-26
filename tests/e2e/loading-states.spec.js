@@ -6,6 +6,7 @@ test.afterEach(async ({ page }) => {
   await page.close();
 });
 async function scrollCommitsToBottom(page) {
+  await page.getByRole('button', { name: '最近提交', exact: true }).click();
   // 等待首屏各分区完成，避免触底事件被初始化中的分页保护拒绝。
   await expect(page.locator('.content-skeleton')).toHaveCount(0);
   const scroller = page.locator('.mobile-page-scroll .uni-scroll-view[style]').first();
@@ -74,7 +75,7 @@ test('GitHub partial failure retries only failed section and keeps content', asy
   await fixture(page, hold); await page.goto('/#/pages/coding/github');
   await expect(page.getByRole('alert')).toBeVisible();
   await expect(page.getByText('模拟仓库', { exact: true })).toBeVisible();
-  await expect(page.getByText('模拟提交 0', { exact: true })).toBeVisible();
+  await expect(page.getByText('模拟提交 0', { exact: true })).toBeAttached();
   await expect(page.locator('.metric-card').filter({ hasText: '过去一年提交' }).locator('.metric-number')).toHaveText('—');
   await expect(page.locator('.metric-card').filter({ hasText: '总 Star 数' }).locator('.metric-number')).toHaveText('12');
   hold.failCalendar = false; hold['/graphql'] = gate();
@@ -193,13 +194,13 @@ for (const width of [390, 768, 1440]) for (const theme of ['light', 'dark']) {
     await expect(page.getByText('模拟仓库', { exact: true })).toBeVisible();
     hold['/graphql'] = gate(); hold['/users/fixture/repos'] = gate(); hold['/api/github/recent-commits'] = gate();
     await require('./gestures').pullDown(page, '.mobile-page-scroll');
-    await expect(page.getByRole('status', { name: '正在更新内容' })).toHaveCount(3);
+    await expect(page.getByRole('status', { name: '正在更新内容', includeHidden: true })).toHaveCount(3);
     await expect(page.getByText('1682', { exact: true })).toBeVisible();
     await expect(page.getByText('模拟仓库', { exact: true })).toBeVisible();
     await expect(page.locator('.content-skeleton')).toHaveCount(0);
     await page.screenshot({ path: info.outputPath('github-refresh.png') });
     hold['/graphql'].release(); hold['/users/fixture/repos'].release(); hold['/api/github/recent-commits'].release();
-    await expect(page.getByRole('status', { name: '正在更新内容' })).toHaveCount(0);
+    await expect(page.getByRole('status', { name: '正在更新内容', includeHidden: true })).toHaveCount(0);
     hold.failCalendar = true;
     await require('./gestures').pullDown(page, '.mobile-page-scroll');
     await expect(page.getByRole('alert')).toBeVisible();
@@ -207,10 +208,10 @@ for (const width of [390, 768, 1440]) for (const theme of ['light', 'dark']) {
     await expect(page.locator('.uni-scroll-view-refresher').last()).toHaveCSS('height', '0px');
     hold.failCalendar = false; hold['/graphql'] = gate();
     await page.getByRole('alert').getByRole('button', { name: '重试', exact: true }).click();
-    await expect(page.getByRole('status', { name: '正在更新内容' })).toHaveCount(1);
+    await expect(page.getByRole('status', { name: '正在更新内容', includeHidden: true })).toHaveCount(1);
     await expect(page.getByText('1682', { exact: true })).toBeVisible();
     hold['/graphql'].release();
-    await expect(page.getByRole('status', { name: '正在更新内容' })).toHaveCount(0);
+    await expect(page.getByRole('status', { name: '正在更新内容', includeHidden: true })).toHaveCount(0);
     await expect(page.getByRole('alert')).toHaveCount(0);
     await page.emulateMedia({ reducedMotion: 'reduce' });
     hold['/graphql'] = gate(); await page.reload();
@@ -248,7 +249,7 @@ test('all asynchronous business pages expose loading placeholders', async ({ pag
     });
     try {
       await page.goto('/#/pages/' + route); await page.reload();
-      const loadingSelector = route === 'home/index' ? '.home-list-skeleton' : route === 'finance/index' ? '.finance-calendar .calendar-loading .loading-indicator' : route === 'finance/cards' ? '.card-loading' : route === 'relationship/index' ? '.topology .loading-indicator' : route === 'time/edit' ? '.editor-loading .loading-indicator' : route === 'admin/index' ? '.user-card-loading' : route === 'vault/index' ? '.vault-skeleton-title' : '.content-skeleton';
+      const loadingSelector = route === 'records/categories' ? '.category-placeholder' : route === 'home/index' ? '.home-list-skeleton' : route === 'finance/index' ? '.finance-calendar .calendar-loading .loading-indicator' : route === 'finance/cards' ? '.card-loading' : route === 'relationship/index' ? '.topology .loading-indicator' : route === 'time/edit' ? '.editor-loading .loading-indicator' : route === 'admin/index' ? '.user-card-loading' : route === 'vault/index' ? '.vault-skeleton-title' : '.content-skeleton';
       await expect(page.locator(loadingSelector).first(), route).toBeVisible();
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), route).toBe(true);
       await page.screenshot({ path: info.outputPath(route.replace(/[/?=]/g, '-') + '.png') });

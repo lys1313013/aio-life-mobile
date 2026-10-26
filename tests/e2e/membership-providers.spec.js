@@ -45,7 +45,7 @@ for (const width of [390, 768, 1440]) for (const theme of ['light', 'dark']) {
     const state = await prepare(page);
     await page.locator('uni-tabbar').getByText('全部', { exact: true }).click();
     await page.getByRole('button', { name: '订阅', exact: true }).click();
-    await expect(page.locator('.member-provider')).toContainText('腾讯视频');
+    await expect(page.locator('.member-card').getByRole('img', { name: '腾讯视频', exact: true }).first()).toBeVisible();
     await page.getByRole('button', { name: '编辑订阅：模拟会员', exact: true }).click();
     await expect(page.getByRole('button', { name: '选择会员平台', exact: true })).toContainText('腾讯视频');
     await page.screenshot({ path: `artifacts/membership-providers/member-${width}-${theme}.png` });

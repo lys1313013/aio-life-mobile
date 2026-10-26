@@ -1,5 +1,6 @@
 const fs = require('node:fs');
 const path = require('node:path');
+const { selectCalendarDate } = require('./calendar');
 const { test, expect } = require('@playwright/test');
 const { calendarFixture } = require('./fixtures-finance-calendar');
 const day = new Date(Date.now() + 8 * 3600000).toISOString().slice(0, 7) + '-01';
@@ -96,7 +97,7 @@ test('保存失败保留表单和明细，取消不写入；移出日期范围�
   await expect(editor).toContainText('模拟保存失败');
   await expect(editor.getByRole('textbox', { name: '备注', exact: true })).toHaveValue('失败后保留的备注');
   state.fail = false;
-  await editor.locator('input[type=date]').fill('2000-01-01');
+  await selectCalendarDate(page, editor.getByRole('button', { name: '日期', exact: true }), '2000-01-01');
   await editor.getByRole('button', { name: '保存', exact: true }).click();
   await expect(editor).toHaveCount(0);
   await expect(details).toContainText('暂无收入记录');

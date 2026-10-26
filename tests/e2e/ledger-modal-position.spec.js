@@ -19,11 +19,11 @@ for (const kind of ['expense', 'income']) {
       page.on('pageerror', error => errors.push(error.message));
       await page.goto(`/#/pages/finance/${kind}`);
       await expect(page.locator('.ledger-row')).toHaveCount(rows.length);
-      const add = page.getByRole('button', { name: '新增', exact: true });
-      // 先滚过统计区，再从视口内点击工具栏，避免宽屏短页面根本没有发生滚动。
+      const edit = page.locator('.ledger-body').nth(12);
+      // 将列表中部账目滚入视口，保持非零滚动位置打开编辑。
       await page.mouse.move(width / 2, height / 2);
       await page.mouse.wheel(0, 360);
-      await add.scrollIntoViewIfNeeded();
+      await edit.scrollIntoViewIfNeeded();
       // 图表自身也包含 scroll-view，读取页面内实际可滚动的容器，不能取最后一个嵌套图表。
       const scroll = page.locator('.mobile-page-scroll');
       await expect.poll(() => scroll.evaluate(root => {
@@ -31,7 +31,7 @@ for (const kind of ['expense', 'income']) {
           .find(element => element.scrollHeight > element.clientHeight);
         return pageScroll?.scrollTop ?? 0;
       })).toBeGreaterThan(0);
-      await add.click();
+      await edit.click();
       const dialog = page.getByRole('dialog', { name: kind === 'expense' ? '编辑支出' : '编辑收入', exact: true });
       await expect(dialog).toBeVisible();
       const mask = page.locator('.modal-mask');
@@ -56,7 +56,7 @@ for (const kind of ['expense', 'income']) {
       await expect(cancel).toBeInViewport();
       await cancel.click();
       await expect(dialog).toHaveCount(0);
-      await add.click();
+      await edit.click();
       await expect(dialog).toBeVisible();
       await mask.click({ position: { x: 2, y: 2 } });
       await expect(dialog).toHaveCount(0);

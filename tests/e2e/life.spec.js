@@ -286,7 +286,7 @@ test("目录失败不显示伪造入口、可重试，下拉保留已有目录",
     intercept: async (route, path, state) => {
       if (
         path === "/api/quick-nav/candidates" &&
-        (state.catalogCalls === 1 || failRefresh)
+        (state.catalogCalls <= 4 || failRefresh)
       ) {
         await route.fulfill({ status: 503, body: "unavailable" });
         return true;

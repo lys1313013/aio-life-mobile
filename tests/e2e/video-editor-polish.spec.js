@@ -50,7 +50,7 @@ test('视频更新集数保留折叠数据，保存失败可重试', async ({ pa
   const state = await openVideo(page);
   const original = { ...state.video[0] };
   await page.locator('input[aria-label="当前集数"]').fill('2');
-  await expect(page.locator('input[aria-label="已学习时长（秒）"]')).toHaveValue('50');
+  await expect(page.locator('input[aria-label="已学习时长"]')).toHaveValue('00:00:50');
   state.fail = true;
   await page.getByRole('button', { name: '保存', exact: true }).click();
   await expect(page.getByRole('dialog')).toContainText('模拟保存失败');
@@ -81,12 +81,12 @@ test('视频手动创建可修正折叠的总时长并提交', async ({ page }) 
   await expect(page.getByRole('dialog', { name: '编辑学习视频' })).toBeVisible();
   await page.locator('input[aria-label="视频链接"]').fill('https://www.bilibili.com/video/BV1234567890');
   await page.locator('input[aria-label="标题"]').fill('模拟手动录入课程');
-  await page.locator('input[aria-label="已学习时长（秒）"]').fill('20');
+  await page.locator('input[aria-label="已学习时长"]').fill('00:00:20');
   await page.getByRole('button', { name: '保存', exact: true }).click();
   await expect(page.getByRole('dialog')).toContainText('请检查时长与当前集数范围');
-  await expect(page.locator('input[aria-label="总时长（秒）"]')).toBeVisible();
+  await expect(page.locator('input[aria-label="总时长"]')).toBeVisible();
   expect(state.writes).toHaveLength(0);
-  await page.locator('input[aria-label="总时长（秒）"]').fill('120');
+  await page.locator('input[aria-label="总时长"]').fill('00:02:00');
   await page.getByRole('button', { name: '收起更多信息', exact: true }).click();
   await page.getByRole('button', { name: '保存', exact: true }).click();
   await expect(page.getByRole('dialog')).toHaveCount(0);

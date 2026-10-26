@@ -275,7 +275,9 @@ test.describe('首页时迹日期横滑', () => {
       await page.route('**/api/userDictType/getByDictType?*', route => route.fulfill({ json: { code: 0, data: { dictDetailList: [] } } }));
       await page.getByRole('button', { name: '新增时迹', exact: true }).click();
       const editor = page.getByRole('dialog', { name: '记录时间', exact: true });
-      await expect(editor.locator('[aria-label="记录日期"]')).toContainText(previous);
+      await editor.getByRole('button', { name: '记录日期', exact: true }).click();
+      await expect(page.getByRole('dialog', { name: /日历$/ }).getByRole('button', { name: previous, exact: true })).toHaveAttribute('aria-pressed', 'true');
+      await dismissModal(page);
       await expect(editor.locator('.compact-fields')).toBeVisible();
       expect(recommendedDate).toBe(previous);
       await dismissModal(page);

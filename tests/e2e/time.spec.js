@@ -220,7 +220,7 @@ for (const width of [390, 768, 1440]) for (const colorScheme of ['light', 'dark'
     { id: '102', date: today, categoryId: '1', startTime: 560, endTime: 599, title: '晨间运动' },
     { id: '103', date: today, categoryId: '1', startTime: 601, endTime: 659, title: '下一条' },
   ] });
-  await page.getByRole('button', { name: '编辑记录 晨间运动', exact: true }).click();
+  await page.getByRole('button', { name: /^编辑记录 晨间运动(?:，|$)/ }).click();
   const editor = page.getByRole('dialog', { name: '编辑时迹', exact: true });
   const values = editor.locator('.compact-time-number');
   await previousMinute(page, '结束时间', 1, false);
@@ -529,7 +529,7 @@ test('短记录通过日期列表编辑，跨日记录沿用所属日期，空�
   const otherDate = (() => { const date = new Date(today + 'T12:00:00'); const weekday = (date.getDay() + 6) % 7; date.setDate(date.getDate() + (weekday === 0 ? 1 : -weekday)); return `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`; })();
   state.records.push({ id: '107', date: otherDate, categoryId: '1', startTime: 0, endTime: 59, title: '跨日记录' });
   await pullDown(page, '.tab-scroll');
-  await page.getByRole('button', { name: '编辑记录 跨日记录', exact: true }).click();
+  await page.getByRole('button', { name: /^编辑记录 跨日记录(?:，|$)/ }).click();
   await expect(page.locator('[aria-label="记录标题"] input')).toHaveValue('跨日记录');
   await page.getByRole('button', { name: '保存', exact: true }).click();
   await expect(page.getByRole('dialog', { name: '编辑时迹', exact: true })).toHaveCount(0);
@@ -552,7 +552,7 @@ for (const width of [390, 768, 1440]) for (const colorScheme of ['light', 'dark'
     await page.setViewportSize({ width, height: 900 });
     await page.emulateMedia({ colorScheme });
     await setup(page, { records: timelineRecords(), categories: categoryPalette });
-    await page.getByRole('button', { name: '编辑记录 专注学习', exact: true }).click();
+    await page.getByRole('button', { name: /^编辑记录 专注学习(?:，|$)/ }).click();
     const dialog = page.locator('.modal-panel[aria-label="编辑时迹"]');
     await expect(dialog.locator('[aria-label="记录标题"] input')).toHaveValue('专注学习');
     await expect.poll(async () => (await dialog.boundingBox()).height).toBeGreaterThan(400);
@@ -663,7 +663,7 @@ for (const colorScheme of ['light', 'dark']) test(`短视口长表单滚动与�
     exercises: Array.from({ length: 20 }, (_, index) => ({ id: String(100 + index), exerciseTypeId: '9223372036854775806', exerciseCount: 10 + index })) }] });
   const track = await page.locator('.day-track').boundingBox();
   const tabbar = await expectTabBarState(page, null, false);
-  await page.getByRole('button', { name: '编辑记录 晨间运动', exact: true }).click();
+  await page.getByRole('button', { name: /^编辑记录 晨间运动(?:，|$)/ }).click();
   const dialog = page.getByRole('dialog', { name: '编辑时迹', exact: true });
   const save = dialog.getByRole('button', { name: '保存', exact: true });
   await save.scrollIntoViewIfNeeded();
@@ -695,7 +695,7 @@ for (const width of [390, 768, 1440]) for (const colorScheme of ['light', 'dark'
     const add = page.getByRole('button', { name: '新增时迹', exact: true });
     const before = { track: await track.boundingBox(), tabbar: await tabbar.boundingBox(), add: await add.boundingBox() };
     for (const entry of ['编辑记录 一分钟回顾', '新增时迹']) {
-      await page.getByRole('button', { name: entry, exact: true }).click();
+      await page.getByRole('button', { name: entry === '新增时迹' ? entry : new RegExp('^' + entry + '(?:，|$)'), exact: entry === '新增时迹' }).click();
       const dialog = page.getByRole('dialog', { name: entry === '新增时迹' ? '记录时间' : '编辑时迹', exact: true });
       await expect(dialog.getByRole('button', { name: '保存', exact: true })).toBeVisible();
       await expect(tabbar).toBeVisible();
@@ -761,16 +761,16 @@ for (const width of [390, 768, 1440]) for (const colorScheme of ['light', 'dark'
     await expect(page.locator('.record-card')).toHaveCount(5);
     await expect(page.getByRole('button', { name: '筛选分类', exact: true })).toHaveAttribute('aria-description', '2 个分类');
     await page.screenshot({ path: `test-results/time-cards-${width}-${colorScheme}.png` });
-    await page.getByRole('button', { name: '编辑记录 一分钟回顾', exact: true }).click();
+    await page.getByRole('button', { name: /^编辑记录 一分钟回顾(?:，|$)/ }).click();
     await expect(page.getByRole('dialog', { name: '编辑时迹', exact: true })).toBeVisible();
     await closeEditor(page);
     await page.getByRole('button', { name: '时间轴视图', exact: true }).click();
     await expect(page.locator('.timeline-event')).toHaveCount(7);
-    await expect(page.getByRole('button', { name: '编辑记录 休息', exact: true })).toHaveCSS('opacity', '0.25');
+    await expect(page.getByRole('button', { name: /^编辑记录 休息(?:，|$)/ })).toHaveCSS('opacity', '0.25');
     await page.getByRole('button', { name: '筛选分类', exact: true }).click();
     await page.getByRole('button', { name: '重置', exact: true }).click();
     await page.getByRole('button', { name: '应用筛选', exact: true }).click();
-    await expect(page.getByRole('button', { name: '编辑记录 休息', exact: true })).toHaveCSS('opacity', '1');
+    await expect(page.getByRole('button', { name: /^编辑记录 休息(?:，|$)/ })).toHaveCSS('opacity', '1');
     await page.getByRole('button', { name: '卡片视图', exact: true }).click();
     await page.reload();
     await expect(page.getByRole('button', { name: '卡片视图', exact: true })).toHaveAttribute('aria-pressed', 'true');
@@ -795,7 +795,7 @@ test('统计类型、周月分布精简、十期趋势失败恢复与分类口�
     await expect(page.getByRole('figure', { name: '时间类型分布', exact: true })).toHaveCount(0);
   }
   await page.route('**/timeRecord/queryByDateRange?**', route => route.abort());
-  await page.getByRole('button', { name: '编辑记录 专注学习', exact: true }).click();
+  await page.getByRole('button', { name: /^编辑记录 专注学习(?:，|$)/ }).click();
   await page.getByRole('button', { name: '保存', exact: true }).click();
   await expect(page.locator('.time-statistics').getByRole('button', { name: '重试', exact: true })).toBeVisible();
   await page.unroute('**/timeRecord/queryByDateRange?**');

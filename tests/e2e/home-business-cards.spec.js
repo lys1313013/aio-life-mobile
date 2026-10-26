@@ -30,7 +30,7 @@ async function setup(page, { locked = false, failMore = false, readAccess = true
   await page.route('**/api/read-record/page?*', async route => {
     const current = Number(new URL(route.request().url()).searchParams.get('page'));
     calls.push(current);
-    if (current === 2 && failures-- > 0) return route.fulfill({ status: 503, body: 'unavailable' });
+    if (current === 2 && failures-- > 0) return route.fulfill({ json: { code: 1, message: '模拟分页失败' } });
     const all = Array.from({ length: 23 }, (_, i) => ({ id: String(i + 1), title: '阅读条目 ' + (i + 1), status: i < 20 ? 'in_progress' : 'not_started', totalProgress: 100, currentProgress: 30 }));
     return route.fulfill({ json: { code: 0, data: { items: all.slice((current - 1) * 20, current * 20), total: 23 } } });
   });
@@ -491,7 +491,7 @@ test('菜单依赖缓存到期后刷新失败保留已展示目标和阅读，�
   const goal=page.locator('[aria-label="目标首页卡片"]');
   const reading=page.locator('[aria-label="阅读首页卡片"]');
   await expect(reading.locator('.reading-book')).toHaveCount(20);
-  await page.route('**/api/quick-nav/candidates?*', route => route.fulfill({status:503,body:'offline'}));
+  await page.route('**/api/quick-nav/candidates?*', route => route.fulfill({json:{code:1,message:'模拟菜单加载失败'}}));
   // 只推进业务时钟，避免实际等待缓存到期或触发无关的周期任务。
   await page.clock.setFixedTime(new Date(Date.now() + 61000));
   await page.locator('.dashboard-scroll .uni-scroll-view-scrollbar-hidden').first().evaluate(el=>{el.scrollTop=0});
@@ -499,6 +499,7 @@ test('菜单依赖缓存到期后刷新失败保留已展示目标和阅读，�
   await expect(goal.getByRole('button',{name:/^重试目标：/})).toBeVisible();
   await expect(goal).toContainText('固定目标');
   await expect(reading.locator('.reading-book')).toHaveCount(20);
+  await page.unroute('**/api/quick-nav/candidates?*');
   await goal.getByRole('button',{name:/^重试目标：/}).click();
   await expect(goal.getByRole('button',{name:/^重试目标：/})).toHaveCount(0);
   await expect(goal).toContainText('固定目标');

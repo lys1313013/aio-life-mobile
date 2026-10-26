@@ -23,12 +23,12 @@ for (const width of [390, 768, 1440]) for (const colorScheme of ['light', 'dark'
     });
     await page.goto('/#/pages/profile/index');
     await expect(page.getByRole('status', { name: '正在加载个人资料' })).toBeVisible();
-    const skeletonMenu = await page.locator('.profile-menu').boundingBox();
+    const skeletonMenu = await page.locator('.profile-menu').first().boundingBox();
     pending = null;
     release();
     await expect(page.getByRole('button', { name: '编辑资料', exact: true })).toBeVisible();
     await expect(page.locator('.profile-intro')).toHaveCount(0);
-    const settledMenu = await page.locator('.profile-menu').boundingBox();
+    const settledMenu = await page.locator('.profile-menu').first().boundingBox();
     expect(Math.abs(settledMenu.y - skeletonMenu.y)).toBeLessThanOrEqual(1);
 
     profile.introduction = '这是一段较长的模拟个性签名，用于检查窄屏换行、头像对齐和资料区域的自然高度。'.repeat(3);
@@ -40,13 +40,13 @@ for (const width of [390, 768, 1440]) for (const colorScheme of ['light', 'dark'
     await page.getByRole('button', { name: '返回', exact: true }).click();
     await expect.poll(() => reads).toBeGreaterThan(previousReads);
     await expect(page.locator('.profile-intro')).toHaveText(profile.introduction);
-    const refreshingMenu = await page.locator('.profile-menu').boundingBox();
+    const refreshingMenu = await page.locator('.profile-menu').first().boundingBox();
     await expect(page.getByRole('status', { name: '正在加载个人资料' })).toHaveCount(0);
     pending = null;
     const finished = page.waitForResponse(response => new URL(response.url()).pathname === '/api/user/info');
     release();
     await finished;
-    const refreshedMenu = await page.locator('.profile-menu').boundingBox();
+    const refreshedMenu = await page.locator('.profile-menu').first().boundingBox();
     expect(Math.abs(refreshedMenu.y - refreshingMenu.y)).toBeLessThanOrEqual(1);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     await page.screenshot({ path: `test-results/profile-long-${width}-${colorScheme}.png`, fullPage: true });

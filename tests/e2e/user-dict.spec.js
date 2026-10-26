@@ -73,7 +73,9 @@ async function drag(page, from, to, cancel = false) {
 }
 async function bottom(page) {
   await page.waitForTimeout(250);
-  await page.locator('.mobile-page-scroll .uni-scroll-view').last().evaluate(el => { el.scrollTop = el.scrollHeight; });
+  await page.locator('.mobile-page-scroll .uni-scroll-view').first().evaluate(el => { el.scrollTop = 0; });
+  await page.locator('.mobile-page-scroll').hover();
+  await page.mouse.wheel(0, 100000);
 }
 
 test('点击编辑、失败保留、新增与更新局部状态', async ({ page }) => {

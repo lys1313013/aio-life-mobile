@@ -43,8 +43,9 @@ for (const width of [390, 820, 1440]) for (const theme of ['light', 'dark']) {
         // 首次点击月份就应打开选择器，取消后范围不变。
         const originalDate = await card.locator('.calendar-date').innerText();
         await card.locator('.calendar-date-picker').click();
-        await expect(page.locator('.uni-picker-action-cancel:visible')).toBeVisible();
-        await page.locator('.uni-picker-action-cancel:visible').click();
+        const calendar = page.getByRole('dialog', { name: /日历$/ });
+        await expect(calendar).toBeVisible();
+        await calendar.getByRole('button', { name: '关闭', exact: true }).click();
         await expect(card.locator('.calendar-date')).toHaveText(originalDate);
         await card.getByRole('button', { name: '上一时间段', exact: true }).click();
         await expect.poll(() => calendars.some(row => row.kind === kind && row.date === previous)).toBe(true);

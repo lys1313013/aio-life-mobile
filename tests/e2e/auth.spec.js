@@ -17,7 +17,7 @@ async function mockApi(page, options = {}) {
       requests.info++;
       requests.authorized = route.request().headers().authorization === 'Bearer e2e-token';
       if (options.expire && requests.info > 1) return route.fulfill({ status: 401, json: { code: 401, message: '登录已过期，请重新登录', data: null } });
-      if (options.failInfo && requests.info === 1) return route.abort();
+      if (options.failInfo && requests.info <= 4) return route.abort();
       return route.fulfill({ json: { code: 0, data: profile } });
     }
     if (path === '/api/auth/logout') {

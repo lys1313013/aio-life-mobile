@@ -8,7 +8,7 @@ async function setup(page, mode) {
   }, { mode });
   const state = { fail: false, calls: [], rows: Array.from({ length: 8 }, (_, i) => ({
     id: String(9007199254740993n + BigInt(i)), name: `模拟卡面 ${i + 1}`, bankName: `模拟银行 ${i + 1}`, bankId: '9', bankCode: 'DEMO', cardName: `模拟卡 ${i + 1}`, cardType: 'debit', sortOrder: i,
-    cardNoLast4: '1234', coverFileIds: [], tags: [], status: 'normal', coverColor: '#334766', fileId: 'a'.repeat(32), isEnabled: 1, usageCount: '0',
+    cardNoLast4: '1234', coverFileIds: [], tags: [], status: 'normal', coverColor: '#334766', fileId: 'a'.repeat(32), isEnabled: 1, usageCount: 0,
   })) };
   const fixtures = {
     '/user/info': { id: '1', nickname: '模拟用户', roles: ['admin'] },

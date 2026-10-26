@@ -163,5 +163,5 @@ test('首页明细深链仍直接打开编辑器', async ({ page }) => {
   await setup(page)
   await page.goto('/#/pages/tasks/todo?taskId=' + id + '&detailId=7')
   await expect(page.getByRole('dialog', { name: '编辑待办', exact: true })).toBeVisible()
-  await expect(page.locator('[aria-label="内容"] input')).toHaveValue('模拟明细')
+  await expect(page.locator('[aria-label="内容"] textarea')).toHaveValue('模拟明细')
 })
