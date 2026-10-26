@@ -23,14 +23,14 @@ const options = computed(() => {
     <FormField label="搜索图标" hide-label compact><input class="appearance-search" :class="{ 'appearance-search-dark': isDark }" aria-label="搜索图标" placeholder="搜索图标名称，如 run、book" :value="search" :disabled="disabled" @input="search = $event.detail.value" /></FormField>
     <scroll-view scroll-y class="appearance-scroll">
       <view class="appearance-grid">
-        <button v-for="key in options" :key="key" class="appearance-option" :class="{ 'appearance-selected': icon === key }" :aria-label="'选择图标 ' + key" :aria-pressed="icon === key" :disabled="disabled" @click="emit('update:icon', key)"><CategoryIcon :icon="key" :color="color" :size="26" /></button>
+        <button role="button" v-for="key in options" :key="key" class="appearance-option" :class="{ 'appearance-selected': icon === key }" :aria-label="'选择图标 ' + key" :aria-pressed="icon === key" :disabled="disabled" :aria-disabled="disabled" @click="emit('update:icon', key)"><CategoryIcon :icon="key" :color="color" :size="26" /></button>
       </view>
       <text v-if="!options.length" class="appearance-caption" :class="{ 'appearance-caption-dark': isDark }">没有匹配图标</text>
     </scroll-view>
     <view class="appearance-actions"><MobileButton :label="expanded ? '常用图标' : '全部图标'" variant="quiet" :disabled="disabled" @click="expanded = !expanded" /><MobileButton label="清除图标" variant="quiet" :disabled="disabled || !icon" @click="emit('update:icon', '')" /></view>
   </FormField>
   <FormField label="颜色">
-    <view class="appearance-grid"><button v-for="value in colors" :key="value" class="appearance-option" :class="{ 'appearance-selected': color === value }" :aria-label="'选择颜色 ' + value" :aria-pressed="color === value" :disabled="disabled" @click="emit('update:color', value)"><view class="appearance-swatch" :style="{ backgroundColor: value }" /></button></view>
+    <view class="appearance-grid"><button role="button" v-for="value in colors" :key="value" class="appearance-option" :class="{ 'appearance-selected': color === value }" :aria-label="'选择颜色 ' + value" :aria-pressed="color === value" :disabled="disabled" :aria-disabled="disabled" @click="emit('update:color', value)"><view class="appearance-swatch" :style="{ backgroundColor: value }" /></button></view>
   </FormField>
   <MobileButton :label="advanced ? '收起自定义值' : '自定义图标与颜色值'" variant="quiet" :disabled="disabled" @click="advanced = !advanced" />
   <view v-if="advanced" class="ui-field-row"><FormField compact stretch label="图标代码" :model-value="icon" :disabled="disabled" @update:model-value="emit('update:icon', $event)" /><FormField compact stretch label="颜色值" placeholder="#1890ff" :model-value="color" :disabled="disabled" @update:model-value="emit('update:color', $event)" /></view>
