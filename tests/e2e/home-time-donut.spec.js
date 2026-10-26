@@ -237,7 +237,7 @@ test.describe('首页时迹日期横滑', () => {
   }
 
   for (const [today, previous] of [['2026-03-01', '2026-02-28'], ['2026-01-01', '2025-12-31']]) {
-    test(`左滑上一天、右滑回今天，跨月跨年及失败恢复 ${today}`, async ({ page }) => {
+    test(`右滑前一天、左滑回今天，跨月跨年及失败恢复 ${today}`, async ({ page }) => {
       await page.setViewportSize({ width: 390, height: 900 });
       await page.clock.install({ time: new Date(today + 'T12:00:00') });
       await setup(page);
@@ -251,17 +251,32 @@ test.describe('首页时迹日期横滑', () => {
           : { code: 0, data: date === today ? [{ id: 'today-row', categoryId: '0', startTime: 0, endTime: 59 }] : [] } });
       });
       const title = page.locator('[data-card-key="section.time"] .section-title');
-      // 明细上的左滑不能误开编辑；纵向、短滑及取消均不切换日期。
-      await swipe(page, 20);
-      await swipe(page, 5, -60);
-      await swipe(page, -120, 0, true);
-      await swipe(page, 120);
-      expect(dates).toEqual([]);
+      // 明细上的右滑不能误开编辑；纵向、短滑及取消均不切换日期。
+      await swipe(page, -20);
+      await swipe(page, -5, -60);
+      await swipe(page, 120, 0, true);
       await swipe(page, -120);
+      expect(dates).toEqual([]);
+      await swipe(page, 120);
       await expect(title).toHaveText('时迹 ' + previous);
       await expect(page.locator('.empty-label')).toHaveText(previous + '暂无记录');
       await expect(page.getByRole('dialog')).toHaveCount(0);
       expect(dates).toEqual([previous]);
+
+      // 新增沿用卡片日期，并只获取该日的推荐时段。
+      let recommendedDate = '';
+      await page.route('**/api/timeRecord/recommendNext?*', route => {
+        recommendedDate = new URL(route.request().url()).searchParams.get('date');
+        return route.fulfill({ json: { code: 0, data: { records: [], recommend: { categoryId: '0', startTime: 600, endTime: 659 } } } });
+      });
+      await page.route('**/api/timeRecord/relateTypes', route => route.fulfill({ json: { code: 0, data: [] } }));
+      await page.route('**/api/userDictType/getByDictType?*', route => route.fulfill({ json: { code: 0, data: { dictDetailList: [] } } }));
+      await page.getByRole('button', { name: '新增时迹', exact: true }).click();
+      const editor = page.getByRole('dialog', { name: '记录时间', exact: true });
+      await expect(editor.locator('[aria-label="记录日期"]')).toContainText(previous);
+      await expect(editor.locator('.compact-fields')).toBeVisible();
+      expect(recommendedDate).toBe(previous);
+      await dismissModal(page);
 
       // 每分钟时钟及卡片刷新均保留历史日期。
       await page.clock.fastForward(61000);
@@ -271,7 +286,7 @@ test.describe('首页时迹日期横滑', () => {
       expect(dates.at(-1)).toBe(previous);
 
       fail = true;
-      await swipe(page, 120);
+      await swipe(page, -120);
       await expect(page.getByRole('button', { name: '时迹更新失败，点击重试' })).toBeVisible();
       await expect(title).toHaveText('时迹 ' + previous);
       fail = false;
@@ -280,7 +295,7 @@ test.describe('首页时迹日期横滑', () => {
       await expect(page.locator('.donut-total')).toHaveText('1h');
       expect(dates.slice(-2)).toEqual([today, today]);
       const count = dates.length;
-      await swipe(page, 120);
+      await swipe(page, -120);
       expect(dates).toHaveLength(count);
     });
   }
