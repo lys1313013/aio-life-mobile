@@ -30,8 +30,7 @@ const rows = ref<any[]>([]),
   keyword = ref(''),
   loading = ref(false),
   refreshing = ref(false),
-  error = ref(''),
-  busy = ref('');
+  error = ref('');
 const windowWidth = ref(uni.getWindowInfo().windowWidth);
 const noteColumnCount = computed(() => kind.value === 'memo' && windowWidth.value >= 1000 ? 3 : 2);
 const noteColumns = computed(() => {
@@ -167,20 +166,6 @@ async function save() {
     saving.value = false;
   }
 }
-async function toggle(item, field) {
-  if (busy.value) return;
-  busy.value = item.id + field;
-  const value = field === 'isPinned' ? (item.isPinned === 1 ? 0 : 1) : !item.hiddenContent;
-  try {
-    await scope.wait(saveNote(kind.value, { id: item.id, [field]: value }));
-    item[field] = value;
-  } catch (e) {
-    if (e.name === 'PageInactiveError') return;
-    error.value = e.message;
-  } finally {
-    busy.value = '';
-  }
-}
 async function remove(item) {
   await scope.wait(deleteNote(kind.value, item.id));
   rows.value = rows.value.filter((row) => row.id !== item.id);
@@ -244,9 +229,6 @@ function displayDate(value) {
           <view class="note-footer ui-row">
             <AppIcon v-if="kind === 'think' && item.isPinned === 1" name="ant-design:pushpin-filled" :size="13" color="#6989bc" aria-label="已展示到看板" /><text class="note-date" :class="{ 'secondary-text-dark': isDark }">{{ displayDate(item.updateTime || item.createTime) }}</text>
             <view v-if="kind === 'think' && (item.events || []).length" class="note-event-count"><AppIcon name="ant-design:link-outlined" :size="12" color="#8b8f99" /><text class="note-event-value ui-type-badge" :class="{ 'secondary-text-dark': isDark }">{{ item.events.length }}</text></view>
-            <button class="note-visibility ui-type-body" role="button" :aria-label="item.hiddenContent ? '显示内容' : '隐藏内容'" :loading="busy === item.id + 'hiddenContent'" :disabled="!!busy" @click.stop="toggle(item, 'hiddenContent')" @keydown.enter.stop @keydown.space.stop>
-              <AppIcon v-if="busy !== item.id + 'hiddenContent'" :name="item.hiddenContent ? 'ant-design:eye-outlined' : 'ant-design:eye-invisible-outlined'" :size="16" color="#8b8f99" />
-            </button>
           </view>
         </view></view></view> </PageState
       ><LoadMore :error="moreError" :loading="loading" :has-more="hasMorePageItems(rows.length, total, pageEnded)" @load="load(false, true)" />
@@ -270,7 +252,7 @@ function displayDate(value) {
 @use '../../styles/text-colors' as *;
 @use '../../styles/spacing.scss';
 @use '../../styles/spacing-tokens' as *;
-@include type-utilities('badge', 'body');
+@include type-utilities('badge');
 
 .notes-page {
   padding-bottom: 80px; /* 浮动新增按钮避让 */
@@ -382,7 +364,6 @@ text-overflow: ellipsis;
 }
 .note-date { flex: 1; min-width: 0; color: $text-secondary-light; @include type-style('badge');  }
 .note-event-count { flex-direction: row; align-items: center; gap: $space-micro; color: $text-secondary-light; @include type-style('badge'); }
-.note-visibility { display: flex; align-items: center; justify-content: center; flex-shrink: 0; width: $space-controlMin; height: $space-controlMin; margin: (-$space-inline) (-$space-inline) (-$space-inline) 0; padding: 0; border: 0; background-color: transparent; }
 .note-title {
 /* #ifndef APP */
 word-break: break-word;
@@ -392,7 +373,6 @@ word-break: break-all;
 /* #endif */
  }
 /* #ifdef WEB || MP-WEIXIN */
-.note-visibility::after { border: 0; }
 .note-card:focus-visible { outline: 2px solid #417ce8; outline-offset: 2px; }
 /* #endif */
 
