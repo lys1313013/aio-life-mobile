@@ -43,6 +43,9 @@ test('监听第二轮复用共享工具虚拟 ID，并读取最新源码', async
 
 test('监听增量不包含 app.json 时仍检查完整产物和依赖归属', async t => {
   const root = fixture(t), plugin = weixinSubpackageVendors(), ctx = context();
+  fs.mkdirSync(path.join(root, 'artifacts/weixin-size'), { recursive: true });
+  fs.writeFileSync(path.join(root, 'artifacts/weixin-size/report.json'), 'release report fixture');
+  fs.writeFileSync(path.join(root, 'artifacts/weixin-size/chunks.json'), 'release chunks fixture');
   plugin.configResolved({ root });
   await plugin.buildStart.call(ctx);
   const id = plugin.resolveId.call(ctx, 'xlsx', path.join(root, 'src/pages/finance/index.ts'));
@@ -51,6 +54,9 @@ test('监听增量不包含 app.json 时仍检查完整产物和依赖归属', a
     'app.json': { type: 'asset', fileName: 'app.json', source: JSON.stringify({ pages: [], subPackages: [{ root: 'pages/finance', pages: ['index'] }] }) },
     'app.js': chunk('app.js'),
   });
+  assert.equal(fs.readFileSync(path.join(root, 'artifacts/weixin-size/report.json'), 'utf8'), 'release report fixture');
+  assert.equal(fs.readFileSync(path.join(root, 'artifacts/weixin-size/chunks.json'), 'utf8'), 'release chunks fixture');
+  assert.ok(fs.existsSync(path.join(root, 'artifacts/weixin-size/dev/chunks.json')));
   await plugin.buildStart.call(ctx);
   assert.equal(manual(id, {}), 'pages/finance/common/vendor');
   assert.doesNotThrow(() => plugin.generateBundle.handler.call(ctx, {}, { 'app.js': chunk('app.js') }));

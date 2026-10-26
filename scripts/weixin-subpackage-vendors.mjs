@@ -22,6 +22,7 @@ export function weixinSubpackageVendors() {
   const emitted = new Map();
   let roots = [];
   let chartRuntime;
+  let reportDirectory;
   const owner = file => roots.find(root => file.startsWith(root + '/')) || '';
   return {
     name: 'aio-weixin-subpackage-vendors',
@@ -43,8 +44,10 @@ export function weixinSubpackageVendors() {
       // 保留 Rollup 缓存模块对应的虚拟 ID 归属，供增量 load / manualChunks 使用。
       // 只清理打包内容，避免依赖变更后继续使用旧代码。
       bundles.clear();
+      // A running dev watcher must not erase or overwrite a release size report.
+      reportDirectory = path.join(root, 'artifacts/weixin-size', ...(this.meta.watchMode ? ['dev'] : []));
       for (const name of ['report.json', 'report.txt', 'chunks.json']) {
-        rmSync(path.join(root, 'artifacts/weixin-size', name), { force: true });
+        rmSync(path.join(reportDirectory, name), { force: true });
       }
       // Shared Cartesian engine is fetched with require.async, never synchronously
       // imported from the main package or another business subpackage.
@@ -169,7 +172,7 @@ export function weixinSubpackageVendors() {
           imports: [], rollupImports: [], dynamicImports: [],
           modules: Object.entries(chartRuntime.metafile.inputs).map(([id, info]) => ({ id, bytes: info.bytes })).sort((a, b) => b.bytes - a.bytes),
         });
-        const directory = path.join(root, 'artifacts/weixin-size');
+        const directory = reportDirectory;
         mkdirSync(directory, { recursive: true });
         writeFileSync(path.join(directory, 'chunks.json'), JSON.stringify(report, null, 2) + '\n');
       },

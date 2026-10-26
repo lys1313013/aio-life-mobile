@@ -26,6 +26,8 @@ npm run dev
 
 微信开发使用 `npm run dev:weixin`，等待终端出现 `Build complete. Watching for changes...` 后，在微信开发者工具打开 `dist/dev/mp-weixin`，并保持监听进程运行。需要连接线上接口时使用 `VITE_API_BASE_URL=https://aiolife.top/api npm run dev:weixin`。`npm run build:weixin` 是一次性发布构建，不能代替源码监听；完整流程及不更新时的排查步骤见[开发时自动更新](docs/微信小程序构建与包体.md#开发时自动更新)。
 
+两个微信命令均先在隔离目录编译，资源复制完整后才同步到上述稳定目录；重启编译不会先清空开发者工具项目，编译失败保留上次产物。同一输出目录的重复编译会被阻止。不要直接运行 `uni -p mp-weixin` 或导入 `artifacts/weixin-output/` 下的内部目录。
+
 环境变量：
 
 | 变量 | 用途 |
