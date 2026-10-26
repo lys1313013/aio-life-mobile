@@ -2,12 +2,12 @@
 import CalendarPicker from './CalendarPicker.uvue';
 import { buttonLabelClasses } from '../services/button-label.ts'
 import LoadingIndicator from './LoadingIndicator.uvue';
-import ContentSkeleton from './ContentSkeleton.uvue';
 import spacing from '../styles/spacing.json'
 import AppIcon from './AppIcon.uvue'
 import { themeClass } from '../services/theme.ts'
 import { recordChanged } from '../services/time-changes.ts'
-import { computed, ref, watch, onMounted, onUnmounted } from 'vue'
+import { computed, getCurrentInstance, nextTick, ref, watch, onMounted, onUnmounted } from 'vue'
+import { useWindowResize } from '../services/window-resize.ts'
 import AdaptiveModal from './AdaptiveModal.uvue'
 import FormActions from './FormActions.uvue'
 import FormField from './FormField.uvue'
@@ -63,6 +63,31 @@ const form = ref<TimeRecord>({
 })
 const choosingCategory = ref(false)
 const choosingTime = ref('')
+const editorInstance = getCurrentInstance()
+const timeAnchor = ref({ left: 0, top: 0, width: 0, height: 0 })
+let timeAnchorRequest = 0
+async function openTimePicker(field: string) {
+  if (saving.value || deleting.value) return
+  const request = ++timeAnchorRequest
+  const currentGeneration = generation
+  await nextTick()
+  if (!active || currentGeneration !== generation) return
+  uni.createSelectorQuery().in(editorInstance?.proxy)
+    .select('.time-anchor-' + field)
+    .boundingClientRect((rect) => {
+      if (!active || request !== timeAnchorRequest || currentGeneration !== generation) return
+      if (!rect || Array.isArray(rect) || !rect.width || !rect.height) return
+      timeAnchor.value = { left: rect.left, top: rect.top, width: rect.width, height: rect.height }
+      choosingTime.value = field
+    }).exec()
+}
+function closeTimePicker() {
+  timeAnchorRequest++
+  choosingTime.value = ''
+}
+useWindowResize(() => {
+  if (choosingTime.value) openTimePicker(choosingTime.value)
+})
 const previewTime = ref<number | null>(null)
 watch(choosingTime, () => { previewTime.value = null })
 const pickerBounds = computed(() => timeSelectionBounds(form.value, existing.value, choosingTime.value))
@@ -293,7 +318,7 @@ function changeTime(minutes: number) {
   const bounds = pickerBounds.value
   if (minutes < bounds.min || minutes > bounds.max) return
   form.value[choosingTime.value] = minutes
-  choosingTime.value = ''
+  closeTimePicker()
 }
 function changeDuration(event, unit: string) {
   const value = Number(event.detail.value)
@@ -514,7 +539,8 @@ function closeSelection() {
   <AdaptiveModal
     :label="id ? '编辑时迹' : '记录时间'"
     :show-close="false"
-    :max-width="compact ? 440 : 600"
+    :dense="compact && !loading"
+    :max-width="loading ? 280 : compact ? 440 : 600"
     :vertical-inset="spacing.overlayBlock + spacing.modal"
     :busy="saving || deleting"
     :content-key="layoutKey"
@@ -522,22 +548,8 @@ function closeSelection() {
   >
     <view class="editor-content">
       <view v-if="loading" class="editor-loading">
-        <view v-if="compact" class="editor-loading-skeleton" aria-hidden="true">
-          <view class="compact-fields">
-            <view class="compact-row editor-placeholder editor-loading-row" :class="themeClass('editor-placeholder')" />
-            <view class="compact-row editor-placeholder editor-loading-row" :class="themeClass('editor-placeholder')" />
-            <view class="compact-time-range editor-placeholder" :class="themeClass('editor-placeholder')"><view class="compact-time-field" /></view>
-          </view>
-          <view class="compact-notes">
-            <view class="compact-title editor-placeholder" :class="themeClass('editor-placeholder')" />
-            <view class="compact-description editor-placeholder" :class="themeClass('editor-placeholder')" />
-          </view>
-        </view>
-        <ContentSkeleton v-else variant="form" :rows="4" label="正在加载时迹详情" />
-        <view class="editor-loading-status">
-          <LoadingIndicator compact label="正在加载时迹详情" />
-          <text class="loading-label" :class="themeClass('loading-label')" aria-hidden="true">正在加载</text>
-        </view>
+        <LoadingIndicator compact label="正在加载时迹详情" />
+        <text class="loading-label" :class="themeClass('loading-label')" aria-hidden="true">正在加载</text>
       </view>
       <view v-if="full" class="state-card"
          :class="themeClass('state-card')"><text class="empty-title" :class="themeClass('empty-title')">该天已录入完毕</text
@@ -569,8 +581,8 @@ function closeSelection() {
           </button>
           <view class="compact-time-section">
             <view class="compact-time-range" :class="themeClass('compact-time-range')">
-              <button role="button" class="compact-time-picker end-time-trigger" aria-label="开始时间"
-                :disabled="saving || deleting" @click="choosingTime = 'startTime'">
+              <button role="button" class="compact-time-picker end-time-trigger time-anchor-startTime" aria-label="开始时间"
+                :disabled="saving || deleting" @click="openTimePicker('startTime')">
                 <view class="compact-time-field">
                   <text class="compact-time-label" :class="themeClass('compact-time-label')">开始</text>
                   <text class="compact-time-number" :class="themeClass('compact-time-number')">{{ clockLabel(previewRecord.startTime) }}</text>
@@ -583,8 +595,8 @@ function closeSelection() {
                   <view class="compact-time-arrow-head" />
                 </view>
               </view>
-              <button role="button" class="compact-time-picker end-time-trigger" aria-label="结束时间"
-                :disabled="saving || deleting" @click="choosingTime = 'endTime'">
+              <button role="button" class="compact-time-picker end-time-trigger time-anchor-endTime" aria-label="结束时间"
+                :disabled="saving || deleting" @click="openTimePicker('endTime')">
                 <view class="compact-time-field">
                   <text class="compact-time-label" :class="themeClass('compact-time-label')">结束</text>
                   <text class="compact-time-number" :class="themeClass('compact-time-number')">{{ clockLabel(previewRecord.endTime) }}</text>
@@ -659,8 +671,9 @@ function closeSelection() {
                   @touchcancel="stopAdjust"
                 ><AppIcon name="ant-design:minus-outlined" :size="18" /></button>
                 <button role="button" class="time-picker end-time-trigger"
+                  :class="'time-anchor-' + field"
                   :aria-label="field === 'startTime' ? '开始时间' : '结束时间'"
-                  :disabled="saving || deleting" @click="choosingTime = field">
+                  :disabled="saving || deleting" @click="openTimePicker(field)">
                   <view class="time-field"><text class="time-number" :class="themeClass('time-number')">{{ clockLabel(previewRecord[field]) }}</text></view>
                 </button>
                 <button
@@ -805,10 +818,10 @@ function closeSelection() {
 
       </view>
     </view>
-    <template #footer>
-        <FormActions>
-          <template #secondary>
-          <view v-if="ready && id" class="delete-anchor"
+    <template v-if="!loading" #footer>
+        <FormActions :expand-primary="compact && ready">
+          <template v-if="ready && id" #secondary>
+          <view class="delete-anchor"
             ><button
               role="button"
               class="delete-button"
@@ -841,6 +854,7 @@ function closeSelection() {
           >
           </template>
           <button
+            v-if="!compact || (!ready && !loading)"
             role="button"
             class="cancel-action"
             :disabled="saving || deleting"
@@ -848,11 +862,11 @@ function closeSelection() {
            :class="themeClass('cancel-action')">
             <text class="action-label action-label-cancel" :class="themeClass('action-label-cancel')">取消</text>
           </button>
-          <view v-if="loading" class="editor-loading-action editor-placeholder" :class="themeClass('editor-placeholder')" aria-hidden="true" />
           <button
             role="button"
             v-if="ready"
             class="save-button"
+            :class="{ 'compact-save': compact }"
             :disabled="saving || deleting"
             :aria-disabled="saving || deleting"
             :loading="saving"
@@ -941,10 +955,11 @@ function closeSelection() {
   </AdaptiveModal>
 
   <TimeEndPicker v-if="choosingTime" :value="form[choosingTime]"
+    :anchor="timeAnchor"
     :min="pickerBounds.min" :max="pickerBounds.max"
     :label="choosingTime === 'startTime' ? '开始时间' : '结束时间'"
     :show-now="choosingTime === 'endTime'"
-    @preview="previewTime = $event" @change="changeTime" @close="choosingTime = ''" />
+    @preview="previewTime = $event" @change="changeTime" @close="closeTimePicker" />
 </template>
 
 <style scoped lang="scss">
@@ -1197,6 +1212,7 @@ function closeSelection() {
   color: #ffffff !important;
   @include type-style('body');
 }
+.compact-save { flex: 1; width: auto; }
 .delete-anchor {
   overflow: visible;
   position: relative;
@@ -1370,31 +1386,22 @@ function closeSelection() {
   }
 }
 
-.editor-loading { position: relative; }
-.editor-loading-skeleton { width: 100%; }
-.editor-placeholder { background-color: #edf0f4; border-color: transparent; }
-.editor-placeholder-dark { background-color: #2b3038; }
-.editor-loading-row { margin-bottom: $space-form; }
-.editor-loading-action { width: $space-modalActionMin; height: $space-controlMin; border-radius: 10px; }
-.editor-loading-status {
-  position: absolute;
-  left: 0;
-  right: 0;
-  top: 0;
-  bottom: 0;
+.editor-loading {
+  position: relative;
+  min-height: 104px;
   align-items: center;
   justify-content: center;
   gap: $space-detail;
 }
-.loading-label { @include type-style('label');  color: #71717a; }
+.loading-label { @include type-style('label'); color: #71717a; }
 .loading-label-dark { color: #a1a1aa; }
 
 /* 首页与时迹共用：时间、附属记录、标题和描述。 */
 .compact-fields,
 .compact-notes {
   gap: $space-form;
-  margin-bottom: $space-form;
 }
+.compact-fields { margin-bottom: $space-form; }
 .compact-row {
   display: flex;
   flex-direction: row;

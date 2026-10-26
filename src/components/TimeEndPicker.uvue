@@ -4,12 +4,16 @@ import { computed, nextTick, onUnmounted, ref, watch } from 'vue'
 import { clampTimeSelection, resolveTimeWheelSelection } from '../services/time-selection.ts'
 import spacing from '../styles/spacing.json'
 import { isDark, themeClass } from '../services/theme.ts'
+import { useWindowResize } from '../services/window-resize.ts'
 // #ifdef MP-WEIXIN
 import { registerModal } from '../services/modal-presence.ts'
 import WeixinModalBackGuard from './WeixinModalBackGuard.uvue'
 // #endif
 
-const props = withDefaults(defineProps<{ value: number; min?: number; max?: number; label?: string; showNow?: boolean }>(), {
+const props = withDefaults(defineProps<{
+  value: number; min?: number; max?: number; label?: string; showNow?: boolean;
+  anchor: { left: number; top: number; width: number; height: number };
+}>(), {
   min: 0, max: 1439, label: '结束时间', showNow: true,
 })
 const emit = defineEmits(['change', 'close', 'preview'])
@@ -21,21 +25,57 @@ const selected = ref(props.min <= props.max ? clampTimeSelection(props.value, pr
 const hourSelection = ref([Math.floor(selected.value / 60)])
 const hours = Array.from({ length: 24 }, (_, index) => index)
 const minutes = Array.from({ length: 1440 }, (_, index) => index)
-const minuteRowHeight = spacing.controlMin - spacing.inline
+const minuteRowHeight = spacing.controlMin - spacing.detail
 const minuteScrollTop = ref(selected.value * minuteRowHeight)
 const minuteIndicatorStyle = `height: ${minuteRowHeight}px;`
+const viewport = ref(uni.getWindowInfo())
+useWindowResize(() => { viewport.value = uni.getWindowInfo() })
+const placement = computed(() => {
+  const info = viewport.value
+  const inset = spacing.overlayInline
+  const minTop = (info.safeAreaInsets?.top || 0) + spacing.inline
+  const maxBottom = info.windowHeight - (info.safeAreaInsets?.bottom || 0) - spacing.inline
+  // 七行滚轮略大于旧版五行；窄屏限制宽度，短视口先减少行数，仍优先贴在字段下方。
+  const width = Math.min(spacing.controlMin * 7, info.windowWidth - inset * 2)
+  const left = Math.max(inset, Math.min(
+    props.anchor.left + props.anchor.width / 2 - width / 2,
+    info.windowWidth - inset - width,
+  ))
+  const toolbarHeight = spacing.controlMin + spacing.hairline
+  const below = props.anchor.top + props.anchor.height + spacing.detail
+  const belowSpace = maxBottom - below
+  const aboveSpace = props.anchor.top - spacing.detail - minTop
+  const useAbove = belowSpace < toolbarHeight + minuteRowHeight * 3 && aboveSpace > belowSpace
+  const availableHeight = Math.max(0, useAbove ? aboveSpace : belowSpace)
+  const fittingRows = Math.floor((availableHeight - toolbarHeight) / minuteRowHeight)
+  const rows = Math.max(1, Math.min(7, fittingRows % 2 === 0 ? fittingRows - 1 : fittingRows))
+  const height = toolbarHeight + rows * minuteRowHeight
+  const top = Math.max(minTop, Math.min(
+    useAbove ? props.anchor.top - spacing.detail - height : below,
+    maxBottom - height,
+  ))
+  return { left, top, width, rows }
+})
+const panelStyle = computed(() => ({
+  left: placement.value.left + 'px', top: placement.value.top + 'px', width: placement.value.width + 'px',
+}))
+const wheelStyle = computed(() => ({ height: placement.value.rows * minuteRowHeight + 'px' }))
+const spacerStyle = computed(() => ({ height: (placement.value.rows - 1) / 2 * minuteRowHeight + 'px' }))
 let minuteSnapTimer: ReturnType<typeof setTimeout> | null = null
 let ignoreInitialMinuteScroll = true
+let minuteActualTop = minuteScrollTop.value
+let minuteTouching = false
+let minuteSnapRequest = 0
+let active = true
 const available = computed(() => props.min <= props.max)
 const nowMinute = ref(currentMinute())
 const nowDisabled = computed(() => !available.value || isDisabled(nowMinute.value))
 function currentMinute() { const now = new Date(); return now.getHours() * 60 + now.getMinutes() }
 function isDisabled(value: number) { return !available.value || value < props.min || value > props.max }
 function hourDisabled(hour: number) { return !available.value || hour * 60 > props.max || hour * 60 + 59 < props.min }
-const safeBottom = uni.getWindowInfo().safeAreaInsets?.bottom || 0
 const maskStyle = computed(() => {
   const color = isDark.value ? '28, 30, 34' : '255, 255, 255'
-  return `background-image: linear-gradient(180deg, rgba(${color}, 0.95), rgba(${color}, 0.6)), linear-gradient(0deg, rgba(${color}, 0.95), rgba(${color}, 0.6));`
+  return `background-image: linear-gradient(180deg, rgba(${color}, 0.65), rgba(${color}, 0)), linear-gradient(0deg, rgba(${color}, 0.65), rgba(${color}, 0));`
 })
 async function change(event, field: string) {
   const raw = [...event.detail.value]
@@ -55,24 +95,59 @@ function changeMinute(event) {
     ignoreInitialMinuteScroll = false
     if (Math.abs(scrollTop - selected.value * minuteRowHeight) > minuteRowHeight / 2) return
   }
+  minuteActualTop = scrollTop
+  minuteSnapRequest++
   const next = clampTimeSelection(index, props.min, props.max)
   if (next !== selected.value) {
     selected.value = next
     hourSelection.value = [Math.floor(next / 60)]
     emit('preview', next)
   }
+  scheduleMinuteSnap()
+}
+function clearMinuteSnap() {
   if (minuteSnapTimer) clearTimeout(minuteSnapTimer)
+  minuteSnapTimer = null
+}
+function scheduleMinuteSnap() {
+  clearMinuteSnap()
+  if (minuteTouching) return
+  // 惯性滚动每次通知都重新计时，停滚后再吸附；手指按住时不抢滚动位置。
   minuteSnapTimer = setTimeout(() => {
-    minuteScrollTop.value = selected.value * minuteRowHeight
     minuteSnapTimer = null
-  // Keep the programmatic alignment out of an active touch gesture. A short
-  // debounce can snap the scroll view while the finger is still moving, which
-  // drops a row on slower devices and in headless CI.
-  }, 300)
+    snapMinute()
+  }, 120)
+}
+async function snapMinute() {
+  if (!active || minuteTouching) return
+  const request = ++minuteSnapRequest
+  // scroll-top 绑定值不会随用户滚动更新。先同步真实位置，再写目标值，
+  // 即使舍入后的分钟没变，也能触发 uni 重新定位，消除停在两行之间的情况。
+  minuteScrollTop.value = minuteActualTop
+  await nextTick()
+  if (!active || minuteTouching || request !== minuteSnapRequest) return
+  minuteScrollTop.value = selected.value * minuteRowHeight
+}
+function startMinuteTouch() {
+  minuteTouching = true
+  minuteSnapRequest++
+  clearMinuteSnap()
+}
+function endMinuteTouch() {
+  minuteTouching = false
+  scheduleMinuteSnap()
+}
+function selectMinute(minute: number) {
+  if (isDisabled(minute)) return
+  selected.value = minute
+  emit('preview', minute)
+  alignSelection()
 }
 function alignSelection() {
-  hourSelection.value = [Math.floor(selected.value / 60)]
-  minuteScrollTop.value = selected.value * minuteRowHeight
+  const hour = Math.floor(selected.value / 60)
+  if (hourSelection.value[0] !== hour) hourSelection.value = [hour]
+  clearMinuteSnap()
+  snapMinute()
 }
 watch(() => [props.value, props.min, props.max], () => {
   selected.value = available.value ? clampTimeSelection(props.value, props.min, props.max) : props.value
@@ -82,8 +157,10 @@ watch(() => [props.value, props.min, props.max], () => {
 // 弹层停留期间保持“此刻”的禁用状态准确，点击时再次读取最新时间。
 const clockTimer = setInterval(() => { nowMinute.value = currentMinute() }, 1000)
 onUnmounted(() => {
+  active = false
+  minuteSnapRequest++
   clearInterval(clockTimer)
-  if (minuteSnapTimer) clearTimeout(minuteSnapTimer)
+  clearMinuteSnap()
 })
 function confirm() {
   if (available.value && !isDisabled(selected.value)) emit('change', selected.value)
@@ -95,15 +172,38 @@ function useCurrentTime() {
 </script>
 
 <template>
-  <!-- 微信端从编辑弹窗内部滚动区脱离，时间选择层始终贴齐视口底部。 -->
+  <!-- 脱离编辑弹窗滚动区，按触发字段的视口坐标显示，避免被表单裁切。 -->
   <!-- #ifdef MP-WEIXIN -->
   <root-portal :enable="true">
     <WeixinModalBackGuard @close="emit('close')" />
   <!-- #endif -->
   <view class="time-end-mask" @click="emit('close')">
-    <view class="time-end-panel" :class="themeClass('time-end-panel')"
-      :style="{ paddingBottom: safeBottom + 'px' }"
+    <view class="time-end-panel" :class="themeClass('time-end-panel')" :style="panelStyle"
       role="dialog" :aria-label="'选择' + label" aria-modal="true" @click.stop>
+      <view class="time-end-wheels">
+        <picker-view class="time-end-wheel" :style="wheelStyle" :value="hourSelection" :immediate-change="true"
+          :indicator-style="minuteIndicatorStyle" :mask-style="maskStyle"
+          @change="change($event, 'hour')">
+          <picker-view-column>
+            <view v-for="hour in hours" :key="hour" class="time-end-item">
+              <text class="time-end-number" :class="[themeClass('time-end-number'), { 'time-option-disabled': hourDisabled(hour), 'time-end-number-selected': Math.floor(selected / 60) === hour }, themeClass({ 'time-end-number-selected': Math.floor(selected / 60) === hour })]" :aria-selected="Math.floor(selected / 60) === hour" :aria-disabled="hourDisabled(hour)">{{ String(hour).padStart(2, '0') }}</text>
+            </view>
+          </picker-view-column>
+        </picker-view>
+        <view class="time-end-wheel time-end-minute-wheel" :style="wheelStyle">
+          <scroll-view class="time-end-minute-scroll" :scroll-y="true" :scroll-top="minuteScrollTop"
+            :scroll-with-animation="false" :show-scrollbar="false" @scroll="changeMinute"
+            @touchstart="startMinuteTouch" @touchend="endMinuteTouch" @touchcancel="endMinuteTouch">
+            <view class="time-end-minute-spacer" :style="spacerStyle" />
+            <view v-for="minute in minutes" :key="minute" class="time-end-item" @click="selectMinute(minute)">
+              <text class="time-end-number" :class="[themeClass('time-end-number'), { 'time-option-disabled': isDisabled(minute), 'time-end-number-selected': selected === minute }, themeClass({ 'time-end-number-selected': selected === minute })]" :aria-selected="selected === minute" :aria-disabled="isDisabled(minute)">{{ String(minute % 60).padStart(2, '0') }}</text>
+            </view>
+            <view class="time-end-minute-spacer" :style="spacerStyle" />
+          </scroll-view>
+          <view class="time-end-minute-mask" :style="maskStyle" />
+          <view class="time-end-minute-indicator" :class="themeClass('time-end-minute-indicator')" :style="minuteIndicatorStyle" />
+        </view>
+      </view>
       <view class="time-end-toolbar" :class="themeClass('time-end-toolbar')">
         <button role="button" class="time-end-action" :class="themeClass('time-end-action')"
           @click="emit('close')"><text :class="buttonLabelClasses(['time-end-action', themeClass('time-end-action')])">取消</text></button>
@@ -111,29 +211,6 @@ function useCurrentTime() {
           :aria-label="label + '设为此刻'" :disabled="nowDisabled" @click="useCurrentTime"><text :class="buttonLabelClasses(['time-end-action time-end-primary', [themeClass('time-end-primary'), { 'time-option-disabled': nowDisabled }]])">此刻</text></button>
         <button role="button" class="time-end-action time-end-primary time-end-confirm" :class="themeClass('time-end-primary')"
           :disabled="!available || isDisabled(selected)" @click="confirm"><text :class="buttonLabelClasses(['time-end-action time-end-primary time-end-confirm', themeClass('time-end-primary')])">完成</text></button>
-      </view>
-      <view class="time-end-wheels">
-        <picker-view class="time-end-wheel" :value="hourSelection" :immediate-change="true"
-          :indicator-style="'height: ' + (spacing.controlMin - spacing.inline) + 'px;'" :mask-style="maskStyle"
-          @change="change($event, 'hour')">
-          <picker-view-column>
-            <view v-for="hour in hours" :key="hour" class="time-end-item">
-              <text class="time-end-number" :class="[themeClass('time-end-number'), { 'time-option-disabled': hourDisabled(hour) }]" :aria-disabled="hourDisabled(hour)">{{ String(hour).padStart(2, '0') }}</text>
-            </view>
-          </picker-view-column>
-        </picker-view>
-        <view class="time-end-wheel time-end-minute-wheel">
-          <scroll-view class="time-end-minute-scroll" :scroll-y="true" :scroll-top="minuteScrollTop"
-            :scroll-with-animation="false" :show-scrollbar="false" @scroll="changeMinute">
-            <view class="time-end-minute-spacer" />
-            <view v-for="minute in minutes" :key="minute" class="time-end-item">
-              <text class="time-end-number" :class="[themeClass('time-end-number'), { 'time-option-disabled': isDisabled(minute) }]" :aria-disabled="isDisabled(minute)">{{ String(minute % 60).padStart(2, '0') }}</text>
-            </view>
-            <view class="time-end-minute-spacer" />
-          </scroll-view>
-          <view class="time-end-minute-mask" :style="maskStyle" />
-          <view class="time-end-minute-indicator" :class="themeClass('time-end-minute-indicator')" :style="minuteIndicatorStyle" />
-        </view>
       </view>
     </view>
   </view>
@@ -153,15 +230,13 @@ function useCurrentTime() {
   bottom: 0;
   left: 0;
   z-index: 1200;
-  justify-content: flex-end;
-  align-items: center;
-  background-color: rgba(0, 0, 0, 0.4);
+  background-color: transparent;
 }
 .time-end-panel {
-  width: 100%;
-  max-width: 600px;
+  position: absolute;
   background-color: #ffffff;
-  border-radius: 12px 12px 0 0;
+  border-radius: 12px;
+  box-shadow: 0 $space-detail $space-modal rgba(0, 0, 0, 0.18);
   overflow: hidden;
 }
 .time-end-panel-dark { background-color: #1c1e22; }
@@ -170,9 +245,9 @@ function useCurrentTime() {
   align-items: center;
   justify-content: space-between;
   padding: 0 $space-inline;
-  border-bottom: 1px solid #e5e7eb;
+  border-top: 1px solid #e5e7eb;
 }
-.time-end-toolbar-dark { border-bottom-color: #45474d; }
+.time-end-toolbar-dark { border-top-color: #45474d; }
 .time-end-action {
   display: flex;
   align-items: center;
@@ -196,17 +271,18 @@ function useCurrentTime() {
 .time-end-wheels {
   flex-direction: row;
   align-self: center;
-  width: $space-controlMin * 4;
+  width: $space-controlMin * 5;
+  max-width: 100%;
 }
 .time-end-wheel {
   width: 50%;
-  // 五行滚轮，与选中行的原生 indicator 高度一致。
+  // 七行滚轮，与选中行的原生 indicator 高度一致；短视口由定位逻辑缩减行数。
   // 滚轮滑动行可更紧凑，工具栏按钮仍保留 controlMin 点击区。
-  height: ($space-controlMin - $space-inline) * 5;
+  height: ($space-controlMin - $space-detail) * 7;
 }
 .time-end-minute-wheel { position: relative; overflow: hidden; }
 .time-end-minute-scroll { width: 100%; height: 100%; }
-.time-end-minute-spacer { height: ($space-controlMin - $space-inline) * 2; }
+.time-end-minute-spacer { height: ($space-controlMin - $space-detail) * 3; }
 .time-end-minute-mask {
   position: absolute;
   top: 0;
@@ -233,7 +309,7 @@ function useCurrentTime() {
 }
 .time-end-minute-indicator-dark { border-color: #45474d; }
 .time-end-item {
-  height: $space-controlMin - $space-inline;
+  height: $space-controlMin - $space-detail;
   align-items: center;
   justify-content: center;
 }
@@ -242,6 +318,8 @@ function useCurrentTime() {
   color: #27272a;
 }
 .time-end-number-dark { color: #eeeeef; }
+.time-end-number-selected { @include type-style('body-strong'); color: #1d4ed8; }
+.time-end-number-selected-dark { color: #9bbcff; }
 .time-option-disabled { opacity: 0.3; }
 
 
@@ -249,6 +327,7 @@ function useCurrentTime() {
 .app-button-label { @include type-style('body'); color: #27272a; }
 .app-button-label-dark { color: #eeeeef; }
 .time-end-action-label { @include type-style('body'); color: #27272a; }
+.time-end-action-dark-label { color: #eeeeef; }
 .time-end-primary-label {  color: #1d4ed8; }
 .time-end-primary-dark-label {  color: #9bbcff; }
 </style>

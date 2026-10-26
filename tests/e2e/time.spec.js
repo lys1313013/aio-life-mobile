@@ -137,11 +137,53 @@ async function moveTimeWheel(page, columnIndex, delta) {
   await cdp.detach();
 }
 
+for (const width of [390, 768, 1440]) for (const colorScheme of ['light', 'dark']) test(`时间滚轮半行回弹、点击选中与底部操作 ${width} ${colorScheme}`, async ({ page }) => {
+  await page.setViewportSize({ width, height: 900 });
+  await page.emulateMedia({ colorScheme });
+  const state = await setup(page);
+  await page.getByRole('button', { name: /^编辑记录 晨间运动(?:，|$)/ }).click();
+  const editor = page.getByRole('dialog', { name: '编辑时迹', exact: true });
+  await editor.getByRole('button', { name: '结束时间', exact: true }).click();
+  const picker = page.getByRole('dialog', { name: '选择结束时间', exact: true });
+  const scroll = picker.locator('.time-end-minute-scroll .uni-scroll-view').first();
+  const indicator = picker.locator('.time-end-minute-indicator');
+  const row = await indicator.boundingBox();
+  const centered = async () => {
+    const selected = await picker.locator('.time-end-minute-scroll [aria-selected="true"]').boundingBox();
+    const line = await indicator.boundingBox();
+    return Math.abs(selected.y + selected.height / 2 - line.y - line.height / 2);
+  };
+  await expect.poll(centered).toBeLessThan(1);
+  const wheels = await picker.locator('.time-end-wheels').boundingBox();
+  const toolbar = await picker.locator('.time-end-toolbar').boundingBox();
+  expect(toolbar.y).toBeGreaterThanOrEqual(wheels.y + wheels.height - 1);
+  await expect(picker.getByRole('button', { name: '取消', exact: true }).locator('uni-text'))
+    .toHaveCSS('color', colorScheme === 'dark' ? 'rgb(238, 238, 239)' : 'rgb(39, 39, 42)');
+  // 模拟滚动停在同一分钟的半行内：绑定的目标值与原来相同，仍必须重新对齐。
+  for (const offset of [0.3, -0.3, 0.3]) {
+    await scroll.evaluate((element, pixels) => { element.scrollTop += pixels; }, row.height * offset);
+    await expect.poll(centered).toBeLessThan(1);
+    await expect(editor.locator('.compact-time-number').nth(1)).toHaveText('09:59');
+  }
+  // 真实触摸手势停在非整格，释放后自动选中并吸附。
+  await moveTimeWheel(page, 1, 1.65);
+  await expect.poll(centered).toBeLessThan(1);
+  await picker.locator('.time-end-minute-scroll .time-end-item').nth(602).click();
+  await expect.poll(centered).toBeLessThan(1);
+  await expect(editor.locator('.compact-time-number').nth(1)).toHaveText('10:02');
+  await expect(picker.locator('uni-picker-view-column [aria-selected="true"]')).toHaveText('10');
+  await expect(picker.locator('.time-end-minute-scroll .time-end-number-selected')).toHaveText('02');
+  await page.screenshot({ path: `artifacts/time-end-picker/snap-footer-${width}-${colorScheme}.png` });
+  await picker.getByRole('button', { name: '取消', exact: true }).click();
+  await expect(editor.locator('.compact-time-number').nth(1)).toHaveText('09:59');
+  expect(state.updates).toHaveLength(0);
+});
+
 for (const width of [390, 768, 1440]) for (const colorScheme of ['light', 'dark']) test(`先调小时再滚动分钟跨界保持连续 ${width} ${colorScheme}`, async ({ page }) => {
   await page.setViewportSize({ width, height: 900 });
   await page.emulateMedia({ colorScheme });
   const state = await setup(page);
-  await page.getByRole('button', { name: '编辑记录 晨间运动', exact: true }).click();
+  await page.getByRole('button', { name: /^编辑记录 晨间运动(?:，|$)/ }).click();
   const editor = page.getByRole('dialog', { name: '编辑时迹', exact: true });
   const end = editor.locator('.compact-time-number').nth(1);
   await editor.getByRole('button', { name: '结束时间', exact: true }).click();

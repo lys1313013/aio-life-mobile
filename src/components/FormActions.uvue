@@ -1,11 +1,11 @@
 <script setup lang="ts">
-defineProps<{ stacked?: boolean }>();
+defineProps<{ stacked?: boolean; expandPrimary?: boolean }>();
 </script>
 
 <template>
   <view class="form-actions" :class="{ 'form-actions-stacked': stacked }">
-    <view class="form-actions-secondary" :class="{ 'form-actions-secondary-stacked': stacked }"><slot name="secondary" /></view>
-    <view class="form-actions-primary"><slot /></view>
+    <view v-if="!expandPrimary || $slots.secondary" class="form-actions-secondary" :class="{ 'form-actions-secondary-stacked': stacked, 'form-actions-secondary-compact': expandPrimary }"><slot name="secondary" /></view>
+    <view class="form-actions-primary" :class="{ 'form-actions-primary-expanded': expandPrimary }"><slot /></view>
   </view>
 </template>
 
@@ -40,6 +40,8 @@ defineProps<{ stacked?: boolean }>();
   flex-direction: column;
   align-items: stretch;
 }
+.form-actions-secondary-compact { flex: none; }
+.form-actions-primary-expanded { flex: 1; min-width: 0; margin-left: 0; }
 .form-actions-secondary-stacked {
   flex: none;
   width: 100%;
