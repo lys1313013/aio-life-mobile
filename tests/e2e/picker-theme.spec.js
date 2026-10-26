@@ -91,8 +91,13 @@ for (const mode of ['light', 'dark']) {
     await dialog.getByRole('button', { name: '记录日期', exact: true }).click();
     const calendar = page.getByRole('dialog', { name: '记录日期日历', exact: true });
     await expect(calendar).toBeVisible();
-    const calendarBackground = await calendar.evaluate(node => getComputedStyle(node).backgroundColor);
-    expect(calendarBackground).toBe(mode === 'dark' ? 'rgb(28, 30, 34)' : 'rgb(255, 255, 255)');
+    const calendarBackground = await calendar.evaluate(node => {
+      // 公共弹窗将玻璃背景绘制在独立 surface，外层 panel 本身透明。
+      const surface = node.querySelector('.modal-surface');
+      const color = surface && getComputedStyle(surface).backgroundColor;
+      return color && color !== 'rgba(0, 0, 0, 0)' ? color : getComputedStyle(node).backgroundColor;
+    });
+    expect(calendarBackground.match(/[\d.]+/g).slice(0, 3).map(Number)).toEqual(mode === 'dark' ? [28, 30, 34] : [255, 255, 255]);
     const text = calendar.locator('.calendar-text:not(.calendar-muted):not(.calendar-selected-text)').first();
     expect(contrast(await text.evaluate(node => getComputedStyle(node).color), calendarBackground)).toBeGreaterThanOrEqual(4.5);
     await page.screenshot({ path: `artifacts/picker-theme/记录日期-${mode}.png` });
