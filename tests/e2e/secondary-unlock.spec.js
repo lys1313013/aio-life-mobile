@@ -20,7 +20,7 @@ async function setup(page, initial = {}) {
     if (path === '/api/auth/secondary-verify') {
       const body = route.request().postDataJSON();
       state.verified.push(body);
-      if (body.password !== 'correct-fixture') return route.fulfill({ json: { code: 1, message: '二级密码错误' } });
+      if (body.password !== '001234') return route.fulfill({ json: { code: 1, message: '二级密码错误' } });
       state.unlocked = true;
       data = { menuPath: body.menuPath };
     }
@@ -41,7 +41,7 @@ async function setup(page, initial = {}) {
   return state;
 }
 for (const width of [390, 768, 1440]) for (const theme of ['light', 'dark']) {
-  test(`跳转前验证、取消、错误恢复与密码眼睛 ${width} ${theme}`, async ({ page }) => {
+  test(`跳转前验证、取消、错误恢复与数字键盘 ${width} ${theme}`, async ({ page }) => {
     await page.setViewportSize({ width, height: 900 });
     await page.emulateMedia({ colorScheme: theme });
     const state = await setup(page);
@@ -55,16 +55,17 @@ for (const width of [390, 768, 1440]) for (const theme of ['light', 'dark']) {
     await expect(page).toHaveURL(/pages\/life\/index/);
     expect(state.reads).toBe(0);
     const input = modal.locator('input');
-    await input.fill('wrong-fixture');
+    await input.fill('123');
+    await expect(modal.getByRole('button', { name: '确认密码', exact: true })).toBeDisabled();
+    await input.fill('9999');
     await expect(input).toHaveAttribute('type', 'password');
-    await modal.getByRole('button', { name: '显示密码', exact: true }).click();
-    await expect(input).toHaveAttribute('type', 'text');
-    await expect(input).toHaveValue('wrong-fixture');
-    await modal.getByRole('button', { name: '解锁', exact: true }).click();
+    await expect(modal.getByRole('button', { name: '显示密码', exact: true })).toHaveCount(0);
+    await expect(input).toHaveValue('9999');
+    await modal.getByRole('button', { name: '确认密码', exact: true }).click();
     await expect(modal.getByRole('alert')).toHaveText('二级密码错误');
     await expect(page).toHaveURL(/pages\/life\/index/);
     expect(state.reads).toBe(0);
-    await modal.getByRole('button', { name: '取消', exact: true }).click();
+    await page.mouse.click(4, 4);
     await expect(modal).toHaveCount(0);
     await expect(page).toHaveURL(/pages\/life\/index/);
     await entry.click();
@@ -73,11 +74,11 @@ for (const width of [390, 768, 1440]) for (const theme of ['light', 'dark']) {
     await expect(input).toHaveAttribute('type', 'password');
     await modal.screenshot({ path: `artifacts/secondary-unlock-guard/${width}-${theme}.png` });
     await page.screenshot({ path: `artifacts/secondary-unlock-guard/${width}-${theme}-page.png` });
-    await input.fill('correct-fixture');
-    await modal.getByRole('button', { name: '解锁', exact: true }).click();
+    await input.fill('001234');
+    await modal.getByRole('button', { name: '确认密码', exact: true }).click();
     await expect(page).toHaveURL(/pages\/records\/notes\?kind=memo/);
     await expect(modal).toHaveCount(0);
-    expect(state.verified.at(-1)).toEqual({ password: 'correct-fixture', menuPath: '/my-hub/memo' });
+    expect(state.verified.at(-1)).toEqual({ password: '001234', menuPath: '/my-hub/memo' });
     await expect.poll(() => state.reads).toBeGreaterThan(0);
     await page.locator('[aria-label="返回"]').click();
     await entry.click();
@@ -143,8 +144,8 @@ test('无锁结果缓存，重复进入不再检查；服务端2001仍触发解�
   await expect(modal).toBeVisible();
   expect(state.checks).toBe(1);
   expect(state.trees).toBe(0);
-  await modal.locator('input').fill('correct-fixture');
-  await modal.getByRole('button', { name: '解锁', exact: true }).click();
+  await modal.locator('input').fill('001234');
+  await modal.getByRole('button', { name: '确认密码', exact: true }).click();
   await expect(modal).toHaveCount(0);
   await page.locator('[aria-label="返回"]').click();
   await entry.click();

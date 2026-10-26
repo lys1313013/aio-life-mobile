@@ -65,8 +65,8 @@ test('接口菜单锁解锁后重试一次，隐藏菜单保留长ID',async({pag
  await expect(page).toHaveURL(/#\/pages\/mcp\/api-keys$/);
  const dialog=page.getByRole('dialog',{name:'解锁菜单',exact:true});
  await expect(dialog).toBeVisible();
- await dialog.locator('[aria-label="二级密码"] input').fill('fixture-secondary');
- await dialog.getByRole('button',{name:'解锁',exact:true}).click();
+ await dialog.locator('[aria-label="二级密码"] input').fill('001234');
+ await dialog.getByRole('button',{name:'确认密码',exact:true}).click();
  await expect(dialog).toHaveCount(0);
  await expect(page.getByRole('button',{name:'生成新 API Key',exact:true})).toBeEnabled();
  expect(state.unlock).toBe(true);
@@ -94,10 +94,10 @@ test('菜单锁使用完整字符串ID与二级密码；通知留空保留应用
  await page.locator('[aria-label="锁定记录 / 笔记"]').click();
  await page.getByRole('button',{name:'保存菜单锁',exact:true}).click();
  const lock=page.getByRole('dialog',{name:'确认菜单锁',exact:true});
- await lock.locator('[aria-label="二级密码"] input').fill('secondary-fixture');
- await lock.getByRole('button',{name:'保存',exact:true}).click();
+ await lock.locator('[aria-label="二级密码"] input').fill('001234');
+ await lock.getByRole('button',{name:'确认密码',exact:true}).click();
  await expect(lock).toHaveCount(0);
- expect(state.security[0]).toEqual({menuIds:['9223372036854775807','root'],secondaryPassword:'secondary-fixture'});
+ expect(state.security[0]).toEqual({menuIds:['9223372036854775807','root'],secondaryPassword:'001234'});
  await page.goto('/#/pages/profile/notifications');
  await page.getByRole('button',{name:'配置飞书',exact:true}).click();
  const notification=page.getByRole('dialog',{name:'飞书通知配置',exact:true});
@@ -113,13 +113,13 @@ test('离开锁定页面取消等待，返回不保留二级密码',async({page}
  await expect(page).toHaveURL(/#\/pages\/mcp\/api-keys$/);
  const dialog=page.getByRole('dialog',{name:'解锁菜单',exact:true});
  await expect(dialog).toBeVisible();
- await dialog.locator('[aria-label="二级密码"] input').fill('temporary-secondary');
+ await dialog.locator('[aria-label="二级密码"] input').fill('001234');
  await page.goto('/#/pages/profile/security');
  await expect(dialog).toHaveCount(0);
  await page.goBack();
  await expect(dialog).toBeVisible();
  await expect(dialog.locator('[aria-label="二级密码"] input')).toHaveValue('');
- await dialog.getByRole('button',{name:'取消',exact:true}).click();
+ await page.mouse.click(4,4);
  await expect(dialog).toHaveCount(0);
 });
 

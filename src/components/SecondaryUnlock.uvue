@@ -1,37 +1,44 @@
 <script setup lang="ts">
-import { isRequired, missingRequired } from '../services/form-required.ts';
 import { onUnmounted, ref, watch } from 'vue';
 import { onHide } from '@dcloudio/uni-app';
 import AdaptiveModal from './AdaptiveModal.uvue';
-import MobileButton from './MobileButton.uvue';
-import FormField from './FormField.uvue';
+import NumericPasswordPad from './NumericPasswordPad.uvue';
+import SecondaryPasswordEditor from './SecondaryPasswordEditor.uvue';
 import { request } from '../services/api.ts';
 import { secondaryLock, finishUnlock, cancelUnlock } from '../services/secondary-lock.ts';
 const password = ref('');
 const error = ref('');
 const saving = ref(false);
+const recoveryOpen = ref(false);
+let revision = 0;
 watch(
   () => [secondaryLock.menuPath, secondaryLock.token, secondaryLock.visible],
   () => {
+    revision++;
     password.value = '';
     error.value = '';
+    saving.value = false;
+    if (!secondaryLock.visible) recoveryOpen.value = false;
   },
 );
 onUnmounted(() => {
+  revision++;
   password.value = '';
 });
 onHide(() => {
+  revision++;
   password.value = '';
   cancelUnlock();
 });
 async function unlock() {
   if (saving.value) return;
-  if (missingRequired('security', { password: password.value }, 'password')) {
-    error.value = '请输入二级密码';
+  if (!/^[0-9]{4,}$/.test(password.value)) {
+    error.value = '至少输入 4 位纯数字';
     return;
   }
   saving.value = true;
   error.value = '';
+  const v = revision;
   const path = secondaryLock.menuPath;
   const token = secondaryLock.token;
   try {
@@ -43,56 +50,21 @@ async function unlock() {
       token,
       true,
     );
-    if (secondaryLock.menuPath === path && secondaryLock.token === token) finishUnlock();
-    password.value = '';
+    if (v === revision && secondaryLock.visible && secondaryLock.menuPath === path && secondaryLock.token === token) {
+      password.value = '';
+      finishUnlock();
+    }
   } catch (reason) {
-    if (secondaryLock.visible && secondaryLock.menuPath === path && secondaryLock.token === token)
+    if (v === revision && secondaryLock.visible && secondaryLock.menuPath === path && secondaryLock.token === token)
       error.value = reason.message;
   } finally {
-    saving.value = false;
+    if (v === revision) saving.value = false;
   }
 }
 </script>
 <template>
-  <AdaptiveModal
-    v-if="secondaryLock.visible"
-    label="解锁菜单"
-    :busy="saving"
-    :show-close="false"
-    :max-width="420"
-    @close="cancelUnlock"
-  >
-    <FormField
-      label="二级密码"
-      :required="isRequired('security', 'password')"
-      v-model="password"
-      kind="password"
-      revealable
-      placeholder="请输入二级密码"
-      :error="error"
-      :disabled="saving"
-    />
-    <view class="unlock-actions">
-      <view class="unlock-action">
-        <MobileButton label="取消" variant="quiet" :disabled="saving" @click="cancelUnlock" />
-      </view>
-      <view class="unlock-action">
-        <MobileButton label="解锁" :loading="saving" @click="unlock" />
-      </view>
-    </view>
+  <AdaptiveModal v-if="secondaryLock.visible && !recoveryOpen" label="解锁菜单" :busy="saving" :show-close="false" :max-width="320" dense @close="cancelUnlock">
+    <NumericPasswordPad v-model="password" :busy="saving" :error="error" recovery @update:modelValue="error = ''" @submit="unlock" @recover="password = ''; error = ''; recoveryOpen = true" />
   </AdaptiveModal>
+  <SecondaryPasswordEditor v-if="secondaryLock.visible && recoveryOpen" mode="recovery" @close="recoveryOpen = false" />
 </template>
-<style scoped lang="scss">
-@use '../styles/spacing-tokens' as *;
-
-.unlock-actions {
-  display: flex;
-  flex-direction: row;
-  gap: $space-inline;
-}
-
-.unlock-action {
-  flex: 1;
-  min-width: 0;
-}
-</style>

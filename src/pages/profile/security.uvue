@@ -1,13 +1,13 @@
 <script setup lang="ts">
 import { usePageRefresh } from '../../services/page-refresh.ts'
 import { buttonLabelClasses } from '../../services/button-label.ts'
-import { isRequired, missingRequired } from '../../services/form-required.ts';
 import { computed, ref, watch } from 'vue';
 import { onShow, onHide } from '@dcloudio/uni-app';
 import PageHeader from '../../components/PageHeader.uvue';
 import MobilePage from '../../components/MobilePage.uvue';
 import MobileButton from '../../components/MobileButton.uvue';
-import FormField from '../../components/FormField.uvue';
+import NumericPasswordPad from '../../components/NumericPasswordPad.uvue';
+import SecondaryPasswordEditor from '../../components/SecondaryPasswordEditor.uvue';
 import PageState from '../../components/PageState.uvue';
 import AdaptiveModal from '../../components/AdaptiveModal.uvue';
 import AppIcon from '../../components/AppIcon.uvue';
@@ -16,7 +16,6 @@ import { session, restoreSession } from '../../services/session.ts';
 import { isDark, themeClass } from '../../services/theme.ts';
 const loading = ref(false),
   saving = ref(false),
-  sending = ref(false),
   ready = ref(false),
   hasPassword = ref(false),
   error = ref(''),
@@ -25,10 +24,7 @@ const loading = ref(false),
 const menus = ref<any[]>([]),
   collapsed = ref<string[]>([]),
   locked = ref<string[]>([]),
-  password = ref(''),
-  oldPassword = ref(''),
-  confirmation = ref(''),
-  code = ref('');
+  password = ref('');
 let revision = 0,
   active = true;
 function flatten(nodes, parents = [], ancestors = []) {
@@ -82,9 +78,6 @@ watch(
     locked.value = [];
     mode.value = '';
     password.value = '';
-    oldPassword.value = '';
-    confirmation.value = '';
-    code.value = '';
     ready.value = false;
     error.value = '';
     formError.value = '';
@@ -106,9 +99,6 @@ onHide(() => {
   revision++;
   mode.value = '';
   password.value = '';
-  oldPassword.value = '';
-  confirmation.value = '';
-  code.value = '';
   loading.value = false;
 });
 async function load() {
@@ -163,9 +153,6 @@ function toggle(item) {
 function open(value) {
   mode.value = value;
   password.value = '';
-  oldPassword.value = '';
-  confirmation.value = '';
-  code.value = '';
   formError.value = '';
 }
 async function save() {
@@ -175,54 +162,16 @@ async function save() {
   const token = session.token,
     v = revision;
   try {
-    if (missingRequired('security', { password: password.value }, 'password')) throw new Error('请输入密码');
-    if (mode.value !== 'menus' && password.value !== confirmation.value)
-      throw new Error('两次输入的密码不一致');
-    if (mode.value === 'menus')
-      await request('/auth/secondary-lock/menus', 'PUT', {
-        menuIds: locked.value,
-        secondaryPassword: password.value,
-      });
-    else if (mode.value === 'recovery') {
-      if (missingRequired('security', { mode: mode.value, code: code.value }, 'code')) throw new Error('请输入验证码');
-      await request('/auth/reset-secondary-password', 'POST', {
-        code: code.value,
-        password: password.value,
-      });
-    } else {
-      if (missingRequired('security', { mode: mode.value, hasPassword: hasPassword.value, oldPassword: oldPassword.value }, 'oldPassword')) throw new Error('请输入旧密码');
-      await request('/auth/secondary-password', 'PUT', {
-        password: password.value,
-        ...(hasPassword.value ? { oldPassword: oldPassword.value } : {}),
-      });
-    }
+    if (!/^[0-9]{4,}$/.test(password.value)) throw new Error('至少输入 4 位纯数字');
+    await request('/auth/secondary-lock/menus', 'PUT', { menuIds: locked.value, secondaryPassword: password.value });
     if (token !== session.token || v !== revision || !active) return;
     mode.value = '';
     password.value = '';
-    oldPassword.value = '';
-    confirmation.value = '';
-    code.value = '';
     await load();
   } catch (e) {
     if (active && token === session.token) formError.value = e.message;
   } finally {
     saving.value = false;
-  }
-}
-async function sendCode() {
-  if (sending.value) return;
-  sending.value = true;
-  formError.value = '';
-  const token = session.token,
-    v = revision;
-  try {
-    await request('/auth/send-reset-secondary-password-code', 'POST');
-    if (!active || token !== session.token || v !== revision) return;
-    uni.showToast({ title: '验证码已发送', icon: 'success' });
-  } catch (e) {
-    formError.value = e.message;
-  } finally {
-    sending.value = false;
   }
 }
 function back() {
@@ -291,33 +240,12 @@ function back() {
         </view>
       </PageState>
     </MobilePage
-    ><AdaptiveModal
-      v-if="mode"
-      :label="mode === 'menus' ? '确认菜单锁' : '二级密码'"
-      :busy="saving"
-      :max-width="480"
-      @close="mode = ''"
-      ><FormField
-        v-if="mode === 'password' && hasPassword"
-        label="旧密码"
-        kind="password"
-        :required="isRequired('security', 'oldPassword', { mode, hasPassword })" v-model="oldPassword" /><view v-if="mode === 'recovery'"
-        ><FormField label="邮箱验证码" :required="isRequired('security', 'code', { mode, hasPassword })" v-model="code" /><MobileButton
-          label="发送验证码"
-          :loading="sending"
-          @click="sendCode" /></view
-      ><FormField
-        :label="mode === 'menus' ? '二级密码' : '新密码'"
-        kind="password"
-        :required="isRequired('security', 'password', { mode, hasPassword })" v-model="password" /><FormField
-        v-if="mode !== 'menus'"
-        label="确认密码"
-        kind="password"
-        :required="isRequired('security', 'confirmation', { mode, hasPassword })" v-model="confirmation" /><text v-if="formError" role="alert" class="error-text">{{
-        formError
-      }}</text
-      ><MobileButton label="保存" :loading="saving" @click="save" /></AdaptiveModal
-  ></view>
+    >
+    <AdaptiveModal v-if="mode === 'menus'" label="确认菜单锁" :busy="saving" :max-width="320" :show-close="false" dense @close="mode = ''; password = ''">
+      <NumericPasswordPad v-model="password" :busy="saving" :error="formError" recovery @update:modelValue="formError = ''" @submit="save" @recover="open('recovery')" />
+    </AdaptiveModal>
+    <SecondaryPasswordEditor v-if="mode === 'password' || mode === 'recovery'" :mode="mode === 'recovery' ? 'recovery' : hasPassword ? 'change' : 'create'" @saved="hasPassword = true" @close="mode = ''" />
+  </view>
 </template>
 <style scoped lang="scss">
 @use '../../styles/typography' as *;

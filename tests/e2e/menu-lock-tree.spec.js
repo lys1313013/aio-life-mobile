@@ -84,13 +84,13 @@ test('默认收起、父子联动与半选反馈，失败重试和长 ID 保存'
   state.fail = true;
   await page.getByRole('button', { name: '保存菜单锁', exact: true }).click();
   const dialog = page.getByRole('dialog', { name: '确认菜单锁', exact: true });
-  await dialog.locator('[aria-label="二级密码"] input').fill('fixture-secondary');
-  await dialog.getByRole('button', { name: '保存', exact: true }).click();
+  await dialog.locator('[aria-label="二级密码"] input').fill('001234');
+  await dialog.getByRole('button', { name: '确认密码', exact: true }).click();
   await expect(dialog.getByRole('alert')).toContainText('模拟保存失败');
   state.fail = false;
-  await dialog.getByRole('button', { name: '保存', exact: true }).click();
+  await dialog.getByRole('button', { name: '确认密码', exact: true }).click();
   await expect(dialog).toHaveCount(0);
-  expect(state.writes.at(-1)).toEqual({ menuIds: [noteId, 'income'], secondaryPassword: 'fixture-secondary' });
+  expect(state.writes.at(-1)).toEqual({ menuIds: [noteId, 'income'], secondaryPassword: '001234' });
   await expect(page.getByRole('button', { name: '展开财务', exact: true })).toBeVisible();
 });
 
