@@ -5,6 +5,8 @@ import MobilePage from "../../components/MobilePage.uvue";
 import PageHeader from "../../components/PageHeader.uvue";
 import LoadMore from "../../components/LoadMore.uvue";
 import FormField from "../../components/FormField.uvue";
+import AdaptiveModal from "../../components/AdaptiveModal.uvue";
+import NumericPasswordPad from "../../components/NumericPasswordPad.uvue";
 import { session } from "../../services/session.ts";
 import { requestUnlock } from "../../services/secondary-lock.ts";
 import { themeClass } from "../../services/theme.ts";
@@ -312,7 +314,10 @@ onUnload(() => {
           }}小时。系统失败退还次数，开始处理后主动取消仍计次。</text
         >
       </view>
-      <view v-if="verifying" class="export-section">
+      <AdaptiveModal v-if="verifying && catalog?.verificationMethod === 'SECONDARY_PASSWORD'" label="验证导出身份" :max-width="320" :busy="!!busy" dense :show-close="false" @close="verifying = false; password = ''">
+        <NumericPasswordPad v-model="password" :busy="!!busy" @submit="submit" />
+      </AdaptiveModal>
+      <view v-if="verifying && catalog?.verificationMethod !== 'SECONDARY_PASSWORD'" class="export-section">
         <FormField
           :label="
             catalog?.verificationMethod === 'SECONDARY_PASSWORD'
