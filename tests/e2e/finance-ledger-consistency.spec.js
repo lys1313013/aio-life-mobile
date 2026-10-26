@@ -68,10 +68,10 @@ test('保存及下拉刷新同步统计，统计失败保留内容且可以独�
   state.failStats = true;
   await pullDown(page, '.mobile-page-scroll');
   await expect(page.locator('.income-row')).toHaveCount(2);
-  await expect(page.getByRole('alert')).toContainText('模拟统计失败');
+  await expect(page.locator('.statistics-panel').getByRole('alert').first()).toContainText('模拟统计失败');
   await expect(page.locator('.summary-total .metric-number')).toHaveText('200.00');
   state.failStats = false;
-  await page.getByRole('alert').getByRole('button', { name: '重试', exact: true }).click();
+  await page.locator('.statistics-panel').getByRole('alert').first().getByRole('button', { name: '重试', exact: true }).click();
   await expect(page.locator('.summary-total .metric-number')).toHaveText('240.00');
   await expect(page.getByRole('alert')).toHaveCount(0);
 });

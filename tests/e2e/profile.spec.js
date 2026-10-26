@@ -177,7 +177,8 @@ test('绑定加载失败重试、新增失败重试、编辑留空保留凭证�
   await page.locator('[aria-label="Access Token"] input').fill('fake-token-for-test');
   state.failSave = true; state.delay = 250;
   await page.getByRole('button', { name: '保存', exact: true }).click();
-  await expect(page.getByRole('button', { name: '保存中…', exact: true })).toBeDisabled();
+  await expect(page.getByRole('button', { name: '保存', exact: true })).toHaveAttribute('aria-busy', 'true');
+  await expect(page.getByRole('button', { name: '保存', exact: true })).toBeDisabled();
   await expect(page.getByRole('alert')).toContainText('保存失败');
   await expect(page.locator('[aria-label="账号或用户名"] input')).toHaveValue('fixture-github');
   state.failSave = false;

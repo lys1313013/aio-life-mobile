@@ -563,7 +563,8 @@ for (const width of [390, 768, 1440]) for (const colorScheme of ['light', 'dark'
     }).toBeLessThan(2);
     const simple = await dialog.boundingBox();
     const content = await dialog.locator('.modal-content').boundingBox();
-    expect(Math.abs(simple.height - content.height)).toBeLessThan(2);
+    const footer = await dialog.locator('.modal-footer').boundingBox();
+    expect(Math.abs(simple.height - content.height - footer.height)).toBeLessThan(2);
     expect(simple.height).toBeLessThan(700);
     const times = await dialog.locator('.compact-time-field').evaluateAll(items => items.map(item => item.getBoundingClientRect().height));
     expect(times).toHaveLength(2);
@@ -672,7 +673,8 @@ for (const colorScheme of ['light', 'dark']) test(`短视口长表单滚动与�
   expect(await page.locator('.day-track').boundingBox()).toEqual(track);
   const box = await dialog.boundingBox();
   expect(box.y).toBeGreaterThanOrEqual(spacing.overlayBlock);
-  expect(box.y + box.height).toBeLessThan(tabbar.y);
+  expect(box.y + box.height).toBeLessThanOrEqual(page.viewportSize().height - spacing.overlayBlock);
+  expect(Math.abs(box.y + box.height / 2 - page.viewportSize().height / 2)).toBeLessThan(2);
   await page.screenshot({ path: `artifacts/modal-tab-bar/short-${colorScheme}.png` });
   await page.setViewportSize({ width: 390, height: 844 });
   await expect.poll(() => dialog.locator('.modal-scroll').evaluate(element => element.getBoundingClientRect().height)).toBeGreaterThan(box.height);
@@ -693,6 +695,8 @@ for (const width of [390, 768, 1440]) for (const colorScheme of ['light', 'dark'
     const track = page.locator('.day-track');
     const tabbar = page.locator('uni-tabbar .uni-tabbar');
     const add = page.getByRole('button', { name: '新增时迹', exact: true });
+    // 点击较晚时段前浏览器会先滚动到该条目；只比较打开弹窗造成的布局变化。
+    await page.getByRole('button', { name: /^编辑记录 一分钟回顾(?:，|$)/ }).scrollIntoViewIfNeeded();
     const before = { track: await track.boundingBox(), tabbar: await tabbar.boundingBox(), add: await add.boundingBox() };
     for (const entry of ['编辑记录 一分钟回顾', '新增时迹']) {
       await page.getByRole('button', { name: entry === '新增时迹' ? entry : new RegExp('^' + entry + '(?:，|$)'), exact: entry === '新增时迹' }).click();

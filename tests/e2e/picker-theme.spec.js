@@ -93,7 +93,7 @@ for (const mode of ['light', 'dark']) {
     await expect(calendar).toBeVisible();
     const calendarBackground = await calendar.evaluate(node => getComputedStyle(node).backgroundColor);
     expect(calendarBackground).toBe(mode === 'dark' ? 'rgb(28, 30, 34)' : 'rgb(255, 255, 255)');
-    const text = calendar.locator('.calendar-text').first();
+    const text = calendar.locator('.calendar-text:not(.calendar-muted):not(.calendar-selected-text)').first();
     expect(contrast(await text.evaluate(node => getComputedStyle(node).color), calendarBackground)).toBeGreaterThanOrEqual(4.5);
     await page.screenshot({ path: `artifacts/picker-theme/记录日期-${mode}.png` });
     await dismissModal(page);

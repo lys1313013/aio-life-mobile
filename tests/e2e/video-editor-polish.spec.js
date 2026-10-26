@@ -83,7 +83,7 @@ test('视频手动创建可修正折叠的总时长并提交', async ({ page }) 
   await page.locator('input[aria-label="标题"]').fill('模拟手动录入课程');
   await page.locator('input[aria-label="已学习时长"]').fill('00:00:20');
   await page.getByRole('button', { name: '保存', exact: true }).click();
-  await expect(page.getByRole('dialog')).toContainText('请检查时长与当前集数范围');
+  await expect(page.getByRole('dialog')).toContainText('时长请用 时:分:秒（如 01:20:00），并检查时长与集数范围');
   await expect(page.locator('input[aria-label="总时长"]')).toBeVisible();
   expect(state.writes).toHaveLength(0);
   await page.locator('input[aria-label="总时长"]').fill('00:02:00');

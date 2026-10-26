@@ -500,6 +500,8 @@ test('菜单依赖缓存到期后刷新失败保留已展示目标和阅读，�
   await expect(goal).toContainText('固定目标');
   await expect(reading.locator('.reading-book')).toHaveCount(20);
   await page.unroute('**/api/quick-nav/candidates?*');
+  // 固定时钟还需跨过下拉手势的防误触窗口，模拟用户稍后点击重试。
+  await page.clock.setFixedTime(new Date(Date.now() + 63000));
   await goal.getByRole('button',{name:/^重试目标：/}).click();
   await expect(goal.getByRole('button',{name:/^重试目标：/})).toHaveCount(0);
   await expect(goal).toContainText('固定目标');
