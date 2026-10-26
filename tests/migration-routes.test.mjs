@@ -6,7 +6,7 @@ const {nativeDestination}=await import(`data:text/javascript;base64,${Buffer.fro
 const pages=JSON.parse((await readFile(new URL('../src/pages.json',import.meta.url),'utf8')).replace(/^\s*\/\/.*$/gm, ''))
 const routes=[...pages.pages.map(p=>p.path),...(pages.subPackages||[]).flatMap(pack=>pack.pages.map(p=>pack.root+'/'+p.path))]
 const businessPaths=[
- '/analytics','/workspace','/profile','/vben-admin/about',
+ '/','/workspace','/profile','/vben-admin/about',
  '/task/todo','/task/goal','/task-center/todo','/task-center/goal',
  '/time/time-tracker','/time/dashboard','/time/my-categories','/time/category-admin',
  '/record/exercise','/my-hub/exercise/category-config','/record/videoWatch','/record/movie','/record/read','/record/weread',
@@ -18,7 +18,8 @@ const businessPaths=[
  '/config-management/sysDictType','/config-management/sysDictData','/system/user','/system/menu','/system/user-dict','/system/feedback','/system/config','/system/operation-log','/system/access-log',
  '/system/bank-card-covers','/system/storage',
 ]
-test('迁移基线中的所有业务叶菜单及历史别名均有已注册原生页面',()=>{
+test('当前业务菜单均指向已注册原生页面',()=>{
+ assert.equal(nativeDestination('/analytics'), '')
  for(const path of businessPaths){const destination=nativeDestination(path);assert.ok(destination,`${path} 缺少原生映射`);assert.ok(routes.includes(destination.split('?')[0].slice(1)),`${path} 指向未注册页面 ${destination}`)}
 })
 test('页面注册无重复或失效文件；底栏留在主包',async()=>{
