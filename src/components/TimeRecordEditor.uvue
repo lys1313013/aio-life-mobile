@@ -9,6 +9,7 @@ import { recordChanged } from '../services/time-changes.ts'
 import { computed, getCurrentInstance, nextTick, ref, watch, onMounted, onUnmounted } from 'vue'
 import { useWindowResize } from '../services/window-resize.ts'
 import AdaptiveModal from './AdaptiveModal.uvue'
+import ConfirmAction from './ConfirmAction.uvue'
 import FormActions from './FormActions.uvue'
 import FormField from './FormField.uvue'
 import TimeEndPicker from './TimeEndPicker.uvue'
@@ -47,8 +48,7 @@ const id = ref(''),
   deleting = ref(false)
 const errorText = ref(''),
   ready = ref(false),
-  full = ref(false),
-  confirmDelete = ref(false)
+  full = ref(false)
 const categories = ref<Category[]>([]),
   existing = ref<TimeRecord[]>([])
 const form = ref<TimeRecord>({
@@ -447,6 +447,7 @@ async function remove() {
     emit('close')
   } catch (error) {
     if (active) errorText.value = report(error)
+    throw error
   } finally {
     deleting.value = false
   }
@@ -833,37 +834,15 @@ function closeSelection() {
     <template v-if="!loading" #footer>
         <FormActions :expand-primary="compact && ready">
           <template v-if="ready && id" #secondary>
-          <view class="delete-anchor" :style="{ zIndex: confirmDelete ? 1200 : 0 }"
-            ><button
-              role="button"
-              class="delete-button"
-              aria-label="删除记录"
-              :disabled="saving || deleting"
-              :aria-disabled="saving || deleting"
-              @click="confirmDelete = !confirmDelete"
-             :class="themeClass('delete-button')">
-              <AppIcon name="ant-design:delete-outlined" color="#df5661" /></button
-            ><view v-if="confirmDelete" class="delete-confirm"
-               :class="themeClass('delete-confirm')"><text class="field-value" :class="themeClass('field-value')">删除这条时间记录？</text
-              ><view class="confirm-actions"
-                ><button
-                  role="button"
-                  class="small-action"
-                  :disabled="deleting"
-                  :aria-disabled="deleting"
-                  @click="confirmDelete = false"
-                 :class="themeClass('small-action')"><text :class="buttonLabelClasses(['small-action', themeClass('small-action')])">取消</text></button
-                ><button
-                  role="button"
-                  class="delete-button"
-                  :disabled="deleting"
-                  :aria-disabled="deleting"
-                  :loading="deleting"
-                  @click="remove"
-                 :class="themeClass('delete-button')"><text :class="buttonLabelClasses(['delete-button', themeClass('delete-button')])">确认删除</text></button></view
-              ></view
-            ></view
-          >
+          <ConfirmAction label="删除记录" message="删除这条时间记录？" confirm-label="确认删除" :action="remove">
+            <template #default="slot">
+              <button role="button" class="delete-button" aria-label="删除记录"
+                :disabled="saving || deleting || slot.busy" :aria-disabled="saving || deleting || slot.busy"
+                :aria-busy="deleting || slot.busy" @click="slot.open" :class="themeClass('delete-button')">
+                <AppIcon name="ant-design:delete-outlined" color="#df5661" />
+              </button>
+            </template>
+          </ConfirmAction>
           </template>
           <button
             v-if="!compact || (!ready && !loading)"
@@ -1225,10 +1204,6 @@ function closeSelection() {
   @include type-style('body');
 }
 .compact-save { flex: 1; width: auto; }
-.delete-anchor {
-  overflow: visible;
-  position: relative;
-}
 .action-label {
   @include type-style('body');
   letter-spacing: type-tracking('normal');
@@ -1253,22 +1228,6 @@ function closeSelection() {
   color: #c65353;
   background-color: transparent;
   @include type-style('body');
-}
-.delete-confirm {
-  position: absolute;
-  bottom: 48px;
-  left: 0;
-  width: 240px;
-  z-index: 2;
-  border: 1px solid #e5e7eb;
-  padding: $space-modal;
-  border-radius: 14px;
-  background-color: #ffffff;
-}
-.confirm-actions {
-  flex-direction: row;
-  justify-content: flex-end;
-  margin-top: $space-inline;
 }
 .selection-panel {
   width: 100%;
@@ -1343,16 +1302,12 @@ function closeSelection() {
   .time-control-dark,
   .title-input-dark,
   .description-input-dark,
-  .duration-input-dark,
-  .delete-confirm-dark {
+  .duration-input-dark {
     border-color: #32353c;
   }
   .cancel-action-dark {
     border-color: #32353c;
     color: #b4b4bd;
-  }
-  .delete-confirm-dark {
-    background-color: #1c1e22;
   }
   .field-value-dark,
   .time-number-dark,
