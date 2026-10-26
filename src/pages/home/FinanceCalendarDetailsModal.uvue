@@ -74,9 +74,6 @@ function captions(row) {
   const title = description(row)
   return [row.counterparty !== title ? row.counterparty : '', metadata(row), row.remark !== title ? row.remark : '', displayedKind.value === 'income' && row.tax != null ? '税额：' + calendarMoney(row.tax) : ''].filter(Boolean)
 }
-function transactions(row) {
-  return [row.transactionAmt != null && row.transactionAmt !== row.amt ? '交易金额：' + calendarMoney(row.transactionAmt) : '', row.transactionStatus ? '状态：' + row.transactionStatus : '', row.transactionId ? '交易号：' + row.transactionId : '', row.merchantOrderNo ? '商户单号：' + row.merchantOrderNo : ''].filter(Boolean)
-}
 function switchKind(kind: LedgerKind) {
   if (draft.value || saving.value) return
   if (kind === detailKind.value) { if (state.error) void controller.load(); return }
@@ -110,7 +107,7 @@ onUnmounted(() => { alive = false; controller.invalidate() })
         <view class="details-main"><text class="details-description" :class="{ 'details-text-dark': isDark }">{{ description(row) }}</text><text class="details-amount" :class="{ 'details-text-dark': isDark }">{{ row.amt == null ? '—' : '¥' + calendarMoney(row.amt) }}</text></view>
         <text v-for="(line, index) in captions(row)" :key="index" class="details-caption" :class="{ 'details-muted-dark': isDark }">{{ line }}</text>
         </button>
-        <text v-for="(line, index) in transactions(row)" :key="index" class="details-caption" :class="{ 'details-muted-dark': isDark }">{{ line }}</text>
+        <text v-if="row.transactionAmt != null && row.transactionAmt !== row.amt" class="details-caption" :class="{ 'details-muted-dark': isDark }">交易金额：{{ calendarMoney(row.transactionAmt) }}</text>
       </view>
       <view v-if="state.loaded && state.page === 0 && (state.loading || state.error)" class="details-switching" :class="{ 'details-switching-dark': isDark }"><LoadingIndicator v-if="state.loading" ring :label="'正在加载' + (detailKind === 'income' ? '收入' : '支出') + '明细'" /><template v-else><text class="details-error" role="alert">{{ state.error }}</text><button role="button" class="details-tab" aria-label="重试切换明细" @click="controller.load()"><text class="details-tab-label" :class="{ 'details-text-dark': isDark }">重试</text></button></template></view>
       <LoadMore :loading="state.loaded && state.page > 0 && state.loading" :has-more="state.hasMore" :error="state.loaded && state.page === 0 ? '' : state.error" @load="controller.load()" />
