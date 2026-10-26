@@ -1,7 +1,7 @@
-// PageResp.total 未提供时保持未知；兼容旧服务端的十进制字符串计数。
+// PageResp.total 为 JSON 整数，未提供时保持未知。
 export function readPageTotal(value: unknown): number | null {
   if (value == null) return null
-  const total = typeof value === 'string' && /^\d+$/.test(value) ? Number(value) : value
+  const total = value
   if (typeof total !== 'number' || !Number.isSafeInteger(total) || total < 0) throw new Error('分页总数异常，请重试')
   return total
 }

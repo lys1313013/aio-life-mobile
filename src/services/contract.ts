@@ -41,7 +41,7 @@ export function readWechatLogin(data) {
       || data.accountUsername.length === 0) throw new Error('微信登录结果异常，请重试')
     return data
   }
-  if ((data.status === 'PHONE_REQUIRED' || data.status === 'BIND_REQUIRED')
+  if (data.status === 'REGISTRATION_REQUIRED'
     && typeof data.loginTicket === 'string' && data.loginTicket.length > 0
     && typeof data.expiresIn === 'number' && data.expiresIn > 0 && data.expiresIn <= 300) return data
   throw new Error('微信登录结果异常，请重试')

@@ -34,7 +34,7 @@ test('引用约束、图片、URL、排序、银行和字符串ID校验在写入
     assert.equal(result.id, id)
   }
   // 仅读取边界暂时兼容未升级的服务端。
-  assert.equal(service.readCover({ ...cover, usageCount: '2' }).usageCount, 2)
+  assert.throws(() => service.readCover({ ...cover, usageCount: '2' }), /使用数量异常/)
   for (const usageCount of [null, -1, 1.5, 2147483648, '2147483648', 'invalid']) {
     assert.throws(() => service.readCover({ ...cover, usageCount }), /使用数量异常/)
   }

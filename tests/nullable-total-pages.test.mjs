@@ -50,7 +50,7 @@ for (const [path, api] of [
     assert.deepEqual(f.rows.value, [{ id: '1', name: 'new', detail: 'preserved' }, { id: '2' }])
   })
   test(path + ' 已知总数终止，读取失败保留旧列表', async () => {
-    const f = await fixture([{ total: '1', items: [{ id: '1' }] }])
+    const f = await fixture([{ total: 1, items: [{ id: '1' }] }])
     await f.load()
     assert.deepEqual(f.calls, [1])
     const failure = await fixture([{ total: null, items: [{ id: '1' }] }, Error('offline')])

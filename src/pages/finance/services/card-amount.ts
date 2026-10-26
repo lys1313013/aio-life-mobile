@@ -1,5 +1,5 @@
-/** 金额以十进制字符串处理，避免大金额的分位精度丢失；兼容旧版数字额度。 */
-export function cardAmountText(card: { cardType: string; balance?: string | null; creditLimit?: string | number | null }) {
+/** 金额以十进制字符串处理，避免大金额的分位精度丢失。 */
+export function cardAmountText(card: { cardType: string; balance?: string | null; creditLimit?: string | null }) {
   const credit = card.cardType === 'credit';
   const label = credit ? '信用额度' : '余额';
   const value = credit ? card.creditLimit : card.balance;

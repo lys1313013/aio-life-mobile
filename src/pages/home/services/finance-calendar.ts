@@ -50,8 +50,8 @@ export function calendarPlaceholder(scope, today = chinaDay()): FinanceCalendar 
   return { granularity, date, today, amount: 0, income: 0, expense: 0, balance: 0, buckets, refreshInterval: 300 }
 }
 export function calendarMoney(amount: number, compact = false) {
-  // 显式格式化，兼容小程序运行时的 Intl 支持及旧响应中的字符串金额。
-  const fixed = Number(amount).toFixed(2)
+  // 显式格式化，适配小程序运行时的 Intl 支持。
+  const fixed = amount.toFixed(2)
   if (compact) return fixed.replace(/\.?0+$/, '')
   const parts = fixed.split('.')
   return parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ',') + '.' + parts[1]

@@ -79,7 +79,7 @@ export function nativeDestination(path) {
   if (nativePages[path]) return nativePages[path]
   if (["/time/time-tracker", "/time/timeTracker"].includes(path))
     return "/pages/time/index";
-  if (["/analytics", "/workspace"].includes(path)) return "/pages/home/index";
+  if (["/", "/workspace"].includes(path)) return "/pages/home/index";
   if (path === "/profile") return "/pages/profile/index";
   return "";
 }
@@ -145,7 +145,7 @@ export function buildCatalog(candidates, preferences) {
       if (!item || !item.path.startsWith("/") || item.path.startsWith("//") ||
           /[\\\s?#]/.test(item.path)) continue;
       // 移动端例外：首页由底栏进入，关于统一放在“我的”。
-      // 菜单路径可由管理端调整，不能只依赖初始数据中的 /analytics。
+      // 菜单路径可由管理端调整，不能只依赖初始数据中的首页路径。
       const destination = nativeDestination(item.path);
       if (["/pages/home/index", "/pages/about/index"].includes(destination) ||
           ["首页", "主页", "关于"].includes(node.title.trim())) continue;

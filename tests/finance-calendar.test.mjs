@@ -57,7 +57,7 @@ test('明细触底去重、原页失败重试、末页停止与关闭后的响�
     calls.push(page)
     if (delayed) return delayed.promise
     if (page === 2 && fail) throw Error('offline')
-    return { items: page === 1 ? [{ id: '9223372036854775807' }] : [{ id: '9223372036854775807' }, { id: '2' }], total: '2' }
+    return { items: page === 1 ? [{ id: '9223372036854775807' }] : [{ id: '9223372036854775807' }, { id: '2' }], total: 2 }
   }, () => active)
   await controller.load(); assert.equal(state.page, 1)
   await controller.load(); assert.equal(state.page, 1); assert.equal(state.items.length, 1); assert.equal(state.error, 'offline')

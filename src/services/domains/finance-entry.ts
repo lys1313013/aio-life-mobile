@@ -1,6 +1,6 @@
 import { missingRequired } from '../form-required.ts';
 import { request } from '../api.ts'
-export function ledgerId(row: Record<string, any>): string { return String(row.id ?? row.incomeId ?? '') }
+export function ledgerId(row: Record<string, any>): string { return typeof row.id === 'string' ? row.id : '' }
 export function ledgerPayload(kind: string, draft: Record<string, any>) {
   const data = { ...draft, amt: Number(draft.amt) }
   if (!Number.isFinite(data.amt) || missingRequired(kind, draft, 'amt')) throw new Error('请输入有效金额')

@@ -90,7 +90,6 @@ function toggleMenuGroup(id: string) {
 const form = ref<any>({ oldPassword: '', password: '', confirm: '' });
 let revision = 0,
   active = true;
-let legacyKeys = false;
 watch(
   () => session.token,
   () => {
@@ -107,16 +106,10 @@ watch(
   { flush: 'sync' },
 );
 onLoad((options) => {
-  if (options?.section === 'keys') {
-    legacyKeys = true;
-    uni.redirectTo({ url: '/pages/mcp/api-keys' });
-    return;
-  }
   mode.value = Object.keys(titles).includes(options?.section || '') ? options.section : 'general';
 });
 const refreshOnShow = usePageRefresh(() => load(), { loading: () => loading.value, error: () => error.value, keys: () => ['menu', 'user', 'users'] })
 onShow(() => {
-  if (legacyKeys) return;
   active = true;
   restoreSession();
   if (!session.token) {

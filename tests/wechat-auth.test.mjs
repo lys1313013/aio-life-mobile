@@ -10,7 +10,7 @@ const source = (await readFile(new URL('../src/services/wechat-auth.ts', import.
   .replace(/export /g, '');
 const createService = new Function('request', 'readWechatLogin', 'saveToken', 'uni', source + '\nreturn { fetchWechatCapabilities, startWechatLogin, registerWithWechat, bindWechatAccount, initializeWechatPassword };');
 const loggedIn = { status: 'LOGGED_IN', id: '9223372036854775807', accessToken: 'final-token', hasPassword: true, accountUsername: 'fixture-user' };
-const pending = { status: 'PHONE_REQUIRED', loginTicket: 'fixture-ticket', expiresIn: 300 };
+const pending = { status: 'REGISTRATION_REQUIRED', loginTicket: 'fixture-ticket', expiresIn: 300 };
 
 function fixture(request) {
   const saved = [];
@@ -26,7 +26,7 @@ test('待授权票据不能作为业务 Token 保存', async () => {
     assert.deepEqual(body, { loginCode: 'fixture-login-code' });
     return pending;
   });
-  assert.equal((await service.startWechatLogin()).status, 'PHONE_REQUIRED');
+  assert.equal((await service.startWechatLogin()).status, 'REGISTRATION_REQUIRED');
   assert.deepEqual(saved, []);
 });
 

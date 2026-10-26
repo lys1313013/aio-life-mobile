@@ -26,7 +26,7 @@ export function readSummary(key, data) {
   if (!Array.isArray(data.items) || data.items.some(item => !item || typeof item.id !== 'string' || !item.id)) throw Error('卡片数据异常，请重试')
   const seen = new Set()
   const items = data.items.filter(item => { if (seen.has(item.id)) return false; seen.add(item.id); return true }).slice(0, 3)
-  // 即使旧服务端意外返回正文，首页状态也只保留笔记摘要。
+  // 首页状态仅保留笔记摘要，禁止把正文带入首页缓存。
   return { items: key === 'memo' ? items.map(({ id, title, hiddenContent, updateTime }) => ({ id, title, hiddenContent, updateTime })) : items, refreshInterval: data.refreshInterval }
 }
 export function summaryMoney(value) { return value == null || !Number.isFinite(Number(value)) ? '—' : '¥' + Number(value).toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }

@@ -36,7 +36,7 @@ const button = (page, label) => page.locator('uni-button').filter({ has: page.ge
 const fixtureLogin = { status: 'LOGGED_IN', id: '9223372036854775807', accessToken: 'wechat-fixture-token',
   hasPassword: false, accountUsername: 'u_fixture', newUser: true };
 const authRoute = /\/api\/(?:auth\/(?:wechat\/mini\/(?:capabilities|login|register|phone-login|bind|password)|login|logout)|user\/info)(?:\?.*)?$/;
-const pending = { status: 'PHONE_REQUIRED', loginTicket: 'fixture-ticket', expiresIn: 300 };
+const pending = { status: 'REGISTRATION_REQUIRED', loginTicket: 'fixture-ticket', expiresIn: 300 };
 try {
   let ready = false;
   for (let i = 0; i < 120; i++) {

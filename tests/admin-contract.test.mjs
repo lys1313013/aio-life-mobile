@@ -25,15 +25,8 @@ test('管理分页读取数字总数，零和末页有效且长ID保持原样', 
   assert.throws(() => readPage({items:[],total}), /列表数据异常/)
  }
 })
-test('管理分页读取边界暂时兼容未升级服务端的字符串总数', () => {
- const page = {items:[{id}],total:'21'}
- assert.deepEqual(readPage(page), {items:[{id}],total:21})
- assert.equal(page.total, '21')
- assert.deepEqual(readPage({items:[],total:'0'}), {items:[],total:0})
- assert.deepEqual(readPage({items:[{dictCode:id}],total:'1'}, 'dictCode'), {items:[{dictCode:id}],total:1})
- for (const total of [null, undefined, '', ' ', 'abc', '-1', '1.5', '1e2', true, {}, [], -1, 1.5, NaN, Infinity, '9007199254740992', 9007199254740992]) {
-  assert.throws(() => readPage({items:[],total}), /列表数据异常/)
- }
+test('管理分页拒绝字符串总数', () => {
+ for (const total of ['21', '0', '1']) assert.throws(() => readPage({items:[],total}), /列表数据异常/)
 })
 test('公共分类覆盖使用模板ID且未改父级不发送，未知和用户字段不泄露',() => {
  const original={id:'3',templateId:id,parentId:null,userId:'7'}

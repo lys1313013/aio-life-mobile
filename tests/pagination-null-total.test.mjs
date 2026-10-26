@@ -8,10 +8,10 @@ const pagination = await import(moduleURL(await readFile(new URL('../src/service
 const { readPageTotal, mergePageItems, hasMorePageItems } = pagination;
 const ref = value => ({ value });
 
-test('未知分页总数保留 null，兼容十进制字符串，拒绝无效计数', () => {
+test('未知分页总数保留 null，拒绝字符串，拒绝无效计数', () => {
   for (const value of [null, undefined]) assert.equal(readPageTotal(value), null);
-  for (const value of [0, 42, '0', '42']) assert.equal(readPageTotal(value), Number(value));
-  for (const value of ['', ' ', true, -1, 1.5, NaN, Infinity, '1e2', '9007199254740992']) assert.throws(() => readPageTotal(value));
+  for (const value of [0, 42]) assert.equal(readPageTotal(value), Number(value));
+  for (const value of ['0', '42', '', ' ', true, -1, 1.5, NaN, Infinity, '1e2', '9007199254740992']) assert.throws(() => readPageTotal(value));
   assert.equal(hasMorePageItems(30, null), true);
   assert.equal(hasMorePageItems(30, 30), false);
   assert.equal(hasMorePageItems(30, null, true), false);
@@ -79,8 +79,8 @@ for (const [kind, file] of targets) {
     assert.deepEqual(calls, [1, 2, 2, 3]);
   });
 
-  test(`${kind} 数字及旧字符串总数在末页停止，无效响应不覆盖旧分页状态`, async () => {
-    let result = { items: [{ id: '1' }], total: '2' }, calls = 0;
+  test(`${kind} 数字总数在末页停止，无效响应不覆盖旧分页状态`, async () => {
+    let result = { items: [{ id: '1' }], total: 2 }, calls = 0;
     const state = await fixture(kind, file, async () => { calls++; return result; });
     await state.load();
     result = { items: [{ id: '2' }], total: -1 };
