@@ -157,7 +157,9 @@ for (const width of [390, 768, 1440]) for (const theme of ['light', 'dark']) {
     await page.getByRole('button', { name: '关于', exact: true }).click();
     await expect(page).toHaveURL(/pages\/about\/index/);
     state.pending = gate();
-    await page.clock.setFixedTime(new Date(start.getTime() + 60 * 60 * 1000 + 1000));
+    // 从实际加载完成后的浏览器时钟推进，避免 CI 首批请求耗时挤掉一秒余量。
+    const currentTime = await page.evaluate(() => Date.now());
+    await page.clock.setFixedTime(new Date(currentTime + 60 * 60 * 1000 + 1000));
     await page.getByRole('button', { name: '返回', exact: true }).click();
     await page.getByRole('button', { name: '返回', exact: true }).click();
     await page.locator('uni-tabbar').getByText('首页', { exact: true }).click();

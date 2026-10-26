@@ -61,16 +61,18 @@ for (const width of [390, 820]) {
     await expect(page.getByText('正在更新内容', { exact: true })).toHaveCount(0);
     const before = await page.locator('.goal-grid').boundingBox();
     const count = calls['/goals'];
+    await page.waitForLoadState('networkidle');
+    const loadedAt = await page.evaluate(() => Date.now());
     for (let i = 0; i < 3; i++) { await visibility(page, 'hidden'); await visibility(page, 'visible'); }
     await page.waitForTimeout(100);
     expect(calls['/goals']).toBe(count);
     expect(await page.locator('.goal-grid').boundingBox()).toEqual(before);
     await visibility(page, 'hidden');
-    await page.clock.setFixedTime(new Date(start.getTime() + 59 * 60 * 1000));
+    await page.clock.setFixedTime(new Date(loadedAt + 59 * 60 * 1000));
     await visibility(page, 'visible'); await page.waitForTimeout(100);
     expect(calls['/goals']).toBe(count);
     await visibility(page, 'hidden');
-    await page.clock.setFixedTime(new Date(start.getTime() + 60 * 60 * 1000 + 1000));
+    await page.clock.setFixedTime(new Date(loadedAt + 60 * 60 * 1000 + 1000));
     await visibility(page, 'visible');
     await expect.poll(() => calls['/goals']).toBe(count + 1);
     await page.getByRole('button', { name: '搜索目标', exact: true }).click();
