@@ -1,8 +1,8 @@
 import { createDaySwipe } from '../../../services/day-swipe.ts'
 
-/** 首页时迹：左滑上一天；桌面鼠标和触控板复用相同的方向与边界。 */
+/** 首页时迹：左滑后一天、右滑前一天；桌面鼠标和触控板复用相同的方向与边界。 */
 export function createTimeCardSwipe(enabled, changeDate, canChange, onDrag, now = Date.now) {
-  const touch = createDaySwipe(enabled, step => changeDate(-step), onDrag, step => canChange(-step))
+  const touch = createDaySwipe(enabled, changeDate, onDrag, canChange)
   let mouseDown = false
   let wheelAt = -Infinity
   let wheelX = 0
@@ -48,8 +48,8 @@ export function createTimeCardSwipe(enabled, changeDate, canChange, onDrag, now 
     if (Math.abs(wheelX) < 50) return
     wheelHandled = true
     suppressUntil = stamp + 400
-    // deltaX > 0 表示内容向左移动，对应上一天。
-    const step = wheelX > 0 ? -1 : 1
+    // deltaX > 0 表示内容向左移动，对应后一天。
+    const step = wheelX > 0 ? 1 : -1
     if (canChange(step)) changeDate(step)
   }
   return {
