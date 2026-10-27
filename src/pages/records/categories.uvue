@@ -16,7 +16,7 @@ import FormField from '../../components/FormField.uvue';
 import PageState from '../../components/PageState.uvue';
 import ConfirmAction from '../../components/ConfirmAction.uvue';
 import AdaptiveModal from '../../components/AdaptiveModal.uvue';
-import { isDark } from '../../services/theme.ts';
+import { isDark, themeClass } from '../../services/theme.ts';
 import { createRecordScope } from '../../services/records/page-scope.ts';
 import {
   fetchCategoryTypes,
@@ -231,10 +231,19 @@ function cannotMove(offset: number) {
             </view>
           </template>
           <template #loading>
-            <view v-for="n in 5" :key="n" class="category-row category-row-skeleton" :class="{ 'category-row-dark': isDark }" aria-hidden="true">
-              <view class="category-placeholder category-placeholder-icon" :class="{ 'category-placeholder-dark': isDark }" />
-              <view class="category-placeholder category-placeholder-name" :class="{ 'category-placeholder-dark': isDark }" />
-              <view class="category-placeholder category-placeholder-actions" :class="{ 'category-placeholder-dark': isDark }" />
+            <view class="category-loading" role="status" aria-label="正在加载分类" aria-live="polite">
+              <!-- 使用明确的循环变量名，避免与微信编译器生成的主题字段重名。 -->
+              <view v-for="skeletonRowIndex in 5" :key="skeletonRowIndex" class="category-row category-row-skeleton" :class="themeClass('category-row')" aria-hidden="true">
+                <view class="category-placeholder category-placeholder-icon" :class="themeClass('category-placeholder')" />
+                <view class="category-copy">
+                  <view class="category-placeholder category-placeholder-name" :class="themeClass('category-placeholder')" />
+                </view>
+                <view class="category-actions">
+                  <view v-for="skeletonActionIndex in 3" :key="skeletonActionIndex" class="category-placeholder-action">
+                    <view class="category-placeholder category-placeholder-icon" :class="themeClass('category-placeholder')" />
+                  </view>
+                </view>
+              </view>
             </view>
           </template>
           <view v-for="item in visibleRows" :key="item.id" class="category-row" :class="{ 'category-row-dark': isDark }">
@@ -369,12 +378,17 @@ function cannotMove(offset: number) {
 .category-name-disabled { color: $text-secondary-light; }
 .category-name-disabled-dark { color: $text-secondary-dark; }
 .category-actions { flex-direction: row; align-items: center; flex-shrink: 0; gap: $space-detail; }
+.category-loading { animation: category-skeleton-breathe 1.8s ease-in-out infinite; }
 .category-row-skeleton { min-height: $space-controlMin + $space-inline * 2; box-sizing: border-box; }
-.category-placeholder { background-color: #e8ecf1; border-radius: 6px; }
+.category-placeholder { background-color: #e8ecf1; border-radius: 5px; flex-shrink: 0; }
 .category-placeholder-dark { background-color: #30343c; }
 .category-placeholder-icon { width: 24px; height: 24px; flex-shrink: 0; }
-.category-placeholder-name { flex: 1; height: type-line('body'); }
-.category-placeholder-actions { width: $space-controlMin * 3 + $space-detail * 2; height: 24px; flex-shrink: 0; }
+.category-placeholder-name { width: 72%; height: 16px; }
+.category-placeholder-action { width: $space-controlMin; align-items: center; justify-content: center; }
+@keyframes category-skeleton-breathe { 0%, 100% { opacity: 1; } 50% { opacity: .45; } }
+/* #ifdef WEB */
+@media (prefers-reduced-motion: reduce) { .category-loading { animation: none; } }
+/* #endif */
 .category-status-row { align-items: flex-end; }
 .category-icon-preview { min-height: $space-controlMin; width: $space-controlMin; align-items: center; justify-content: center; }
 .secondary {
