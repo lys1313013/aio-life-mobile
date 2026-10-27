@@ -35,7 +35,8 @@ let browser;
 const button = (page, label) => page.locator('uni-button').filter({ has: page.getByText(label, { exact: true }) });
 const fixtureLogin = { status: 'LOGGED_IN', id: '9223372036854775807', accessToken: 'wechat-fixture-token',
   hasPassword: false, accountUsername: 'u_fixture', newUser: true };
-const authRoute = /\/api\/(?:auth\/(?:wechat\/mini\/(?:capabilities|login|register|phone-login|bind|password)|login|logout)|user\/info)(?:\?.*)?$/;
+const authRoute = /\/api\/(?:auth\/(?:wechat\/mini\/(?:capabilities|login|register|phone-login|bind|password)|login|logout|legal)|user\/info)(?:\?.*)?$/;
+const legalFixture = { version: '2026-10-27', effectiveDate: '2026-10-27', operator: 'Fixture Operator', contactEmail: 'privacy@example.test', privacy: [['信息用途', '模拟政策']], terms: [['服务范围', '模拟条款']] };
 const pending = { status: 'REGISTRATION_REQUIRED', loginTicket: 'fixture-ticket', expiresIn: 300 };
 try {
   let ready = false;
@@ -57,6 +58,7 @@ try {
       await page.route(authRoute, async route => {
         const request = route.request();
         const url = new URL(request.url()).pathname;
+        if (url.endsWith('/auth/legal')) return route.fulfill({ json: { code: 0, data: legalFixture } });
         calls.push({ url, body: request.postDataJSON(), authorization: request.headers().authorization });
         let data;
         if (url.endsWith('/capabilities')) data = { enabled: true, registrationEnabled: true };
@@ -78,10 +80,11 @@ try {
       assert.equal(await page.locator('[open-type="getPhoneNumber"]').count(), 0);
       assert.equal(await page.getByText('授权手机号并注册', { exact: true }).count(), 0);
       await page.screenshot({ path: path.join(output, `register-${width}-${colorScheme}.png`), fullPage: true });
+      await page.getByRole('switch', { name: '同意隐私政策和服务条款' }).click();
       await button(page, '注册新账号').click();
       await page.getByText('设置登录密码', { exact: true }).first().waitFor();
       assert.equal(calls.filter(call => call.url.endsWith('/phone-login')).length, 0);
-      assert.deepEqual(calls.find(call => call.url.endsWith('/register')).body, { loginTicket: pending.loginTicket });
+      assert.deepEqual(calls.find(call => call.url.endsWith('/register')).body, { loginTicket: pending.loginTicket, agreedPolicy: true, policyVersion: legalFixture.version });
       assert.equal(calls.filter(call => call.url.endsWith('/register')).length, 1);
       await page.screenshot({ path: path.join(output, `password-${width}-${colorScheme}.png`), fullPage: true });
       assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
@@ -98,6 +101,7 @@ try {
     let phoneCalls = 0;
     await page.route(authRoute, async route => {
       const url = new URL(route.request().url()).pathname;
+        if (url.endsWith('/auth/legal')) return route.fulfill({ json: { code: 0, data: legalFixture } });
       let data = pending;
       if (url.endsWith('/capabilities')) data = direct ? { enabled: true, registrationEnabled: true } : { enabled: true };
       if (url.endsWith('/register')) {
@@ -114,10 +118,12 @@ try {
     await button(page, '微信登录').click();
     await page.getByText('创建账号', { exact: true }).waitFor();
     if (direct) {
+      await page.getByRole('switch', { name: '同意隐私政策和服务条款' }).click();
       await button(page, '注册新账号').click();
       await page.getByText('登录票据已失效，请重新微信登录', { exact: true }).waitFor();
       assert.equal(await page.evaluate(() => uni.getStorageSync('aio-life-mobile.access-token.v1') || ''), '');
       await button(page, '微信登录').click();
+      await page.getByRole('switch', { name: '同意隐私政策和服务条款' }).click();
       await button(page, '注册新账号').click();
     } else {
       assert.equal(await page.getByText('注册新账号', { exact: true }).count(), 0);
@@ -149,6 +155,7 @@ try {
   await page.route(authRoute, async route => {
     const request = route.request();
     const url = new URL(request.url()).pathname;
+        if (url.endsWith('/auth/legal')) return route.fulfill({ json: { code: 0, data: legalFixture } });
     calls.push({ url, body: request.postDataJSON(), token: request.headers().authorization });
     let data = [];
     if (url.endsWith('/capabilities')) data = { enabled: true, registrationEnabled: true };
@@ -186,8 +193,9 @@ try {
       // 注册完成会预取其他页面配置；全部隔离，不能让模拟 Token 请求真实后端。
       await context.route(origin + '/api/**', route => route.fulfill({ json: { code: 0, data: [] } }));
       const scanCalls = [];
-      await scanPage.route(/\/api\/(?:auth\/(?:wechat\/(?:web\/(?:scan|confirm|cancel)|mini\/(?:capabilities|login|register))|secondary-lock\/menus)|user\/info|menu\/all)(?:\?.*)?$/, async route => {
+      await scanPage.route(/\/api\/(?:auth\/(?:wechat\/(?:web\/(?:scan|confirm|cancel)|mini\/(?:capabilities|login|register))|secondary-lock\/menus|legal)|user\/info|menu\/all)(?:\?.*)?$/, async route => {
         const url = new URL(route.request().url()).pathname;
+        if (url.endsWith('/auth/legal')) return route.fulfill({ json: { code: 0, data: legalFixture } });
         const body = route.request().postDataJSON();
         scanCalls.push({ url, body });
         let data = [];
@@ -204,6 +212,7 @@ try {
       await button(scanPage, '微信登录').waitFor();
       await scanPage.evaluate(() => { uni.login = options => options.success({ code: 'fixture-fresh-code' }); });
       await button(scanPage, '微信登录').click();
+      await scanPage.getByRole('switch', { name: '同意隐私政策和服务条款' }).click();
       await button(scanPage, '注册新账号').click();
       await button(scanPage, '暂不设置').click();
       await scanPage.getByText('扫码测试用户', { exact: true }).waitFor();
@@ -231,6 +240,7 @@ try {
     notice.on('pageerror', error => errors.push(error.message));
     await notice.route(origin + '/api/**', async route => {
       const url = new URL(route.request().url()).pathname;
+        if (url.endsWith('/auth/legal')) return route.fulfill({ json: { code: 0, data: legalFixture } });
       const method = route.request().method();
       let data = fixtures.dashboardFixture(url) ?? [];
       if (url === '/api/auth/login') data = { accessToken: 'fixture-notice-token' };

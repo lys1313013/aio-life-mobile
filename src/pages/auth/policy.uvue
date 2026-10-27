@@ -1,0 +1,70 @@
+<script setup lang="ts">
+import { computed, ref } from 'vue';
+import { onLoad, onUnload } from '@dcloudio/uni-app';
+import MobilePage from '../../components/MobilePage.uvue';
+import PageHeader from '../../components/PageHeader.uvue';
+import PageState from '../../components/PageState.uvue';
+import MobileButton from '../../components/MobileButton.uvue';
+import { fetchLegalPolicies } from '../../services/legal.ts';
+import type { LegalPolicies } from '../../services/legal.ts';
+import { themeClass } from '../../services/theme.ts';
+const kind = ref('privacy');
+const policy = ref<LegalPolicies | null>(null);
+const loading = ref(false), error = ref('');
+const title = computed(() => kind.value === 'terms' ? '服务条款' : '隐私政策');
+const sections = computed(() => policy.value ? (kind.value === 'terms' ? policy.value.terms : policy.value.privacy) : []);
+let active = true;
+onLoad(options => { kind.value = options?.kind === 'terms' ? 'terms' : 'privacy'; load(); });
+onUnload(() => { active = false; });
+async function load() {
+  if (loading.value) return;
+  loading.value = true; error.value = '';
+  try { const value = await fetchLegalPolicies(); if (active) policy.value = value; }
+  catch (reason) { if (active) error.value = reason.message; }
+  finally { if (active) loading.value = false; }
+}
+// #ifdef MP-WEIXIN
+function openWechatPrivacy() {
+  wx.openPrivacyContract({ fail: () => { error.value = '微信隐私保护指引暂不可用，请稍后重试或联系运营者'; } });
+}
+// #endif
+function back() { uni.navigateBack({ fail: () => uni.reLaunch({ url: '/pages/login/index' }) }); }
+</script>
+<template>
+  <view class="policy-page" :class="themeClass('policy-page')">
+    <PageHeader :title="title" back @back="back" />
+    <MobilePage :requires-auth="false">
+      <view class="ui-page-body ui-gap-section">
+        <PageState :loading="loading" :error="error" skeleton="form" @retry="load">
+          <view v-if="policy" class="ui-gap-section">
+            <text class="policy-meta" :class="themeClass('policy-meta')">版本 {{ policy.version }} · 生效日期 {{ policy.effectiveDate }}</text>
+            <view class="ui-gap-sm">
+              <text class="policy-body" :class="themeClass('policy-body')">运营主体：{{ policy.operator || '尚未配置，发布前需补充' }}</text>
+              <text class="policy-body" :class="themeClass('policy-body')" selectable>隐私联系邮箱：{{ policy.contactEmail || '尚未配置，发布前需补充' }}</text>
+            </view>
+            <!-- #ifdef MP-WEIXIN -->
+            <MobileButton v-if="kind === 'privacy'" label="微信隐私保护指引" variant="quiet" @click="openWechatPrivacy" />
+            <!-- #endif -->
+            <view v-for="(section, index) in sections" :key="section[0]" class="ui-gap-sm">
+              <text class="policy-title" :class="themeClass('policy-title')">{{ index + 1 }}. {{ section[0] }}</text>
+              <text class="policy-body" :class="themeClass('policy-body')" selectable>{{ section[1] }}</text>
+            </view>
+          </view>
+        </PageState>
+      </view>
+    </MobilePage>
+  </view>
+</template>
+<style scoped lang="scss">
+@use '../../styles/typography' as *;
+@use '../../styles/spacing.scss';
+@use '../../styles/spacing-tokens' as *;
+.policy-page { flex: 1; height: 100%; min-height: 0; background-color: #f5f6f8; color: #27272a; }
+.policy-page-dark { background-color: #101114; color: #eeeeef; }
+.policy-title { @include type-style('body-strong'); color: #27272a; }
+.policy-body { @include type-style('body'); color: #27272a; }
+.policy-meta { @include type-style('caption'); color: #626e82; }
+.policy-title-dark { color: #eeeeef; }
+.policy-body-dark { color: #eeeeef; }
+.policy-meta-dark { color: #a0a6b1; }
+</style>

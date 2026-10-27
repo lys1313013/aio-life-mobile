@@ -1,18 +1,29 @@
 <script setup lang="ts">
 import { buttonLabelClasses } from '../../services/button-label.ts'
+import MobileSwitch from '../../components/MobileSwitch.uvue'
+import MobileButton from '../../components/MobileButton.uvue'
+import { fetchLegalPolicies, openLegalPolicy, registrationConsent } from '../../services/legal.ts'
 import AppIcon from '../../components/AppIcon.uvue'
 import FormField from '../../components/FormField.uvue'
 import PageHeader from '../../components/PageHeader.uvue'
 import { webLoginReturnPath } from '../../services/wechat-web-login.ts'
 import { isDark, themeClass } from '../../services/theme.ts'
 import { ref } from 'vue'
-import { onShow } from '@dcloudio/uni-app'
+import { onShow, onLoad } from '@dcloudio/uni-app'
 import { login } from '../../services/api.ts'
 import { validateCredentials } from '../../services/contract.ts'
 import { restoreSession, session } from '../../services/session.ts'
 import { fetchWechatCapabilities, startWechatLogin, registerWithWechat, bindWechatAccount, initializeWechatPassword } from '../../services/wechat-auth.ts'
 import { clearRememberedPassword, readRememberedLogin, saveRememberedLogin } from './services/remembered-login.ts'
 
+const agreedPolicy = ref(false), policyVersion = ref(''), policyLoading = ref(false), policyError = ref('')
+async function loadPolicy() {
+  if (policyLoading.value) return
+  policyLoading.value = true; policyError.value = ''
+  try { const value = await fetchLegalPolicies(); if (policyVersion.value !== value.version) agreedPolicy.value = false; policyVersion.value = value.version }
+  catch (reason) { policyError.value = reason.message }
+  finally { policyLoading.value = false }
+}
 const rememberedLogin = readRememberedLogin()
 const username = ref(rememberedLogin?.username || '')
 const password = ref(rememberedLogin?.password || '')
@@ -32,6 +43,7 @@ const accountUsername = ref('')
 const newPassword = ref('')
 const confirmPassword = ref('')
 let capabilitiesLoaded = false
+onLoad(options => { if (options?.closed === '1') uni.showModal({ title: '注销已受理', content: '账号已停用，后台将持续清理相关数据。注销不可撤销。', showCancel: false }) })
 
 onShow(async () => {
   restoreSession()
@@ -55,6 +67,7 @@ async function loadWechatCapabilities() {
     wechatRegistrationEnabled.value = capabilities.registrationEnabled
     if (wechatEnabled.value) mode.value = 'wechat'
     capabilitiesLoaded = true
+    if (capabilities.registrationEnabled) void loadPolicy()
   } catch (_) {
     wechatCapabilityFailed.value = true
     errorText.value = '暂时无法获取微信登录方式，可重试或使用账号密码登录'
@@ -107,7 +120,9 @@ function acceptWechat(result) {
   }
   loginTicket.value = result.loginTicket
   ticketExpiresAt.value = Date.now() + result.expiresIn * 1000
+  agreedPolicy.value = false
   mode.value = 'register'
+  void loadPolicy()
 }
 
 function requireTicket() {
@@ -129,10 +144,10 @@ async function wechatLogin() {
 async function registerWechat() {
   if (busy.value || !wechatRegistrationEnabled.value) return
   errorText.value = ''
-  try { requireTicket() }
+  try { requireTicket(); registrationConsent(agreedPolicy.value, policyVersion.value) }
   catch (error) { errorText.value = error.message; return }
   busy.value = true
-  try { acceptWechat(await registerWithWechat(loginTicket.value)) }
+  try { acceptWechat(await registerWithWechat(loginTicket.value, registrationConsent(agreedPolicy.value, policyVersion.value))) }
   catch (error) {
     loginTicket.value = ''
     ticketExpiresAt.value = 0
@@ -212,6 +227,10 @@ async function setPassword() {
         <text class="login-title ink" :class="themeClass('ink')">{{ mode === 'set-password' ? '设置登录密码' : mode === 'bind' ? '绑定已有账号' : mode === 'register' ? '创建账号' : '欢迎回来' }}</text>
         <text class="login-subtitle muted" :class="themeClass('muted')">{{ mode === 'set-password' ? '设置密码，下次也可使用账号登录。' : mode === 'bind' ? '登录后，将微信绑定到你的账号。' : '让生活，有迹可循。' }}</text>
 
+        <view class="ui-field-row ui-mb-section">
+          <MobileButton label="隐私政策" variant="ghost" @click="openLegalPolicy('privacy')" />
+          <MobileButton label="服务条款" variant="ghost" @click="openLegalPolicy('terms')" />
+        </view>
         <view class="login-form">
           <!-- #ifdef MP-WEIXIN -->
           <view v-if="mode === 'wechat'">
@@ -219,6 +238,13 @@ async function setPassword() {
             <button class="text-button muted ui-pad-sm ui-mt-section" :disabled="busy" @click="switchMode('password')" :class="themeClass('muted')"><text :class="buttonLabelClasses(['text-button muted ui-pad-sm ui-mt-section', themeClass('muted')])">账号密码登录</text></button>
           </view>
           <view v-if="mode === 'register'">
+            <view v-if="wechatRegistrationEnabled" class="ui-field-row ui-mb-section">
+              <MobileSwitch :checked="agreedPolicy" :disabled="busy" aria-label="同意隐私政策和服务条款" @change="event => agreedPolicy = event.detail.value" />
+              <MobileButton label="隐私政策" variant="ghost" @click="openLegalPolicy('privacy')" />
+              <MobileButton label="服务条款" variant="ghost" @click="openLegalPolicy('terms')" />
+            </view>
+            <text v-if="policyError" class="error-text" :class="themeClass('error-text')" role="alert">{{ policyError }}</text>
+            <MobileButton v-if="policyError" label="重新加载协议" variant="quiet" :loading="policyLoading" @click="loadPolicy" />
             <button v-if="wechatRegistrationEnabled" class="primary-button" :loading="busy" :disabled="busy" @click="registerWechat"><text :class="buttonLabelClasses(['primary-button'])">注册新账号</text></button>
             <text class="wechat-note muted ui-mt-section" :class="themeClass('muted')">{{ wechatRegistrationEnabled ? '已有账号请先登录绑定，保留原有数据。' : '微信注册暂未开放，可先注册账号后绑定微信。' }}</text>
             <button v-if="!wechatRegistrationEnabled" class="primary-button ui-mt-section" :disabled="busy" @click="openAuth('register')"><text :class="buttonLabelClasses(['primary-button ui-mt-section'])">注册账号</text></button>

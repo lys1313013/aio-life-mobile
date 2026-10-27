@@ -41,8 +41,8 @@ export async function startWechatLogin() {
   return acceptLogin(await request('/auth/wechat/mini/login', 'POST', { loginCode }, false))
 }
 
-export async function registerWithWechat(loginTicket) {
-  return acceptLogin(await request('/auth/wechat/mini/register', 'POST', { loginTicket }, false))
+export async function registerWithWechat(loginTicket, consent) {
+  return acceptLogin(await request('/auth/wechat/mini/register', 'POST', { loginTicket, ...consent }, false))
 }
 
 export async function bindWechatAccount(loginTicket, username, password) {

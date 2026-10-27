@@ -30,15 +30,15 @@ test('待授权票据不能作为业务 Token 保存', async () => {
   assert.deepEqual(saved, []);
 });
 
-test('微信注册只提交服务端票据，成功后保存业务 Token', async () => {
+test('微信注册提交身份票据与明确同意的协议版本，成功后保存业务 Token', async () => {
   const { service, saved } = fixture(async (path, method, body, auth) => {
     assert.equal(path, '/auth/wechat/mini/register');
     assert.equal(method, 'POST');
     assert.equal(auth, false);
-    assert.deepEqual(body, { loginTicket: 'ticket' });
+    assert.deepEqual(body, { loginTicket: 'ticket', agreedPolicy: true, policyVersion: '2026-10-27' });
     return loggedIn;
   });
-  await service.registerWithWechat('ticket');
+  await service.registerWithWechat('ticket', { agreedPolicy: true, policyVersion: '2026-10-27' });
   assert.deepEqual(saved, ['final-token']);
 });
 

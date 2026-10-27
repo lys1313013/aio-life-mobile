@@ -61,6 +61,8 @@ export function readUser(data) {
     nickname: typeof data.nickname === 'string' ? data.nickname : '',
     avatarFileId: typeof data.avatarFileId === 'string' ? data.avatarFileId : null,
     avatarUrl: typeof data.avatarUrl === 'string' ? data.avatarUrl : '',
+    hasPassword: data.hasPassword === true,
+    wechatBound: data.wechatBound === true,
     email: typeof data.email === 'string' ? data.email : '',
     introduction: typeof data.introduction === 'string' ? data.introduction : '',
     roles: Array.isArray(data.roles) ? data.roles.filter(role => typeof role === 'string') : [],

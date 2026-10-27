@@ -6,41 +6,22 @@ import PageHeader from '../../components/PageHeader.uvue';
 import MobilePage from '../../components/MobilePage.uvue';
 import MobileButton from '../../components/MobileButton.uvue';
 import FormField from '../../components/FormField.uvue';
-import AdaptiveModal from '../../components/AdaptiveModal.uvue';
 import { request } from '../../services/api.ts';
 import { authPayload } from './services/contract.ts';
 import { themeClass } from '../../services/theme.ts';
-const agreed = ref(false),
-  policy = ref('');
-const policies = {
-  privacy: [
-    [
-      '信息收集',
-      '注册邮箱仅用于账号验证、登录与密码找回；你主动接入的第三方平台（GitHub、LeetCode、CSDN 等）凭据仅用于同步你的公开数据。',
-    ],
-    [
-      '数据存储',
-      '你的所有记录数据均存储于本站私有部署的服务器中，不会出售、共享给任何第三方。密码经加密存储，敏感数据（如密码管理器内容）加密后保存。',
-    ],
-    ['Cookie 与本地存储', '仅用于维持登录状态与界面偏好设置，不用于任何跟踪或广告用途。'],
-    ['数据权利', '你可以随时导出或删除自己的数据；注销账号后，相关数据将被彻底删除。'],
-  ],
-  terms: [
-    [
-      '账号责任',
-      '你需妥善保管账号与密码，对账号下的所有操作负责。注册即表示你提供的信息真实有效。',
-    ],
-    [
-      '合法使用',
-      '不得利用本服务存储、传播违法违规内容，不得攻击、干扰服务的正常运行。违规账号将被停用。',
-    ],
-    ['服务变更', '本服务可能随版本迭代调整功能，重要变更将通过站内通知告知。'],
-    [
-      '免责声明',
-      '本服务按“现状”提供，因不可抗力或第三方平台接口变更导致的数据同步异常，本站不承担相应责任，请自行备份重要数据。',
-    ],
-  ],
-};
+import { fetchLegalPolicies, openLegalPolicy, registrationConsent } from '../../services/legal.ts';
+const agreed = ref(false), policyVersion = ref(''), policyError = ref(''), policyLoading = ref(false);
+async function loadPolicy() {
+  if (policyLoading.value) return;
+  policyLoading.value = true; policyError.value = '';
+  try {
+    const value = await fetchLegalPolicies();
+    if (!active) return;
+    if (policyVersion.value !== value.version) agreed.value = false;
+    policyVersion.value = value.version;
+  } catch (reason) { if (active) policyError.value = reason.message; }
+  finally { if (active) policyLoading.value = false; }
+}
 const mode = ref('register'),
   form = ref({ username: '', email: '', password: '', confirmPassword: '', code: '' }),
   saving = ref(false),
@@ -52,6 +33,7 @@ let active = true,
   timer = null;
 onLoad((options) => {
   mode.value = options?.mode === 'reset' ? 'reset' : 'register';
+  if (mode.value === 'register') loadPolicy();
 });
 onUnload(() => {
   active = false;
@@ -62,6 +44,10 @@ async function send() {
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.value.email.trim())) {
     error.value = '请输入有效邮箱';
     return;
+  }
+  if (mode.value === 'register') {
+    try { registrationConsent(agreed.value, policyVersion.value); }
+    catch (reason) { error.value = reason.message; return; }
   }
   sending.value = true;
   error.value = '';
@@ -94,7 +80,7 @@ async function submit() {
   error.value = '';
   try {
     if (mode.value === 'register' && !agreed.value) throw Error('请阅读并同意隐私政策和服务条款');
-    const data = authPayload(mode.value, form.value);
+    const data = { ...authPayload(mode.value, form.value), ...(mode.value === 'register' ? registrationConsent(agreed.value, policyVersion.value) : {}) };
     await request(
       mode.value === 'register' ? '/auth/register' : '/auth/resetPassword',
       'POST',
@@ -155,11 +141,11 @@ async function submit() {
               @change="(event) => (agreed = event.detail.value)" /><MobileButton
               label="隐私政策"
               variant="quiet"
-              @click="policy = 'privacy'" /><MobileButton
+              @click="openLegalPolicy('privacy')" /><MobileButton
               label="服务条款"
               variant="quiet"
-              @click="policy = 'terms'" /></view
-          ><text v-if="error" class="auth-error ui-mb-section" role="alert">{{ error }}</text
+              @click="openLegalPolicy('terms')" /></view
+          ><text v-if="policyError && mode === 'register'" class="auth-error" role="alert">{{ policyError }}</text><MobileButton v-if="policyError && mode === 'register'" label="重新加载协议" variant="quiet" :loading="policyLoading" @click="loadPolicy" /><text v-if="error" class="auth-error ui-mb-section" role="alert">{{ error }}</text
           ><MobileButton
             :label="mode === 'register' ? '注册' : '重置密码'"
             :loading="saving"
@@ -170,14 +156,6 @@ async function submit() {
           ><MobileButton
             label="返回登录"
             @click="uni.reLaunch({ url: '/pages/login/index' })" /></template></view></MobilePage
-    ><AdaptiveModal
-      v-if="policy"
-      :label="policy === 'privacy' ? '隐私政策' : '服务条款'"
-      @close="policy = ''"
-      ><view v-for="item in policies[policy]" :key="item[0]" class="auth-policy-section ui-section ui-gap-sm"
-        ><text class="auth-policy-title">{{ item[0] }}</text
-        ><text class="auth-policy-body">{{ item[1] }}</text></view
-      ></AdaptiveModal
     ></view
   >
 </template>

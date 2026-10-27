@@ -1,0 +1,102 @@
+<script setup lang="ts">
+import { ref } from 'vue';
+import { onShow, onHide, onUnload } from '@dcloudio/uni-app';
+import PageHeader from '../../components/PageHeader.uvue';
+import MobilePage from '../../components/MobilePage.uvue';
+import MobileButton from '../../components/MobileButton.uvue';
+import FormField from '../../components/FormField.uvue';
+import FormActions from '../../components/FormActions.uvue';
+import ConfirmAction from '../../components/ConfirmAction.uvue';
+import PageState from '../../components/PageState.uvue';
+import { fetchUser, request } from '../../services/api.ts';
+import { clearSession, session } from '../../services/session.ts';
+import { getWechatCode } from '../../services/wechat-auth.ts';
+import { openLegalPolicy } from '../../services/legal.ts';
+import { themeClass } from '../../services/theme.ts';
+const password = ref(''), confirmation = ref(''), error = ref(''), loading = ref(false), saving = ref(false), ready = ref(false);
+const method = ref('password');
+let active = true, revision = 0;
+onShow(() => { active = true; if (!session.token) uni.reLaunch({ url: '/pages/login/index' }); else load(); });
+function suspend() { active = false; revision++; password.value = ''; confirmation.value = ''; }
+onHide(suspend); onUnload(suspend);
+async function load() {
+  const version = ++revision;
+  loading.value = true; error.value = ''; ready.value = false;
+  try { await fetchUser(); if (active && version === revision) { ready.value = true; method.value = session.user?.hasPassword ? 'password' : 'wechat'; } }
+  catch (reason) { if (active && version === revision) error.value = reason.message; }
+  finally { if (version === revision) loading.value = false; }
+}
+function back() { if (!saving.value) uni.navigateBack({ fail: () => uni.switchTab({ url: '/pages/profile/index' }) }); }
+async function closeAccount() {
+  if (saving.value) return;
+  if (confirmation.value !== '注销账号') throw new Error('请输入“注销账号”确认操作');
+  if (method.value === 'password' && !password.value) throw new Error('请输入当前登录密码');
+  saving.value = true;
+  const token = session.token, version = revision;
+  try {
+    const loginCode = method.value === 'wechat' ? await getWechatCode() : '';
+    if (!active || token !== session.token || version !== revision) throw new Error('页面或账号已变化，请重新验证');
+    await request('/auth/account/close', 'POST', { confirmation: confirmation.value, password: method.value === 'password' ? password.value : '', loginCode });
+    // 成功后只清理当前账号的客户端缓存；失败保留输入和会话。
+    if (token !== session.token) return;
+    clearSession();
+    password.value = ''; confirmation.value = '';
+    try {
+      for (const key of uni.getStorageInfoSync().keys) {
+        if (key.startsWith('aio-life-mobile.') && key !== 'aio-life-mobile.theme.v1') {
+          try { uni.removeStorageSync(key); } catch (_) { /* 内存登录已撤销 */ }
+        }
+      }
+    } catch (_) { /* 存储不可读时仍显示已受理，不把服务端成功误报为注销失败。 */ }
+    uni.reLaunch({ url: '/pages/login/index?closed=1' });
+  } finally { saving.value = false; }
+}
+</script>
+<template>
+  <view class="closure-page" :class="themeClass('closure-page')">
+    <PageHeader title="注销账号" back @back="back" />
+    <MobilePage>
+      <view class="ui-page-body ui-gap-section">
+        <PageState :loading="loading" :error="error" skeleton="form" @retry="load">
+          <view v-if="ready" class="ui-gap-section">
+            <text class="closure-title" :class="themeClass('closure-title')">注销不可撤销，请先导出需要保留的数据。</text>
+            <text class="closure-body" :class="themeClass('closure-body')">受理后账号立即停用，所有设备退出。生活记录、绑定凭据、密码库、附件、导出文件和关系图谱将由后台清理，失败会重试。第三方平台账号不受影响。</text>
+            <view class="ui-field-row">
+              <MobileButton label="导出数据" variant="quiet" :disabled="saving" @click="uni.navigateTo({ url: '/pages/data-export/index' })" />
+              <MobileButton label="隐私政策" variant="ghost" :disabled="saving" @click="openLegalPolicy()" />
+            </view>
+            <!-- #ifdef MP-WEIXIN -->
+            <view v-if="session.user?.hasPassword && session.user?.wechatBound" class="ui-field-row">
+              <MobileButton label="密码验证" :variant="method === 'password' ? 'primary' : 'quiet'" :disabled="saving" @click="method = 'password'" />
+              <MobileButton label="微信验证" :variant="method === 'wechat' ? 'primary' : 'quiet'" :disabled="saving" @click="method = 'wechat'" />
+            </view>
+            <!-- #endif -->
+            <FormField v-if="method === 'password'" required label="当前登录密码" kind="password" v-model="password" :disabled="saving" />
+            <!-- #ifdef MP-WEIXIN -->
+            <text v-if="method === 'wechat'" class="closure-body" :class="themeClass('closure-body')">确认注销时将重新核验当前微信与本账号的绑定。</text>
+            <!-- #endif -->
+            <!-- #ifndef MP-WEIXIN -->
+            <text v-if="method === 'wechat'" class="closure-body" :class="themeClass('closure-body')">账号尚未设置登录密码，请在微信小程序完成微信身份核验后注销，或使用网页版扫码验证。</text>
+            <!-- #endif -->
+            <FormField required label="输入“注销账号”确认" v-model="confirmation" :disabled="saving" />
+            <FormActions>
+              <MobileButton label="取消" variant="quiet" :disabled="saving" @click="back" />
+              <ConfirmAction label="注销账号" confirm-label="确认注销" message="账号将立即停用并开始不可撤销的数据清理，确定注销？" :action="closeAccount" :trigger-disabled="saving || confirmation !== '注销账号'" />
+            </FormActions>
+          </view>
+        </PageState>
+      </view>
+    </MobilePage>
+  </view>
+</template>
+<style scoped lang="scss">
+@use '../../styles/typography' as *;
+@use '../../styles/spacing.scss';
+@use '../../styles/spacing-tokens' as *;
+.closure-page { flex: 1; height: 100%; min-height: 0; background-color: #f5f6f8; }
+.closure-page-dark { background-color: #101114; }
+.closure-title { @include type-style('body-strong'); color: #c65353; }
+.closure-title-dark { color: #ed9191; }
+.closure-body { @include type-style('body'); color: #27272a; }
+.closure-body-dark { color: #eeeeef; }
+</style>
