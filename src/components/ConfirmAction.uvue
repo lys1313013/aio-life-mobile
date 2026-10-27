@@ -2,6 +2,7 @@
 import spacing from '../styles/spacing.json';
 import { getCurrentInstance, nextTick, onUnmounted, ref, watch } from 'vue';
 import MobileButton from './MobileButton.uvue';
+import AppIcon from './AppIcon.uvue';
 import { themeClass } from '../services/theme.ts';
 // #ifdef MP-WEIXIN
 import WeixinModalBackGuard from './WeixinModalBackGuard.uvue';
@@ -15,6 +16,8 @@ const props = withDefaults(
     danger?: boolean;
     confirmLabel?: string;
     compact?: boolean;
+    triggerDisabled?: boolean;
+    triggerIconColor?: string;
   }>(),
   { icon: 'ant-design:delete-outlined', danger: true, confirmLabel: '确认', compact: false },
 );
@@ -48,7 +51,7 @@ async function place() {
 }
 watch(error, place);
 function open() {
-  if (busy.value) return;
+  if (busy.value || props.triggerDisabled) return;
   error.value = '';
   const info = uni.getWindowInfo();
   const viewport = info.windowWidth;
@@ -95,7 +98,11 @@ onUnmounted(() => {
 <template>
   <view class="confirm-anchor" :style="{ zIndex: opened ? 1200 : 0 }">
     <slot :open="open" :busy="busy">
-      <MobileButton :label="label" :icon="icon" variant="quiet" :loading="busy" @click="open" />
+      <button v-if="triggerIconColor" role="button" class="confirm-icon-trigger" :aria-label="label"
+        :disabled="triggerDisabled || busy" :aria-disabled="triggerDisabled || busy" :aria-busy="busy" @click="open">
+        <AppIcon :name="icon" :color="triggerIconColor" />
+      </button>
+      <MobileButton v-else :label="label" :icon="icon" variant="quiet" :loading="busy" :disabled="triggerDisabled" @click="open" />
     </slot>
     <!-- 保留原位按钮测量，只有确认面板脱离滚动容器和卡片的 transform。 -->
     <!-- #ifdef MP-WEIXIN -->
@@ -140,6 +147,18 @@ onUnmounted(() => {
   position: relative;
   overflow: visible;
 }
+.confirm-icon-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: $space-controlMin;
+  min-height: $space-controlMin;
+  padding: 0;
+  margin: 0;
+  border: 0;
+  background-color: transparent;
+}
+.confirm-icon-trigger::after { border: 0; }
 .confirm-panel {
   position: fixed;
   top: 48px;
