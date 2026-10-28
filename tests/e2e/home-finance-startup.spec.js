@@ -21,7 +21,7 @@ for (const width of [390, 820, 1440]) for (const theme of ['light', 'dark']) {
       const routes = ['/finance-management/dashboard', '/finance-management/income', '/finance-management/expense'];
       let data = [];
       if (pathname === '/user/info') data = { id: 'startup-user', nickname: '模拟用户' };
-      if (pathname === '/home/cards') data = ['income', 'expense'].map((kind, sortOrder) => ({ cardKey: 'section.' + kind, title: kind, group: 'section', enabled: true, sortOrder }));
+      if (pathname === '/home/cards') data = ['income', 'expense'].map((kind, sortOrder) => ({ cardKey: 'section.' + kind, title: kind, group: 'section', isEnabled: 1, sortOrder }));
       if (pathname === '/menu/all') data = routes.map((path, i) => ({ path, meta: { menuId: 'menu-' + i } }));
       if (pathname === '/quick-nav/candidates') data = routes.map(path => ({ path }));
       if (pathname === '/menu/visuals') data = { menus: [], cards: {} };
@@ -54,10 +54,12 @@ for (const width of [390, 820, 1440]) for (const theme of ['light', 'dark']) {
         await card.getByRole('button', { name: label + '：月', exact: true }).click();
         await expect(card.getByRole('button', { name: label + '：月', exact: true })).toHaveAttribute('aria-pressed', 'true');
         await card.locator('.calendar-cell').first().click();
-        const details = page.getByRole('dialog', { name: label + '明细', exact: true });
+        const details = page.getByRole('region', { name: label + '明细', exact: true });
         await expect(details).toContainText('暂无' + label + '记录');
         await page.screenshot({ path: info.outputPath(kind + '-details.png') });
-        await details.getByRole('button', { name: '关闭', exact: true }).click();
+        await details.getByRole('button', { name: '返回', exact: true }).click();
+        await expect(page).toHaveURL(/pages\/home\/index/);
+        await expect(card.getByRole('button', { name: label + '：月', exact: true })).toHaveAttribute('aria-pressed', 'true');
       }
       expect(completed).toBe(false);
       await page.getByRole('button', { name: '查看支出', exact: true }).click();

@@ -4,7 +4,6 @@ import { computed, onUnmounted, reactive, ref, watch } from 'vue'
 import DashboardSection from '../../components/DashboardSection.uvue'
 import AppIcon from '../../components/AppIcon.uvue'
 import LoadingIndicator from '../../components/LoadingIndicator.uvue'
-import FinanceCalendarDetailsModal from './FinanceCalendarDetailsModal.uvue'
 import { fetchUser, request } from '../../services/api.ts'
 import { session } from '../../services/session.ts'
 import { isDark } from '../../services/theme.ts'
@@ -14,9 +13,10 @@ import { cachedMenuAccess, loadMenuAccess } from '../../services/menu-access-cac
 import { loadQuickNavCandidates } from '../../services/quick-nav-candidates.ts'
 import { lockedMenuPaths, matchesNativeMenu } from '../../services/life-catalog.ts'
 import { isMenuUnlocked } from '../../services/secondary-lock.ts'
+import { unlockHomeCard } from './services/card-unlock.ts'
 import { createHomeRefreshScheduler } from './services/refresh-scheduler.ts'
 import { createSummaryController, summaryCards, summaryState } from './services/summary-cards.ts'
-import { calendarMoney, calendarPlaceholder, calendarScope, chinaDay, modesFor, moveCalendarDate, readCalendar, readCalendarMode, saveCalendarMode, calendarPeriod } from './services/finance-calendar.ts'
+import { calendarMoney, calendarPlaceholder, calendarScope, chinaDay, modesFor, moveCalendarDate, readCalendar, readCalendarMode, saveCalendarMode, calendarPeriod, calendarDetailsUrl } from './services/finance-calendar.ts'
 import type { CalendarBucket, FinanceKind, FinanceMetric, Granularity } from './services/finance-calendar.ts'
 const props = defineProps<{ kind: FinanceKind; active: boolean; preparing?: boolean; height?: number; refreshDisabled?: boolean; page?: boolean }>()
 const emit = defineEmits(['visibility'])
@@ -29,7 +29,7 @@ const mode = ref<Granularity>(readCalendarMode(props.kind, owner.value, storage)
 const metric = ref<FinanceMetric>('balance')
 const metrics = [{ key: 'income', label: '收入' }, { key: 'expense', label: '支出' }, { key: 'balance', label: '结余' }]
 function amount(bucket) { return props.kind === 'finance' ? bucket[metric.value] || 0 : bucket.amount }
-const cursor = ref(''), detail = ref<CalendarBucket | null>(null)
+const cursor = ref('')
 const visual = computed(() => menuVisuals.visual('section.' + props.kind))
 const modes = modesFor(props.kind), weekdays = ['一', '二', '三', '四', '五', '六', '日']
 const query = () => calendarScope(props.kind, mode.value, cursor.value)
@@ -62,14 +62,14 @@ async function access() {
 const controller = createSummaryController(props.kind, state, { active: () => props.active && !!session.token, revision: () => homeDataRevision(props.kind), access, fetch, query, read: readCalendar })
 function checkAccess() {
   const access = cachedMenuAccess(), route = access ? lockedRoute(access) : config.route
-  if (route && state.data) { controller.invalidate(true); state.locked = true; state.unlockRoute = route; detail.value = null; scheduler.clear() }
+  if (route && state.data) { controller.invalidate(true); state.locked = true; state.unlockRoute = route; scheduler.clear() }
 }
 async function refresh(force = true) {
   await controller.refresh(force)
   scheduler.set(props.kind, state.available && !state.locked ? state.data?.refreshInterval : 0, () => refresh())
   if (props.active) scheduler.resume()
 }
-function changeScope() { detail.value = null; controller.invalidate(); scheduler.pause(); void refresh(false) }
+function changeScope() { controller.invalidate(); scheduler.pause(); void refresh(false) }
 function selectMode(value: Granularity) {
   if (!props.active || props.refreshDisabled || state.locked) return
   if (mode.value === value) { if (state.error) void refresh(); return }
@@ -80,29 +80,32 @@ function move(delta: number) {
   cursor.value = moveCalendarDate(query().date || chinaDay(), mode.value, delta); changeScope()
 }
 function pickDate(value: string) { cursor.value = value; changeScope() }
-function navigate() { if (props.active && !props.refreshDisabled) uni.navigateTo({ url: state.locked ? state.unlockRoute || config.route : config.route }) }
-function openDetail(bucket: CalendarBucket) { if (!initial.value && !state.loading && !state.locked && !props.refreshDisabled && !(bucket.future && !bucket.amount && !bucket.income && !bucket.expense)) detail.value = bucket }
+function unlockCard() {
+  return unlockHomeCard([...(props.page ? [] : ['/pages/home/index']), ...config.access], () => refresh(), () => props.active && !props.refreshDisabled && state.available)
+}
+function navigate() { if (props.active && !props.refreshDisabled) uni.navigateTo({ url: config.route }) }
+function openDetail(bucket: CalendarBucket) {
+  if (!props.active || initial.value || state.loading || state.locked || props.refreshDisabled || (bucket.future && !bucket.amount && !bucket.income && !bucket.expense)) return
+  uni.navigateTo({ url: calendarDetailsUrl(props.kind, display.value, bucket, metric.value === 'income' ? 'income' : 'expense') })
+}
 function heat(bucket: CalendarBucket) {
   if (!amount(bucket) || initial.value) return {}
   const hex = visual.value.iconColor || '#d27858', match = /^#([\da-f]{2})([\da-f]{2})([\da-f]{2})$/i.exec(hex)
   return match ? { backgroundColor: 'rgba(' + match.slice(1).map(part => parseInt(part, 16)).join(',') + ',' + (0.08 + Math.abs(amount(bucket)) / maximum.value * 0.24) + ')' } : {}
 }
 function weekRange(bucket: CalendarBucket) { return calendarPeriod(bucket).replaceAll(/\d{4}-/g, '').replaceAll('-', '/').replace(' — ', ' – ') }
-watch(() => props.active, active => { if (active) { checkAccess(); void refresh(false) } else { detail.value = null; scheduler.pause(); controller.invalidate() } }, { immediate: true })
+watch(() => props.active, active => { if (active) { checkAccess(); void refresh(false) } else { scheduler.pause(); controller.invalidate() } }, { immediate: true })
 watch(() => props.preparing, value => { if (value) checkAccess() })
 const stopChanges = onHomeDataChange(keys => { if (keys.includes(props.kind) && props.active) void refresh(false) })
-watch(() => state.data, data => {
-  if (detail.value && data) detail.value = data.buckets.find(bucket => bucket.key === detail.value!.key) || { ...detail.value, amount: 0, income: 0, expense: 0, balance: 0 }
-})
-watch(() => session.token, () => { detail.value = null; cursor.value = ''; scheduler.clear(); controller.invalidate(true) }, { flush: 'sync' })
-watch(owner, () => { detail.value = null; cursor.value = ''; mode.value = readCalendarMode(props.kind, owner.value, storage); controller.invalidate(true); if (props.active) void refresh(false) }, { flush: 'sync' })
-watch(() => [state.locked, state.available], () => { if (state.locked || !state.available) detail.value = null; emit('visibility', state.available) }, { immediate: true })
+watch(() => session.token, () => { cursor.value = ''; scheduler.clear(); controller.invalidate(true) }, { flush: 'sync' })
+watch(owner, () => { cursor.value = ''; mode.value = readCalendarMode(props.kind, owner.value, storage); controller.invalidate(true); if (props.active) void refresh(false) }, { flush: 'sync' })
+watch(() => state.available, available => emit('visibility', available), { immediate: true })
 onUnmounted(() => { stopChanges(); scheduler.clear(); controller.invalidate() })
 defineExpose({ refresh, checkAccess, loading: computed(() => state.loading), error: computed(() => state.error) })
 </script>
 <template>
   <view v-if="state.available" class="finance-calendar" :class="{ 'finance-calendar-dark': isDark }" :aria-label="config.title + '首页卡片'" :aria-busy="state.loading">
-    <DashboardSection :title="config.title" :icon="visual.icon" :icon-color="visual.iconColor" :height="height || (page ? 420 : 280)" :locked="state.locked" :refresh-disabled="refreshDisabled" :navigable="!page" @navigate="navigate" @refresh="refresh()">
+    <DashboardSection :title="config.title" :icon="visual.icon" :icon-color="visual.iconColor" :height="height || (page ? 420 : 280)" :locked="state.locked" :refresh-disabled="refreshDisabled" :navigable="!page" @navigate="navigate" @unlock="unlockCard" @refresh="refresh()">
       <template #actions><view class="calendar-tabs" :class="{ 'calendar-tabs-dark': isDark }" role="group" :aria-label="config.title + '统计粒度'"><button role="button" v-for="item in modes" :key="item.key" class="calendar-tab" :disabled="refreshDisabled || state.locked" :aria-label="config.title + '：' + item.label" :aria-pressed="display.granularity === item.key" @click.stop="selectMode(item.key)"><view class="calendar-tab-surface" :class="{ 'calendar-tab-selected': display.granularity === item.key, 'calendar-tab-selected-dark': isDark && display.granularity === item.key }"><text class="calendar-tab-label" :class="{ 'calendar-tab-label-dark': isDark, 'calendar-tab-label-selected': display.granularity === item.key, 'calendar-tab-label-selected-dark': isDark && display.granularity === item.key }">{{ item.label }}</text></view></button></view></template>
       <view class="calendar-content">
         <view class="calendar-toolbar">
@@ -135,7 +138,6 @@ defineExpose({ refresh, checkAccess, loading: computed(() => state.loading), err
         </view>
       </view>
     </DashboardSection>
-    <FinanceCalendarDetailsModal v-if="detail && active && !state.locked" :key="detail.key" :kind="kind" :initial-kind="metric === 'income' ? 'income' : 'expense'" :bucket="detail" @close="detail = null" />
   </view>
 </template>
 <style scoped lang="scss">

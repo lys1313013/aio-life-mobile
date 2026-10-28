@@ -19,7 +19,7 @@ async function setup(page, theme) {
     let data = [];
     const routes = ['/finance-management/dashboard', '/finance-management/income', '/finance-management/expense'];
     if (pathname === '/user/info') data = { id: 'fixture-user', nickname: '模拟用户' };
-    if (pathname === '/home/cards') data = ['finance', 'income', 'expense'].map((kind, sortOrder) => ({ cardKey: 'section.' + kind, title: kind, group: 'section', enabled: true, sortOrder }));
+    if (pathname === '/home/cards') data = ['finance', 'income', 'expense'].map((kind, sortOrder) => ({ cardKey: 'section.' + kind, title: kind, group: 'section', isEnabled: 1, sortOrder }));
     if (pathname === '/menu/all') data = routes.map((path, i) => ({ path, meta: { menuId: 'menu-' + i } }));
     if (pathname === '/quick-nav/candidates') data = routes.map(path => ({ path }));
     if (pathname === '/menu/visuals') data = { menus: [], cards: {} };
@@ -52,13 +52,17 @@ async function setup(page, theme) {
   return state;
 }
 for (const width of [390, 820, 1440]) for (const theme of ['light', 'dark']) for (const kind of ['expense', 'income']) {
-  test(`首页${kind}复用弹窗并同步明细与合计 ${width} ${theme}`, async ({ page }) => {
+  test(`首页${kind}详情页复用编辑弹窗并同步明细与合计 ${width} ${theme}`, async ({ page }) => {
     await page.setViewportSize({ width, height: 960 });
     const state = await setup(page, theme), label = kind === 'expense' ? '支出' : '收入';
     const card = page.locator('[aria-label="' + label + '首页卡片"]');
     await expect(card).toHaveAttribute('aria-busy', 'false');
     await card.locator('.calendar-cell').first().click();
-    const details = page.getByRole('dialog', { name: label + '明细', exact: true });
+    const details = page.getByRole('region', { name: label + '明细', exact: true });
+    await expect(page).toHaveURL(/pages\/finance\/calendar-details\?/);
+    await expect(details.getByRole('button', { name: new RegExp('^编辑' + label + '：') })).toBeVisible();
+    fs.mkdirSync(path.resolve('artifacts/home-finance-edit'), { recursive: true });
+    await page.screenshot({ path: path.resolve('artifacts/home-finance-edit', kind + '-details-' + width + '-' + theme + '.png') });
     await details.getByRole('button', { name: new RegExp('^编辑' + label + '：') }).click();
     const editor = page.getByRole('dialog', { name: '编辑' + label, exact: true });
     await expect(editor).toBeVisible();
@@ -71,6 +75,8 @@ for (const width of [390, 820, 1440]) for (const theme of ['light', 'dark']) for
     await expect(editor).toHaveCount(0);
     await expect(details).toContainText('修改后的模拟备注');
     await expect(details.locator('.details-total')).toHaveText('100.00');
+    await details.getByRole('button', { name: '返回', exact: true }).click();
+    await expect(page).toHaveURL(/pages\/home\/index/);
     await expect(card.locator('.calendar-total')).toHaveText('100.00');
     const overview = page.locator('[aria-label="收支概览首页卡片"]');
     await expect(overview.locator('.calendar-metric-value').nth(kind === 'income' ? 0 : 1)).toHaveText('100.00');
@@ -85,7 +91,7 @@ test('保存失败保留表单和明细，取消不写入；移出日期范围�
   const state = await setup(page, 'light');
   const card = page.locator('[aria-label="收入首页卡片"]');
   await card.locator('.calendar-cell').first().click();
-  const details = page.getByRole('dialog', { name: '收入明细', exact: true });
+  const details = page.getByRole('region', { name: '收入明细', exact: true });
   await details.getByRole('button', { name: /^编辑收入：/ }).click();
   const editor = page.getByRole('dialog', { name: '编辑收入', exact: true });
   await editor.getByRole('button', { name: '取消', exact: true }).click();
@@ -107,7 +113,7 @@ test('概览内编辑当前收入与支出，删除失败保留表单且重试�
   const state = await setup(page, 'light');
   const card = page.locator('[aria-label="收支概览首页卡片"]');
   await card.locator('.calendar-cell').first().click();
-  const details = page.getByRole('dialog', { name: '收支明细', exact: true });
+  const details = page.getByRole('region', { name: '收支明细', exact: true });
   await details.getByRole('button', { name: '收入明细', exact: true }).click();
   await details.getByRole('button', { name: /^编辑收入：/ }).click();
   const income = page.getByRole('dialog', { name: '编辑收入', exact: true });
@@ -134,7 +140,7 @@ for (const kind of ['expense', 'income']) test(`首页${kind}删除须确认，�
   const label = kind === 'expense' ? '支出' : '收入';
   const card = page.locator('[aria-label="' + label + '首页卡片"]');
   await card.locator('.calendar-cell').first().click();
-  const details = page.getByRole('dialog', { name: label + '明细', exact: true });
+  const details = page.getByRole('region', { name: label + '明细', exact: true });
   await details.getByRole('button', { name: new RegExp('^编辑' + label + '：') }).click();
   const editor = page.getByRole('dialog', { name: '编辑' + label, exact: true });
   await editor.getByRole('button', { name: '删除' + label, exact: true }).click();
@@ -157,6 +163,8 @@ for (const kind of ['expense', 'income']) test(`首页${kind}删除须确认，�
   await expect(editor).toHaveCount(0);
   await expect(details).toContainText('暂无' + label + '记录');
   await expect(details.locator('.details-total')).toHaveText('0.00');
+  await details.getByRole('button', { name: '返回', exact: true }).click();
+  await expect(page).toHaveURL(/pages\/home\/index/);
   await expect(card.locator('.calendar-total')).toHaveText('0.00');
   const overview = page.locator('[aria-label="收支概览首页卡片"]');
   await expect(overview.locator('.calendar-metric-value').nth(kind === 'income' ? 0 : 1)).toHaveText('0.00');

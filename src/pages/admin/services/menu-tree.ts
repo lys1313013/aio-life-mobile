@@ -33,7 +33,7 @@ export function visibleMenus(rows, expanded, keyword = "") {
   });
 }
 
-// 同级移动按最终顺序生成唯一 sort，兼容原有负数及重复 sort。
+// 同级移动按最终顺序生成唯一 sortOrder，兼容原有负数及重复 sortOrder。
 export function menuMoveChanges(rows, row, delta) {
   const peers = rows.filter(
     (item) => (item.parentId || "0") === (row.parentId || "0"),
@@ -42,8 +42,8 @@ export function menuMoveChanges(rows, row, delta) {
   const target = index + delta;
   if (index < 0 || target < 0 || target >= peers.length) return [];
   peers.splice(target, 0, peers.splice(index, 1)[0]);
-  const start = Math.min(...peers.map((item) => Number(item.sort) || 0));
+  const start = Math.min(...peers.map((item) => Number(item.sortOrder) || 0));
   return peers
-    .map((item, offset) => ({ row: item, sort: start + offset }))
-    .filter((change) => Number(change.row.sort) !== change.sort);
+    .map((item, offset) => ({ row: item, sortOrder: start + offset }))
+    .filter((change) => Number(change.row.sortOrder) !== change.sortOrder);
 }

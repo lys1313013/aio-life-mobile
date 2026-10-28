@@ -1,18 +1,18 @@
 <script setup lang="ts">
-import MobileSwitch from './MobileSwitch.uvue';
-import { appTextColor } from '../services/app-layout.ts'
+import MobileSwitch from '../../../components/MobileSwitch.uvue';
+import { appTextColor } from '../../../services/app-layout.ts'
 
 import { computed, ref } from "vue";
-import AppIcon from "./AppIcon.uvue";
-import FormField from "./FormField.uvue";
-import MobileButton from "./MobileButton.uvue";
-import PageState from "./PageState.uvue";
-import AdaptiveModal from "./AdaptiveModal.uvue";
-import ConfirmAction from "./ConfirmAction.uvue";
-import spacing from "../styles/spacing.json";
-import { themeClass } from "../services/theme.ts";
-import { protectedMenu } from "../services/admin/contract.ts";
-import { visibleMenus, menuMoveChanges } from "../services/admin/menu-tree.ts";
+import AppIcon from "../../../components/AppIcon.uvue";
+import FormField from "../../../components/FormField.uvue";
+import MobileButton from "../../../components/MobileButton.uvue";
+import PageState from "../../../components/PageState.uvue";
+import AdaptiveModal from "../../../components/AdaptiveModal.uvue";
+import ConfirmAction from "../../../components/ConfirmAction.uvue";
+import spacing from "../../../styles/spacing.json";
+import { themeClass } from "../../../services/theme.ts";
+import { protectedMenu } from "../../../services/admin/contract.ts";
+import { visibleMenus, menuMoveChanges } from "../services/menu-tree.ts";
 const props = defineProps<{
   rows: any[];
   loading: boolean;
@@ -55,7 +55,7 @@ const details = computed(() =>
             "根菜单",
         ],
         ["角色", selected.value.roles || "不限"],
-        ["排序", String(selected.value.sort ?? 0)],
+        ["排序", String(selected.value.sortOrder ?? 0)],
 
       ]
     : [],
@@ -208,7 +208,7 @@ async function removeSelected(row) {
                 rows.filter((child) => child.parentId === row.id).length
               }}</text
               ><AppIcon
-                v-if="row.status !== 1 && row.mobileStatus !== 1"
+                v-if="row.webIsEnabled !== 1 && row.mobileIsEnabled !== 1"
                 name="ant-design:stop-outlined"
                 :size="14"
             /></view>
@@ -264,11 +264,11 @@ async function removeSelected(row) {
         ><text class="menu-detail-label">{{ item[0] }}</text
         ><text class="menu-detail-value">{{ item[1] }}</text></view
       >
-      <view v-for="item in [{ key: 'status', label: 'Web 启用' }, { key: 'mobileStatus', label: '移动端启用' }]" :key="item.key" class="menu-detail-row">
+      <view v-for="item in [{ key: 'webIsEnabled', label: 'Web 启用' }, { key: 'mobileIsEnabled', label: '移动端启用' }]" :key="item.key" class="menu-detail-row">
         <text class="menu-detail-label">{{ item.label }}</text>
         <view class="menu-status-control">
           <AppIcon v-if="busyId === selected.id" class="menu-status-spinner" name="ant-design:loading-outlined" :size="18" />
-          <MobileSwitch :aria-label="selected.title + ' ' + item.label" :checked="selected[item.key] === 1" :disabled="busy || protectedMenu(selected)" @change="emit('status', selected, item.key === 'mobileStatus')" />
+          <MobileSwitch :aria-label="selected.title + ' ' + item.label" :checked="selected[item.key] === 1" :disabled="busy || protectedMenu(selected)" @change="emit('status', selected, item.key === 'mobileIsEnabled')" />
         </view>
       </view>
       <text v-if="error" class="menu-error" role="alert">{{ error }}</text>
@@ -312,9 +312,9 @@ async function removeSelected(row) {
   </view>
 </template>
 <style scoped lang="scss">
-@use '../styles/typography' as *;
-@use "../styles/spacing.scss";
-@use "../styles/spacing-tokens" as *;
+@use '../../../styles/typography' as *;
+@use "../../../styles/spacing.scss";
+@use "../../../styles/spacing-tokens" as *;
 @include type-utilities('body');
 
 .menu-manager {

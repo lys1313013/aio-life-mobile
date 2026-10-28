@@ -117,7 +117,7 @@ async function loadTemplateImage(item: any, current: number) {
   }
 }
 async function openTemplates() {
-  if (!draft.value.bankId || draftBankOption.value?.enabled === false || templateLoading.value) return;
+  if (!draft.value.bankId || draftBankOption.value?.isEnabled === 0 || templateLoading.value) return;
   const current = ++templateStamp;
   templateOpen.value = true;
   templateLoading.value = true;
@@ -786,9 +786,9 @@ const draftStatus = computed({
   },
 });
 const draftTagStatus = computed({
-  get: () => (tagDraft.value.status === '1' ? '停用' : '启用'),
+  get: () => (tagDraft.value.isEnabled === 0 ? '停用' : '启用'),
   set: (value) => {
-    tagDraft.value.status = value === '停用' ? '1' : '0';
+    tagDraft.value.isEnabled = value === '停用' ? 0 : 1;
   },
 });
 function toggleTag(id: string) {
@@ -904,7 +904,7 @@ async function reveal(card: any, copy = false) {
   }
 }
 function editTag(value: any = null) {
-  tagDraft.value = value ? { ...value } : { name: '', color: '#419878', status: '0' };
+  tagDraft.value = value ? { ...value } : { name: '', color: '#419878', isEnabled: 1 };
   formError.value = '';
   tagModal.value = true;
 }
@@ -1119,7 +1119,7 @@ async function removeTag(value: any) {
           <text v-if="!coverPreview" class="draft-card-type">{{ draftType }}</text>
         </view>
         <view class="editor-cover-actions">
-          <MobileButton label="选择公共卡面" variant="quiet" :disabled="!draft.bankId || draftBankOption?.enabled === false || coverBusy || saving" :loading="templateLoading" @click="openTemplates" />
+          <MobileButton label="选择公共卡面" variant="quiet" :disabled="!draft.bankId || draftBankOption?.isEnabled === 0 || coverBusy || saving" :loading="templateLoading" @click="openTemplates" />
           <view class="ui-row">
             <MobileButton label="上传卡面" icon="ant-design:upload-outlined" variant="ghost" :disabled="saving" :loading="coverBusy" @click="uploadCover" />
             <MobileButton v-if="draft.coverTemplateId || draft.coverFileIds?.length" label="移除卡面" icon="ant-design:delete-outlined" variant="ghost" :disabled="saving || coverBusy" @click="clearCover" />
@@ -1198,7 +1198,7 @@ async function removeTag(value: any) {
                 ? 'ant-design:check-square-outlined'
                 : 'ant-design:border-outlined'
             "
-            :disabled="item.status !== '0' && !draft.tagIds.includes(item.id)"
+            :disabled="item.isEnabled !== 1 && !draft.tagIds.includes(item.id)"
             variant="quiet"
             @click="toggleTag(item.id)"
           /><text class="editor-text ui-type-body" :class="themeClass('editor-text')">{{ item.name }}</text></view

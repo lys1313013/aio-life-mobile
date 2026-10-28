@@ -1,7 +1,7 @@
 import { queryPath } from '../../../services/query-path.ts'
 export { queryPath } from '../../../services/query-path.ts'
 import { request } from '../../../services/domains/session-guard.ts'
-export { ledgerId, ledgerPayload, fetchDictionary, saveLedger, deleteLedger } from '../../../services/domains/finance-entry.ts'
+export { ledgerId, ledgerPayload, fetchDictionary, saveLedger, deleteLedger } from './finance-entry.ts'
 export const fetchLedger = (kind: string, params: Record<string, any>) => request<{items: any[], total: number | null}>(queryPath('/' + kind + '/query', params))
 export const deleteExpenses = (idList: string[]) => request('/expense/deleteBatch', 'POST', {idList})
 export const fetchFinanceStatistics = (kind: string, period: string = 'Month') => request<any[]>('/' + kind + '/statisticsBy' + period)

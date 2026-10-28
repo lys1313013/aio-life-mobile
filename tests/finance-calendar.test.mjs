@@ -6,7 +6,7 @@ async function source(name) {
   const code = (await transform(await readFile(new URL('../src/pages/home/services/' + name + '.ts', import.meta.url), 'utf8'), { loader: 'ts', format: 'esm' })).code
   return import('data:text/javascript;base64,' + Buffer.from(code).toString('base64'))
 }
-const { modesFor, readCalendarMode, saveCalendarMode, calendarScope, calendarPlaceholder, calendarMoney, moveCalendarDate, readCalendar, detailQuery, detailState, createDetailsController } = await source('finance-calendar')
+const { modesFor, readCalendarMode, saveCalendarMode, calendarScope, calendarPlaceholder, calendarMoney, moveCalendarDate, readCalendar, detailQuery, detailState, createDetailsController, calendarDetailsUrl, readCalendarDetailsRoute } = await source('finance-calendar')
 const { summaryState, createSummaryController } = await source('summary-cards')
 const gate = () => { let resolve; const promise = new Promise(done => { resolve = done }); return { resolve, promise } }
 const tick = () => new Promise(resolve => setImmediate(resolve))
@@ -88,4 +88,21 @@ test('切换明细类型保留旧列表，失败重试首屏并原子替换显�
   assert.equal(state.items[0].id, 'expense-1'); assert.equal(state.loaded, true)
   await controller.load(); assert.equal(displayed, 'expense'); assert.equal(state.items[0].id, 'expense-1'); assert.equal(state.page, 0)
   failed = false; await controller.load(); assert.equal(displayed, 'income'); assert.deepEqual(state.items.map(row => row.id), ['income-1']); assert.equal(state.page, 1)
+})
+
+test('日历明细路由只传范围标识，刷新恢复同一时段和收支类型', () => {
+  const calendar = calendarPlaceholder(calendarScope('finance', 'month', '2026'))
+  const bucket = { ...calendar.buckets[8], amount: 12345.67 }
+  const url = calendarDetailsUrl('finance', calendar, bucket, 'income')
+  assert.ok(url.startsWith('/pages/finance/calendar-details?'))
+  assert.equal(url.includes('12345'), false)
+  const selected = readCalendarDetailsRoute(Object.fromEntries(new URLSearchParams(url.split('?')[1])))
+  assert.equal(selected.kind, 'finance')
+  assert.equal(selected.scope.granularity, 'month')
+  assert.equal(selected.scope.date, '2026')
+  assert.equal(selected.key, bucket.key)
+  assert.equal(selected.initialKind, 'income')
+  assert.throws(() => readCalendarDetailsRoute({ kind: 'income', granularity: 'day', date: '2026-10', bucket: '2026-10-01' }))
+  assert.throws(() => readCalendarDetailsRoute({ kind: 'expense', granularity: 'week', date: '2026-13', bucket: '2026-10-01' }))
+  assert.throws(() => readCalendarDetailsRoute({}))
 })

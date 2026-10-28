@@ -73,24 +73,24 @@ test("首页和关于使用自定义路径或嵌套分组时仍排除，不误�
 });
 test("常用项显示授权启用项，保存保留停用和目录外配置、顺序及长 ID", () => {
   const saved = readQuickLinks([
-    { menuId: "9223372036854775807", enabled: 0, sortOrder: 4 },
-    { menuId: "a", enabled: 1, sortOrder: 1 },
-    { menuId: "revoked", enabled: 1, sortOrder: 2 },
+    { menuId: "9223372036854775807", isEnabled: 0, sortOrder: 4 },
+    { menuId: "a", isEnabled: 1, sortOrder: 1 },
+    { menuId: "revoked", isEnabled: 1, sortOrder: 2 },
   ]);
   assert.deepEqual(
     visibleQuickLinks(saved, [item("a", "/record/read")]).map((i) => i.menuId),
     ["a"],
   );
   assert.deepEqual(quickLinkPayload(saved), [
-    { menuId: "a", enabled: 1, sortOrder: 0 },
-    { menuId: "revoked", enabled: 1, sortOrder: 1 },
-    { menuId: "9223372036854775807", enabled: 0, sortOrder: 2 },
+    { menuId: "a", isEnabled: 1, sortOrder: 0 },
+    { menuId: "revoked", isEnabled: 1, sortOrder: 1 },
+    { menuId: "9223372036854775807", isEnabled: 0, sortOrder: 2 },
   ]);
   assert.equal(QUICK_NAV_MAX, 15);
-  assert.equal(quickLinkPayload(Array.from({ length: 15 }, (_, i) => ({ menuId: String(i), enabled: 1 }))).length, 15);
+  assert.equal(quickLinkPayload(Array.from({ length: 15 }, (_, i) => ({ menuId: String(i), isEnabled: 1 }))).length, 15);
   assert.throws(() =>
     quickLinkPayload(
-      Array.from({ length: 16 }, (_, i) => ({ menuId: String(i), enabled: 1 })),
+      Array.from({ length: 16 }, (_, i) => ({ menuId: String(i), isEnabled: 1 })),
     ),
   );
   assert.throws(() => quickLinkPayload([{ menuId: "1" }, { menuId: "1" }]));

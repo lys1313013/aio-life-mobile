@@ -1,5 +1,5 @@
-import { missingRequired } from '../form-required.ts';
-import { request } from '../api.ts'
+import { missingRequired } from '../../../services/form-required.ts';
+import { request } from '../../../services/api.ts'
 export function ledgerId(row: Record<string, any>): string { return typeof row.id === 'string' ? row.id : '' }
 export function ledgerPayload(kind: string, draft: Record<string, any>) {
   const data = { ...draft, amt: Number(draft.amt) }

@@ -40,7 +40,7 @@ function search(event: any) {
   emit('select', { bankId: null, customBankName: keyword.value.trim() || null });
 }
 function choose(bank: any) {
-  if (props.disabled || (bank.enabled === false && String(bank.id) !== props.originalBankId)) return;
+  if (props.disabled || (bank.isEnabled === 0 && String(bank.id) !== props.originalBankId)) return;
   emit('select', { bankId: String(bank.id), customBankName: null });
   keyword.value = bank.name;
   open.value = false;
@@ -77,10 +77,10 @@ function close() {
       <scroll-view :key="keyword" class="bank-results-scroll" :style="{ height: Math.min(Math.max(matches.length, 1), 5) * spacing.controlMin + 'px' }" scroll-y :show-scrollbar="false"
         @scrolltolower="visibleCount = Math.min(visibleCount + 40, matches.length)">
         <button v-for="bank in visibleBanks" :key="bank.id" class="bank-option" role="button"
-          :aria-label="'选择' + bank.name" :aria-disabled="disabled || (bank.enabled === false && String(bank.id) !== originalBankId)" :disabled="disabled || (bank.enabled === false && String(bank.id) !== originalBankId)"
+          :aria-label="'选择' + bank.name" :aria-disabled="disabled || (bank.isEnabled === 0 && String(bank.id) !== originalBankId)" :disabled="disabled || (bank.isEnabled === 0 && String(bank.id) !== originalBankId)"
           @click="choose(bank)">
           <text class="bank-option-name" :class="themeClass('bank-option-name')" :style="appTextColor()">{{ bank.name }}</text>
-          <text v-if="bank.enabled === false" class="bank-meta" :class="themeClass('bank-meta')">已停用</text>
+          <text v-if="bank.isEnabled === 0" class="bank-meta" :class="themeClass('bank-meta')">已停用</text>
           <AppIcon v-else-if="String(bank.id) === bankId" name="ant-design:check-outlined" :size="18" />
         </button>
         <text v-if="!matches.length" class="bank-empty bank-meta" :class="themeClass('bank-meta')">未找到匹配银行</text>

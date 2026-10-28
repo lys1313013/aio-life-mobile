@@ -2,7 +2,7 @@
 import MobileSwitch from '../../components/MobileSwitch.uvue';
 import { usePageRefresh } from '../../services/page-refresh.ts'
 import { isRequired } from '../../services/form-required.ts';
-import MenuManager from '../../components/MenuManager.uvue';
+import MenuManager from './components/MenuManager.uvue';
 import DictDataPanel from './DictDataPanel.uvue';
 import DictTypePanel from './DictTypePanel.uvue';
 import UserDictPanel from './UserDictPanel.uvue';
@@ -11,7 +11,7 @@ import UserPanel from './UserPanel.uvue';
 import AccessLogPanel from './AccessLogPanel.uvue';
 import WechatConfigEditor from './WechatConfigEditor.uvue';
 import StructuredConfigEditor from './StructuredConfigEditor.uvue';
-import { menuMoveChanges } from '../../services/admin/menu-tree.ts';
+import { menuMoveChanges } from './services/menu-tree.ts';
 import { computed, ref, watch } from 'vue';
 import { onHide, onLoad, onShow, onUnload } from '@dcloudio/uni-app';
 import PageHeader from '../../components/PageHeader.uvue';
@@ -120,7 +120,7 @@ const shown = computed(() => {
     result.sort((a, b) => {
       const key = sortKey.value;
       const order =
-        key === 'dictSort'
+        key === 'sortOrder'
           ? Number(a[key] || 0) - Number(b[key] || 0)
           : String(a[key] || '').localeCompare(String(b[key] || ''));
       return sortDescending.value ? -order : order;
@@ -163,7 +163,7 @@ onShow(() => {
 function searchDictionary(value) {
   keyword.value = value.keyword;
   typeFilter.value = value.type;
-  if (kind.value === 'user-dict') statusFilter.value = value.status;
+  if (kind.value === 'user-dict') statusFilter.value = value.isEnabled;
   rows.value = [];
   total.value = 0;
   pageEnded.value = false;
@@ -183,7 +183,10 @@ function filters() {
   const result: any = { [spec.value.search]: keyword.value };
   if (typeFilter.value)
     result[kind.value === 'feedback' ? 'feedbackType' : 'dictType'] = typeFilter.value;
-  if (statusFilter.value) result.status = statusFilter.value;
+  if (statusFilter.value) {
+    if (kind.value === 'user-dict') result.isEnabled = Number(statusFilter.value);
+    else result.status = statusFilter.value;
+  }
   if (startDate.value) result.startDate = startDate.value;
   if (endDate.value) result.endDate = endDate.value;
   return result;
@@ -274,11 +277,11 @@ function edit(row = null, parentId = '0') {
     ? { ...row }
     : {
         role: 'user',
-        status: kind.value === 'menus' ? '1' : '0',
-        mobileStatus: '1',
+        isEnabled: '1',
+        webIsEnabled: '1',
+        mobileIsEnabled: '1',
         isReadonly: 'N',
-        dictSort: '0',
-        sort: '0',
+        sortOrder: '0',
         parentId,
         dictType: typeFilter.value,
         dictId: kind.value === 'dict-data' ? options.value.find(option => option.type === typeFilter.value)?.value || '' : undefined,
@@ -304,9 +307,9 @@ async function save() {
       opened.value = false;
       if (kind.value === 'user-dict' && original.value) {
         const updated = { ...original.value, ...payload };
-        const matches = updated.dictType === typeFilter.value && (!statusFilter.value || updated.status === statusFilter.value) && (!keyword.value || updated.dictLabel.includes(keyword.value));
+        const matches = updated.dictType === typeFilter.value && (!statusFilter.value || updated.isEnabled === Number(statusFilter.value)) && (!keyword.value || updated.dictLabel.includes(keyword.value));
         rows.value = rows.value.flatMap(item => item.id !== updated.id ? [item] : matches ? [updated] : [])
-          .sort((a, b) => Number(a.dictSort) - Number(b.dictSort));
+          .sort((a, b) => Number(a.sortOrder) - Number(b.sortOrder));
         if (!matches) total.value = Math.max(0, total.value - 1);
       } else await load();
     }
@@ -363,7 +366,7 @@ async function move(row, delta) {
   if (!target) return;
   await mutate(row, async () => {
     if (kind.value === 'menus') {
-      const results = await Promise.allSettled(menuMoveChanges(rows.value, row, delta).map(change => setMenuSort(change.row, change.sort)));
+      const results = await Promise.allSettled(menuMoveChanges(rows.value, row, delta).map(change => setMenuSort(change.row, change.sortOrder)));
       if (results.some(result => result.status === 'rejected')) {
         await load();
         throw Error('部分顺序未保存，已重新加载，请重试');
@@ -398,7 +401,7 @@ function label(key) {
       dictType: '字典类型',
       dictLabel: '展示值',
       dictValue: '实际值',
-      dictSort: '排序',
+      sortOrder: '排序',
       remark: '备注',
       status: '状态',
       isReadonly: '只读',
@@ -407,7 +410,9 @@ function label(key) {
       path: '路由',
       component: '组件',
       roles: '角色',
-      sort: '排序',
+      webIsEnabled: 'Web 启用',
+      mobileIsEnabled: '移动端启用',
+      isEnabled: '启用状态',
       description: '说明',
       configKey: '配置键',
       configType: '类型',
@@ -776,7 +781,7 @@ async function download() {
       :content-key="editorError + ':' + menuAdvanced"
       @close="opened = false"
       ><FormField
-        v-for="field in editorFields.filter(item => (kind !== 'menus' || !['status', 'mobileStatus'].includes(item.key)) && (kind !== 'user-dict' || !['icon', 'color'].includes(item.key)))"
+        v-for="field in editorFields.filter(item => (kind !== 'menus' || !['webIsEnabled', 'mobileIsEnabled'].includes(item.key)) && (kind !== 'user-dict' || !['icon', 'color'].includes(item.key)))"
         :key="field.key"
         :label="field.label"
         :required="field.required"
@@ -784,13 +789,13 @@ async function download() {
         :input-type="field.kind === 'number' ? 'number' : 'text'"
         :model-value="fieldValue(field)"
         :options="fieldOptions(field).map((item) => item.label)"
-        :disabled="saving || (kind === 'menus' && protectedMenu(original || form) && ['path', 'status'].includes(field.key))"
+        :disabled="saving || (kind === 'menus' && protectedMenu(original || form) && ['path', 'webIsEnabled'].includes(field.key))"
         @update:model-value="(value) => setField(field, value)" /><UserDictAppearancePicker v-if="kind === 'user-dict'" v-model:icon="form.icon" v-model:color="form.color" :disabled="saving" /><text
         v-if="kind === 'menus' && menuAdvanced && options.length"
         class="admin-muted ui-mb-section" :class="themeClass('admin-muted')"
         >{{ '可用角色：' + options.join('、') }}</text
       ><view v-if="kind === 'menus'" class="ui-mb-section">
-        <view v-for="item in [{ key: 'status', label: 'Web 启用' }, { key: 'mobileStatus', label: '移动端启用' }]" :key="item.key" class="admin-menu-switch ui-mb-inline">
+        <view v-for="item in [{ key: 'webIsEnabled', label: 'Web 启用' }, { key: 'mobileIsEnabled', label: '移动端启用' }]" :key="item.key" class="admin-menu-switch ui-mb-inline">
           <text class="admin-switch-label" :class="themeClass('admin-ink')">{{ item.label }}</text>
           <MobileSwitch :aria-label="item.label" :checked="Number(form[item.key]) === 1" :disabled="saving || protectedMenu(original || form)" @change="form[item.key] = $event.detail.value ? 1 : 0" />
         </view>

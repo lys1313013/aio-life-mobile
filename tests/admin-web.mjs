@@ -6,7 +6,7 @@ const {chromium}=createRequire(import.meta.url)('@playwright/test'),browser=awai
 await mkdir(output,{recursive:true});const id='9223372036854775807'
 async function setup(viewport,theme='light'){
  const context=await browser.newContext({viewport});await context.addInitScript(theme=>{localStorage.setItem('aio-life-mobile.access-token.v1','synthetic-token');localStorage.setItem('aio-life-mobile.theme.v1',theme)},theme)
- const page=await context.newPage(),state={fail:false,status:200,writes:[],category:{id,userId:'7',parentId:'0',name:'长ID分类',color:'#427bea',icon:'lucide:book',description:'保留描述',timeType:2,isTrackTime:1,isEnabled:1,sort:0},menu:{id,parentId:'0',name:'Synthetic',path:'/synthetic',meta:{title:'模拟菜单',icon:'lucide:book',keepAlive:true,fixtureExtra:{keep:true}},status:1,sort:0,roles:'admin'}}
+ const page=await context.newPage(),state={fail:false,status:200,writes:[],category:{id,userId:'7',parentId:'0',name:'长ID分类',color:'#427bea',icon:'lucide:book',description:'保留描述',timeType:2,isTrackTime:1,isEnabled:1,sortOrder:0},menu:{id,parentId:'0',name:'Synthetic',path:'/synthetic',meta:{title:'模拟菜单',icon:'lucide:book',keepAlive:true,fixtureExtra:{keep:true}},webIsEnabled:1,sortOrder:0,roles:'admin'}}
  await page.route('http://127.0.0.1:5180/api/**',async route=>{const req=route.request(),path=new URL(req.url()).pathname,method=req.method();let data=[]
  if(path==='/api/user/info')data={id:'7',username:'fixture',nickname:'模拟用户',roles:['admin']}
  if(path==='/api/timeTrackerCategory/list')data=[state.category]

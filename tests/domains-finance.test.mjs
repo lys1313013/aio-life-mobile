@@ -3,14 +3,14 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 import { transform } from 'esbuild'
-async function load(path) { const source=await readFile(new URL(path,import.meta.url),'utf8');const {code}=await transform(source.replace(/^import .*session-guard.ts'\n/m,'const request = (...args) => args\n').replaceAll("'../../../services/query-path.ts'", JSON.stringify(queryUrl)).replaceAll("'../query-path.ts'", JSON.stringify(queryUrl)).replace("export { ledgerId, ledgerPayload, fetchDictionary, saveLedger, deleteLedger } from '../../../services/domains/finance-entry.ts'", "export { ledgerId, ledgerPayload, fetchDictionary, saveLedger, deleteLedger } from " + JSON.stringify(entryUrl)),{loader:'ts',format:'esm'});return import('data:text/javascript;base64,'+Buffer.from(withFormRequired(code)).toString('base64')) }
+async function load(path) { const source=await readFile(new URL(path,import.meta.url),'utf8');const {code}=await transform(source.replace(/^import .*session-guard.ts'\n/m,'const request = (...args) => args\n').replaceAll("'../../../services/query-path.ts'", JSON.stringify(queryUrl)).replaceAll("'../query-path.ts'", JSON.stringify(queryUrl)).replace("export { ledgerId, ledgerPayload, fetchDictionary, saveLedger, deleteLedger } from './finance-entry.ts'", "export { ledgerId, ledgerPayload, fetchDictionary, saveLedger, deleteLedger } from " + JSON.stringify(entryUrl)),{loader:'ts',format:'esm'});return import('data:text/javascript;base64,'+Buffer.from(withFormRequired(code)).toString('base64')) }
 const payloadSource = await readFile(new URL('../src/services/api-payload.ts', import.meta.url), 'utf8')
 const payloadCode = (await transform(payloadSource, {loader:'ts',format:'esm'})).code
 const payloadUrl = 'data:text/javascript;base64,' + Buffer.from(payloadCode).toString('base64')
 const querySource = await readFile(new URL('../src/services/query-path.ts', import.meta.url), 'utf8')
 const queryCode = (await transform(querySource.replace("'./api-payload.ts'", JSON.stringify(payloadUrl)), {loader:'ts',format:'esm'})).code
 const queryUrl = 'data:text/javascript;base64,' + Buffer.from(queryCode).toString('base64')
-const entrySource = (await readFile(new URL('../src/services/domains/finance-entry.ts', import.meta.url), 'utf8')).replace(/^import .*api.ts'\n/m, 'const request = (...args) => args\n').replaceAll("'../query-path.ts'", JSON.stringify(queryUrl))
+const entrySource = (await readFile(new URL('../src/pages/finance/services/finance-entry.ts', import.meta.url), 'utf8')).replace(/^import .*api.ts'\n/m, 'const request = (...args) => args\n').replaceAll("'../query-path.ts'", JSON.stringify(queryUrl))
 const entryUrl = 'data:text/javascript;base64,' + Buffer.from(withFormRequired((await transform(entrySource, {loader:'ts',format:'esm'})).code)).toString('base64')
 const finance=await load('../src/pages/finance/services/finance.ts')
 test('财务 GET 条件平铺且保留字符串大 ID',()=>{const id='9223372036854775807';assert.equal(finance.ledgerId({id}),id);assert.equal(finance.ledgerId({incomeId:id}),'');assert.equal(finance.queryPath('/income/query',{page:1,pageSize:50,incTypeId:id,year:'',startTime:'2026-10-01'}),'/income/query?page=1&pageSize=50&incTypeId='+id+'&startTime=2026-10-01')})

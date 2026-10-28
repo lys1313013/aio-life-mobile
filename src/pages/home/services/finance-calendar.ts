@@ -62,12 +62,23 @@ export function calendarPeriod(bucket: CalendarBucket) {
   const last = dateISO(end)
   return bucket.startDate === last ? last : bucket.startDate + ' — ' + last
 }
+// 路由只携带时段标识；金额和记录由详情页重新查询，不写入 URL 或持久缓存。
+export function calendarDetailsUrl(kind: FinanceKind, calendar: FinanceCalendar, bucket: CalendarBucket, initialKind: LedgerKind) {
+  const params = { kind, granularity: calendar.granularity, date: calendar.date || '', bucket: bucket.key, initialKind }
+  return '/pages/finance/calendar-details?' + Object.entries(params).map(([key, value]) => key + '=' + encodeURIComponent(value)).join('&')
+}
+export function readCalendarDetailsRoute(options: Record<string, any>) {
+  const { kind, granularity, date = '', bucket, initialKind } = options
+  if (!['expense', 'income', 'finance'].includes(kind) || !modesFor(kind).some(mode => mode.key === granularity) || typeof bucket !== 'string' || !bucket) throw Error('明细范围无效，请返回重新选择')
+  if (granularity !== 'year' && !(granularity === 'month' ? /^[1-9]\d{3}$/ : /^[1-9]\d{3}-(0[1-9]|1[0-2])$/).test(date)) throw Error('明细范围无效，请返回重新选择')
+  return { kind: kind as FinanceKind, scope: calendarScope(kind, granularity, date), key: bucket, initialKind: (kind === 'finance' ? initialKind === 'income' ? 'income' : 'expense' : kind) as LedgerKind }
+}
 export function detailQuery(kind: LedgerKind, bucket: CalendarBucket, page = 1, pageSize = 20) {
   const suffix = kind === 'expense' ? ' 00:00:00' : ''
   return { page, pageSize, ...(bucket.startDate && bucket.endDate ? { startTime: bucket.startDate + suffix, endTimeBefore: bucket.endDate + suffix } : { undated: true }) }
 }
 export function detailState() { return { items: [], page: 0, hasMore: true, loading: false, loaded: false, error: '' } }
-// 弹窗共用触底分页；错误重试原页，离页与账号切换的响应不回填。
+// 明细共用触底分页；错误重试原页，离页与账号切换的响应不回填。
 export function createDetailsController(state, fetch, active, commit = (_result) => {}) {
   let version = 0, replacePending = false
   function invalidate() { version++; state.loading = false }

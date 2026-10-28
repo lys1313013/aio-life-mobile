@@ -89,6 +89,12 @@ export function matchesNativeMenu(url, path) {
   const destination = nativeDestination(path);
   if (!destination) return false;
   const [page, query = ''] = url.split('?');
+  // 日历明细继承所属业务菜单；收支概览同时要求收入、支出权限。
+  if (page === '/pages/finance/calendar-details') {
+    const kind = query.split('&').find(value => value.startsWith('kind='))?.slice(5);
+    const targets = kind === 'finance' ? ['/pages/finance/index', '/pages/finance/income', '/pages/finance/expense'] : kind === 'income' || kind === 'expense' ? ['/pages/finance/' + kind] : [];
+    return targets.some(target => matchesNativeMenu(target, path));
+  }
   const [target, required = ''] = destination.split('?');
   if (page !== target) return false;
   const values = query.split('&');
@@ -208,7 +214,7 @@ export function readQuickLinks(data) {
         !item ||
         typeof item.menuId !== "string" ||
         !item.menuId ||
-        ![0, 1].includes(item.enabled),
+        ![0, 1].includes(item.isEnabled),
     )
   )
     throw new Error("常用功能数据异常，请重试");
@@ -217,7 +223,7 @@ export function readQuickLinks(data) {
 
 export function visibleQuickLinks(saved, catalog) {
   return saved
-    .filter((item) => item.enabled === 1)
+    .filter((item) => item.isEnabled === 1)
     .flatMap((item) => {
       const entry = catalog.find(
         (candidate) => candidate.menuId === item.menuId,
@@ -232,7 +238,7 @@ export function quickLinkPayload(items) {
     throw new Error("常用功能不能重复");
   return items.map((item, index) => ({
     menuId: item.menuId,
-    enabled: item.enabled,
+    isEnabled: item.isEnabled,
     sortOrder: index,
   }));
 }

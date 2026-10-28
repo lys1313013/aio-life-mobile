@@ -1,0 +1,193 @@
+<script setup lang="ts">
+import { computed, reactive, ref } from 'vue'
+import { onLoad, onBackPress } from '@dcloudio/uni-app'
+import { useDomainPage } from '../../services/domains/page-session.ts'
+import MobilePage from '../../components/MobilePage.uvue'
+import PageHeader from '../../components/PageHeader.uvue'
+import LoadMore from '../../components/LoadMore.uvue'
+import LoadingIndicator from '../../components/LoadingIndicator.uvue'
+import FinanceRecordModal from './components/FinanceRecordModal.uvue'
+import { saveLedger, deleteLedger } from './services/finance-entry.ts'
+import { isDark } from '../../services/theme.ts'
+import { request } from '../../services/api.ts'
+import { session } from '../../services/session.ts'
+import { calendarMoney, calendarPeriod, createDetailsController, detailQuery, detailState, readCalendar, readCalendarDetailsRoute } from '../home/services/finance-calendar.ts'
+import type { CalendarBucket, LedgerKind } from '../home/services/finance-calendar.ts'
+const selection = ref<ReturnType<typeof readCalendarDetailsRoute> | null>(null)
+const routeError = ref(''), bucket = ref<CalendarBucket | null>(null), refreshing = ref(false)
+const kind = computed(() => selection.value?.kind || 'expense')
+onLoad(options => {
+  try {
+    selection.value = readCalendarDetailsRoute(options || {})
+    detailKind.value = selection.value.initialKind
+    displayedKind.value = detailKind.value
+  } catch (error) { routeError.value = error.message }
+})
+function back() {
+  if (draft.value) { draft.value = null; return }
+  uni.navigateBack({ fail: () => uni.switchTab({ url: '/pages/home/index' }) })
+}
+onBackPress(() => { if (!draft.value) return false; draft.value = null; return true })
+const draft = ref<Record<string, any> | null>(null), saving = ref(false), formError = ref('')
+const editingKind = ref<LedgerKind>('expense')
+function edit(row) {
+  if (state.loading || state.page === 0 || saving.value) return
+  editingKind.value = displayedKind.value
+  draft.value = { ...row }
+  formError.value = ''
+}
+async function mutate(action: () => Promise<any>, rethrow = false) {
+  if (!current() || saving.value) return
+  const version = lifecycle
+  const valid = () => current() && version === lifecycle
+  saving.value = true; formError.value = ''
+  controller.invalidate()
+  try {
+    await action()
+    if (!valid()) return
+    draft.value = null
+    controller.reset(true)
+    await controller.load()
+  } catch (error) {
+    if (valid()) formError.value = error.message || '保存失败，请重试'
+    if (rethrow) throw error
+  } finally { if (valid()) saving.value = false }
+}
+function save() { return mutate(() => saveLedger(editingKind.value, draft.value!)) }
+function remove() { return mutate(() => deleteLedger(editingKind.value, draft.value!.id), true) }
+const detailKind = ref<LedgerKind>('expense')
+const displayedKind = ref<LedgerKind>(detailKind.value)
+const title = computed(() => kind.value === 'finance' ? '收支' : kind.value === 'expense' ? '支出' : '收入')
+const detailTitle = computed(() => displayedKind.value === 'income' ? '收入' : '支出')
+const total = computed(() => !bucket.value ? null : kind.value === 'finance' ? bucket.value[displayedKind.value] || 0 : bucket.value.amount)
+const state = reactive(detailState()), categories = ref<any[]>([]), payments = ref<any[]>([])
+let active = false, owner = '', lifecycle = 0
+const dictionaries = new Map()
+function current() { return active && !!selection.value && !!owner && session.token === owner }
+const controller = createDetailsController(state, async page => {
+  const requestedKind = detailKind.value, selected = selection.value!
+  const version = lifecycle
+  let selectedBucket = bucket.value
+  if (page === 1) {
+    const calendar = readCalendar(await request(selected.scope.path), selected.scope)
+    if (!current() || version !== lifecycle) throw Error('页面已变化')
+    selectedBucket = calendar.buckets.find(item => item.key === selected.key) || (bucket.value ? { ...bucket.value, amount: 0, income: 0, expense: 0, balance: 0 } : null)
+  }
+  if (!selectedBucket) throw Error('所选时段已不存在，请返回重新选择')
+  const [result, dicts] = await Promise.all([
+    request<any>('/' + requestedKind + '/query', 'GET', detailQuery(requestedKind, selectedBucket, page)),
+    dictionaries.get(requestedKind) || Promise.all((requestedKind === 'expense' ? ['exp_type', 'pay_type'] : ['income_type']).map(dictType => request<any>('/userDictType/getByDictType', 'GET', { dictType }))),
+  ])
+  return { ...result, detailKind: requestedKind, dictionaries: dicts, bucket: selectedBucket }
+}, current, result => {
+  displayedKind.value = result.detailKind
+  dictionaries.set(result.detailKind, result.dictionaries)
+  categories.value = result.dictionaries[0]?.dictDetailList || []
+  payments.value = result.dictionaries[1]?.dictDetailList || []
+  bucket.value = result.bucket
+})
+async function refresh() {
+  if (!current() || state.loading || saving.value || draft.value) return
+  refreshing.value = true
+  const version = lifecycle
+  controller.reset(true)
+  try { await controller.load() } finally { if (version === lifecycle) refreshing.value = false }
+}
+function loadMore() { if (!draft.value && !saving.value) void controller.load() }
+useDomainPage(needsRefresh => {
+  active = true; owner = session.token
+  if (!selection.value || state.loading) return
+  if (needsRefresh || !state.loaded) {
+    controller.reset(state.loaded)
+    return controller.load()
+  }
+}, clear => {
+  active = false; lifecycle++; controller.invalidate(); refreshing.value = false
+  draft.value = null; saving.value = false
+  if (clear) { controller.reset(); bucket.value = null; categories.value = []; payments.value = []; dictionaries.clear() }
+}, { loading: () => state.loading, error: () => state.error, keys: () => [kind.value === 'finance' ? 'income' : kind.value, 'expense', 'userDictData', 'userDictType'] })
+function description(row) { return displayedKind.value === 'income' ? row.remark || dictionary(categories.value, row.incTypeId) || '收入' : row.expDesc || row.counterparty || row.remark || '未填写描述' }
+function dictionary(rows, id) { const row = rows.find(item => item.id === id); return row?.dictLabel || row?.label || '' }
+function metadata(row) {
+  return [displayedKind.value === 'expense' ? row.expTime?.replace('T', ' ').slice(0, 16) || '未填日期' : row.incDate || '未填日期', dictionary(categories.value, row[displayedKind.value === 'expense' ? 'expTypeId' : 'incTypeId']), dictionary(payments.value, row.payTypeId)].filter(Boolean).join(' · ')
+}
+function captions(row) {
+  const title = description(row)
+  return [row.counterparty !== title ? row.counterparty : '', metadata(row), row.remark !== title ? row.remark : '', displayedKind.value === 'income' && row.tax != null ? '税额：' + calendarMoney(row.tax) : ''].filter(Boolean)
+}
+function switchKind(kind: LedgerKind) {
+  if (draft.value || saving.value) return
+  if (kind === detailKind.value) { if (state.error) void controller.load(); return }
+  controller.reset(true); detailKind.value = kind; void controller.load()
+}
+</script>
+<template>
+  <MobilePage :refreshing="refreshing" :scroll-locked="!!draft" :refresh-disabled="!!routeError || saving" @refresh="refresh" @reachbottom="loadMore">
+    <view class="ui-page-body" role="region" :aria-label="title + '明细'">
+      <PageHeader :title="title + '明细'" back @back="back" />
+      <text v-if="routeError" class="details-error" role="alert">{{ routeError }}</text>
+      <template v-else>
+        <view v-if="kind === 'finance'" class="details-tabs" role="group" aria-label="明细类型"><button v-for="item in [{ key: 'income', label: '收入' }, { key: 'expense', label: '支出' }]" :key="item.key" role="button" class="details-tab" :class="{ 'details-tab-active': displayedKind === item.key, 'details-tab-active-dark': isDark && displayedKind === item.key }" :aria-label="item.label + '明细'" :aria-pressed="displayedKind === item.key" :aria-busy="state.loading && detailKind === item.key" @click="switchKind(item.key)"><text class="details-tab-label" :class="{ 'details-text-dark': isDark }">{{ item.label }}</text></button></view>
+        <view class="details-summary" :class="{ 'details-summary-dark': isDark }">
+          <text class="details-period" :class="{ 'details-muted-dark': isDark }">{{ bucket ? calendarPeriod(bucket) : '正在加载所选时段' }}</text>
+          <view class="details-summary-main">
+            <text class="details-caption" :class="{ 'details-muted-dark': isDark }">{{ detailTitle }}合计</text>
+            <view class="details-total-group" :aria-label="detailTitle + '合计，' + (total == null ? '—' : calendarMoney(total)) + '元'">
+              <text class="details-currency" :class="{ 'details-muted-dark': isDark }">¥</text>
+              <text class="details-total" :class="{ 'details-text-dark': isDark }">{{ (total == null ? '—' : calendarMoney(total)) }}</text>
+            </view>
+          </view>
+        </view>
+        <view class="details-list" :aria-busy="state.loading">
+          <view v-if="!state.loaded && state.loading" class="details-pending"><LoadingIndicator ring :label="'正在加载' + title + '明细'" /></view>
+          <view v-else-if="state.loaded && !state.items.length" class="details-pending"><text class="details-caption" :class="{ 'details-muted-dark': isDark }">暂无{{ detailTitle }}记录</text></view>
+          <view v-for="row in state.items" :key="row.id" class="details-row">
+            <button role="button" class="details-edit" :aria-label="'编辑' + detailTitle + '：' + description(row)" :disabled="state.loading || state.page === 0" @click.stop="edit(row)">
+            <view class="details-main"><text class="details-description" :class="{ 'details-text-dark': isDark }">{{ description(row) }}</text><text class="details-amount" :class="{ 'details-text-dark': isDark }">{{ row.amt == null ? '—' : '¥' + calendarMoney(row.amt) }}</text></view>
+            <text v-for="(line, index) in captions(row)" :key="index" class="details-caption" :class="{ 'details-muted-dark': isDark }">{{ line }}</text>
+            </button>
+            <text v-if="row.transactionAmt != null && row.transactionAmt !== row.amt" class="details-caption" :class="{ 'details-muted-dark': isDark }">交易金额：{{ calendarMoney(row.transactionAmt) }}</text>
+          </view>
+          <view v-if="state.loaded && state.page === 0 && (state.loading || state.error)" class="details-switching" :class="{ 'details-switching-dark': isDark }"><LoadingIndicator v-if="state.loading" ring :label="'正在加载' + (detailKind === 'income' ? '收入' : '支出') + '明细'" /><template v-else><text class="details-error" role="alert">{{ state.error }}</text><button role="button" class="details-tab" aria-label="重试切换明细" @click="controller.load()"><text class="details-tab-label" :class="{ 'details-text-dark': isDark }">重试</text></button></template></view>
+          <LoadMore :loading="state.loaded && state.page > 0 && state.loading" :has-more="state.hasMore" :error="state.loaded && state.page === 0 ? '' : state.error" @load="controller.load()" />
+        </view>
+      </template>
+    </view>
+    <template #fixed><FinanceRecordModal v-if="draft" :kind="editingKind" :draft="draft" :types="categories" :payments="payments" :saving="saving" :form-error="formError" :remove="remove" @close="draft = null" @save="save" /></template>
+  </MobilePage>
+</template>
+<style scoped lang="scss">
+@use '../../styles/typography' as *;
+@use '../../styles/spacing.scss';
+@use '../../styles/spacing-tokens' as *;
+.details-tabs { flex-direction: row; margin-top: $space-inline; gap: $space-detail; }
+.details-tab { height: $space-controlMin; flex: 1; padding: 0; margin: 0; border: 0; background-color: transparent; display: flex; align-items: center; justify-content: center; border-radius: 6px; }
+.details-tab-active { background-color: #f4f4f5; }
+.details-tab-active-dark { background-color: #292b30; }
+.details-tab-label { @include type-style('label'); color: #27272a; }
+/* #ifdef WEB || MP-WEIXIN */
+.details-tab::after { border: 0; }
+/* #endif */
+.details-main { width: 100%; flex-direction: row; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: $space-inline; }
+.details-summary { margin-top: $space-inline; padding: $space-card; gap: $space-detail; border-radius: 12px; background-color: #f5f6f8; }
+.details-summary-dark { background-color: #25282e; }
+.details-summary-main { flex-direction: row; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: $space-inline; }
+.details-total-group { flex-direction: row; align-items: baseline; gap: $space-detail; max-width: 100%; }
+.details-currency { @include type-style('label'); color: #71717a; }
+.details-total { @include type-style('metric'); color: #27272a; min-width: 0; flex-shrink: 1; overflow-wrap: anywhere; }
+.details-amount { @include type-style('body-strong'); color: #27272a; max-width: 100%; overflow-wrap: anywhere; }
+.details-period, .details-caption { @include type-style('caption'); color: #71717a; overflow-wrap: anywhere; }
+.details-list { position: relative; margin-top: $space-section; }
+.details-switching { position: absolute; top: 0; right: 0; bottom: 0; left: 0; background-color: rgba(255, 255, 255, 0.65); align-items: center; justify-content: center; z-index: 2; }
+.details-switching-dark { background-color: rgba(28, 30, 34, 0.65); }
+.details-error { @include type-style('caption'); color: #bc4949; }
+.details-pending { min-height: $space-controlMin; padding: $space-inline 0; align-items: center; justify-content: center; }
+.details-row { padding: $space-inline 0; gap: $space-detail; }
+.details-edit { display: flex; flex-direction: column; width: 100%; min-height: $space-controlMin; gap: $space-detail; padding: 0; margin: 0; border: 0; border-radius: 6px; text-align: left; background-color: transparent; }
+/* #ifdef WEB || MP-WEIXIN */
+.details-edit::after { border: 0; }
+/* #endif */
+.details-description { @include type-style('body'); color: #27272a; flex: 1; min-width: $space-controlMin; overflow-wrap: anywhere; }
+.details-text-dark { color: #ececf0; }
+.details-muted-dark { color: #a1a1aa; }
+</style>

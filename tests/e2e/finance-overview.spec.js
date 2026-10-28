@@ -64,11 +64,27 @@ test('概览零结余格子可点，明细可切收支，旧类型响应不回�
   await page.route('**/api/income/query?*', async route => { queries.push('income'); await new Promise(resolve => { release = resolve; }); return route.fulfill({ json: { code: 0, data: { items: [{ id: 'income-1', amt: 2345.67, remark: '迟到收入明细', incDate: '2026-10-01' }], total: 1 } } }); });
   const card = page.locator('[aria-label="收支概览首页卡片"]'); await expect(card).toHaveAttribute('aria-busy', 'false');
   await card.getByRole('button', { name: '刷新收支概览', exact: true }).click(); await expect(card).toHaveAttribute('aria-busy', 'false');
-  await card.locator('.calendar-cell').first().click(); const dialog = page.getByRole('dialog', { name: '收支明细' });
-  await expect(dialog).toContainText('实际支出明细'); const previousHeight = (await dialog.boundingBox()).height; await dialog.getByRole('button', { name: '收入明细', exact: true }).click(); await expect.poll(() => typeof release).toBe('function');
-  await expect(dialog).toContainText('实际支出明细'); await expect(dialog.getByRole('button', { name: '支出明细', exact: true })).toHaveAttribute('aria-pressed', 'true'); expect((await dialog.boundingBox()).height).toBe(previousHeight);
-  await dialog.getByRole('button', { name: '支出明细', exact: true }).click(); await expect(dialog).toContainText('实际支出明细'); release(); await expect(dialog).not.toContainText('迟到收入明细');
-  expect(queries).toEqual(['expense', 'income', 'expense']);
+  await card.locator('.calendar-cell').first().click(); const dialog = page.getByRole('region', { name: '收支明细' });
+  try {
+    await expect(dialog).toContainText('实际支出明细');
+    const previousHeight = (await dialog.boundingBox()).height;
+    await dialog.getByRole('button', { name: '收入明细', exact: true }).click();
+    await expect.poll(() => typeof release).toBe('function');
+    await expect(dialog).toContainText('实际支出明细');
+    await expect(dialog.getByRole('button', { name: '支出明细', exact: true })).toHaveAttribute('aria-pressed', 'true');
+    expect((await dialog.boundingBox()).height).toBe(previousHeight);
+    await dialog.getByRole('button', { name: '支出明细', exact: true }).click();
+    await expect.poll(() => queries).toEqual(['expense', 'income', 'expense']);
+    await expect(dialog.locator('.details-list')).toHaveAttribute('aria-busy', 'false');
+    const lateResponse = page.waitForResponse(response => new URL(response.url()).pathname === '/api/income/query');
+    release();
+    await (await lateResponse).finished();
+    await expect(dialog).not.toContainText('迟到收入明细');
+    await expect(dialog).toContainText('实际支出明细');
+  } finally {
+    release?.();
+    await page.unrouteAll({ behavior: 'wait' });
+  }
 });
 test('概览保留收入支出导航与记一笔入口', async ({ page }) => {
   await setup(page); await page.getByRole('button', { name: '记一笔', exact: true }).click(); await page.getByText('记收入', { exact: true }).click();
