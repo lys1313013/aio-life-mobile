@@ -14,7 +14,7 @@ test('平板首页隐藏空待办后紧凑排列，刷新有数据后恢复卡�
   await page.emulateMedia({ colorScheme: 'dark' });
   await page.addInitScript(() => localStorage.setItem('aio-life-mobile.access-token.v1', 'tablet-layout-fixture'));
   const enabled = new Set(['section.time', 'section.links', 'section.watched', 'section.thoughts', 'section.exercise']);
-  const cards = homeCardFixture().map(item => ({ ...item, isEnabled: enabled.has(item.cardKey) }));
+  const cards = homeCardFixture().map(item => ({ ...item, isEnabled: Number(enabled.has(item.cardKey)) }));
   let watched = [];
   await page.route(`${info.project.use.baseURL}/api/**`, route => {
     const path = new URL(route.request().url()).pathname;
@@ -27,6 +27,7 @@ test('平板首页隐藏空待办后紧凑排列，刷新有数据后恢复卡�
   await page.goto('/#/pages/home/index');
   const cell = key => page.locator(`[data-card-key="section.${key}"]`);
   await expect(cell('thoughts')).toBeVisible();
+  await expect(cell('exercise')).toContainText('跑步');
   await expect(cell('watched')).toBeHidden();
   const time = await cell('time').boundingBox();
   const links = await cell('links').boundingBox();
