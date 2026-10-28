@@ -16,7 +16,7 @@ const props = withDefaults(defineProps<{
 }>(), {
   min: 0, max: 1439, label: '结束时间', showNow: true,
 })
-const emit = defineEmits(['change', 'close', 'preview'])
+const emit = defineEmits(['change', 'close'])
 // #ifdef MP-WEIXIN
 onUnmounted(registerModal())
 // #endif
@@ -27,7 +27,8 @@ const hours = Array.from({ length: 24 }, (_, index) => index)
 const minutes = Array.from({ length: 1440 }, (_, index) => index)
 const minuteRowHeight = spacing.controlMin - spacing.detail
 const minuteScrollTop = ref(selected.value * minuteRowHeight)
-const minuteIndicatorStyle = `height: ${minuteRowHeight}px;`
+// 保留原生滚轮定位所需行高，隐藏各端指示框（包括 H5 伪元素横线）。
+const hourIndicatorStyle = `height: ${minuteRowHeight}px; opacity: 0;`
 const viewport = ref(uni.getWindowInfo())
 useWindowResize(() => { viewport.value = uni.getWindowInfo() })
 const placement = computed(() => {
@@ -41,7 +42,7 @@ const placement = computed(() => {
     props.anchor.left + props.anchor.width / 2 - width / 2,
     info.windowWidth - inset - width,
   ))
-  const toolbarHeight = spacing.controlMin + spacing.hairline
+  const toolbarHeight = props.showNow ? spacing.controlMin : 0
   const below = props.anchor.top + props.anchor.height + spacing.detail
   const belowSpace = maxBottom - below
   const aboveSpace = props.anchor.top - spacing.detail - minTop
@@ -82,9 +83,10 @@ async function change(event, field: string) {
   const previous = selected.value
   if (field === 'hour') hourSelection.value = raw
   selected.value = resolveTimeWheelSelection(previous, raw[0], field, props.min, props.max)
-  if (available.value) emit('preview', selected.value)
+  if (available.value && selected.value !== previous) emit('change', selected.value)
   // Hour change occurs on native picker input; align the absolute-minute scroll view.
   await nextTick()
+  if (!active) return
   alignSelection()
 }
 function changeMinute(event) {
@@ -101,7 +103,7 @@ function changeMinute(event) {
   if (next !== selected.value) {
     selected.value = next
     hourSelection.value = [Math.floor(next / 60)]
-    emit('preview', next)
+    emit('change', next)
   }
   scheduleMinuteSnap()
 }
@@ -140,7 +142,7 @@ function endMinuteTouch() {
 function selectMinute(minute: number) {
   if (isDisabled(minute)) return
   selected.value = minute
-  emit('preview', minute)
+  emit('change', minute)
   alignSelection()
 }
 function alignSelection() {
@@ -150,7 +152,10 @@ function alignSelection() {
   snapMinute()
 }
 watch(() => [props.value, props.min, props.max], () => {
-  selected.value = available.value ? clampTimeSelection(props.value, props.min, props.max) : props.value
+  const next = available.value ? clampTimeSelection(props.value, props.min, props.max) : props.value
+  // 即选即改后的父级回写不重置滚轮，避免每一帧更新打断分钟列的惯性滚动。
+  if (next === selected.value) return
+  selected.value = next
   alignSelection()
   ignoreInitialMinuteScroll = true
 })
@@ -162,12 +167,11 @@ onUnmounted(() => {
   clearInterval(clockTimer)
   clearMinuteSnap()
 })
-function confirm() {
-  if (available.value && !isDisabled(selected.value)) emit('change', selected.value)
-}
 function useCurrentTime() {
   nowMinute.value = currentMinute()
-  if (!nowDisabled.value) emit('change', nowMinute.value)
+  if (nowDisabled.value) return
+  emit('change', nowMinute.value)
+  emit('close')
 }
 </script>
 
@@ -182,7 +186,7 @@ function useCurrentTime() {
       role="dialog" :aria-label="'选择' + label" aria-modal="true" @click.stop>
       <view class="time-end-wheels">
         <picker-view class="time-end-wheel" :style="wheelStyle" :value="hourSelection" :immediate-change="true"
-          :indicator-style="minuteIndicatorStyle" :mask-style="maskStyle"
+          :indicator-style="hourIndicatorStyle" :mask-style="maskStyle"
           @change="change($event, 'hour')">
           <picker-view-column>
             <view v-for="hour in hours" :key="hour" class="time-end-item">
@@ -201,16 +205,11 @@ function useCurrentTime() {
             <view class="time-end-minute-spacer" :style="spacerStyle" />
           </scroll-view>
           <view class="time-end-minute-mask" :style="maskStyle" />
-          <view class="time-end-minute-indicator" :class="themeClass('time-end-minute-indicator')" :style="minuteIndicatorStyle" />
         </view>
       </view>
-      <view class="time-end-toolbar" :class="themeClass('time-end-toolbar')">
-        <button role="button" class="time-end-action" :class="themeClass('time-end-action')"
-          @click="emit('close')"><text :class="buttonLabelClasses(['time-end-action', themeClass('time-end-action')])">取消</text></button>
-        <button v-if="showNow" role="button" class="time-end-action time-end-primary" :class="[themeClass('time-end-primary'), { 'time-option-disabled': nowDisabled }]"
+      <view v-if="showNow" class="time-end-toolbar">
+        <button role="button" class="time-end-action time-end-primary" :class="[themeClass('time-end-primary'), { 'time-option-disabled': nowDisabled }]"
           :aria-label="label + '设为此刻'" :disabled="nowDisabled" @click="useCurrentTime"><text :class="buttonLabelClasses(['time-end-action time-end-primary', [themeClass('time-end-primary'), { 'time-option-disabled': nowDisabled }]])">此刻</text></button>
-        <button role="button" class="time-end-action time-end-primary time-end-confirm" :class="themeClass('time-end-primary')"
-          :disabled="!available || isDisabled(selected)" @click="confirm"><text :class="buttonLabelClasses(['time-end-action time-end-primary time-end-confirm', themeClass('time-end-primary')])">完成</text></button>
       </view>
     </view>
   </view>
@@ -243,11 +242,9 @@ function useCurrentTime() {
 .time-end-toolbar {
   flex-direction: row;
   align-items: center;
-  justify-content: space-between;
+  justify-content: center;
   padding: 0 $space-inline;
-  border-top: 1px solid #e5e7eb;
 }
-.time-end-toolbar-dark { border-top-color: #45474d; }
 .time-end-action {
   display: flex;
   align-items: center;
@@ -295,19 +292,6 @@ function useCurrentTime() {
   background-repeat: no-repeat;
   pointer-events: none;
 }
-.time-end-minute-indicator {
-  position: absolute;
-  top: 50%;
-  right: 0;
-  left: 0;
-  z-index: 2;
-  box-sizing: border-box;
-  border-top: 1px solid #e5e7eb;
-  border-bottom: 1px solid #e5e7eb;
-  transform: translateY(-50%);
-  pointer-events: none;
-}
-.time-end-minute-indicator-dark { border-color: #45474d; }
 .time-end-item {
   height: $space-controlMin - $space-detail;
   align-items: center;

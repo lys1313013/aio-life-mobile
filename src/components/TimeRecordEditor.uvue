@@ -88,8 +88,6 @@ function closeTimePicker() {
 useWindowResize(() => {
   if (choosingTime.value) openTimePicker(choosingTime.value)
 })
-const previewTime = ref<number | null>(null)
-watch(choosingTime, () => { previewTime.value = null })
 const pickerBounds = computed(() => timeSelectionBounds(form.value, existing.value, choosingTime.value))
 const categoryOptions = computed(() =>
   categories.value.filter((category) => category.isEnabled !== 0),
@@ -102,12 +100,7 @@ const categoryName = computed(() =>
 const selectedCategory = computed(() =>
   categories.value.find((item) => item.id === form.value.categoryId),
 )
-const previewRecord = computed(() =>
-  choosingTime.value && previewTime.value !== null
-    ? { ...form.value, [choosingTime.value]: previewTime.value }
-    : form.value,
-)
-const duration = computed(() => recordMinutes(previewRecord.value))
+const duration = computed(() => recordMinutes(form.value))
 const displayDate = computed(() => {
   const [year, month, day] = date.value.split('-').map(Number)
   const weekday = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'][new Date(year, month - 1, day).getDay()]
@@ -330,7 +323,6 @@ function changeTime(minutes: number) {
   const bounds = pickerBounds.value
   if (minutes < bounds.min || minutes > bounds.max) return
   form.value[choosingTime.value] = minutes
-  closeTimePicker()
 }
 function changeDuration(event, unit: string) {
   const value = Number(event.detail.value)
@@ -598,7 +590,7 @@ function closeSelection() {
                 :disabled="saving || deleting" @click="openTimePicker('startTime')">
                 <view class="compact-time-field">
                   <text class="compact-time-label" :class="themeClass('compact-time-label')">开始</text>
-                  <text class="compact-time-number" :class="themeClass('compact-time-number')">{{ clockLabel(previewRecord.startTime) }}</text>
+                  <text class="compact-time-number" :class="themeClass('compact-time-number')">{{ clockLabel(form.startTime) }}</text>
                 </view>
               </button>
               <view class="compact-time-summary">
@@ -612,7 +604,7 @@ function closeSelection() {
                 :disabled="saving || deleting" @click="openTimePicker('endTime')">
                 <view class="compact-time-field">
                   <text class="compact-time-label" :class="themeClass('compact-time-label')">结束</text>
-                  <text class="compact-time-number" :class="themeClass('compact-time-number')">{{ clockLabel(previewRecord.endTime) }}</text>
+                  <text class="compact-time-number" :class="themeClass('compact-time-number')">{{ clockLabel(form.endTime) }}</text>
                 </view>
               </button>
             </view>
@@ -687,7 +679,7 @@ function closeSelection() {
                   :class="'time-anchor-' + field"
                   :aria-label="field === 'startTime' ? '开始时间' : '结束时间'"
                   :disabled="saving || deleting" @click="openTimePicker(field)">
-                  <view class="time-field"><text class="time-number" :class="themeClass('time-number')">{{ clockLabel(previewRecord[field]) }}</text></view>
+                  <view class="time-field"><text class="time-number" :class="themeClass('time-number')">{{ clockLabel(form[field]) }}</text></view>
                 </button>
                 <button
                   role="button"
@@ -943,7 +935,7 @@ function closeSelection() {
     :min="pickerBounds.min" :max="pickerBounds.max"
     :label="choosingTime === 'startTime' ? '开始时间' : '结束时间'"
     :show-now="choosingTime === 'endTime'"
-    @preview="previewTime = $event" @change="changeTime" @close="closeTimePicker" />
+    @change="changeTime" @close="closeTimePicker" />
 </template>
 
 <style scoped lang="scss">

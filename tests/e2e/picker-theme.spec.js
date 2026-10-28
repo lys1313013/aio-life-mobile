@@ -114,7 +114,7 @@ for (const mode of ['light', 'dark']) {
     const mask = await timePicker.locator('.uni-picker-view-mask').first().evaluate(node => getComputedStyle(node).backgroundImage);
     expect(mask).toContain(mode === 'dark' ? 'rgba(28, 30, 34,' : 'rgba(255, 255, 255,');
     await page.screenshot({ path: `artifacts/picker-theme/开始时间-${mode}.png` });
-    await timePicker.getByRole('button', { name: '取消', exact: true }).click();
+    await page.locator('.time-end-mask').click({ position: { x: 8, y: 8 } });
     await expect(timePicker).toHaveCount(0);
     await expect(dialog).toBeVisible();
   });
