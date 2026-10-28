@@ -1,10 +1,17 @@
 const {dashboardFixture}=require('./fixtures');
 const {test}=require('@playwright/test');
 const admin=[['users','/system/user','用户中心'],['menus','/system/menu','菜单管理'],['user-dict','/system/user-dict','用户字典管理'],['feedback','/system/feedback','反馈管理'],['config','/system/config','系统配置'],['operation','/system/operation-log','操作日志'],['access','/system/access-log','访问日志'],['dict-types','/config-management/sysDictType','字典类型'],['dict-data','/config-management/sysDictData','字典数据']];
+const legalFixture = {
+  version: '2026-10-27', effectiveDate: '2026-10-27',
+  operator: '模拟运营主体', contactEmail: 'privacy@example.test',
+  privacy: [['信息用途', '仅用于模拟隐私政策页面验证。']],
+  terms: [['服务范围', '仅用于模拟服务条款页面验证。']],
+};
 async function setup(page, populated=false){
 const state={writes:[],fail:false,failPath:'',status:200};
 await page.route('**/*',async route=>{const req=route.request(),u=new URL(req.url()),p=u.pathname;if(u.origin!==new URL(test.info().project.use.baseURL).origin)return route.fulfill({body:'<!doctype html><html><body>模拟第三方测试页</body></html>',contentType:'text/html; charset=utf-8'});if(!p.startsWith('/api/'))return route.continue();if(state.failPath===p)return route.fulfill({status:state.status,json:{code:1,message:'模拟加载失败'}});let data=dashboardFixture(p);if(req.method()!=='GET')state.writes.push({path:p,body:req.postData()});
 if(p==='/api/auth/login')data={accessToken:'platform-fixture'};
+if(p==='/api/auth/legal')data=legalFixture;
 if(p==='/api/user/info')data={id:'9223372036854775807',username:'fixture',nickname:'页面检查用户',email:'fixture@example.test',roles:['admin']};
 if(p==='/api/menu/all')data=[...admin.map(([id,path,title])=>({id,path,name:id,meta:{title}})),{id:'categoryadmin',path:'/time/category-admin',name:'categoryadmin',meta:{title:'管理分类'}}];
 if(p==='/api/quick-nav/candidates')data=[['category','/time/my-categories','个人分类'],['categoryadmin','/time/category-admin','管理分类'],['dashboard','/time/dashboard','时间看板']].map(([menuId,path,title])=>({menuId,path,title}));
