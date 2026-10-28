@@ -97,10 +97,10 @@ export function useUserDictOrder(options: {
       if (!Array.isArray(ranks) || !ranks.some(item => item.id === row.id) || !ranks.some(item => item.id === destination.id)) throw Error('排序结果异常，请重试');
       const byId = new Map<string, number>();
       for (const item of ranks) {
-        if (typeof item.id !== 'string' || !Number.isInteger(item.dictSort) || item.dictSort < 0 || byId.has(item.id)) throw Error('排序结果异常，请重试');
-        byId.set(item.id, item.dictSort);
+        if (typeof item.id !== 'string' || !Number.isInteger(item.sortOrder) || item.sortOrder < 0 || byId.has(item.id)) throw Error('排序结果异常，请重试');
+        byId.set(item.id, item.sortOrder);
       }
-      options.rows.value = options.rows.value.map(item => byId.has(item.id) ? { ...item, dictSort: byId.get(item.id) } : item);
+      options.rows.value = options.rows.value.map(item => byId.has(item.id) ? { ...item, sortOrder: byId.get(item.id) } : item);
     } catch (reason) {
       if (revision !== requestVersion) return;
       options.rows.value = original;

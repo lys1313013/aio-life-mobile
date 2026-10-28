@@ -21,12 +21,12 @@ let timer: ReturnType<typeof setTimeout> | undefined;
 const typeLabels = computed(() => ['全部类型', ...props.options.map(option => option.label + ' · ' + option.type)]);
 const selectedType = computed(() => props.options.find(option => option.type === type.value));
 const typeIndex = computed(() => selectedType.value ? props.options.indexOf(selectedType.value) + 1 : 0);
-const sortFields = { '展示值': 'dictLabel', '实际值': 'dictValue', '字典名称': 'dictName', '字典类型': 'dictType', '排序': 'dictSort', '状态': 'status', '备注': 'remark', '更新时间': 'updateTime' };
+const sortFields = { '展示值': 'dictLabel', '实际值': 'dictValue', '字典名称': 'dictName', '字典类型': 'dictType', '排序': 'sortOrder', '状态': 'isEnabled', '备注': 'remark', '更新时间': 'updateTime' };
 const sorted = computed(() => {
   const key = sortFields[sort.value];
   if (!key) return props.rows;
   return [...props.rows].sort((a, b) => {
-    const order = key === 'dictSort' ? Number(a[key] ?? 0) - Number(b[key] ?? 0) : String(a[key] ?? '').localeCompare(String(b[key] ?? ''));
+    const order = key === 'sortOrder' ? Number(a[key] ?? 0) - Number(b[key] ?? 0) : String(a[key] ?? '').localeCompare(String(b[key] ?? ''));
     return descending.value ? -order : order;
   });
 });
@@ -34,7 +34,7 @@ const details = computed(() => selected.value ? [
   ['实际值', selected.value.dictValue ?? '—'],
   ['字典名称', selected.value.dictName || '—'],
   ['字典类型', selected.value.dictType || '—'],
-  ['排序', String(selected.value.dictSort ?? '—')],
+  ['排序', String(selected.value.sortOrder ?? '—')],
   ['状态', status(selected.value)],
   ['备注', selected.value.remark || '—'],
   ['更新时间', selected.value.updateTime || '—'],
@@ -59,7 +59,7 @@ function reset() {
   search();
 }
 function status(row: any) {
-  return String(row.status) === '0' ? '正常' : String(row.status) === '1' ? '停用' : '状态未知';
+  return row.isEnabled === 1 ? '正常' : row.isEnabled === 0 ? '停用' : '状态未知';
 }
 function open(row, detail = false) {
   if (actionBusy.value) return;
@@ -118,8 +118,8 @@ onUnmounted(() => clearTimeout(timer));
             <button class="dict-row-content" :class="themeClass('dict-row-content')" :aria-label="'查看' + row.dictLabel + '详情，实际值 ' + row.dictValue + '，' + status(row)" :disabled="actionBusy" @click="open(row, true)">
               <text class="dict-title" :class="themeClass('dict-title')">{{ row.dictLabel || '未命名' }}</text>
               <text class="dict-value" :class="themeClass('dict-muted')">{{ row.dictValue ?? '—' }}</text>
-              <view class="dict-status" :class="[String(row.status) === '0' ? 'dict-status-normal' : String(row.status) === '1' ? 'dict-status-disabled' : 'dict-status-unknown']" :aria-label="status(row)" />
-              <text v-if="String(row.status) !== '0'" class="dict-disabled-label" :class="themeClass('dict-muted')">{{ status(row) }}</text>
+              <view class="dict-status" :class="[row.isEnabled === 1 ? 'dict-status-normal' : row.isEnabled === 0 ? 'dict-status-disabled' : 'dict-status-unknown']" :aria-label="status(row)" />
+              <text v-if="row.isEnabled !== 1" class="dict-disabled-label" :class="themeClass('dict-muted')">{{ status(row) }}</text>
             </button>
             <MobileButton :label="row.dictLabel + '更多操作'" icon="ant-design:more-outlined" variant="ghost" :disabled="actionBusy" @click="open(row)" />
           </view>

@@ -59,7 +59,7 @@ for (const width of [390, 768, 1440]) for (const theme of ['light', 'dark']) {
     await page.screenshot({ path: testInfo.outputPath('editor.png'), fullPage: true });
     await dialog.getByRole('button', { name: '保存', exact: true }).click();
     await expect(dialog).toHaveCount(0);
-    expect(state.writes.at(-1).note).toBeNull(); expect(state.reads).toBe(reads);
+    expect(state.writes.at(-1).remark).toBeNull(); expect(state.reads).toBe(reads);
     expect(state.writes.at(-1).endDate).toBe('9999-12-31');
     await expect(page.locator('.footprint-detail')).toContainText('至今');
     await expect(page.locator('.footprint-detail')).not.toContainText('9999');
@@ -108,7 +108,7 @@ test('生活足迹旧搜索不覆盖新结果、手动选点与备注新增', as
   await expect(page.locator('.footprint-detail')).not.toContainText('9999');
   expect(state.writes.at(-1).startDate).toMatch(/^\d{4}-\d{2}-\d{2}$/);
   expect(state.writes.at(-1).providerUid).toBeNull();
-  expect(state.writes.at(-1)).toMatchObject({ note: '新的备注', placeName: '新搜索结果', endDate: '9999-12-31', coordinateSystem: 'GCJ02' });
+  expect(state.writes.at(-1)).toMatchObject({ remark: '新的备注', placeName: '新搜索结果', endDate: '9999-12-31', coordinateSystem: 'GCJ02' });
 });
 
 
@@ -135,7 +135,7 @@ for (const width of [390, 768, 1440]) for (const theme of ['light', 'dark']) {
     const { initialRecords } = require('./footprint-map-fixture.cjs');
     state.records = [initialRecords()[0]];
     state.records[0].placeName = '用于检查换行的较长住所名称'.repeat(3);
-    state.records[0].note = '用于检查完整阅读的较长备注。'.repeat(80);
+    state.records[0].remark = '用于检查完整阅读的较长备注。'.repeat(80);
     await page.getByRole('button', { name: '重试', exact: true }).click();
     await expect(page.locator('.footprint-map-hit')).toHaveCount(1);
     expect((await region.boundingBox()).height).toBe(initial.height);

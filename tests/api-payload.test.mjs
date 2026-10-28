@@ -99,11 +99,11 @@ test('实际 uni.request 边界执行筛选且不修改原对象', async () => {
     assert.deepEqual(data,{items:[],total:0})
     assert.equal(homeDataRevision('watched'), watchedRevision + 1)
     for (const path of ['/goals', '/anniversaryRecords']) {
-      await request(path, 'POST', { title: '固定记录', isPinned: 1, pinnedSort: -99, userId: 'other' })
+      await request(path, 'POST', { title: '固定记录', isPinned: 1, pinnedSortOrder: -99, userId: 'other' })
       assert.deepEqual(sent.data, { title: '固定记录', isPinned: 1 })
-      await request(path, 'PUT', { id: row.id, isPinned: 0, pinnedSort: -99, userId: 'other' })
+      await request(path, 'PUT', { id: row.id, isPinned: 0, pinnedSortOrder: -99, userId: 'other' })
       assert.deepEqual(sent.data, { id: row.id, isPinned: 0 })
-      await request(`${path}/${row.id}/pin`, 'PUT', { isPinned: 0, pinnedSort: -99, userId: 'other' })
+      await request(`${path}/${row.id}/pin`, 'PUT', { isPinned: 0, pinnedSortOrder: -99, userId: 'other' })
       assert.deepEqual(sent.data, { isPinned: 0 })
       const ids = [row.id, '9223372036854775806']
       await request(`${path}/pinned-order`, 'PUT', { ids, userId: 'other' })

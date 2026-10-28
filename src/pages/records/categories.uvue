@@ -40,7 +40,7 @@ const loadedType = ref('');
 const editingIndex = computed(() => form.value?.id ? rows.value.findIndex((item) => item.id === form.value.id) : -1);
 const categoryTabs = computed(() => types.value.filter((item) => item.value !== 'bank_tag'));
 const categoryIndex = computed(() => Math.max(0, categoryTabs.value.findIndex((item) => item.value === type.value)));
-const visibleRows = computed(() => rows.value.filter((item) => statusFilter.value === '全部' || (statusFilter.value === '已启用' ? item.status !== '1' : item.status === '1')));
+const visibleRows = computed(() => rows.value.filter((item) => statusFilter.value === '全部' || (statusFilter.value === '已启用' ? item.isEnabled === 1 : item.isEnabled === 0)));
 let generation = 0;
 const scope = createRecordScope((clear) => {
   form.value = null;
@@ -84,7 +84,7 @@ async function load() {
     }
     if (current === generation) {
       types.value = options;
-      rows.value = data.sort((a, b) => Number(a.dictSort || 0) - Number(b.dictSort || 0));
+      rows.value = data.sort((a, b) => Number(a.sortOrder || 0) - Number(b.sortOrder || 0));
       loadedType.value = selectedType;
     }
   } catch (e) {
@@ -97,15 +97,15 @@ function open(item = null) {
   saved.value = false;
   formError.value = '';
   form.value = item
-    ? { ...item, dictSort: String(item.dictSort ?? 0) }
+    ? { ...item, sortOrder: String(item.sortOrder ?? 0) }
     : {
         dictType: type.value,
         dictLabel: '',
         dictValue: '',
         color: '#4ecdc4',
         icon: '',
-        dictSort: String((rows.value.length + 1) * 10),
-        status: '0',
+        sortOrder: String((rows.value.length + 1) * 10),
+        isEnabled: 1,
         remark: '',
       };
 }
@@ -115,7 +115,7 @@ async function save() {
     formError.value = '请输入分类名称';
     return;
   }
-  const sort = Number(form.value.dictSort);
+  const sort = Number(form.value.sortOrder);
   if (!Number.isInteger(sort) || sort < 0) {
     formError.value = '排序必须是非负整数';
     return;
@@ -124,7 +124,7 @@ async function save() {
   formError.value = '';
   try {
     if (!saved.value) {
-      await scope.wait(saveCategory({ ...form.value, dictSort: sort }));
+      await scope.wait(saveCategory({ ...form.value, sortOrder: sort }));
       saved.value = true;
     }
     await load();
@@ -142,9 +142,9 @@ async function toggle(item, enabled: boolean) {
   busyId.value = item.id;
   error.value = '';
   try {
-    await scope.wait(saveCategory({ ...item, status: enabled ? '0' : '1' }));
+    await scope.wait(saveCategory({ ...item, isEnabled: enabled ? 1 : 0 }));
     if (type.value === selectedType) {
-      rows.value = rows.value.map((row) => row.id === item.id ? { ...row, status: enabled ? '0' : '1' } : row);
+      rows.value = rows.value.map((row) => row.id === item.id ? { ...row, isEnabled: enabled ? 1 : 0 } : row);
     }
   } catch (e) {
     if (e.name !== 'PageInactiveError' && type.value === selectedType) error.value = e.message;
@@ -170,10 +170,10 @@ async function move(index, offset) {
     [ordered[index], ordered[index + offset]] = [ordered[index + offset], ordered[index]];
     for (let i = 0; i < ordered.length; i++) {
       if (ordered[i].isReadonly === 'Y') continue;
-      await scope.wait(saveCategory({ ...ordered[i], dictSort: i * 10 }));
+      await scope.wait(saveCategory({ ...ordered[i], sortOrder: i * 10 }));
     }
     // 同步已保存的顺序，避免并发刷新使表单回填旧排序。
-    if (form.value?.id === movedId) form.value = { ...form.value, dictSort: String((index + offset) * 10) };
+    if (form.value?.id === movedId) form.value = { ...form.value, sortOrder: String((index + offset) * 10) };
     await load();
     if (error.value) formError.value = error.value;
   } catch (e) {
@@ -249,11 +249,11 @@ function cannotMove(offset: number) {
           <view v-for="item in visibleRows" :key="item.id" class="category-row" :class="{ 'category-row-dark': isDark }">
             <CategoryIcon :icon="item.icon" :color="item.color" />
             <view class="category-copy">
-              <text class="category-name" :class="{ 'category-name-dark': isDark, 'category-name-disabled': item.status === '1', 'category-name-disabled-dark': item.status === '1' && isDark }">{{ item.dictLabel }}</text>
+              <text class="category-name" :class="{ 'category-name-dark': isDark, 'category-name-disabled': item.isEnabled === 0, 'category-name-disabled-dark': item.isEnabled === 0 && isDark }">{{ item.dictLabel }}</text>
               <text v-if="item.isReadonly === 'Y'" class="secondary" :class="{ 'record-secondary-dark': isDark }">只读分类</text>
             </view>
             <view class="category-actions">
-              <MobileSwitch :checked="item.status !== '1'" :disabled="!!busyId || loading"
+              <MobileSwitch :checked="item.isEnabled === 1" :disabled="!!busyId || loading"
                 :loading="busyId === item.id" :aria-label="'启用分类：' + item.dictLabel"
                 @change="toggle(item, $event.detail.value)" />
               <MobileButton label="编辑分类" icon="ant-design:edit-outlined" variant="ghost"
@@ -277,8 +277,8 @@ function cannotMove(offset: number) {
           v-model="form.dictValue" />
         <CategoryAppearancePicker v-model:icon="form.icon" v-model:color="form.color" :disabled="saving || !!busyId" />
         <view class="ui-field-row">
-          <FormField compact stretch label="排序" input-type="number" v-model="form.dictSort" />
-          <FormField compact stretch label="状态" kind="selector" :model-value="form.status === '1' ? '停用' : '启用'" :options="['启用', '停用']" @update:model-value="form.status = $event === '停用' ? '1' : '0'" />
+          <FormField compact stretch label="排序" input-type="number" v-model="form.sortOrder" />
+          <FormField compact stretch label="状态" kind="selector" :model-value="form.isEnabled === 0 ? '停用' : '启用'" :options="['启用', '停用']" @update:model-value="form.isEnabled = $event === '停用' ? 0 : 1" />
         </view>
         <FormField
           label="备注"

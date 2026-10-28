@@ -2,7 +2,7 @@ const { test, expect } = require('./support/test');
 const fs = require('node:fs');
 const out = 'artifacts/dict-data-a';
 fs.mkdirSync(out, { recursive: true });
-const row = (i, type = 'bank') => ({dictCode: String(9223372036854775000n + BigInt(i)), dictId:type === 'bank'?'91':'92', dictLabel: type === 'bank' ? '模拟银行 ' + i : '模拟设备状态 ' + i, dictValue:'CODE_' + i, dictType:type, dictName:type === 'bank'?'银行':'设备状态', dictSort:i, status:i % 2 ? '0':'1', remark:i === 1?'用于验证备注换行和信息密度的模拟说明。':'', updateTime:'2026-10-05 10:20:30'});
+const row = (i, type = 'bank') => ({dictCode: String(9223372036854775000n + BigInt(i)), dictId:type === 'bank'?'91':'92', dictLabel: type === 'bank' ? '模拟银行 ' + i : '模拟设备状态 ' + i, dictValue:'CODE_' + i, dictType:type, dictName:type === 'bank'?'银行':'设备状态', sortOrder:i, isEnabled:i % 2 ? 1:0, remark:i === 1?'用于验证备注换行和信息密度的模拟说明。':'', updateTime:'2026-10-05 10:20:30'});
 async function setup(page) {
   const state = { requests:[], failMore:false, delay:0, emptyMore:false, writes:[], changes:[], failWrite:false, deleted:[] };
   await page.addInitScript(() => localStorage.setItem('aio-life-mobile.access-token.v1',JSON.stringify({type:'string',data:'dict-data-fixture'})));

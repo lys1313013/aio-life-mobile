@@ -9,8 +9,8 @@ const item = (id, parentId, title, path, sort = 0, extra = {}) => ({
   name: "Route" + id,
   path,
   component: "BasicLayout",
-  status: 1,
-  sort,
+  webIsEnabled: 1,
+  sortOrder: sort,
   roles: "",
   meta: {
     title,
@@ -44,7 +44,7 @@ async function setup(page, theme = "light") {
     writes: [],
     rows: [
       item(longId, "0", "主页", "/", -1),
-      item("2", "0", "仪表盘", "/dashboard", 0, { status: 0 }),
+      item("2", "0", "仪表盘", "/dashboard", 0, { webIsEnabled: 0 }),
       item("21", "2", "人生仪表盘", "/dashboard/life"),
       item("3", "0", "时间和任务", "/tasks", 0),
       item("31", "3", "时迹", "/tasks/time"),
@@ -64,7 +64,7 @@ async function setup(page, theme = "light") {
       item("7", "0", "关于", "/about", 5),
     ],
   };
-  await page.route("http://127.0.0.1:5180/api/**", async (route) => {
+  await page.route(`${test.info().project.use.baseURL}/api/**`, async (route) => {
     const req = route.request(),
       path = new URL(req.url()).pathname.replace("/api", ""),
       method = req.method();
@@ -78,7 +78,7 @@ async function setup(page, theme = "light") {
       const tree = (parent) =>
         state.rows
           .filter((row) => row.parentId === parent)
-          .sort((a, b) => a.sort - b.sort)
+          .sort((a, b) => a.sortOrder - b.sortOrder)
           .map((row) => ({ ...row, children: tree(row.id) }));
       data = tree("0");
     } else if (method !== "GET") {
@@ -95,7 +95,9 @@ async function setup(page, theme = "light") {
         data = { ...body, id: "99" };
         state.rows.push(data);
       } else if (row) {
-        Object.assign(row, body);
+        if (path.endsWith("/status")) row.webIsEnabled = body.isEnabled;
+        else if (path.endsWith("/mobile-status")) row.mobileIsEnabled = body.isEnabled;
+        else Object.assign(row, body);
         data = row;
       }
     }
@@ -203,12 +205,12 @@ test("菜单搜索、编辑失败恢复、父级新增、保护菜单、排序�
   expect(state.writes.at(-1).path).toBe("/menu/admin/" + longId);
   expect(state.writes.at(-1).body).not.toHaveProperty("id");
   expect(state.writes.at(-1).body.meta.extra).toEqual({ retained: true });
-  expect(state.writes.at(-1).body.sort).toBe(-1);
+  expect(state.writes.at(-1).body.sortOrder).toBe(-1);
   await page.getByRole("button", { name: "仪表盘更多操作" }).click();
   const webEnabled = page.locator('[role="switch"][aria-label="仪表盘 Web 启用"]');
   await webEnabled.click();
   await expect(webEnabled).toHaveAttribute('aria-checked', 'true');
-  expect(state.writes.at(-1).body.status).toBe(1);
+  expect(state.writes.at(-1).body.isEnabled).toBe(1);
   await dismissModal(page);
   await page.getByRole("button", { name: "系统管理更多操作" }).click();
   await expect(page.locator('[role="switch"][aria-label="系统管理 Web 启用"]')).toHaveAttribute('aria-disabled', 'true');

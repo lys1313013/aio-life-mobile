@@ -96,7 +96,7 @@ function edit() {
     appId: config.value.appId || '',
     appSecret: '',
     openId: config.value.receiverOpenId || '',
-    enabled: !!config.value.enabled,
+    isEnabled: config.value.isEnabled,
   };
   formError.value = '';
   editing.value = true;
@@ -111,7 +111,7 @@ async function subscribeWechat() {
     await subscribeWechatOnce(wechat.value.templateId);
     if (!active || token !== session.token || v !== revision) return;
     const data: any = await request('/notification/preferences', 'PUT', {
-      items: [{ bizType: wechat.value.bizType, channel: 'WECHAT_MINI', enabled: true }],
+      items: [{ bizType: wechat.value.bizType, channel: 'WECHAT_MINI', isEnabled: 1 }],
     });
     if (!active || token !== session.token || v !== revision) return;
     preferences.value = data;
@@ -133,7 +133,7 @@ async function saveConfig() {
   formError.value = '';
   const token = session.token;
   try {
-    const payload: any = { enabled: form.value.enabled };
+    const payload: any = { isEnabled: form.value.isEnabled };
     for (const key of ['appId', 'appSecret', 'openId'])
       if (form.value[key]?.trim()) payload[key] = form.value[key].trim();
     const result = await request('/notification/channels/feishu', 'PUT', payload);
@@ -218,7 +218,7 @@ function back() {
           ><view class="notification-row ui-row"
             ><text class="notification-name"
               >飞书 ·
-              {{ config.enabled ? '已启用' : config.configured ? '已配置' : '未配置' }}</text
+              {{ config.isEnabled ? '已启用' : config.configured ? '已配置' : '未配置' }}</text
             ><MobileButton label="配置飞书" icon="ant-design:edit-outlined" variant="quiet" @click="edit" /></view
           ><text v-if="config.receiverName" class="notification-muted" :class="themeClass('notification-muted')">{{
             config.receiverName
@@ -263,10 +263,10 @@ function back() {
                 channels[channel.channel] || channel.channel
               }}</text
               ><MobileSwitch
-                :checked="channel.enabled"
+                :checked="channel.isEnabled === 1"
                 :disabled="saving || subscribing || (channel.channel === 'WECHAT_MINI' && (!wechat.enabled || !wechat.bound))"
                 :aria-label="item.description + channels[channel.channel]"
-                @change="channel.enabled = $event.detail.value" /></view></view
+                @change="channel.isEnabled = $event.detail.value ? 1 : 0" /></view></view
           ><MobileButton
             label="保存"
             :loading="saving"
@@ -297,9 +297,9 @@ function back() {
         @click="form.openId = person.openId" /><view class="notification-row ui-row"
         ><text class="notification-name">启用</text
         ><MobileSwitch
-          :checked="form.enabled"
+          :checked="form.isEnabled === 1"
           aria-label="启用飞书通知"
-          @change="form.enabled = $event.detail.value" /></view
+          @change="form.isEnabled = $event.detail.value ? 1 : 0" /></view
       ><text v-if="formError" class="error-text" role="alert">{{ formError }}</text
       ><MobileButton label="保存" :loading="saving" @click="saveConfig" /></AdaptiveModal
   ></view>

@@ -10,9 +10,9 @@ async function setup(page) {
   if(path==='/api/menu/all')data=[{name:'记录',meta:{menuId:'root',title:'记录'},children:[{name:'笔记',meta:{menuId:'9223372036854775807',title:'笔记'}}]}];
   if(path==='/api/auth/secondary-lock/menus'){data=[];if(method==='PUT'){state.security.push(route.request().postDataJSON());data=true;}}
   if(path==='/api/auth/secondary-password/status')data={hasPassword:true};
-  if(path==='/api/notification/channels/feishu'){data={configured:true,enabled:true,appId:'fixture-app',receiverOpenId:'fixture-open'};if(method==='PUT')state.notifications.push(route.request().postDataJSON());}
+  if(path==='/api/notification/channels/feishu'){data={configured:true,isEnabled:1,appId:'fixture-app',receiverOpenId:'fixture-open'};if(method==='PUT')state.notifications.push(route.request().postDataJSON());}
   if(path==='/api/notification/channels/wechat-mini')data=state.wechat;
-  if(path==='/api/notification/preferences')data=[{bizType:'fixture-visible',visible:true,description:'通知事件',channels:[{channel:'EMAIL',enabled:true}]},{bizType:'fixture-hidden',visible:false,description:'隐藏事件',channels:[{channel:'STATION',enabled:true}]}];
+  if(path==='/api/notification/preferences')data=[{bizType:'fixture-visible',visible:true,description:'通知事件',channels:[{channel:'EMAIL',isEnabled:1}]},{bizType:'fixture-hidden',visible:false,description:'隐藏事件',channels:[{channel:'STATION',isEnabled:1}]}];
   if(path==='/api/api-key/list'){
    if(!state.unlock)return route.fulfill({json:{code:2001,message:'需要二级密码验证',data:{menuPath:'/mcp/api-keys'}}});
    data=[];
@@ -104,7 +104,7 @@ test('菜单锁使用完整字符串ID与二级密码；通知留空保留应用
  await expect(notification.locator('[aria-label="App Secret"] input')).toHaveValue('');
  await notification.getByRole('button',{name:'保存',exact:true}).click();
  await expect(notification).toHaveCount(0);
- expect(state.notifications[0]).toEqual({enabled:true,appId:'fixture-app',openId:'fixture-open'});
+ expect(state.notifications[0]).toEqual({isEnabled:1,appId:'fixture-app',openId:'fixture-open'});
 });
 
 test('离开锁定页面取消等待，返回不保留二级密码',async({page})=>{

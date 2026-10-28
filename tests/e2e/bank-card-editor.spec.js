@@ -1,7 +1,7 @@
 const { test, expect } = require('./support/test');
-const banks = Array.from({ length: 3000 }, (_, n) => ({ id: String(90071992547409930n + BigInt(n)), name: `模拟银行${n}`, code: `BANK${n}`, enabled: true }));
-banks.push({ id: 'disabled', name: '模拟停用银行', code: 'OFF', enabled: false });
-banks.push({ id: 'long', name: '模拟某省某市农村商业银行股份有限公司', code: 'LONG', enabled: true });
+const banks = Array.from({ length: 3000 }, (_, n) => ({ id: String(90071992547409930n + BigInt(n)), name: `模拟银行${n}`, code: `BANK${n}`, isEnabled: 1 }));
+banks.push({ id: 'disabled', name: '模拟停用银行', code: 'OFF', isEnabled: 0 });
+banks.push({ id: 'long', name: '模拟某省某市农村商业银行股份有限公司', code: 'LONG', isEnabled: 1 });
 async function prepare(page, baseURL) {
   await page.addInitScript(() => localStorage.setItem('aio-life-mobile.access-token.v1', 'bank-editor-fixture'));
   for (const [path, data] of Object.entries({

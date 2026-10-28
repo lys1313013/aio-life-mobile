@@ -40,7 +40,7 @@ export function reordered(items, id, offset, kind) {
   const copy = items.slice(); const index = copy.findIndex(item => item.id === id); const next = index + offset
   if (index < 0 || next < 0 || next >= copy.length) return null
   const item = copy.splice(index, 1)[0]; copy.splice(next, 0, item)
-  return { items: copy, payload: copy.map((row, position) => kind === 'detail' ? { id: recordId(row.id), sort: position + 1 } : kind === 'task' ? { id: recordId(row.id), columnId: recordId(row.columnId), sortOrder: position + 1 } : { id: recordId(row.id), sortOrder: position + 1 }) }
+  return { items: copy, payload: copy.map((row, position) => kind === 'detail' ? { id: recordId(row.id), sortOrder: position + 1 } : kind === 'task' ? { id: recordId(row.id), columnId: recordId(row.columnId), sortOrder: position + 1 } : { id: recordId(row.id), sortOrder: position + 1 }) }
 }
 export function goalDateRange(type, now = new Date()) {
   let start = new Date(now.getFullYear(), now.getMonth(), now.getDate()), end = new Date(start)

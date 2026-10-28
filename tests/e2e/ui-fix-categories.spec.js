@@ -4,9 +4,9 @@ const path = require('node:path');
 const fs = require('node:fs');
 
 const categoryRows = [
-  { id: '9223372036854775701', parentId: '0', userId: '9223372036854775807', name: '模拟必须分类', color: '#3b82f6', icon: 'lucide:book-open', timeType: 1, isTrackTime: 0, isEnabled: 1, sort: 10 },
-  { id: '9223372036854775702', parentId: '0', userId: '9223372036854775807', name: '模拟积极分类与较长的名称', color: '#10b981', icon: 'lucide:book-open', timeType: 2, isTrackTime: 1, isEnabled: 1, sort: 20 },
-  { id: '9223372036854775703', parentId: '9223372036854775701', userId: '9223372036854775807', name: '模拟休闲子分类', color: '#f59e0b', icon: 'lucide:book-open', timeType: 3, isTrackTime: 0, isEnabled: 1, sort: 30 },
+  { id: '9223372036854775701', parentId: '0', userId: '9223372036854775807', name: '模拟必须分类', color: '#3b82f6', icon: 'lucide:book-open', timeType: 1, isTrackTime: 0, isEnabled: 1, sortOrder: 10 },
+  { id: '9223372036854775702', parentId: '0', userId: '9223372036854775807', name: '模拟积极分类与较长的名称', color: '#10b981', icon: 'lucide:book-open', timeType: 2, isTrackTime: 1, isEnabled: 1, sortOrder: 20 },
+  { id: '9223372036854775703', parentId: '9223372036854775701', userId: '9223372036854775807', name: '模拟休闲子分类', color: '#f59e0b', icon: 'lucide:book-open', timeType: 3, isTrackTime: 0, isEnabled: 1, sortOrder: 30 },
 ];
 async function openCategories(page, admin = false) {
   await setup(page);

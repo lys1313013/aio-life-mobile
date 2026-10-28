@@ -241,8 +241,8 @@ test("常用增删、排序、停用、保存失败恢复与首页同步", async
   await page.getByRole("button", { name: "保存", exact: true }).click();
   await expect(editor).toBeHidden();
   expect(state.posts[0].items).toEqual([
-    { menuId: "exercise", enabled: 1, sortOrder: 0 },
-    { menuId: "goal", enabled: 0, sortOrder: 1 },
+    { menuId: "exercise", isEnabled: 1, sortOrder: 0 },
+    { menuId: "goal", isEnabled: 0, sortOrder: 1 },
   ]);
   await expect(page.locator(".life-quick")).toHaveCount(0);
   await page.locator("uni-tabbar").getByText("首页", { exact: true }).click();
@@ -275,7 +275,7 @@ test("首页空态直接添加快捷方式并直达业务页", async ({ page }) 
   await page.getByRole("dialog", { name: "添加快捷方式" }).getByRole("button", { name: "完成添加", exact: true }).click();
   await page.getByRole("button", { name: "保存", exact: true }).click();
   await expect(editor).toBeHidden();
-  expect(state.posts[0].items).toEqual([{ menuId: "todo", enabled: 1, sortOrder: 0 }]);
+  expect(state.posts[0].items).toEqual([{ menuId: "todo", isEnabled: 1, sortOrder: 0 }]);
   await page.locator(".quick-link").filter({ hasText: "待办" }).click();
   await expect(page).toHaveURL(/pages\/tasks\/todo/);
 });
@@ -405,7 +405,7 @@ test("15 项上限不截断既有配置，停用项可重新添加、逐项移�
   await expect(editor).toBeHidden();
   expect(state.posts[0].items).toHaveLength(15);
   expect(state.posts[0].items[0].menuId).toBe("9223372036854775807");
-  expect(state.posts[0].items[14]).toMatchObject({ menuId: "todo", enabled: 1 });
+  expect(state.posts[0].items[14]).toMatchObject({ menuId: "todo", isEnabled: 1 });
   await page.locator("uni-tabbar").getByText("首页", { exact: true }).click();
   const lastQuick = page
     .locator(".quick-link")
@@ -700,6 +700,6 @@ for (const width of [390, 768, 1440]) for (const colorScheme of ['light', 'dark'
     await picker.getByRole('button', { name: '完成添加', exact: true }).click();
     await page.getByRole('button', { name: '保存', exact: true }).click();
     await expect(page.locator('.quick-editor')).toBeHidden();
-    expect(state.posts[0].items).toEqual([{ menuId: '9223372036854775807', enabled: 1, sortOrder: 0 }]);
+    expect(state.posts[0].items).toEqual([{ menuId: '9223372036854775807', isEnabled: 1, sortOrder: 0 }]);
   });
 }

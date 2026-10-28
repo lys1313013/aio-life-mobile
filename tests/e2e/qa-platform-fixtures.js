@@ -1,12 +1,7 @@
 const {dashboardFixture}=require('./fixtures');
-const {test}=require('./support/test');
+const {test}=require('@playwright/test');
 const admin=[['users','/system/user','用户中心'],['menus','/system/menu','菜单管理'],['user-dict','/system/user-dict','用户字典管理'],['feedback','/system/feedback','反馈管理'],['config','/system/config','系统配置'],['operation','/system/operation-log','操作日志'],['access','/system/access-log','访问日志'],['dict-types','/config-management/sysDictType','字典类型'],['dict-data','/config-management/sysDictData','字典数据']];
-const legalFixture = {
-  version: '2026-10-27', effectiveDate: '2026-10-27',
-  operator: '模拟运营主体', contactEmail: 'privacy@example.test',
-  privacy: [['信息用途', '仅用于模拟隐私政策页面验证。']],
-  terms: [['服务范围', '仅用于模拟服务条款页面验证。']],
-};
+const legalFixture = require('./support/legal-fixture');
 async function setup(page, populated=false){
 const state={writes:[],fail:false,failPath:'',status:200};
 await page.route('**/*',async route=>{const req=route.request(),u=new URL(req.url()),p=u.pathname;if(u.origin!==new URL(test.info().project.use.baseURL).origin)return route.fulfill({body:'<!doctype html><html><body>模拟第三方测试页</body></html>',contentType:'text/html; charset=utf-8'});if(!p.startsWith('/api/'))return route.continue();if(state.failPath===p)return route.fulfill({status:state.status,json:{code:1,message:'模拟加载失败'}});let data=dashboardFixture(p);if(req.method()!=='GET')state.writes.push({path:p,body:req.postData()});
@@ -25,9 +20,9 @@ if(p==='/api/menu/preferences')data={menus:[{id:'9223372036854775807',title:'模
 if(p==='/api/auth/secondary-password/status')data={hasPassword:true};
 if(p==='/api/auth/secondary-lock/menus')data=[];
 if(p==='/api/userbinds/list'||p==='/api/api-key/list')data=[];
-if(p==='/api/notification/channels/feishu')data={configured:true,enabled:true,appId:'fixture',receiverOpenId:'fixture-open'};
+if(p==='/api/notification/channels/feishu')data={configured:true,isEnabled:1,appId:'fixture',receiverOpenId:'fixture-open'};
 if(p==='/api/timeTrackerCategory/admin/list')data=[{id:'9223372036854775807',name:'模拟管理分类',parentId:'0',color:'#427bea',userId:'0',isEnabled:1,isTrackTime:1}];
-if(p==='/api/notification/preferences')data=[{bizType:'fixture',description:'模拟通知',visible:true,channels:[{channel:'EMAIL',enabled:true}]}];
+if(p==='/api/notification/preferences')data=[{bizType:'fixture',description:'模拟通知',visible:true,channels:[{channel:'EMAIL',isEnabled:1}]}];
 if(p==='/api/menu/admin/tree')data=[];
 if(p==='/api/menu/admin/role-options')data=['admin','user'];
 if(p==='/api/sysDictType/query')data={items:[{dictId:'9223372036854775807',dictName:'模拟字典',dictType:'fixture'}],total:1};
@@ -39,9 +34,9 @@ if(p==='/api/cbti/questions')data={questions:[{id:1,text:'模拟问题',options:
 if(p==='/api/cbti/test')data={personality:{code:'QA',name:'模拟人格',motto:'模拟格言',description:'仅用于测试',strengths:['模拟优势'],weaknesses:['模拟弱点'],vector:Array(15).fill(1)},dimensions:Array.from({length:15},(_,i)=>({code:'D'+i,name:'维度'+i,percentage:60,level:'M',levelDesc:'中等',modelName:'模拟模型'})),similarity:88,matchDetails:[]};
 if(p==='/api/cbti/personalities'||p==='/api/cbti/results'||p==='/api/mbti/results')data=[];
 if(populated){
-const id='9223372036854775807';const row={id,dictId:id,dictCode:id,userId:'0',username:'fixture-row',nickname:'模拟记录',role:'user',email:'row@example.test',dictName:'模拟字典',dictType:'fixture',dictLabel:'模拟字典值',dictValue:'value',dictSort:0,status:'0',isReadonly:'N',name:'MockMenu',parentId:'0',path:'/mock',meta:{title:'模拟菜单',keepAlive:true},title:'模拟反馈',content:'模拟反馈内容',feedbackType:'BUG',priority:'NORMAL',functionName:'模拟日志',functionItem:'检查',createTime:'2026-10-01 10:00'};
+const id='9223372036854775807';const row={id,dictId:id,dictCode:id,userId:'0',username:'fixture-row',nickname:'模拟记录',role:'user',email:'row@example.test',dictName:'模拟字典',dictType:'fixture',dictLabel:'模拟字典值',dictValue:'value',sortOrder:0,isEnabled:1,isReadonly:'N',name:'MockMenu',parentId:'0',path:'/mock',meta:{title:'模拟菜单',keepAlive:true},title:'模拟反馈',content:'模拟反馈内容',feedbackType:'BUG',priority:'NORMAL',functionName:'模拟日志',functionItem:'检查',createTime:'2026-10-01 10:00'};
 if(['/api/user-center/list','/api/sysDictType/query','/api/sysDictData/query','/api/userDictData/admin/query','/api/feedback/admin/list','/api/system/logs/operation','/api/system/logs/access'].includes(p))data={items:[row],total:1};
-if(p==='/api/menu/admin/tree')data=[{...row,status:1}];
+if(p==='/api/menu/admin/tree')data=[{...row,webIsEnabled:1,mobileIsEnabled:1}];
 if(p==='/api/system-config/list')data=[{configKey:'fixture.config',configType:'JSON',configValue:'{"enabled":true}',description:'模拟配置'}];
 if(p==='/api/userbinds/list')data=[{id,platform:'github',platformUsername:'fixture-github'}];
 if(p==='/api/api-key/list')data=[{id,remark:'模拟Key',hasApiKey:true,createTime:'2026-10-01'}];

@@ -37,16 +37,16 @@ test('待办排序只提交字符串 ID 和排序字段，越界不请求；明�
   const rows = [{ id, columnId: '8', content: '模拟甲' }, { id: '9', columnId: '8', content: '模拟乙' }]
   assert.deepEqual(reordered(rows, id, 1, 'task').payload, [{ id: '9', columnId: '8', sortOrder: 1 }, { id, columnId: '8', sortOrder: 2 }])
   assert.equal(reordered(rows, id, -1, 'task'), null)
-  const detail = taskPayload({ id, taskId: '8', content: ' 模拟明细 ', priority: 1, isStarred: 1, isCompleted: 0, sort: 2 }, 'detail')
-  assert.equal(detail.isStarred, 1); assert.equal(detail.sort, 2); assert.equal(detail.content, '模拟明细')
+  const detail = taskPayload({ id, taskId: '8', content: ' 模拟明细 ', priority: 1, isStarred: 1, isCompleted: 0, sortOrder: 2 }, 'detail')
+  assert.equal(detail.isStarred, 1); assert.equal(detail.sortOrder, 2); assert.equal(detail.content, '模拟明细')
 })
 test('待办 API 使用统一 page/pageSize 分页、PUT路径、数组排序、星标和批删契约', async () => {
   const calls = []; globalThis.__recordsRequest = async (...args) => { calls.push(args); return {} }
   let source = await readFile(new URL('../src/pages/tasks/services/tasks.ts', import.meta.url), 'utf8')
   source = source.replace("import { request } from '../../../services/api.ts'", 'const request = globalThis.__recordsRequest').replace("import { recordId } from '../../../services/records/contracts.ts'", `const recordId = ${recordId.toString()}`).replace(/request<any(?:\[\])?>/g, 'request')
   const api = await importSource(source)
-  await api.fetchTasks(2); await api.saveTaskRecord('task', { id, columnId: '8', content: '模拟' }); await api.saveTaskRecord('detail', { id }); await api.sortTaskRecords('detail', [{ id, sort: 1 }]); await api.starDetail(id, false); await api.deleteGoal(id)
-  assert.deepEqual(calls, [['/tasks', 'GET', { page: 2, pageSize: 100 }], ['/tasks/' + id, 'PUT', { id, columnId: '8', content: '模拟' }], ['/taskDetails', 'PUT', { id }], ['/taskDetails/reSort', 'POST', [{ id, sort: 1 }]], ['/taskDetails/unstar/' + id, 'POST'], ['/goals/batchDelete', 'POST', { idList: [id] }]])
+  await api.fetchTasks(2); await api.saveTaskRecord('task', { id, columnId: '8', content: '模拟' }); await api.saveTaskRecord('detail', { id }); await api.sortTaskRecords('detail', [{ id, sortOrder: 1 }]); await api.starDetail(id, false); await api.deleteGoal(id)
+  assert.deepEqual(calls, [['/tasks', 'GET', { page: 2, pageSize: 100 }], ['/tasks/' + id, 'PUT', { id, columnId: '8', content: '模拟' }], ['/taskDetails', 'PUT', { id }], ['/taskDetails/reSort', 'POST', [{ id, sortOrder: 1 }]], ['/taskDetails/unstar/' + id, 'POST'], ['/goals/batchDelete', 'POST', { idList: [id] }]])
   delete globalThis.__recordsRequest
 })
 

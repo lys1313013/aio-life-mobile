@@ -6,7 +6,7 @@ function initialRecords() {
     ['9223372036854775807', '2023-05-01', '9999-12-31', '跑马场巷小区', 120.133886, 30.270607],
   ].map(([id, startDate, endDate, placeName, longitude, latitude]) => ({ id, startDate, endDate, placeName, longitude, latitude,
     address: '杭州市西湖区 · ' + placeName,
-    coordinateSystem: 'GCJ02', city: '杭州', providerUid: 'synthetic-poi-' + id, note: '模拟备注：在这里生活过。' }));
+    coordinateSystem: 'GCJ02', city: '杭州', providerUid: 'synthetic-poi-' + id, remark: '模拟备注：在这里生活过。' }));
 }
 
 async function setupMapFixture(page, options = {}) {

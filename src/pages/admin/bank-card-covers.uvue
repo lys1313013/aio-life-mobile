@@ -32,7 +32,7 @@ const locked = computed(() => saving.value || uploading.value);
 const mutations = createCoverMutations();
 let alive = true, generation = 0, editorGeneration = 0, lifecycle = 0;
 function empty() { return { name: '', bankId: '', cardType: 'debit', sourceUrl: '', fileId: '', isEnabled: 1, sortOrder: '0' }; }
-const editableBanks = computed(() => banks.value.filter(bank => bank.enabled || bank.id === original.value?.bankId));
+const editableBanks = computed(() => banks.value.filter(bank => bank.isEnabled || bank.id === original.value?.bankId));
 const shown = computed(() => rows.value.filter(row =>
   (!keyword.value.trim() || (row.name + ' ' + row.bankName).includes(keyword.value.trim())) &&
   (!bankFilter.value || row.bankId === bankFilter.value) &&
@@ -49,7 +49,7 @@ const order = useCardOrder({
 const { dragging: orderDragging, saving: orderSaving, scrollTop: orderScrollTop } = order;
 watch([keyword, bankFilter, typeFilter, statusFilter], () => order.cancel());
 function current(token) { return alive && token === session.token; }
-function bankLabel(bank) { return bank.name + (bank.enabled ? '' : '（已停用）'); }
+function bankLabel(bank) { return bank.name + (bank.isEnabled ? '' : '（已停用）'); }
 function changeBank(value) { form.value.bankId = editableBanks.value.find(bank => bankLabel(bank) === value)?.id || ''; }
 function back() { uni.navigateBack({ fail: () => uni.switchTab({ url: '/pages/profile/index' }) }); }
 async function load(refresh = false) {

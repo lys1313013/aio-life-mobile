@@ -191,7 +191,7 @@ function blank() {
     price: '',
     fileId: '',
     size: '',
-    memo: '',
+    remark: '',
   };
 }
 function openItem(row = null) {
@@ -229,10 +229,10 @@ function openCategory(row = null) {
   form.value = row
     ? {
         ...row,
-        sort: String(row.sort || 0),
+        sortOrder: String(row.sortOrder || 0),
         parentId: row.parentId && row.parentId !== '0' ? row.parentId : '',
       }
-    : { name: '', icon: '', parentId: '', sort: '0' };
+    : { name: '', icon: '', parentId: '', sortOrder: '0' };
   formError.value = '';
   modal.value = 'category';
 }
@@ -471,7 +471,7 @@ function chooseCategory(value) {
             </view>
           </view>
           <FormField appearance="soft" label="购买日期" kind="date" v-model="form.purchaseDate" />
-          <FormField appearance="soft" label="备注" kind="textarea" textarea-size="compact" placeholder="穿搭、保养等，选填" v-model="form.memo" />
+          <FormField appearance="soft" label="备注" kind="textarea" textarea-size="compact" placeholder="穿搭、保养等，选填" v-model="form.remark" />
         </template>
         <template v-else>
           <FormField appearance="soft" :required="isRequired('wardrobe', 'name')" label="名称" v-model="form.name" :disabled="busy" />
@@ -484,7 +484,7 @@ function chooseCategory(value) {
               :model-value="form.parentId ? categoryLabel(parentOptions.find((row) => row.id === form.parentId) || { name: '未知', id: form.parentId }) : '无父分类'"
               :options="['无父分类', ...parentOptions.map(categoryLabel)]"
               @update:model-value="(value) => (form.parentId = parentOptions.find((row) => categoryLabel(row) === value)?.id || '')" />
-            <FormField appearance="soft" compact stretch label="分类排序" input-type="number" v-model="form.sort" />
+            <FormField appearance="soft" compact stretch label="分类排序" input-type="number" v-model="form.sortOrder" />
           </view>
         </template>
         <text v-if="formError" class="error ui-section" role="alert">{{ formError }}</text>

@@ -38,7 +38,7 @@ await page.locator('uni-tabbar').getByText('全部',{exact:true}).click();await 
 await page.locator('uni-tabbar').getByText('全部',{exact:true}).click();
 for(const entry of ['个人分类','时间看板']){await click(page,entry);await page.waitForTimeout(200);await shot(page,`${width}-${theme}-${entry}`);if(entry!=='时间看板'){await click(page,'编辑分类');await shot(page,`${width}-${theme}-${entry}-edit`);await dismissModal(page);}await back(page);}
 });
-for(const width of [390,768,1440])for(const theme of ['light','dark'])test(`登录真实点击注册重置政策弹窗 ${width} ${theme}`,async({page})=>{
+for(const width of [390,768,1440])for(const theme of ['light','dark'])test(`登录真实点击注册与重置密码页面 ${width} ${theme}`,async({page})=>{
 await page.setViewportSize({width,height:900});await page.emulateMedia({colorScheme:theme});await setup(page);await page.locator('uni-tabbar').getByText('我',{exact:true}).click();await click(page,'退出登录');await click(page,'退出');await shot(page,`${width}-${theme}-login`);
 for(const entry of ['注册账号','忘记密码']){await click(page,entry);await shot(page,`${width}-${theme}-auth-${entry}`);await page.getByRole('textbox',{name:'邮箱',exact:true}).fill('fixture@example.test');await click(page,'发送验证码');await shot(page,`${width}-${theme}-auth-${entry}-sent`);await back(page);}
 });
@@ -50,30 +50,13 @@ await page.setViewportSize({width,height:900});await page.emulateMedia({colorSch
 for(const [entry,edit,del] of [['账号绑定','编辑GitHub绑定','解除GitHub绑定'],['API Key',null,'删除'],['MBTI 测试','历史详情','删除测试记录']]){await openProfileEntry(page,entry);if(edit){await click(page,edit);await shot(page,`${width}-${theme}-${entry}-row-edit`);await dismissModal(page);}await click(page,del);await shot(page,`${width}-${theme}-${entry}-row-delete`);await click(page,'取消');await back(page);}
 await openProfileEntry(page,'管理与配置');for(const [kind,path,title] of admin){await click(page,title);if(['users','menus','user-dict','dict-types','dict-data'].includes(kind)){await click(page,kind==='menus'?'编辑模拟菜单':kind==='user-dict'?'编辑模拟字典值，排序 0，启用':'编辑');await shot(page,`${width}-${theme}-admin-${kind}-edit`);await dismissModal(page);if(kind==='menus')await click(page,'模拟菜单更多操作');if(kind==='user-dict')await page.locator('.user-dict-front').first().press('Delete');await click(page,kind==='menus'?'删除菜单':kind==='user-dict'?'删除模拟字典值':'删除');await shot(page,`${width}-${theme}-admin-${kind}-delete`);await click(page,'取消');if(['menus','dict-data','dict-types'].includes(kind))await dismissModal(page);}else if(kind==='feedback'){await click(page,'详情');await shot(page,`${width}-${theme}-admin-feedback-detail`);await dismissModal(page);}else if(kind==='config'){await page.locator('[aria-label="配置值"] textarea').fill('{invalid');await click(page,'保存配置');await shot(page,`${width}-${theme}-admin-config-invalid`);}else await shot(page,`${width}-${theme}-admin-${kind}-row`);await back(page);}
 });
-for(const width of [390,768,1440])for(const theme of ['light','dark'])test(`补充选择器政策菜单锁海报和兼容编辑 ${width} ${theme}`,async({page})=>{
+for(const width of [390,768,1440])for(const theme of ['light','dark'])test(`补充选择器菜单锁海报和独立编辑 ${width} ${theme}`,async({page})=>{
 await page.setViewportSize({width,height:900});await page.emulateMedia({colorScheme:theme});await setup(page);await page.locator('uni-tabbar').getByText('我',{exact:true}).click();
 await click(page,'账号绑定');await click(page,'新增绑定');await page.locator('uni-picker').click();await shot(page,`${width}-${theme}-bindings-platform-picker`);if(await page.locator('.uni-picker-action-confirm:visible').count())await page.locator('.uni-picker-action-confirm:visible').click();else await page.locator('.uni-picker-select .uni-picker-item').getByText('GitHub',{exact:true}).click();await shot(page,`${width}-${theme}-bindings-picker-confirm`);await click(page,'取消');await back(page);
 await click(page,'菜单锁');for(const action of ['保存菜单锁','忘记密码']){await click(page,action);await shot(page,`${width}-${theme}-security-${action}`);await dismissModal(page);}await back(page);
 await openProfileEntry(page,'CBTI 测试');await click(page,'开始测试');await click(page,'模拟选项');await click(page,'完成问卷');await shot(page,`${width}-${theme}-cbti-hidden`);await click(page,'茶');await expect(page.getByRole('button',{name:'生成海报',exact:true})).toBeVisible();await shot(page,`${width}-${theme}-cbti-result`);await click(page,'生成海报');await expect(page.getByRole('button',{name:'保存海报',exact:true})).toBeVisible();await shot(page,`${width}-${theme}-cbti-poster`);await back(page);
 await openProfileEntry(page,'管理与配置');await click(page,'管理分类');await shot(page,`${width}-${theme}-category-admin`);await click(page,'编辑分类');await page.getByRole('button',{name:'选择分类图标',exact:true}).click();const icons=page.getByRole('dialog',{name:'选择分类图标',exact:true});await expect(icons).toBeVisible();await expect(icons.getByRole('button',{name:/^选择图标 /}).first()).toBeVisible();await shot(page,`${width}-${theme}-category-icon-picker`);await icons.getByRole('button',{name:'关闭',exact:true}).click();await expect(icons).toHaveCount(0);await dismissModal(page);await back(page);await back(page);
-await click(page,'退出登录');await click(page,'退出');await click(page,'注册账号');
-const registrationUrl = page.url();
-await page.getByRole('textbox', {name:'邮箱',exact:true}).fill('fixture@example.test');
-for (const [policy, kind, content] of [
-  ['隐私政策', 'privacy', '仅用于模拟隐私政策页面验证。'],
-  ['服务条款', 'terms', '仅用于模拟服务条款页面验证。'],
-]) {
-  await click(page, policy);
-  await expect(page).toHaveURL(new RegExp('/pages/auth/policy\\?kind=' + kind));
-  await expect(page.getByText(content, {exact:true})).toBeVisible();
-  await expect(page.locator('.policy-meta')).toContainText('2026-10-27');
-  await expect(page.getByText('隐私联系邮箱：privacy@example.test', {exact:true})).toBeVisible();
-  await shot(page, `${width}-${theme}-auth-${policy}`);
-  await back(page);
-  await expect(page).toHaveURL(registrationUrl);
-  await expect(page.getByRole('textbox', {name:'邮箱',exact:true})).toHaveValue('fixture@example.test');
-}
-await back(page);
+await click(page,'退出登录');await click(page,'退出');
 await page.locator('[aria-label="账号"] input').fill('fixture');await page.locator('[aria-label="密码"] input').fill('fixture-password');await click(page,'登录');await page.locator('.dashboard-scroll').waitFor();await page.goto('/#/pages/time/edit?id=9223372036854775807&date=2026-10-01');await page.getByRole('dialog').waitFor();await shot(page,`${width}-${theme}-time-edit-compat`);await click(page,'选择分类');await shot(page,`${width}-${theme}-time-category-select`);await page.getByRole('dialog',{name:'选择分类',exact:true}).getByRole('button',{name:'学习',exact:true}).click();await click(page,'删除记录');await shot(page,`${width}-${theme}-time-delete-confirm`);await page.getByRole('dialog', { name: '删除记录', exact: true }).getByRole('button',{name:'取消',exact:true}).click();await dismissModal(page);await expect(page.locator('.dashboard-scroll')).toBeVisible();
 });
 test('真实点击错误重试401403与生成API Key',async({page})=>{

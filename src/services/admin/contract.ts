@@ -26,7 +26,7 @@ export function categoryPayload(form, original, admin = false) {
   if (missingRequired('category', form, 'name')) throw new Error('请输入分类名称')
   if (!/^#[\da-fA-F]{6}$/.test(form.color || '')) throw new Error('请输入六位颜色值，如 #427bea')
   const data = {}
-  for (const key of ['id', 'parentId', 'templateId', 'name', 'color', 'icon', 'description', 'isTrackTime', 'isEnabled', 'sort', 'timeType']) if (form[key] !== undefined) data[key] = form[key]
+  for (const key of ['id', 'parentId', 'templateId', 'name', 'color', 'icon', 'description', 'isTrackTime', 'isEnabled', 'sortOrder', 'timeType']) if (form[key] !== undefined) data[key] = form[key]
   if (data.id != null) stringId(data.id)
   if (data.parentId != null) stringId(data.parentId)
   if (data.templateId != null) stringId(data.templateId)
@@ -39,12 +39,12 @@ export function categoryPayload(form, original, admin = false) {
   return data
 }
 export function siblingSort(items, item, delta) {
-  const siblings = items.filter(row => (row.parentId || '0') === (item.parentId || '0') && row.isEnabled !== 0).sort((a,b) => (a.sort || 0) - (b.sort || 0))
+  const siblings = items.filter(row => (row.parentId || '0') === (item.parentId || '0') && row.isEnabled !== 0).sort((a,b) => (a.sortOrder || 0) - (b.sortOrder || 0))
   const index = siblings.findIndex(row => row.id === item.id)
   const target = index + delta
   if (index < 0 || target < 0 || target >= siblings.length) return []
   const displaced = siblings[target]; siblings[target] = siblings[index]; siblings[index] = displaced
-  return siblings.map((row, sort) => ({ id: stringId(row.id), templateId: row.templateId || (row.userId === '0' ? row.id : null), sort: sort * 10 }))
+  return siblings.map((row, sortOrder) => ({ id: stringId(row.id), templateId: row.templateId || (row.userId === '0' ? row.id : null), sortOrder: sortOrder * 10 }))
 }
 export function protectedMenu(row) { return ['/system', '/system/menu'].includes(row.path) }
 export function flattenMenus(rows, depth = 0) {
@@ -62,7 +62,7 @@ export function validateConfig(row, value) {
 }
 
 export function orderCategories(rows) {
-  const sorted = [...rows].sort((a,b) => (a.sort || 0) - (b.sort || 0))
+  const sorted = [...rows].sort((a,b) => (a.sortOrder || 0) - (b.sortOrder || 0))
   const result = [], seen = new Set()
   function visit(row) {if(seen.has(row.id)) return; seen.add(row.id); result.push(row); sorted.filter(child => child.parentId === row.id).forEach(visit)}
   sorted.filter(row => !row.parentId || row.parentId === '0' || !rows.some(parent => parent.id === row.parentId)).forEach(visit)

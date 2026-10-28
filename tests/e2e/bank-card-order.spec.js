@@ -54,7 +54,6 @@ async function drag(page, cancel = false) {
   const a = await items.nth(0).boundingBox(), b = await items.nth(1).boundingBox();
   const x = a.x + 65, y = a.y + 30;
   await touch(cdp, 'touchStart', x, y);
-  await page.waitForTimeout(380);
   await expect(page.locator('.card-order-dragging')).toHaveCount(1);
   for (let i = 1; i <= 8; i++) await touch(cdp, 'touchMove', x, y + (b.y + 35 - y) * i / 8);
   await expect(page.locator('.card-order-after')).toHaveCount(1);
@@ -75,7 +74,6 @@ for (const width of [390, 768, 1440]) for (const theme of ['light', 'dark']) tes
   const cdp = await page.context().newCDPSession(page);
   const x = face.x + 60, y = face.y + face.height - 30;
   await touch(cdp, 'touchStart', x, y);
-  await page.waitForTimeout(380);
   await expect(page.locator('.card-order-dragging')).toHaveCount(1);
   for (let step = 1; step <= 8; step++) {
     await touch(cdp, 'touchMove', x, y - (last.y - previous.y) * step / 8);
@@ -110,7 +108,6 @@ test('堆叠卡包滚动后向上排序，抓取位置不改变落点', async ({
   const cdp = await page.context().newCDPSession(page);
   const x = last.x + 70, y = last.y + last.height - 100;
   await touch(cdp, 'touchStart', x, y);
-  await page.waitForTimeout(380);
   await expect(page.locator('.card-order-dragging')).toHaveCount(1);
   for (let step = 1; step <= 8; step++) {
     await touch(cdp, 'touchMove', x, y - (last.y - previous.y) * step / 8);
@@ -139,7 +136,6 @@ for (const width of [390, 768, 1440]) for (const theme of ['light', 'dark']) tes
   const cdp = await page.context().newCDPSession(page);
   const x = last.x + 60, y = last.y + 25;
   await touch(cdp, 'touchStart', x, y);
-  await page.waitForTimeout(380);
   await expect(page.locator('.card-order-dragging')).toHaveCount(1);
   await touch(cdp, 'touchMove', x, y + 80);
   const moved = await items.last().boundingBox();
@@ -195,7 +191,6 @@ test('长按后靠近屏幕底部自动滚动，短滑仍可正常滚动', async
   const first = await page.locator('.cover-edit').first().boundingBox();
   const x = first.x + 60, y = first.y + 30;
   await touch(cdp, 'touchStart', x, y);
-  await page.waitForTimeout(380);
   await expect(page.locator('.card-order-dragging')).toHaveCount(1);
   for (let i = 1; i <= 8; i++) await touch(cdp, 'touchMove', x, y + (875 - y) * i / 8);
   const scroller = page.locator('.mobile-page-scroll .uni-scroll-view').last();

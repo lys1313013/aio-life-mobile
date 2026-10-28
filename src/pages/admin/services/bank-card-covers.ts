@@ -25,7 +25,7 @@ export async function listCoverBanks() {
   const rows = await request(path + '/banks')
   if (!Array.isArray(rows)) throw Error('银行列表异常，请重试')
   return rows.map(row => {
-    if (!row || typeof row.name !== 'string' || typeof row.enabled !== 'boolean') throw Error('银行数据异常，请重试')
+    if (!row || typeof row.name !== 'string' || ![0, 1].includes(row.isEnabled)) throw Error('银行数据异常，请重试')
     return { ...row, id: id(row.id) }
   })
 }

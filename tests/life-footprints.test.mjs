@@ -24,8 +24,8 @@ test('生活足迹仅接受完整日期并校验闰年和起止顺序', () => {
 test('生活足迹选点确认、清空和至今契约', () => {
   assert.throws(() => draftPayload({ ...draft(), confirmed: false }));
   assert.throws(() => draftPayload({ ...draft(), longitude: NaN }));
-  const payload = draftPayload({ ...draft(), endDate: PRESENT_DATE, address: '', note: '' });
-  assert.equal(payload.endDate, PRESENT_DATE); assert.equal(payload.address, null); assert.equal(payload.note, null);
+  const payload = draftPayload({ ...draft(), endDate: PRESENT_DATE, address: '', remark: '' });
+  assert.equal(payload.endDate, PRESENT_DATE); assert.equal(payload.address, null); assert.equal(payload.remark, null);
   assert.equal(payload.coordinateSystem, 'GCJ02');
   assert.equal(Object.hasOwn(payload, 'confirmed'), false);
   assert.equal(Object.hasOwn(payload, 'ongoing'), false);

@@ -10,10 +10,10 @@ for (const width of [390, 768, 1280]) {
       page.on('pageerror', error => errors.push(error.message));
       const state = await setup(page);
       state.anniversaries = [
-        { id, title: '模拟项目研发中心', targetDate: '2026-09-20', icon: '✈️', color: 'from-pink-400 to-rose-500', note: '' },
-        { id: '2', title: '模拟工作纪念日长标题完整展示', targetDate: '2021-07-25', icon: '💼', color: 'from-gray-700 to-gray-900', note: '' },
-        { id: '3', title: '模拟项目', targetDate: '2025-09-23', icon: '🌟', color: 'from-purple-400 to-indigo-500', note: '模拟备注完整保留' },
-        { id: '4', title: '模拟生日', targetDate: '2000-01-01', icon: '🎂', color: 'from-cyan-400 to-blue-500', note: '' },
+        { id, title: '模拟项目研发中心', targetDate: '2026-09-20', icon: '✈️', color: 'from-pink-400 to-rose-500', remark: '' },
+        { id: '2', title: '模拟工作纪念日长标题完整展示', targetDate: '2021-07-25', icon: '💼', color: 'from-gray-700 to-gray-900', remark: '' },
+        { id: '3', title: '模拟项目', targetDate: '2025-09-23', icon: '🌟', color: 'from-purple-400 to-indigo-500', remark: '模拟备注完整保留' },
+        { id: '4', title: '模拟生日', targetDate: '2000-01-01', icon: '🎂', color: 'from-cyan-400 to-blue-500', remark: '' },
       ];
       await page.goto('/#/pages/records/anniversary');
       await page.reload();

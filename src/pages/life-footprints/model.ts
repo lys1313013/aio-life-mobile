@@ -16,7 +16,7 @@ export interface FootprintRequest extends Coordinate {
   regionCode: null | string;
   coordinateSystem: 'GCJ02';
   providerUid: null | string;
-  note: null | string;
+  remark: null | string;
 }
 export interface Footprint extends FootprintRequest {
   id: string;
@@ -62,7 +62,7 @@ export function emptyDraft(): Draft {
     longitude: null,
     coordinateSystem: 'GCJ02',
     providerUid: null,
-    note: null,
+    remark: null,
     confirmed: false,
   };
 }
@@ -92,7 +92,7 @@ export function draftPayload(draft: Draft): FootprintRequest {
   if (
     draft.placeName.trim().length > 100 ||
     (draft.address?.length ?? 0) > 500 ||
-    (draft.note?.length ?? 0) > 5000
+    (draft.remark?.length ?? 0) > 5000
   )
     throw new Error('地点、地址或备注过长');
   return {
@@ -106,7 +106,7 @@ export function draftPayload(draft: Draft): FootprintRequest {
     latitude: draft.latitude!,
     coordinateSystem: 'GCJ02',
     providerUid: draft.providerUid || null,
-    note: draft.note?.trim() || null,
+    remark: draft.remark?.trim() || null,
   };
 }
 

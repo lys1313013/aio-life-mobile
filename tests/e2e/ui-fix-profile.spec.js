@@ -38,10 +38,10 @@ async function setup(page, theme) {
       if (method === 'PUT') state.writes.push(route.request().postDataJSON());
     }
     if (path === '/api/notification/preferences') data = [
-      { bizType: 'TODO', description: '待办提醒', visible: true, channels: [{ channel: 'STATION', enabled: true }, { channel: 'EMAIL', enabled: false }] },
-      { bizType: 'GOAL', description: '目标提醒', visible: true, channels: [{ channel: 'STATION', enabled: true }, { channel: 'EMAIL', enabled: false }] },
+      { bizType: 'TODO', description: '待办提醒', visible: true, channels: [{ channel: 'STATION', isEnabled: 1 }, { channel: 'EMAIL', isEnabled: 0 }] },
+      { bizType: 'GOAL', description: '目标提醒', visible: true, channels: [{ channel: 'STATION', isEnabled: 1 }, { channel: 'EMAIL', isEnabled: 0 }] },
     ];
-    if (path === '/api/notification/channels/feishu') data = { configured: false, enabled: false };
+    if (path === '/api/notification/channels/feishu') data = { configured: false, isEnabled: 0 };
     if (path === '/api/notification/channels/wechat-mini') data = { enabled: false, bound: false };
     await route.fulfill({ json: { code: 0, data: data ?? [] } });
   });

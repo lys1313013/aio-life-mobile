@@ -7,7 +7,7 @@ const id = '9223372036854775807';
 const original = {
   id, parentId: '0', userId: '9223372036854775806', name: '阅读与长篇写作',
   color: '#13579B', icon: 'custom:reading-symbol', description: '保留原有的分类说明。',
-  isTrackTime: 1, isEnabled: 1, timeType: 2, sort: 20,
+  isTrackTime: 1, isEnabled: 1, timeType: 2, sortOrder: 20,
 };
 async function start(page) {
   await setup(page);
@@ -93,7 +93,7 @@ test('category editor preserves values, supports visual/custom choices, resets p
   const dialog = editor(page);
   await dialog.getByRole('button', { name: '保存', exact: true }).click();
   await expect(dialog).toHaveCount(0);
-  expect(state.writes[0]).toEqual({ id, parentId: '0', name: original.name, color: original.color, icon: original.icon, description: original.description, isTrackTime: 1, isEnabled: 1, timeType: 2, sort: 20 });
+  expect(state.writes[0]).toEqual({ id, parentId: '0', name: original.name, color: original.color, icon: original.icon, description: original.description, isTrackTime: 1, isEnabled: 1, timeType: 2, sortOrder: 20 });
   await page.getByRole('button', { name: '编辑分类', exact: true }).click();
   await dialog.getByRole('button', { name: '选择分类图标', exact: true }).click();
   const fullPicker = page.getByRole('dialog', { name: '选择分类图标', exact: true });
@@ -129,7 +129,7 @@ test('category editor preserves values, supports visual/custom choices, resets p
   state.fail = false;
   await dialog.getByRole('button', { name: '保存', exact: true }).click();
   await expect(dialog).toHaveCount(0);
-  expect(state.writes.at(-1)).toMatchObject({ id, color: '#ABCDEF', icon: 'custom:updated', description: '更新后仍应保留的说明', timeType: 2, isTrackTime: 1, isEnabled: 1, sort: 20 });
+  expect(state.writes.at(-1)).toMatchObject({ id, color: '#ABCDEF', icon: 'custom:updated', description: '更新后仍应保留的说明', timeType: 2, isTrackTime: 1, isEnabled: 1, sortOrder: 20 });
   await page.getByRole('button', { name: '编辑分类', exact: true }).click();
   await expect(dialog.getByRole('textbox', { name: '图标名称', exact: true })).toHaveCount(0);
   await expect(dialog.getByRole('textbox', { name: '自定义颜色值', exact: true })).toHaveCount(0);

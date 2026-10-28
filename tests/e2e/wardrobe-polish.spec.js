@@ -11,7 +11,7 @@ const clothes = Array.from({ length: 6 }, (_, index) => ({
   color: index % 2 ? '深蓝' : '米白', brand: '模拟品牌', size: 'M',
   season: index === 2 ? '夏' : index === 4 ? '冬' : '春,秋', price: 100 + index * 20,
   fileId: index % 2 ? null : '9223372036854775806', purchaseDate: '2026-10-01',
-  memo: '适合日常通勤，可与深色长裤搭配。轻柔清洗，避免高温烘干。',
+  remark: '适合日常通勤，可与深色长裤搭配。轻柔清洗，避免高温烘干。',
 }));
 function gate() { let release; const promise = new Promise(resolve => { release = resolve; }); return { promise, release }; }
 async function fixture(page) {
@@ -82,7 +82,7 @@ for (const width of [390, 768, 1440]) for (const theme of ['light', 'dark']) {
     await dialog.getByRole('button', { name: '保存衣柜内容', exact: true }).click();
     await expect(dialog).toHaveCount(0);
     expect(state.writes.at(-1)).toMatchObject({ method: 'PUT', path: '/api/wardrobe/items/' + firstId,
-      body: { name: '优化后衬衫', categoryId: '81', season: ['春', '秋'], fileId: '9223372036854775806', memo: clothes[0].memo } });
+      body: { name: '优化后衬衫', categoryId: '81', season: ['春', '秋'], fileId: '9223372036854775806', remark: clothes[0].remark } });
     await page.getByRole('button', { name: '新增衣物', exact: true }).click();
     await expect(dialog.getByRole('button', { name: '上传衣物照片', exact: true })).toBeVisible();
     await shot(page, `${width}-${theme}-add`);

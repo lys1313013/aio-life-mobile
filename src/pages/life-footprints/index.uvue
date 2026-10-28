@@ -177,7 +177,7 @@ async function remove() {
         <view v-if="loading" class="footprint-loading"><LoadingIndicator label="读取记录" /></view>
         <view v-if="selected || choices.length > 0" class="footprint-detail" :class="themeClass('footprint-detail')">
           <view class="detail-heading"><text class="detail-name" :class="themeClass('detail-name')">{{ selected?.placeName || choices.length + ' 条记录' }}</text><view class="detail-actions"><MobileButton v-if="selected" label="编辑生活足迹" icon="ant-design:edit-outlined" variant="ghost" @click="edit(selected)" /><MobileButton label="关闭详情" icon="ant-design:close-outlined" variant="ghost" @click="dismiss" /></view></view>
-          <scroll-view class="detail-scroll" :scroll-y="true" direction="vertical"><view v-if="selected" class="detail-content"><text class="detail-time" :class="themeClass('detail-time')">{{ timeLabel(selected) }}</text><text v-if="selected.address" class="detail-address" :class="themeClass('detail-address')">{{ selected.address }}</text><text v-if="selected.note" class="detail-note" :class="themeClass('detail-note')">{{ selected.note }}</text></view><view v-else class="detail-content"><button role="button" v-for="record in choices" :key="record.id" class="group-record" @click="choose(record)"><text class="group-name" :class="themeClass('group-name')">{{ record.placeName }}</text><text class="detail-time" :class="themeClass('detail-time')">{{ timeLabel(record) }}</text></button></view></scroll-view>
+          <scroll-view class="detail-scroll" :scroll-y="true" direction="vertical"><view v-if="selected" class="detail-content"><text class="detail-time" :class="themeClass('detail-time')">{{ timeLabel(selected) }}</text><text v-if="selected.address" class="detail-address" :class="themeClass('detail-address')">{{ selected.address }}</text><text v-if="selected.remark" class="detail-remark" :class="themeClass('detail-remark')">{{ selected.remark }}</text></view><view v-else class="detail-content"><button role="button" v-for="record in choices" :key="record.id" class="group-record" @click="choose(record)"><text class="group-name" :class="themeClass('group-name')">{{ record.placeName }}</text><text class="detail-time" :class="themeClass('detail-time')">{{ timeLabel(record) }}</text></button></view></scroll-view>
         </view>
       </view>
       <view class="footprint-period-list" aria-label="生活足迹记录" :aria-busy="loading">
@@ -212,7 +212,7 @@ async function remove() {
         <RegionPicker v-model="form.regionCode" :disabled="saving" @ready="regionPath = $event" @change="changeRegion" />
         <FormField label="详细地址" :model-value="form.address || ''" placeholder="街道、门牌号等（选填）" :disabled="saving" @update:model-value="addressInput"><template #labelAction><MobileButton v-if="config.searchEnabled" label="解析地址到地图" icon="ant-design:environment-outlined" variant="ghost" :loading="resolving" :disabled="saving || !(form.address || form.placeName)" @click="geocode" /></template></FormField>
         <FormField label="地图位置"><FootprintMap ref="editorMap" :tencent="config.tencent" :pending="loading && !ready" :point="point" picking :height="220" @pick="pickPosition" /><view class="position-state"><text class="detail-time" :class="themeClass('detail-time')">{{ form.confirmed ? '位置已确认' : point ? '请确认所选位置' : '点选地图标记具体位置' }}</text><MobileButton v-if="point && !form.confirmed" label="确认位置" variant="quiet" :disabled="saving" @click="confirmPosition" /><LoadingIndicator v-if="resolving" compact label="解析地址" /></view><text v-if="mapHint" class="detail-time" :class="themeClass('detail-time')">{{ mapHint }}</text></FormField>
-        <FormField label="备注" :model-value="form.note || ''" kind="textarea" textarea-size="compact" :disabled="saving" @update:model-value="form.note = $event" />
+        <FormField label="备注" :model-value="form.remark || ''" kind="textarea" textarea-size="compact" :disabled="saving" @update:model-value="form.remark = $event" />
         <view v-if="formError"><text class="error-text" role="alert">{{ formError }}</text><MobileButton v-if="reloadAvailable" label="关闭并重新读取" variant="quiet" :disabled="saving" @click="close(); load()" /></view>
         <template #footer><FormActions><template v-if="form.id" #secondary><ConfirmAction label="删除" :action="remove" /></template><MobileButton label="取消" variant="quiet" :disabled="saving" @click="close" /><MobileButton label="保存" :loading="saving" @click="save" /></FormActions></template>
       </AdaptiveModal>
@@ -266,8 +266,8 @@ async function remove() {
 .detail-time-dark { color: $text-secondary-dark; }
 .detail-address { @include type-style('caption'); color: #27272a; }
 .detail-address-dark { color: #eeeeef; }
-.detail-note { @include type-style('caption'); color: $text-secondary-light; white-space: pre-wrap; }
-.detail-note-dark { color: $text-secondary-dark; }
+.detail-remark { @include type-style('caption'); color: $text-secondary-light; white-space: pre-wrap; }
+.detail-remark-dark { color: $text-secondary-dark; }
 .group-record { display: flex; flex-direction: column; align-items: flex-start; gap: $space-detail; width: 100%; min-height: $space-controlMin; padding: $space-inline; margin: 0; background: transparent; text-align: left; }
 .group-name { @include type-style('body'); color: #27272a; }
 .group-name-dark { color: #eeeeef; }

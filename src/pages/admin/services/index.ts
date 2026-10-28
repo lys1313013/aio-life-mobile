@@ -27,10 +27,10 @@ export function deleteAdmin(kind, row) {
 }
 export function setMenuStatus(row, mobile = false) {
   if (protectedMenu(row)) throw Error('核心管理菜单必须启用')
-  const field = mobile ? 'mobileStatus' : 'status'
-  return request('/menu/admin/' + stringId(row.id) + (mobile ? '/mobile-status' : '/status'),'PUT',{ status: row[field] === 1 ? 0 : 1 })
+  const field = mobile ? 'mobileIsEnabled' : 'webIsEnabled'
+  return request('/menu/admin/' + stringId(row.id) + (mobile ? '/mobile-status' : '/status'),'PUT',{ isEnabled: row[field] === 1 ? 0 : 1 })
 }
-export function setMenuSort(row, sort) { return request('/menu/admin/' + stringId(row.id) + '/sort','PUT',{ sort }) }
+export function setMenuSort(row, sortOrder) { return request('/menu/admin/' + stringId(row.id) + '/sort','PUT',{ sortOrder }) }
 export function sortUserDict(row, target, delta) {
   if (row.dictType !== target.dictType || row.userId !== '0' || target.userId !== '0') throw Error('只能在同一字典类型下调整基础值顺序')
   return request('/userDictData/admin/reSort','POST',{ dictType: row.dictType, dragId: stringId(row.id), targetId: stringId(target.id), position: delta < 0 ? 'before' : 'after' })

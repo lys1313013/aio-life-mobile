@@ -133,12 +133,12 @@ function edit(row = null, parentId = '0') {
         description: '',
         isTrackTime: 0,
         isEnabled: 1,
-        sort:
+        sortOrder:
           Math.max(
             -10,
             ...rows.value
               .filter((row) => (row.parentId || '0') === parentId)
-              .map((row) => row.sort || 0),
+              .map((row) => row.sortOrder || 0),
           ) + 10,
         timeType: 1,
       };
@@ -195,7 +195,7 @@ async function move(row, delta) {
       for (const item of sorted)
         await changeCategory(
           rows.value.find((row) => row.id === item.id),
-          { sort: item.sort },
+          { sortOrder: item.sortOrder },
           true,
         );
     } else await sortCategories(sorted);
@@ -367,7 +367,7 @@ function privateCategory(row) {
           <AppIcon :name="showDescription ? 'ant-design:up-outlined' : 'ant-design:down-outlined'" :size="12" />
         </button>
         <FormField v-if="showDescription" appearance="soft" label="描述" hide-label kind="textarea" v-model="form.description" :disabled="saving" />
-        <FormField v-if="admin" appearance="soft" label="排序" :model-value="String(form.sort || 0)" input-type="number" :disabled="saving" @update:model-value="(value) => (form.sort = Number(value))" />
+        <FormField v-if="admin" appearance="soft" label="排序" :model-value="String(form.sortOrder || 0)" input-type="number" :disabled="saving" @update:model-value="(value) => (form.sortOrder = Number(value))" />
         <text v-if="editorError" class="category-error ui-mb-section ui-type-body" role="alert">{{ editorError }}</text>
       </view>
       <FormActions>

@@ -26,9 +26,9 @@ function releaseMouse() {
   // #endif
 }
 onUnmounted(releaseMouse);
-const enabled = computed(() => String(props.row.status) === '0');
+const enabled = computed(() => props.row.isEnabled === 1);
 const editable = computed(() => props.row.userId === '0');
-const status = computed(() => enabled.value ? '启用' : String(props.row.status) === '1' ? '禁用' : '状态未知');
+const status = computed(() => enabled.value ? '启用' : props.row.isEnabled === 0 ? '禁用' : '状态未知');
 const color = computed(() => /^#[\da-f]{6}$/i.test(props.row.color || '') ? props.row.color : '#94a3b8');
 const frontStyle = computed(() => ({ transform: `translateX(${offset.value}px)`, transition: swiping.value ? 'none' : 'transform 180ms ease-out' }));
 watch(() => [props.revealed, props.dragging, props.disabled], () => {
@@ -106,7 +106,7 @@ function revealWithKeyboard() { if (!props.disabled && editable.value) emit('rev
     </view>
     <view class="user-dict-front" :class="{ 'user-dict-front-dark': isDark, 'user-dict-front-dragging': dragging }" :style="frontStyle"
       role="button" :tabindex="disabled ? -1 : 0" :aria-disabled="disabled || !editable"
-      :aria-label="(editable ? '编辑' : '查看') + row.dictLabel + '，排序 ' + row.dictSort + '，' + status + (row.isReadonly === 'Y' ? '，只读值' : '')"
+      :aria-label="(editable ? '编辑' : '查看') + row.dictLabel + '，排序 ' + row.sortOrder + '，' + status + (row.isReadonly === 'Y' ? '，只读值' : '')"
       @touchstart="begin" @touchmove="move" @touchend="end" @touchcancel="cancel"
       @mousedown="begin" @contextmenu.prevent
       @click="activate" @keydown.enter.self.prevent="activate" @keydown.space.self.prevent="activate"
@@ -115,7 +115,7 @@ function revealWithKeyboard() { if (!props.disabled && editable.value) emit('rev
       <view class="user-dict-icon" :style="{ backgroundColor: color + (isDark ? '24' : '12') }"><CategoryIcon :icon="row.icon" :color="row.color" :size="26" /></view>
       <view class="user-dict-copy">
         <view class="user-dict-title-row"><text class="user-dict-title">{{ row.dictLabel || '未命名' }}</text><AppIcon v-if="row.isReadonly === 'Y'" name="ant-design:lock-outlined" :size="14" :color="isDark ? '#a9b0ba' : '#7a8596'" /></view>
-        <text class="user-dict-rank" :class="{ 'user-dict-muted-dark': isDark }">排序 {{ row.dictSort ?? '—' }}</text>
+        <text class="user-dict-rank" :class="{ 'user-dict-muted-dark': isDark }">排序 {{ row.sortOrder ?? '—' }}</text>
       </view>
       <view class="user-dict-state" :aria-label="status">
         <LoadingIndicator v-if="sorting || busy" ring label="保存中" />

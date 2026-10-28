@@ -15,7 +15,7 @@ for (const width of [390, 768, 1440]) for (const theme of ['light', 'dark']) {
     await page.setViewportSize({ width, height: 900 });
     await page.emulateMedia({ colorScheme: theme });
     const state = await setup(page);
-    const categories = names.map((icon, i) => ({ id: String(81 + i), dictType: 'exercise_type', dictLabel: labels[i], dictValue: String(i), dictSort: i, icon, color: '#5b8ff9', status: '0' }));
+    const categories = names.map((icon, i) => ({ id: String(81 + i), dictType: 'exercise_type', dictLabel: labels[i], dictValue: String(i), sortOrder: i, icon, color: '#5b8ff9', isEnabled: 1 }));
     const externalIcons = [];
     page.on('request', request => { if (/iconify/.test(request.url())) externalIcons.push(request.url()); });
     let saved;

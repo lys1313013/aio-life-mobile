@@ -35,7 +35,7 @@ function search(type = props.type) {
   clearTimeout(timer);
   if (locked.value) return;
   order.reset(); revealed.value = '';
-  emit('search', { keyword: keyword.value.trim(), type, status: status.value });
+  emit('search', { keyword: keyword.value.trim(), type, isEnabled: status.value });
 }
 function input(value: string) {
   keyword.value = value; clearTimeout(timer);
@@ -45,7 +45,7 @@ function selectType(type: string) {
   if (type === props.type || locked.value) return;
   search(type);
 }
-function selectStatus(event: any) { status.value = ['', '0', '1'][Number(event.detail.value)] || ''; search(); }
+function selectStatus(event: any) { status.value = ['', '1', '0'][Number(event.detail.value)] || ''; search(); }
 function resetFilters() { keyword.value = ''; status.value = ''; search(); }
 function cancel() { order.reset(); revealed.value = ''; }
 onUnmounted(() => { clearTimeout(timer); cancel(); });
@@ -67,8 +67,8 @@ defineExpose({ cancel, scrolled: order.scrolled });
       <FormField label="字典名称" hide-label compact stretch><input class="user-dict-search-input" :class="{ 'user-dict-text-dark': isDark }" aria-label="字典名称" placeholder="搜索字典名称" :value="keyword" :disabled="locked" @input="input($event.detail.value)" @confirm="search()" /></FormField>
     </view>
     <view class="user-dict-filters">
-      <picker class="user-dict-picker" mode="selector" aria-label="状态筛选" :disabled="locked" :range="['全部状态', '启用', '禁用']" :value="status === '0' ? 1 : status === '1' ? 2 : 0" @change="selectStatus">
-        <view class="user-dict-control" :class="{ 'user-dict-surface-dark': isDark }"><text class="user-dict-filter-label">{{ status === '0' ? '启用' : status === '1' ? '禁用' : '全部状态' }}</text><AppIcon name="ant-design:down-outlined" :size="12" /></view>
+      <picker class="user-dict-picker" mode="selector" aria-label="状态筛选" :disabled="locked" :range="['全部状态', '启用', '禁用']" :value="status === '1' ? 1 : status === '0' ? 2 : 0" @change="selectStatus">
+        <view class="user-dict-control" :class="{ 'user-dict-surface-dark': isDark }"><text class="user-dict-filter-label">{{ status === '1' ? '启用' : status === '0' ? '禁用' : '全部状态' }}</text><AppIcon name="ant-design:down-outlined" :size="12" /></view>
       </picker>
       <MobileButton v-if="keyword || status" label="重置筛选" icon="ant-design:close-outlined" variant="ghost" :disabled="locked" @click="resetFilters" />
     </view>

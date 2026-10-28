@@ -14,7 +14,7 @@ function dashboardFixture(path) {
     const item = tasks.find(t => path.endsWith(t.type));
     return { ...item, value: item.type === 'LEETCODE' ? '未完成' : item.type === 'SHANBAY' ? '已打卡' : '3', totalValue: item.type === 'LEETCODE' ? '0' : item.type === 'SHANBAY' ? '18 分钟' : '12 天', valueColor: item.type === 'LEETCODE' ? '#ef4444' : '#3fb27f' };
   }
-  if (path === '/api/quick-nav/my') return [{ menuId: '1', title: '待办', path: '/task/todo', enabled: 1, sortOrder: 0 }, { menuId: '2', title: '目标', path: '/task/goal', enabled: 1, sortOrder: 1 }];
+  if (path === '/api/quick-nav/my') return [{ menuId: '1', title: '待办', path: '/task/todo', isEnabled: 1, sortOrder: 0 }, { menuId: '2', title: '目标', path: '/task/goal', isEnabled: 1, sortOrder: 1 }];
   if (path === '/api/thought/dashboard') return [{ id: '1', content: '记录想法，让行动更清晰。', createTime: '2026-09-30 10:00:00' }, { id: '2', content: 'PRIVATE HIDDEN CONTENT', hiddenContent: true }];
   if (path === '/api/taskDetails/watched') return [];
   if (path === '/api/timeTrackerCategory/list') return [{ id: '1', name: '学习', color: '#5b8ff9' }, { id: '2', name: '运动', color: '#3fb27f' }];

@@ -3,7 +3,7 @@ const { pullDown } = require('./gestures');
 test.use({ hasTouch: true, viewport: { width: 390, height: 900 } });
 const labels = ['手机', '电脑', '平板', '手表', '耳机', '相机', '键盘', '鼠标'];
 const icons = ['mdi:cellphone', 'mdi:laptop', 'mdi:tablet', 'mdi:watch', 'mdi:headphones', 'mdi:camera', 'mdi:keyboard', 'mdi:mouse'];
-function fixture(count = 8) { return Array.from({ length: count }, (_, i) => ({ id: String(9223372036854775000n + BigInt(i)), userId: '0', dictType: 'device_type', dictLabel: labels[i] || '模拟设备 ' + (i + 1), dictSort: i, color: ['#397bee', '#8751e8', '#df9b23', '#2bb876'][i % 4], icon: icons[i % 8], status: i === 4 ? '1' : '0', isReadonly: i === 2 ? 'Y' : 'N' })); }
+function fixture(count = 8) { return Array.from({ length: count }, (_, i) => ({ id: String(9223372036854775000n + BigInt(i)), userId: '0', dictType: 'device_type', dictLabel: labels[i] || '模拟设备 ' + (i + 1), sortOrder: i, color: ['#397bee', '#8751e8', '#df9b23', '#2bb876'][i % 4], icon: icons[i % 8], isEnabled: i === 4 ? 0 : 1, isReadonly: i === 2 ? 'Y' : 'N' })); }
 async function setup(page, count = 8, delay = 0) {
   const state = { rows: fixture(count), queries: [], writes: [], sorts: [], deleted: [], failSort: false, failDelete: false, failMore: false, failWrite: false, delay, sortDelay: 0, emptyMore: false };
   await page.addInitScript(() => localStorage.setItem('aio-life-mobile.access-token.v1', 'user-dict-fixture'));
@@ -17,7 +17,7 @@ async function setup(page, count = 8, delay = 0) {
       const q = Object.fromEntries(url.searchParams); state.queries.push(q);
       const wait = state.delay; if (wait) await new Promise(resolve => setTimeout(resolve, wait));
       if (q.page === '2' && state.failMore) return fail('模拟分页失败');
-      const filtered = state.rows.filter(row => (!q.dictType || row.dictType === q.dictType) && (!q.dictLabel || row.dictLabel.includes(q.dictLabel)) && (!q.status || row.status === q.status));
+      const filtered = state.rows.filter(row => (!q.dictType || row.dictType === q.dictType) && (!q.dictLabel || row.dictLabel.includes(q.dictLabel)) && (q.isEnabled == null || row.isEnabled === Number(q.isEnabled)));
       const start = (Number(q.page) - 1) * Number(q.pageSize);
       return ok({ items: q.page === '2' && state.emptyMore ? [] : filtered.slice(start, start + Number(q.pageSize)), total: filtered.length });
     }
@@ -27,8 +27,8 @@ async function setup(page, count = 8, delay = 0) {
       if (state.failSort) return fail('模拟排序失败');
       const next = state.rows.slice(), [row] = next.splice(next.findIndex(item => item.id === body.dragId), 1);
       next.splice(next.findIndex(item => item.id === body.targetId) + (body.position === 'after' ? 1 : 0), 0, row);
-      state.rows = next.map((row, i) => ({ ...row, dictSort: i * 10 }));
-      return ok(state.rows.map(({ id, dictSort }) => ({ id, dictSort })));
+      state.rows = next.map((row, i) => ({ ...row, sortOrder: i * 10 }));
+      return ok(state.rows.map(({ id, sortOrder }) => ({ id, sortOrder })));
     }
     if (path === '/api/userDictData/admin' && method === 'POST') {
       const body = req.postDataJSON(); state.writes.push(body);
