@@ -1,5 +1,5 @@
 const { spawnSync } = require('node:child_process');
-const { accessSync, constants, readFileSync } = require('node:fs');
+const { accessSync, constants, mkdtempSync, readFileSync, rmSync } = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { parseArgs } = require('node:util');
@@ -49,6 +49,32 @@ function run(command, args, label) {
   }
 }
 
+function upload(cli, projectPath, desc) {
+  // CLI 可能在上传失败后仍退出 0。官方仅在服务端确认成功后写入 info-output。
+  // 每次使用全新目录，不能把上次上传的回执误当作本次成功。
+  const directory = mkdtempSync(path.join(os.tmpdir(), 'aio-weixin-upload-'));
+  const receiptPath = path.join(directory, 'info.json');
+  try {
+    const result = spawnSync(cli, ['upload', '--project', projectPath, '--version', version,
+      '--desc', desc, '--info-output', receiptPath], { cwd: root, env: process.env, stdio: 'inherit' });
+    if (result.error || result.signal || result.status !== 0) {
+      throw new Error(`微信 CLI 上传失败，流程已停止。${result.error ? ` ${result.error.message}` : ''}`);
+    }
+    let receipt;
+    try {
+      receipt = JSON.parse(readFileSync(receiptPath, 'utf8'));
+    } catch {
+      throw new Error('微信 CLI 未返回本次上传成功回执；即使退出码为 0，也不能判定上传成功。请查看上方微信错误信息。');
+    }
+    if (!Number.isSafeInteger(receipt?.size?.total) || receipt.size.total <= 0) {
+      throw new Error('微信 CLI 上传回执无效，无法确认上传成功。');
+    }
+    console.log(`微信 CLI 上传成功，版本 ${version}，服务端回执包体 ${(receipt.size.total / 1024).toFixed(1)} KB；体验版状态请在公众平台确认，审核和正式发布需另行操作。`);
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+}
+
 function main() {
   const { values } = parseArgs({
     options: {
@@ -80,8 +106,10 @@ function main() {
   if (readAppId(projectPath) !== appid) throw new Error('构建产物 AppID 与本地配置不一致，已停止上传。');
   console.log(`[2/2] 上传微信小程序，版本 ${version}，说明：${values.desc}`);
   console.log('请确保微信开发者工具已登录并开启服务端口；连接失败时检查「设置 → 安全设置」。');
-  run(cli, ['upload', '--project', projectPath, '--version', version, '--desc', values.desc], '微信 CLI 上传');
-  console.log('微信 CLI 上传完成；体验版状态请在公众平台确认，审核和正式发布需另行操作。');
+  // 显式打开发布项目，让 upload 使用已打开的项目进程。
+  // 避免 CLI 隐藏后台初始化失败后持续复用已拒绝的 Promise。
+  run(cli, ['open', '--project', projectPath], '打开微信发布项目');
+  upload(cli, projectPath, values.desc);
 }
 
 try {

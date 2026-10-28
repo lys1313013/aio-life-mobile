@@ -13,23 +13,28 @@ const require = createRequire(import.meta.url);
 const root = fileURLToPath(new URL('..', import.meta.url));
 const source = fs.readFileSync(new URL('../scripts/upload-weixin.cjs', import.meta.url), 'utf8');
 const fixtureAppId = 'wx0000000000000000';
-function harness(manager, { statuses = [], args = [], mismatch = false, userAgent = '' } = {}) {
-  const calls = [], errors = [];
+function harness(manager, { statuses = [], args = [], mismatch = false, userAgent = '', receipt = '{"size":{"total":1024}}' } = {}) {
+  const calls = [], errors = [], logs = [], removed = [];
   let exitStatus;
   const processFixture = { execPath: process.execPath, env: { npm_execpath: manager, npm_config_user_agent: userAgent },
     exit(code) { exitStatus = code; throw new Error('fixture process exit'); } };
   const modules = {
     'node:child_process': { spawnSync(command, args, options) { calls.push({ command, args, options }); return { status: statuses[calls.length - 1] ?? 0 }; } },
-    'node:fs': { constants: fs.constants, accessSync() {}, readFileSync(file) {
+    'node:fs': { constants: fs.constants, accessSync() {},
+      mkdtempSync: prefix => `${prefix}fixture`, rmSync: directory => removed.push(directory), readFileSync(file) {
+      if (file.endsWith('info.json')) {
+        if (receipt === null) throw new Error('ENOENT');
+        return receipt;
+      }
       return JSON.stringify({ appid: mismatch && file.includes('dist') ? 'wx0000000000000001' : fixtureAppId });
     } },
     'node:util': { parseArgs: options => parseArgs({ ...options, args }) },
   };
   vm.runInNewContext(source, {
     require: name => modules[name] || require(name), __dirname: path.join(root, 'scripts'),
-    process: processFixture, console: { log() {}, error: text => errors.push(text) },
+    process: processFixture, console: { log: text => logs.push(text), error: text => errors.push(text) },
   });
-  return { calls, errors, process: processFixture, exitStatus };
+  return { calls, errors, logs, removed, process: processFixture, exitStatus };
 }
 
 test('npm 上传保持 pre/post 钩子，构建检查完成后才上传，并保留说明原文', () => {
@@ -37,13 +42,41 @@ test('npm 上传保持 pre/post 钩子，构建检查完成后才上传，并保
   const h = harness('/fixture/npm-cli.js', { args: ['--desc', desc] });
   assert.equal(h.process.exitCode, undefined);
   assert.deepEqual(Array.from(h.calls[0].args), ['/fixture/npm-cli.js', '--ignore-scripts=false', 'run', 'build:weixin']);
-  assert.deepEqual(Array.from(h.calls[1].args), ['upload', '--project', path.join(root, 'dist/build/mp-weixin'), '--version', '0.9.0', '--desc', desc]);
+  assert.deepEqual(Array.from(h.calls[1].args), ['open', '--project', path.join(root, 'dist/build/mp-weixin')]);
+  assert.deepEqual(Array.from(h.calls[2].args), ['upload', '--project', path.join(root, 'dist/build/mp-weixin'), '--version', '0.9.0', '--desc', desc,
+    '--info-output', path.join(os.tmpdir(), 'aio-weixin-upload-fixture', 'info.json')]);
+  assert.ok(h.logs.some(message => message.includes('上传成功，版本')));
+  assert.equal(h.removed.length, 1);
+});
+
+test('CLI 退出 0 但没有成功回执、JSON 损坏或包体无效时，不得误报上传成功', () => {
+  for (const receipt of [null, 'invalid json', '{}', '{"size":{"total":0}}', '{"size":{"total":"1024"}}']) {
+    const h = harness('npm', { receipt });
+    assert.equal(h.process.exitCode, 1);
+    assert.equal(h.logs.some(message => message.includes('上传成功，版本')), false);
+    assert.ok(h.errors.some(message => message.includes('回执')));
+    assert.equal(h.removed.length, 1);
+  }
+});
+
+test('CLI 非零退出即使存在回执也失败，并清理临时回执目录', () => {
+  const h = harness('npm', { statuses: [0, 0, 10] });
+  assert.equal(h.process.exitCode, 1);
+  assert.equal(h.logs.some(message => message.includes('上传成功，版本')), false);
+  assert.equal(h.removed.length, 1);
+});
+
+test('打开发布项目失败时停止，不执行上传', () => {
+  const h = harness('npm', { statuses: [0, 10] });
+  assert.equal(h.calls.length, 2);
+  assert.equal(h.exitStatus, 10);
+  assert.ok(h.errors.some(message => message.includes('打开微信发布项目失败')));
 });
 
 test('pnpm 使用专属配置参数，兼容 CLI 路径和包管理器标识', () => {
   for (const [cli, userAgent] of [['/fixture/pnpm.cjs', ''], ['C:\\fixture\\pnpm.exe', ''], ['/fixture/wrapper.js', 'pnpm/10.20.0 npm/? node/v22.21.1']]) {
     const h = harness(cli, { userAgent });
-    assert.equal(h.calls.length, 2);
+    assert.equal(h.calls.length, 3);
     assert.deepEqual(Array.from(h.calls[0].args), [cli, '--config.ignore-scripts=false', '--config.enable-pre-post-scripts=true', 'run', 'build:weixin']);
   }
 });

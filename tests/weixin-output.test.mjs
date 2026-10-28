@@ -6,6 +6,7 @@ import path from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { spawn } from 'node:child_process';
 import { publishWeixinOutput, weixinOutput } from '../scripts/weixin-output.mjs';
+import { readWeixinBuildState } from '../scripts/weixin-build-state.mjs';
 
 function fixture(t) {
   const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'aio-weixin-output-')));
@@ -119,7 +120,9 @@ test('两个真实启动器不能同时发布同一目录；退出后清理隔�
   const f = fixture(t);
   const scripts = path.join(f.root, 'scripts');
   fs.mkdirSync(scripts);
-  fs.copyFileSync(new URL('../scripts/run-weixin.mjs', import.meta.url), path.join(scripts, 'run-weixin.mjs'));
+  for (const script of ['run-weixin.mjs', 'weixin-build-state.mjs']) {
+    fs.copyFileSync(new URL('../scripts/' + script, import.meta.url), path.join(scripts, script));
+  }
   const bin = path.join(f.root, 'node_modules/@dcloudio/vite-plugin-uni/bin');
   fs.mkdirSync(bin, { recursive: true });
   fs.writeFileSync(path.join(bin, 'uni.js'), `
@@ -150,7 +153,8 @@ setInterval(() => {}, 1000);
   child.kill('SIGTERM');
   await exited;
   assert.equal(fs.existsSync(probe.output), false);
-  assert.deepEqual(fs.readdirSync(path.join(f.root, 'artifacts/weixin-output')), []);
+  assert.ok(fs.readdirSync(path.join(f.root, 'artifacts/weixin-output')).every(name => name.endsWith('.state.json')));
+  assert.equal(readWeixinBuildState(f.root, probe.published).status, 'stopped');
   // A compiler that exits successfully without the publishing plugin must not
   // let npm postbuild validate yesterday's output and then upload it.
   fs.writeFileSync(path.join(bin, 'uni.js'), 'process.exit(0);');
@@ -159,5 +163,6 @@ setInterval(() => {}, 1000);
   missingPublish.stderr.on('data', data => failure += data);
   assert.equal(await new Promise(resolve => missingPublish.once('exit', resolve)), 1);
   assert.match(failure, /微信编译未完成产物同步/);
-  assert.deepEqual(fs.readdirSync(path.join(f.root, 'artifacts/weixin-output')), []);
+  assert.ok(fs.readdirSync(path.join(f.root, 'artifacts/weixin-output')).every(name => name.endsWith('.state.json')));
+  assert.equal(readWeixinBuildState(f.root, path.join(f.root, 'dist/build/mp-weixin')).status, 'error');
 });

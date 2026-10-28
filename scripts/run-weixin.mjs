@@ -1,9 +1,9 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { createHash } from 'node:crypto';
 import { spawn } from 'node:child_process';
 import { createInterface } from 'node:readline';
+import { weixinStatePaths, weixinSourceFingerprint, writeWeixinBuildState } from './weixin-build-state.mjs';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 const [mode, ...args] = process.argv.slice(2);
@@ -22,10 +22,8 @@ for (let index = 0; index < args.length; index++) {
   } else forwarded.push(args[index]);
 }
 const destination = path.resolve(root, process.env.UNI_OUTPUT_DIR || output || `dist/${mode}/mp-weixin`);
-const workspace = path.join(root, 'artifacts/weixin-output');
+const { workspace, outputKey, lockFile: lock } = weixinStatePaths(root, destination);
 fs.mkdirSync(workspace, { recursive: true });
-const outputKey = createHash('sha256').update(destination).digest('hex').slice(0, 20);
-const lock = path.join(workspace, outputKey + '.lock');
 const running = pid => {
   if (!Number.isInteger(pid) || pid <= 0) return false;
   try { process.kill(pid, 0); return true; } catch (error) { return error.code !== 'ESRCH'; }
@@ -53,7 +51,14 @@ const directory = fs.mkdtempSync(path.join(workspace, mode + '-'));
 const staging = path.join(directory, 'mp-weixin');
 const resultFile = path.join(directory, 'published');
 let compiler;
+let requestedStop = false;
 try {
+  writeWeixinBuildState(root, destination, {
+    status: 'building', mode, launcherPid: process.pid, compilerPid: null,
+    startedAt: new Date().toISOString(), stoppedAt: null, reason: null,
+    buildStartedAt: new Date().toISOString(),
+    buildingFingerprint: weixinSourceFingerprint(root),
+  });
   compiler = spawn(process.execPath, [
     path.join(root, 'node_modules/@dcloudio/vite-plugin-uni/bin/uni.js'),
     ...(mode === 'build' ? ['build'] : []), '-p', 'mp-weixin', ...forwarded,
@@ -62,7 +67,8 @@ try {
     stdio: ['inherit', 'pipe', 'pipe'],
     env: { ...process.env, UNI_OUTPUT_DIR: staging,
       UNI_APP_X_CACHE_DIR: process.env.UNI_APP_X_CACHE_DIR || path.join(workspace, 'cache', outputKey),
-      AIO_WEIXIN_OUTPUT_DIR: destination, AIO_WEIXIN_RESULT_FILE: resultFile },
+      AIO_WEIXIN_OUTPUT_DIR: destination, AIO_WEIXIN_RESULT_FILE: resultFile,
+      AIO_WEIXIN_LAUNCHER_PID: String(process.pid), AIO_WEIXIN_MODE: mode },
   });
   // uni prints its internal output path in the DevTools import instructions.
   // Keep those instructions pointed at the stable project, including when a
@@ -73,14 +79,26 @@ try {
       .replaceAll(path.relative(root, staging), path.relative(root, destination)) + '\n'));
   }
   fs.writeFileSync(lock, JSON.stringify({ pid: process.pid, compilerPid: compiler.pid, directory }));
-  for (const signal of ['SIGINT', 'SIGTERM', 'SIGHUP']) process.on(signal, () => compiler.kill(signal));
+  writeWeixinBuildState(root, destination, { compilerPid: compiler.pid });
+  for (const signal of ['SIGINT', 'SIGTERM', 'SIGHUP']) process.on(signal, () => {
+    requestedStop = true;
+    compiler.kill(signal);
+  });
   process.exitCode = await new Promise((resolve, reject) => {
     compiler.once('error', reject);
     compiler.once('close', (code, signal) => resolve(code ?? (signal === 'SIGINT' ? 130 : 143)));
   });
-  if (process.exitCode === 0 && !fs.existsSync(resultFile)) {
+  if (!requestedStop && process.exitCode === 0 && !fs.existsSync(resultFile)) {
     throw new Error('微信编译未完成产物同步，已停止；不能使用上次产物继续包体检查或上传。');
   }
+  if (!requestedStop && process.exitCode !== 0) {
+    writeWeixinBuildState(root, destination, { status: 'error', reason: 'compiler-exited' });
+  } else if (requestedStop || mode === 'dev') {
+    writeWeixinBuildState(root, destination, { status: 'stopped', stoppedAt: new Date().toISOString() });
+  }
+} catch (error) {
+  writeWeixinBuildState(root, destination, { status: 'error', reason: 'compiler-failed' });
+  throw error;
 } finally {
   fs.rmSync(directory, { recursive: true, force: true });
   fs.unlinkSync(lock);

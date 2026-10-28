@@ -235,7 +235,7 @@ try {
     const writes = [];
     let enabled = true, bound = true, failTest = false, delay = false, reads = 0;
     let current = [{ bizType: 'LEETCODE_REMINDER', description: '力扣未打卡提醒', visible: true,
-      channels: [{ channel: 'EMAIL', enabled: true }, { channel: 'WECHAT_MINI', enabled: false }] }];
+      channels: [{ channel: 'EMAIL', isEnabled: 1 }, { channel: 'WECHAT_MINI', isEnabled: 0 }] }];
     const errors = [];
     notice.on('pageerror', error => errors.push(error.message));
     await notice.route(origin + '/api/**', async route => {
@@ -246,14 +246,14 @@ try {
       if (url === '/api/auth/login') data = { accessToken: 'fixture-notice-token' };
       if (url.endsWith('/capabilities')) data = { enabled: false };
       if (url.endsWith('/user/info')) data = { id: '9223372036854775807', nickname: '通知测试用户' };
-      if (url.endsWith('/channels/feishu')) data = { configured: false, enabled: false };
+      if (url.endsWith('/channels/feishu')) data = { configured: false, isEnabled: 0 };
       if (url.endsWith('/channels/wechat-mini')) data = { enabled, bound, bizType: 'LEETCODE_REMINDER', templateId: 'fixture-template' };
       if (url.endsWith('/notification/preferences')) {
         if (method === 'GET') reads++;
         if (method === 'PUT') {
           const body = route.request().postDataJSON();
           writes.push({ url, body });
-          assert.deepEqual(body, { items: [{ bizType: 'LEETCODE_REMINDER', channel: 'WECHAT_MINI', enabled: true }] });
+          assert.deepEqual(body, { items: [{ bizType: 'LEETCODE_REMINDER', channel: 'WECHAT_MINI', isEnabled: 1 }] });
           current[0].channels[1].enabled = true;
         }
         data = current;

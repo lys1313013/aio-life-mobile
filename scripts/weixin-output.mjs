@@ -1,5 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { createHash } from 'node:crypto';
+import { weixinSourceSnapshot, weixinSourceFingerprint, writeWeixinBuildState } from './weixin-build-state.mjs';
 
 const privateConfig = 'project.private.config.json';
 
@@ -128,11 +130,40 @@ function watchOutputDirectories(root, onChange) {
 }
 
 export function weixinOutput() {
-  let staging, destination, logger, watcher, timer;
+  let root, mode, staging, destination, logger, watcher, timer;
+  let buildingSnapshot, publishedSnapshot;
   let building = true, healthy = false;
   const cancel = () => { clearTimeout(timer); timer = undefined; };
   const close = () => { cancel(); watcher?.close(); };
   const publish = () => publishWeixinOutput(staging, destination);
+  const record = patch => writeWeixinBuildState(root, destination, {
+    mode, compilerPid: process.pid,
+    ...(process.env.AIO_WEIXIN_LAUNCHER_PID ? { launcherPid: Number(process.env.AIO_WEIXIN_LAUNCHER_PID) } : {}),
+    ...patch,
+  });
+  const ready = snapshot => {
+    publishedSnapshot = snapshot;
+    record({ status: 'ready', reason: null, publishedAt: new Date().toISOString(),
+      sourceFingerprint: snapshot?.fingerprint || null, buildingFingerprint: null });
+  };
+  // Static copies can finish without a Rollup build. Advance the fingerprint
+  // only when every source difference is a verified, directly copied resource.
+  // An unrelated code/config edit must remain visibly stale until it is built.
+  const staticSnapshotIsPublished = snapshot => {
+    if (!publishedSnapshot) return false;
+    const names = new Set([...Object.keys(publishedSnapshot.files), ...Object.keys(snapshot.files)]);
+    for (const name of names) {
+      if (publishedSnapshot.files[name] === snapshot.files[name]) continue;
+      if (!name.startsWith('src/static/') && !name.startsWith('src/custom-tab-bar/')
+        && name !== 'src/theme.json' && name !== 'src/project.config.json') return false;
+      const output = path.join(staging, name.slice('src/'.length));
+      if (!snapshot.files[name]) {
+        if (fs.existsSync(output)) return false;
+      } else if (!fs.existsSync(output)
+        || createHash('sha256').update(fs.readFileSync(output)).digest('hex') !== snapshot.files[name]) return false;
+    }
+    return true;
+  };
   return {
     name: 'aio-weixin-output',
     apply: () => {
@@ -145,6 +176,8 @@ export function weixinOutput() {
     configResolved(config) {
       staging = path.resolve(process.env.UNI_OUTPUT_DIR);
       destination = path.resolve(process.env.AIO_WEIXIN_OUTPUT_DIR);
+      root = path.resolve(config.root || path.dirname(staging));
+      mode = process.env.AIO_WEIXIN_MODE || (config.build.watch ? 'dev' : 'build');
       if (staging === destination || path.resolve(config.build.outDir) !== staging) {
         throw new Error('微信编译必须写入隔离目录，不能直接清空开发者工具项目。');
       }
@@ -158,17 +191,36 @@ export function weixinOutput() {
           timer = setTimeout(() => {
             if (building || !healthy) return;
             try {
+              const snapshot = weixinSourceSnapshot(root);
+              const canAdvance = staticSnapshotIsPublished(snapshot);
               const changed = publish();
+              ready(canAdvance && weixinSourceFingerprint(root) === snapshot.fingerprint ? snapshot : publishedSnapshot);
               if (changed) console.log(`[weixin-output] 静态资源已同步（${changed} 个文件）`);
             } catch (error) {
+              record({ status: 'error', reason: 'static-publish-failed' });
               logger.error(`[weixin-output] 静态资源未同步，保留上次产物：${error.message}`);
             }
           }, 150);
         });
       }
     },
-    buildStart() { building = true; cancel(); },
-    buildEnd(error) { if (error) healthy = false; },
+    buildStart() {
+      building = true;
+      cancel();
+      buildingSnapshot = weixinSourceSnapshot(root);
+      record({ status: 'building', reason: null, buildStartedAt: new Date().toISOString(),
+        buildingFingerprint: buildingSnapshot.fingerprint });
+    },
+    buildEnd(error) {
+      if (error) {
+        healthy = false;
+        record({ status: 'error', reason: 'build-failed' });
+      }
+    },
+    renderError() {
+      healthy = false;
+      record({ status: 'error', reason: 'render-failed' });
+    },
     writeBundle: {
       order: 'post',
       // Rollup writeBundle hooks are parallel by default. Wait for uni:copy,
@@ -177,12 +229,18 @@ export function weixinOutput() {
       handler() {
         cancel();
         healthy = false;
-        watcher?.refresh();
-        const changed = publish();
-        if (process.env.AIO_WEIXIN_RESULT_FILE) fs.writeFileSync(process.env.AIO_WEIXIN_RESULT_FILE, 'published\n');
-        healthy = true;
-        building = false;
-        console.log(`[weixin-output] 已同步 ${changed} 个文件 → ${destination}`);
+        try {
+          watcher?.refresh();
+          const changed = publish();
+          if (process.env.AIO_WEIXIN_RESULT_FILE) fs.writeFileSync(process.env.AIO_WEIXIN_RESULT_FILE, 'published\n');
+          ready(buildingSnapshot);
+          healthy = true;
+          building = false;
+          console.log(`[weixin-output] 已同步 ${changed} 个文件 → ${destination}`);
+        } catch (error) {
+          record({ status: 'error', reason: 'publish-failed' });
+          throw error;
+        }
       },
     },
     closeWatcher: close,
