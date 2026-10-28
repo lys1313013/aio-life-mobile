@@ -1,4 +1,4 @@
-const { test, expect } = require('@playwright/test');
+const { test, expect } = require('./support/test');
 const fs = require('node:fs');
 const image = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=', 'base64');
 const file = (key, extra={}) => ({key,directory:false,size:'10240',lastModified:'2026-10-03T02:30:00Z',previewable:false,...extra});

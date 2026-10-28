@@ -1,5 +1,5 @@
 const { dismissModal } = require('./modal');
-const { test, expect } = require('@playwright/test');
+const { test, expect } = require('./support/test');
 const { dashboardFixture } = require('./fixtures.js');
 const { pullDown } = require('./gestures.js');
 const spacing = require('../../src/styles/spacing.json');

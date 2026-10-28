@@ -1,4 +1,4 @@
-const { test, expect } = require('@playwright/test');
+const { test, expect } = require('./support/test');
 const { setup } = require('./qa-domains-fixtures');
 
 // H5 回归视口几何与滚动行为；微信 root-portal 还需编译及真机验证。

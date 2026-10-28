@@ -1,5 +1,5 @@
 const { dismissModal } = require('./modal');
-const {test,expect}=require('@playwright/test');
+const {test,expect}=require('./support/test');
 const fs=require('node:fs'); const {setup,admin}=require('./qa-platform-fixtures');
 const out='artifacts/spacing-audit/11';fs.mkdirSync(out,{recursive:true});
 async function click(p,n){

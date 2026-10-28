@@ -1,4 +1,4 @@
-const { test, expect } = require('@playwright/test');
+const { test, expect } = require('./support/test');
 const { pullDown } = require('./gestures');
 test.use({ hasTouch: true, viewport: { width: 390, height: 900 } });
 const labels = ['手机', '电脑', '平板', '手表', '耳机', '相机', '键盘', '鼠标'];

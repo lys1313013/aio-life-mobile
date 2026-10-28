@@ -1,4 +1,4 @@
-const { test, expect } = require('@playwright/test');
+const { test, expect } = require('./support/test');
 const { mkdirSync } = require('node:fs');
 const path = require('node:path');
 const { dashboardFixture } = require('./fixtures.js');

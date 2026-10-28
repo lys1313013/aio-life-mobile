@@ -1,4 +1,4 @@
-const { test, expect } = require('@playwright/test');
+const { test, expect } = require('./support/test');
 const { dashboardFixture } = require('./fixtures');
 
 for (const width of [390, 768, 1440]) for (const colorScheme of ['light', 'dark']) {

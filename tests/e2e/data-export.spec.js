@@ -1,4 +1,4 @@
-const { test, expect } = require('@playwright/test');
+const { test, expect } = require('./support/test');
 const { dashboardFixture } = require('./fixtures.js');
 
 async function setup(page, remaining = 5) {

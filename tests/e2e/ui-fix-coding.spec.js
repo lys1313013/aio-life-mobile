@@ -1,4 +1,4 @@
-const { test, expect } = require('@playwright/test');
+const { test, expect } = require('./support/test');
 const { dashboardFixture } = require('./fixtures.js');
 
 const days = Array.from({ length: 365 }, (_, i) => ({ date: new Date(Date.UTC(2025, 10, 1 + i)).toISOString().slice(0, 10), contributionCount: i % 9 }));

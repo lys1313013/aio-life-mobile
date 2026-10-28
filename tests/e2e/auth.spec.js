@@ -1,6 +1,6 @@
 const { pullDown } = require('./gestures.js');
 const { dashboardFixture } = require('./fixtures.js');
-const { test, expect } = require('@playwright/test');
+const { test, expect } = require('./support/test');
 
 const profile = { id: '9223372036854775807', nickname: '生活记录者', email: 'test@example.com', introduction: '认真生活，慢慢记录。' };
 

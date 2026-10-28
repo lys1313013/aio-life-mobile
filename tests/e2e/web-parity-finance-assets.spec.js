@@ -1,5 +1,5 @@
 const { dismissModal } = require('./modal');
-const { test, expect } = require('@playwright/test'),
+const { test, expect } = require('./support/test'),
   fs = require('node:fs');
 const { setup } = require('./qa-domains-fixtures');
 const out = 'artifacts/web-parity-finance-assets';

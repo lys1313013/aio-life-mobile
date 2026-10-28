@@ -1,4 +1,4 @@
-const { test, expect } = require('@playwright/test');
+const { test, expect } = require('./support/test');
 const { dashboardFixture } = require('./fixtures.js');
 async function setup(page) {
  const state={writes:[],fail:false,unlock:false,security:[] ,notifications:[],wechat:{enabled:false,bound:false,bizType:'LEETCODE_REMINDER',templateId:null}};

@@ -1,4 +1,4 @@
-const { test, expect } = require('@playwright/test');
+const { test, expect } = require('./support/test');
 const { setup } = require('./qa-records-fixtures.js');
 const path = require('node:path');
 

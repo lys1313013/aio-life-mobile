@@ -1,4 +1,4 @@
-const { test, expect } = require('@playwright/test');
+const { test, expect } = require('./support/test');
 const { homeCardFixture } = require('./home-card-fixture');
 
 async function setup(page, extra = {}) {

@@ -1,4 +1,4 @@
-const {test,expect}=require('@playwright/test');
+const {test,expect}=require('./support/test');
 const {setup}=require('./qa-records-fixtures');
 const fs=require('fs');
 const dir='artifacts/web-parity/records';fs.mkdirSync(dir,{recursive:true});

@@ -1,4 +1,4 @@
-const { test, expect } = require('@playwright/test');
+const { test, expect } = require('./support/test');
 const fs = require('node:fs/promises');
 test.use({ hasTouch: true, viewport: { width: 390, height: 900 } });
 async function setup(page, mode) {

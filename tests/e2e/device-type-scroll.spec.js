@@ -1,4 +1,4 @@
-const { test, expect } = require('@playwright/test');
+const { test, expect } = require('./support/test');
 const { setup } = require('./qa-domains-fixtures');
 
 const labels = ['手机', '电脑', '平板电脑', '手表', '显示器', '鼠标', '键盘', '耳机', '其他'];

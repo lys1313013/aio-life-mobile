@@ -1,4 +1,4 @@
-const { test, expect } = require('@playwright/test');
+const { test, expect } = require('./support/test');
 const { dashboardFixture } = require('./fixtures');
 
 // Explicitly synthetic records. Every API and external coding request is intercepted.

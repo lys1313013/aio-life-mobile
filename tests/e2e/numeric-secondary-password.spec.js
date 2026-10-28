@@ -1,4 +1,4 @@
-const { test, expect } = require('@playwright/test');
+const { test, expect } = require('./support/test');
 async function setup(page, hasPassword = false) {
   const state = { writes: [], codeSent: 0, fail: false };
   await page.addInitScript(() => localStorage.setItem('aio-life-mobile.access-token.v1', 'numeric-fixture'));

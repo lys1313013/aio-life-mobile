@@ -1,5 +1,5 @@
 const { selectCalendarDate } = require('./calendar');
-const { test, expect } = require('@playwright/test');
+const { test, expect } = require('./support/test');
 const { dashboardFixture } = require('./fixtures.js');
 const { setupMapFixture } = require('./footprint-map-fixture.cjs');
 

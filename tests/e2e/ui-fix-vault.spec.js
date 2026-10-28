@@ -1,4 +1,4 @@
-const { test, expect } = require('@playwright/test');
+const { test, expect } = require('./support/test');
 const { start } = require('./qa-domains-ui');
 const spacing = require('../../src/styles/spacing.json');
 

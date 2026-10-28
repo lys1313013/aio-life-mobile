@@ -1,5 +1,5 @@
 const { dismissModal } = require('./modal');
-const {test,expect}=require('@playwright/test');
+const {test,expect}=require('./support/test');
 const {start,shot}=require('./qa-domains-ui');
 for(const width of [390,768])for(const theme of ['light','dark'])test(`social populated visual ${width} ${theme}`,async({page})=>{
  await page.setViewportSize({width,height:900}); await page.emulateMedia({colorScheme:theme});

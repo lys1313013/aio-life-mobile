@@ -1,4 +1,4 @@
-const { test, expect } = require('@playwright/test');
+const { test, expect } = require('./support/test');
 const { setup } = require('./qa-platform-fixtures');
 
 for (const width of [320, 390, 768, 1440]) {

@@ -1,4 +1,4 @@
-const { test, expect } = require('@playwright/test');
+const { test, expect } = require('./support/test');
 const fs = require('node:fs');
 const { pullDown } = require('./gestures');
 const out = 'artifacts/users-layout';

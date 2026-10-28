@@ -1,4 +1,4 @@
-const {test,expect}=require('@playwright/test');
+const {test,expect}=require('./support/test');
 const {start,close}=require('./qa-domains-ui');
 const fs=require('node:fs');const dir='artifacts/spacing-audit/09';fs.mkdirSync(dir,{recursive:true});
 for(const route of ['index','income','expense','import','cards'])for(const [width,theme]of [[390,'light'],[390,'dark'],...(['expense','cards'].includes(route)?[[768,'light'],[1440,'dark']]:[])])test(`finance ${route} ${width} ${theme}`,async({page})=>{

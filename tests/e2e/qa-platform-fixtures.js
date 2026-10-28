@@ -1,5 +1,5 @@
 const {dashboardFixture}=require('./fixtures');
-const {test}=require('@playwright/test');
+const {test}=require('./support/test');
 const admin=[['users','/system/user','用户中心'],['menus','/system/menu','菜单管理'],['user-dict','/system/user-dict','用户字典管理'],['feedback','/system/feedback','反馈管理'],['config','/system/config','系统配置'],['operation','/system/operation-log','操作日志'],['access','/system/access-log','访问日志'],['dict-types','/config-management/sysDictType','字典类型'],['dict-data','/config-management/sysDictData','字典数据']];
 const legalFixture = {
   version: '2026-10-27', effectiveDate: '2026-10-27',

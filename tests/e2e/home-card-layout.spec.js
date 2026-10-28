@@ -1,4 +1,4 @@
-const { test, expect } = require('@playwright/test');
+const { test, expect } = require('./support/test');
 const { dashboardFixture } = require('./fixtures');
 const { pullDown } = require('./gestures');
 const { homeCardFixture } = require('./home-card-fixture');

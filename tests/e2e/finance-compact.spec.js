@@ -1,4 +1,4 @@
-const { test, expect } = require('@playwright/test');
+const { test, expect } = require('./support/test');
 const { start } = require('./qa-domains-ui');
 
 test('财务高级筛选折叠后保留条件并显示数量', async ({ page }) => {

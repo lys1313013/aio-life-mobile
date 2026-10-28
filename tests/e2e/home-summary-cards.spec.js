@@ -1,6 +1,6 @@
 const fs = require('node:fs');
 const path = require('node:path');
-const { test, expect } = require('@playwright/test');
+const { test, expect } = require('./support/test');
 const keys = ['memo', 'finance', 'video', 'device', 'income', 'expense'];
 const titles = ['最近笔记', '收支概览', '视频', '我的设备', '收入', '支出'];
 const routes = ['/my-hub/memo', '/finance-management/dashboard', '/finance-management/income', '/finance-management/expense', '/my-hub/videoWatch', '/my-hub/device'];

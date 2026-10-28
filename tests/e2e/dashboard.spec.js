@@ -1,4 +1,4 @@
-const { test, expect } = require('@playwright/test');
+const { test, expect } = require('./support/test');
 const { dashboardFixture } = require('./fixtures.js');
 async function setup(page, override) {
   await page.route(`${test.info().project.use.baseURL}/api/**`, async route => {

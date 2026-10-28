@@ -1,6 +1,6 @@
 const fs = require('node:fs');
 const path = require('node:path');
-const { test, expect } = require('@playwright/test');
+const { test, expect } = require('./support/test');
 const { picker } = require('./qa-domains-ui');
 const { setup, id } = require('./qa-records-fixtures');
 const entries = [{ menuId: 'member', path: '/membership', title: '订阅' }, { menuId: 'platforms', path: '/system/membership-providers', title: '会员平台' }];

@@ -1,4 +1,4 @@
-const {test,expect}=require('@playwright/test');
+const {test,expect}=require('./support/test');
 const {start,close,picker,entries}=require('./qa-domains-ui');
 const fs=require('node:fs');const dir='artifacts/spacing-audit/10';fs.mkdirSync(dir,{recursive:true});
 const routes=['coding/github','coding/leetcode','coding/csdn','relationship/index','messages/index','mcp/index','vault/index'];

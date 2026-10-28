@@ -1,4 +1,4 @@
-const { test, expect } = require('@playwright/test');
+const { test, expect } = require('./support/test');
 
 const noteId = '9223372036854775807';
 async function setup(page, hasPassword = true) {

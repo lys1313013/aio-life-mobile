@@ -1,4 +1,4 @@
-const {test,expect}=require('@playwright/test')
+const {test,expect}=require('./support/test')
 const coverImage = require('node:fs').readFileSync(require('node:path').join(__dirname, '../../src/static/book.png'));
 const {dashboardFixture}=require('./fixtures.js')
 const id='9223372036854775807'

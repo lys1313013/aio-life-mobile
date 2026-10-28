@@ -1,4 +1,4 @@
-const { test, expect } = require('@playwright/test');
+const { test, expect } = require('./support/test');
 const { dashboardFixture } = require('./fixtures');
 // Drop held route handlers before the browser context teardown.
 test.afterEach(async ({ page }) => {

@@ -18,7 +18,12 @@ module.exports = defineConfig({
   testDir: './tests/e2e',
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
-  reporter: process.env.CI ? [['line'], ['html', { open: 'never' }]] : 'list',
+  reporter: [
+    [process.env.CI ? 'line' : 'list'],
+    ['html', { open: 'never' }],
+    ['./scripts/e2e-summary-reporter.cjs'],
+  ],
+  retries: 0,
   // 默认串行；CI 和提交前验证可显式设置并行度，CLI --workers 仍可覆盖。
   workers,
   use: {

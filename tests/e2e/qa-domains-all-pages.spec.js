@@ -1,5 +1,5 @@
 const { dismissModal } = require('./modal');
-const {test,expect}=require('@playwright/test');const fs=require('node:fs');const path=require('node:path');
+const {test,expect}=require('./support/test');const fs=require('node:fs');const path=require('node:path');
 const {start,shot,panel,close,picker,entries,inspectPickers}=require('./qa-domains-ui');
 const reports=[];test.afterAll(()=>{const file=path.resolve('test-results/page-audit/domains-coverage.json');fs.mkdirSync(path.dirname(file),{recursive:true});const saved=fs.existsSync(file)?file:'/tmp/qa-domains-evidence/domains-coverage.json';const old=fs.existsSync(saved)?JSON.parse(fs.readFileSync(saved,'utf8')).pages:[];const keys=new Set(reports.map(r=>r.route+'|'+r.variants.join(',')));fs.writeFileSync(file,JSON.stringify({pages:[...old.filter(r=>!keys.has(r.route+'|'+r.variants.join(','))),...reports]},null,2));fs.copyFileSync(file,'/tmp/qa-domains-evidence/domains-coverage.json')});
 const csv='交易号,商户订单号,交易创建时间,付款时间,最近修改时间,交易来源地,交易类型,交易对方,商品名称,金额（元）,收/支,交易状态,服务费（元）,成功退款（元）,备注,资金状态\nfixture1,fixtureM,2026-10-01 01:00:00,2026-10-01 01:00:00,,PC,餐饮,商店,商品,99,支出,交易成功,0,72.6,fixture,已支付';

@@ -1,4 +1,4 @@
-const { test, expect } = require('@playwright/test');
+const { test, expect } = require('./support/test');
 const { setup } = require('./qa-domains-fixtures');
 const image = '<svg xmlns="http://www.w3.org/2000/svg" width="960" height="605"><rect width="960" height="605" fill="#31567a"/><text x="50" y="95" fill="white" font-size="40">DEMO BANK</text></svg>';
 

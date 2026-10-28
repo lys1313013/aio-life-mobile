@@ -1,5 +1,5 @@
 const { dismissModal } = require('./modal');
-const { test, expect } = require("@playwright/test");
+const { test, expect } = require('./support/test');
 const fs = require("node:fs");
 const out = "artifacts/menu-manager";
 const longId = "9223372036854775807";

@@ -1,4 +1,4 @@
-const { test, expect } = require('@playwright/test');
+const { test, expect } = require('./support/test');
 const { dashboardFixture } = require('./fixtures.js');
 const fs = require('node:fs');
 const link = 'https://weread.qq.com/web/reader/mock-book';

@@ -1,4 +1,4 @@
-const { test, expect } = require('@playwright/test');
+const { test, expect } = require('./support/test');
 const { setup } = require('./qa-domains-fixtures');
 
 test.use({ hasTouch: true, viewport: { width: 390, height: 844 } });

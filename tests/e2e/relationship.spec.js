@@ -1,5 +1,5 @@
 const { dismissModal } = require('./modal');
-const { test, expect } = require('@playwright/test');
+const { test, expect } = require('./support/test');
 const { setup } = require('./qa-domains-fixtures');
 const path = require('node:path');
 const names = ['模拟本人', '模拟小林', '模拟小周', '模拟小陈', '模拟小许', '模拟小唐', '模拟小沈', '模拟小吴', '模拟小郑', '模拟小王', '模拟小李', '模拟小方', '模拟长姓名人物'];

@@ -1,4 +1,4 @@
-const { test, expect } = require('@playwright/test');
+const { test, expect } = require('./support/test');
 const { setup } = require('./qa-domains-fixtures');
 
 test('设备删除只在编辑弹窗内出现，确认失败可重试，成功后关闭弹窗并更新列表', async ({ page }) => {

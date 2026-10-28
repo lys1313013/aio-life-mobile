@@ -1,7 +1,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { selectCalendarDate } = require('./calendar');
-const { test, expect } = require('@playwright/test');
+const { test, expect } = require('./support/test');
 const { calendarFixture } = require('./fixtures-finance-calendar');
 const day = new Date(Date.now() + 8 * 3600000).toISOString().slice(0, 7) + '-01';
 async function setup(page, theme) {

@@ -1,5 +1,5 @@
 const { dismissModal } = require('./modal');
-const { test, expect } = require('@playwright/test');
+const { test, expect } = require('./support/test');
 const { calendarFixture } = require('./fixtures-finance-calendar');
 
 for (const width of [390, 820, 1440]) for (const theme of ['light', 'dark']) {

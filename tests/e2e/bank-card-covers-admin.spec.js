@@ -1,4 +1,4 @@
-const { test, expect } = require('@playwright/test');
+const { test, expect } = require('./support/test');
 const { picker } = require('./qa-domains-ui');
 const fileId = 'a'.repeat(32), uploadedId = 'b'.repeat(32), id = '9223372036854775807', bankId = '9007199254740999';
 const cover = { id, bankId, name: '模拟银行经典储蓄卡面', bankName: '模拟银行', fileId, cardType: 'debit', sourceUrl: 'https://example.com/card', isEnabled: 1, sortOrder: 0, usageCount: 0 };

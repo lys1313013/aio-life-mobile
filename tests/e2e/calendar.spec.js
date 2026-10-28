@@ -1,5 +1,5 @@
 const { dismissModal } = require('./modal');
-const { test, expect } = require('@playwright/test');
+const { test, expect } = require('./support/test');
 const { setup } = require('./qa-domains-fixtures');
 const { selectCalendarDate } = require('./calendar');
 test.use({ hasTouch: true, timezoneId: 'Asia/Shanghai' });

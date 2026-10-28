@@ -1,4 +1,4 @@
-const { test, expect } = require('@playwright/test');
+const { test, expect } = require('./support/test');
 const { dashboardFixture } = require('./fixtures.js');
 
 test('四栏切换、日期查询、退出清理与重新登录', async ({ page }) => {

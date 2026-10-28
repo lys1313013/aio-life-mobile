@@ -1,4 +1,4 @@
-const { test, expect } = require('@playwright/test');
+const { test, expect } = require('./support/test');
 const { setup, id } = require('./qa-records-fixtures.js');
 
 for (const width of [390, 480, 768, 1440]) for (const theme of ['light', 'dark']) {

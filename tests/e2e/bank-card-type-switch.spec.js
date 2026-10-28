@@ -1,4 +1,4 @@
-const { test, expect } = require('@playwright/test');
+const { test, expect } = require('./support/test');
 
 // 只模拟银行卡及登录所需接口，其他请求保留真实失败，避免掩盖依赖问题。
 async function prepare(page, baseURL, cards) {
