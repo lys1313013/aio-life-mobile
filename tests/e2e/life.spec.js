@@ -58,7 +58,7 @@ async function setup(page, options = {}) {
       let data = dashboardFixture(path);
       // 本用例只测试目录和快捷导航，避免首页业务卡片请求候选菜单干扰目录计数。
       if (path === '/api/home/cards') data = data.map(item => ({ ...item,
-        enabled: !['section.goal', 'section.anniversary', 'section.reading', 'section.membership', 'section.movie'].includes(item.cardKey) }));
+        isEnabled: Number(!['section.goal', 'section.anniversary', 'section.reading', 'section.membership', 'section.movie'].includes(item.cardKey)) }));
       if (path === "/api/auth/login") data = { accessToken: "life-fixture" };
       if (path === "/api/user/info")
         data = { id: "fixture-user", nickname: "目录测试用户" };
@@ -204,8 +204,8 @@ test("常用增删、排序、停用、保存失败恢复与首页同步", async
   let failSave = true;
   const state = await setup(page, {
     saved: [
-      { ...entries.find((i) => i.menuId === "todo"), enabled: 1, sortOrder: 0 },
-      { ...entries.find((i) => i.menuId === "goal"), enabled: 0, sortOrder: 1 },
+      { ...entries.find((i) => i.menuId === "todo"), isEnabled: 1, sortOrder: 0 },
+      { ...entries.find((i) => i.menuId === "goal"), isEnabled: 0, sortOrder: 1 },
     ],
     intercept: async (route, path) => {
       if (
@@ -255,7 +255,7 @@ test("常用增删、排序、停用、保存失败恢复与首页同步", async
 });
 test("首页取消原地编辑后丢弃草稿", async ({ page }) => {
   const state = await setup(page, {
-    saved: [{ ...entries.find((i) => i.menuId === "todo"), enabled: 1, sortOrder: 0 }],
+    saved: [{ ...entries.find((i) => i.menuId === "todo"), isEnabled: 1, sortOrder: 0 }],
   });
   await openEditor(page);
   await page.locator(".quick-editor").getByRole("button", { name: "移除待办", exact: true }).click();
@@ -388,7 +388,7 @@ test("15 项上限不截断既有配置，停用项可重新添加、逐项移�
   const state = await setup(page, {
     saved: entries
       .slice(0, 15)
-      .map((item, i) => ({ ...item, enabled: i === 1 ? 0 : 1, sortOrder: i })),
+      .map((item, i) => ({ ...item, isEnabled: i === 1 ? 0 : 1, sortOrder: i })),
   });
   await openEditor(page);
   const editor = page.locator(".quick-editor");
@@ -505,7 +505,7 @@ for (const width of [390, 768, 1440]) {
       await page.setViewportSize({ width, height: 900 });
       await page.emulateMedia({ colorScheme });
       await setup(page, { saved: entries.slice(0, 12).map((item, index) => ({
-        ...item, title: index === 0 ? "很长的快捷导航名称" : item.title, enabled: 1, sortOrder: index,
+        ...item, title: index === 0 ? "很长的快捷导航名称" : item.title, isEnabled: 1, sortOrder: index,
       })) });
       await page.locator("uni-tabbar").getByText("首页", { exact: true }).click();
       const card = page.locator('[data-card-key="section.links"]');
@@ -549,7 +549,7 @@ test('快捷导航触摸拖动、键盘排序与保存中锁定', async ({ page 
   let release;
   const pending = new Promise(resolve => { release = resolve; });
   const state = await setup(page, {
-    saved: entries.slice(0, 3).map((item, index) => ({ ...item, enabled: 1, sortOrder: index })),
+    saved: entries.slice(0, 3).map((item, index) => ({ ...item, isEnabled: 1, sortOrder: index })),
     intercept: async (route, path) => {
       if (path === '/api/quick-nav/my' && route.request().method() === 'POST') await pending;
     },
@@ -588,7 +588,7 @@ test('快捷导航触摸拖动、键盘排序与保存中锁定', async ({ page 
 test('进入快捷导航编辑不重复查询，候选加载失败不影响保存既有配置', async ({ page }) => {
   let blockReads = false;
   const state = await setup(page, {
-    saved: entries.slice(0, 3).map((item, index) => ({ ...item, enabled: index === 1 ? 0 : 1, sortOrder: index })),
+    saved: entries.slice(0, 3).map((item, index) => ({ ...item, isEnabled: index === 1 ? 0 : 1, sortOrder: index })),
     intercept: async (route, path) => {
       if (blockReads && ['/api/quick-nav/my', '/api/quick-nav/candidates'].includes(path) && route.request().method() === 'GET') {
         await route.fulfill({ json: { code: 123, message: '模拟候选加载失败' } }); return true;
@@ -613,13 +613,13 @@ test('进入快捷导航编辑不重复查询，候选加载失败不影响保�
   await expect(editor).toBeHidden();
   await expect(page.locator('.quick-link').getByText('目标', { exact: true })).toBeVisible();
   expect(state.posts[0].items).toHaveLength(3);
-  expect(state.posts[0].items[1].enabled).toBe(0);
+  expect(state.posts[0].items[1].isEnabled).toBe(0);
   expect(state.quickCalls).toBe(reads + 1); // 仅保存 POST，成功后使用返回结果。
 });
 
 test('快捷导航短滑不排序，长按取消不提交，跨行拖动跟手让位', async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 390, height: 900 });
-  await setup(page, { saved: entries.slice(0, 12).map((item, index) => ({ ...item, enabled: 1, sortOrder: index })) });
+  await setup(page, { saved: entries.slice(0, 12).map((item, index) => ({ ...item, isEnabled: 1, sortOrder: index })) });
   await openEditor(page);
   const editor = page.locator('.quick-editor');
   const source = editor.getByRole('button', { name: '拖动排序时迹', exact: true });

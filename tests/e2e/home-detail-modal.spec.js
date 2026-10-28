@@ -4,8 +4,8 @@ const id = '9223372036854775807';
 const entries = [
   { key: 'read', label: '阅读', base: '/read-record', title: '模拟长书名：阅读明细与进度', type: 1, status: 'in_progress', currentProgress: 32, totalProgress: 180, author: '模拟作者', remark: '详情中保留的书评', url: '' },
   { key: 'movie', label: '观影', base: '/movie', title: '模拟电影：长片名的详情编辑', type: 2, status: 'in_progress', currentProgress: 4, totalProgress: 24, director: '模拟导演', remark: '详情中保留的影评', url: '' },
-  { key: 'member', label: '会员', base: '/membership', name: '模拟订阅', provider: '模拟平台', category: 'other', startDate: '2026-01-31', expiryDate: '2030-01-31', billingCycle: 'month', price: 20, monthlyAmount: 20, autoRenew: 1, note: '完整详情备注', color: '#722ed1' },
-  { key: 'anniversary', label: '纪念日', base: '/anniversaryRecords', title: '模拟周年纪念', targetDate: '2027-02-14', isPinned: 1, icon: '🎉', note: '完整纪念日备注', color: 'from-pink-400 to-rose-500' },
+  { key: 'member', label: '会员', base: '/membership', name: '模拟订阅', provider: '模拟平台', category: 'other', startDate: '2026-01-31', expiryDate: '2030-01-31', billingCycle: 'month', price: 20, monthlyAmount: 20, autoRenew: 1, remark: '完整详情备注', color: '#722ed1' },
+  { key: 'anniversary', label: '纪念日', base: '/anniversaryRecords', title: '模拟周年纪念', targetDate: '2027-02-14', isPinned: 1, icon: '🎉', remark: '完整纪念日备注', color: 'from-pink-400 to-rose-500' },
 ];
 async function setup(page) {
   const state = { rows: entries.map(({ key, label, base, ...row }) => ({ ...row, id })), writes: [], failDetail: false, failSave: false, waitDetail: null };
@@ -155,6 +155,6 @@ test('首页纪念日保存失败保留表单，重试后更新原卡片', async
   await dialog.getByRole('button', { name: '保存', exact: true }).click();
   await expect(dialog).toHaveCount(0);
   await expect(page.locator('[aria-label="纪念日首页卡片"]')).toContainText('更新后的模拟纪念日');
-  expect(state.writes.at(-1)).toMatchObject({ id, note: '完整纪念日备注', isPinned: 1 });
+  expect(state.writes.at(-1)).toMatchObject({ id, remark: '完整纪念日备注', isPinned: 1 });
   await expect(page).toHaveURL(/pages\/home\/index/);
 });

@@ -14,7 +14,7 @@ test('平板首页隐藏空待办后紧凑排列，刷新有数据后恢复卡�
   await page.emulateMedia({ colorScheme: 'dark' });
   await page.addInitScript(() => localStorage.setItem('aio-life-mobile.access-token.v1', 'tablet-layout-fixture'));
   const enabled = new Set(['section.time', 'section.links', 'section.watched', 'section.thoughts', 'section.exercise']);
-  const cards = homeCardFixture().map(item => ({ ...item, enabled: enabled.has(item.cardKey) }));
+  const cards = homeCardFixture().map(item => ({ ...item, isEnabled: enabled.has(item.cardKey) }));
   let watched = [];
   await page.route(`${info.project.use.baseURL}/api/**`, route => {
     const path = new URL(route.request().url()).pathname;
@@ -143,7 +143,7 @@ for (const count of [1, 5]) {
     await page.addInitScript(() => localStorage.setItem('aio-life-mobile.access-token.v1', 'overview-layout-fixture'));
     const pending = gate();
     const { homeCardFixture } = require('./home-card-fixture');
-    const preferences = homeCardFixture().map((item, index) => ({ ...item, enabled: index < count }));
+    const preferences = homeCardFixture().map((item, index) => ({ ...item, isEnabled: Number(index < count) }));
     const tasks = preferences.filter(item => item.isEnabled).map(item => ({ type: item.cardKey.slice(9).toUpperCase(), title: item.title }));
     await page.route(`${info.project.use.baseURL}/api/**`, async route => {
       const path = new URL(route.request().url()).pathname;

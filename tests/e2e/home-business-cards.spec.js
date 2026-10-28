@@ -387,7 +387,7 @@ for (const kind of ['read', 'movie', 'member']) {
     const label = kind === 'read' ? '阅读' : kind === 'movie' ? '观影' : '会员';
     const base = kind === 'read' ? '/read-record' : kind === 'movie' ? '/movie' : '/membership';
     let row = kind === 'member'
-      ? { id: '9223372036854775807', name: '首页编辑会员', provider: '测试平台', category: 'other', startDate: '2026-01-01', expiryDate: '2026-10-30', autoRenew: 1, billingCycle: 'month', monthlyAmount: 20, price: 20, note: '保留会员备注', color: '#722ed1' }
+      ? { id: '9223372036854775807', name: '首页编辑会员', provider: '测试平台', category: 'other', startDate: '2026-01-01', expiryDate: '2026-10-30', autoRenew: 1, billingCycle: 'month', monthlyAmount: 20, price: 20, remark: '保留会员备注', color: '#722ed1' }
       : { id: '9223372036854775807', title: '首页编辑作品', type: 1, status: 'in_progress', totalProgress: 100, currentProgress: 30, author: '原作者', director: '原导演', remark: '保留完整详情备注', url: '', fileId: '', coverImgUrl: '' };
     let written;
     if (kind === 'member') {
@@ -425,7 +425,7 @@ for (const kind of ['read', 'movie', 'member']) {
     await dialog.getByRole('button', { name: '保存', exact: true }).click();
     await expect(dialog).toHaveCount(0);
     expect(written.id).toBe('9223372036854775807');
-    expect(kind === 'member' ? written.note : written.remark).toBe(kind === 'member' ? '保留会员备注' : '保留完整详情备注');
+    expect(kind === 'member' ? written.remark : written.remark).toBe(kind === 'member' ? '保留会员备注' : '保留完整详情备注');
     await expect(page).toHaveURL(/#\/(?:pages\/home\/index)?$/);
     if (kind === 'member') await expect(card).toContainText('2027-01-01');
     else { expect(written.status).toBe('completed'); await expect(card).toHaveCount(0); }

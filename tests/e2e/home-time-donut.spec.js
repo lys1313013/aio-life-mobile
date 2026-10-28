@@ -25,7 +25,7 @@ async function setup(page, extra = {}) {
     '/auth/secondary-lock/menus': [], '/menu/all': [],
     '/menu/visuals': { menus: [], cards: {} },
     '/quick-nav/candidates': [], '/quick-nav/my': [], '/dashboard/tasks': [],
-    '/home/cards': homeCardFixture().map(item => ({ ...item, enabled: item.cardKey === 'section.time' })),
+    '/home/cards': homeCardFixture().map(item => ({ ...item, isEnabled: Number(item.cardKey === 'section.time') })),
     '/timeTrackerCategory/list': groups.map((item, index) => ({ ...item, id: String(index) })),
     '/timeRecord/query': groups.map((item, index) => {
       const startTime = minute; minute += item.minutes;
@@ -96,7 +96,7 @@ for (const width of [390, 820, 1440]) for (const theme of ['light', 'dark']) {
     await page.emulateMedia({ colorScheme: theme });
     const percents = [0, 25, 87, 100];
     await setup(page, {
-      '/home/cards': homeCardFixture().map(item => ({ ...item, enabled: ['section.time', 'section.goal'].includes(item.cardKey) })),
+      '/home/cards': homeCardFixture().map(item => ({ ...item, isEnabled: Number(['section.time', 'section.goal'].includes(item.cardKey)) })),
       '/quick-nav/candidates': [{ path: '/task-center/goal' }],
       '/goals': percents.map((percent, index) => ({ id: String(index), title: '模拟目标 ' + index,
         type: 1, status: 'in_progress', isPinned: 1, targetValue: 100, currentValue: percent })),
@@ -186,7 +186,7 @@ for (const width of [390, 820, 1440]) for (const theme of ['light', 'dark']) {
   test(`时迹圆环滚动和卡片重排后仍与总时长对齐 ${width} ${theme}`, async ({ page }, info) => {
     await page.setViewportSize({ width, height: 300 });
     await page.emulateMedia({ colorScheme: theme, reducedMotion: 'reduce' });
-    let cards = homeCardFixture().map(item => ({ ...item, enabled: ['section.time', 'section.links', 'section.thoughts'].includes(item.cardKey) }));
+    let cards = homeCardFixture().map(item => ({ ...item, isEnabled: Number(['section.time', 'section.links', 'section.thoughts'].includes(item.cardKey)) }));
     await page.route('**/api/home/cards/order', route => {
       const { keys } = route.request().postDataJSON();
       cards = cards.map(item => item.group === 'section' ? { ...item, sortOrder: keys.indexOf(item.cardKey) } : item)

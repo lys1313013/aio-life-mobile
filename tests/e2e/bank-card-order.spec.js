@@ -13,8 +13,8 @@ async function setup(page, mode) {
   const fixtures = {
     '/user/info': { id: '1', nickname: '模拟用户', roles: ['admin'] },
     '/menu/list': [], '/menu/all': [], '/auth/secondary-lock/menus': [],
-    '/bank-cards/banks': [{ id: '9', name: '模拟银行', enabled: true }], '/bank-cards/tags': [],
-    '/system/bank-card-covers/banks': [{ id: '9', name: '模拟银行', enabled: true }],
+    '/bank-cards/banks': [{ id: '9', name: '模拟银行', isEnabled: 1 }], '/bank-cards/tags': [],
+    '/system/bank-card-covers/banks': [{ id: '9', name: '模拟银行', isEnabled: 1 }],
   };
   for (const [path, data] of Object.entries(fixtures)) await page.route('**/api' + path, route => route.fulfill({ json: { code: 0, data } }));
   for (const path of ['/bank-cards', '/system/bank-card-covers']) {

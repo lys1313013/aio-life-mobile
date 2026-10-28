@@ -248,7 +248,7 @@ test('all asynchronous business pages expose loading placeholders', async ({ pag
     });
     try {
       await page.goto('/#/pages/' + route); await page.reload();
-      const loadingSelector = route === 'records/categories' ? '.category-placeholder' : route === 'home/index' ? '.home-list-skeleton' : route === 'finance/index' ? '.finance-calendar .calendar-loading .loading-indicator' : route === 'finance/cards' ? '.card-loading' : route === 'relationship/index' ? '.topology .loading-indicator' : route === 'time/edit' ? '.editor-loading .loading-indicator' : route === 'admin/index' ? '.user-card-loading' : route === 'vault/index' ? '.vault-skeleton-title' : '.content-skeleton';
+      const loadingSelector = route === 'member/index' ? '.member-grid .skeleton-title' : route === 'records/categories' ? '.category-placeholder' : route === 'home/index' ? '.home-list-skeleton' : route === 'finance/index' ? '.finance-calendar .calendar-loading .loading-indicator' : route === 'finance/cards' ? '.card-loading' : route === 'relationship/index' ? '.topology .loading-indicator' : route === 'time/edit' ? '.editor-loading .loading-indicator' : route === 'admin/index' ? '.user-card-loading' : route === 'vault/index' ? '.vault-skeleton-title' : '.content-skeleton';
       await expect(page.locator(loadingSelector).first(), route).toBeVisible();
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), route).toBe(true);
       await page.screenshot({ path: info.outputPath(route.replace(/[/?=]/g, '-') + '.png') });

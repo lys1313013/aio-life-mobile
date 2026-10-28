@@ -12,7 +12,7 @@ async function subscriptions(page) {
     writes: [],
     rows: [
       { id: '41', name: '模拟过期订阅', status: 'expired', remainingDays: -30, category: 'study', expiryDate: '2026-09-01' },
-      { id: longId, name: '模拟即将到期订阅', status: 'expiring', remainingDays: 3, category: 'video', expiryDate: '2026-10-04', note: '模拟备注，保存后应保留' },
+      { id: longId, name: '模拟即将到期订阅', status: 'expiring', remainingDays: 3, category: 'video', expiryDate: '2026-10-04', remark: '模拟备注，保存后应保留' },
       { id: '43', name: '模拟音乐订阅', status: 'active', remainingDays: 80, category: 'music', expiryDate: '2026-12-20' },
       { id: '44', name: '模拟名称特别长的家庭共享影音年度订阅', status: 'active', remainingDays: 40, category: 'video', expiryDate: '2026-11-10' },
       { id: '45', name: '模拟第二个过期订阅', status: 'expired', remainingDays: -15, category: 'cloud', expiryDate: '2026-09-16' },
@@ -55,8 +55,13 @@ for (const width of [390, 768, 1440]) {
         const b = node.getBoundingClientRect();
         return { x: b.x, y: b.y, width: b.width, height: b.height, right: b.right };
       }));
-      expect(boxes[1].y).toBeCloseTo(boxes[0].y, 0);
-      expect(boxes[1].x).toBeGreaterThan(boxes[0].x + boxes[0].width);
+      if (width < 700) {
+        expect(boxes[1].x).toBeCloseTo(boxes[0].x, 0);
+        expect(boxes[1].y).toBeGreaterThanOrEqual(boxes[0].y + boxes[0].height);
+      } else {
+        expect(boxes[1].y).toBeCloseTo(boxes[0].y, 0);
+        expect(boxes[1].x).toBeGreaterThan(boxes[0].x + boxes[0].width);
+      }
       for (const box of boxes) {
         expect(box.x).toBeGreaterThanOrEqual(0);
         expect(box.right).toBeLessThanOrEqual(width + 1);
@@ -96,7 +101,7 @@ test('订阅编辑失败恢复保留完整字段和长ID', async ({ page }) => {
   await expect(dialog).toHaveCount(0);
   await expect(page.getByRole('button', { name: '编辑订阅：模拟即将到期订阅更新', exact: true })).toBeVisible();
   expect(state.writes).toHaveLength(2);
-  expect(state.writes[1]).toMatchObject({ method: 'PUT', body: { id: longId, note: '模拟备注，保存后应保留', category: 'video', provider: '模拟平台', monthlyAmount: 8.25 } });
+  expect(state.writes[1]).toMatchObject({ method: 'PUT', body: { id: longId, remark: '模拟备注，保存后应保留', category: 'video', provider: '模拟平台', monthlyAmount: 8.25 } });
 });
 
 for (const width of [390, 768, 1440]) for (const theme of ['light', 'dark']) {

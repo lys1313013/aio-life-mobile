@@ -86,7 +86,7 @@ async function nativePicker(page, locator, name) {
     await nativeDate.press('Escape');
     await nativeDate.press('Tab');
   } else if (await endPicker.count()) {
-    await endPicker.getByRole('button', { name: '取消', exact: true }).click();
+    await page.locator('.time-end-mask').click({ position: { x: 1, y: 1 } });
     await expect(endPicker).toHaveCount(0);
   } else {
     await page.locator('.uni-picker-action-cancel:visible').click();
