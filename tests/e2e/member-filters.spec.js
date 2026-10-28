@@ -11,20 +11,30 @@ const records = [
   { id: '9223372036854775805', name: '模拟 Kimi', category: 'AI', providerIconKey: 'kimi', status: 'expired', remainingDays: -30 },
   { id: '9223372036854775806', name: '模拟爱奇艺', category: 'video', providerIconKey: 'iqiyi', status: 'expired', remainingDays: -20 },
   { id: '9223372036854775807', name: '模拟学习会员', category: 'study', status: 'expired', remainingDays: -10 },
-].map(row => ({ ...row, provider: row.name, startDate: '2026-10-01', expiryDate: '2027-01-01', price: 30, monthlyAmount: 30, billingCycle: 'month', autoRenew: 0 }));
+].map((row, index) => ({ ...row, provider: row.name, startDate: '2026-10-01', expiryDate: '2027-01-01', price: 30, monthlyAmount: 30, billingCycle: 'month', autoRenew: index === 0 ? 1 : 0, color: ['#13c2c2', '#1677ff', '#f5222d', '#eb2f96', '#722ed1', '#52c41a', '#faad14'][index] }));
+records[0].price = 1140;
+records[0].monthlyAmount = 1150;
+records[6].name = '模拟学习会员：很长的订阅名称用于检查卡片高度一致';
+records[6].provider = '模拟很长的平台名称用于检查副标题截断与对齐';
 
-async function prepare(page) {
+async function prepare(page, onLoading) {
+  let release;
+  const gate = onLoading ? new Promise(resolve => { release = resolve; }) : Promise.resolve();
   const state = { members: records.map(row => ({ ...row })), reads: 0, fail: false, writes: [] };
   await page.addInitScript(() => localStorage.setItem('aio-life-mobile.access-token.v1', 'membership-filter-fixture'));
   const fulfill = (route, data) => route.fulfill({ json: { code: 0, data } });
   await page.route('**/api/auth/secondary-lock/menus', route => fulfill(route, []));
   await page.route('**/api/quick-nav/candidates?client=mobile', route => fulfill(route, [{ menuId: 'member', path: '/membership', title: '订阅' }]));
   await page.route('**/api/menu/preferences?client=mobile', route => fulfill(route, { menus: [{ id: 'member', title: '订阅', children: [] }], hiddenMenuIds: [] }));
-  await page.route('**/api/membership/list', route => {
+  await page.route('**/api/membership/list', async route => {
     state.reads++;
+    await gate;
     return state.fail ? route.fulfill({ json: { code: 1, message: '模拟会员加载失败' } }) : fulfill(route, state.members);
   });
-  await page.route('**/api/membership/stats', route => fulfill(route, { activeCount: 3, expiringCount: 1, expiredCount: 3, expiringThisMonthCount: 1, monthlyAmount: 120 }));
+  await page.route('**/api/membership/stats', async route => {
+    await gate;
+    return fulfill(route, { activeCount: 3, expiringCount: 1, expiredCount: 3, expiringThisMonthCount: 1, monthlyAmount: 1240 });
+  });
   await page.route('**/api/membership/providers', route => fulfill(route, []));
   await page.route('**/api/membership/provider-icons/*', route => {
     const url = new URL(route.request().url());
@@ -41,6 +51,9 @@ async function prepare(page) {
     return fulfill(route, saved);
   });
   await page.goto('/#/pages/member/index');
+  if (onLoading) {
+    try { await onLoading(); } finally { release(); }
+  }
   await expect(page.locator('.member-card')).toHaveCount(4);
   return state;
 }
@@ -151,7 +164,17 @@ for (const width of [390, 768, 1440]) for (const theme of ['light', 'dark']) {
     await page.emulateMedia({ colorScheme: theme });
     const errors = [];
     page.on('pageerror', error => errors.push(error.message));
-    await prepare(page);
+    let skeleton;
+    await prepare(page, async () => {
+      await expect(page.locator('.skeleton-logo')).toHaveCount(4);
+      skeleton = await page.locator('.member-card').evaluateAll(cards => cards.map(card => ({ height: card.getBoundingClientRect().height, top: card.getBoundingClientRect().top })));
+      await page.screenshot({ path: `artifacts/member-filters/${width}-${theme}-loading.png`, fullPage: true });
+    });
+    const loaded = await page.locator('.member-card').evaluateAll(cards => cards.map(card => ({ height: card.getBoundingClientRect().height, top: card.getBoundingClientRect().top })));
+    for (let i = 0; i < loaded.length; i++) {
+      expect(Math.abs(loaded[i].height - skeleton[i].height)).toBeLessThan(1);
+      expect(Math.abs(loaded[i].top - skeleton[i].top)).toBeLessThan(1);
+    }
     for (const included of [false, true]) {
       if (included) await expiredSwitch(page).click();
       await expect(page.locator('.member-card')).toHaveCount(included ? 7 : 4);
@@ -159,8 +182,37 @@ for (const width of [390, 768, 1440]) for (const theme of ['light', 'dark']) {
       const switchBox = await expiredSwitch(page).boundingBox();
       const scrollBox = await page.locator('.member-category-scroll').boundingBox();
       expect(switchBox.height).toBeGreaterThanOrEqual(44);
-      expect(switchBox.x).toBeGreaterThanOrEqual(scrollBox.x + scrollBox.width);
+      expect(switchBox.y).toBeGreaterThanOrEqual(scrollBox.y + scrollBox.height);
+      expect(Math.abs(switchBox.x + switchBox.width - scrollBox.x - scrollBox.width)).toBeLessThan(1);
       expect(switchBox.x + switchBox.width).toBeLessThanOrEqual(width);
+      const cards = await page.locator('.member-card').evaluateAll(nodes => nodes.map(card => {
+        const box = card.getBoundingClientRect();
+        const title = card.querySelector('.member-title');
+        const monthly = card.querySelector('.monthly-price');
+        return { x: box.x, y: box.y, width: box.width, height: box.height,
+          titleSize: parseFloat(getComputedStyle(title).fontSize), monthlySize: parseFloat(getComputedStyle(monthly).fontSize),
+          logos: card.querySelectorAll('.membership-logo').length,
+          overflow: card.scrollWidth > card.clientWidth,
+          expiry: card.querySelector('.expiry-row').getBoundingClientRect().y - box.y,
+          price: card.querySelector('.member-price').getBoundingClientRect().y - box.y };
+      }));
+      for (const card of cards) {
+        expect(card.logos).toBe(1);
+        expect(card.overflow).toBe(false);
+        expect(card.monthlySize).toBeLessThan(card.titleSize);
+        expect(Math.abs(card.height - cards[0].height)).toBeLessThan(1);
+        expect(Math.abs(card.width - cards[0].width)).toBeLessThan(1);
+        expect(Math.abs(card.expiry - cards[0].expiry)).toBeLessThan(1);
+        expect(Math.abs(card.price - cards[0].price)).toBeLessThan(1);
+      }
+      if (width < 700) expect(cards[1].y).toBeGreaterThan(cards[0].y);
+      else {
+        expect(cards[1].y).toBe(cards[0].y);
+        expect(cards[1].x).toBeGreaterThan(cards[0].x);
+        expect(cards[2].y).toBeGreaterThan(cards[0].y);
+      }
+      await expect(page.getByText('自动续费', { exact: true })).toBeVisible();
+      await expect(page.locator('.monthly-price').filter({ hasText: '1150.00' })).toHaveCount(1);
       await page.screenshot({ path: `artifacts/member-filters/${width}-${theme}-${included ? 'included' : 'active'}.png`, fullPage: true });
     }
     expect(errors).toEqual([]);

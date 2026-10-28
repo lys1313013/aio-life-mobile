@@ -10,7 +10,7 @@ for (const width of [320, 390, 768, 1440]) {
       const errors = [];
       page.on('pageerror', error => errors.push(error.message));
       const state = await setup(page);
-      state.members[0] = { ...state.members[0], startDate: '2026-01-31', expiryDate: '2026-02-28', note: '模拟备注，折叠后必须保留', color: '#722ed1' };
+      state.members[0] = { ...state.members[0], startDate: '2026-01-31', expiryDate: '2026-02-28', remark: '模拟备注，折叠后必须保留', color: '#722ed1' };
       await page.route('**/api/quick-nav/candidates?client=mobile', route => route.fulfill({ json: { code: 0, data: entries } }));
       await page.route('**/api/menu/preferences?client=mobile', route => route.fulfill({ json: { code: 0, data: { menus: entries.map(e => ({ id: e.menuId, title: e.title, children: [] })), hiddenMenuIds: [] } } }));
       await page.locator('uni-tabbar').getByText('全部', { exact: true }).click();
@@ -59,7 +59,7 @@ for (const width of [320, 390, 768, 1440]) {
       await dialog.getByRole('button', { name: '保存', exact: true }).click();
       await expect(dialog).toHaveCount(0);
       expect(state.writes.filter(w => w.path === '/api/membership').at(-1).body).toMatchObject({
-        id, note: '模拟备注修改', color: '#722ed1', autoRenew: 1, expiryDate: '2026-02-28', monthlyAmount: 20,
+        id, remark: '模拟备注修改', color: '#722ed1', autoRenew: 1, expiryDate: '2026-02-28', monthlyAmount: 20,
       });
       await page.getByRole('button', { name: '新增订阅', exact: true }).click();
       await expect(page.getByRole('button', { name: '颜色与备注', exact: true })).toHaveAttribute('aria-expanded', 'false');

@@ -3,18 +3,17 @@ import MobileSwitch from '../../components/MobileSwitch.uvue';
 import { usePageRefresh } from '../../services/page-refresh.ts'
 import MembershipRecordEditor from '../../components/record-editors/MembershipRecordEditor.uvue';
 
-import ContentSkeleton from '../../components/ContentSkeleton.uvue';
 import { computed, onUnmounted, ref, watch } from 'vue';
 import { onLoad, onShow } from '@dcloudio/uni-app';
 import MobilePage from '../../components/MobilePage.uvue';
 import PageHeader from '../../components/PageHeader.uvue';
 import FloatingActionButton from '../../components/FloatingActionButton.uvue';
 import PageState from '../../components/PageState.uvue';
-import AppIcon from '../../components/AppIcon.uvue';
 import MembershipLogo from '../../components/MembershipLogo.uvue';
-import { memberCategories as categories, memberCategoryLabels as categoryLabels, memberCategoryIcons as categoryIcons } from '../../services/membership-provider.ts';
+import { memberCategories as categories, memberCategoryLabels as categoryLabels } from '../../services/membership-provider.ts';
 import { createRecordScope } from '../../services/records/page-scope.ts';
 import { useTabSwipe } from '../../services/tab-swipe.ts';
+import { memberCardStyle } from './services/member-card.ts';
 import { isDark } from '../../services/theme.ts';
 import {
   fetchMembers,
@@ -172,6 +171,12 @@ function deleted(id) {
     <view class="member-page ui-page-body" :class="{ 'member-page-dark': isDark }">
       <PageHeader title="订阅" :back="true" @back="uni.navigateBack()" />
       <PageState skeleton="metrics" :loading="statsLoading" :error="statsError" @retry="loadStats">
+        <template #loading>
+          <view class="member-summary ui-section" aria-hidden="true">
+            <view class="summary-cost"><view class="skeleton-line skeleton-label" :class="{ 'skeleton-dark': isDark }" /><view class="skeleton-line skeleton-total" :class="{ 'skeleton-dark': isDark }" /></view>
+            <view class="metrics"><view v-for="n in 3" :key="n" class="member-metric"><view class="skeleton-line skeleton-label" :class="{ 'skeleton-dark': isDark }" /><view class="skeleton-line skeleton-metric" :class="{ 'skeleton-dark': isDark }" /></view></view>
+          </view>
+        </template>
         <view class="member-summary ui-section">
           <view class="summary-cost">
             <text class="metric-label" :class="{ 'secondary-text-dark': isDark }">当前月均</text>
@@ -194,32 +199,51 @@ function deleted(id) {
             </button>
           </view>
         </scroll-view>
-        <MobileSwitch label="包含过期" aria-label="包含过期" :checked="includeExpired" @change="toggleExpired" />
+        <view class="member-filter-options"><MobileSwitch label="包含过期" aria-label="包含过期" :checked="includeExpired" @change="toggleExpired" /></view>
       </view>
       <view class="tab-swipe-viewport" @touchstart="tabSwipe.touchStart" @touchmove="tabSwipe.touchMove" @touchend="tabSwipe.touchEnd" @touchcancel="tabSwipe.cancel">
       <view class="tab-swipe-surface" :style="tabSwipeStyle">
       <PageState skeleton="list" :loading="loading" :error="error" :empty="!sortedMembers.length" :empty-text="rows.length > 0 && !includeExpired ? '暂无生效中的会员' : '暂无会员'" @retry="load()">
-<template #loading><view class="member-grid" ><view v-for="n in 6" :key="n" class="member-card" :class="{ 'surface-dark': isDark, 'text-dark': isDark }"><ContentSkeleton variant="tile" /></view></view></template>
-
+        <template #loading>
+          <view class="member-grid" aria-hidden="true">
+            <view v-for="n in 4" :key="n" class="member-card" :class="{ 'surface-dark': isDark }">
+              <view class="card-heading">
+                <view class="member-logo-frame" :class="{ 'member-logo-frame-dark': isDark }"><view class="skeleton-logo" :class="{ 'skeleton-dark': isDark }" /></view>
+                <view class="member-identity"><view class="skeleton-line skeleton-title" :class="{ 'skeleton-dark': isDark }" /><view class="skeleton-line skeleton-label" :class="{ 'skeleton-dark': isDark }" /></view>
+                <view class="skeleton-line skeleton-status" :class="{ 'skeleton-dark': isDark }" />
+              </view>
+              <view class="member-details" :class="{ 'member-details-dark': isDark }">
+              <view class="expiry-row"><view class="skeleton-line skeleton-date" :class="{ 'skeleton-dark': isDark }" /><view class="skeleton-line skeleton-label" :class="{ 'skeleton-dark': isDark }" /></view>
+              <view class="member-price" :class="{ 'member-price-dark': isDark }"><view class="skeleton-line skeleton-date" :class="{ 'skeleton-dark': isDark }" /><view class="skeleton-line skeleton-date" :class="{ 'skeleton-dark': isDark }" /></view>
+              </view>
+            </view>
+          </view>
+        </template>
         <view class="member-grid">
-          <button role="button" tabindex="0" v-for="item in sortedMembers" :key="item.id" class="member-card ui-type-body" :class="{ 'surface-dark': isDark, 'text-dark': isDark }" :aria-label="'编辑订阅：' + item.name" @click="open(item)" @keydown.enter.prevent="open(item)" @keydown.space.prevent="open(item)">
+          <button role="button" tabindex="0" v-for="item in sortedMembers" :key="item.id" class="member-card ui-type-body" :style="memberCardStyle(item.color, isDark)" :aria-label="'编辑订阅：' + item.name" @click="open(item)" @keydown.enter.prevent="open(item)" @keydown.space.prevent="open(item)">
             <view class="card-heading">
-              <MembershipLogo :icon-key="item.providerIconKey" :category="item.category" :name="item.providerName || item.provider" :size="24" />
-              <text class="member-title">{{ item.name }}</text>
-              <AppIcon v-if="item.autoRenew === 1" name="ant-design:sync-outlined" :size="14" color="#4285ed" />
+              <view class="member-logo-frame" :class="{ 'member-logo-frame-dark': isDark }"><MembershipLogo :icon-key="item.providerIconKey" :category="item.category" :name="item.providerName || item.provider || item.name" :size="36" /></view>
+              <view class="member-identity">
+                <text class="member-title" :class="{ 'text-dark': isDark }">{{ item.name }}</text>
+                <view class="member-tags">
+                  <text class="category-label" :class="{ 'secondary-text-dark': isDark }">{{ categoryLabels[categories.indexOf(item.category)] || '其他' }}</text>
+                  <text v-if="!item.providerIconKey && (item.providerName || item.provider) && (item.providerName || item.provider).trim() !== (item.name || '').trim()" class="member-provider" :class="{ 'secondary-text-dark': isDark }">· {{ item.providerName || item.provider }}</text>
+                </view>
+              </view>
+              <view class="member-state">
+                <text class="member-status" :class="['member-status-' + item.status, isDark ? 'member-status-' + item.status + '-dark' : '']">{{ statusLabels[statusCodes.indexOf(item.status)] || item.status }}</text>
+                <text v-if="item.autoRenew === 1" class="member-renew" :class="{ 'secondary-text-dark': isDark }">自动续费</text>
+              </view>
             </view>
-            <text v-if="!item.providerIconKey && (item.providerName || item.provider) && (item.providerName || item.provider).trim() !== (item.name || '').trim()" class="member-provider" :class="{ 'secondary-text-dark': isDark }">{{ item.providerName || item.provider }}</text>
-            <view class="member-tags">
-              <text class="member-status" :class="'member-status-' + item.status">{{ statusLabels[statusCodes.indexOf(item.status)] || item.status }}</text>
-              <view class="category-tag" :class="{ 'category-tag-dark': isDark }"><AppIcon :name="categoryIcons[categories.indexOf(item.category)] || categoryIcons[categoryIcons.length - 1]" :size="12" /><text class="category-label">{{ categoryLabels[categories.indexOf(item.category)] || '其他' }}</text></view>
-            </view>
+            <view class="member-details" :class="{ 'member-details-dark': isDark }">
             <view class="expiry-row">
-              <view class="expiry-date" :class="{ 'secondary-text-dark': isDark }"><AppIcon name="ant-design:calendar-outlined" :size="12" /><text class="expiry-date-text" :class="{ 'secondary-text-dark': isDark }">{{ item.expiryDate }}</text></view>
-              <text class="remaining-days" :class="'member-status-' + item.status">{{ item.status === 'expired' ? '已过期' : '剩 ' + item.remainingDays + ' 天' }}</text>
+              <view class="expiry-date"><text class="expiry-date-text" :class="{ 'secondary-text-dark': isDark }">{{ item.expiryDate }} 到期</text></view>
+              <text class="remaining-days" :class="['remaining-' + item.status, isDark ? 'remaining-' + item.status + '-dark' : '']">{{ item.status === 'expired' ? '已过期' : '剩 ' + item.remainingDays + ' 天' }}</text>
             </view>
             <view class="member-price" :class="{ 'member-price-dark': isDark }">
               <text class="member-secondary" :class="{ 'secondary-text-dark': isDark }">{{ cycleLabels[cycles.indexOf(item.billingCycle)] || '月' }} ¥{{ Number(item.price || 0).toFixed(2) }}</text>
-              <text class="monthly-price">月均 ¥{{ Number(item.monthlyAmount || 0).toFixed(2) }}</text>
+              <text class="monthly-price" :class="{ 'text-dark': isDark }">月均 ¥{{ Number(item.monthlyAmount || 0).toFixed(2) }}</text>
+            </view>
             </view>
           </button>
         </view>
@@ -244,16 +268,15 @@ function deleted(id) {
 /* 为悬浮新增按钮预留滚动空间，确保末行卡片可完整露出。 */
 .member-page { color: #27272a; padding-bottom: calc(56px + #{$space-page} + #{$space-inline}); }
 .member-page-dark { color: #eeeeef; }
-.toolbar { flex-direction: row; align-items: center; }
 .member-summary { display: flex; flex-direction: column; gap: $space-section; padding: $space-inline 0 $space-section; }
 .summary-cost { min-width: 0; gap: $space-detail; }
-.summary-amount { color: #27272a; @include type-style('hero'); overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
+.summary-amount { color: #202c3e; @include type-style('metric'); overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
 .metrics { display: flex; flex-direction: row; gap: $space-inline; }
 .member-metric { flex: 1; min-width: 0; gap: $space-detail; }
 .metric-label { color: $text-secondary-light; @include type-style('caption'); }
 .metric-value { color: #27272a; @include type-style('metric-compact'); font-variant-numeric: tabular-nums; }
-.member-filters { flex-direction: row; align-items: center; gap: $space-inline; margin-bottom: $space-section; }
-.member-category-scroll { flex: 1; min-width: 0; white-space: nowrap; }
+.member-filters { flex-direction: column; gap: $space-detail; margin-bottom: $space-section; }
+.member-category-scroll { width: 100%; min-width: 0; white-space: nowrap; }
 .member-category-tabs { flex-direction: row; flex-wrap: nowrap; gap: $space-inline;
 /* #ifndef APP */
 width: max-content;
@@ -262,34 +285,58 @@ width: max-content;
 flex-shrink: 0;
 /* #endif */
 }
-.member-category-tab { display: flex; flex-direction: row; align-items: center; justify-content: center; flex-shrink: 0; gap: $space-detail; min-width: $space-controlMin; min-height: $space-controlMin; margin: 0; padding: 0 $space-detail; border: 0; border-bottom: 2px solid transparent; border-radius: 0; background-color: transparent; }
+.member-filter-options { flex-direction: row; justify-content: flex-end; min-height: $space-controlMin; align-items: center; }
+.member-category-tab { display: flex; flex-direction: row; align-items: center; justify-content: center; flex-shrink: 0; gap: $space-detail; min-width: $space-controlMin; min-height: $space-controlMin; margin: 0; padding: 0 $space-card; border: 0; border-radius: 14px; background-color: rgba(125, 140, 160, 0.08); }
 .member-category-label { color: $text-secondary-light; @include type-style('body'); }
 .member-category-count { color: $text-secondary-light; @include type-style('caption'); font-variant-numeric: tabular-nums; }
-.member-category-tab-active { border-bottom-color: #2563eb; }
-.member-category-tab-active-dark { border-bottom-color: #6c9cff; }
+.member-category-tab-active { background-color: #2563eb; }
+.member-category-tab-active-dark { background-color: #315fbb; }
 .member-grid { display: flex; flex-direction: row; flex-wrap: wrap; gap: $space-section; }
-.member-card { display: flex; flex-direction: column; width: calc((100% - #{$space-section}) / 2); min-width: 0; box-sizing: border-box; margin: 0; padding: $space-card; gap: $space-section; color: #27272a; text-align: left; line-height: type-leading('normal'); background-color: #ffffff; border: 1px solid #e4e7ec; border-radius: 16px; }
-.card-heading { flex-direction: row; align-items: center; gap: $space-detail; min-height: 22px; }
-.member-title { flex: 1; min-width: 0; @include type-style('title');   overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.member-provider { color: $text-secondary-light; @include type-style('caption'); margin-top: -$space-inline; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.member-tags { flex-direction: row; flex-wrap: wrap; align-items: center; gap: $space-detail; }
-.member-status { @include type-style('badge-strong');  padding: $space-detail;  border-radius: 6px; }
-.member-status-active { color: #35a879; background-color: rgba(53, 168, 121, 0.10); }
-.member-status-expiring { color: #ce9424; background-color: rgba(217, 161, 38, 0.10); }
-.member-status-expired { color: #9097a2; background-color: rgba(139, 143, 153, 0.10); }
-.category-tag { flex-direction: row; align-items: center; gap: $space-detail; padding: $space-detail; @include type-style('badge');  background-color: #f1f3f6; border-radius: 6px; color: #667080; }
-.category-label { @include type-style('badge');  }
-.expiry-date-text { @include type-style('badge');  color: $text-secondary-light; }
-.category-tag-dark { background-color: #292c32; color: #c0c4cd; }
-.expiry-row { flex-direction: row; flex-wrap: wrap; align-items: center; gap: $space-detail; margin-top: auto; }
-.expiry-date { flex-direction: row; align-items: center; gap: $space-detail; @include type-style('badge'); color: $text-secondary-light;  }
-.remaining-days { margin-left: auto; padding: 0 $space-detail; border-radius: 8px; @include type-style('badge-strong');   }
-.member-price { flex-direction: row; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: $space-detail; padding-top: $space-inline; border-top: 1px dashed #e4e7ec; }
-.member-price-dark { border-color: #30343b; }
-.member-secondary { color: $text-secondary-light; @include type-style('badge');  }
-.monthly-price { margin-left: auto; @include type-style('caption-strong');   }
-.surface-dark { background-color: #1c1e22; border-color: #33363b; }
-.text-dark { color: #eeeeef; }
+.member-card { display: flex; flex-direction: column; width: 100%; min-width: 0; box-sizing: border-box; margin: 0; padding: 0; gap: 0; text-align: left; background-color: #ffffff; border: $space-hairline solid #e4e7ec; border-radius: 18px; box-shadow: 0 4px 14px rgba(27, 43, 65, 0.055); }
+/* 标题与副标题共用固定两行几何；长名称截断，不改变同组卡片的高度。 */
+.card-heading { flex-direction: row; align-items: center; gap: $space-section; min-height: $space-controlMin; padding: $space-card; box-sizing: content-box; height: calc(#{type-line('title')} + #{type-line('caption')} + #{$space-detail}); }
+.member-logo-frame { flex-shrink: 0; width: $space-controlMin; height: $space-controlMin; align-items: center; justify-content: center; border-radius: 13px; background-color: rgba(255, 255, 255, 0.9); border: $space-hairline solid rgba(255, 255, 255, 0.95); box-shadow: 0 2px 6px rgba(31, 49, 73, 0.07); }
+.member-logo-frame-dark { background-color: rgba(27, 31, 39, 0.9); border-color: rgba(203, 215, 235, 0.12); }
+.member-details { gap: $space-inline; padding: $space-inline $space-card $space-card; border-top: $space-hairline solid rgba(255, 255, 255, 0.9); border-radius: 12px 12px 17px 17px; background-color: rgba(255, 255, 255, 0.5); }
+.member-details-dark { background-color: rgba(16, 20, 27, 0.3); border-top-color: rgba(203, 215, 235, 0.08); }
+.member-identity { flex: 1; min-width: 0; gap: $space-detail; }
+.member-title { color: #202c3e; @include type-style('title'); font-weight: type-weight('strong'); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.member-tags { flex-direction: row; align-items: center; gap: $space-detail; min-width: 0; }
+.category-label { flex-shrink: 0; color: $text-secondary-light; @include type-style('caption'); }
+.member-provider { flex: 1; min-width: 0; color: $text-secondary-light; @include type-style('caption'); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.member-state { align-self: stretch; align-items: flex-end; flex-shrink: 0; gap: $space-detail; }
+.member-status { @include type-style('badge-strong'); padding: $space-detail $space-inline; border-radius: 20px; white-space: nowrap; }
+.member-renew { color: $text-secondary-light; @include type-style('badge'); }
+.member-status-active { color: #18764e; background-color: rgba(42, 157, 111, 0.10); }
+.member-status-expiring { color: #9a620b; background-color: rgba(224, 161, 46, 0.14); }
+.member-status-expired { color: #626b79; background-color: rgba(109, 123, 143, 0.10); }
+.member-status-active-dark { color: #83d5b0; background-color: rgba(75, 187, 135, 0.13); }
+.member-status-expiring-dark { color: #efc47e; background-color: rgba(224, 161, 46, 0.13); }
+.member-status-expired-dark { color: #bec4ce; background-color: rgba(151, 162, 181, 0.12); }
+.expiry-row { flex-direction: row; justify-content: space-between; align-items: center; gap: $space-detail; min-height: type-line('caption'); }
+.expiry-date { min-width: 0; }
+.expiry-date-text { @include type-style('caption'); color: $text-secondary-light; font-variant-numeric: tabular-nums; }
+.remaining-days { flex-shrink: 0; @include type-style('caption-strong'); font-variant-numeric: tabular-nums; }
+.remaining-active { color: #18764e; }
+.remaining-expiring { color: #9a620b; }
+.remaining-expired { color: #626b79; }
+.remaining-active-dark { color: #83d5b0; }
+.remaining-expiring-dark { color: #efc47e; }
+.remaining-expired-dark { color: #bec4ce; }
+.member-price { flex-direction: row; justify-content: space-between; align-items: center; gap: $space-detail; padding-top: $space-inline; border-top: $space-hairline solid rgba(75, 96, 125, 0.10); min-height: calc(#{type-line('caption')} + #{$space-inline} + #{$space-hairline}); }
+.member-price-dark { border-color: rgba(203, 215, 235, 0.12); }
+.member-secondary { color: $text-secondary-light; @include type-style('caption'); font-variant-numeric: tabular-nums; }
+.monthly-price { color: #34445c; margin-left: auto; @include type-style('caption-strong'); font-variant-numeric: tabular-nums; }
+.surface-dark { background-color: #1c1f25; border-color: #333a45; }
+.skeleton-line { background-color: #e7ebf0; border-radius: 4px; height: type-line('caption'); }
+.skeleton-logo { width: 36px; height: 36px; flex-shrink: 0; background-color: #e7ebf0; border-radius: 10px; }
+.skeleton-title { width: 75%; height: type-line('title'); }
+.skeleton-label { width: 52px; }
+.skeleton-date { width: 96px; }
+.skeleton-status { width: 60px; align-self: flex-start; height: calc(#{type-line('badge')} + #{$space-detail} * 2); }
+.skeleton-total { width: 140px; height: type-line('metric'); }
+.skeleton-metric { width: 24px; height: type-line('metric-compact'); }
+.skeleton-dark { background-color: #303642; }
 /* #ifdef WEB || MP-WEIXIN */
 .member-card::after { border: 0; }
 .member-category-tab::after { border: 0; }
@@ -298,19 +345,18 @@ flex-shrink: 0;
 .member-card:focus-visible { outline: 2px solid #4285ed; outline-offset: 2px; }
 .member-category-tab:focus-visible { outline: 2px solid #4285ed; outline-offset: -2px; }
 /* #endif */
-@media (min-width: 700px) {
+@media (min-width: 360px) {
   .member-summary { flex-direction: row; align-items: center; }
   .summary-cost { flex: 1; }
-  .metrics { flex: 2; }
-  .member-card { width: calc((100% - #{$space-section} * 2) / 3); }
+  .metrics { flex: 1.5; }
 }
-@media (min-width: 1100px) {
-  .member-card { width: calc((100% - #{$space-section} * 3) / 4); }
+@media (min-width: 700px) {
+  .member-card { width: calc((100% - #{$space-section}) / 2); }
 }
-
+.text-dark { color: #edf1f7; }
 .secondary-text-dark { color: $text-secondary-dark; }
-.member-category-selected { color: #2563eb; }
-.member-category-selected-dark { color: #6c9cff; }
-.metric-alert { color: #b7791f; }
+.member-category-selected { color: #ffffff; }
+.member-category-selected-dark { color: #ffffff; }
+.metric-alert { color: #a56b13; }
 .metric-alert-dark { color: #e4b45e; }
 </style>
