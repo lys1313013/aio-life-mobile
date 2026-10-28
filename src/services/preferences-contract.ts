@@ -16,5 +16,5 @@ export function passwordPayload(form) {
   return { oldPassword: form.oldPassword, newPassword: form.password }
 }
 export function notificationPayload(items) {
-  return { items: items.flatMap(({ bizType, channels }) => channels.map(({ channel, enabled }) => ({ bizType, channel, enabled: !!enabled }))) }
+  return { items: items.flatMap(({ bizType, channels }) => channels.map(({ channel, isEnabled }) => ({ bizType, channel, isEnabled }))) }
 }

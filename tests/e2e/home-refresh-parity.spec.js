@@ -110,19 +110,16 @@ test('锁定卡片不调度、不弹密码、不读取业务',async({page})=>{
 });
 
 
-test('主动解锁返回后显示提交，前台锁过期撤下旧内容并停止调度',async({page})=>{
+test('主动解锁留在首页显示提交，前台锁过期撤下旧内容并停止调度',async({page})=>{
   await page.clock.install({time:new Date('2026-10-09T10:00:00+08:00')});
   const f=await setup(page,{'/auth/secondary-lock/menus':['github-menu'],'/menu/all':[{path:'/coding/github',meta:{menuId:'github-menu'}}]});
   const commits=section(page,'最近提交'), modal=page.getByRole('dialog',{name:'解锁菜单',exact:true});
   await commits.getByRole('button',{name:'解锁最近提交',exact:true}).click();await expect(modal).toBeVisible();
   await modal.locator('input').fill('001234');await modal.getByRole('button',{name:'确认密码',exact:true}).click();
-  await expect(page).toHaveURL(/pages\/coding\/github/);
-  await page.getByRole('button',{name:'最近提交',exact:true}).click();
-  await expect(page.locator('.record-title').filter({hasText:'模拟提交：'}).last()).toBeVisible();
-  await page.clock.runFor(100);
-  await page.getByRole('button',{name:'返回',exact:true}).click();
+  await expect(modal).toHaveCount(0);
   await expect(commits).toContainText('fixture/repo');await expect(page.getByRole('button',{name:'刷新最近提交',exact:true})).toBeEnabled();
-  // 让路由返回后的 uni scroll-view 挂载 nextTick 完成，再推进长时间。
+  await expect(page).toHaveURL(/pages\/home\/index/);
+  // 等待卡片内容更新完成，再推进解锁有效期。
   await page.clock.runFor(100);expect(f.errors).toEqual([]);
   const count=f.count('/github/recent-commits');
   await page.clock.fastForward(29*60000+1000);

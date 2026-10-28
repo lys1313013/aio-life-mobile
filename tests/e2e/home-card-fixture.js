@@ -6,6 +6,6 @@ function homeCardFixture() {
     ['section.thoughts','闪念','lucide:lightbulb'], ['section.goal','目标','lucide:crosshair'], ['section.anniversary','纪念日','mdi:calendar-heart'],
     ['section.reading','阅读','lucide:book-open'], ['section.membership','会员','lucide:crown'], ['section.movie','观影','lucide:clapperboard'],
     ['section.exercise','运动','mdi:run'], ['section.github','GitHub 最近提交','mdi:github'],
-  ].map(([cardKey,title,icon],sortOrder) => ({ cardKey,title,icon,sortOrder,group:cardKey.split('.')[0],enabled:true }));
+  ].map(([cardKey,title,icon],sortOrder) => ({ cardKey,title,icon,sortOrder,group:cardKey.split('.')[0],isEnabled: 1 }));
 }
 module.exports = { homeCardFixture };

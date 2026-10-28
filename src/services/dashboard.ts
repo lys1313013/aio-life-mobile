@@ -24,7 +24,7 @@ export interface QuickLink {
   path: string
   icon?: string
   color?: string
-  enabled: number
+  isEnabled: number
   sortOrder: number
 }
 export interface Thought {
@@ -40,7 +40,7 @@ export interface WatchedTask {
   taskName?: string
   isCompleted: number
   priority?: number
-  sort?: number
+  sortOrder?: number
   isStarred?: number
   startTime?: string | null
   endTime?: string | null

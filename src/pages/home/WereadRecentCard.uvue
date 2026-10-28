@@ -10,6 +10,7 @@ import { menuVisualState } from '../../services/menu-visuals.ts'
 import { loadMenuAccess, cachedMenuAccess } from '../../services/menu-access-cache.ts'
 import { lockedMenuPaths } from '../../services/life-catalog.ts'
 import { isMenuUnlocked } from '../../services/secondary-lock.ts'
+import { unlockHomeCard } from './services/card-unlock.ts'
 import { homeDataRevision } from '../../services/home-refresh.ts'
 import { businessCardMaxHeight } from './services/business-cards.ts'
 import { wereadShelfWidth, wereadShelfLayout, wereadShelfColumns } from './services/weread-shelf.ts'
@@ -140,6 +141,9 @@ function onScroll(event) {
   // 内层 scroll-view 会消费 touchmove；滚动时仍须取消外层待触发的长按排序。
   if (!props.sorting) emit('scrolling')
 }
+function unlockCard() {
+  return unlockHomeCard(['/pages/home/index', route], () => refresh(), () => props.active && !props.sorting && available.value)
+}
 function openPage() { uni.navigateTo({ url: route }) }
 function readingDate(value) {
   const date = new Date(Number(value) * 1000), now = new Date()
@@ -214,7 +218,7 @@ async function openBook(book, webOnly = false) {
       <LoadingIndicator v-if="loading" class="updating" compact label="正在加载最近阅读" />
       <text v-else-if="error && books.length" class="error-text" role="alert">刷新失败</text>
     </view>
-    <view v-if="locked" class="placeholder" :style="bodyStyle"><button class="heading-link" role="button" aria-label="解锁微信读书" @click.stop="openPage"><text class="caption" :class="{ 'caption-dark': isDark }">点击解锁</text></button></view>
+    <view v-if="locked" class="placeholder" :style="bodyStyle"><button class="heading-link" role="button" aria-label="解锁微信读书" :disabled="sorting" @click.stop="unlockCard"><text class="caption" :class="{ 'caption-dark': isDark }">点击解锁</text></button></view>
     <view v-else-if="!loaded && (loading || preparing || !error)" class="shelf-loading" :style="bodyStyle" role="status" aria-label="正在加载最近阅读">
       <view class="book-list" :style="bodyStyle">
         <view v-for="column in shelfWidth.visibleColumns" :key="column" class="book-column" :style="columnStyle">

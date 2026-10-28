@@ -86,7 +86,7 @@ onUnmounted(() => { active = false })
 
 function add(item: QuickLink) {
   if (saving.value || draft.value.length >= QUICK_NAV_MAX) return
-  draft.value.push({ ...item, enabled: 1, sortOrder: draft.value.length })
+  draft.value.push({ ...item, isEnabled: 1, sortOrder: draft.value.length })
   if (draft.value.length >= QUICK_NAV_MAX) picking.value = false
 }
 function move(index: number, step: number) {
@@ -142,7 +142,7 @@ function visual(item: QuickLink) {
             @mousedown.stop="drag.start(item.menuId, $event, true)" @keydown.left.prevent="move(index, -1)" @keydown.right.prevent="move(index, 1)">
             <view class="quick-editor-grip-dots" aria-hidden="true"><view v-for="dot in 6" :key="dot" class="quick-editor-grip-dot" /></view>
             <LifeMenuIcon :icon="visual(item).icon" :size="24" :color="visual(item).iconColor" />
-            <text class="quick-editor-title" :class="[themeClass('quick-editor-title'), { 'quick-editor-hidden': item.enabled === 0 }]">{{ item.title }}</text>
+            <text class="quick-editor-title" :class="[themeClass('quick-editor-title'), { 'quick-editor-hidden': item.isEnabled === 0 }]">{{ item.title }}</text>
           </button>
           <button role="button" class="quick-editor-remove" :aria-label="'移除' + item.title" :disabled="saving" :aria-disabled="saving"
             @touchstart.stop @touchend.stop @mousedown.stop @click.stop="remove(index)">

@@ -29,6 +29,7 @@ import { cachedMenuAccess, loadMenuAccess } from '../../services/menu-access-cac
 import { createHomeRefreshScheduler, homeSectionRefreshSeconds } from './services/refresh-scheduler.ts'
 import { openExternalLink } from '../../services/external-link.ts'
 import { isMenuUnlocked } from '../../services/secondary-lock.ts'
+import { unlockHomeCard } from './services/card-unlock.ts'
 import { onShow, onHide, onUnload, onResize } from '@dcloudio/uni-app'
 import DashboardAction from '../../components/DashboardAction.uvue'
 import { menuVisuals } from '../../services/menu-visuals.ts'
@@ -85,7 +86,7 @@ onResize(event => { viewportWidth.value = event.size.windowWidth; cardOrder.canc
 const businessSorting = ref(false)
 const businessVisibility = reactive<Record<string, boolean>>({})
 const orderDisabled = computed(() => !active || homeCardPreferences.loading || !!homeCardPreferences.busy || loading.value || businessSorting.value || quickNavEditing.value)
-const orderSignature = () => homeCardPreferences.items.map(item => item.cardKey + ':' + item.enabled + ':' + item.sortOrder).join('|')
+const orderSignature = () => homeCardPreferences.items.map(item => item.cardKey + ':' + item.isEnabled + ':' + item.sortOrder).join('|')
 const cardOrder = useHomeCardOrder({
   rows: group => group === 'section' ? homeSections.value.filter(sectionVisible) : overviewOrderRows.value,
   disabled: () => orderDisabled.value,
@@ -102,7 +103,7 @@ function sectionVisible(section) {
   return (section.cardKey !== 'section.github' || githubBound.value) && businessVisibility[section.cardKey] !== false
 }
 const businessCardRefs = ref<Record<string, any>>({})
-const homeSections = computed(() => cardOrder.ordered('section', homeCardPreferences.items.filter(item => item.group === 'section' && item.enabled)))
+const homeSections = computed(() => cardOrder.ordered('section', homeCardPreferences.items.filter(item => item.group === 'section' && item.isEnabled)))
 const sectionEnabled = (key: string) => homeCards.enabled('section.' + (key === 'commits' ? 'github' : key))
 const businessActive = ref(false)
 const loading = ref(false)
@@ -119,7 +120,7 @@ const errorText = ref('')
 const cards = ref<OverviewCard[]>([])
 const overview = reactive({ loading: false, error: '', loaded: false })
 const savedQuickLinks = ref<QuickLink[]>([])
-const links = computed(() => savedQuickLinks.value.filter(item => item.enabled === 1))
+const links = computed(() => savedQuickLinks.value.filter(item => item.isEnabled === 1))
 function openQuickNavEditor(startPicker = false) {
   if (!states.links.loaded || quickNavEditing.value) return
   sectionVersions.links = (sectionVersions.links || 0) + 1
@@ -262,7 +263,7 @@ const visibleCards = computed(() =>
       homeCards.enabled('overview.' + item.type.toLowerCase()) && (item.loading || item.error || item.locked || (item.value !== '' && item.value != null)),
   ).sort((a, b) => homeCards.order('overview.' + a.type.toLowerCase()) - homeCards.order('overview.' + b.type.toLowerCase())), item => 'overview.' + item.type.toLowerCase()),
 )
-const overviewOrderRows = computed(() => !overview.loaded ? homeCardPreferences.items.filter(item => item.group === 'overview' && item.enabled) : visibleCards.value.map(item => ({ cardKey: 'overview.' + item.type.toLowerCase() })))
+const overviewOrderRows = computed(() => !overview.loaded ? homeCardPreferences.items.filter(item => item.group === 'overview' && item.isEnabled) : visibleCards.value.map(item => ({ cardKey: 'overview.' + item.type.toLowerCase() })))
 watch(() => visibleCards.value.map(item => item.type).sort().join('|') + homeSections.value.filter(sectionVisible).map(item => item.cardKey).sort().join('|'), () => cardOrder.cancel())
 const moreExercise = ref(false)
 const moreCommits = ref(false)
@@ -461,7 +462,7 @@ onMounted(() => document.addEventListener('visibilitychange', browserVisibilityC
 onBeforeUnmount(() => document.removeEventListener('visibilitychange', browserVisibilityChanged))
 // #endif
 
-watch(() => homeCardPreferences.items.map(item => item.cardKey + ':' + item.enabled).sort().join('|'), () => {
+watch(() => homeCardPreferences.items.map(item => item.cardKey + ':' + item.isEnabled).sort().join('|'), () => {
   // Saving may finish after navigating back from preferences. Reload newly enabled cards then.
   if (active && refreshedAt && homeCardPreferences.ready && !loading.value) void refresh()
 })
@@ -682,6 +683,9 @@ async function loadMore(key: string) {
     if (generation === homeGeneration && pageVersions[key] === version) { busy.value = false; discardExpiredHomeContent() }
   }
 }
+function unlockSection(key: string) {
+  return unlockHomeCard(['/pages/home/index', ...sectionRoutes[key]], () => loadSection(key, true), () => !interactionDisabled.value)
+}
 function openLink(path: string) { openBusinessLink(path) }
 function openGithub() {
   if (githubProfile.value && !states.commits.locked) openExternalLink(githubProfile.value)
@@ -703,7 +707,10 @@ function taskTimeRange(task: WatchedTask) {
 }
 function openOverviewLink(item: OverviewCard, destination?: string) {
   // 与 Web 一致：未配置链接的图标/标题和卡片正文都只刷新当前卡片。
-  if (item.locked) { openBusinessLink(cardRoutes[item.type] || '/pages/home/index'); return }
+  if (item.locked) {
+    void unlockHomeCard(['/pages/home/index', ...(cardRoutes[item.type] ? [cardRoutes[item.type]] : [])], () => loadCard(item, true), () => !interactionDisabled.value)
+    return
+  }
   if (!destination) { loadCard(item); return }
   if (destination === 'action:open-time-tracker-modal') { openTimeRecord(); return }
   if (destination === 'action:open-exercise-modal') { openBusinessLink('/record/exercise'); return }
@@ -827,7 +834,7 @@ function trendLines(points) {
         ><view v-if="homeCardPreferences.ready" class="overview-grid">
           <HomeCardSortCell
             v-if="(loading || overview.loading) && !overview.loaded"
-            v-for="item in homeCardPreferences.items.filter(item => item.group === 'overview' && item.enabled)"
+            v-for="item in homeCardPreferences.items.filter(item => item.group === 'overview' && item.isEnabled)"
             :key="item.cardKey" :card-key="item.cardKey" :title="item.title" group="overview" :order="cardOrder" :disabled="orderDisabled"
             ><view class="overview-card placeholder-card ui-pad-card"
                :class="themeClass('overview-card')"><ContentSkeleton variant="summary" label="正在加载概览" /></view>
@@ -877,7 +884,7 @@ function trendLines(points) {
               :loading="states.time.loading && !refreshing && !states.time.loaded"
               :retain-content="states.time.loaded"
               :error="timeDate ? '' : states.time.error"
-              :locked="states.time.locked" :refresh-disabled="interactionDisabled"
+              :locked="states.time.locked" :refresh-disabled="interactionDisabled" @unlock="unlockSection('time')"
               navigable @navigate="openLink('/time/time-tracker')"
               @refresh="loadSection('time')"
             >
@@ -942,7 +949,7 @@ function trendLines(points) {
               :updating="!quickNavEditing && states.links.loading && !refreshing && states.links.loaded"
               :retain-content="states.links.loaded"
               :error="quickNavEditing ? '' : states.links.error"
-              :locked="states.links.locked" :refresh-disabled="interactionDisabled"
+              :locked="states.links.locked" :refresh-disabled="interactionDisabled" @unlock="unlockSection('links')"
               @navigate="openQuickNavEditor()"
               @refresh="loadSection('links')"
             >
@@ -981,7 +988,7 @@ function trendLines(points) {
               :updating="states.watched.loading && !refreshing && states.watched.loaded"
               :retain-content="states.watched.loaded"
               :error="states.watched.error"
-              :locked="states.watched.locked" :refresh-disabled="interactionDisabled"
+              :locked="states.watched.locked" :refresh-disabled="interactionDisabled" @unlock="unlockSection('watched')"
               navigable @navigate="openLink('/task/todo')"
               @refresh="loadSection('watched')"
               ><template #loading><view class="watched-loading" :class="{ 'watched-loading-auto': watchedAutoHeight }" role="status" aria-label="正在加载待办"><view class="watched-skeleton-row" aria-hidden="true"><view class="watched-skeleton-check" :class="themeClass('time-skeleton-fill')" /><view class="watched-skeleton-copy"><view class="time-skeleton-fill watched-skeleton-line" :class="themeClass('time-skeleton-fill')" /><view class="time-skeleton-fill watched-skeleton-line" :class="themeClass('time-skeleton-fill')" /></view></view></view></template><scroll-view scroll-y :show-scrollbar="false" class="list-scroll" :class="{ 'list-scroll-auto': watchedAutoHeight }" :style="watchedAutoHeight ? { maxHeight: (sectionHeight('watched') - sectionInset('watched')) + 'px' } : {}"
@@ -1005,7 +1012,7 @@ function trendLines(points) {
               :updating="states.thoughts.loading && !refreshing && states.thoughts.loaded"
               :retain-content="states.thoughts.loaded"
               :error="states.thoughts.error"
-              :locked="states.thoughts.locked" :refresh-disabled="interactionDisabled"
+              :locked="states.thoughts.locked" :refresh-disabled="interactionDisabled" @unlock="unlockSection('thoughts')"
               navigable @navigate="openLink('/record/think')"
               @refresh="loadSection('thoughts')"
               ><template #actions><DashboardAction label="新增闪念" @click="addThought" /></template><template #loading><HomeListSkeleton label="正在加载闪念" :rows="2" :row-height="thoughtRowHeight" single-line /></template><view v-if="thoughts.length === 0" class="empty-state ui-pad-card"
@@ -1036,7 +1043,7 @@ function trendLines(points) {
               :updating="states.exercise.loading && !refreshing && states.exercise.loaded"
               :retain-content="states.exercise.loaded"
               :error="states.exercise.error"
-              :locked="states.exercise.locked" :refresh-disabled="interactionDisabled"
+              :locked="states.exercise.locked" :refresh-disabled="interactionDisabled" @unlock="unlockSection('exercise')"
               navigable @navigate="openLink('/record/exercise')"
               @refresh="loadSection('exercise')"
               ><template #actions><DashboardAction label="新增运动" @click="addExercise" /></template><template #loading><HomeListSkeleton label="正在加载运动" :rows="3" :row-height="40" single-line flush-top /></template><scroll-view scroll-y :show-scrollbar="false" class="list-scroll exercise-scroll" :lower-threshold="40" @scrolltolower="maybeLoadMore('exercise')" @touchstart="startCardSwipe('exercise', $event)" @touchend="finishCardSwipe('exercise', $event)"
@@ -1093,7 +1100,7 @@ function trendLines(points) {
               :updating="states.commits.loading && !refreshing && states.commits.loaded"
               :retain-content="states.commits.loaded"
               :error="states.commits.error"
-              :locked="states.commits.locked" :refresh-disabled="interactionDisabled"
+              :locked="states.commits.locked" :refresh-disabled="interactionDisabled" @unlock="unlockSection('commits')"
               navigable :title-label="githubProfile ? '访问 GitHub 主页' : '查看 GitHub'" @navigate="openGithub"
               @refresh="loadSection('commits')"
               ><template #loading><HomeListSkeleton label="正在加载最近提交" :rows="2" :row-height="commitRowHeight" /></template><view v-if="commits.length === 0" class="empty-state ui-pad-card"

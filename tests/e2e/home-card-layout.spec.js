@@ -144,7 +144,7 @@ for (const count of [1, 5]) {
     const pending = gate();
     const { homeCardFixture } = require('./home-card-fixture');
     const preferences = homeCardFixture().map((item, index) => ({ ...item, enabled: index < count }));
-    const tasks = preferences.filter(item => item.enabled).map(item => ({ type: item.cardKey.slice(9).toUpperCase(), title: item.title }));
+    const tasks = preferences.filter(item => item.isEnabled).map(item => ({ type: item.cardKey.slice(9).toUpperCase(), title: item.title }));
     await page.route(`${info.project.use.baseURL}/api/**`, async route => {
       const path = new URL(route.request().url()).pathname;
       let data = [];

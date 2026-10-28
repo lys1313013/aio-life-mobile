@@ -111,7 +111,6 @@ for (const width of [390, 768, 1440]) for (const theme of ['light', 'dark']) {
     await expect(page.locator('.repo-label')).toHaveCount(20);
     await expect(page.getByRole('button', { name: '继续加载' })).toHaveCount(0);
     expect(requests).toEqual([1]);
-    await page.waitForLoadState('networkidle');
     await scrollCommitsToBottom(page);
     await expect(page.getByRole('status', { name: '正在加载更多' })).toBeVisible();
     // More gestures during the pending request must not fetch the same page twice.

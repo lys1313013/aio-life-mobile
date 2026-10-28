@@ -16,7 +16,7 @@ async function setup(page, { count = 3, delay = 0, locked = false, fail = false,
     device: { items: Array.from({ length: count }, (_, i) => ({ id: 'device-' + i, name: '设备' + i, fileId: 'device-photo-' + i, usageDays: 200, dailyCost: 12.3 })), refreshInterval: 600 },
   };
   const fixtures = {
-    '/home/cards': keys.map((key, sortOrder) => ({ cardKey: 'section.' + key, title: titles[sortOrder], group: 'section', enabled, sortOrder })),
+    '/home/cards': keys.map((key, sortOrder) => ({ cardKey: 'section.' + key, title: titles[sortOrder], group: 'section', isEnabled: enabled, sortOrder })),
     '/menu/visuals': { menus: [], cards: {} }, '/user/info': { id: 'fixture-user', nickname: '测试用户' }, '/dashboard/tasks': [],
     '/auth/secondary-lock/menus': locked ? ['finance-expense'] : [],
     '/menu/all': routes.map((path, i) => ({ path, meta: { menuId: i === 3 ? 'finance-expense' : 'menu-' + i } })),
@@ -24,6 +24,13 @@ async function setup(page, { count = 3, delay = 0, locked = false, fail = false,
   };
   await page.route('**/api/**', async route => {
     const url = new URL(route.request().url()); const path = url.pathname.replace('/api', ''); calls.push(path);
+    if (path === '/auth/secondary-verify') {
+      const body = route.request().postDataJSON();
+      expect(body.menuPath).toBe('/finance-management/expense');
+      return route.fulfill({ json: body.password === '001234'
+        ? { code: 0, message: null, data: { menuPath: body.menuPath } }
+        : { code: 1, message: '二级密码错误', data: null } });
+    }
     if (path.startsWith('/file/preview/')) {
       imageHeaders.push(route.request().headers().authorization);
       const video = path.includes('video');
@@ -213,8 +220,9 @@ test('首页设备详情失败可重试，关闭慢请求不重开弹窗', async
   await expect(page).toHaveURL(/pages\/home\/index/);
 });
 
-for (const kind of ['income', 'expense']) test(`${kind} 日历明细弹窗触底分页、失败重试及关闭旧请求`, async ({ page }) => {
-  await page.setViewportSize({ width: 390, height: 700 });
+for (const width of [390, 820, 1440]) for (const theme of ['light', 'dark']) for (const kind of ['income', 'expense']) test(`${kind} 日历明细页触底分页、失败重试及返回原卡片 ${width} ${theme}`, async ({ page }, info) => {
+  await page.setViewportSize({ width, height: 700 });
+  await page.addInitScript(theme => localStorage.setItem('aio-life-mobile.theme.v1', JSON.stringify({ type: 'string', data: theme })), theme);
   await setup(page); const title = kind === 'income' ? '收入' : '支出';
   const card = page.locator('[aria-label="' + title + '首页卡片"]');
   await expect(card).toHaveAttribute('aria-busy', 'false');
@@ -222,18 +230,30 @@ for (const kind of ['income', 'expense']) test(`${kind} 日历明细弹窗触底
   await page.route('**/api/userDictType/getByDictType?*', route => route.fulfill({ json: { code: 0, data: { dictDetailList: [{ id: '1', dictLabel: '模拟分类' }] } } }));
   await page.route('**/api/' + kind + '/query?*', route => {
     const params = new URL(route.request().url()).searchParams, number = Number(params.get('page')); calls.push(Object.fromEntries(params));
-    return route.fulfill({ json: number === 2 && fail ? { code: 1, message: '模拟明细失败' } : { code: 0, data: { items: Array.from({ length: number === 1 ? 20 : 1 }, (_, index) => ({ id: String((number - 1) * 20 + index + 1), amt: 128.8, remark: '明细' + ((number - 1) * 20 + index + 1) + '：很长的收支描述需要正常换行而且不能撑宽弹窗', incDate: '2026-10-01', expTime: '2026-10-01 10:00:00', incTypeId: '1', expTypeId: '1' })), total: 21 } } });
+    return route.fulfill({ json: number === 2 && fail ? { code: 1, message: '模拟明细失败' } : { code: 0, data: { items: Array.from({ length: number === 1 ? 20 : 1 }, (_, index) => ({ id: String((number - 1) * 20 + index + 1), amt: 128.8, remark: '明细' + ((number - 1) * 20 + index + 1) + '：很长的收支描述需要正常换行而且不能撑宽页面', incDate: '2026-10-01', expTime: '2026-10-01 10:00:00', incTypeId: '1', expTypeId: '1' })), total: 21 } } });
   });
+  await card.locator('.calendar-cell').first().scrollIntoViewIfNeeded();
   const before = await card.boundingBox(); await card.locator('.calendar-cell').first().click();
-  const dialog = page.getByRole('dialog', { name: title + '明细' }); await expect(dialog).toBeVisible();
+  const dialog = page.getByRole('region', { name: title + '明细' }); await expect(dialog).toBeVisible();
+  await expect(page).toHaveURL(/pages\/finance\/calendar-details\?/);
   await expect(dialog).toContainText('明细20'); await expect(dialog).toContainText('模拟分类');
+  await expect(page.getByRole('dialog', { name: title + '明细' })).toHaveCount(0);
+  const back = dialog.getByRole('button', { name: '返回', exact: true });
+  await expect(back).toBeInViewport();
+  expect(await dialog.evaluate(el => el.scrollWidth > el.clientWidth + 1)).toBe(false);
+  await page.screenshot({ path: info.outputPath('calendar-details-long-list.png') });
   expect(calls[0].endTimeBefore).toBeTruthy(); expect(calls[0].startTime.includes(' ')).toBe(kind === 'expense');
-  await dialog.locator('.modal-scroll .uni-scroll-view-scrollbar-hidden').evaluate(el => { el.scrollTop = el.scrollHeight; });
+  await dialog.locator('.details-row').first().hover();
+  await page.mouse.wheel(0, 10000);
   await expect(dialog).toContainText('模拟明细失败'); fail = false;
   await dialog.getByRole('button', { name: '重试加载', exact: true }).click(); await expect(dialog).toContainText('明细21');
   expect(calls.map(row => row.page)).toEqual(['1', '2', '2']);
-  await dialog.getByRole('button', { name: '关闭', exact: true }).click(); await expect(dialog).toHaveCount(0);
+  await expect(back).toBeInViewport();
+  await dialog.getByRole('button', { name: '返回', exact: true }).click(); await expect(dialog).toHaveCount(0);
+  await expect(page).toHaveURL(/pages\/home\/index/);
+  await expect(card).toBeVisible();
   expect((await card.boundingBox()).height).toBe(before.height);
+  await expect.poll(async () => Math.abs((await card.boundingBox()).y - before.y)).toBeLessThanOrEqual(2);
 });
 
 test('收支日历范围独立持久化，切换 loading 保留高度，月年大金额完整展示', async ({ page }, info) => {
@@ -260,7 +280,7 @@ test('收支日历范围独立持久化，切换 loading 保留高度，月年�
 });
 
 for (const width of [390, 820, 1440]) for (const theme of ['light', 'dark']) {
-  test(`锁定卡片使用居中锁图标 ${width} ${theme}`, async ({ page }) => {
+  test(`锁定卡片原地解锁、取消与错误恢复 ${width} ${theme}`, async ({ page }) => {
     await page.setViewportSize({ width, height: 900 });
     await page.addInitScript(theme => localStorage.setItem('aio-life-mobile.theme.v1', JSON.stringify({ type: 'string', data: theme })), theme);
     const fixture = await setup(page, { locked: true });
@@ -275,7 +295,26 @@ for (const width of [390, 820, 1440]) for (const theme of ['light', 'dark']) {
     expect(fixture.calls).not.toContain('/home/sections/finance/calendar');
     const folder = path.resolve('artifacts/home-locked'); fs.mkdirSync(folder, { recursive: true });
     await card.screenshot({ path: path.join(folder, 'locked-' + width + '-' + theme + '.png') });
+    const modal = page.getByRole('dialog', { name: '解锁菜单', exact: true });
     await unlock.click();
-    await expect(page.getByRole('dialog', { name: '解锁菜单', exact: true })).toBeVisible();
+    await expect(modal).toBeVisible();
+    await page.mouse.click(4, 4);
+    await expect(modal).toHaveCount(0);
+    await expect(unlock).toBeVisible();
+    await expect(page).toHaveURL(/pages\/home\/index/);
+    expect(fixture.calls).not.toContain('/home/sections/finance/calendar');
+    await unlock.click();
+    await modal.locator('input').fill('9999');
+    await modal.getByRole('button', { name: '确认密码', exact: true }).click();
+    await expect(modal.getByRole('alert')).toHaveText('二级密码错误');
+    expect(fixture.calls).not.toContain('/home/sections/finance/calendar');
+    await modal.locator('input').fill('001234');
+    await modal.getByRole('button', { name: '确认密码', exact: true }).click();
+    await expect(modal).toHaveCount(0);
+    await expect(card).toContainText('10,000.00');
+    await expect(unlock).toHaveCount(0);
+    await expect(page).toHaveURL(/pages\/home\/index/);
+    await card.getByRole('button', { name: '查看收支概览', exact: true }).click();
+    await expect(page).toHaveURL(/pages\/finance\/index/);
   });
 }

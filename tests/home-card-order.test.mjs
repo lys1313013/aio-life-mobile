@@ -4,7 +4,7 @@ import { readFile } from 'node:fs/promises'
 import { transform } from 'esbuild'
 const source = await readFile(new URL('../src/pages/home/services/home-card-order.ts', import.meta.url), 'utf8')
 const { mergeVisibleCardOrder, closestCard, cardDropIndex, projectCardLayout } = await import('data:text/javascript;base64,' + Buffer.from(source).toString('base64'))
-const items = ['time', 'links', 'goal', 'reading', 'movie'].map((key, sortOrder) => ({ cardKey: 'section.' + key, group: 'section', enabled: key !== 'links', sortOrder }))
+const items = ['time', 'links', 'goal', 'reading', 'movie'].map((key, sortOrder) => ({ cardKey: 'section.' + key, group: 'section', isEnabled: (key !== 'links') ? 1 : 0, sortOrder }))
 test('加号触摸跳过整卡排序，释放或取消后卡片仍可正常长按', async () => {
   const cell = await readFile(new URL('../src/pages/home/HomeCardSortCell.uvue', import.meta.url), 'utf8')
   const script = cell.match(/<script setup lang="ts">([\s\S]*?)<\/script>/)[1]

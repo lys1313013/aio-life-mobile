@@ -14,6 +14,7 @@ import { cachedMenuAccess, loadMenuAccess } from '../../services/menu-access-cac
 import { loadQuickNavCandidates } from '../../services/quick-nav-candidates.ts'
 import { lockedMenuPaths, matchesNativeMenu } from '../../services/life-catalog.ts'
 import { isMenuUnlocked } from '../../services/secondary-lock.ts'
+import { unlockHomeCard } from './services/card-unlock.ts'
 import { openExternalLink } from '../../services/external-link.ts'
 import { createHomeRefreshScheduler } from './services/refresh-scheduler.ts'
 import { createSummaryController, summaryCards, summaryState, summaryEntry, summaryCaption, summaryMoney, financeSummaryKinds, summaryPeriods } from './services/summary-cards.ts'
@@ -70,10 +71,13 @@ async function changePeriod(period) {
   if (props.active) scheduler.resume()
 }
 function manualRefresh() { if (!props.refreshDisabled) void refresh() }
+function unlockCard() {
+  return unlockHomeCard(['/pages/home/index', ...card.access], () => refresh(), () => props.active && !props.refreshDisabled && state.available)
+}
 function navigate(id = '') {
   if (!props.active || props.refreshDisabled) return
   if (props.kind === 'device' && id && !state.locked && state.available) { deviceId.value = id; return }
-  const url = state.locked ? state.unlockRoute || card.route : summaryEntry(props.kind, id)
+  const url = summaryEntry(props.kind, id)
   if (url === '/pages/home/index') return
   uni.navigateTo({ url })
 }
@@ -91,7 +95,7 @@ function resume(row) { if (props.active && !props.refreshDisabled && !state.lock
 </script>
 <template>
   <view v-if="state.available" class="summary-card" :aria-label="card.title + '首页卡片'" :aria-busy="state.loading" :class="{ 'summary-dark': isDark }">
-    <DashboardSection :title="card.title" :icon="visual.icon" :icon-color="visual.iconColor" :height="height" :auto-height="!height" :loading="!financial && !state.data && !state.error && !state.locked" :updating="state.loading && !!state.data" :retain-content="financial || !!state.data" :error="state.error" :locked="state.locked" :refresh-disabled="refreshDisabled" navigable @navigate="navigate()" @refresh="manualRefresh">
+    <DashboardSection :title="card.title" :icon="visual.icon" :icon-color="visual.iconColor" :height="height" :auto-height="!height" :loading="!financial && !state.data && !state.error && !state.locked" :updating="state.loading && !!state.data" :retain-content="financial || !!state.data" :error="state.error" :locked="state.locked" :refresh-disabled="refreshDisabled" navigable @navigate="navigate()" @unlock="unlockCard" @refresh="manualRefresh">
       <template #actions><DashboardAction :label="actionLabel" @click="create" /></template>
       <template #loading><view class="summary-pending" role="status" :aria-label="'正在加载' + card.title"><view v-for="n in 3" :key="n" class="summary-skeleton-row"><view v-if="kind === 'video' || kind === 'device'" class="summary-image-placeholder" :class="{ 'summary-video-image': kind === 'video', 'summary-skeleton-dark': isDark }" /><view class="summary-skeleton-copy"><view class="summary-skeleton-line" :class="{ 'summary-skeleton-dark': isDark }" /><view class="summary-skeleton-caption" :class="{ 'summary-skeleton-dark': isDark }" /></view></view></view></template>
       <view v-if="financial" class="finance-summary">

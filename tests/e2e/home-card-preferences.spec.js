@@ -16,7 +16,7 @@ async function setup(page) {
         state.items = state.items.map(item => item.group === group ? { ...item, sortOrder: keys.indexOf(item.cardKey) } : item).sort((a,b) => a.group.localeCompare(b.group) || a.sortOrder-b.sortOrder);
       } else {
         const key = decodeURIComponent(url.pathname.split('/').at(-1));
-        state.items = state.items.map(item => item.cardKey === key ? { ...item, enabled: route.request().postDataJSON().enabled } : item);
+        state.items = state.items.map(item => item.cardKey === key ? { ...item, isEnabled: route.request().postDataJSON().isEnabled } : item);
       }
     }
     return route.fulfill({ json: { code: 0, data: state.items } });
@@ -36,7 +36,7 @@ async function touchDrag(page, from, to) {
   await from.scrollIntoViewIfNeeded();
   const a = await from.boundingBox(), b = await to.boundingBox();
   const cdp = await page.context().newCDPSession(page);
-  await cdp.send('Emulation.setTouchEmulationEnabled', { enabled:true, maxTouchPoints:1 });
+  await cdp.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints:1 });
   await cdp.send('Input.dispatchTouchEvent', {type:'touchStart',touchPoints:[{x:a.x+a.width/2,y:a.y+a.height/2}]});
   await page.waitForTimeout(400);
   for (let i=1;i<=8;i++) await cdp.send('Input.dispatchTouchEvent', {type:'touchMove',touchPoints:[{x:a.x+a.width/2,y:a.y+a.height/2+(b.y-a.y)*i/8}]});
@@ -48,11 +48,11 @@ test('开关即时保存、失败回退、拖动排序和刷新恢复', async ({
   const state = await setup(page);
   const first = page.locator('.preference-row').first();
   await first.getByRole('switch').click();
-  await expect.poll(() => state.items[0].enabled).toBe(false);
+  await expect.poll(() => state.items[0].isEnabled).toBe(0);
   state.fail = true;
   await first.getByRole('switch').click();
   await expect(first.getByRole('switch')).toHaveAttribute('aria-checked', 'false');
-  expect(state.items[0].enabled).toBe(false);
+  expect(state.items[0].isEnabled).toBe(0);
   state.fail = false;
   await touchDrag(page, first.locator('.drag-handle'), page.locator('.preference-row').nth(2).locator('.drag-handle'));
   await expect.poll(() => state.calls.filter(call => call.path.endsWith('/order')).length).toBe(1);
@@ -62,7 +62,7 @@ test('开关即时保存、失败回退、拖动排序和刷新恢复', async ({
   await page.getByRole('button', { name: '恢复默认', exact:true }).click();
   await page.getByRole('button', { name:'确认', exact:true }).click();
   await expect(page.locator('.card-name').first()).toHaveText('每日一题');
-  expect(state.items.every(item=>item.enabled)).toBe(true);
+  expect(state.items.every(item=>item.isEnabled)).toBe(true);
 
 });
 for (const width of [390,820,1440]) for (const dark of [false,true]) {
@@ -83,13 +83,13 @@ test('全部关闭不请求业务，GitHub 详情可独立于概览启用', asyn
   page.on('request', req => { const url=new URL(req.url()); if(url.pathname.startsWith('/api/')) calls.push(url.pathname); });
   await page.route('**/api/dashboard/tasks', route=>route.fulfill({json:{code:0,data:[{type:'GITHUB',title:'GitHub',icon:'mdi:github'}]}}));
   for(const suffix of ['', '?*']) await page.route('**/api/github/recent-commits'+suffix, route=>route.fulfill({json:{code:0,data:[{id:'test',repo:'fixture',message:'模拟提交',date:'2026-10-04T10:00:00'}]}}));
-  state.items=state.items.map(item=>({...item,enabled:false}));
+  state.items=state.items.map(item=>({...item,isEnabled: 0}));
   await page.goto('/#/pages/home/index');
   await expect(page.locator('.dashboard-content')).toBeVisible();
   await page.waitForTimeout(200);
   expect(calls.filter(path=>path.startsWith('/api/dashboard/card/')||path==='/api/github/recent-commits'||path==='/api/thought/dashboard')).toEqual([]);
   await expect(page.locator('.section-cell,.business-cell,.overview-cell')).toHaveCount(0);
-  state.items=state.items.map(item=>({...item,enabled:item.cardKey==='section.github'}));
+  state.items=state.items.map(item=>({...item,isEnabled:item.cardKey==='section.github' ? 1 : 0}));
   await page.reload();
   await expect(page.getByText('模拟提交',{exact:true})).toBeVisible();
   await expect(page.locator('.overview-cell')).toHaveCount(0);

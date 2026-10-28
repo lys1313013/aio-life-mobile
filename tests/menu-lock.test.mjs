@@ -32,3 +32,15 @@ test('新增系统管理页面继承父菜单锁并隔离各自叶菜单', () =>
   assert.deepEqual(lockedMenuPaths('/pages/admin/storage', tree, ['system']), ['/system/storage']);
   assert.deepEqual(lockedMenuPaths('/pages/admin/storage', tree, ['covers']), []);
 });
+
+test('财务日历详情继承原业务菜单锁，概览同时覆盖收支底层菜单', () => {
+  const tree = [{ path: '/finance-management', meta: { menuId: 'finance' }, children: [
+    { path: '/finance-management/dashboard', meta: { menuId: 'dashboard' } },
+    { path: '/finance-management/expense', meta: { menuId: 'expense' } },
+    { path: '/finance-management/income', meta: { menuId: 'income' } },
+  ] }]
+  assert.deepEqual(lockedMenuPaths('/pages/finance/calendar-details?kind=expense&bucket=2026-09-01', tree, ['expense']), ['/finance-management/expense'])
+  assert.deepEqual(lockedMenuPaths('/pages/finance/calendar-details?kind=income', tree, ['expense']), [])
+  assert.deepEqual(lockedMenuPaths('/pages/finance/calendar-details?kind=finance', tree, ['finance']), ['/finance-management/dashboard', '/finance-management/expense', '/finance-management/income'])
+  assert.equal(matchesNativeMenu('/pages/finance/calendar-details?kind=invalid', '/finance-management/expense'), false)
+})

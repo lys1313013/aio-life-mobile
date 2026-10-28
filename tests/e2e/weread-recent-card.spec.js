@@ -7,7 +7,7 @@ async function setup(page, { connected = true, locked = false, compare = false }
   const visual = { menuId: 'weread-menu', path: '/record/weread', icon: 'svg:weread', iconColor: '#4489ce' };
   const memberVisual = { menuId: 'member-menu', path: '/membership', icon: 'lucide:crown' };
   const cards = homeCardFixture().map(card => ({ ...card, enabled: card.cardKey === 'section.thoughts' || (compare && card.cardKey === 'section.membership'), sortOrder: card.cardKey === 'section.membership' ? 2 : 1 }));
-  cards.push({ cardKey: 'section.weread', title: '微信读书', group: 'section', enabled: true, sortOrder: 0, ...visual });
+  cards.push({ cardKey: 'section.weread', title: '微信读书', group: 'section', isEnabled: 1, sortOrder: 0, ...visual });
   cards.sort((a, b) => a.sortOrder - b.sortOrder);
   const fixtures = {
     '/home/cards': cards, '/user/info': { id: 'fixture-user', nickname: '测试用户' },

@@ -12,5 +12,5 @@ test('菜单隐藏继承父级，保存字符串长ID；密码不擅自裁剪',(
  assert.throws(()=>passwordPayload({oldPassword:'a',password:'a',confirm:'b'}))
 })
 test('通知保存保留隐藏业务项',()=>{
- assert.deepEqual(notificationPayload([{bizType:'B',visible:false,channels:[{channel:'EMAIL',enabled:true}]}]),{items:[{bizType:'B',channel:'EMAIL',enabled:true}]})
+ assert.deepEqual(notificationPayload([{bizType:'B',visible:false,channels:[{channel:'EMAIL',isEnabled: 1}]}]),{items:[{bizType:'B',channel:'EMAIL',isEnabled: 1}]})
 })

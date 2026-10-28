@@ -57,9 +57,9 @@ export function createHomeCardPreferences(state, fetch, identity) {
   }
   return {
     clear, load,
-    enabled: key => state.ready && state.items.some(item => item.cardKey === key && item.enabled),
+    enabled: key => state.ready && state.items.some(item => item.cardKey === key && item.isEnabled === 1),
     order: key => state.items.find(item => item.cardKey === key)?.sortOrder ?? 9999,
-    toggle: (key, enabled) => mutate(key, '/home/cards/' + encodeURIComponent(key), 'PUT', { enabled }),
+    toggle: (key, enabled) => mutate(key, '/home/cards/' + encodeURIComponent(key), 'PUT', { isEnabled: enabled ? 1 : 0 }),
     reorder,
     reset: () => mutate('reset', '/home/cards', 'DELETE'),
   }

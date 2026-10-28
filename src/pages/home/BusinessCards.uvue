@@ -27,6 +27,7 @@ import { loadQuickNavCandidates } from '../../services/quick-nav-candidates.ts'
 import { homeDataRevision } from '../../services/home-refresh.ts'
 import { lockedMenuPaths, matchesNativeMenu } from '../../services/life-catalog.ts'
 import { isMenuUnlocked } from '../../services/secondary-lock.ts'
+import { unlockHomeCard } from './services/card-unlock.ts'
 import spacing from '../../styles/spacing.json'
 import { businessCards as allBusinessCards, businessCardMaxHeight, businessCardRowHeight, cardState, failBusinessAccess, loadBusinessCard } from './services/business-cards.ts'
 const emit = defineEmits(['sorting', 'visibility'])
@@ -191,6 +192,9 @@ async function load(card, more = false) {
   }
 }
 function nextPage(card) { if (!states[card.key].moreError) void load(card, true) }
+function unlockCard(card) {
+  return unlockHomeCard(['/pages/home/index', card.route], () => load(card), () => props.active && !props.refreshDisabled && states[card.key].available && !states[card.key].busy)
+}
 function open(card, item = null, create = false) {
   if (!props.active || !states[card.key].available || states[card.key].busy) return
   if ((item || create) && recordOrders[card.key]?.clickBlocked()) return
@@ -297,7 +301,7 @@ function placeholderHeight(card) {
           <LoadingIndicator v-if="cardLoading(card) || states[card.key].busy" class="business-updating" compact :label="'正在加载' + card.title" />
           <button v-if="states[card.key].rows.length && states[card.key].error && !states[card.key].moreError" role="button" class="icon-action" :aria-label="'重试' + card.title + '：' + states[card.key].error" @click.stop="refreshCard(card)"><AppIcon name="lucide:rotate-cw" :size="18" color="#5879ce" /></button><DashboardAction :label="'新增' + card.title" @click="open(card, null, true)" />
         </HomeCardHeader>
-        <view v-if="states[card.key].locked" class="card-placeholder" :style="{ minHeight: placeholderHeight(card) + 'px' }"><button role="button" class="lock-action" :aria-label="'解锁' + card.title" @click.stop="open(card)"><AppIcon name="ant-design:lock-outlined" :size="18" color="#8b8f99" /><text class="caption">点击解锁</text></button></view>
+        <view v-if="states[card.key].locked" class="card-placeholder" :style="{ minHeight: placeholderHeight(card) + 'px' }"><button role="button" class="lock-action" :aria-label="'解锁' + card.title" :disabled="refreshDisabled" @click.stop="unlockCard(card)"><AppIcon name="ant-design:lock-outlined" :size="18" color="#8b8f99" /><text class="caption">点击解锁</text></button></view>
         <ReadingShelf v-else-if="card.key === 'read' && (states[card.key].rows.length || cardLoading(card))" :rows="states[card.key].rows" :loading="cardLoading(card)" :more-loading="states[card.key].moreLoading" :error="states[card.key].moreError || states[card.key].error" @edit="open(card, $event)" @more="nextPage(card)" @retry="states[card.key].moreError ? load(card, true) : load(card)" />
         <MovieList v-else-if="card.key === 'movie' && (states[card.key].rows.length || cardLoading(card))" :max-height="cardMaxHeight" :rows="states[card.key].rows" :loading="cardLoading(card)" :more-loading="states[card.key].moreLoading" :error="states[card.key].moreError" @edit="open(card, $event)" @more="nextPage(card)" @retry="load(card, true)" />
         <view v-else-if="!states[card.key].rows.length && cardLoading(card)"><BusinessCardSkeleton v-for="row in (card.key === 'goal' ? 3 : 1)" :key="row" :kind="card.key" :label="'正在加载' + card.title" /></view>

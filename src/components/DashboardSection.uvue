@@ -6,7 +6,7 @@ import LifeMenuIcon from './LifeMenuIcon.uvue'
 import HomeCardHeader from './HomeCardHeader.uvue'
 import { isDark, themeClass } from '../services/theme.ts'
 defineProps<{ title: string; caption?: string; icon?: string; iconColor?: string; height?: number; autoHeight?: boolean; loading?: boolean; updating?: boolean; retainContent?: boolean; error?: string; compact?: boolean; flushTop?: boolean; skeleton?: string; navigable?: boolean; titleLabel?: string; locked?: boolean; refreshDisabled?: boolean }>()
-defineEmits<{ refresh: []; navigate: [] }>()
+defineEmits<{ refresh: []; navigate: []; unlock: [] }>()
 </script>
 <template>
   <view class="dashboard-section" :class="themeClass('dashboard-section')" :style="autoHeight && !locked ? { height: 'auto' } : height ? { height: height + 'px' } : {}">
@@ -18,7 +18,7 @@ defineEmits<{ refresh: []; navigate: [] }>()
       <LoadingIndicator v-if="updating" class="section-updating" compact :label="'正在更新' + title" />
       <button v-else-if="error && retainContent" role="button" class="section-update-retry" :disabled="refreshDisabled" :aria-label="'重试' + title + '：' + error" @click.stop="$emit('refresh')"><CategoryIcon icon="lucide:rotate-cw" :size="18" :color="isDark ? '#a9bfff' : '#5879ce'" /></button>
     </HomeCardHeader>
-    <button v-if="locked" role="button" class="section-unlock" :class="themeClass('section-unlock')" :aria-label="'解锁' + title" hover-class="section-unlock-pressed" @click.stop="$emit('navigate')"><CategoryIcon icon="ant-design:lock-outlined" :size="24" :color="isDark ? '#a1a1aa' : '#71717a'" /></button>
+    <button v-if="locked" role="button" class="section-unlock" :class="themeClass('section-unlock')" :aria-label="'解锁' + title" :disabled="refreshDisabled" hover-class="section-unlock-pressed" @click.stop="$emit('unlock')"><CategoryIcon icon="ant-design:lock-outlined" :size="24" :color="isDark ? '#a1a1aa' : '#71717a'" /></button>
     <view v-else-if="error && !retainContent" class="section-error" role="alert">
       <text class="section-error-text" :class="themeClass('section-error-text')">{{ error }}</text>
       <button
