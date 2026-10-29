@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import LoadMore from "../../components/LoadMore.uvue";
 import { useAppLayout } from '../../services/app-layout.ts'
 const { appGridItem } = useAppLayout()
 
@@ -270,8 +271,7 @@ useDomainPage(
           <view class="record-head"><view class="record-copy"><text class="repo-label" :class="themeClass('repo-label')">{{ item.repo }}</text><text class="record-title">{{ item.message }}</text></view><MobileButton label="打开提交" icon="ant-design:export-outlined" variant="quiet" @click="openExternal(item.commitUrl || item.repoUrl)" /></view>
           <text class="muted" :class="themeClass('muted')">{{ formatCommitDate(item.date) }}<template v-if="item.actor"> · {{ item.actor }}</template></text>
         </view>
-        <LoadingIndicator v-if="moreBusy" compact label="正在加载更多" />
-        <PageState v-else-if="moreError" :error="moreError" @retry="more()" />
+        <LoadMore :loading="moreBusy" :error="moreError" :has-more="hasMore" @load="more" />
         </PageState></view></template></view
   ></MobilePage>
 </template>

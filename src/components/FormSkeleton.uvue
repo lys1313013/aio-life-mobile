@@ -1,0 +1,37 @@
+<script setup lang="ts">
+import { themeClass } from '../services/theme.ts';
+withDefaults(defineProps<{ rows: string[]; footer?: boolean; label?: string }>(), { footer: true, label: '正在加载记录详情' });
+</script>
+<template>
+  <view class="form-skeleton" role="status" :aria-label="label">
+    <view aria-hidden="true" class="form-skeleton-content">
+      <view v-for="(row, index) in rows" :key="index" class="form-skeleton-row" :class="{ 'form-skeleton-controls': row === 'controls', 'form-skeleton-toggle': row === 'toggle', 'form-skeleton-attachment': row === 'attachment' }">
+        <view v-for="column in (row === 'pair' ? 2 : 1)" :key="column" class="form-skeleton-field">
+          <view v-if="!['controls', 'toggle', 'attachment', 'thought'].includes(row)" class="form-skeleton-label form-skeleton-shape" :class="themeClass('form-skeleton-shape')" />
+          <view class="form-skeleton-input form-skeleton-shape" :class="[themeClass('form-skeleton-shape'), { 'form-skeleton-textarea': row === 'textarea', 'form-skeleton-thought': row === 'thought', 'form-skeleton-upload': row === 'attachment' }]" />
+        </view>
+      </view>
+      <view class="form-skeleton-actions" :class="{ 'form-skeleton-footer': footer }"><view v-for="n in 2" :key="n" class="form-skeleton-button form-skeleton-shape" :class="themeClass('form-skeleton-shape')" /></view>
+    </view>
+  </view>
+</template>
+<style scoped lang="scss">
+@use '../styles/skeleton';
+@use '../styles/spacing-tokens' as *;
+@use '../styles/typography' as *;
+.form-skeleton-content { @include skeleton.pulse; }
+.form-skeleton-shape { @include skeleton.shape; }
+.form-skeleton-shape-dark { @include skeleton.dark; }
+.form-skeleton-row { flex-direction: row; gap: $space-inline; margin-bottom: $space-form; }
+.form-skeleton-field { flex: 1; min-width: 0; }
+.form-skeleton-label { width: 30%; height: type-line('label'); margin-bottom: $space-fieldLabel; }
+.form-skeleton-input { height: $space-controlMin; border-radius: 10px; }
+.form-skeleton-textarea { height: 64px; }
+.form-skeleton-thought { height: 120px; }
+.form-skeleton-upload { width: 104px; height: 104px; }
+.form-skeleton-toggle, .form-skeleton-attachment { margin-bottom: 0; }
+.form-skeleton-actions { flex-direction: row; gap: $space-inline; justify-content: flex-end; }
+.form-skeleton-button { width: $space-modalActionMin; height: $space-controlMin; border-radius: 10px; }
+.form-skeleton-footer { padding-bottom: $space-modal; }
+@include skeleton.motion('.form-skeleton-content');
+</style>

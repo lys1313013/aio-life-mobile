@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import PageState from "./PageState.uvue";
+import ContentSkeleton from "./ContentSkeleton.uvue";
 import { useWindowResize } from '../services/window-resize.ts'
 useWindowResize(resize)
 import spacing from '../styles/spacing.json'
@@ -21,6 +23,11 @@ import {
   watch,
 } from 'vue'
 const props = withDefaults(defineProps<{
+  openingMotion?: boolean
+  openingOrigin?: string
+  loading?: boolean
+  loadError?: string
+  loadingRows?: number
   maxWidth?: number
   verticalInset?: number
   label: string
@@ -30,8 +37,9 @@ const props = withDefaults(defineProps<{
   fill?: boolean
   dense?: boolean
   contentKey?: string
-}>(), { showClose: false, bare: false })
-const emit = defineEmits(['close', 'reachbottom'])
+}>(), { showClose: false, bare: false, loading: false, loadError: '', loadingRows: 3 })
+const motionReady = ref(false)
+const emit = defineEmits(['close', 'reachbottom', 'retry'])
 provide('mobile-modal', true)
 // #ifdef MP-WEIXIN
 const releaseModal = registerModal()
@@ -77,6 +85,18 @@ async function measure() {
     if (node) contentObserver?.observe(node)
   }
   // #endif
+  // CSS 缩放会改变 boundingClientRect，测量布局高度避免动画期间反复缩小。
+  // #ifdef WEB
+  const contentNode = root?.querySelector?.('.modal-content')
+  if (contentNode) {
+    contentHeight.value = contentNode.offsetHeight
+    footerHeight.value = root?.querySelector?.('.modal-footer')?.offsetHeight || 0
+    motionReady.value = true
+    measuring = false
+    if (pending) { pending = false; measure() }
+    return
+  }
+  // #endif
   const query = uni.createSelectorQuery().in(instance?.proxy)
   if (instance?.slots?.footer) {
     query.select('.modal-footer').boundingClientRect((rect) => {
@@ -89,6 +109,7 @@ async function measure() {
     .boundingClientRect((rect) => {
       if (active && rect && !Array.isArray(rect) && rect.height > 0)
         contentHeight.value = Math.ceil(rect.height)
+      motionReady.value = true
       measuring = false
       if (pending) {
         pending = false
@@ -117,6 +138,7 @@ function keyboard(event) {
   resize()
 }
 onMounted(() => {
+  if (props.fill) motionReady.value = true
   resize()
   measure()
   // Vapor 的插槽内容更新不一定触发容器的 onUpdated。
@@ -161,25 +183,25 @@ onUnmounted(() => {
   <root-portal :enable="true">
     <WeixinModalBackGuard :busy="busy" @close="emit('close')" />
   <!-- #endif -->
-  <view class="modal-mask" :class="[themeClass('modal-mask'), { 'modal-mask-loading': bare }, themeClass({ 'modal-mask-loading': bare })]" :style="{ paddingTop: (verticalInset + safeTop) + 'px', paddingBottom: (verticalInset + safeBottom + keyboardHeight) + 'px', ...(useViewportFrame ? { top: viewportTop + 'px', height: windowHeight + 'px', bottom: 'auto' } : {}) }" @click="!busy && emit('close')">
+  <view class="modal-mask" :class="[themeClass('modal-mask'), { 'modal-mask-loading': bare, 'modal-mask-enter': openingMotion && !bare }, themeClass({ 'modal-mask-loading': bare })]" :style="{ paddingTop: (verticalInset + safeTop) + 'px', paddingBottom: (verticalInset + safeBottom + keyboardHeight) + 'px', ...(useViewportFrame ? { top: viewportTop + 'px', height: windowHeight + 'px', bottom: 'auto' } : {}) }" @click="!busy && emit('close')">
     <!-- 模糊层独立于内容，避免改变内嵌确认框 / picker 的 fixed 定位参照。 -->
     <!-- #ifdef WEB || MP-WEIXIN -->
     <view v-if="!bare" class="modal-backdrop" aria-hidden="true" />
     <!-- #endif -->
     <view
       class="modal-panel"
-      :style="{ maxWidth: (maxWidth || 600) + 'px' }"
+      :style="{ maxWidth: (maxWidth || 600) + 'px', transformOrigin: openingOrigin || '50% 50%' }"
       role="dialog"
       :aria-label="label"
       aria-modal="true"
       @click.stop
-      :class="[themeClass('modal-panel'), { 'modal-panel-bare': bare }]">
+      :class="[themeClass('modal-panel'), { 'modal-panel-bare': bare, 'modal-panel-wait': openingMotion && !bare && !motionReady, 'modal-panel-enter': openingMotion && !bare && motionReady }]">
       <!-- #ifdef WEB || MP-WEIXIN -->
       <view v-if="!bare" class="modal-surface" :class="themeClass('modal-surface')" aria-hidden="true" />
       <!-- #endif -->
       <view v-if="fill" class="modal-fill" :style="{ height: height + 'px' }">
-        <view class="modal-fill-body"><slot /></view>
-        <view v-if="$slots.footer" class="modal-fill-footer"><slot name="footer" /></view>
+        <view class="modal-fill-body"><PageState v-if="loading || loadError" :loading="loading" :error="loadError" :inherit-initializing="false" @retry="emit('retry')"><template #loading><slot name="loading"><ContentSkeleton variant="form" :rows="loadingRows" /></slot></template></PageState><slot v-else /></view>
+        <view v-if="$slots.footer && !loading && !loadError" class="modal-fill-footer"><slot name="footer" /></view>
       </view>
       <template v-else>
       <scroll-view
@@ -190,9 +212,9 @@ onUnmounted(() => {
         class="modal-scroll"
         :style="{ height: height + 'px' }"
       >
-        <view class="modal-content" :class="{ 'modal-content-bare': bare, 'modal-content-dense': dense, 'modal-content-with-close': showClose !== false }"><view v-if="showClose !== false" class="modal-close"><MobileButton label="关闭" icon="ant-design:close-outlined" variant="ghost" :disabled="busy" @click="emit('close')" /></view><slot /></view>
+        <view class="modal-content" :class="{ 'modal-content-bare': bare, 'modal-content-dense': dense, 'modal-content-with-close': showClose !== false }"><view v-if="showClose !== false" class="modal-close"><MobileButton label="关闭" icon="ant-design:close-outlined" variant="ghost" :disabled="busy" @click="emit('close')" /></view><PageState v-if="loading || loadError" :loading="loading" :error="loadError" :inherit-initializing="false" @retry="emit('retry')"><template #loading><slot name="loading"><ContentSkeleton variant="form" :rows="loadingRows" /></slot></template></PageState><slot v-else /></view>
       </scroll-view>
-      <view v-if="$slots.footer" class="modal-footer"><slot name="footer" /></view>
+      <view v-if="$slots.footer && !loading && !loadError" class="modal-footer"><slot name="footer" /></view>
       </template>
     </view>
   </view>
@@ -201,6 +223,7 @@ onUnmounted(() => {
   <!-- #endif -->
 </template>
 <style scoped lang="scss">
+@use "../styles/theme-tokens" as *;
 @use '../styles/spacing-tokens' as *;
 .modal-mask {
   padding: $space-overlayBlock $space-overlayInline;
@@ -220,7 +243,7 @@ onUnmounted(() => {
   width: 100%;
   max-width: 600px;
   border-radius: 20px;
-  background-color: #ffffff;
+  background-color: $theme-surface-light;
   color: #27272a;
   box-shadow: 0 24px 80px -16px rgba(15, 23, 42, 0.3), 0 4px 16px -4px rgba(15, 23, 42, 0.14);
   overflow: hidden;
@@ -246,7 +269,7 @@ onUnmounted(() => {
   background-color: rgba(0, 0, 0, 0.48);
 }
 .modal-panel-dark {
-  background-color: #1c1e22;
+  background-color: $theme-surface-dark;
   color: #e7e9ee;
   box-shadow: 0 24px 80px -16px rgba(0, 0, 0, 0.6), 0 4px 16px -4px rgba(0, 0, 0, 0.32);
 }
@@ -294,4 +317,17 @@ onUnmounted(() => {
 .modal-panel-bare { background-color: transparent; border-radius: 0; box-shadow: none; outline: none; }
 .modal-mask-loading { background-color: rgba(18, 24, 38, 0.08); }
 .modal-mask-loading-dark { background-color: rgba(0, 0, 0, 0.16); }
+// 动画结束后不保留 transform，避免改变内部 picker / 确认框的 fixed 参照。
+.modal-panel-wait { opacity: 0; }
+.modal-mask-enter { animation: modal-mask-appear 220ms ease-out; }
+.modal-panel-enter { animation: modal-panel-appear 320ms cubic-bezier(0.2, 0.8, 0.2, 1); }
+@keyframes modal-mask-appear { from { background-color: transparent; } }
+// 原生端使用位移淡入，测高不受缩放影响。
+@keyframes modal-panel-appear { from { opacity: 0; transform: translateY($space-section); } to { opacity: 1; transform: translateY(0); } }
+/* #ifdef WEB */
+@keyframes modal-panel-appear { from { opacity: 0; transform: scale(0.88); } to { opacity: 1; transform: scale(1); } }
+@media (prefers-reduced-motion: reduce) {
+  .modal-panel-enter, .modal-mask-enter { animation: none; }
+}
+/* #endif */
 </style>

@@ -1,0 +1,19 @@
+<script setup lang="ts">
+import ContentSkeleton from './ContentSkeleton.uvue';
+import MobileButton from './MobileButton.uvue';
+withDefaults(defineProps<{ loading?: boolean; failed?: boolean; label?: string; retryLabel?: string; retryable?: boolean }>(), { label: '正在加载封面', retryLabel: '重试封面', retryable: true });
+const emit = defineEmits(['retry']);
+</script>
+<template>
+  <view class="image-placeholder" :aria-busy="loading">
+    <ContentSkeleton v-if="loading" variant="cover" :label="label" />
+    <slot v-else />
+    <view v-if="failed && retryable && !loading" class="image-placeholder-retry" @click.stop @keydown.stop>
+      <MobileButton :label="retryLabel" icon="ant-design:reload-outlined" variant="ghost" @click="emit('retry')" />
+    </view>
+  </view>
+</template>
+<style scoped lang="scss">
+.image-placeholder { position: absolute; top: 0; left: 0; right: 0; bottom: 0; align-items: center; justify-content: center; }
+.image-placeholder-retry { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); }
+</style>

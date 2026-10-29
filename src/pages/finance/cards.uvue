@@ -327,14 +327,14 @@ function cardLayerStyle(type: 'debit' | 'credit') {
 }
 const cardViewportStyle = computed(() => {
   if (!cardLayersMoving.value) return {};
-  const progress = Math.max(0, Math.min(1, cardLayerProgress.value));
   const currentHeight = cardLayerHeights.value[selectedCardType.value];
   const debitHeight = cardLayerHeights.value.debit || currentHeight;
   const creditHeight = cardLayerHeights.value.credit || currentHeight;
   if (!currentHeight) return {};
   return {
-    height: (debitHeight * (1 - progress) + creditHeight * progress) + 'px',
-    transition: cardSwitchPhase.value === 'in' ? 'height 360ms cubic-bezier(0.22, 1, 0.36, 1)' : 'none',
+    // 两层仍使用同一原点绝对定位，滑动期间容纳较高卡包及其向下位移。
+    // 不插值或动画化裁切高度，避免底边扫过仍然可见的卡面。
+    height: (Math.max(debitHeight, creditHeight) + spacing.inline) + 'px',
   };
 });
 function measureCardLayers() {

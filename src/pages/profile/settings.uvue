@@ -1,8 +1,8 @@
 <script setup lang="ts">
+import PageState from "../../components/PageState.uvue";
 import AvatarPickerButton from '../../components/AvatarPickerButton.uvue'
 import { usePageRefresh } from '../../services/page-refresh.ts'
 import { buttonLabelClasses } from '../../services/button-label.ts'
-import ContentSkeleton from '../../components/ContentSkeleton.uvue';
 import SecondaryUnlock from "../../components/SecondaryUnlock.uvue";
 import { themeClass } from '../../services/theme.ts'
 import { computed, ref, watch } from 'vue'
@@ -16,6 +16,7 @@ const saving = ref(false)
 const uploading = ref(false)
 const ready = ref(false)
 const errorText = ref('')
+const loadError = ref('')
 const form = ref<{ nickname: string; introduction: string; avatarFileId: string | null; avatarUrl: string }>({ nickname: '', introduction: '', avatarFileId: null, avatarUrl: '' })
 const email = computed(() => session.user?.email || '未设置')
 let active = false, revision = 0
@@ -28,6 +29,7 @@ function clearPage() {
   saving.value = false
   uploading.value = false
   errorText.value = ''
+  loadError.value = ''
   form.value = { nickname: '', introduction: '', avatarFileId: null, avatarUrl: '' }
 }
 function suspend() {
@@ -41,7 +43,7 @@ watch(() => session.token, () => {
 }, { flush: 'sync' })
 onHide(suspend)
 onUnload(() => { suspend(); clearPage() })
-const refreshOnShow = usePageRefresh(load, { loading: () => loading.value, error: () => errorText.value, keys: () => ['users', 'user'] })
+const refreshOnShow = usePageRefresh(load, { loading: () => loading.value, error: () => loadError.value, keys: () => ['users', 'user'] })
 onShow(() => {
   restoreSession()
   active = true
@@ -63,7 +65,7 @@ function failure(error) {
 async function load() {
   if (loading.value) return
   loading.value = true
-  errorText.value = ''
+  loadError.value = ''
   const token = session.token, version = revision
   try {
     const user = await fetchUser()
@@ -76,7 +78,10 @@ async function load() {
     }
     ready.value = true
   } catch (error) {
-    if (current(token, version)) failure(error)
+    if (current(token, version)) {
+      if (error.name === 'SessionExpiredError') failure(error)
+      else loadError.value = error.message || '加载失败，请重试'
+    }
   } finally {
     if (current(token, version)) loading.value = false
   }
@@ -153,26 +158,17 @@ function back() {
     <PageHeader title="编辑资料" back @back="!saving && !uploading && back()" />
     <scroll-view scroll-y class="tab-scroll">
       <view class="tab-content ui-page-inset">
-        <view
-          v-if="loading"
-          class="state-card"
-          :class="themeClass('state-card')"
-          ><ContentSkeleton variant="form" label="正在加载设置" /></view
-        >
-        <view v-if="errorText" class="settings-error ui-mb-section"
-          ><text
-            role="alert"
-            class="error-text"
-            :class="themeClass('error-text')"
-            >{{ errorText }}</text
-          ><button
-            v-if="!ready"
-            role="button"
-            class="text-action"
-            :disabled="loading" :aria-disabled="loading"
-            @click="load"
-          ><text :class="buttonLabelClasses(['text-action'])">重试</text></button></view
-        >
+        <PageState :loading="loading" :has-content="ready" :content-key="session.token" :error="loadError" @retry="load">
+          <template #loading>
+            <view class="settings-card ui-card settings-skeleton" :class="themeClass('settings-card')" role="status" aria-label="正在加载个人资料">
+              <view class="avatar-section ui-mb-section" aria-hidden="true"><view class="settings-avatar settings-placeholder" :class="themeClass('settings-placeholder')" /><view class="settings-skeleton-button settings-placeholder" :class="themeClass('settings-placeholder')" /></view>
+              <view class="settings-inline-row" v-for="n in 2" :key="n" aria-hidden="true"><view class="settings-skeleton-label settings-placeholder" :class="themeClass('settings-placeholder')" /><view class="settings-input settings-placeholder" :class="themeClass('settings-placeholder')" /></view>
+              <view class="settings-skeleton-label ui-mb-section ui-mt-section settings-placeholder" :class="themeClass('settings-placeholder')" aria-hidden="true" />
+              <view class="settings-textarea ui-pad-card settings-placeholder" :class="themeClass('settings-placeholder')" aria-hidden="true" />
+              <view class="settings-save ui-mt-section settings-placeholder" :class="themeClass('settings-placeholder')" aria-hidden="true" />
+            </view>
+          </template>
+        <text v-if="errorText" class="settings-error ui-type-body" role="alert">{{ errorText }}</text>
         <view
           v-if="ready"
           class="settings-card ui-card"
@@ -238,12 +234,14 @@ function back() {
             <text :class="buttonLabelClasses(['settings-save ui-mt-section'])">{{ saving ? '保存中…' : '保存' }}</text>
           </button>
         </view>
+        </PageState>
       </view>
     </scroll-view>
   <SecondaryUnlock />
   </view>
 </template>
 <style scoped lang="scss">
+@use '../../styles/skeleton';
 @use '../../styles/platform' as *;
 @use '../../styles/typography' as *;
 @use '../../styles/text-colors' as *;
@@ -256,9 +254,7 @@ function back() {
   background-color: #ffffff;
   border-radius: 18px;
 }
-.settings-error {
-
-}
+.settings-error { color: #d03050; }
 .avatar-section {
   display: flex;
   flex-direction: column;
@@ -374,4 +370,10 @@ function back() {
 .app-button-label-dark { color: #eeeeef; }
 .text-action-label { @include type-style('body'); color: #5b8ff9; }
 .settings-save-label { color: #ffffff; @include type-style('body'); }
+.settings-placeholder { @include skeleton.shape; }
+.settings-placeholder-dark { @include skeleton.dark; }
+.settings-skeleton { @include skeleton.pulse; }
+.settings-skeleton-label { width: 26px; height: type-line('label'); }
+.settings-skeleton-button { width: $space-modalActionMin; height: $space-controlMin; }
+@include skeleton.motion('.settings-skeleton');
 </style>

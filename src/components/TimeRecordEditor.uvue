@@ -47,8 +47,7 @@ const id = ref(''),
   saving = ref(false),
   deleting = ref(false)
 const errorText = ref(''),
-  ready = ref(false),
-  full = ref(false)
+  ready = ref(false)
 const categories = ref<Category[]>([]),
   existing = ref<TimeRecord[]>([])
 const form = ref<TimeRecord>({
@@ -179,7 +178,6 @@ const layoutKey = computed(() =>
   JSON.stringify([
     ready.value,
     loading.value,
-    full.value,
     form.value,
     errorText.value,
     relatedError.value,
@@ -216,15 +214,14 @@ function report(error) {
   }
   return error.message || '操作失败，请重试'
 }
-async function initialize() {
+async function initialize(targetDate = date.value) {
+  const preserveDraft = ready.value && targetDate !== date.value
   choosingTime.value = ''
   const serial = ++generation,
     token = session.token
-  const targetDate = date.value
   loading.value = true
   ready.value = false
   errorText.value = ''
-  full.value = false
   try {
     if (id.value) {
       // 列表入口已有日期，三个请求同时发起；兼容只有 ID 的独立编辑入口。
@@ -260,12 +257,15 @@ async function initialize() {
         recommendNext(targetDate),
       ])
       if (!active || serial !== generation || token !== session.token) return
-      categories.value = cats
-      existing.value = result.records
       if (!result.recommend) {
-        full.value = true
+        ready.value = preserveDraft
+        if (!preserveDraft) goBack()
+        uni.showToast({ title: '该天已录入完毕', icon: 'none', duration: 2200 })
         return
       }
+      categories.value = cats
+      existing.value = result.records
+      date.value = targetDate
       form.value = {
         id: '',
         date: date.value,
@@ -282,7 +282,10 @@ async function initialize() {
     ready.value = true
     loadOptions()
   } catch (error) {
-    if (active && serial === generation && token === session.token) errorText.value = report(error)
+    if (active && serial === generation && token === session.token) {
+      ready.value = preserveDraft
+      errorText.value = report(error)
+    }
   } finally {
     if (serial === generation) loading.value = false
   }
@@ -315,8 +318,9 @@ function selectCategory(category: Category) {
   if (isExercise.value && exerciseTypes.value.length === 0) loadExercises()
 }
 function changeDate(event) {
-  date.value = event.detail.value
-  initialize()
+  if (loading.value || saving.value || deleting.value || id.value) return
+  const targetDate = event.detail.value
+  if (targetDate !== date.value) initialize(targetDate)
 }
 function changeTime(minutes: number) {
   if (saving.value || deleting.value || !choosingTime.value) return
@@ -556,16 +560,9 @@ function closeSelection() {
         <LoadingIndicator compact label="正在加载时迹详情" />
         <text class="loading-label" :class="themeClass('loading-label')" aria-hidden="true">正在加载</text>
       </view>
-      <view v-if="full" class="state-card"
-         :class="themeClass('state-card')"><text class="empty-title" :class="themeClass('empty-title')">该天已录入完毕</text
-        ><CalendarPicker :value="date" @change="changeDate"
-           label="选择日期"><view class="picker-field"
-            ><text class="action-label ui-type-body">选择其他日期</text></view
-          ></CalendarPicker></view
-      >
       <view v-if="!ready && errorText" class="state-card"
          :class="themeClass('state-card')"><text class="error-text" role="alert" :class="themeClass('error-text')">{{ errorText }}</text
-        ><button role="button" class="text-action" @click="initialize"><text :class="buttonLabelClasses(['text-action'])">重试加载</text></button></view
+        ><button role="button" class="text-action" @click="initialize()"><text :class="buttonLabelClasses(['text-action'])">重试加载</text></button></view
       >
       <view v-if="ready" class="editor-form">
         <view v-if="compact" class="compact-fields">

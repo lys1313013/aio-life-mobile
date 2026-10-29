@@ -3,6 +3,7 @@ import FormActions from '../../components/FormActions.uvue';
 import ThoughtForm from '../../components/ThoughtForm.uvue';
 import { isRequired, missingRequired } from '../../services/form-required.ts';
 import { computed, onMounted, onUnmounted, ref } from 'vue';
+import FormSkeleton from '../../components/FormSkeleton.uvue';
 import AdaptiveModal from '../../components/AdaptiveModal.uvue';
 import FormField from '../../components/FormField.uvue';
 import LoadingIndicator from '../../components/LoadingIndicator.uvue';
@@ -130,10 +131,8 @@ async function save() {
 </script>
 
 <template>
-  <AdaptiveModal v-if="thoughtLoading" label="正在加载闪念" bare :show-close="false" :max-width="spacing.controlMin" @close="emit('close')">
-    <LoadingIndicator ring label="正在加载闪念" />
-  </AdaptiveModal>
-  <AdaptiveModal v-else :label="kind === 'think' ? (thoughtId ? '编辑闪念' : '新增闪念') : '新增运动记录'" :show-close="false" :max-width="kind === 'think' ? 560 : undefined" :busy="saving" :content-key="contentKey" @close="emit('close')">
+  <AdaptiveModal :loading="thoughtLoading" :load-error="kind === 'think' && !thoughtReady ? error : ''" @retry="loadThought" :label="kind === 'think' ? (thoughtId ? '编辑闪念' : '新增闪念') : '新增运动记录'" :show-close="false" :max-width="kind === 'think' ? 560 : undefined" :busy="saving" :content-key="contentKey" @close="emit('close')">
+    <template #loading><FormSkeleton :rows="thoughtId ? ['thought', 'controls'] : ['thought']" :footer="false" label="正在加载闪念" /></template>
     <ThoughtForm v-if="kind === 'think' && thoughtReady" :form="thought" :editing="!!thoughtId" :disabled="saving" :error="error">
       <template #secondary>
         <ConfirmAction v-if="thoughtId" label="删除闪念" :action="removeThought">

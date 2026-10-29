@@ -18,7 +18,7 @@ function deferred() {
   return { promise, resolve, reject }
 }
 function harness(props = { recordId: detail.id, initialDate: day }) {
-  const calls = [], pending = [], cleanups = []
+  const calls = [], pending = [], cleanups = [], events = [], toasts = []
   const request = (name, value) => {
     calls.push([name, value])
     const task = deferred()
@@ -28,17 +28,18 @@ function harness(props = { recordId: detail.id, initialDate: day }) {
   const session = { token: 'mock-session' }
   const fixture = {
     computed, ref, watch, nextTick, session,
-    defineProps: () => props, withDefaults: value => value, defineEmits: () => () => {},
+    defineProps: () => props, withDefaults: value => value, defineEmits: () => event => events.push(event),
+    uni: { showToast: options => toasts.push(options) },
     getCurrentInstance: () => null, onMounted: () => {}, onUnmounted: fn => cleanups.push(fn),
     useWindowResize: () => {}, todayDate: () => day, categoryPath: () => '模拟分类',
     getCategories: () => request('categories'), getRecord: id => request('detail', id),
     getDateRecords: date => request('day', date), recommendNext: date => request('recommend', date),
     getRelateTypes: async () => [],
   }
-  const component = new Function(...Object.keys(fixture), js + '\nreturn { initialize, id, date, ready, loading, errorText, form, existing, full }')(...Object.values(fixture))
+  const component = new Function(...Object.keys(fixture), js + '\nreturn { initialize, id, date, ready, loading, errorText, form, existing }')(...Object.values(fixture))
   component.id.value = props.recordId || ''
   component.date.value = props.initialDate || day
-  return { ...component, calls, pending, session, close: () => cleanups.forEach(fn => fn()) }
+  return { ...component, calls, pending, session, events, toasts, close: () => cleanups.forEach(fn => fn()) }
 }
 
 test('已知日期的编辑立即并发三请求，等待完整数据并保留关联与运动字段', async () => {
@@ -133,6 +134,31 @@ test('新增分类与推荐并发，全天已满仍禁止提交', async () => {
   h.pending[1].resolve({ recommend: null, records: [] })
   await loading
   assert.equal(h.ready.value, false)
-  assert.equal(h.full.value, true)
+  assert.deepEqual(h.events, ['close'])
+  assert.equal(h.toasts[0].title, '该天已录入完毕')
   assert.equal(h.loading.value, false)
+})
+
+for (const outcome of ['full', 'error', 'available']) test(`切换日期 ${outcome} 保留草稿，仅成功时切换日期与记录`, async () => {
+  const h = harness({ initialDate: day })
+  h.ready.value = true
+  h.form.value = { ...detail, id: '', title: '未保存草稿' }
+  h.existing.value = [detail]
+  const draft = structuredClone({ ...h.form.value, exercises: [] })
+  const loading = h.initialize('2026-10-27')
+  h.pending[0].resolve([])
+  if (outcome === 'error') h.pending[1].reject(new Error('模拟请求失败'))
+  else h.pending[1].resolve({ records: [], recommend: outcome === 'full' ? null : { startTime: 120, endTime: 179 } })
+  await loading
+  assert.equal(h.ready.value, true)
+  assert.equal(h.loading.value, false)
+  assert.equal(h.form.value.title, draft.title)
+  assert.deepEqual(h.form.value.exercises, detail.exercises)
+  assert.deepEqual(h.events, [])
+  assert.equal(h.date.value, outcome === 'available' ? '2026-10-27' : day)
+  assert.equal(h.form.value.date, h.date.value)
+  assert.deepEqual(h.existing.value, outcome === 'available' ? [] : [detail])
+  assert.equal(h.form.value.startTime, outcome === 'available' ? 120 : detail.startTime)
+  if (outcome === 'full') assert.equal(h.toasts[0].title, '该天已录入完毕')
+  if (outcome === 'error') assert.equal(h.errorText.value, '模拟请求失败')
 })

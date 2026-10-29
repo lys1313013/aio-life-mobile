@@ -28,6 +28,7 @@ function applyNativeTheme() {
   // #ifdef WEB
   // 当前 H5 的 useTabBar 在 darkmode 下复制主题状态，setTabBarStyle 未同步到渲染实例。
   // 仅 Web 用 CSS 变量同步底栏，其他平台仍使用原生 API。
+  document.documentElement.style.colorScheme = dark ? 'dark' : 'light'
   document.documentElement.style.setProperty('--aio-tab-background', dark ? '#1c1e22' : '#ffffff')
   document.documentElement.style.setProperty('--aio-tab-border', dark ? '#1c1e22' : '#ffffff')
   document.documentElement.style.setProperty('--aio-native-text', dark ? '#eeeeef' : '#27272a')
@@ -62,14 +63,14 @@ function applyNativeTheme() {
   // #endif
   uni.setNavigationBarColor({
     frontColor: dark ? '#ffffff' : '#000000',
-    backgroundColor: dark ? '#111215' : '#f0f2f5',
+    backgroundColor: palette.backgroundColor,
     fail: () => {}
   })
   // #ifdef MP-WEIXIN
   uni.setBackgroundColor({
-    backgroundColor: dark ? '#111215' : '#f0f2f5',
-    backgroundColorTop: dark ? '#111215' : '#f0f2f5',
-    backgroundColorBottom: dark ? '#111215' : '#f0f2f5',
+    backgroundColor: palette.backgroundColor,
+    backgroundColorTop: palette.backgroundColor,
+    backgroundColorBottom: palette.backgroundColor,
     fail: () => {}
   })
   // #endif

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
 import { session } from '../../services/session.ts';
+import FormSkeleton from '../FormSkeleton.uvue';
 import AdaptiveModal from '../AdaptiveModal.uvue';
 import FormField from '../FormField.uvue';
 import FormActions from '../FormActions.uvue';
@@ -12,7 +13,7 @@ import { request } from '../../services/api.ts';
 import AttachmentField from '../AttachmentField.uvue';
 import LibraryCover from '../LibraryCover.uvue';
 import { statuses, dateTime } from '../../services/records/contracts.ts';
-const props = defineProps<{ kind: string; record?: any }>();
+const props = defineProps<{ kind: string; record?: any; loading?: boolean; loadError?: string }>();
 const kind = computed(() => props.kind);
 const title = computed(() => (kind.value === 'movie' ? '观影' : '阅读记录')),
   typeLabels = computed(() =>
@@ -25,7 +26,7 @@ const statusLabels = computed(() =>
     ? ['想看', '在看', '看过', '搁置']
     : ['想读', '在读', '读完', '搁置'],
 );
-const emit = defineEmits(['close', 'saved', 'deleted']);
+const emit = defineEmits(['close', 'saved', 'deleted', 'retry']);
 const form = ref<any>(null), saving = ref(false), deleting = ref(false), formError = ref('');
 const scope = createRecordScope(() => emit('close'));
 watch(() => session.token, () => emit('close'), { flush: 'sync' });
@@ -67,7 +68,7 @@ form.value = {
       remark: '',
     };
 }
-initialize();
+watch(() => [props.record, props.loading, props.loadError], () => { if (!props.loading && !props.loadError) initialize(); }, { immediate: true });
 function setDate(key, date) {
   form.value[key] = dateTime(date, form.value[key]?.slice(11, 16) || '00:00');
 }
@@ -163,12 +164,12 @@ async function remove(item) {
 
 </script>
 <template>
-<AdaptiveModal
-        v-if="form"
+<AdaptiveModal :loading="loading" :load-error="loadError" :loading-rows="5" @retry="emit('retry')"
+        v-if="form || loading || loadError"
         :label="'编辑' + title"
         :busy="deleting || saving || parsing || attachmentBusy"
         @close="emit('close')"
-        ><view class="library-link-row ui-field-row"
+        ><template #loading><FormSkeleton :rows="['field', 'field', 'pair', 'pair', 'pair', 'pair', 'textarea', 'attachment']" :footer="true" /></template><view class="library-link-row ui-field-row"
           ><view class="library-link-field"
             ><FormField compact stretch label="豆瓣链接" v-model="form.url" /></view
           ><MobileButton

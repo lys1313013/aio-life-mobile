@@ -321,20 +321,10 @@ function placeholderHeight(card) {
   </view>
     <view class="business-dialogs" @touchstart.stop @mousedown.stop>
     <GoalEditor v-if="states.goal && !states.goal.locked" ref="goalEditor" :save-record="saveGoal" :delete-record="deleteGoal" @saved="goalSaved" @deleted="goalDeleted" />
-    <AdaptiveModal v-if="selection && selection.loading" label="正在加载记录详情" bare :show-close="false" :max-width="spacing.controlMin" @close="closeDetail">
-      <LoadingIndicator ring label="正在加载记录详情" />
-    </AdaptiveModal>
-    <AdaptiveModal v-else-if="selection && selection.error && !selection.record" :label="selection.card.title + '详情'" :content-key="selection.error" @close="closeDetail">
-      <text class="error-text" role="alert">{{ selection.error }}</text>
-      <FormActions>
-        <MobileButton label="取消" variant="quiet" @click="closeDetail" />
-        <MobileButton label="重试加载详情" icon="lucide:rotate-cw" @click="loadDetail" />
-      </FormActions>
-    </AdaptiveModal>
-    <template v-if="selection && selection.record">
-      <LibraryRecordEditor v-if="selection.card.paged" :kind="selection.card.key" :record="selection.record" @close="closeDetail" @saved="detailChanged" @deleted="detailChanged" />
-      <AnniversaryRecordEditor v-if="selection.card.key === 'anniversary'" :record="selection.record" home @close="closeDetail" @saved="detailChanged" @deleted="detailChanged" />
-      <MembershipRecordEditor v-if="selection.card.key === 'member'" :record="selection.record" @close="closeDetail" @saved="detailChanged" @deleted="detailChanged" />
+    <template v-if="selection">
+      <LibraryRecordEditor :loading="selection.loading" :load-error="selection.error" @retry="loadDetail" v-if="selection.card.paged" :kind="selection.card.key" :record="selection.record" @close="closeDetail" @saved="detailChanged" @deleted="detailChanged" />
+      <AnniversaryRecordEditor :loading="selection.loading" :load-error="selection.error" @retry="loadDetail" v-if="selection.card.key === 'anniversary'" :record="selection.record" home @close="closeDetail" @saved="detailChanged" @deleted="detailChanged" />
+      <MembershipRecordEditor :loading="selection.loading" :load-error="selection.error" @retry="loadDetail" v-if="selection.card.key === 'member'" :record="selection.record" @close="closeDetail" @saved="detailChanged" @deleted="detailChanged" />
     </template>
     </view>
 </template>

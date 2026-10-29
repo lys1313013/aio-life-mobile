@@ -2,6 +2,7 @@
 import MobileSwitch from '../../components/MobileSwitch.uvue';
 import { computed, ref, watch } from 'vue';
 import { session } from '../../services/session.ts';
+import FormSkeleton from '../FormSkeleton.uvue';
 import AdaptiveModal from '../AdaptiveModal.uvue';
 import FormField from '../FormField.uvue';
 import FormActions from '../FormActions.uvue';
@@ -12,8 +13,8 @@ import { createRecordScope } from '../../services/records/page-scope.ts';
 import { request } from '../../services/api.ts';
 import { buttonLabelClasses } from '../../services/button-label.ts';
 import { isDark } from '../../services/theme.ts';
-const props = defineProps<{ record?: any; home?: boolean }>();
-const emit = defineEmits(['close', 'saved', 'deleted']);
+const props = defineProps<{ record?: any; loading?: boolean; loadError?: string; home?: boolean }>();
+const emit = defineEmits(['close', 'saved', 'deleted', 'retry']);
 const form = ref<any>(null), saving = ref(false), deleting = ref(false), formError = ref('');
 const scope = createRecordScope(() => emit('close'));
 watch(() => session.token, () => emit('close'), { flush: 'sync' });
@@ -84,8 +85,7 @@ function daysFromToday(date) {
   return Math.round((Date.UTC(year, month - 1, day) - Date.UTC(now.getFullYear(), now.getMonth(), now.getDate())) / 86400000);
 }
 function saveEvent(kind, payload) { return request<any>('/anniversaryRecords', payload.id ? 'PUT' : 'POST', payload); }
-open(props.record?.id ? props.record : null);
-if (!props.record?.id && props.record) Object.assign(form.value, props.record);
+watch(() => [props.record, props.loading, props.loadError], () => { if (props.loading || props.loadError) return; open(props.record?.id ? props.record : null); if (!props.record?.id && props.record) Object.assign(form.value, props.record); }, { immediate: true });
 async function remove(item) {
   if (saving.value || deleting.value) return;
   deleting.value = true;
@@ -95,9 +95,9 @@ async function remove(item) {
 
 </script>
 <template>
-<AdaptiveModal v-if="form" label="编辑纪念日" :busy="deleting || saving" @close="emit('close')"
+<AdaptiveModal :loading="loading" :load-error="loadError" :loading-rows="3" @retry="emit('retry')" v-if="form || loading || loadError" label="编辑纪念日" :busy="deleting || saving" @close="emit('close')"
           >
-          <FormField :required="isRequired('anniversary', 'title')" label="标题" v-model="form.title" />
+          <template #loading><FormSkeleton :rows="['field', 'field', 'controls', 'textarea', 'field']" :footer="true" /></template><FormField :required="isRequired('anniversary', 'title')" label="标题" v-model="form.title" />
           <FormField :required="isRequired('anniversary', 'targetDate')" label="日期" kind="date" v-model="form.targetDate" />
           <view class="appearance-row ui-row ui-section"><view class="anniversary-preview" :style="cardStyle(form.color)"><text class="preview-emoji">{{ form.icon }}</text></view><MobileButton :label="showAppearance ? '收起外观设置' : '外观设置'" variant="quiet" :aria-expanded="showAppearance" @click="showAppearance = !showAppearance" /></view>
           <view v-if="showAppearance"><text class="choice-label" :class="{ 'choice-label-dark': isDark }">选择图标</text>

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import CategoryTabs from "../../components/CategoryTabs.uvue";
 import { readPageTotal, mergePageItems, hasMorePageItems } from '../../services/pagination.ts';
 import { fetchDictionary } from '../../services/dictionary.ts';
 import { usePageRefresh } from '../../services/page-refresh.ts'
@@ -10,6 +11,7 @@ import ContentSkeleton from '../../components/ContentSkeleton.uvue';
 import AppIcon from '../../components/AppIcon.uvue';
 import iconCatalog from '../../services/icons/catalog.ts';
 import { computed, onUnmounted, ref, watch } from 'vue';
+import CategoryPager from '../../components/CategoryPager.uvue';
 import { onLoad, onShow } from '@dcloudio/uni-app';
 import MobilePage from '../../components/MobilePage.uvue';
 import PageHeader from '../../components/PageHeader.uvue';
@@ -59,6 +61,15 @@ const typeTabs = computed(() => [
 watch(availableTypes, (options) => {
   if (typeFilter.value && !options.some((type) => type.id === typeFilter.value)) typeFilter.value = '';
 });
+const activePage = computed(() => Math.max(0, typeTabs.value.findIndex(type => type.id === typeFilter.value)));
+const visibleTab = ref('');
+const pager = ref(null);
+function pageChanged(index) {
+  const type = typeTabs.value[index];
+  if (!type || form.value) return;
+  typeFilter.value = type.id;
+  visibleTab.value = 'device-type-' + index;
+}
 function selectType(id: string) {
   if (id === typeFilter.value || form.value) return;
   typeFilter.value = id;
@@ -84,24 +95,22 @@ const scope = createRecordScope((clear) => {
     typeFilter.value = '';
   }
 });
-const filtered = computed(() =>
-  rows.value.filter(
-    (item) =>
-      (!typeFilter.value || item.type === typeFilter.value) &&
-      (!keyword.value ||
-      (item.name + ' ' + item.spec + ' ' + item.remark).includes(keyword.value)),
-  ),
-);
-const amount = computed(() =>
-  filtered.value
-    .reduce((sum, item) => sum + Number(item.purchasePrice || 0), 0)
-    .toFixed(2),
-);
-const dailyCost = computed(() =>
-  filtered.value
-    .reduce((sum, item) => sum + Number(item.purchasePrice || 0) / usageDays(item), 0)
-    .toFixed(2),
-);
+// 每一页都有自己的统计和列表，拖动过程中两页同时存在，不在松手后替换内容。
+const devicePages = computed(() => typeTabs.value.map(type => {
+  const items = rows.value.filter(item =>
+    (!type.id || item.type === type.id) &&
+    (!keyword.value || (item.name + ' ' + item.spec + ' ' + item.remark).includes(keyword.value)),
+  );
+  return {
+    id: type.id,
+    items,
+    amount: items.reduce((sum, item) => sum + Number(item.purchasePrice || 0), 0).toFixed(2),
+    dailyCost: items.reduce((sum, item) => sum + Number(item.purchasePrice || 0) / usageDays(item), 0).toFixed(2),
+    statusCounts: ['1', '4', '2', '3'].map(status => ({
+      status, count: items.filter(item => String(item.status) === status).length,
+    })),
+  };
+}));
 let alive = true,
   generation = 0;
 onUnmounted(() => {
@@ -191,12 +200,6 @@ function photoFailed(id: string) {
   loadedPhotoUrls.value = { ...loadedPhotoUrls.value, [id]: '' };
   photoErrors.value = { ...photoErrors.value, [id]: '图片加载失败' };
 }
-const statusCounts = computed(() =>
-  ['1', '4', '2', '3'].map((status) => ({
-    status,
-    count: filtered.value.filter((item) => String(item.status) === status).length,
-  })),
-);
 function usageDays(item) {
   if (!item.purchaseDate) return 1;
   const difference =
@@ -212,8 +215,17 @@ function statusName(value) {
     value
   );
 }
-function open(item = null) {
+const editorOrigin = ref('50% 50%');
+function open(item = null, event: any = null) {
+  if (pager.value?.ignoreClick()) return;
   if (loading.value) return;
+  const info = uni.getWindowInfo();
+  const point = event?.touches?.[0] || event?.changedTouches?.[0] || event?.detail || event;
+  const x = point?.clientX ?? point?.x;
+  const y = point?.clientY ?? point?.y;
+  editorOrigin.value = typeof x === 'number' && typeof y === 'number'
+    ? Math.max(0, Math.min(100, x / info.windowWidth * 100)) + '% ' + Math.max(0, Math.min(100, y / info.windowHeight * 100)) + '%'
+    : '50% 50%';
   form.value = item
     ? {
         ...item,
@@ -252,37 +264,22 @@ function deviceDeleted(id: string) {
 }
 </script>
 <template>
-  <MobilePage :refreshing="refreshing" @refresh="load(true)"
+  <MobilePage :scroll-locked="true" :refresh-disabled="true"
     ><view class="goods-page ui-page-body" :class="{ 'goods-page-dark': isDark }"
       ><PageHeader title="设备" :back="true" @back="uni.navigateBack()" /><view
         class="ui-toolbar"
         ><FormField compact stretch hide-label label="搜索设备" placeholder="搜索设备、配置…" v-model="keyword" /></view
-      ><scroll-view
-        v-if="availableTypes.length"
-        direction="horizontal"
-        :scroll-x="true"
-        :show-scrollbar="false"
-        class="device-type-scroll ui-section"
-      ><view class="device-type-tabs" aria-label="设备类型筛选"
-        ><button :style="appTextColor()"
-          v-for="type in typeTabs"
-          :key="type.id"
-          role="button"
-          class="device-type-tab"
-          :class="{ 'device-type-tab-active': typeFilter === type.id, 'device-type-tab-active-dark': typeFilter === type.id && isDark }"
-          :aria-pressed="typeFilter === type.id"
-          @click="selectType(type.id)"
-        ><text :class="buttonLabelClasses(['device-type-tab', { 'device-type-tab-active': typeFilter === type.id, 'device-type-tab-active-dark': typeFilter === type.id && isDark }])">{{ type.label }}</text></button
-      ></view></scroll-view>
+      ><CategoryTabs v-if="availableTypes.length" class="device-type-scroll ui-section" :items="typeTabs" :current="activePage" variant="underline" label="设备类型筛选" id-prefix="device-type" item-class="device-type-tab" :disabled="!!form" @change="selectType(typeTabs[$event].id)" />
+      <CategoryPager ref="pager" class="device-pager" :items="devicePages" :current="activePage" :disabled="!!form" :refreshing="refreshing" tabs-selector=".device-type-scroll" @change="pageChanged" @refresh="load(true)"><template #default="{ item: devicePage, active }"><view class="device-page-content" :class="{ 'device-page-active': active }">
       <view class="metrics ui-row ui-section"
         ><MetricCard :style="appGridItem(2, 'section', [[700, 3]], true)" :loading="loading && !rows.length"
           class="metric-wide"
           label="总资产"
-          :value="amount"
-          unit="元" /><MetricCard :style="appGridItem(2, 'section', [[700, 3]], false)" :loading="loading && !rows.length" label="资产数量" :value="filtered.length" /><MetricCard :style="appGridItem(2, 'section', [[700, 3]], false)" :loading="loading && !rows.length" label="每日成本" :value="dailyCost" unit="元" /></view
+          :value="devicePage.amount"
+          unit="元" /><MetricCard :style="appGridItem(2, 'section', [[700, 3]], false)" :loading="loading && !rows.length" label="资产数量" :value="devicePage.items.length" /><MetricCard :style="appGridItem(2, 'section', [[700, 3]], false)" :loading="loading && !rows.length" label="每日成本" :value="devicePage.dailyCost" unit="元" /></view
       ><view class="status-summary ui-row ui-section"
         ><text
-          v-for="entry in statusCounts"
+          v-for="entry in devicePage.statusCounts"
           :key="entry.status"
           class="status-tag"
           :class="'status-' + entry.status"
@@ -291,13 +288,13 @@ function deviceDeleted(id: string) {
       ><PageState skeleton="list"
         :loading="loading"
         :error="error"
-        :empty="!filtered.length"
+        :empty="!devicePage.items.length"
         @retry="load()"
         >
 <template #loading><view class="goods-grid ui-gap-md" ><view v-for="n in 6" :key="n" class="goods-card ui-pad-card ui-gap-sm" :class="{ 'goods-card-dark': isDark }"><view class="goods-media" :class="{ 'goods-media-dark': isDark }"><view class="goods-image-skeleton"><ContentSkeleton variant="cover" label="正在加载设备图片" /></view></view><ContentSkeleton variant="tile" /></view></view></template>
 <view class="goods-grid ui-gap-md"
           ><view
-            v-for="item in filtered"
+            v-for="item in devicePage.items"
             :key="item.id"
             class="goods-card ui-pad-card ui-gap-sm"
             :class="{ 'goods-card-dark': isDark }"
@@ -310,7 +307,7 @@ function deviceDeleted(id: string) {
                 :aria-label="item.name + '图片'"
                 @load="loadedPhotoUrls[item.id] = photos[item.id]"
                 @error="photoFailed(item.id)"
-                @click="open(item)"
+                @click="open(item, $event)"
               /><view
                 v-if="item.fileId && !photoErrors[item.id] && (!photos[item.id] || loadedPhotoUrls[item.id] !== photos[item.id])"
                 class="goods-image-skeleton"
@@ -325,24 +322,24 @@ function deviceDeleted(id: string) {
                   label="重试设备图片"
                   variant="quiet"
                   @click="loadPhoto(item)" /></view
-              ><text class="goods-badge status-tag" :class="'status-' + item.status">{{
-                statusName(item.status)
-              }}</text></view
-            ><button :style="appTextColor()" role="button" class="goods-title-button ui-type-body" aria-label="编辑设备" @click="open(item)"><text class="goods-title">{{ item.name }}</text></button
+              ></view
+            ><button :style="appTextColor()" role="button" class="goods-title-button ui-type-body" aria-label="编辑设备" @click="open(item, $event)"><text class="goods-title">{{ item.name }}</text></button
             ><text v-if="item.spec" class="goods-content" :class="{ 'secondary-text-dark': isDark }">{{ item.spec }}</text
             ><text v-if="item.purchasePlace" class="goods-secondary" :class="{ 'secondary-text-dark': isDark }">{{ item.purchasePlace }}</text
             ><text v-if="item.remark" class="goods-content" :class="{ 'secondary-text-dark': isDark }">{{ item.remark }}</text
             ><view class="goods-cost-summary"><text class="goods-price">¥ {{ item.purchasePrice || 0 }}</text
             ><text class="goods-secondary" :class="{ 'secondary-text-dark': isDark }">{{ item.purchaseDate || '—' }} · {{ usageDays(item) }} 天</text
-            ><text class="goods-secondary" :class="{ 'secondary-text-dark': isDark }">日均 ¥ {{ (Number(item.purchasePrice || 0) / usageDays(item)).toFixed(2) }}</text></view
+            ><view class="goods-footer"><text class="goods-secondary" :class="{ 'secondary-text-dark': isDark }">日均 ¥ {{ (Number(item.purchasePrice || 0) / usageDays(item)).toFixed(2) }}</text
+            ><text class="goods-badge status-tag" :class="'status-' + item.status">{{ statusName(item.status) }}</text></view></view
             ></view
           ></view
         ></PageState
       >
-      <DeviceRecordEditor v-if="form" :record="form" @close="form = null" @saved="deviceSaved" @deleted="deviceDeleted" /> </view
+          </view></template></CategoryPager>
+      <DeviceRecordEditor v-if="form" :record="form" :editor-options="{ types, statuses }" :opening-origin="editorOrigin" @close="form = null" @saved="deviceSaved" @deleted="deviceDeleted" /> </view
   >
     <template #fixed>
-      <FloatingActionButton v-if="!form" label="新增设备" :disabled="loading || !!error" @click="open()" />
+      <FloatingActionButton v-if="!form" label="新增设备" :disabled="loading || !!error" @click="open(null, $event)" />
     </template>
   </MobilePage>
 </template>
@@ -357,8 +354,7 @@ function deviceDeleted(id: string) {
 
 .goods-page {
   color: #27272a;
-  /* 为悬浮新增按钮预留滚动空间，确保末行卡片可完整露出。 */
-  padding-bottom: calc(56px + #{$space-page} + #{$space-inline});
+
 }
 .goods-page-dark {
   color: #eeeeef;
@@ -372,46 +368,7 @@ function deviceDeleted(id: string) {
   min-width: 0;
   white-space: nowrap;
 }
-.device-type-tabs {
-  display: flex;
-  // 内容按全部标签撑开，避免 view 将超出视口的标签裁掉。
 
-@include intrinsic-width;
-
-  flex-direction: row;
-  flex-wrap: nowrap;
-  gap: $space-inline;
-}
-.device-type-tab {
-  flex-shrink: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  min-width: $space-controlMin;
-  min-height: $space-controlMin;
-  margin: 0;
-  padding: 0 $space-detail;
-  border: 0;
-  border-bottom: 2px solid transparent;
-  border-radius: 0;
-  background: transparent;
-
-/* #ifndef APP */
-color: inherit;
-/* #endif */
-
-  @include type-style('body');
-
-  white-space: nowrap;
-}
-.device-type-tab-active {
-  color: #2563eb;
-  border-bottom-color: #2563eb;
-}
-.device-type-tab-active-dark {
-  color: #6c9cff;
-  border-bottom-color: #6c9cff;
-}
 .metrics {
 
 @include grid-layout;
@@ -471,9 +428,15 @@ grid-column: 1 / -1;
   color: $text-secondary-light;
 }
 .goods-badge {
-  position: absolute;
-  top: $space-detail;
-  left: $space-detail;
+  flex-shrink: 0;
+  margin-left: auto;
+}
+.goods-footer {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: $space-detail;
 }
 .status-summary {
   flex-wrap: wrap;
@@ -545,18 +508,12 @@ color: inherit;
 }
 .goods-cost-summary { margin-top: auto; gap: $space-inline; }
 .goods-price { @include type-style('body-strong');  }
-.goods-title-button, .device-type-tab { @include borderless-button; }
+.goods-title-button { @include borderless-button; }
 
 .secondary-text-dark { color: $text-secondary-dark; }
 
 /* 按钮文字独立声明样式，兼容 App 不继承容器排版。 */
 .app-button-label { @include type-style('body'); color: #27272a; }
 .app-button-label-dark { color: #eeeeef; }
-.device-type-tab-label {
-/* #ifndef APP */
-color: inherit;
-/* #endif */
- @include type-style('body'); }
-.device-type-tab-active-label { color: #2563eb; }
-.device-type-tab-active-dark-label { color: #6c9cff; }
+
 </style>

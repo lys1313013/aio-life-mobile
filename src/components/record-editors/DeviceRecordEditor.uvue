@@ -7,12 +7,13 @@ import MobileButton from '../MobileButton.uvue';
 import ConfirmAction from '../ConfirmAction.uvue';
 import AttachmentField from '../AttachmentField.uvue';
 import LoadingIndicator from '../LoadingIndicator.uvue';
+import FormSkeleton from '../FormSkeleton.uvue';
 import { appButtonTextColor } from '../../services/app-layout.ts';
 import { isRequired, missingRequired } from '../../services/form-required.ts';
 import { createRecordScope } from '../../services/records/page-scope.ts';
 import { getDevice, saveDevice, deleteDevice, fetchDeviceEditorOptions } from '../../services/devices.ts';
 import { session } from '../../services/session.ts';
-const props = defineProps<{ record?: any; deviceId?: string }>();
+const props = defineProps<{ record?: any; deviceId?: string; openingOrigin?: string; editorOptions?: { types: any[]; statuses: any[] } }>();
 const emit = defineEmits(['close', 'saved', 'deleted']);
 const form = ref<any>(null), types = ref<any[]>([]), statuses = ref<any[]>([]);
 const loading = ref(false), loadError = ref(''), saving = ref(false), deleting = ref(false), attachmentBusy = ref(false), formError = ref('');
@@ -20,25 +21,48 @@ const scope = createRecordScope(() => emit('close'));
 let generation = 0;
 watch(() => session.token, () => { generation++; emit('close'); }, { flush: 'sync' });
 onUnmounted(() => { generation++; });
-async function load() {
-  const current = ++generation;
-  loading.value = true;
-  loadError.value = '';
-  form.value = null;
+const optionsLoading = ref(false), optionsError = ref('');
+function setForm(item: any) {
+  form.value = {
+    name: '', spec: '', type: types.value[0]?.id || '', status: '1', purchaseDate: '', endDate: '', purchasePrice: '', purchasePlace: '', remark: '', fileId: '',
+    ...item,
+    files: item?.fileId ? [{ id: item.fileId, fileName: item.name + ' 图片' }] : [],
+  };
+}
+async function loadOptions(current = generation) {
+  if (optionsLoading.value) return;
+  optionsLoading.value = true;
+  optionsError.value = '';
   try {
-    const [[typeDict, statusDict], item] = await scope.wait(Promise.all([
-      fetchDeviceEditorOptions(),
-      props.deviceId ? getDevice(props.deviceId) : Promise.resolve(props.record),
-    ]));
+    const [typeDict, statusDict] = await scope.wait(fetchDeviceEditorOptions());
     if (current !== generation) return;
-    if (props.deviceId && (!item || item.id !== props.deviceId)) throw Error('记录不存在或已删除');
     types.value = typeDict.dictDetailList || [];
     statuses.value = statusDict.dictDetailList || [];
-    form.value = {
-      name: '', spec: '', type: types.value[0]?.id || '', status: '1', purchaseDate: '', endDate: '', purchasePrice: '', purchasePlace: '', remark: '', fileId: '',
-      ...item,
-      files: item?.fileId ? [{ id: item.fileId, fileName: item.name + ' 图片' }] : [],
-    };
+    // 只补新增记录的默认分类，不重建表单或覆盖用户已输入内容。
+    if (form.value && !form.value.id && !form.value.type) form.value.type = types.value[0]?.id || '';
+  } catch (error) {
+    if (current === generation && error.name !== 'PageInactiveError') optionsError.value = error.message || '选项加载失败';
+  } finally { if (current === generation) optionsLoading.value = false; }
+}
+async function load() {
+  const current = ++generation;
+  loadError.value = '';
+  formError.value = '';
+  optionsError.value = '';
+  optionsLoading.value = false;
+  types.value = props.editorOptions?.types || [];
+  statuses.value = props.editorOptions?.statuses || [];
+  // 列表已有完整记录和字典时直接呈现；深链仅等待设备详情，字典独立加载。
+  form.value = null;
+  loading.value = !!props.deviceId;
+  if (!props.deviceId) setForm(props.record);
+  if (!props.editorOptions) void loadOptions(current);
+  if (!props.deviceId) return;
+  try {
+    const item = await scope.wait(getDevice(props.deviceId));
+    if (current !== generation) return;
+    if (!item || item.id !== props.deviceId) throw Error('记录不存在或已删除');
+    setForm(item);
   } catch (error) {
     if (current === generation && error.name !== 'PageInactiveError') loadError.value = error.message || '加载失败';
   } finally { if (current === generation) loading.value = false; }
@@ -52,7 +76,7 @@ function statusName(value) {
   );
 }
 async function save() {
-  if (!form.value || loading.value || saving.value || deleting.value || attachmentBusy.value) return;
+  if (!form.value || loading.value || optionsLoading.value || optionsError.value || loadError.value || saving.value || deleting.value || attachmentBusy.value) return;
   if (missingRequired('device', form.value)) {
     formError.value = '请输入设备名称';
     return;
@@ -108,24 +132,30 @@ async function remove(item) {
       <AdaptiveModal
         label="编辑设备"
         :max-width="520"
-        :show-close="false"
+        :show-close="loading || !!loadError"
+        opening-motion
+        :opening-origin="openingOrigin"
+        :loading="loading"
+        :load-error="loadError"
+        @retry="load"
         :busy="saving || deleting || attachmentBusy"
         @close="emit('close')"
       >
-        <view v-if="loading || loadError" class="device-loading ui-pad-modal">
-          <LoadingIndicator v-if="loading" />
-          <MobileButton v-else label="重新加载详情" @click="load" />
-          <MobileButton label="取消" variant="quiet" @click="emit('close')" />
-        </view>
-        <template v-else-if="form">
+        <template #loading><FormSkeleton :rows="['field', 'field', 'pair', 'pair', 'pair', 'textarea', 'attachment']" :footer="false" label="正在加载设备详情" /></template>
+        <template v-if="form">
         <FormField :required="isRequired('device', 'name')" appearance="soft" label="名称" placeholder="设备名称" v-model="form.name" />
         <FormField appearance="soft" label="配置" placeholder="型号、容量等" v-model="form.spec" />
-        <view class="ui-field-row">
+        <view class="ui-field-row device-options" :aria-busy="optionsLoading">
+          <LoadingIndicator v-if="optionsLoading" floating label="正在加载设备选项" />
+          <MobileButton v-if="optionsError" class="device-options-retry" label="重试设备选项" icon="ant-design:reload-outlined" variant="quiet" @click="loadOptions()" />
           <FormField appearance="soft" compact stretch label="类型" kind="selector"
-            :model-value="types.find((t) => t.id === form.type)?.dictLabel || types.find((t) => t.id === form.type)?.label || ''"
+            :disabled="optionsLoading || !!optionsError"
+            :placeholder="optionsLoading ? '加载中…' : optionsError ? '加载失败' : '请选择'"
+            :model-value="types.find((t) => t.id === form.type)?.dictLabel || types.find((t) => t.id === form.type)?.label || form.typeName || ''"
             :options="types.map((t) => t.dictLabel || t.label)"
             @update:model-value="form.type = types.find((t) => (t.dictLabel || t.label) === $event)?.id || ''" />
           <FormField appearance="soft" compact stretch label="状态" kind="selector"
+            :disabled="optionsLoading || !!optionsError"
             :model-value="statusName(form.status)"
             :options="statuses.map((t) => t.label)"
             @update:model-value="form.status = String(statuses.find((t) => t.label === $event)?.value || '1')" />
@@ -170,15 +200,17 @@ async function remove(item) {
             @click="emit('close')"><text :style="appButtonTextColor(false)" class="device-editor-action">取消</text></MobileButton><MobileButton
             label="保存"
             :loading="saving"
-            :disabled="deleting || attachmentBusy"
+            :disabled="deleting || attachmentBusy || optionsLoading || !!optionsError"
             @click="save"><text :style="appButtonTextColor()" class="device-editor-action">保存</text></MobileButton>
         </FormActions></template></AdaptiveModal>
 </template>
 <style scoped lang="scss">
 @use '../../styles/typography' as *;
 @use '../../styles/spacing.scss';
+@use '../../styles/spacing-tokens' as *;
 @include type-utilities('body');
 .device-editor-action { @include type-style('body'); }
 .goods-error { color: #e05252; }
-.device-loading { align-items: center; justify-content: center; min-height: 128px; }
+.device-options { position: relative; }
+.device-options-retry { position: absolute; top: 0; right: 0; z-index: 2; }
 </style>

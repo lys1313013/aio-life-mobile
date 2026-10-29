@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
 import { session } from '../../services/session.ts';
+import FormSkeleton from '../FormSkeleton.uvue';
 import AdaptiveModal from '../AdaptiveModal.uvue';
 import FormField from '../FormField.uvue';
 import FormActions from '../FormActions.uvue';
@@ -15,8 +16,8 @@ import { appTextColor } from '../../services/app-layout.ts';
 import { isDark } from '../../services/theme.ts';
 import { editableProviders, readMemberProviders, memberCategories as categories, memberCategoryLabels as categoryLabels } from '../../services/membership-provider.ts';
 import { memberPayload, addMonthsClamped } from '../../services/records/contracts.ts';
-const props = defineProps<{ record?: any }>();
-const emit = defineEmits(['close', 'saved', 'deleted']);
+const props = defineProps<{ record?: any; loading?: boolean; loadError?: string }>();
+const emit = defineEmits(['close', 'saved', 'deleted', 'retry']);
 const form = ref<any>(null), saving = ref(false), deleting = ref(false), formError = ref('');
 const scope = createRecordScope(() => emit('close'));
 watch(() => session.token, () => emit('close'), { flush: 'sync' });
@@ -135,19 +136,18 @@ async function remove(item) {
   try { await scope.wait(request('/membership/' + encodeURIComponent(item.id), 'DELETE')); emit('deleted', item.id); }
   finally { deleting.value = false; }
 }
-open(props.record?.id ? props.record : null);
-if (!props.record?.id && props.record) Object.assign(form.value, props.record);
+watch(() => [props.record, props.loading, props.loadError], () => { if (props.loading || props.loadError) return; open(props.record?.id ? props.record : null); if (!props.record?.id && props.record) Object.assign(form.value, props.record); }, { immediate: true });
 
 </script>
 <template>
-<AdaptiveModal
-        v-if="form"
-        :label="form.id ? '编辑订阅' : '新增订阅'"
+<AdaptiveModal :loading="loading" :load-error="loadError" :loading-rows="3" @retry="emit('retry')"
+        v-if="form || loading || loadError"
+        :label="(form?.id || loading || loadError) ? '编辑订阅' : '新增订阅'"
         :busy="deleting || saving || choosingProvider"
         :content-key="String(showDetails) + formError + selectedProviderLabel + providersError"
         @close="emit('close')"
       >
-        <view class="ui-field-row">
+        <template #loading><FormSkeleton :rows="['pair', 'field', 'pair', 'controls', 'pair', 'pair', 'toggle']" :footer="false" /></template><view class="ui-field-row">
           <FormField appearance="soft"
             compact stretch label="分类" kind="selector"
             :model-value="categoryLabels[categories.indexOf(form.category)] || form.category"
