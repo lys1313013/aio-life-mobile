@@ -2,7 +2,8 @@
 import { usePageRefresh } from '../../services/page-refresh.ts'
 import { appTextColor, useAppLayout } from '../../services/app-layout.ts'
 
-import { buttonLabelClasses } from '../../services/button-label.ts'
+import CategoryTabs from '../../components/CategoryTabs.uvue';
+import CategoryPager from '../../components/CategoryPager.uvue';
 import { isRequired, missingRequired } from '../../services/form-required.ts';
 import AppIcon from '../../components/AppIcon.uvue';
 import { computed, ref, watch } from 'vue';
@@ -60,6 +61,12 @@ const connection = ref<any>({ connected: false }),
   noteKind = ref('划线'),
   noteQuery = ref(''),
   copyError = ref('');
+const pager = ref(null);
+const tabs = ['阅读看板', '我的书架', '阅读笔记'].map(label => ({ label }));
+const tabIndex = computed(() => tabs.findIndex(item => item.label === tab.value));
+function selectTab(index: number) {
+  if (!detail.value && tabs[index]) tab.value = tabs[index].label;
+}
 const openingBooks = ref<Record<string, boolean>>({});
 const bookLinks = ref<Record<string, string>>({});
 const bookLinkErrors = ref<Record<string, string>>({});
@@ -68,7 +75,7 @@ function bookLink(book) {
   return wereadWebLink(book?.deepLink) || bookLinks.value[book?.bookId] || '';
 }
 async function openRankBook(book) {
-  if (!book || openingBooks.value[book.bookId]) return;
+  if (!book || pager.value?.ignoreClick() || openingBooks.value[book.bookId]) return;
   const result = tryOpenWereadApp(book.bookId, bookLink(book));
   if (result !== 'unavailable') {
     showWebFallback.value[book.bookId] = true;
@@ -78,7 +85,7 @@ async function openRankBook(book) {
   await openWebBook(book);
 }
 async function openWebBook(book) {
-  if (!book || openingBooks.value[book.bookId]) return;
+  if (!book || pager.value?.ignoreClick() || openingBooks.value[book.bookId]) return;
   bookLinkErrors.value[book.bookId] = '';
   const link = bookLink(book);
   if (link) { openLink(link); return; }
@@ -356,6 +363,7 @@ async function saveConnection() {
   }
 }
 async function showBook(book) {
+  if (pager.value?.ignoreClick()) return;
   const current = ++detailRevision;
   detail.value = book;
   progress.value = null;
@@ -410,11 +418,18 @@ function openLink(url) {
 }
 </script>
 <template>
-  <MobilePage :refreshing="syncing || loading" @refresh="connection.connected ? refresh() : initialize()"
+  <MobilePage :scroll-locked="!!(connection.connected && snapshot)" :refreshing="syncing || loading" @refresh="connection.connected ? refresh() : initialize()"
     ><view class="weread-page ui-page-body" :class="{ 'weread-page-dark': isDark }"
       ><PageHeader title="微信读书" :back="true" @back="uni.navigateBack()" /><PageState skeleton="media" :content-key="String(contentRevision)" :loading="loading" :error="error" @retry="connection.connected ? refresh() : initialize()"
         ><template v-if="connection.connected && snapshot"
-          ><view class="weread-tabs ui-row ui-section"><button v-for="label in ['阅读看板', '我的书架', '阅读笔记']" :key="label" role="button" class="weread-tab" :class="{ 'weread-tab-dark': isDark, 'weread-tab-active': tab === label }" :aria-pressed="tab === label" @click="tab = label"><text :class="buttonLabelClasses(['weread-tab', { 'weread-tab-dark': isDark, 'weread-tab-active': tab === label }])">{{ label }}</text></button></view><view v-if="tab === '阅读看板'"
+          ><CategoryTabs class="weread-tabs ui-section" :items="tabs" :current="tabIndex"
+            variant="underline" label="微信读书页签" id-prefix="weread-tab" item-class="weread-tab"
+            :disabled="!!detail" @change="selectTab" />
+          <CategoryPager ref="pager" :items="tabs" :current="tabIndex" :disabled="!!detail"
+            :refreshing="syncing || loading" :layout-key="[loading, error]" tabs-selector=".weread-tabs"
+            @change="selectTab" @refresh="refresh">
+            <template #default="{ item: wereadTab }">
+          <view v-if="wereadTab.label === '阅读看板'"
             ><view class="toolbar dashboard-filters ui-row ui-section"
               ><view class="dashboard-filter"><FormField compact
                 label="周期"
@@ -470,7 +485,7 @@ function openLink(url) {
               </view
               ></view
             ></view
-          ><view v-else-if="tab === '我的书架'"
+          ><view v-else-if="wereadTab.label === '我的书架'"
             ><view class="weread-search ui-row ui-section" :class="{ 'weread-search-dark': isDark }"><AppIcon name="ant-design:search-outlined" :size="18" color="#8b8f99" /><input :style="appTextColor()" class="weread-search-input" aria-label="搜索书名或作者" placeholder="搜索书名、作者" v-model="keyword" confirm-type="search" /></view><view class="toolbar ui-row ui-section"
               ><FormField compact stretch hide-label
                 label="阅读状态"
@@ -497,7 +512,7 @@ function openLink(url) {
                 <text class="book-author" :class="{ 'record-secondary-dark': isDark }">{{ book.author || '作者未知' }}</text>
                 <view class="book-meta ui-row"><text class="book-notes" :class="{ 'record-secondary-dark': isDark }">{{ notebookMap.has(book.bookId) ? (notebookMap.get(book.bookId)?.noteCount || 0) + ' 划线 · ' + (notebookMap.get(book.bookId)?.reviewCount || 0) + ' 点评' : '暂无笔记' }}</text><text v-if="notebookMap.get(book.bookId)?.readingProgress != null" class="book-progress">{{ notebookMap.get(book.bookId)?.readingProgress }}%</text></view>
               </view></view></view><text v-if="!books.length" class="secondary" :class="{ 'record-secondary-dark': isDark }">没有匹配的图书</text></view
-          ><view v-else-if="tab === '阅读笔记'"
+          ><view v-else-if="wereadTab.label === '阅读笔记'"
             ><FormField
               label="笔记本"
               kind="selector"
@@ -537,7 +552,7 @@ function openLink(url) {
                 ><text class="secondary" :class="{ 'record-secondary-dark': isDark }">{{ readingDate(item.time) }}</text></view
               ></PageState
             ><text v-if="copyError" class="error ui-section ui-type-body">{{ copyError }}</text></view
-          ></template
+          ></template></CategoryPager></template
         ><view v-if="!loading && !error && !connection.connected" class="weread-binding-panel"
           ><FormField :required="isRequired('weread', 'keyInput')"
           label="微信读书 Key"
@@ -648,11 +663,7 @@ function openLink(url) {
 @use '../../styles/spacing-tokens' as *;
 @include type-utilities('body');
 
-.weread-tabs { flex-direction: row; align-items: center; }
-.weread-tab { flex: 1; margin: 0; padding: 0 $space-inline; min-height: $space-controlMin; border-radius: 0; background-color: transparent; color: $text-secondary-light; @include type-style('body'); }
-.weread-tab::after { border: 0; }
-.weread-tab-dark { color: $text-secondary-dark; }
-.weread-tab-active { color: #427bea; border-bottom: 2px solid #427bea; }
+.weread-tab { flex: 1; }
 .weread-key-link { width: 100%; box-sizing: border-box; }
 .weread-search { flex-direction: row; align-items: center; padding: 0 $space-card; background-color: #fff; border-radius: 10px; }
 .weread-search-dark { background-color: #1c1e22; }
