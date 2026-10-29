@@ -84,12 +84,12 @@ for (const width of [390, 768, 1440])
         ['member/index', '模拟订阅 1', /^编辑订阅：/],
         ['finance/cards', '模拟银行', '编辑'],
         ['finance/import', '选择账单文件', null],
-        ['finance/index', '收支概览', null],
+        ['finance/index', '总收入', null],
         ['finance/income', '月均收入', '新增'],
         ['finance/expense', '月均支出', '新增'],
       ]) {
         await p.goto('/#/pages/' + route);
-        if (route === 'finance/income') await p.getByRole('button', { name: '统计', exact: true }).click();
+        await expect(p.getByRole('button', { name: '统计', exact: true })).toHaveCount(0);
         await expect(
           p.getByText(ready, { exact: true }).filter({ visible: true }).first(),
         ).toBeVisible();

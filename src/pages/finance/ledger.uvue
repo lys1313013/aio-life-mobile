@@ -8,6 +8,7 @@ import { computed, onUnmounted, ref, watch } from 'vue';
 import PageHeader from '../../components/PageHeader.uvue';
 import MobilePage from '../../components/MobilePage.uvue';
 import MobileButton from '../../components/MobileButton.uvue';
+import FloatingActionButton from '../../components/FloatingActionButton.uvue';
 import ConfirmAction from '../../components/ConfirmAction.uvue';
 import FormField from '../../components/FormField.uvue';
 import PageState from '../../components/PageState.uvue';
@@ -43,7 +44,7 @@ const overviewRows = ref<any[]>([]),
   overviewYear = ref(String(new Date().getFullYear()));
 let statisticsSequence = 0;
 const statistics = ref<any[]>([]),
-  showStatistics = ref(false),
+  statisticsLoaded = ref(false),
   statisticsBusy = ref(false),
   statisticsPeriod = ref('月度'),
   statisticsError = ref('');
@@ -64,6 +65,7 @@ async function loadStatistics() {
         (a, b) => b.year - a.year || (b.month || 0) - (a.month || 0),
       );
       overviewRows.value = monthly;
+      statisticsLoaded.value = true;
     }
   } catch (e) {
     if (alive && current === statisticsSequence) statisticsError.value = e.message;
@@ -118,12 +120,7 @@ function filterStatistics(group: any, item: any) {
     group.year + '-' + String(endMonth).padStart(2, '0') + '-' + last;
   typeFilter.value = name(types.value, String(item.typeId));
   filters.value[expense.value ? 'expTypeId' : 'incTypeId'] = String(item.typeId);
-  showStatistics.value = false;
   load();
-}
-function toggleStatistics() {
-  showStatistics.value = !showStatistics.value;
-  if (showStatistics.value) loadStatistics();
 }
 const total = ref<number | null>(null),
   page = ref(1),
@@ -155,6 +152,7 @@ function toggleSelection() {
 }
 const activeFilterCount = computed(() =>
   ['year', 'startTime', 'endTime', 'remark', 'counterparty', 'expDesc', 'payTypeId']
+    .filter((key) => expense.value || key !== 'year')
     .filter((key) => String(filters.value[key] || '').trim()).length,
 );
 const typeFilter = ref('全部类型'),
@@ -268,7 +266,7 @@ function suspend(clear = false) {
   draft.value = {}; formError.value = '';
   if (clear) {
     rows.value = []; types.value = []; payments.value = [];
-    statistics.value = []; overviewRows.value = [];
+    statistics.value = []; overviewRows.value = []; statisticsLoaded.value = false;
     page.value = 1; total.value = null; pageEnded.value = false; needsReset = false;
     error.value = ''; moreError.value = ''; statisticsError.value = '';
   }
@@ -384,24 +382,15 @@ async function removeSelected() {
       >
       <view class="tools ledger-toolbar ui-toolbar"
         ><text class="section-title">{{ expense ? '支出明细' : '收入明细' }}</text><view class="filter-trigger"><MobileButton :label="activeFilterCount ? '更多筛选，已启用 ' + activeFilterCount + ' 项条件' : '更多筛选'" icon="ant-design:filter-outlined" variant="quiet" @click="showFilters = !showFilters" /><text v-if="activeFilterCount" class="filter-count">{{ activeFilterCount }}</text></view><MobileButton
-          v-if="!expense"
-          label="统计"
-          icon="ant-design:bar-chart-outlined"
-          :variant="showStatistics ? 'primary' : 'quiet'"
-          :aria-expanded="showStatistics"
-          @click="toggleStatistics" /><MobileButton
-          label="新增"
-          icon="ant-design:plus-outlined"
-          @click="edit()" /><MobileButton
           v-if="expense"
           label="导入账单"
           icon="ant-design:import-outlined"
           variant="quiet"
           @click="uni.navigateTo({ url: '/pages/finance/import' })"
       /></view>
-      <view v-if="expense || showStatistics" class="statistics-panel"
+      <view class="statistics-panel"
         ><PageState skeleton="overview"
-        :loading="statisticsBusy" :has-content="overviewRows.length > 0"
+        :loading="statisticsBusy" :has-content="statisticsLoaded"
         :error="statisticsError"
         @retry="types.length ? loadStatistics() : initialize()"
         >
@@ -474,8 +463,8 @@ async function removeSelected() {
                 variant="ghost"
                 @click="filterStatistics(group, item)" /></view></view></view></PageState></view
       ><view class="filters ui-field-row">
-        <FormField :style="appGridItem(2, 'section', [[700, 3]], false)" v-if="showFilters" compact stretch hide-label label="年份" kind="selector"
-          :options="['全部年份', ...overviewYears]" v-model="filterYear" />
+        <FormField :style="appGridItem(2, 'section', [[700, 3]], false)" v-if="!expense || showFilters" compact stretch hide-label label="年份" kind="selector"
+          :options="['全部年份', ...overviewYears]" v-model="filterYear" :disabled="mutationBusy" @update:modelValue="!expense && load()" />
         <FormField :style="appGridItem(2, 'section', [[700, 3]], false)"
           compact
           stretch
@@ -572,6 +561,7 @@ async function removeSelected() {
       </PageState>
     </view>
     <template #fixed>
+    <FloatingActionButton v-if="!modal" label="新增" :disabled="loading || !!error || mutationBusy" @click="edit()" />
     <FinanceRecordModal v-if="modal" :kind="kind" :draft="draft" :types="types" :payments="payments"
       :saving="saving" :form-error="formError" v-model:continuous="continuous" :remove="removeDraft"
       @close="modal = false" @save="save" />
@@ -587,6 +577,7 @@ async function removeSelected() {
 @include type-utilities('body');
 
 .body {
+  padding-bottom: 80px; /* 右下角公共悬浮新增按钮避让，保证末条记录可完整滚出。 */
   color: #263248;
 }
 .body-dark {

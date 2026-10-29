@@ -4,8 +4,9 @@ const { picker } = require('./qa-domains-ui');
 
 test.use({ hasTouch: true });
 
-test('收入类型饼图切换年份后保留分类占比', async ({ page }) => {
-  await page.setViewportSize({ width: 390, height: 1000 });
+for (const width of [390, 768, 1440]) for (const theme of ['light', 'dark']) test(`收入图表默认展示与年份切换 ${width} ${theme}`, async ({ page }) => {
+  await page.setViewportSize({ width, height: 1000 });
+  await page.emulateMedia({ colorScheme: theme });
   await setup(page);
   const year = new Date().getFullYear();
   await page.route('**/api/*/statisticsByMonth', (route) => route.fulfill({
@@ -22,7 +23,7 @@ test('收入类型饼图切换年份后保留分类占比', async ({ page }) => 
     },
   }));
   await page.goto('/#/pages/finance/income');
-  await page.getByRole('button', { name: '统计', exact: true }).click();
+  await expect(page.getByRole('button', { name: '统计', exact: true })).toHaveCount(0);
   const chart = page.getByRole('figure', { name: '收入类型分布', exact: true });
   await expect(chart).toBeVisible();
   await expect(page.locator('.mini-chart uni-picker')).toHaveCount(0);
@@ -38,14 +39,20 @@ test('收入类型饼图切换年份后保留分类占比', async ({ page }) => 
     for (let i = 3; i < pixels.length; i += 4) if (pixels[i] > 0) painted++;
     return painted;
   })).toBeGreaterThan(500);
+  require('node:fs').mkdirSync('artifacts/income-charts', { recursive: true });
+  await page.screenshot({ path: `artifacts/income-charts/${width}-${theme}.png`, fullPage: true });
   // 手机使用滚轮并确认；点击非选中的文字不会提交年份。
   await picker(page, '选择年份', String(year - 1));
   await expect(chart.locator('.distribution-total')).toHaveText('660.00');
   await expect(chart.locator('.distribution-amount')).toHaveText(['¥600.00', '¥60.00']);
   await expect(chart.locator('.distribution-percent')).toHaveText(['90.9%', '9.1%']);
+  await page.getByRole('button', { name: '查看对应记录', exact: true }).first().click();
+  await expect(chart).toBeAttached();
+  await expect(page.locator('.statistics-panel')).toBeVisible();
+  await expect(page.getByRole('button', { name: '统计', exact: true })).toHaveCount(0);
 });
 
-test('财务概览日历切换指标时保留年份筛选', async ({ page }) => {
+test('首页概览日历切换指标时保留年份筛选', async ({ page }) => {
   const { calendarFixture } = require('./fixtures-finance-calendar');
   await page.setViewportSize({ width: 390, height: 1000 });
   await setup(page);
@@ -62,7 +69,8 @@ test('财务概览日历切换指标时保留年份筛选', async ({ page }) => 
     }
     return route.fulfill({ json: { code: 0, data } });
   });
-  await page.goto('/#/pages/finance/index');
+  await page.route('**/api/home/cards', route => route.fulfill({ json: { code: 0, message: null, data: [{ cardKey: 'section.finance', title: '收支概览', group: 'section', isEnabled: true, sortOrder: 0 }] } }));
+  await page.goto('/#/pages/home/index');
   const card = page.locator('[aria-label="收支概览首页卡片"]');
   await expect(card).toHaveAttribute('aria-busy', 'false');
   await card.getByRole('button', { name: '收支概览：月', exact: true }).click();

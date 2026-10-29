@@ -3,7 +3,7 @@ import { computed, getCurrentInstance, nextTick, onMounted, onUnmounted, ref, wa
 import { themeClass } from '../../../services/theme.ts';
 import MobileButton from '../../../components/MobileButton.uvue';
 
-const props = defineProps<{ label: string; items: { name: string; value: number }[]; iconToggle?: boolean }>();
+const props = defineProps<{ label: string; items: { name: string; value: number }[]; iconToggle?: boolean; negativeLabel?: string }>();
 const palette = ['#427bea', '#20a574', '#e7a638', '#9560c6', '#e05260', '#29a4b8', '#cf773e', '#688747'];
 const rows = computed(() => props.items
   .filter((item) => Number.isFinite(Number(item.value)) && Number(item.value) !== 0)
@@ -21,7 +21,7 @@ const instance = getCurrentInstance();
 const canvasId = 'finance-type-distribution-' + instance?.uid;
 let alive = true;
 function percentage(value: number) {
-  if (value < 0) return '净退款';
+  if (value < 0) return props.negativeLabel || '净退款';
   return positiveTotal.value > 0 ? (value / positiveTotal.value * 100).toFixed(1) + '%' : '0%';
 }
 async function draw() {

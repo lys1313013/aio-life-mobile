@@ -1,5 +1,5 @@
 const { test, expect } = require('./support/test');
-const { start } = require('./qa-domains-ui');
+const { start, picker } = require('./qa-domains-ui');
 
 test('财务高级筛选折叠后保留条件并显示数量', async ({ page }) => {
   await page.setViewportSize({ width: 768, height: 900 });
@@ -46,7 +46,7 @@ for (const width of [390, 768, 1440]) {
           incTypeId: '81',
           expTypeId: '81',
           payTypeId: '82',
-          incDate: `2026-10-0${3 - index}`,
+          incDate: `${index === 2 ? 2025 : 2026}-10-0${3 - index}`,
           expTime: `2026-10-0${3 - index} 12:30:00`,
           remark: [
             '模拟早餐',
@@ -57,9 +57,11 @@ for (const width of [390, 768, 1440]) {
           transactionId: kind === 'expense' ? 'mock-transaction-20261002-000000000' + index : '',
           transactionStatus: kind === 'expense' ? '模拟已完成' : '',
         }));
-        await page.route(`**/api/${kind}/query**`, (route) => route.fulfill({
-          json: { code: 0, data: { items: records, total: records.length } },
-        }));
+        await page.route(`**/api/${kind}/query**`, (route) => {
+          const year = new URL(route.request().url()).searchParams.get('year');
+          const items = kind === 'income' && year ? records.filter(row => row.incDate.startsWith(year + '-')) : records;
+          return route.fulfill({ json: { code: 0, message: null, data: { items, total: items.length } } });
+        });
         await page.getByRole('button', { name: '筛选', exact: true }).click();
         await expect(page.locator('.ledger-row')).toHaveCount(3);
         await expect(page.getByRole('button', { name: '关联设备', exact: true })).toHaveCount(0);
@@ -91,6 +93,29 @@ for (const width of [390, 768, 1440]) {
             expect(action.width).toBeGreaterThanOrEqual(44);
             expect(action.height).toBeGreaterThanOrEqual(44);
           }
+        }
+        // 末条记录处仍能从公共悬浮入口新增，弹窗打开后隐藏入口。
+        const add = page.getByRole('button', { name: '新增', exact: true });
+        await expect(add).toBeVisible();
+        await expect(page.locator('.ledger-toolbar').getByRole('button', { name: '新增', exact: true })).toHaveCount(0);
+        await add.click();
+        const dialog = page.getByRole('dialog', { name: kind === 'income' ? '编辑收入' : '编辑支出', exact: true });
+        await expect(dialog).toBeVisible();
+        await expect(add).toHaveCount(0);
+        await page.screenshot({ path: `${directory}/${kind}-${width}-${theme}-create.png` });
+        await dialog.getByRole('button', { name: '取消', exact: true }).click();
+        await expect(add).toBeVisible();
+        if (kind === 'income') {
+          const year = page.locator('.filters uni-picker[aria-label="年份"]');
+          await expect(year).toContainText('全部年份');
+          const annualRequest = page.waitForRequest(request => new URL(request.url()).pathname === '/api/income/query');
+          await picker(page, '年份', '2026');
+          expect(new URL((await annualRequest).url()).searchParams.get('year')).toBe('2026');
+          await expect(page.locator('.ledger-row')).toHaveCount(2);
+          const allRequest = page.waitForRequest(request => new URL(request.url()).pathname === '/api/income/query');
+          await picker(page, '年份', '全部年份');
+          expect(new URL((await allRequest).url()).searchParams.has('year')).toBe(false);
+          await expect(page.locator('.ledger-row')).toHaveCount(3);
         }
         expect(state.calls).toEqual([]);
       }
