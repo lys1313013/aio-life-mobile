@@ -1,0 +1,16 @@
+import Intent from 'android.content.Intent'
+import Uri from 'android.net.Uri'
+import { OpenExternalWeb } from '../interface.uts'
+
+export const openExternalWeb: OpenExternalWeb = (url: string): boolean => {
+  const uri = Uri.parse(url)
+  if (uri.getScheme()?.toLowerCase() != 'https' || uri.getHost() == null || uri.getUserInfo() != null) return false
+  const activity = UTSAndroid.getUniActivity()
+  if (activity == null) return false
+  try {
+    activity.startActivity(new Intent(Intent.ACTION_VIEW, uri))
+    return true
+  } catch (e) {
+    return false
+  }
+}

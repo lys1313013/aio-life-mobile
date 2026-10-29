@@ -343,6 +343,7 @@ function back() {
   </view>
 </template>
 <style scoped lang="scss">
+@use '../../styles/platform' as *;
 @use '../../styles/typography' as *;
 @use '../../styles/spacing.scss';
 @use '../../styles/spacing-tokens' as *;
@@ -379,11 +380,9 @@ function back() {
   border-radius: 0;
   background-color: transparent;
 }
-/* #ifdef WEB || MP-WEIXIN */
-.signout-button::after,
-.settings-entry::after,
-.theme-option::after { border: 0; }
-/* #endif */
+.signout-button,
+.settings-entry,
+.theme-option { @include borderless-button; }
 
 .preference-surface {
   background-color: #fff;
@@ -423,9 +422,7 @@ function back() {
 .menu-group-title { flex: 1; text-align: left; @include type-style('body-strong'); color: #27272a; }
 .menu-group-title-dark { color: #eeeeef; }
 .menu-empty { align-items: center; gap: $space-inline; padding: $space-section; }
-/* #ifdef WEB || MP-WEIXIN */
-.menu-group-toggle::after { border: 0; }
-/* #endif */
+.menu-group-toggle { @include borderless-button; }
 .preference-actions {
   flex-direction: row;
 
@@ -464,12 +461,7 @@ function back() {
   // 限制浮层宽度，手机与宽屏都保持紧凑，并避免窄屏溢出。
   width: 264px;
 
-/* #ifndef APP */
-max-width: 100%;
-/* #endif */
-/* #ifdef APP */
-flex-shrink: 1;
-/* #endif */
+@include shrink-content;
 
   box-sizing: border-box;
   overflow: visible;

@@ -1,0 +1,73 @@
+// 必要的渲染器差异集中在这里。App 网格列宽由 useAppLayout 计算。
+// DCloud 在 Sass 读取依赖时处理条件编译，调用方只表达布局用途。
+@mixin grid-layout {
+  /* #ifndef APP */
+  display: grid;
+  /* #endif */
+  /* #ifdef APP */
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  /* #endif */
+}
+
+@mixin grid-columns($columns) {
+  /* #ifndef APP */
+  grid-template-columns: repeat($columns, minmax(0, 1fr));
+  /* #endif */
+}
+
+// Vapor 的行数必须同时设置在 text 的 :max-lines 组件属性上，不能写 lines CSS。
+@mixin clamp-text($lines) {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  /* #ifndef APP */
+  display: -webkit-box;
+  -webkit-line-clamp: $lines;
+  -webkit-box-orient: vertical;
+  /* #endif */
+}
+
+@mixin wrap-long-text {
+  /* #ifndef APP */
+  word-break: break-word;
+  /* #endif */
+  /* #ifdef APP */
+  word-break: break-all;
+  /* #endif */
+}
+
+@mixin block-content {
+  /* #ifndef APP */
+  display: block;
+  /* #endif */
+  /* #ifdef APP */
+  display: flex;
+  /* #endif */
+}
+
+@mixin intrinsic-width {
+  /* #ifndef APP */
+  width: max-content;
+  /* #endif */
+  /* #ifdef APP */
+  flex-shrink: 0;
+  /* #endif */
+}
+
+@mixin shrink-content {
+  /* #ifndef APP */
+  max-width: 100%;
+  /* #endif */
+  /* #ifdef APP */
+  flex-shrink: 1;
+  /* #endif */
+}
+
+@mixin borderless-button {
+  // 微信/H5 的内置按钮边框是伪元素，App 没有这一层。
+  /* #ifdef WEB || MP-WEIXIN */
+  &::after { border: 0; }
+  /* #endif */
+}

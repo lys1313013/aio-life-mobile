@@ -139,14 +139,17 @@ try {
   // 能力接口临时失败时仍可重试，避免只有微信身份的用户停留在密码表单。
   const retryPage = await browser.newPage();
   let capabilityCalls = 0;
-  await retryPage.route(authRoute, async route => {
-    if (++capabilityCalls === 1) return route.abort();
+  await retryPage.route('**/api/auth/wechat/mini/capabilities', async route => {
+    // GET 首次请求加三次自动重试均失败后，才显示手动重试入口。
+    if (++capabilityCalls <= 4) return route.abort();
     return route.fulfill({ json: { code: 0, data: { enabled: true } } });
   });
   await retryPage.goto(origin + '/#/pages/login/index');
+  await button(retryPage, '重试微信登录').waitFor();
+  assert.equal(capabilityCalls, 4);
   await button(retryPage, '重试微信登录').click();
   await retryPage.getByText('微信登录', { exact: true }).waitFor();
-  assert.equal(capabilityCalls, 2);
+  assert.equal(capabilityCalls, 5);
   await retryPage.close();
   console.log('微信能力加载失败保留密码入口并可重试: passed');
   // 单独验证原账号绑定流程及临时会话清理。

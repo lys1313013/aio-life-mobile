@@ -252,6 +252,7 @@ const extremeLabels = computed(() => {
 </template>
 
 <style scoped lang="scss">
+@use '../styles/platform' as *;
 @use '../styles/typography' as *;
 @use '../styles/spacing.scss';
 @use '../styles/spacing-tokens' as *;
@@ -280,12 +281,7 @@ const extremeLabels = computed(() => {
   gap: $space-section;
   height: $space-controlMin;
   // 全部图例撑开内容宽度，不能把超出部分裁掉而不给 scroll-view 滚动范围。
-  /* #ifndef APP */
-  width: max-content;
-  /* #endif */
-  /* #ifdef APP */
-  flex-shrink: 0;
-  /* #endif */
+  @include intrinsic-width;
 }
 .chart-stack-swatch { width: 18px; height: 10px; border-radius: 2px; flex-shrink: 0; }
 .chart-stack-label { position: absolute; text-align: center; @include type-style('chart-label'); pointer-events: none; }
@@ -320,7 +316,5 @@ const extremeLabels = computed(() => {
 .chart-value-number-dark { color: #eeeeef; }
 .chart-unit-dark, .chart-y-tick-dark, .chart-x-label-dark, .chart-value-label-dark,
 .chart-selected-label-dark, .mini-chart-empty-dark { color: $text-secondary-dark; }
-/* #ifdef WEB || MP-WEIXIN */
-.chart-legend-button::after { border: 0; }
-/* #endif */
+.chart-legend-button { @include borderless-button; }
 </style>

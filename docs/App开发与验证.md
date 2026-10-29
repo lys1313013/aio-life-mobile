@@ -33,8 +33,14 @@ APK 下载后执行 `node scripts/check-android-runtime.mjs <apk路径>` 检查�
 
 原生 `button` [不支持嵌套组件](https://doc.dcloud.net.cn/uni-app-x/component/button.html)。`prepare:app` 会解析 App 工程的模板，将含图标、插槽或其他子组件的按钮转换为 `AioNativeButton` 点击容器，保留 class/style、可访问名称和事件，显式阻止禁用/加载中的点击。不要直接对 App 使用的复杂按钮嵌套 `view` 作为修复；Web/微信源码与原生按钮的授权行为不受这一步转换影响。
 
+`AioNativeButton` 不统一设置排列方向、对齐和最小高度，布局由原按钮传入的样式负责，避免覆盖纵向快捷导航或按分钟缩放的时迹记录。首页 App 卡片列数与概览高度由 `pages/home/services/home-layout.ts` 按窗口宽度计算，沿用 Web/微信断点，不依赖原生不支持的媒体查询；时迹统计卡片以间距变量生成 margin，并在页面 `onReady` 后重新测量时间轴可用高度。此类原生适配必须重新 `prepare:app`、打包并安装后验收，H5 截图不能证明 Android 的布局结果。
+
 原生接口也要按 App 签名处理：`onKeyboardHeightChange` 返回监听编号，销毁弹窗时用该编号调用 `offKeyboardHeightChange`；微信仍传原回调函数。当前 Android Vapor 的 SVG 图像解码器出现过 `unimplemented`，分类图标通过本地 UTS 插件栅格化为透明 PNG 并缓存，其他平台保留 SVG。生产时迹查询仍可能返回旧版完整 `{items,total}`，客户端兼容完整数据，但拒绝把不完整分页当作全天记录进行统计。
 
 App 的 CommonJS 依赖（ZIP、SM4）在构建时转换为 ESM，动态 GBK 解码依赖内联到 Vapor 的 IIFE，保留原导入和密码库能力。App 网格、视口高度和按钮文字使用原生适配；Web/微信保留原样式。编译仍报告 `gap`、部分媒体查询、`aspect-ratio` 等原生 CSS 兼容警告，安装包目前用于设备验证，不能据此声称所有页面和功能已完成 App 验收。
 
 Web 与小程序按官方机制仍使用 VDOM 运行；它们构建成功只能证明这两个目标的编译，不能代替 App Vapor 真机验证。
+
+2026-10-29 使用 BlueStacks Air 的 Android 标准调试基座及授权测试账号复现并修复：首页局部渲染、概览图标异常放大以及时迹白屏。原生 `scroll-view` 的 `scroll-top` 不能传 `undefined`，否则运行时抛出 `Cannot round NaN value`，后续绑定和页面渲染可能中断；公共页面及业务列表始终提供有限数字，首页滚动 ref 通过顶层绑定传入。微信读书卡片的窗口监听复用 `useWindowResize`，App 不调用 `uni.onWindowResize`。已查看浅色手机视口的首页、时迹日/周/月切换、历史记录列表、录入与详情弹窗及分类选择；未提交或删除测试账号记录。该验证不等于 Android 实体手机、平板、深色主题或完整业务验收，凭据与真实数据截图不得进入 Git。
+
+同日新版正式 APK 已在 BlueStacks 覆盖安装、冷启动，并查看首页概览、时迹圆环和带记录的日时间轴；BlueStacks 的 ADB 开关已保存为关闭，但重启后端口仍可连接，最终退出模拟器并确认 5555 端口关闭；再次启动后的端口状态尚未解决。产物校验及测试边界记录在忽略目录 `artifacts/bluestacks-20261029/validation-report.json`。相关单元测试 20 项、H5 回归 142 项通过；微信读书网页回退入口等待 popup 的用例单独复跑仍失败，其余 24 项未完成，不能将本轮报告为全量验证通过。

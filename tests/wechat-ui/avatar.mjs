@@ -18,7 +18,7 @@ await cp(path.join(root, 'src'), path.join(project, 'src'), { recursive: true,
   filter: file => !/project\.(private\.)?config\.json$/.test(file) });
 for (const file of ['package.json', 'vite.config.js', 'index.html', 'tsconfig.json']) await cp(path.join(root, file), path.join(project, file));
 for (const dir of ['node_modules', 'scripts']) await symlink(path.join(root, dir), path.join(project, dir));
-const settings = path.join(project, 'src/pages/profile/settings.uvue');
+const settings = path.join(project, 'src/components/AvatarPickerButton.uvue');
 await writeFile(settings, (await readFile(settings, 'utf8')).replaceAll('MP-WEIXIN', 'WEB'));
 const origin = 'http://127.0.0.1:5192';
 const server = spawn(process.execPath, [path.join(root, 'node_modules/@dcloudio/vite-plugin-uni/bin/uni.js'),

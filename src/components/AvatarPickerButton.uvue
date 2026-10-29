@@ -1,0 +1,39 @@
+<script setup lang="ts">
+const props = defineProps<{ disabled?: boolean; loading?: boolean }>()
+const emit = defineEmits(['start', 'selected', 'error'])
+// 页面在 start 时捕获账号和页面版本；任何迟到回调仍由页面的版本检查拦截。
+function begin() {
+  if (props.disabled || props.loading) return
+  emit('start')
+  // #ifndef MP-WEIXIN
+  uni.chooseImage({
+    count: 1, sizeType: ['compressed'],
+    success: result => emit('selected', { detail: { avatarUrl: result.tempFilePaths[0] || '' } }),
+    fail: error => emit('error', { detail: { errMsg: error.errMsg } }),
+  })
+  // #endif
+}
+</script>
+<template>
+  <!-- #ifdef MP-WEIXIN -->
+  <button role="button" class="avatar-picker" :open-type="disabled || loading ? '' : 'chooseAvatar'"
+    :disabled="disabled || loading" :aria-disabled="disabled || loading" :loading="loading"
+    aria-label="更换头像" @click="begin" @chooseavatar="emit('selected', $event)" @error="emit('error', $event)">
+    <text class="avatar-picker-label">{{ loading ? '上传中…' : '更换头像' }}</text>
+  </button>
+  <!-- #endif -->
+  <!-- #ifndef MP-WEIXIN -->
+  <button role="button" class="avatar-picker" :disabled="disabled || loading" :aria-disabled="disabled || loading"
+    :loading="loading" aria-label="更换头像" @click="begin">
+    <text class="avatar-picker-label">{{ loading ? '上传中…' : '更换头像' }}</text>
+  </button>
+  <!-- #endif -->
+</template>
+<style scoped lang="scss">
+@use '../styles/platform' as *;
+@use '../styles/spacing-tokens' as *;
+@use '../styles/typography' as *;
+.avatar-picker { display: flex; flex-direction: row; align-items: center; justify-content: center; min-height: $space-controlMin; min-width: $space-controlMin; margin: 0; padding: 0; background-color: transparent !important; border: 0; }
+.avatar-picker-label { color: #4e7ee3; @include type-style('label'); line-height: $space-controlMin; }
+.avatar-picker { @include borderless-button; }
+</style>

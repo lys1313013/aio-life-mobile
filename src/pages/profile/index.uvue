@@ -1,7 +1,5 @@
 <script setup lang="ts">
-// #ifdef MP-WEIXIN
 import TabPage from '../../components/TabPage.uvue'
-// #endif
 import { usePageRefresh } from '../../services/page-refresh.ts'
 import { buttonLabelClasses } from '../../services/button-label.ts'
 import ContentSkeleton from '../../components/ContentSkeleton.uvue';
@@ -134,9 +132,7 @@ async function loadUnread() {
 </script>
 
 <template>
-  <!-- #ifdef MP-WEIXIN -->
   <TabPage page-path="pages/profile/index">
-  <!-- #endif -->
   <view class="tab-page" :class="themeClass('tab-page')">
     <PageHeader title="" :actions-min-width="44">
       <template #actions>
@@ -227,12 +223,11 @@ async function loadUnread() {
     </scroll-view>
   <SecondaryUnlock />
   </view>
-  <!-- #ifdef MP-WEIXIN -->
   </TabPage>
-  <!-- #endif -->
 </template>
 
 <style scoped lang="scss">
+@use '../../styles/platform' as *;
 @use '../../styles/typography' as *;
 @use '../../styles/spacing.scss';
 @use '../../styles/spacing-tokens' as *;
@@ -263,14 +258,10 @@ async function loadUnread() {
   color: #27272a;
   @include type-style('body');
 }
-/* #ifdef WEB || MP-WEIXIN */
-.shortcut-button::after,
-.menu-row::after,
-.profile-icon-button::after,
-.profile-card::after {
-  border: 0;
-}
-/* #endif */
+.shortcut-button,
+.menu-row,
+.profile-icon-button,
+.profile-card { @include borderless-button; }
 .profile-icon-button {
   display: flex;
   align-items: center;

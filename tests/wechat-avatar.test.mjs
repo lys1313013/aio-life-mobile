@@ -13,7 +13,7 @@ const contract = await readFile(new URL('../src/services/contract.ts', import.me
 const { readResponse } = await import(`data:text/javascript;base64,${Buffer.from(contract).toString('base64')}`);
 const compile = source => transformSync(source, { loader: 'ts' }).code;
 const createUpload = new Function('uni', 'session', 'clearSession', 'readResponse', 'baseURL', compile('function uploadAvatar' + apiSource) + '\nreturn uploadAvatar;');
-const createPage = new Function('ref', 'computed', 'watch', 'onShow', 'onHide', 'onUnload', 'fetchUser', 'request', 'uploadAvatar', 'restoreSession', 'session', 'uni', compile('const usePageRefresh = load => load;\n' + pageSource) + '\nreturn { form, ready, uploading, saving, errorText, chooseAvatar, beginWechatAvatarSelection, chooseWechatAvatar, wechatAvatarError, save };');
+const createPage = new Function('ref', 'computed', 'watch', 'onShow', 'onHide', 'onUnload', 'fetchUser', 'request', 'uploadAvatar', 'restoreSession', 'session', 'uni', compile('const usePageRefresh = load => load;\n' + pageSource) + '\nreturn { form, ready, uploading, saving, errorText, beginAvatarSelection, chooseAvatar, avatarError, save };');
 const oldId = '11111111111111111111111111111111', newId = '22222222222222222222222222222222';
 const tick = () => new Promise(resolve => setImmediate(resolve));
 async function fixture(t) {
@@ -33,7 +33,7 @@ async function fixture(t) {
     async (path, method, body) => { writes.push({ path, method, body }); if (control.saveError) throw Error('模拟保存失败'); Object.assign(profile, body); },
     upload, () => {}, session, uni));
   hooks.show(); await tick(); assert.equal(page.ready.value, true);
-  const select = (url = 'wxfile://tmp/avatar.png') => { page.beginWechatAvatarSelection(); return page.chooseWechatAvatar({ detail: { avatarUrl: url } }); };
+  const select = (url = 'wxfile://tmp/avatar.png') => { page.beginAvatarSelection(); return page.chooseAvatar({ detail: { avatarUrl: url } }); };
   const succeed = (index = uploads.length - 1, data = { id: newId, fileUrl: '/new.png' }) => uploads[index].success({ statusCode: 200, data: JSON.stringify({ code: 0, data }) });
   return { page, session, profile, hooks, uploads, writes, navigations, choices, control, select, succeed };
 }
@@ -58,12 +58,12 @@ test('微信头像上传使用临时文件、鉴权和 avatar 类型；仅保存
 
 test('取消、空头像和重复回调不上传；上传中不能重复选择或保存', async t => {
   const f = await fixture(t), p = f.page;
-  p.beginWechatAvatarSelection(); p.wechatAvatarError({ detail: { errMsg: 'chooseAvatar:fail cancel' } });
+  p.beginAvatarSelection(); p.avatarError({ detail: { errMsg: 'chooseAvatar:fail cancel' } });
   assert.equal(p.errorText.value, '');
   await f.select(''); assert.equal(f.uploads.length, 0);
   const pending = f.select();
-  await p.chooseWechatAvatar({ detail: { avatarUrl: 'wxfile://duplicate' } });
-  await f.select(); p.chooseAvatar(); await p.save();
+  await p.chooseAvatar({ detail: { avatarUrl: 'wxfile://duplicate' } });
+  await f.select(); await p.save();
   assert.equal(f.uploads.length, 1); assert.equal(f.choices.length, 0); assert.equal(f.writes.length, 0);
   f.succeed(); await pending;
 });
@@ -71,8 +71,8 @@ test('取消、空头像和重复回调不上传；上传中不能重复选择�
 test('微信能力失败提示可重试；上传失败保留原头像和文案', async t => {
   const f = await fixture(t), p = f.page;
   p.form.value.nickname = '未保存昵称';
-  p.beginWechatAvatarSelection(); p.wechatAvatarError({ detail: { errMsg: 'chooseAvatar:fail' } });
-  assert.match(p.errorText.value, /无法获取微信头像/);
+  p.beginAvatarSelection(); p.avatarError({ detail: { errMsg: 'chooseAvatar:fail' } });
+  assert.match(p.errorText.value, /无法选择头像/);
   const pending = f.select(); f.uploads[0].fail(); await pending;
   assert.equal(p.form.value.avatarFileId, oldId); assert.equal(p.form.value.avatarUrl, '/old.png');
   assert.equal(p.form.value.nickname, '未保存昵称'); assert.equal(p.uploading.value, false);
@@ -93,11 +93,11 @@ test('上传返回错误文件 ID 不覆盖旧头像，保存失败可直接重�
 
 for (const stage of ['选择中', '上传中']) test(`${stage}离页及返回后不接收旧头像`, async t => {
   const f = await fixture(t), p = f.page;
-  p.beginWechatAvatarSelection();
-  const pending = stage === '上传中' ? p.chooseWechatAvatar({ detail: { avatarUrl: 'wxfile://old' } }) : null;
+  p.beginAvatarSelection();
+  const pending = stage === '上传中' ? p.chooseAvatar({ detail: { avatarUrl: 'wxfile://old' } }) : null;
   f.hooks.hide(); f.hooks.show(); await tick();
   if (pending) { f.succeed(); await pending; }
-  else await p.chooseWechatAvatar({ detail: { avatarUrl: 'wxfile://old' } });
+  else await p.chooseAvatar({ detail: { avatarUrl: 'wxfile://old' } });
   assert.equal(p.form.value.avatarFileId, oldId); assert.equal(p.uploading.value, false);
   assert.equal(f.uploads.length, pending ? 1 : 0);
 });
@@ -119,9 +119,10 @@ test('当前账号上传 401 清理会话并跳转登录', async t => {
   assert.deepEqual(f.navigations, ['/pages/login/index']);
 });
 
-test('原有相册入口仍通过相同上传流程更新头像', async t => {
-  const f = await fixture(t); f.page.chooseAvatar();
-  const pending = f.choices[0].success({ tempFilePaths: ['fixture-album.png'] });
+test('公共头像选择器在 App/H5 返回的文件也经过同一页面上传和会话检查', async t => {
+  const f = await fixture(t);
+  f.page.beginAvatarSelection();
+  const pending = f.page.chooseAvatar({ detail: { avatarUrl: 'fixture-album.png' } });
   assert.equal(f.uploads[0].filePath, 'fixture-album.png'); f.succeed(); await pending;
   assert.equal(f.page.form.value.avatarFileId, newId);
 });

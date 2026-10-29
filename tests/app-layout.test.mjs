@@ -2,6 +2,25 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import fs from 'node:fs';
 import { transformSync } from 'esbuild';
+import { parse } from '@vue/compiler-sfc';
+
+test('未传滚动位置或传入非有限数字时，公共页面不向原生控件发送 NaN', async () => {
+  const source = fs.readFileSync(new URL('../src/components/MobilePage.uvue', import.meta.url), 'utf8');
+  const { descriptor } = parse(source);
+  const script = descriptor.scriptSetup.content.replace(/^import .*$/gm, '');
+  const prefix = `const input = {}; const computed = fn => ({ get value() { return fn() } });
+    const defineProps = () => input, withDefaults = props => props;
+    const provide = () => {}, useRefreshTheme = () => 'black', onMounted = () => {}, defineEmits = () => {};`;
+  const code = transformSync(prefix + script + '\nexport { input, nativeScrollTop }', { loader: 'ts', format: 'esm' }).code;
+  const m = await import('data:text/javascript;base64,' + Buffer.from(code).toString('base64'));
+  for (const value of [undefined, null, NaN, Infinity, -Infinity]) {
+    m.input.scrollTop = value;
+    assert.equal(m.nativeScrollTop.value, 0);
+  }
+  m.input.scrollTop = 128.5;
+  assert.equal(m.nativeScrollTop.value, 128.5);
+  assert.match(descriptor.template.content, /:scroll-top="nativeScrollTop"/);
+});
 
 test('App 网格随窗口变化、整行摘要在平板恢复等宽，账本保留四列', async () => {
   const source = fs.readFileSync(new URL('../src/services/app-layout.ts', import.meta.url), 'utf8')

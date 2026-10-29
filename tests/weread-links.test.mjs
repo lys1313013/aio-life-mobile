@@ -56,17 +56,20 @@ test('Android 原生入口指定微信读书包；未安装/系统拒绝可回�
 async function pageRuntime(platform, ua = '') {
   let source = parse(fs.readFileSync(new URL('../src/pages/records/weread.uvue', import.meta.url), 'utf8')).descriptor.scriptSetup.content;
   const active = [true];
-  source = source.split('\n').filter(line => {
+  const preprocess = value => value.split('\n').filter(line => {
     const start = line.match(/\/\/ #if(n?)def (.+)/);
     if (start) { active.push(active.at(-1) && (start[1] ? start[2] !== platform : start[2] === platform)); return false; }
     if (line.includes('// #endif')) { active.pop(); return false; }
     return active.at(-1);
   }).join('\n').replace(/^import[\s\S]*?from ['"][^'"]+['"];?/gm, '');
+  source = preprocess(source);
+  const navigation = preprocess(fs.readFileSync(new URL('../src/services/weread-navigation.ts', import.meta.url), 'utf8')).replace(/export /g, '');
   const helper = fs.readFileSync(new URL('../src/services/weread-links.ts', import.meta.url), 'utf8').replace(/export /g, '');
   const dates = fs.readFileSync(new URL('../src/services/time-format.ts', import.meta.url), 'utf8').replace(/export /g, '');
   const mocks = `
     export const calls = []; export const state = { nativeOK: true };
     const ref = value => ({ value }), computed = get => ({ get value() { return get(); } });
+    const watch = () => {}, session = { token: 'fixture-weread-links' };
     const useAppLayout = () => ({ appGridItem: () => ({}) });
     const usePageRefresh = load => load;
     const onShow = () => {}, createRecordScope = () => ({ wait: value => value });
@@ -77,7 +80,7 @@ async function pageRuntime(platform, ua = '') {
     const openWereadWeb = url => { calls.push(['native-web', url]); return true; };
     const fetchWereadBookLink = async id => { calls.push(['query', id]); return { deepLink: 'https://weread.qq.com/book-detail?type=1&v=mock-hash' }; };
   `;
-  return load(mocks + helper + dates + source + '\nexport { openRankBook, openWebBook, showWebFallback, bookLinkErrors, date, mode, timestamp, readingPeriod };');
+  return load(mocks + helper + navigation + dates + source + '\nexport { openRankBook, openWebBook, showWebFallback, bookLinkErrors, date, mode, timestamp, readingPeriod };');
 }
 
 test('实际页面统计日期不依赖 Android locale，上海零点有效且拒绝非法日期', async () => {

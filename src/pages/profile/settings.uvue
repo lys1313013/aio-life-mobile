@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import AvatarPickerButton from '../../components/AvatarPickerButton.uvue'
 import { usePageRefresh } from '../../services/page-refresh.ts'
 import { buttonLabelClasses } from '../../services/button-label.ts'
 import ContentSkeleton from '../../components/ContentSkeleton.uvue';
@@ -18,14 +19,10 @@ const errorText = ref('')
 const form = ref<{ nickname: string; introduction: string; avatarFileId: string | null; avatarUrl: string }>({ nickname: '', introduction: '', avatarFileId: null, avatarUrl: '' })
 const email = computed(() => session.user?.email || '未设置')
 let active = false, revision = 0
-// #ifdef MP-WEIXIN
-let wechatAvatarSelection: { token: string; version: number } | null = null
-// #endif
+let avatarSelection: { token: string; version: number } | null = null
 function clearPage() {
   revision++
-  // #ifdef MP-WEIXIN
-  wechatAvatarSelection = null
-  // #endif
+  avatarSelection = null
   ready.value = false
   loading.value = false
   saving.value = false
@@ -36,9 +33,7 @@ function clearPage() {
 function suspend() {
   active = false; revision++
   loading.value = false; saving.value = false; uploading.value = false
-  // #ifdef MP-WEIXIN
-  wechatAvatarSelection = null
-  // #endif
+  avatarSelection = null
 }
 watch(() => session.token, () => {
   clearPage()
@@ -102,44 +97,24 @@ async function uploadSelectedAvatar(filePath: string, token: string, version: nu
     if (current(token, version)) uploading.value = false
   }
 }
-// #ifdef MP-WEIXIN
-function beginWechatAvatarSelection() {
+function beginAvatarSelection() {
   if (!active || uploading.value || saving.value || !ready.value) return
-  wechatAvatarSelection = { token: session.token, version: revision }
+  avatarSelection = { token: session.token, version: revision }
 }
-function chooseWechatAvatar(event: { detail?: { avatarUrl?: string } }) {
-  const selection = wechatAvatarSelection
-  wechatAvatarSelection = null
+function chooseAvatar(event: { detail?: { avatarUrl?: string } }) {
+  const selection = avatarSelection
+  avatarSelection = null
   const filePath = event.detail?.avatarUrl
   if (!selection || !filePath) return
   return uploadSelectedAvatar(filePath, selection.token, selection.version)
 }
-function wechatAvatarError(event: { detail?: { errMsg?: string } }) {
-  const selection = wechatAvatarSelection
-  wechatAvatarSelection = null
+function avatarError(event: { detail?: { errMsg?: string } }) {
+  const selection = avatarSelection
+  avatarSelection = null
   if (!selection || !current(selection.token, selection.version)) return
   if (event.detail?.errMsg?.toLowerCase().includes('cancel')) return
-  errorText.value = '无法获取微信头像，请重试'
+  errorText.value = '无法选择头像，请重试'
 }
-// #endif
-// #ifndef MP-WEIXIN
-function chooseAvatar() {
-  if (uploading.value || saving.value || !ready.value) return
-  const token = session.token, version = revision
-  uni.chooseImage({
-    count: 1,
-    sizeType: ['compressed'],
-    success: (result) => {
-      if (!result.tempFilePaths.length) return
-      return uploadSelectedAvatar(result.tempFilePaths[0], token, version)
-    },
-    fail: (error) => {
-      if (current(token, version) && !error.errMsg.includes('cancel'))
-        errorText.value = '无法选择图片，请重试'
-    }
-  })
-}
-// #endif
 async function save() {
   if (!ready.value || saving.value || uploading.value) return
   const nickname = form.value.nickname.trim()
@@ -221,29 +196,8 @@ function back() {
               ></view
             >
             <view class="avatar-actions">
-              <!-- #ifndef MP-WEIXIN -->
-              <button
-                role="button"
-                class="avatar-picker"
-                :disabled="uploading || saving" :aria-disabled="uploading || saving"
-                :loading="uploading"
-                aria-label="更换头像"
-                @click="chooseAvatar"
-              ><text class="settings-link">{{ uploading ? '上传中…' : '更换头像' }}</text></button>
-              <!-- #endif -->
-              <!-- #ifdef MP-WEIXIN -->
-              <button
-                role="button"
-                class="avatar-picker"
-                :open-type="uploading || saving ? '' : 'chooseAvatar'"
-                :disabled="uploading || saving" :aria-disabled="uploading || saving"
-                :loading="uploading"
-                aria-label="更换头像"
-                @click="beginWechatAvatarSelection"
-                @chooseavatar="chooseWechatAvatar"
-                @error="wechatAvatarError"
-              ><text class="settings-link">{{ uploading ? '上传中…' : '更换头像' }}</text></button>
-              <!-- #endif -->
+              <AvatarPickerButton :disabled="uploading || saving || !ready" :loading="uploading"
+                @start="beginAvatarSelection" @selected="chooseAvatar" @error="avatarError" />
             </view>
           </view>
           <view class="settings-inline-row">
@@ -290,6 +244,7 @@ function back() {
   </view>
 </template>
 <style scoped lang="scss">
+@use '../../styles/platform' as *;
 @use '../../styles/typography' as *;
 @use '../../styles/text-colors' as *;
 @use '../../styles/spacing.scss';
@@ -316,18 +271,6 @@ function back() {
   justify-content: center;
   gap: $space-inline;
 }
-.avatar-picker {
-  display: flex;
-  flex-direction: row;
-  align-items: center;
-  justify-content: center;
-  min-height: $space-controlMin;
-  min-width: $space-controlMin;
-  margin: 0;
-  padding: 0;
-  background-color: transparent !important;
-  border: 0;
-}
 .settings-avatar {
   width: 72px;
   height: 72px;
@@ -341,11 +284,6 @@ function back() {
 .avatar-initial {
   color: #4f78c4;
   @include type-style('avatar');
-}
-.settings-link {
-  color: #4e7ee3;
-  @include type-style('label');
-  line-height: $space-controlMin;
 }
 .settings-label {
   color: #52525b;
@@ -425,12 +363,7 @@ function back() {
   color: #9dbcfa;
 }
 
-/* #ifdef WEB || MP-WEIXIN */
-.avatar-picker::after,
-.settings-save::after {
-  border: 0;
-}
-/* #endif */
+.settings-save { @include borderless-button; }
 
 .settings-readonly-dark {
   color: $text-secondary-dark;
