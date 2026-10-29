@@ -52,7 +52,7 @@ test('嵌套事件、空附件及明确 null 保留清空语义', () => {
 
 test('GET 精确路径优先，筛选保留 false 和零', () => {
   assert.deepEqual(pickQuery('/relationships/persons/search', { keyword: '人', userId: '11' }), { keyword: '人' })
-  assert.deepEqual(pickQuery('/movie/page', { page: 0, activeOnly: false, userId: '11' }), { page: 0, activeOnly: false })
+  assert.deepEqual(pickQuery('/movie/page', { page: 0, inProgressFirst: false, userId: '11' }), { page: 0, inProgressFirst: false })
 })
 
 test('移动分页白名单统一保留 page/pageSize，游标及业务筛选不被误删', () => {
@@ -94,8 +94,8 @@ test('实际 uni.request 边界执行筛选且不修改原对象', async () => {
     const cursor = '1791163200:9007199254740993'
     await request('/weread/recent', 'GET', { cursor, pageSize: 6, userId: 'other' })
     assert.deepEqual(sent.data, { cursor, pageSize: 6 })
-    const data = await request('/movie/page','GET',{page:1,pageSize:20,activeOnly:false,userId:'11'})
-    assert.deepEqual(sent.data,{page:1,pageSize:20,activeOnly:false})
+    const data = await request('/movie/page','GET',{page:1,pageSize:20,inProgressFirst:false,userId:'11'})
+    assert.deepEqual(sent.data,{page:1,pageSize:20,inProgressFirst:false})
     assert.deepEqual(data,{items:[],total:0})
     assert.equal(homeDataRevision('watched'), watchedRevision + 1)
     for (const path of ['/goals', '/anniversaryRecords']) {
@@ -112,7 +112,7 @@ test('实际 uni.request 边界执行筛选且不修改原对象', async () => {
       assert.deepEqual(sent.data, { isPinned: 1 })
     }
     for (const path of ['/read-record/page', '/movie/page']) {
-      const query = { page: 2, pageSize: 20, activeOnly: true, inProgressFirst: true }
+      const query = { page: 2, pageSize: 20, statuses: ['not_started', 'in_progress'], inProgressFirst: true }
       await request(path, 'GET', { ...query, userId: 'other' })
       assert.deepEqual(sent.data, query)
     }

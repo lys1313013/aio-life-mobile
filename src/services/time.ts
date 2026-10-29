@@ -69,8 +69,8 @@ export function getRelated(
     (type === 1 ? '/read-record/page' : '/movie/page') +
       '?page=' +
       page +
-      '&pageSize=24&activeOnly=' +
-      !all +
+      '&pageSize=24' +
+      (all ? '' : '&statuses=not_started&statuses=in_progress') +
       (type === 1 ? '&inProgressFirst=true&title=' : '&title=') +
       encodeURIComponent(keyword),
   )

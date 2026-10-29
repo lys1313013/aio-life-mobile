@@ -53,7 +53,7 @@ for (const [label, fail] of [
 ]) {
   test(`GET ${label} 后成功：保留参数、超时和字符串 ID，只解包及通知一次`, async () => {
     const { request, fixture, tick } = await harness(fail)
-    const pending = request('/movie/page', 'GET', { page: 2, activeOnly: false }, true, null, false, 2345)
+    const pending = request('/movie/page', 'GET', { page: 2, inProgressFirst: false }, true, null, false, 2345)
     let settled = false
     pending.then(() => { settled = true })
     await Promise.resolve()
@@ -68,7 +68,7 @@ for (const [label, fail] of [
     assert.equal(fixture.calls.length, 2)
     for (const call of fixture.calls) {
       assert.equal(call.header.Authorization, 'Bearer fixture-token')
-      assert.deepEqual(call.data, { page: 2, activeOnly: false })
+      assert.deepEqual(call.data, { page: 2, inProgressFirst: false })
       assert.equal(call.timeout, 2345)
     }
     assert.equal(fixture.parsed, 1)

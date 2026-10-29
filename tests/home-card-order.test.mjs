@@ -17,8 +17,9 @@ test('加号触摸跳过整卡排序，释放或取消后卡片仍可正常长�
     finish: event => calls.push(['finish', event]),
     cancel: () => calls.push(['cancel']),
   } }
-  const handlers = new Function('defineProps', 'withDefaults', 'provide', js + '\nreturn { start, finish, cancel }')(
+  const handlers = new Function('defineProps', 'withDefaults', 'provide', 'ref', 'uni', 'useWindowResize', js + '\nreturn { start, finish, cancel }')(
     () => props, value => value, (key, value) => provided.set(key, value),
+    value => ({ value }), { getWindowInfo: () => ({ windowWidth: 390 }) }, () => {},
   )
   const touch = { touches: [{ clientX: 300, clientY: 100 }] }
   const actionTouch = provided.get('home-card-action-touch')
