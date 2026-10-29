@@ -1,3 +1,5 @@
+import testAddress from './support/base-url.cjs';
+const { baseURL } = testAddress;
 // Synthetic API fixtures against running dev servers; no real account or database writes.
 import { chromium, expect } from '@playwright/test';
 import { mkdir } from 'node:fs/promises';
@@ -16,7 +18,7 @@ const fixtures = {
 try {
  for (const platform of (process.env.MENU_VISUAL_PLATFORM ? [process.env.MENU_VISUAL_PLATFORM] : ['web','mobile'])) {
   const context=await browser.newContext({viewport:{width:1440,height:960}}),page=await context.newPage();
-  const origin=platform==='web'?'http://127.0.0.1:5666':'http://127.0.0.1:5180';
+  const origin=platform==='web'?(process.env.WEB_BASE_URL || 'http://127.0.0.1:5666'):baseURL;
   const state={fail:false,writes:[],row:{id,parentId:'0',name:'Sample',path:'/sample',component:'sample/index',sortOrder:0,webIsEnabled:1,mobileIsEnabled:0,roles:'admin',meta:{title:'模拟菜单',icon:'lucide:book'}}};
   if(platform==='mobile')await page.addInitScript(()=>localStorage.setItem('aio-life-mobile.access-token.v1','menu-webIsEnabled-fixture'));
   for(const [path,data] of Object.entries(fixtures)){

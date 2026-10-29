@@ -206,15 +206,15 @@ test('首页设备详情失败可重试，关闭慢请求不重开弹窗', async
   });
   await page.getByRole('button', { name: '查看设备0', exact: true }).click();
   const editor = page.getByRole('dialog', { name: '编辑设备' });
-  await expect(editor.getByRole('button', { name: '重新加载详情' })).toBeVisible();
+  await expect(editor.getByRole('button', { name: '重试', exact: true })).toBeVisible();
   failed = false;
-  await editor.getByRole('button', { name: '重新加载详情' }).click();
+  await editor.getByRole('button', { name: '重试', exact: true }).click();
   await expect(editor.getByRole('textbox', { name: '名称', exact: true })).toHaveValue('设备完整名称');
   await editor.getByRole('button', { name: '取消', exact: true }).click();
   release = null;
   await page.getByRole('button', { name: '查看设备0', exact: true }).click();
   await expect.poll(() => typeof release).toBe('function');
-  await editor.getByRole('button', { name: '取消', exact: true }).click();
+  await editor.getByRole('button', { name: '关闭', exact: true }).click();
   release();
   await expect(editor).toHaveCount(0);
   await expect(page).toHaveURL(/pages\/home\/index/);

@@ -202,9 +202,9 @@ test('首页编辑加载失败可重试，保存失败保留草稿，取消不�
   await page.getByRole('button', { name: '编辑闪念', exact: true }).first().click();
   const thought = page.getByRole('dialog', { name: '编辑闪念', exact: true });
   await expect(thought.getByText('模拟闪念加载失败')).toBeVisible();
-  await expect(thought.getByRole('button', { name: '保存', exact: true })).toBeDisabled();
+  await expect(thought.getByRole('button', { name: '保存', exact: true })).toHaveCount(0);
   state.failThought = false;
-  await thought.getByRole('button', { name: '重试加载闪念' }).click();
+  await thought.getByRole('button', { name: '重试' }).click();
   await thought.getByRole('textbox', { name: '内容', exact: true }).fill('失败时保留的草稿');
   state.failSave = true;
   await thought.getByRole('button', { name: '保存', exact: true }).click();

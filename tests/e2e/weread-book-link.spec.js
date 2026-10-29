@@ -5,7 +5,7 @@ const link = 'https://weread.qq.com/web/reader/mock-book';
 const cover = 'https://weread.qq.com/mock-cover.svg';
 const coverSvg = '<svg xmlns="http://www.w3.org/2000/svg" width="60" height="84"><rect width="60" height="84" fill="#cfab6f"/></svg>';
 async function setup(page, context) {
-  const state = { calls: [], fail: false, invalid: false };
+  const state = { calls: [], fail: false, invalid: false, response: Promise.resolve() };
   await context.route('https://weread.qq.com/**', route => route.fulfill({ contentType: 'text/html', body: '<h1>模拟微信读书</h1>' }));
   await context.route(cover, route => route.fulfill({ contentType: 'image/svg+xml', body: coverSvg }));
   await page.route('**/api/**', async route => {
@@ -24,7 +24,7 @@ async function setup(page, context) {
     };
     if (path === '/api/weread/book-link') {
       state.calls.push(url.searchParams.get('bookId'));
-      await new Promise(resolve => setTimeout(resolve, 250));
+      await state.response;
       if (state.fail) return route.fulfill({ json: { code: 1, message: '模拟查询失败，请重试' } });
       data = { deepLink: state.invalid ? 'javascript:alert(1)' : link };
     }
@@ -53,13 +53,18 @@ for (const width of [390, 768, 1440]) for (const dark of [false, true]) {
     const opened = await directPopup; await opened.waitForURL(link);
     expect(await opened.evaluate(() => window.opener === null)).toBe(true);
     expect(state.calls).toEqual([]); await opened.close();
-    const pendingPopup = page.waitForEvent('popup'); await pending.press('Enter');
-    await expect(pending).toHaveAttribute('aria-busy', 'true');
-    await pending.click(); // 加载中重复点击不重复请求。
-    const resolved = await pendingPopup; await resolved.waitForURL(link);
-    expect(await resolved.evaluate(() => window.opener === null)).toBe(true);
-    expect(state.calls).toEqual(['3300144307']);
-    await expect(pending).toHaveAttribute('aria-busy', 'false'); await resolved.close();
+    let release;
+    state.response = new Promise(resolve => { release = resolve; });
+    try {
+      const pendingPopup = page.waitForEvent('popup'); await pending.press('Enter');
+      await expect(pending).toHaveAttribute('aria-busy', 'true');
+      await pending.click(); // 加载中重复点击不重复请求。
+      release();
+      const resolved = await pendingPopup; await resolved.waitForURL(link);
+      expect(await resolved.evaluate(() => window.opener === null)).toBe(true);
+      expect(state.calls).toEqual(['3300144307']);
+      await expect(pending).toHaveAttribute('aria-busy', 'false'); await resolved.close();
+    } finally { release(); }
     const cachedPopup = page.waitForEvent('popup'); await pending.click();
     const cached = await cachedPopup; await cached.waitForURL(link); await cached.close();
     expect(state.calls).toHaveLength(1);

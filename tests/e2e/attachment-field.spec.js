@@ -15,7 +15,7 @@ async function device(page) {
     return route.fulfill({ contentType: 'image/png', body: image });
   });
   await page.goto('/#/pages/goods/devices');
-  await expect(page.locator('.goods-photo img')).toHaveJSProperty('naturalWidth', 72);
+  await expect(page.locator('.device-page-active .goods-photo img')).toHaveJSProperty('naturalWidth', 72);
   return state;
 }
 
@@ -38,6 +38,7 @@ for (const width of [390, 768, 1440]) for (const theme of ['light', 'dark']) {
     await expect(editor.getByRole('button', { name: '添加图片', exact: true })).toHaveCount(0);
     const tile = editor.locator('.attachment-tile');
     await expect(tile.getByRole('status')).toBeVisible();
+    await editor.evaluate(async element => { await Promise.all(element.getAnimations().map(animation => animation.finished)); });
     const before = await tile.boundingBox();
     const actionsBefore = await editor.locator('.form-actions').boundingBox();
     release();
@@ -72,6 +73,7 @@ test('缩略图下载和图片解码失败可原位重试，替换图片后按�
   const editor = page.locator('[role=dialog][aria-label="编辑设备"]');
   const retry = editor.getByRole('button', { name: '重试图片', exact: true });
   await expect(retry).toBeVisible();
+  await editor.evaluate(async element => { await Promise.all(element.getAnimations().map(animation => animation.finished)); });
   const failed = await editor.locator('.attachment-tile').boundingBox();
   await retry.click();
   await expect(retry).toBeVisible();

@@ -18,7 +18,7 @@ test('设备删除只在编辑弹窗内出现，确认失败可重试，成功�
     await route.fulfill({ json: { code: 0, data: true } });
   });
   await page.goto('/#/pages/goods/devices');
-  await expect(page.getByText('模拟设备', { exact: true })).toBeVisible();
+  await expect(page.locator('.device-page-active').getByText('模拟设备', { exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: '删除设备', exact: true })).toHaveCount(0);
   await page.getByRole('button', { name: '新增设备', exact: true }).click();
   const editor = page.getByRole('dialog', { name: '编辑设备', exact: true });
@@ -41,6 +41,6 @@ test('设备删除只在编辑弹窗内出现，确认失败可重试，成功�
   await expect(editor.locator('.form-actions-primary').getByRole('button', { name: '取消', exact: true })).toBeDisabled();
   release();
   await expect(editor).toHaveCount(0);
-  await expect(page.getByText('模拟设备', { exact: true })).toHaveCount(0);
+  await expect(page.locator('.device-page-active').getByText('模拟设备', { exact: true })).toHaveCount(0);
   expect(calls).toBe(2);
 });

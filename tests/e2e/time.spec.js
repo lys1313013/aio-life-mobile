@@ -398,6 +398,8 @@ test('完整详情未读到不能编辑；全天已满不能新增', async ({ pa
   state.full = true;
   await page.getByRole('button', { name: '新增时迹' }).click();
   await expect(page.getByText('该天已录入完毕')).toBeVisible();
+  await expect(page.getByRole('dialog', { name: '记录时间', exact: true })).toHaveCount(0);
+  expect(state.creates).toHaveLength(0);
   await expect(page.getByRole('button', { name: '保存', exact: true })).toHaveCount(0);
 });
 
@@ -1406,5 +1408,32 @@ for (const view of ['时间轴视图', '卡片视图']) for (const period of ['�
     expect(state.ranges).toContainEqual(period === '周' ? ['2026-03-30', '2026-04-05'] : ['2026-03-01', '2026-03-31']);
     await expect(page.getByRole('dialog')).toHaveCount(0);
     await cdp.detach();
+  });
+}
+
+for (const width of [390, 768, 1440]) for (const colorScheme of ['light', 'dark']) {
+  test(`全天已满轻提示与切换日期保留草稿 ${width} ${colorScheme}`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 844 });
+    await page.emulateMedia({ colorScheme });
+    const state = await setup(page, { full: true });
+    await page.getByRole('button', { name: '新增时迹', exact: true }).click();
+    await expect(page.getByText('该天已录入完毕')).toBeVisible();
+    const dialog = page.getByRole('dialog', { name: '记录时间', exact: true });
+    await expect(dialog).toHaveCount(0);
+    await expect(page.locator('uni-toast')).toHaveCSS('opacity', '1');
+    await page.screenshot({ path: `artifacts/time-full-toast/${width}-${colorScheme}.png` });
+    state.full = false;
+    await page.getByRole('button', { name: '新增时迹', exact: true }).click();
+    await expect(dialog.locator('.compact-title')).toBeVisible();
+    await dialog.locator('.compact-title input').fill('保留草稿');
+    const originalDate = await dialog.locator('.compact-date').innerText();
+    state.full = true;
+    await dialog.locator('.calendar-trigger[aria-label="记录日期"]').click();
+    const calendar = page.getByRole('dialog', { name: '记录日期日历', exact: true });
+    await calendar.locator('.calendar-day[aria-pressed="false"][aria-label^="' + today.slice(0, 7) + '"]').first().click();
+    await expect(dialog.locator('.compact-title input')).toHaveValue('保留草稿');
+    await expect(dialog.locator('.compact-date')).toHaveText(originalDate);
+    await expect(dialog.getByRole('button', { name: '保存', exact: true })).toBeVisible();
+    expect(state.creates).toHaveLength(0);
   });
 }

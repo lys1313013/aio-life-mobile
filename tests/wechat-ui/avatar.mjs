@@ -4,6 +4,7 @@ import { cp, mkdir, readFile, writeFile, symlink, rm } from 'node:fs/promises';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
+import testAddress from '../support/base-url.cjs';
 import assert from 'node:assert/strict';
 import { chromium, expect as baseExpect } from '@playwright/test';
 const expect = baseExpect.configure({ timeout: 20000 });
@@ -20,9 +21,10 @@ for (const file of ['package.json', 'vite.config.js', 'index.html', 'tsconfig.js
 for (const dir of ['node_modules', 'scripts']) await symlink(path.join(root, dir), path.join(project, dir));
 const settings = path.join(project, 'src/components/AvatarPickerButton.uvue');
 await writeFile(settings, (await readFile(settings, 'utf8')).replaceAll('MP-WEIXIN', 'WEB'));
-const origin = 'http://127.0.0.1:5192';
+const origin = testAddress.baseURL;
+const port = new URL(origin).port || '80';
 const server = spawn(process.execPath, [path.join(root, 'node_modules/@dcloudio/vite-plugin-uni/bin/uni.js'),
-  '-p', 'h5', '--host', '127.0.0.1', '--port', '5192', '--strictPort'], { cwd: project, stdio: ['ignore', 'pipe', 'pipe'] });
+  '-p', 'h5', '--host', '127.0.0.1', '--port', port, '--strictPort'], { cwd: project, stdio: ['ignore', 'pipe', 'pipe'] });
 let logs = '', browser;
 server.stdout.on('data', chunk => { logs += chunk; });
 server.stderr.on('data', chunk => { logs += chunk; });

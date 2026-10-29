@@ -21,7 +21,7 @@ async function prepare(page, width, theme) {
 const cases = [
   { route: 'finance/cards', empty: '暂无储蓄卡', path: '/api/bank-cards', data: [], extra: { 'GET /api/bank-cards/banks': ok([]), 'GET /api/bank-cards/tags': ok([]) } },
   { route: 'finance/expense', empty: '暂无记录', path: '/api/expense/query', data: { items: [], total: 0 }, extra: { 'GET /api/userDictType/getByDictType': ok({ dictDetailList: [] }), 'GET /api/expense/statisticsByMonth': ok([]) } },
-  { route: 'mcp/index', empty: '暂无 MCP 工具', path: '/api/mcp/tools', data: [] },
+  { route: 'mcp/index', empty: '暂无 MCP 工具', path: '/api/mcp/tools', data: [], scroller: '.category-pager-scroll' },
   { route: 'relationship/index', empty: '暂无人物', path: '/api/relationships/graph', data: { nodes: [], edges: [] } },
 ];
 
@@ -47,7 +47,7 @@ for (const width of [390, 768, 1440]) for (const theme of ['light', 'dark']) {
       const emptyHeight = (await empty.boundingBox()).height;
       pending = gate();
       fail = true;
-      await pullDown(page, '.mobile-page-scroll');
+      await pullDown(page, entry.scroller || '.mobile-page-scroll');
       await expect(region).toHaveAttribute('aria-busy', 'true');
       await expect(empty).toBeVisible();
       expect((await region.boundingBox()).height).toBe(before.height);

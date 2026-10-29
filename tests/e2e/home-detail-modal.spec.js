@@ -65,9 +65,21 @@ for (const width of [390, 820, 1440]) for (const theme of ['light', 'dark']) {
     await page.setViewportSize({ width, height: 1000 });
     await page.emulateMedia({ colorScheme: theme });
     const errors = []; page.on('pageerror', error => errors.push(error.message));
-    await setup(page);
+    const state = await setup(page);
     for (const entry of entries) {
-      const dialog = await open(page, entry);
+      let release; state.waitDetail = new Promise(resolve => { release = resolve; });
+      let pendingBox;
+      try {
+        await page.locator(`[aria-label="${entry.label}首页卡片"]`).getByRole('button', { name: '编辑' + (entry.title || entry.name), exact: true }).click();
+        await expect(page.getByRole('status', { name: '正在加载记录详情', exact: true })).toBeVisible();
+        await expect.poll(async () => (await page.getByRole('dialog').boundingBox()).height).toBeGreaterThan(300);
+        pendingBox = await page.getByRole('dialog').boundingBox();
+        expect(await page.locator('.form-skeleton-input').first().evaluate(el => getComputedStyle(el).backgroundColor)).not.toBe('rgba(0, 0, 0, 0)');
+        await page.screenshot({ path: info.outputPath(entry.key + '-loading.png') });
+      } finally { release(); state.waitDetail = null; }
+      const dialog = page.getByRole('dialog');
+      await expect(dialog.locator('[aria-label="' + (entry.key === 'anniversary' ? '标题' : '名称') + '"] input')).toHaveValue(entry.title || entry.name);
+      await expect.poll(async () => Math.abs((await dialog.boundingBox()).height - pendingBox.height)).toBeLessThan(55);
       await expect.poll(async () => dialog.evaluate(el => el.getBoundingClientRect().height)).toBeGreaterThan(300);
       await expect.poll(async () => dialog.evaluate(el => Math.abs(el.getBoundingClientRect().top + el.getBoundingClientRect().height / 2 - window.innerHeight / 2))).toBeLessThan(2);
       expect(await dialog.evaluate(el => el.scrollWidth > el.clientWidth)).toBe(false);
@@ -128,7 +140,7 @@ test('首页详情失败可重试，关闭后忽略晚到响应', async ({ page 
   await expect(page.getByRole('alert')).toHaveText('模拟详情加载失败');
   await expect(page.getByRole('button', { name: '保存', exact: true })).toHaveCount(0);
   state.failDetail = false;
-  await page.getByRole('button', { name: '重试加载详情', exact: true }).click();
+  await page.getByRole('button', { name: '重试', exact: true }).click();
   await expect(page.getByRole('dialog').locator('[aria-label="名称"] input')).toHaveValue(entries[0].title);
   await page.getByRole('button', { name: '取消', exact: true }).click();
   let release;
@@ -136,7 +148,7 @@ test('首页详情失败可重试，关闭后忽略晚到响应', async ({ page 
   try {
     await card.getByRole('button', { name: '编辑' + entries[0].title, exact: true }).click();
     await expect(page.getByRole('status', { name: '正在加载记录详情', exact: true })).toBeVisible();
-    await page.locator('.modal-mask-loading').click({ position: { x: 8, y: 8 } });
+    await page.locator('.modal-mask').click({ position: { x: 8, y: 8 } });
     const response = page.waitForResponse('**/api/read-record/' + id);
     release(); await response;
     await expect(page.getByRole('dialog')).toHaveCount(0);

@@ -86,7 +86,10 @@ for (const width of [390, 768, 1422]) for (const theme of ['light', 'dark']) {
     await expect(page.locator('.notification-group-title').first()).toBeVisible();
     await screenshotReady(page, testInfo, 'notification-groups.png');
     await page.goto('/#/pages/profile/index');
+    await expect(page.getByRole('button', { name: '数据导出', exact: true })).toHaveCount(0);
+    await screenshotReady(page, testInfo, 'profile.png');
+    await page.getByRole('button', { name: '设置', exact: true }).click();
     await expect(page.getByRole('button', { name: '数据导出', exact: true })).toBeVisible();
-    await screenshotReady(page, testInfo, 'profile-export.png');
+    await screenshotReady(page, testInfo, 'settings-export.png');
   });
 }

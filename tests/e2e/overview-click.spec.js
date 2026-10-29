@@ -1,3 +1,4 @@
+const { baseURL } = require('../support/base-url.cjs');
 const { test, expect } = require('./support/test');
 const { dashboardFixture } = require('./fixtures');
 
@@ -7,7 +8,7 @@ async function setup(page) {
     window.openedLinks = [];
     window.open = url => { window.openedLinks.push(url); return null; };
   });
-  await page.route('http://127.0.0.1:5180/api/**', async route => {
+  await page.route((baseURL + '/api/**'), async route => {
     const path = new URL(route.request().url()).pathname;
     let data = dashboardFixture(path) ?? [];
     if (path === '/api/auth/login') data = { accessToken: 'overview-fixture' };

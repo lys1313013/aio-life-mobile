@@ -59,7 +59,8 @@ test('资料页离页旧加载不能覆盖返回后的当前加载', async ({ pa
   await page.clock.setFixedTime(new Date(started.getTime() + 61 * 60 * 1000));
   await page.goBack();
   await expect.poll(() => state.pendingReads).toBe(1);
-  await expect(page.getByRole('status', { name: '正在加载设置', exact: true })).toBeVisible();
+  await expect(page.getByRole('status', { name: '正在更新内容', exact: true })).toBeVisible();
+  await expect(page.locator('.page-state-placeholder')).toHaveCount(0);
   await expect(page.locator('[aria-label="昵称"] input')).toHaveValue('用户A');
   state.wait = null;
   await signInAsB(page);

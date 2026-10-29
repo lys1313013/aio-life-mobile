@@ -5,6 +5,7 @@ import { spawn } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
+import testAddress from '../support/base-url.cjs';
 import assert from 'node:assert/strict';
 import { chromium, expect } from '@playwright/test';
 import fixtures from '../e2e/fixtures.js';
@@ -24,9 +25,10 @@ await symlink(path.join(root, 'node_modules'), path.join(project, 'node_modules'
 const servicePath = path.join(project, 'src/pages/coding/services/coding.ts');
 await writeFile(servicePath, preprocess(await readFile(servicePath, 'utf8'),
   initScopedPreContext('mp-weixin', {}, undefined, true).preUVueContext, { type: 'js' }));
-const origin = 'http://127.0.0.1:5191';
+const origin = testAddress.baseURL;
+const port = new URL(origin).port || '80';
 const server = spawn(process.execPath, [path.join(root, 'node_modules/@dcloudio/vite-plugin-uni/bin/uni.js'),
-  '-p', 'h5', '--host', '127.0.0.1', '--port', '5191', '--strictPort'], { cwd: project, stdio: ['ignore', 'pipe', 'pipe'] });
+  '-p', 'h5', '--host', '127.0.0.1', '--port', port, '--strictPort'], { cwd: project, stdio: ['ignore', 'pipe', 'pipe'] });
 let logs = '', browser;
 server.stdout.on('data', chunk => { logs += chunk; });
 server.stderr.on('data', chunk => { logs += chunk; });

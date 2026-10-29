@@ -93,7 +93,7 @@ for (const width of [390, 768, 1440])
         await expect(
           p.getByText(ready, { exact: true }).filter({ visible: true }).first(),
         ).toBeVisible();
-        if (route === 'goods/devices') await expect(p.locator('.goods-photo')).toHaveCount(3);
+        if (route === 'goods/devices') await expect(p.locator('.device-page-active .goods-photo')).toHaveCount(3);
         await p.screenshot({
           path: `${out}/${width}-${theme}-${route.replace('/', '-')}.png`,
           fullPage: true,

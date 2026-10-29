@@ -1,7 +1,9 @@
 const { test, expect } = require('./support/test');
 const { dashboardFixture } = require('./fixtures');
+const heldGates = new Set();
 // Drop held route handlers before the browser context teardown.
 test.afterEach(async ({ page }) => {
+  heldGates.forEach(release => release()); heldGates.clear();
   await page.unrouteAll({ behavior: 'ignoreErrors' });
   await page.close();
 });
@@ -17,7 +19,7 @@ async function scrollCommitsToBottom(page) {
   await page.mouse.wheel(0, 10000);
   await expect.poll(() => scroller.evaluate(el => el.scrollTop)).toBeGreaterThanOrEqual(bottom - 1);
 }
-function gate() { let release; const promise = new Promise(resolve => { release = resolve; }); return { promise, release }; }
+function gate() { let release; const promise = new Promise(resolve => { release = resolve; }); heldGates.add(release); return { promise, release }; }
 async function fixture(page, hold = {}, commitPageSize = 20) {
   await page.addInitScript(() => localStorage.setItem('aio-life-mobile.access-token.v1', 'loading-fixture'));
   await page.route('**/api/**', async route => {
@@ -57,7 +59,7 @@ for (const width of [390, 768, 1440]) for (const theme of ['light', 'dark']) {
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     // Verify actual motion, not merely the presence of an animation class.
     const skeleton = page.locator('.skeleton-content').first();
-    expect(await skeleton.evaluate(el => getComputedStyle(el).animationName)).toContain('skeleton-breathe');
+    expect(await skeleton.evaluate(el => getComputedStyle(el).animationName)).toContain('aio-skeleton-pulse');
     const initialOpacity = await skeleton.evaluate(el => getComputedStyle(el).opacity);
     await expect.poll(() => skeleton.evaluate(el => getComputedStyle(el).opacity)).not.toBe(initialOpacity);
     await page.screenshot({ path: info.outputPath('github-loading.png'), fullPage: true });
@@ -147,7 +149,7 @@ test('GitHub pagination failure retains commits and retries the failed page', as
   await expect(page.getByText('模拟分页失败', { exact: true })).toBeVisible();
   await expect(page.locator('.repo-label')).toHaveCount(20);
   fail = false;
-  await page.getByRole('button', { name: '重试', exact: true }).click();
+  await page.getByRole('button', { name: '重试加载', exact: true }).click();
   await expect(page.locator('.repo-label')).toHaveCount(21);
   await expect(page.getByRole('alert')).toHaveCount(0);
   expect(requests).toEqual([1, 2, 2]);
@@ -156,7 +158,7 @@ const scenarios = [
   ['records/library?kind=read', '.library-poster .skeleton-cover'],
   ['tasks/goals', '.goal-grid .skeleton-tile'],
   ['goods/wardrobe', '.item-photo .goods-image-skeleton'],
-  ['profile/settings', '.skeleton-input'],
+  ['profile/settings', '.settings-placeholder'],
   ['profile/index', '.skeleton-profile-avatar'],
   ['time/index', '.timeline[aria-busy="true"]'],
 ];
@@ -231,12 +233,14 @@ test('a failed GitHub section can retry while another section is still pending',
   hold['/api/github/calendar'].release(); await expect(page.getByText('1682', { exact: true })).toBeVisible();
 });
 
-test('all asynchronous business pages expose loading placeholders', async ({ page }, info) => {
+test('all asynchronous business pages expose loading placeholders', async ({ context }, info) => {
   test.setTimeout(120000);
-  await page.setViewportSize({ width: 390, height: 900 }); await page.emulateMedia({ colorScheme: 'dark' });
-  await page.addInitScript(() => localStorage.setItem('aio-life-mobile.access-token.v1', 'loading-fixture'));
+  await context.addInitScript(() => localStorage.setItem('aio-life-mobile.access-token.v1', 'loading-fixture'));
   const routes = ['home/index', 'life/index', 'time/dashboard', 'time/edit', 'profile/bindings', 'profile/preferences?section=menus', 'profile/security', 'profile/notifications', 'categories/index', 'admin/index', 'admin/directory', 'finance/index', 'finance/cards', 'finance/income', 'finance/expense', 'finance/import', 'goods/devices', 'member/index', 'mcp/index', 'messages/index', 'coding/csdn', 'coding/leetcode', 'tasks/todo', 'records/notes', 'records/feedback', 'records/anniversary', 'records/milestones', 'records/honor', 'records/activity', 'records/exercise', 'records/categories', 'records/video', 'records/weread', 'relationship/index', 'personality/mbti', 'personality/cbti', 'vault/index'];
   for (const route of routes) {
+    const page = await context.newPage();
+    await page.setViewportSize({ width: 390, height: 900 });
+    await page.emulateMedia({ colorScheme: 'dark' });
     const pending = gate();
     await page.route('**/api/**', async request => {
       const path = new URL(request.request().url()).pathname;
@@ -247,12 +251,12 @@ test('all asynchronous business pages expose loading placeholders', async ({ pag
       await pending.promise; await request.fulfill({ json: { code: 0, data: [] } });
     });
     try {
-      await page.goto('/#/pages/' + route); await page.reload();
-      const loadingSelector = route === 'member/index' ? '.member-grid .skeleton-title' : route === 'records/categories' ? '.category-placeholder' : route === 'home/index' ? '.home-list-skeleton' : route === 'finance/index' ? '.finance-calendar .calendar-loading .loading-indicator' : route === 'finance/cards' ? '.card-loading' : route === 'relationship/index' ? '.topology .loading-indicator' : route === 'time/edit' ? '.editor-loading .loading-indicator' : route === 'admin/index' ? '.user-card-loading' : route === 'vault/index' ? '.vault-skeleton-title' : '.content-skeleton';
+      await page.goto('/#/pages/' + route);
+      const loadingSelector = route === 'mcp/index' ? '.tool-skeleton' : route === 'messages/index' ? '.conversation-skeleton' : route === 'records/video' ? '.video-skeleton-line' : route === 'member/index' ? '.member-grid .skeleton-title' : route === 'records/categories' ? '.category-placeholder' : route === 'home/index' ? '.home-list-skeleton' : route === 'finance/index' ? '.finance-calendar .calendar-loading .loading-indicator' : route === 'finance/cards' ? '.card-loading' : route === 'relationship/index' ? '.topology .loading-indicator' : route === 'time/edit' ? '.editor-loading .loading-indicator' : route === 'admin/index' ? '.user-card-loading' : route === 'vault/index' ? '.vault-skeleton-title' : '.content-skeleton';
       await expect(page.locator(loadingSelector).first(), route).toBeVisible();
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), route).toBe(true);
       await page.screenshot({ path: info.outputPath(route.replace(/[/?=]/g, '-') + '.png') });
-    } finally { pending.release();  }
+    } finally { pending.release(); await page.unrouteAll({ behavior: 'ignoreErrors' }); await page.close(); }
   }
 });
 
@@ -344,7 +348,7 @@ for (const width of [390, 768, 1440]) test(`loading matches page grids and cover
   });
   const entries = [
     ['records/library?kind=read', '.library-card', '.library-poster', width < 768 ? 3 : width < 1200 ? 5 : 7, 4 / 3],
-    ['records/video', '.video-card', '.video-poster', width < 600 ? 2 : width < 1000 ? 3 : 4, 0.625],
+    ['records/video', '.video-page-active .video-card', '.video-page-active .video-poster', width < 600 ? 2 : width < 1000 ? 3 : 4, 0.625],
     ['tasks/goals', '.goal-grid .record-card', null, width < 600 ? 2 : width < 960 ? 3 : 4],
     ['goods/devices', '.goods-card', '.goods-media', width < 700 ? 2 : width < 1000 ? 3 : 4],
   ];

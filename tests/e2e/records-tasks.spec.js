@@ -3,7 +3,7 @@ const { dashboardFixture } = require('./fixtures.js')
 const id = '9223372036854775807'
 async function setup(page) {
   const state = { goals: [{ id, title: '模拟月目标', type: 3, status: 'in_progress', currentValue: 2, targetValue: 10, description: '模拟描述', content: '每日记录', parentId: '9223372036854775806', tags: '["阅读"]' }], columns: [{ id: '8', title: '模拟计划', bgColor: '' }], tasks: [{ id, columnId: '8', content: '模拟待办', detail: '模拟说明', unCompletedCount: 1 }], details: [{ id: '7', taskId: id, content: '模拟明细', priority: 20, isCompleted: 0, isStarred: 0 }], writes: [], failSave: false }
-  await page.route('http://127.0.0.1:5180/api/**', async route => {
+  await page.route('**/api/**', async route => {
     const request = route.request(), path = new URL(request.url()).pathname, method = request.method()
     let data = dashboardFixture(path)
     if (path === '/api/auth/login') data = { accessToken: 'records-fixture' }
@@ -55,13 +55,13 @@ for (const width of [390, 768, 1440]) for (const theme of ['light', 'dark']) {
 test('待办明细完成和关注保留关联', async ({ page }) => {
   const state = await setup(page)
   await page.goto('/#/pages/tasks/todo')
-  await expect(page.getByText('模拟明细', { exact: true })).toBeVisible()
-  await page.locator('[aria-label="完成明细"]').click()
-  await expect(page.locator('[aria-label="标为未完成"]')).toHaveCount(0)
+  await expect(page.locator('.todo-page-active').getByText('模拟明细', { exact: true })).toBeVisible()
+  await page.locator('.todo-page-active [aria-label="完成明细"]').click()
+  await expect(page.locator('.todo-page-active [aria-label="标为未完成"]')).toHaveCount(0)
   await page.getByRole('button', { name: '展开已完成：模拟待办', exact: true }).click()
-  await expect(page.locator('[aria-label="标为未完成"]')).toBeVisible()
+  await expect(page.locator('.todo-page-active [aria-label="标为未完成"]')).toBeVisible()
   expect(state.writes.at(-1).body.taskId).toBe(id)
-  await page.locator('[aria-label="关注明细"]').click()
+  await page.locator('.todo-page-active [aria-label="关注明细"]').click()
   expect(state.writes.at(-1).path).toBe('/api/taskDetails/star/7')
 })
 
@@ -89,13 +89,13 @@ test('待办列超过公共页上限时逐页获取，失败重试保留完整�
     await route.fulfill({ json: { code: 0, data: { items, total: null } } })
   })
   await page.goto('/#/pages/tasks/todo')
-  await expect(page.getByText('模拟列分页失败', { exact: true })).toBeVisible()
+  await expect(page.locator('.todo-page-active').getByText('模拟列分页失败', { exact: true })).toBeVisible()
   expect(calls).toEqual([1, 2])
   fail = false
   await page.getByRole('button', { name: '重试', exact: true }).click()
   await expect(page.getByRole('button', { name: '分页列200', exact: true })).toHaveCount(1)
   expect(calls).toEqual([1, 2, 1, 2])
-  await expect(page.locator('.task-card')).toHaveCount(101)
+  await expect(page.locator('.todo-page-active .task-card')).toHaveCount(101)
   expect(taskCalls).toEqual([1, 2])
 })
 
@@ -119,16 +119,16 @@ test('待办任务与明细保存使用统一日期时间格式和完整字符�
 test('组内快速添加失败保留输入，回车重试不重复提交且保留大整数归属', async ({ page }) => {
   const state = await setup(page)
   await page.goto('/#/pages/tasks/todo')
-  await expect(page.getByText('模拟明细', { exact: true })).toBeVisible()
-  const input = page.locator('[aria-label="添加待办到模拟待办"] input')
+  await expect(page.locator('.todo-page-active').getByText('模拟明细', { exact: true })).toBeVisible()
+  const input = page.locator('.todo-page-active [aria-label="添加待办到模拟待办"] input')
   await input.fill('模拟快速添加')
   state.failSave = true
   await input.press('Enter')
-  await expect(page.getByText('模拟保存失败', { exact: true })).toBeVisible()
+  await expect(page.locator('.todo-page-active').getByText('模拟保存失败', { exact: true })).toBeVisible()
   await expect(input).toHaveValue('模拟快速添加')
   state.failSave = false
   await input.press('Enter')
-  await expect(page.getByText('模拟快速添加', { exact: true })).toBeVisible()
+  await expect(page.locator('.todo-page-active').getByText('模拟快速添加', { exact: true })).toBeVisible()
   await expect(input).toHaveValue('')
   await expect(page.getByRole('dialog')).toHaveCount(0)
   expect(state.writes.filter(write => write.path === '/api/taskDetails' && write.method === 'POST')).toHaveLength(2)
@@ -146,16 +146,16 @@ test('清单加载失败独立重试，搜索包含明细，已完成按清单�
     return route.fulfill({ json: { code: 0, data: [{ id: '88', taskId, content: '已完成的模拟事项', priority: 20, isCompleted: 1 }] } })
   })
   await page.goto('/#/pages/tasks/todo')
-  await expect(page.getByText('模拟明细', { exact: true })).toBeVisible()
-  await expect(page.getByText('模拟第二清单失败', { exact: true })).toBeVisible()
+  await expect(page.locator('.todo-page-active').getByText('模拟明细', { exact: true })).toBeVisible()
+  await expect(page.locator('.todo-page-active').getByText('模拟第二清单失败', { exact: true })).toBeVisible()
   fail = false
   await page.getByRole('button', { name: '重试', exact: true }).click()
   await expect(page.getByRole('button', { name: '展开已完成：第二清单', exact: true })).toBeVisible()
-  await expect(page.getByText('已完成的模拟事项', { exact: true })).toHaveCount(0)
+  await expect(page.locator('.todo-page-active').getByText('已完成的模拟事项', { exact: true })).toHaveCount(0)
   await page.locator('[aria-label="搜索任务"] input').fill('已完成的模拟事项')
-  await expect(page.locator('.task-card')).toHaveCount(1)
+  await expect(page.locator('.todo-page-active .task-card')).toHaveCount(1)
   await page.getByRole('button', { name: '展开已完成：第二清单', exact: true }).click()
-  await expect(page.getByText('已完成的模拟事项', { exact: true })).toBeVisible()
+  await expect(page.locator('.todo-page-active').getByText('已完成的模拟事项', { exact: true })).toBeVisible()
   expect(state.writes).toEqual([])
 })
 

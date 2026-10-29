@@ -51,6 +51,10 @@ npm run test:e2e -- tests/e2e/auth-policy.spec.js --grep '390 light' --workers=2
 
 本地执行仍构建当前 H5；不要设置 `AIO_E2E_PREBUILT=1` 偷用历史产物。保留 CI 的四分片完整覆盖、固定 Playwright 版本和 `retries: 0`。本地与 CI 都生成 HTML 与分组摘要，CI 上传到同一分片附件。诊断文件为忽略的运行产物，不提交。
 
+预览与浏览器 fixture 的地址统一由 `tests/support/base-url.cjs` 读取 `E2E_BASE_URL`，默认使用本机 5180。端口被开发服务占用时可执行 `E2E_BASE_URL=http://127.0.0.1:5196 npm run test:commit`；不要停止其他任务的服务。测试导航优先用相对 URL，API mock、图片 fixture 和独立诊断脚本需要绝对地址时引用公共 `baseURL`，不得写死开发端口。
+
+`tests/wechat-ui/` 的专项模拟也使用同一配置，例如 `E2E_BASE_URL=http://127.0.0.1:5197 node tests/wechat-ui/run.mjs`。并行执行时分别指定空闲端口；登录专项先构建隔离源码副本，再预览固定产物，日志保存在 `artifacts/wechat-ui/`。跨端菜单诊断中的 Web 地址另由 `WEB_BASE_URL` 配置。
+
 ## 编写稳定且有用的用例
 
 所有 `*.spec.js` 从 `./support/test` 导入 `test/expect`，自动接入诊断。监听器不会更改断言、网络路由、时钟或超时；`failure-context` 不收集请求头、请求体、响应体、查询值与 console 文本。HTML/trace/错误片段仍含页面内容和 fixture，所有测试必须只使用模拟账号和数据。手动创建的其他 browser context 需自行接入诊断，不能假设默认 context 的监听器覆盖它。

@@ -1,5 +1,7 @@
 const { test, expect } = require('./support/test');
 
+test.use({ hasTouch: true });
+
 // 只模拟银行卡及登录所需接口，其他请求保留真实失败，避免掩盖依赖问题。
 async function prepare(page, baseURL, cards) {
   await page.addInitScript(() => {
@@ -84,3 +86,92 @@ test('只有信用卡时直接展示，空储蓄卡可切换且新增沿用当�
   await expect(editor).toBeVisible();
   await expect(editor.locator('[aria-label="类型"]')).toContainText('储蓄卡');
 });
+
+for (const input of ['mouse', 'touch']) for (const width of [390, 768, 1440]) for (const theme of ['light', 'dark']) {
+  test(`不同高度卡包双向滑动及取消不裁切底部 ${input} ${width} ${theme}`, async ({ page, apiMock }) => {
+    await page.setViewportSize({ width, height: 1000 });
+    await page.emulateMedia({ colorScheme: theme });
+    await page.addInitScript(() => {
+      localStorage.setItem('aio-life-mobile.access-token.v1', 'card-swipe-fixture');
+      localStorage.setItem('bank-card-view-mode', 'stack');
+      localStorage.setItem('bank-card-stack-height-debit', JSON.stringify({ type: 'number', data: 60 }));
+      localStorage.setItem('bank-card-stack-height-credit', JSON.stringify({ type: 'number', data: 100 }));
+    });
+    const cards = ['debit', 'credit'].flatMap((cardType, typeIndex) =>
+      Array.from({ length: typeIndex ? 5 : 2 }, (_, i) => ({
+        ...card, id: `${typeIndex + 1}${i}`, cardType, sortOrder: i,
+        coverFileIds: [`swipe-cover-${cardType}`],
+        cardName: `模拟${cardType}卡 ${i + 1}`, coverColor: typeIndex ? '#38605c' : '#334766',
+      })),
+    );
+    apiMock({ ...Object.fromEntries(Object.entries({
+      '/user/info': { id: '1', nickname: '模拟用户', roles: ['admin'] },
+      '/auth/secondary-lock/menus': [],
+      '/bank-cards': cards,
+      '/bank-cards/banks': [{ id: '9', name: '模拟银行' }],
+      '/bank-cards/tags': [],
+    }).map(([path, data]) => [`GET /api${path}`, { json: { code: 0, message: null, data } }])),
+      ...Object.fromEntries(['debit', 'credit'].map(type => [`GET /api/file/preview/swipe-cover-${type}`, {
+        contentType: 'image/svg+xml',
+        body: `<svg xmlns="http://www.w3.org/2000/svg" width="640" height="404"><rect width="640" height="404" rx="24" fill="${type === 'debit' ? '#334766' : '#38605c'}"/><text x="36" y="60" fill="white" font-size="32">DEMO ${type}</text><path d="M24 360 H616" stroke="white" stroke-width="8"/></svg>`,
+      }])),
+    });
+    await page.goto('/#/pages/finance/cards');
+    await expect(page.locator('.card')).toHaveCount(2);
+    await expect(page.locator('.card-face[aria-busy="true"]')).toHaveCount(0);
+    const cdp = input === 'touch' ? await page.context().newCDPSession(page) : null;
+    async function press(x, y) {
+      if (cdp) await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y, id: 1 }] });
+      else { await page.mouse.move(x, y); await page.mouse.down(); }
+    }
+    async function move(x, y) {
+      if (cdp) await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x, y, id: 1 }] });
+      else await page.mouse.move(x, y, { steps: 8 });
+    }
+    async function release() {
+      if (cdp) await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+      else await page.mouse.up();
+    }
+
+    for (const [from, to, direction] of [['debit', 'credit', -1], ['credit', 'debit', 1]]) {
+      const viewport = page.locator('.card-browser-viewport');
+      const box = await viewport.boundingBox();
+      const x = box.x + box.width * (direction < 0 ? 0.8 : 0.2), y = box.y + 24;
+      await press(x, y);
+      await move(x + direction * box.width * 0.5, y);
+      await expect(page.locator('.card-layer')).toHaveCount(2);
+      // 实际卡面边界必须落在裁切容器内；同时命中底部，避免只测布局却漏掉绘制裁切。
+      const bottoms = await viewport.evaluate(node => {
+        const bounds = node.getBoundingClientRect();
+        return [...node.querySelectorAll('.card-layer')].map(layer => {
+          const faces = layer.querySelectorAll('.card-face');
+          const face = faces[faces.length - 1];
+          const rect = face.getBoundingClientRect();
+          const left = Math.max(bounds.left, rect.left), right = Math.min(bounds.right, rect.right);
+          const hit = document.elementFromPoint((left + right) / 2, rect.bottom - 8);
+          return { fits: rect.bottom <= bounds.bottom + 1, visibleWidth: right - left, hit: face.contains(hit) };
+        });
+      });
+      expect(bottoms).toHaveLength(2);
+      for (const bottom of bottoms) {
+        expect(bottom.fits).toBe(true);
+        expect(bottom.visibleWidth).toBeGreaterThan(0);
+        expect(bottom.hit).toBe(true);
+      }
+      await page.screenshot({ path: `artifacts/bank-card-stack/${input}-${width}-${theme}-${from}-swipe.png` });
+      // 先回到起点取消，再完成同方向切换，覆盖回弹和双向高度恢复。
+      await move(x, y);
+      await release();
+      await expect(page.locator('.card-layer')).toHaveCount(1);
+      await expect(page.locator(`#card-layer-${from}`)).toBeVisible();
+      await press(x, y);
+      await move(x + direction * box.width * 0.6, y);
+      await release();
+      await expect(page.locator('.card-layer')).toHaveCount(1);
+      await expect(page.locator(`#card-layer-${to}`)).toBeVisible();
+      const finalBox = await viewport.boundingBox();
+      const layerBox = await page.locator(`#card-layer-${to}`).boundingBox();
+      expect(finalBox.height).toBeCloseTo(layerBox.height, 0);
+    }
+  });
+}

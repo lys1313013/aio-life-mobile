@@ -51,8 +51,24 @@ async function setup(page, { connected = true, locked = false, compare = false }
   await page.goto('/#/pages/home/index');
   return state;
 }
+// 本机 Chrome 的外部协议确认框会吞掉后续页面输入；仅唤起用例使用与 CI 一致的
+// Playwright 无头 Chromium。长格式 fixture 清除配置中的本机 chrome channel。
+const externalProtocolTest = test.extend({
+  channel: [async ({}, use) => use(undefined), { scope: 'worker' }],
+});
+
 for (const width of [390, 820, 1440]) for (const theme of ['light', 'dark']) {
-  test(`最近阅读卡片交互与布局 ${width} ${theme}`, async ({ page }, info) => {
+  externalProtocolTest(`最近阅读卡片交互与布局 ${width} ${theme}`, async ({ page, context }, info) => {
+    // 首个弹窗请求必须在 context 拦截，避免测试依赖微信读书外部站点。
+    await context.route('https://weread.qq.com/**', route => route.fulfill({
+      contentType: 'text/html; charset=utf-8', body: '<title>模拟微信读书阅读器</title>',
+    }));
+    const cdp = await context.newCDPSession(page);
+    const appNavigations = [];
+    await cdp.send('Page.enable');
+    cdp.on('Page.frameRequestedNavigation', event => {
+      if (event.url.startsWith('weread:')) appNavigations.push(event.url);
+    });
     await page.setViewportSize({ width, height: 1000 }); await page.emulateMedia({ colorScheme: theme });
     const state = await setup(page, { compare: true }), card = page.getByLabel('微信读书首页卡片', { exact: true });
     await expect(card).toBeVisible(); await expect(card).toHaveAttribute('aria-busy', 'true');
@@ -93,11 +109,15 @@ for (const width of [390, 820, 1440]) for (const theme of ['light', 'dark']) {
     expect(await card.getByRole('button').count()).toBe(4);
     const popupTask = page.waitForEvent('popup');
     await card.getByRole('button', { name: '在微信读书打开：西西弗神话', exact: true }).click();
-    const popup = await popupTask; await popup.close(); expect(state.calls).toBe(2);
+    const popup = await popupTask;
+    await expect(popup).toHaveURL(books[0].deepLink);
+    await expect(popup).toHaveTitle('模拟微信读书阅读器');
+    await popup.close(); expect(state.calls).toBe(2);
     // 唤起失败后的网页入口必须占用独立触控区，不能覆盖阅读时间或改变正文宽度。
     const contentBefore = await card.locator('.book-content').first().boundingBox();
     await page.evaluate(() => Object.defineProperty(navigator, 'userAgent', { configurable: true, value: 'iPhone Safari' }));
     await card.getByRole('button', { name: '在微信读书打开：西西弗神话', exact: true }).click();
+    await expect.poll(() => appNavigations).toEqual(['weread://reading?bId=1&style=1']);
     const fallback = card.getByRole('button', { name: '网页版阅读', exact: true });
     await expect(fallback).toBeVisible();
     expect(await card.locator('.book-content').first().boundingBox()).toEqual(contentBefore);
@@ -106,7 +126,11 @@ for (const width of [390, 820, 1440]) for (const theme of ['light', 'dark']) {
     expect(fallbackBox.y + fallbackBox.height).toBeLessThanOrEqual(dateBox.y);
     await card.screenshot({ path: info.outputPath('web-fallback.png') });
     const fallbackPopupTask = page.waitForEvent('popup'); await fallback.click();
-    const fallbackPopup = await fallbackPopupTask; await fallbackPopup.close(); expect(state.calls).toBe(2);
+    const fallbackPopup = await fallbackPopupTask;
+    await expect(fallbackPopup).toHaveURL(books[0].deepLink);
+    await expect(fallbackPopup).toHaveTitle('模拟微信读书阅读器');
+    expect(await fallbackPopup.evaluate(() => window.opener)).toBeNull();
+    await fallbackPopup.close(); expect(state.calls).toBe(2);
     await page.evaluate(() => delete navigator.userAgent);
     state.delay(); await card.click({ position: { x: 4, y: 60 } });
     await expect(card).toHaveAttribute('aria-busy', 'true'); expect(await geometry()).toEqual(loaded);

@@ -1,12 +1,13 @@
 // 仅测试：复制源码到忽略目录，在 H5 中编译小程序分支并模拟平台回调。
 // 不向生产页面注入入口，不调用真实微信或业务服务器；不能替代微信真机验证。
 import { cp, mkdir, readFile, writeFile, symlink, rm } from 'node:fs/promises';
-import { spawn } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import assert from 'node:assert/strict';
 import { chromium } from '@playwright/test';
 import fixtures from '../e2e/fixtures.js';
+import testAddress from '../support/base-url.cjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 // Playwright 会清理 test-results；源码副本独立保存在 artifacts，避免并行验证互相删除。
@@ -16,18 +17,30 @@ await mkdir(output, { recursive: true });
 await rm(project, { recursive: true, force: true });
 await mkdir(project);
 await cp(path.join(root, 'src'), path.join(project, 'src'), { recursive: true });
-for (const file of ['package.json', 'vite.config.js', 'index.html']) await cp(path.join(root, file), path.join(project, file));
+for (const file of ['package.json', 'vite.config.js', 'index.html', 'tsconfig.json']) await cp(path.join(root, file), path.join(project, file));
 await symlink(path.join(root, 'node_modules'), path.join(project, 'node_modules'));
 await cp(path.join(root, 'scripts'), path.join(project, 'scripts'), { recursive: true });
 for (const file of ['src/pages/login/index.uvue', 'src/pages/auth/web-login.uvue', 'src/services/wechat-auth.ts',
   'src/pages/profile/notifications.uvue', 'src/pages/profile/wechat-subscription.ts']) {
   const target = path.join(project, file);
-  await writeFile(target, (await readFile(target, 'utf8')).replaceAll('MP-WEIXIN', 'WEB'));
+  // 保留测试替身的动态调用，避免生产编译器把 uni API 改成不可替换的静态导入。
+  await writeFile(target, (await readFile(target, 'utf8')).replaceAll('MP-WEIXIN', 'WEB')
+    .replace(/\buni\.(login|reLaunch|requestSubscribeMessage)\b/g, 'globalThis.uni.$1'));
 }
-const port = 5187;
-const origin = `http://127.0.0.1:${port}`;
-const server = spawn(process.execPath, [path.join(root, 'node_modules/@dcloudio/vite-plugin-uni/bin/uni.js'),
-  '-p', 'h5', '--host', '127.0.0.1', '--port', String(port), '--strictPort'], { cwd: project, stdio: ['ignore', 'pipe', 'pipe'] });
+// 生产构建按需导入 API；只在隔离副本向浏览器测试暴露真实存储和导航函数。
+const entry = path.join(project, 'src/main.ts');
+await writeFile(entry, `import { getStorageSync, reLaunch } from '@dcloudio/uni-h5';
+Object.assign(globalThis.uni, { getStorageSync, reLaunch });
+` + await readFile(entry, 'utf8'));
+const origin = testAddress.baseURL;
+const port = new URL(origin).port || '80';
+// 预览固定产物，避免开发服务器依赖优化重载打断平台回调与导航。
+const build = spawnSync(process.execPath, [path.join(root, 'node_modules/@dcloudio/vite-plugin-uni/bin/uni.js'),
+  'build', '-p', 'h5'], { cwd: project, encoding: 'utf8' });
+await writeFile(path.join(output, 'build.log'), (build.stdout || '') + (build.stderr || ''));
+if (build.status !== 0) throw new Error(`微信分支模拟构建失败，见 ${path.join(output, 'build.log')}`);
+const server = spawn(process.execPath, [path.join(root, 'node_modules/vite/bin/vite.js'),
+  'preview', '--host', '127.0.0.1', '--port', port, '--strictPort', '--outDir', 'dist/build/h5'], { cwd: project, stdio: ['ignore', 'pipe', 'pipe'] });
 let logs = '';
 server.stdout.on('data', chunk => { logs += chunk; });
 server.stderr.on('data', chunk => { logs += chunk; });
@@ -51,6 +64,7 @@ try {
   for (const width of [390, 768, 1440]) {
     for (const colorScheme of ['light', 'dark']) {
       const context = await browser.newContext({ viewport: { width, height: 900 }, colorScheme });
+      context.setDefaultTimeout(15000);
       const page = await context.newPage();
       const errors = [];
       const calls = [];
@@ -96,6 +110,7 @@ try {
   // 旧后端提供普通注册入口，新注册失败后重新获取票据。
   for (const direct of [false, true]) {
     const context = await browser.newContext();
+    context.setDefaultTimeout(15000);
     const page = await context.newPage();
     let registrations = 0;
     let phoneCalls = 0;
@@ -138,6 +153,7 @@ try {
   console.log('旧后端注册入口兼容、新注册失败重新获取票据恢复: passed');
   // 能力接口临时失败时仍可重试，避免只有微信身份的用户停留在密码表单。
   const retryPage = await browser.newPage();
+  retryPage.setDefaultTimeout(15000);
   let capabilityCalls = 0;
   await retryPage.route('**/api/auth/wechat/mini/capabilities', async route => {
     // GET 首次请求加三次自动重试均失败后，才显示手动重试入口。
@@ -154,6 +170,7 @@ try {
   console.log('微信能力加载失败保留密码入口并可重试: passed');
   // 单独验证原账号绑定流程及临时会话清理。
   const page = await browser.newPage();
+  page.setDefaultTimeout(15000);
   const calls = [];
   await page.route(authRoute, async route => {
     const request = route.request();
@@ -192,6 +209,7 @@ try {
   for (const width of [390, 768, 1440]) {
     for (const colorScheme of ['light', 'dark']) {
       const context = await browser.newContext({ viewport: { width, height: 900 }, colorScheme });
+      context.setDefaultTimeout(15000);
       const scanPage = await context.newPage();
       // 注册完成会预取其他页面配置；全部隔离，不能让模拟 Token 请求真实后端。
       await context.route(origin + '/api/**', route => route.fulfill({ json: { code: 0, data: [] } }));
@@ -234,6 +252,7 @@ try {
   // 订阅通知仅在测试副本编译小程序分支，原生回调和业务 API 全部使用模拟数据。
   for (const width of [390, 768, 1440]) for (const colorScheme of ['light', 'dark']) {
     const context = await browser.newContext({ viewport: { width, height: 900 }, colorScheme });
+    context.setDefaultTimeout(15000);
     const notice = await context.newPage();
     const writes = [];
     let enabled = true, bound = true, failTest = false, delay = false, reads = 0;
@@ -257,7 +276,7 @@ try {
           const body = route.request().postDataJSON();
           writes.push({ url, body });
           assert.deepEqual(body, { items: [{ bizType: 'LEETCODE_REMINDER', channel: 'WECHAT_MINI', isEnabled: 1 }] });
-          current[0].channels[1].enabled = true;
+          current[0].channels[1].isEnabled = 1;
         }
         data = current;
       }
@@ -278,6 +297,7 @@ try {
     await notice.locator('[aria-label="密码"] input').fill('fixture-password');
     await notice.getByRole('button', { name: '登录', exact: true }).click();
     await notice.waitForFunction(() => uni.getStorageSync('aio-life-mobile.access-token.v1') === 'fixture-notice-token');
+    await notice.waitForURL(/#\/(?:pages\/home\/index)?$/);
     await notice.evaluate(() => {
       uni.reLaunch({ url: '/pages/profile/notifications' });
       window.__subscriptionMode = 'reject';

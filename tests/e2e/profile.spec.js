@@ -66,7 +66,7 @@ for (const width of [390, 768, 1440]) {
       await expect(page.getByRole('button', { name: '账号与安全', exact: true })).toBeVisible();
       await expect(page.getByRole('button', { name: '账号绑定', exact: true })).toBeVisible();
       await expect(page.locator('.account-card')).toHaveCount(0);
-      await expect(page.locator('.profile-menu .menu-row')).toHaveCount(5);
+      await expect(page.locator('.profile-menu .menu-row')).toHaveCount(4);
       await expect(page.locator('.profile-shortcuts .shortcut-button')).toHaveCount(4);
       await expect(page.locator('.unread-badge')).toHaveText('3');
       for (const name of ['消息中心', '账号绑定', '首页卡片', '菜单显示']) {

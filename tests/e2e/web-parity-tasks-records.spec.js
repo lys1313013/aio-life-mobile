@@ -1,3 +1,4 @@
+const { baseURL } = require('../support/base-url.cjs');
 const { dismissModal } = require('./modal');
 const {test,expect}=require('./support/test');
 const {setup,id}=require('./qa-records-fixtures.js');
@@ -11,7 +12,7 @@ for(const width of [390,768,1440])for(const theme of ['light','dark'])test(`实�
  await page.route('**/api/goals*',r=>r.fulfill({json:{code:0,data:goals}}));
  await page.route('**/api/b-video/query*',r=>r.fulfill({json:{code:0,data:{items:Array.from({length:4},(_,i)=>({...state.video[0],id:String(i+1),cover,title:i===0?'模拟视频长标题，学习记录卡片应保留两行文字与视频进度':'模拟视频 '+i})),total:4}}}));
  await page.route('**/api/thought/query*',r=>r.fulfill({json:{code:0,data:{items:Array.from({length:4},(_,i)=>({...state.thoughts[0],id:String(i+1),content:i===0?'模拟闪念：正文应该是卡片的首要信息，日期在底部；关联事件在弹窗中按需查看。':'模拟闪念 '+i,createTime:'2026-10-01 10:00:00'})),total:4}}}));
- await page.route('**/api/weread/sync*',r=>r.fulfill({json:{code:0,data:{shelf:{books:Array.from({length:5},(_,i)=>({bookId:'book-'+i,title:'模拟图书 '+i,author:'模拟作者',cover:'http://127.0.0.1:5180/mock-book.svg',finishReading:i===1?1:0}))},notebooks:{books:[{bookId:'book-0',book:{title:'模拟图书 0'},noteCount:1}]},stats:{readDays:2,totalReadTime:3600,readTimes:{'1790784000':3600}},lastSyncTime:'模拟同步时间'}}}));
+ await page.route('**/api/weread/sync*',r=>r.fulfill({json:{code:0,data:{shelf:{books:Array.from({length:5},(_,i)=>({bookId:'book-'+i,title:'模拟图书 '+i,author:'模拟作者',cover:(baseURL + '/mock-book.svg'),finishReading:i===1?1:0}))},notebooks:{books:[{bookId:'book-0',book:{title:'模拟图书 0'},noteCount:1}]},stats:{readDays:2,totalReadTime:3600,readTimes:{'1790784000':3600}},lastSyncTime:'模拟同步时间'}}}));
  await page.route('**/api/timeTrackerCategory/list',r=>r.fulfill({json:{code:0,data:Array.from({length:4},(_,i)=>({id:String(i+1),name:'模拟分类 '+i,color:'#5b8ff9',icon:'lucide:book',parentId:'0',timeType:i%3+1,isTrackTime:1,isEnabled:1,userId:'6'}))}}));
  await page.route('**/api/timeTrackerCategory/hidden',r=>r.fulfill({json:{code:0,data:[]}}));
  const cases=[['goals','tasks/goals',/^编辑目标：/],['todo','tasks/todo',/^编辑清单：/],['think','records/notes?kind=think',/^编辑闪念$/],['memo','records/notes?kind=memo',/^编辑笔记：/],['video','records/video',/^编辑视频：/],['exercise','records/exercise',/^编辑运动：/],['categories','categories/index',/^编辑分类$/]];

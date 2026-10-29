@@ -35,9 +35,9 @@ async function subscriptions(page) {
     return route.fulfill({ json: { code: 0, data: state.rows[index] } });
   });
   await page.goto('/#/pages/member/index');
-  await expect(page.locator('.member-card')).toHaveCount(4);
+  await expect(page.locator('.member-page-active .member-card')).toHaveCount(4);
   await page.getByRole('switch', { name: '包含过期', exact: true }).click();
-  await expect(page.locator('.member-card')).toHaveCount(6);
+  await expect(page.locator('.member-page-active .member-card')).toHaveCount(6);
   return state;
 }
 
@@ -48,7 +48,7 @@ for (const width of [390, 768, 1440]) {
       await page.emulateMedia({ colorScheme: theme });
       const state = await subscriptions(page);
       fs.mkdirSync(output, { recursive: true });
-      const cards = page.locator('.member-card');
+      const cards = page.locator('.member-page-active .member-card');
       await expect(cards.first()).toContainText('模拟即将到期订阅');
       await expect(cards.nth(4)).toContainText('过期订阅');
       const boxes = await cards.evaluateAll((nodes) => nodes.map((node) => {
@@ -88,7 +88,7 @@ for (const width of [390, 768, 1440]) {
 test('订阅编辑失败恢复保留完整字段和长ID', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 900 });
   const state = await subscriptions(page);
-  await expect(page.locator('.member-card')).toHaveCount(6);
+  await expect(page.locator('.member-page-active .member-card')).toHaveCount(6);
   await page.getByRole('button', { name: '编辑订阅：模拟即将到期订阅', exact: true }).click();
   const dialog = page.getByRole('dialog', { name: '编辑订阅', exact: true });
   await dialog.getByRole('textbox', { name: '名称', exact: true }).fill('模拟即将到期订阅更新');

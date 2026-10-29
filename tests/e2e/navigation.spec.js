@@ -1,10 +1,11 @@
+const { baseURL } = require('../support/base-url.cjs');
 const { test, expect } = require('./support/test');
 const { dashboardFixture } = require('./fixtures.js');
 
 test('四栏切换、日期查询、退出清理与重新登录', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   const dates = [];
-  await page.route('http://127.0.0.1:5180/api/**', async route => {
+  await page.route((baseURL + '/api/**'), async route => {
     const url = new URL(route.request().url());
     const path = url.pathname;
     let data = dashboardFixture(path);

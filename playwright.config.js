@@ -8,8 +8,8 @@ if (prebuilt && !existsSync(path.join(__dirname, 'dist/build/h5/index.html'))) {
   throw new Error('缺少本次 H5 构建产物，请先构建或下载同次工作流的 h5 artifact。');
 }
 const workers = Number(process.env.PLAYWRIGHT_WORKERS || 1);
-const baseURL = process.env.E2E_BASE_URL || 'http://127.0.0.1:5180';
-const previewPort = new URL(baseURL).port || '5180';
+const { baseURL } = require('./tests/support/base-url.cjs');
+const previewPort = new URL(baseURL).port || (new URL(baseURL).protocol === 'https:' ? '443' : '80');
 if (!Number.isInteger(workers) || workers < 1) {
   throw new Error('PLAYWRIGHT_WORKERS 必须为正整数。');
 }

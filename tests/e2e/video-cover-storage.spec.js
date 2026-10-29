@@ -21,8 +21,8 @@ for (const width of [390, 768, 1440]) for (const colorScheme of ['light', 'dark'
       return r.fulfill({ contentType: 'image/png', body: png });
     });
     await page.goto('/#/pages/records/video');
-    await expect(page.locator('.video-card')).toHaveCount(1);
-    await expect.poll(() => page.locator('.video-cover-image img').evaluateAll(nodes => nodes.filter(n => n.complete && n.naturalWidth > 0).length)).toBe(1);
+    await expect(page.locator('.video-page-active .video-card')).toHaveCount(1);
+    await expect.poll(() => page.locator('.video-page-active .video-cover-image img').evaluateAll(nodes => nodes.filter(n => n.complete && n.naturalWidth > 0).length)).toBe(1);
     expect(imageRequests).toBe(1); expect(external).toEqual([]);
     await page.screenshot({ path: info.outputPath('video-cover.png') });
   });
@@ -38,6 +38,6 @@ test('导入状态更新与失败重试不打开编辑弹窗', async ({ page }) 
   await page.goto('/#/pages/records/video');
   await page.getByRole('button', { name: '重试封面', exact: true }).click();
   await expect(page.getByRole('dialog')).toHaveCount(0);
-  await expect.poll(() => page.locator('.video-cover-image img').evaluateAll(nodes => nodes.filter(n => n.complete && n.naturalWidth > 0).length), { timeout: 12000 }).toBe(1);
+  await expect.poll(() => page.locator('.video-page-active .video-cover-image img').evaluateAll(nodes => nodes.filter(n => n.complete && n.naturalWidth > 0).length), { timeout: 12000 }).toBe(1);
   expect(retries).toBe(1); expect(polls).toBe(1);
 });

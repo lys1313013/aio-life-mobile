@@ -25,6 +25,9 @@ function check(root) {
     const name = path.relative(directory, file).split(path.sep).join('/');
     const source = fs.readFileSync(file, 'utf8');
     seen.add(name);
+    if (/https?:\/\/(?:127\.0\.0\.1|localhost):5180\b/.test(source)) {
+      issues.push(`${name}: 测试地址不得写死开发端口，请使用 tests/support/base-url.cjs 或相对 URL`);
+    }
     if (name.endsWith('.spec.js')) {
       const shared = './' + path.relative(path.dirname(file), path.join(directory, 'support/test')).split(path.sep).join('/');
       if (!source.includes(`require('${shared}')`) || /require\(['"]@playwright\/test['"]\)/.test(source)) {

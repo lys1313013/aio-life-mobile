@@ -60,6 +60,13 @@
 - 提交和删除使用局部 loading，成功后局部更新；失败保留表单，禁止静默回退到空数据后允许提交。日期切换和离页后的旧请求不得覆盖新状态。
 - 测试覆盖真实手势事件、失败恢复、跨日期和跨月边界、增删改接口契约、关联数据保留，以及手机/平板/桌面深浅主题。模拟接口测试与真实后端联调、微信模拟器、真机验证分别报告。
 
+## 复用组件与主题
+
+- 分类翻页复用 `CategoryTabs` + `CategoryPager`：标签栏提供 underline / solid / soft 三种变体，内容页保留真实相邻页面、各页滚动位置与空态；H5 鼠标拖动、键盘切换、非当前页焦点隔离在公共组件内维护。
+- 页面初载、刷新及失败重试复用 `PageState`，`has-content` 传已完成加载状态（空列表也算）；分页尾部使用 `LoadMore`。详情弹窗使用 `AdaptiveModal` 的 `loading` / `load-error` 与 `loading` 插槽，按表单结构配置 `FormSkeleton`，避免另起一个小 loading 弹窗。
+- 鉴权封面复用 `useImageSource` 和 `ImagePlaceholder` 管理下载、失败重试、账号切换与 Blob 释放；封面比例及服务端生成状态留在业务组件。骨架形状、主题及减少动态效果的规则复用 `styles/_skeleton.scss`。
+- 页面、表面和骨架主题色在 `src/theme.json` 维护；通过 `npm run theme:generate` 生成 `styles/_theme-tokens.scss`，`npm run theme:check` 检查一致性，不手改生成文件。原生页面背景和 H5 公共容器引用同一主题来源。
+
 ## Loading 高度与布局稳定（必须遵守）
 
 - 目标、纪念日、闪念等首页卡片及其他异步内容区域，loading 时的高度必须尽可能与加载后的实际展示高度一致。骨架屏不是独立的展示布局；不能加载时过高、展示时突然收缩，或加载时过矮、展示时突然撑开，导致后续卡片和当前视口跳动。

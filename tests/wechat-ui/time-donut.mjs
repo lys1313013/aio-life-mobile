@@ -29,13 +29,11 @@ module.exports = {
   testDir: ${JSON.stringify(path.join(root, 'tests/e2e'))},
   testMatch: 'home-time-donut.spec.js',
   outputDir: ${JSON.stringify(path.join(output, 'results'))},
-  use: { ...base.use, baseURL: 'http://127.0.0.1:5188' },
-  webServer: { ...base.webServer, cwd: ${JSON.stringify(project)},
-    command: 'npm run build && npm run preview -- --port 5188', url: 'http://127.0.0.1:5188' },
+  webServer: { ...base.webServer, cwd: ${JSON.stringify(project)} },
 };
 `)
 const runner = spawn(process.execPath, [path.join(root, 'node_modules/@playwright/test/cli.js'),
   'test', '--config', config, ...process.argv.slice(2)], {
-  cwd: root, stdio: 'inherit', env: { ...process.env, AIO_TEST_TIME_DONUT_IMAGE: '1' },
+  cwd: root, stdio: 'inherit', env: { ...process.env, AIO_TEST_TIME_DONUT_IMAGE: '1', AIO_E2E_PREBUILT: '0' },
 })
 process.exitCode = await new Promise(resolve => runner.on('exit', code => resolve(code ?? 1)))

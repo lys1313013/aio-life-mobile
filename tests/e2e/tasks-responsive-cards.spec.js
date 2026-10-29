@@ -19,10 +19,10 @@ for (const width of [390, 768, 1440]) for (const theme of ['light', 'dark']) {
       { id: '203', taskId: '101', content: '准备分享材料和下一季度行动清单', priority: 10, isCompleted: 0, isStarred: 0 },
     ] : [] } }));
     await page.goto('/#/pages/tasks/todo');
-    const cards = page.locator('.task-card');
+    const cards = page.locator('.todo-page-active .task-card');
     await expect(cards).toHaveCount(3);
-    await expect(page.getByText('整理完成的项目记录并补充关键指标与复盘结论', { exact: true })).toBeVisible();
-    await expect(page.getByText('确认团队分享时间', { exact: true })).toHaveCount(0);
+    await expect(page.locator('.todo-page-active').getByText('整理完成的项目记录并补充关键指标与复盘结论', { exact: true })).toBeVisible();
+    await expect(page.locator('.todo-page-active').getByText('确认团队分享时间', { exact: true })).toHaveCount(0);
     const boxes = await cards.evaluateAll(nodes => nodes.map(node => ({ x: node.getBoundingClientRect().x, y: node.getBoundingClientRect().y, width: node.getBoundingClientRect().width })));
     if (width >= 768) {
       expect(Math.abs(boxes[1].y - boxes[0].y)).toBeLessThan(2);
@@ -36,7 +36,7 @@ for (const width of [390, 768, 1440]) for (const theme of ['light', 'dark']) {
     await page.screenshot({ path: `${output}/todo-${width}-${theme}-page.png` });
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     await page.getByRole('button', { name: /^展开已完成：/ }).click();
-    await expect(page.getByText('确认团队分享时间', { exact: true })).toBeVisible();
+    await expect(page.locator('.todo-page-active').getByText('确认团队分享时间', { exact: true })).toBeVisible();
     await page.screenshot({ path: `${output}/todo-${width}-${theme}-expanded.png` });
     await page.getByRole('button', { name: /^编辑明细：/ }).first().press('Enter');
     await expect(page.getByRole('dialog')).toBeVisible();
