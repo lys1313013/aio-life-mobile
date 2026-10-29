@@ -28,22 +28,3 @@ export async function scanLoginQr(value: { id: string; ticket: string }) {
 export async function decideLoginQr(value: { id: string; ticket: string }, approve: boolean) {
   return request('/auth/qr-login/decision', 'POST', { id: value.id, ticket: value.ticket, approve })
 }
-export function scanWithCamera(): Promise<string> {
-  // #ifdef WEB
-  return Promise.reject(new Error('请在 AIO Life App 或微信小程序中使用扫一扫'))
-  // #endif
-  // #ifndef WEB
-  return new Promise((resolve, reject) => {
-    uni.scanCode({
-      onlyFromCamera: true, scanType: ['qrCode'],
-      success: result => resolve(result.result),
-      fail: reason => {
-        const cancelled = typeof reason.errMsg === 'string' && /cancel/i.test(reason.errMsg)
-        const error = new Error(cancelled ? '已取消扫码' : '无法使用摄像头，请检查相机权限后重试')
-        error.name = cancelled ? 'ScanCancelledError' : 'ScanCameraError'
-        reject(error)
-      },
-    })
-  })
-  // #endif
-}

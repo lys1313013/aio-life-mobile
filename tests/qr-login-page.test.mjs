@@ -12,10 +12,10 @@ const fixture = { status: 'SCANNED', browser: 'Chrome', requestedAt: '2026-10-04
 function page(overrides = {}) {
   const session = reactive({ token: 'fixture-app-token', user: { name: '测试账号', username: 'fixture' } });
   const calls = []; let unload; const scope = effectScope();
-  const names = ['computed', 'ref', 'watch', 'onShow', 'onUnload', 'fetchUser', 'restoreSession', 'session', 'themeClass', 'parseLoginQr', 'scanLoginQr', 'decideLoginQr', 'scanWithCamera', 'uni', 'setInterval', 'clearInterval'];
+  const names = ['computed', 'ref', 'watch', 'onShow', 'onUnload', 'fetchUser', 'restoreSession', 'session', 'themeClass', 'parseLoginQr', 'scanLoginQr', 'decideLoginQr', 'scanWithCamera', 'takeScanResult', 'uni', 'setInterval', 'clearInterval'];
   const values = [computed, ref, watch, fn => fn(), fn => { unload = fn; }, async () => {}, () => {}, session, () => '',
     () => ({ id: 'fixture-id', ticket: 'fixture-ticket' }), overrides.inspect || (async () => fixture),
-    overrides.decide || (async (...args) => { calls.push(args); }), overrides.camera || (async () => 'fixture-code'), {}, () => 1, () => {}];
+    overrides.decide || (async (...args) => { calls.push(args); }), overrides.camera || (async () => 'fixture-code'), () => null, {}, () => 1, () => {}];
   const vm = scope.run(() => new Function(...names, script + '\nreturn { scan, retry, decide, info, busy, error, result, remaining };')(...values));
   return { vm, session, calls, dispose() { unload(); scope.stop(); } };
 }
@@ -54,4 +54,15 @@ test('离页后和切换账号后的旧扫码响应不能恢复确认页', async
   const left = page({ camera: () => new Promise(done => { camera = done; }) });
   const scanning = left.vm.scan(); left.dispose(); camera('fixture-code'); await scanning;
   assert.equal(left.vm.info.value, null);
+});
+
+test('入口已扫码时直接显示确认信息，不再次打开相机或自动授权', async () => {
+  let cameraCalls = 0;
+  const p = page({ camera: async () => { cameraCalls++; return 'fixture-code'; } });
+  try {
+    await p.vm.scan('fixture-code');
+    assert.equal(cameraCalls, 0);
+    assert.equal(p.vm.info.value.verificationCode, '1234');
+    assert.equal(p.calls.length, 0);
+  } finally { p.dispose(); }
 });

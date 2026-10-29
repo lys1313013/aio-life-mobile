@@ -8,8 +8,9 @@ import LoadingIndicator from '../../components/LoadingIndicator.uvue'
 import FormActions from '../../components/FormActions.uvue'
 import { fetchUser } from '../../services/api.ts'
 import { restoreSession, session } from '../../services/session.ts'
+import { scanWithCamera, takeScanResult } from '../../services/scan-camera.ts'
 import { themeClass } from '../../services/theme.ts'
-import { parseLoginQr, scanLoginQr, decideLoginQr, scanWithCamera, type LoginQrInfo } from './services/qr-login.ts'
+import { parseLoginQr, scanLoginQr, decideLoginQr, type LoginQrInfo } from './services/qr-login.ts'
 
 const info = ref<LoginQrInfo | null>(null)
 const busy = ref(false)
@@ -46,6 +47,8 @@ watch(() => session.token, reset, { flush: 'sync' })
 onShow(() => {
   restoreSession()
   if (!session.token) { uni.reLaunch({ url: '/pages/login/index' }); return }
+  const content = takeScanResult(session.token)
+  if (content != null) void scan(content)
   remaining.value = Math.max(0, Math.ceil((deadline - Date.now()) / 1000))
 })
 onUnload(() => { unloaded = true; reset() })
@@ -55,13 +58,13 @@ function back() {
 function current(version: number, token: string) {
   return !unloaded && version === revision && token === session.token
 }
-async function scan() {
+async function scan(scannedContent?: string) {
   if (busy.value) return
   reset()
   busy.value = true
   const version = revision, token = session.token
   try {
-    const content = await scanWithCamera()
+    const content = scannedContent ?? await scanWithCamera()
     if (!current(version, token)) return
     qr = parseLoginQr(content)
     await inspect(version, token)
@@ -132,7 +135,7 @@ async function decide(approve: boolean) {
             <text v-else class="login-text" :class="themeClass('login-text')">扫描网页上的 App 登录二维码</text>
             <text v-if="error" class="login-error" :class="themeClass('login-error')" role="alert">{{ error }}</text>
             <MobileButton v-if="error" label="重试" variant="quiet" :loading="busy" @click="retry" />
-            <MobileButton v-if="!info || remaining <= 0 || result" :label="info ? '重新扫码' : '扫一扫'" :loading="busy" @click="scan" />
+            <MobileButton v-if="!info || remaining <= 0 || result" :label="info ? '重新扫码' : '扫一扫'" :loading="busy" @click="scan()" />
           </template>
         </view>
       </view>

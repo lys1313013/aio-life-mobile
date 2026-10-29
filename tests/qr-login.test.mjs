@@ -4,6 +4,7 @@ import test from 'node:test';
 import { transformSync } from 'esbuild';
 
 let source = await readFile(new URL('../src/pages/scan-login/services/qr-login.ts', import.meta.url), 'utf8');
+source += '\n' + await readFile(new URL('../src/services/scan-camera.ts', import.meta.url), 'utf8');
 source = source.replace(/^import .*$/gm, '').replace(/\/\/ #ifdef WEB[\s\S]*?\/\/ #endif/g, '');
 const compiled = transformSync(source, { loader: 'ts', format: 'cjs' }).code;
 function service(request = async () => {}, uni = {}) {
@@ -45,4 +46,16 @@ test('原生扫码只开相机，取消与权限失败明确区分', async () =>
     const failed = service(undefined, { scanCode(options) { options.fail({ errMsg }); } });
     await assert.rejects(failed.scanWithCamera(), { name });
   }
+});
+test('入口结果仅供同一账号单次消费，清理后不可再次使用', () => {
+  const api = service();
+  api.rememberScanResult(content, 'account-a');
+  assert.equal(api.takeScanResult('account-b'), null);
+  assert.equal(api.takeScanResult('account-a'), null);
+  api.rememberScanResult(content, 'account-a');
+  assert.equal(api.takeScanResult('account-a'), content);
+  assert.equal(api.takeScanResult('account-a'), null);
+  api.rememberScanResult(content, 'account-a');
+  api.clearScanResult();
+  assert.equal(api.takeScanResult('account-a'), null);
 });

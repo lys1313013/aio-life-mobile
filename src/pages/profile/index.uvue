@@ -13,6 +13,7 @@ import { onShow, onHide, onUnload } from '@dcloudio/uni-app'
 import PageHeader from '../../components/PageHeader.uvue'
 import { fetchUser, request } from '../../services/api.ts'
 import { restoreSession, session } from '../../services/session.ts'
+import { scanWithCamera, rememberScanResult, clearScanResult } from '../../services/scan-camera.ts'
 
 const shortcutLinks = [
   { title: '消息中心', path: '/pages/messages/index', icon: 'ant-design:message-outlined', message: true },
@@ -21,7 +22,6 @@ const shortcutLinks = [
   { title: '菜单显示', path: 'preferences?section=menus', icon: 'lucide:layout-grid', message: false },
 ]
 const preferenceLinks = [
-  { title: '数据导出', path: '/pages/data-export/index', icon: 'ant-design:download-outlined' },
   { title: '消息通知', path: 'notifications', icon: 'lucide:bell' },
   { title: '分类管理', path: '/pages/records/categories', icon: 'lucide:settings-2' },
   { title: '设置', path: 'preferences?section=general', icon: 'ant-design:setting-outlined' },
@@ -29,6 +29,26 @@ const preferenceLinks = [
 
 function openPage(name: string) {
   uni.navigateTo({ url: name.startsWith('/') ? name : '/pages/profile/' + name })
+}
+const scanning = ref(false)
+let scanUnloaded = false
+async function startScan() {
+  if (scanning.value || !session.token) return
+  scanning.value = true
+  const token = session.token
+  try {
+    const content = await scanWithCamera()
+    if (scanUnloaded || token !== session.token) return
+    rememberScanResult(content, token)
+    await uni.navigateTo({ url: '/pages/scan-login/index' })
+  } catch (reason) {
+    clearScanResult()
+    if (!scanUnloaded && token === session.token && reason.name !== 'ScanCancelledError') {
+      uni.showToast({ title: reason.message || '无法打开扫码登录，请重试', icon: 'none' })
+    }
+  } finally {
+    scanning.value = false
+  }
 }
 const user = computed(() => session.user)
 const loading = ref(false)
@@ -84,6 +104,7 @@ onHide(() => {
   suspend()
 })
 onUnload(() => {
+  scanUnloaded = true
   visible = false
   suspend()
 })
@@ -137,7 +158,7 @@ async function loadUnread() {
     <PageHeader title="" :actions-min-width="44">
       <template #actions>
         <!-- #ifndef WEB -->
-        <button role="button" class="profile-icon-button" aria-label="扫码登录" @click="openPage('/pages/scan-login/index')">
+        <button role="button" class="profile-icon-button" aria-label="扫码登录" :disabled="scanning" :loading="scanning" @click="startScan">
           <AppIcon name="lucide:scan-line" />
         </button>
         <!-- #endif -->

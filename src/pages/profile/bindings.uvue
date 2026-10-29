@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import PageState from "../../components/PageState.uvue";
 import { usePageRefresh } from '../../services/page-refresh.ts'
 import { buttonLabelClasses } from '../../services/button-label.ts'
 import FormField from '../../components/FormField.uvue'
@@ -245,25 +246,10 @@ function back() {
       @refresherrefresh="pullRefresh"
     >
       <view class="tab-content ui-page-inset bindings-content">
-        <view v-if="loading" class="binding-status ui-mb-section"
-          ><LoadingIndicator v-if="loaded" label="正在更新账号绑定" /><ContentSkeleton v-else variant="list" :rows="3" label="正在加载账号绑定" /></view
-        >
-        <view v-if="errorText" class="binding-status ui-mb-section"
-          ><text
-            role="alert"
-            class="error-text"
-            :class="themeClass('error-text')"
-            >{{ errorText }}</text
-          ><button
-            role="button"
-            class="text-action"
-            :disabled="loading"
-            :aria-disabled="loading"
-            @click="load"
-          ><text :class="buttonLabelClasses(['text-action'])">重试</text></button></view
-        >
+        <PageState :loading="loading" :has-content="loaded" :error="errorText" @retry="load">
+          <template #loading><ContentSkeleton variant="list" :rows="3" label="正在加载账号绑定" /></template>
         <view
-          v-if="loaded && records.length === 0 && !loading"
+          v-if="loaded && records.length === 0"
           class="state-card"
           :class="themeClass('state-card')"
           ><text class="empty-title" :class="themeClass('empty-title')"
@@ -345,6 +331,7 @@ function back() {
             >
           </view>
         </view>
+        </PageState>
       </view>
     </scroll-view>
     <FloatingActionButton

@@ -227,10 +227,6 @@ async function setPassword() {
         <text class="login-title ink" :class="themeClass('ink')">{{ mode === 'set-password' ? '设置登录密码' : mode === 'bind' ? '绑定已有账号' : mode === 'register' ? '创建账号' : '欢迎回来' }}</text>
         <text class="login-subtitle muted" :class="themeClass('muted')">{{ mode === 'set-password' ? '设置密码，下次也可使用账号登录。' : mode === 'bind' ? '登录后，将微信绑定到你的账号。' : '让生活，有迹可循。' }}</text>
 
-        <view class="ui-field-row ui-mb-section">
-          <MobileButton label="隐私政策" variant="ghost" @click="openLegalPolicy('privacy')" />
-          <MobileButton label="服务条款" variant="ghost" @click="openLegalPolicy('terms')" />
-        </view>
         <view class="login-form">
           <!-- #ifdef MP-WEIXIN -->
           <view v-if="mode === 'wechat'">
@@ -303,6 +299,10 @@ async function setPassword() {
             <text class="error-text" role="alert" :class="themeClass('error-text')">{{ errorText }}</text>
           </view>
         </view>
+        <view v-if="mode !== 'register' || !wechatRegistrationEnabled" class="login-policies" aria-label="隐私与服务协议">
+          <button role="button" class="text-button" aria-label="隐私政策" @click="openLegalPolicy('privacy')"><text class="policy-label muted" :class="themeClass('muted')">隐私政策</text></button>
+          <button role="button" class="text-button" aria-label="服务条款" @click="openLegalPolicy('terms')"><text class="policy-label muted" :class="themeClass('muted')">服务条款</text></button>
+        </view>
       </view>
 
     </view>
@@ -337,6 +337,8 @@ min-height: 100vh;
 .login-title { @include type-style('hero');   }
 .login-subtitle { margin-top: $space-inline; @include type-style('body');  }
 .login-form { margin-top: $space-overlayBlock; }
+.login-policies { display: flex; flex-direction: row; flex-wrap: wrap; align-items: center; justify-content: center; gap: $space-modal; margin-top: $space-section; }
+.policy-label { @include type-style('caption'); }
 .field-label { @include type-style('label'); margin-bottom: $space-inline; }
 .field-input { box-sizing: border-box; height: 48px; border: 1px solid #dedee3; border-radius: 8px; background-color: #fafafa; color: #27272a; @include type-style('body'); }
 .field-input-dark { background-color: #18191d; border-color: #36383f; color: #eeeeef; }
