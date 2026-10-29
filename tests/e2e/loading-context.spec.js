@@ -18,7 +18,8 @@ function common() {
 async function prepare(page, width, theme) {
   await page.setViewportSize({ width, height: 900 });
   await page.emulateMedia({ colorScheme: theme });
-  await page.clock.setFixedTime(new Date('2026-10-29T04:00:00Z'));
+  // 固定起点后正常推进时间；swiper 动画使用 Date.now()，不能冻结时钟。
+  await page.clock.install({ time: new Date('2026-10-29T04:00:00Z') });
   await page.addInitScript(() => localStorage.setItem('aio-life-mobile.access-token.v1', JSON.stringify({ type: 'string', data: 'fixture-loading-context' })));
 }
 async function timeContentGeometry(page) {
@@ -142,6 +143,7 @@ for (const width of [390, 768, 1440]) for (const theme of ['light', 'dark']) {
       await page.locator('.uni-picker-select:visible, .uni-picker-view-indicator:visible').first().waitFor();
       if (await page.locator('.uni-picker-select:visible').count()) {
         await page.locator('.uni-picker-select:visible .uni-picker-item').getByText(title, { exact: true }).click();
+        await expect(page.locator('.uni-picker-select:visible')).toHaveCount(0);
         return;
       }
       const wheel = page.locator('.uni-picker-content:visible .uni-picker-view-group');
@@ -154,12 +156,14 @@ for (const width of [390, 768, 1440]) for (const theme of ['light', 'dark']) {
         return Math.abs(rect.y + rect.height / 2 - indicator.y - indicator.height / 2) < 0.5;
       }), { message: '等待原生滚轮将目标书籍对齐选中行' }).toBe(true);
       await page.locator('.uni-picker-action-confirm:visible').click();
+      await expect(page.locator('.uni-picker-content:visible')).toHaveCount(0);
     }
     try {
       await page.goto('/#/pages/records/weread');
       await page.getByRole('button', { name: '我的书架', exact: true }).click();
       await page.getByRole('button', { name: '书籍详情：模拟书籍 A', exact: true }).click();
       await page.getByRole('button', { name: '查看笔记', exact: true }).click();
+      await expect(page.getByRole('button', { name: '阅读笔记', exact: true })).toHaveAttribute('aria-pressed', 'true');
       await expect(page.getByText('模拟 A 书笔记', { exact: true })).toBeVisible();
       await selectBook('模拟书籍 B');
       await expect.poll(() => queries).toBe(2);

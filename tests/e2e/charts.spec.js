@@ -111,7 +111,7 @@ test('图表上的纵向滚动不会误选日期', async ({ page }) => {
   await cdp.detach();
 });
 for (const kind of ['全零', '单点', '负结余']) {
-  test(`财务日历 ${kind} 的金额和格子有效`, async ({ page }) => {
+  test(`财务日历 ${kind} 的金额和格子有效`, async ({ page, apiMock }) => {
     await page.setViewportSize({ width: 390, height: 1000 });
     await page.addInitScript(() => localStorage.setItem('aio-life-mobile.access-token.v1', 'chart-finance-fixture'));
     const errors = [];
@@ -120,22 +120,25 @@ for (const kind of ['全零', '单点', '负结余']) {
     const income = kind === '全零' ? 0 : 100;
     const expense = kind === '全零' ? 0 : kind === '负结余' ? 200 : 50;
     const balance = income - expense;
-    await page.route('**/api/**', route => {
-      const url = new URL(route.request().url()), path = url.pathname;
-      let data = [];
-      if (path === '/api/user/info') data = { id: '1', nickname: '日历模拟用户' };
-      if (path === '/api/quick-nav/candidates') data = access.map(path => ({ path }));
-      if (path === '/api/home/sections/finance/calendar') {
-        data = calendarFixture(url, 'finance', kind === '全零' ? 0 : 1);
+    apiMock({
+      'GET /api/user/info': { json: { code: 0, data: { id: '1', nickname: '日历模拟用户' } } },
+      'GET /api/home/cards': { json: { code: 0, data: [{ cardKey: 'section.finance', title: '收支概览', group: 'section', isEnabled: true, sortOrder: 0 }] } },
+      'GET /api/dashboard/tasks': { json: { code: 0, data: [] } },
+      'GET /api/menu/all': { json: { code: 0, data: access.map((path, index) => ({ path, meta: { menuId: 'finance-' + index } })) } },
+      'GET /api/quick-nav/candidates': { json: { code: 0, data: access.map(path => ({ path })) } },
+      'GET /api/auth/secondary-lock/menus': { json: { code: 0, data: [] } },
+      'GET /api/menu/visuals': { json: { code: 0, data: { menus: [], cards: {} } } },
+      'GET /api/home/sections/finance/calendar': request => {
+        const data = calendarFixture(new URL(request.url()), 'finance', kind === '全零' ? 0 : 1);
         Object.assign(data, { income, expense, balance, amount: balance });
         data.buckets.forEach((bucket, index) => Object.assign(bucket, {
           income: index ? 0 : income, expense: index ? 0 : expense,
           balance: index ? 0 : balance, amount: index ? 0 : balance,
         }));
-      }
-      return route.fulfill({ json: { code: 0, data } });
+        return { json: { code: 0, data } };
+      },
     });
-    await page.goto('/#/pages/finance/index');
+    await page.goto('/#/pages/home/index');
     const card = page.locator('[aria-label="收支概览首页卡片"]');
     await expect(card).toHaveAttribute('aria-busy', 'false');
     await expect(card.getByRole('button', { name: '查看收入', exact: true })).toContainText(income.toFixed(2));
