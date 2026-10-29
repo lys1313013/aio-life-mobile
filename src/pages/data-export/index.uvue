@@ -3,7 +3,12 @@ import { computed, ref, watch } from "vue";
 import { onShow, onHide, onUnload } from "@dcloudio/uni-app";
 import MobilePage from "../../components/MobilePage.uvue";
 import PageHeader from "../../components/PageHeader.uvue";
+import MobileButton from "../../components/MobileButton.uvue";
+import MobileSwitch from "../../components/MobileSwitch.uvue";
+import PageState from "../../components/PageState.uvue";
+import ContentSkeleton from "../../components/ContentSkeleton.uvue";
 import LoadMore from "../../components/LoadMore.uvue";
+import FormActions from "../../components/FormActions.uvue";
 import FormField from "../../components/FormField.uvue";
 import AdaptiveModal from "../../components/AdaptiveModal.uvue";
 import NumericPasswordPad from "../../components/NumericPasswordPad.uvue";
@@ -24,6 +29,8 @@ const expanded = ref(false);
 const loading = ref(false);
 const busy = ref("");
 const errorText = ref("");
+const loadError = ref("");
+const appending = ref(false);
 const nextPageError = ref("");
 const exhausted = ref(false);
 const page = ref(1);
@@ -65,7 +72,8 @@ async function load(includeCatalog = true, append = false) {
   if (loading.value) return;
   const version = revision;
   loading.value = true;
-  errorText.value = "";
+  appending.value = append;
+  loadError.value = "";
   nextPageError.value = "";
   const nextPage = append ? page.value + 1 : 1;
   try {
@@ -105,11 +113,12 @@ async function load(includeCatalog = true, append = false) {
   } catch (error) {
     if (current(version)) {
       if (append) nextPageError.value = error.message || "加载失败，请重试";
-      else errorText.value = error.message || "加载失败，请重试";
+      else loadError.value = error.message || "加载失败，请重试";
     }
   } finally {
     if (current(version)) {
       loading.value = false;
+      appending.value = false;
       schedule();
     }
   }
@@ -222,6 +231,9 @@ function reset() {
   requestKey = "";
   nextPageError.value = "";
   exhausted.value = false;
+  loadError.value = "";
+  errorText.value = "";
+  appending.value = false;
 }
 watch(
   () => session.token,
@@ -261,45 +273,22 @@ onUnload(() => {
           >本月剩余 {{ quota?.remaining ?? "—" }} /
           {{ quota?.limit ?? 5 }} 次</text
         >
-        <button
-          role="button"
-          class="export-button"
-          :disabled="!canCreate"
-          :aria-disabled="!canCreate"
-          :loading="busy === 'create'"
-          @click="verify()"
-        >
-          <text class="export-label">生成 Excel</text>
-        </button>
+        <MobileButton label="生成 Excel" :disabled="!canCreate" :loading="busy === 'create'" @click="verify()" />
       </view>
-      <text v-if="errorText" class="export-error" @click="load()">{{
-        errorText
-      }}</text>
-      <text v-if="loading && !catalog" class="export-body">加载中</text>
+      <text v-if="errorText" class="export-error" role="alert">{{ errorText }}</text>
+      <PageState :loading="loading && !appending" :has-content="!!catalog" :error="loadError" @retry="load()">
+        <template #loading><ContentSkeleton variant="form" :rows="2" /></template>
       <view v-if="catalog" class="export-section">
-        <text class="export-label" @click="expanded = !expanded"
-          >导出范围（{{ selected.length }} 项）
-          {{ expanded ? "收起" : "展开" }}</text
-        >
+        <MobileButton :label="'导出范围（' + selected.length + ' 项）' + (expanded ? ' 收起' : ' 展开')" variant="ghost" :aria-expanded="expanded" @click="expanded = !expanded" />
         <view v-if="expanded" class="export-section">
           <view
             v-for="item in catalog.datasets"
             :key="item.key"
             class="export-toolbar"
           >
-            <text
-              class="export-body"
-              :class="{ 'export-muted': item.state === 'UNAVAILABLE' }"
-              @click="item.state !== 'UNAVAILABLE' && select(item.key)"
-              >{{ selected.includes(item.key) ? "☑" : "☐" }} {{ item.title
-              }}{{ item.state === "UNAVAILABLE" ? "（不可用）" : "" }}</text
-            >
-            <text
-              v-if="item.state === 'LOCKED'"
-              class="export-label"
-              @click="unlock(item.lockedMenu)"
-              >解锁</text
-            >
+            <MobileSwitch :checked="selected.includes(item.key)" :disabled="item.state === 'UNAVAILABLE' || !!busy"
+              :aria-label="'导出' + item.title" :label="item.title + (item.state === 'UNAVAILABLE' ? '（不可用）' : '')" @change="select(item.key)" />
+            <MobileButton v-if="item.state === 'LOCKED'" label="解锁" variant="quiet" :disabled="!!busy" @click="unlock(item.lockedMenu)" />
           </view>
           <text
             v-for="note in catalog.exclusions"
@@ -334,27 +323,12 @@ onUnload(() => {
             @confirm="submit"
           />
         </FormField>
-        <view class="export-toolbar"
-          ><button
-            role="button"
-            class="export-button"
-            :loading="!!busy"
-            :disabled="!password || !!busy"
-            :aria-disabled="!password || !!busy"
-            @click="submit"
-          >
-            <text class="export-label">确认</text></button
-          ><text
-            class="export-caption"
-            @click="
-              verifying = false;
-              password = '';
-            "
-            >取消</text
-          ></view
-        >
+        <FormActions>
+          <MobileButton label="取消" variant="quiet" :disabled="!!busy" @click="verifying = false; password = ''" />
+          <MobileButton label="确认" :loading="!!busy" :disabled="!password" @click="submit" />
+        </FormActions>
       </view>
-      <text v-if="!loading && jobs.length === 0" class="export-caption"
+      <text v-if="jobs.length === 0" class="export-caption"
         >暂无导出记录</text
       >
       <view v-for="job in jobs" :key="job.id" class="export-section">
@@ -376,39 +350,18 @@ onUnload(() => {
           >生成未完成，请检查范围或稍后重试</text
         >
         <view class="export-toolbar">
-          <button
-            role="button"
-            v-if="
-              job.status === 'SUCCEEDED' && job.artifactStatus === 'AVAILABLE'
-            "
-            class="export-button"
-            :loading="busy === job.id"
-            @click="verify(job)"
-          >
-            <text class="export-label">下载</text>
-          </button>
-          <text
-            v-if="
-              job.status === 'SUCCEEDED' && job.artifactStatus === 'AVAILABLE'
-            "
-            class="export-caption"
-            @click="change(job, true)"
-            >删除文件</text
-          >
-          <text
-            v-if="['QUEUED', 'RUNNING'].includes(job.status)"
-            class="export-caption"
-            @click="change(job, false)"
-            >取消导出</text
-          >
+          <MobileButton v-if="job.status === 'SUCCEEDED' && job.artifactStatus === 'AVAILABLE'" label="下载" :loading="busy === job.id" :disabled="!!busy" @click="verify(job)" />
+          <MobileButton v-if="job.status === 'SUCCEEDED' && job.artifactStatus === 'AVAILABLE'" label="删除文件" variant="quiet" :loading="busy === job.id" :disabled="!!busy" @click="change(job, true)" />
+          <MobileButton v-if="['QUEUED', 'RUNNING'].includes(job.status)" label="取消导出" variant="quiet" :loading="busy === job.id" :disabled="!!busy" @click="change(job, false)" />
         </view>
       </view>
       <LoadMore
-        :loading="loading && !!catalog"
+        :loading="loading && appending"
         :has-more="!exhausted"
         :error="nextPageError"
         @load="more"
       />
+      </PageState>
     </view>
   </MobilePage>
 </template>
@@ -454,18 +407,6 @@ onUnload(() => {
   padding: $space-inline;
   min-height: $space-controlMin;
   color: #303133;
-}
-.export-button {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  margin: 0;
-  padding-left: $space-card;
-  padding-right: $space-card;
-  min-height: $space-controlMin;
-}
-.export-muted {
-  color: #909399;
 }
 .export-page-dark .export-body {
   color: #e6e8eb;

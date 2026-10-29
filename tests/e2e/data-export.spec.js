@@ -34,6 +34,8 @@ async function setup(page, remaining = 5) {
   await page.getByRole('button', { name: '登录', exact: true }).click();
   await expect(page.locator('.dashboard-scroll')).toBeVisible();
   await page.locator('uni-tabbar').getByText('我', { exact: true }).click();
+  await expect(page.getByRole('button', { name: '数据导出', exact: true })).toHaveCount(0);
+  await page.getByRole('button', { name: '设置', exact: true }).click();
   await page.getByRole('button', { name: '数据导出', exact: true }).click();
   await expect(page.getByText(`本月剩余 ${remaining} / 5 次`)).toBeVisible();
   return state;
@@ -44,7 +46,7 @@ for (const width of [390, 768, 1440]) for (const theme of ['light', 'dark']) {
     const errors = []; page.on('pageerror', e => errors.push(e.message));
     await setup(page);
     await page.getByText('导出范围（2 项）', { exact: false }).click();
-    await expect(page.getByText('☐ 人物关系（不可用）', { exact: true })).toBeVisible();
+    await expect(page.getByRole('switch', { name: '导出人物关系', exact: true })).toBeVisible();
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     await page.screenshot({ path: `test-results/data-export-${width}-${theme}.png`, fullPage: true });
     expect(errors).toEqual([]);
