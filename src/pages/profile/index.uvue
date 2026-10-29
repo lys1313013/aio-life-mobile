@@ -221,8 +221,10 @@ async function loadUnread() {
         >
         <view class="profile-shortcuts ui-pad-card" :class="themeClass('profile-shortcuts')">
           <button v-for="entry in shortcutLinks" :key="entry.path" role="button" class="shortcut-button" :aria-label="entry.title" @click="openPage(entry.path)">
-            <view class="shortcut-icon" :class="themeClass('shortcut-icon')">
-              <AppIcon :name="entry.icon" :color="shortcutColor" />
+            <view class="shortcut-icon-anchor">
+              <view class="shortcut-icon" :class="themeClass('shortcut-icon')">
+                <AppIcon :name="entry.icon" :color="shortcutColor" />
+              </view>
               <text v-if="entry.message && unreadCount > 0" class="unread-badge" :aria-label="unreadCount + '条未读消息'">{{ unreadLabel }}</text>
             </view>
             <text class="shortcut-label" :class="themeClass('shortcut-label')">{{ entry.title }}</text>
@@ -388,8 +390,12 @@ async function loadUnread() {
   background-color: transparent;
   overflow: visible;
 }
-.shortcut-icon {
+.shortcut-icon-anchor {
+  // 角标与圆角底图分层，避免越界部分被图标容器裁剪。
   position: relative;
+  overflow: visible;
+}
+.shortcut-icon {
   align-items: center;
   justify-content: center;
   width: 36px;
