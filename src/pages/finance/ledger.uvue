@@ -3,7 +3,7 @@ import { readPageTotal, hasMorePageItems } from '../../services/pagination.ts';
 import { useAppLayout } from '../../services/app-layout.ts'
 const { appGridItem } = useAppLayout()
 
-import ContentSkeleton from '../../components/ContentSkeleton.uvue';
+import LedgerOverviewSkeleton from './components/LedgerOverviewSkeleton.uvue';
 import { computed, onUnmounted, ref, watch } from 'vue';
 import PageHeader from '../../components/PageHeader.uvue';
 import MobilePage from '../../components/MobilePage.uvue';
@@ -16,7 +16,6 @@ import MetricCard from '../../components/MetricCard.uvue';
 import AioChart from '../../components/AioChart.uvue';
 import TypeDistribution from './components/TypeDistribution.uvue';
 import LedgerRow from './components/LedgerRow.uvue';
-import ExpenseDeviceModal from './components/ExpenseDeviceModal.uvue';
 import FinanceRecordModal from './components/FinanceRecordModal.uvue';
 import { themeClass } from '../../services/theme.ts';
 import {
@@ -28,10 +27,6 @@ import {
   ledgerId,
   fetchFinanceStatistics,
 } from './services/finance.ts';
-const deviceExpense = ref('');
-function updateDevice(value: any) {
-  rows.value = rows.value.map(row => ledgerId(row) === value.expenseId ? { ...row, deviceId: value.deviceId, deviceName: value.deviceName } : row);
-}
 const props = defineProps<{ kind: string; initialCreate?: boolean }>();
 let entryConsumed = false;
 const expense = computed(() => props.kind === 'expense');
@@ -269,7 +264,7 @@ async function initialize() {
 function suspend(clear = false) {
   alive = false; version++; statisticsSequence++; refreshSequence++;
   loading.value = false; statisticsBusy.value = false; refreshing.value = false;
-  modal.value = false; selected.value = []; openedRow.value = ''; deviceExpense.value = '';
+  modal.value = false; selected.value = []; openedRow.value = '';
   draft.value = {}; formError.value = '';
   if (clear) {
     rows.value = []; types.value = []; payments.value = [];
@@ -320,6 +315,7 @@ watch(payFilter, (value) => {
     payments.value.find((item) => item.dictLabel === value)?.id || '';
 });
 function edit(row: any = null) {
+  if (!alive) return;
   const now = new Date(),
     date =
       now.getFullYear() +
@@ -388,6 +384,7 @@ async function removeSelected() {
       >
       <view class="tools ledger-toolbar ui-toolbar"
         ><text class="section-title">{{ expense ? '支出明细' : '收入明细' }}</text><view class="filter-trigger"><MobileButton :label="activeFilterCount ? '更多筛选，已启用 ' + activeFilterCount + ' 项条件' : '更多筛选'" icon="ant-design:filter-outlined" variant="quiet" @click="showFilters = !showFilters" /><text v-if="activeFilterCount" class="filter-count">{{ activeFilterCount }}</text></view><MobileButton
+          v-if="!expense"
           label="统计"
           icon="ant-design:bar-chart-outlined"
           :variant="showStatistics ? 'primary' : 'quiet'"
@@ -402,13 +399,13 @@ async function removeSelected() {
           variant="quiet"
           @click="uni.navigateTo({ url: '/pages/finance/import' })"
       /></view>
-      <view v-if="showStatistics" class="statistics-panel"
+      <view v-if="expense || showStatistics" class="statistics-panel"
         ><PageState skeleton="overview"
         :loading="statisticsBusy" :has-content="overviewRows.length > 0"
         :error="statisticsError"
         @retry="types.length ? loadStatistics() : initialize()"
         >
-<template #loading><view class="finance-summary ui-gap-sm ui-section"><FormField compact stretch hide-label label="选择年份" kind="selector" :options="overviewYears" v-model="overviewYear" /><view class="metrics ui-row"><view :style="appGridItem(2, 'section', [[700, 3]], true)" class="summary-total"><MetricCard :label="expense ? '总支出' : '总收入'" value="" loading /></view><MetricCard :style="appGridItem(2, 'section', [[700, 3]], false)" :label="overviewYear + (expense ? '年总支出' : '年总收入')" value="" loading /><MetricCard :style="appGridItem(2, 'section', [[700, 3]], false)" :label="expense ? '月均支出' : '月均收入'" value="" loading /></view></view><view class="chart-grid ui-gap-md"><AioChart :style="appGridItem(1, 'section', [[700, 2]], false)" :label="expense ? '支出走势' : '收入走势'" kind="bar" period-controls loading :labels="[]" :series="[{ name: expense ? '支出' : '收入', values: [] }]" unit="元" /><ContentSkeleton :style="appGridItem(1, 'section', [[700, 2]], false)" variant="chart" /></view></template>
+<template #loading><LedgerOverviewSkeleton :kind="kind" v-model:year="overviewYear" :years="overviewYears" /></template>
 <view class="finance-summary ui-gap-sm ui-section"
           ><FormField
             compact
@@ -561,10 +558,10 @@ async function removeSelected() {
       <PageState skeleton="list"
         :loading="loading && rows.length === 0"
         :error="error"
-        :empty="!loading && rows.length === 0"
+        :empty="rows.length === 0"
         @retry="initialize"
       >
-        <LedgerRow :busy="mutationBusy" @device="deviceExpense = ledgerId(row)" v-for="(row, index) in sorted" :key="ledgerId(row)"
+        <LedgerRow v-for="(row, index) in sorted" :key="ledgerId(row)"
           :kind="kind" :row="row" :category="name(types, row[expense ? 'expTypeId' : 'incTypeId'])"
           :payment="expense ? name(payments, row.payTypeId) : ''"
           :first="index === 0" :last="index === sorted.length - 1"
@@ -575,13 +572,14 @@ async function removeSelected() {
       </PageState>
     </view>
     <template #fixed>
-    <ExpenseDeviceModal v-if="deviceExpense" :expense-id="deviceExpense" @close="deviceExpense = ''" @updated="updateDevice" /><FinanceRecordModal v-if="modal" :kind="kind" :draft="draft" :types="types" :payments="payments"
+    <FinanceRecordModal v-if="modal" :kind="kind" :draft="draft" :types="types" :payments="payments"
       :saving="saving" :form-error="formError" v-model:continuous="continuous" :remove="removeDraft"
       @close="modal = false" @save="save" />
     </template>
   </MobilePage>
 </template>
 <style scoped lang="scss">
+@use '../../styles/platform' as *;
 @use '../../styles/typography' as *;
 @use '../../styles/text-colors' as *;
 @use '../../styles/spacing.scss';
@@ -605,30 +603,16 @@ grid-column: 1 / -1;
  }
 .metrics {
 
-/* #ifndef APP */
-display: grid;
-/* #endif */
-/* #ifdef APP */
-display: flex; flex-direction: row; flex-wrap: wrap; justify-content: space-between;
-/* #endif */
+@include grid-layout;
 
-/* #ifndef APP */
-grid-template-columns: repeat(2, minmax(0, 1fr));
-/* #endif */
+@include grid-columns(2);
 
 }
 .filters {
 
-/* #ifndef APP */
-display: grid;
-/* #endif */
-/* #ifdef APP */
-display: flex; flex-direction: row; flex-wrap: wrap; justify-content: space-between;
-/* #endif */
+@include grid-layout;
 
-/* #ifndef APP */
-grid-template-columns: repeat(2, minmax(0, 1fr));
-/* #endif */
+@include grid-columns(2);
 
 }
 .tools {
@@ -636,12 +620,7 @@ grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 .summary {
 
-/* #ifndef APP */
-display: block;
-/* #endif */
-/* #ifdef APP */
-display: flex;
-/* #endif */
+@include block-content;
 
   color: #718096;
 }
@@ -695,12 +674,7 @@ display: flex;
 .chart-grid {
   align-items: start;
   margin-bottom: $space-section;
-/* #ifndef APP */
-display: grid;
-/* #endif */
-/* #ifdef APP */
-display: flex; flex-direction: row; flex-wrap: wrap; justify-content: space-between;
-/* #endif */
+@include grid-layout;
 
 /* #ifndef APP */
 grid-template-columns: minmax(0, 1fr);
@@ -709,12 +683,7 @@ grid-template-columns: minmax(0, 1fr);
 .error {
   color: #dc5454;
 
-/* #ifndef APP */
-display: block;
-/* #endif */
-/* #ifdef APP */
-display: flex;
-/* #endif */
+@include block-content;
 
 }
 @media (min-width: 700px) {
@@ -724,20 +693,14 @@ grid-column: auto;
 /* #endif */
  }
   .filters {
-/* #ifndef APP */
-grid-template-columns: repeat(3, minmax(0, 1fr));
-/* #endif */
+@include grid-columns(3);
  }
   .chart-grid {
-/* #ifndef APP */
-grid-template-columns: repeat(2, minmax(0, 1fr));
-/* #endif */
+@include grid-columns(2);
  }
   .metrics {
 
-/* #ifndef APP */
-grid-template-columns: repeat(3, minmax(0, 1fr));
-/* #endif */
+@include grid-columns(3);
 
   }
 }

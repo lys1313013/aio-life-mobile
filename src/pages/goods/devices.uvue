@@ -347,6 +347,7 @@ function deviceDeleted(id: string) {
   </MobilePage>
 </template>
 <style scoped lang="scss">
+@use '../../styles/platform' as *;
 @use "./goods-media";
 @use '../../styles/typography' as *;
 @use '../../styles/text-colors' as *;
@@ -375,12 +376,7 @@ function deviceDeleted(id: string) {
   display: flex;
   // 内容按全部标签撑开，避免 view 将超出视口的标签裁掉。
 
-/* #ifndef APP */
-width: max-content;
-/* #endif */
-/* #ifdef APP */
-flex-shrink: 0;
-/* #endif */
+@include intrinsic-width;
 
   flex-direction: row;
   flex-wrap: nowrap;
@@ -418,16 +414,9 @@ color: inherit;
 }
 .metrics {
 
-/* #ifndef APP */
-display: grid;
-/* #endif */
-/* #ifdef APP */
-display: flex; flex-direction: row; flex-wrap: wrap; justify-content: space-between;
-/* #endif */
+@include grid-layout;
 
-/* #ifndef APP */
-grid-template-columns: repeat(2, minmax(0, 1fr));
-/* #endif */
+@include grid-columns(2);
 
 }
 .metric-wide {
@@ -531,9 +520,7 @@ grid-column: auto;
  }
   .metrics {
 
-/* #ifndef APP */
-grid-template-columns: repeat(3, minmax(0, 1fr));
-/* #endif */
+@include grid-columns(3);
 
   }
 }
@@ -558,9 +545,7 @@ color: inherit;
 }
 .goods-cost-summary { margin-top: auto; gap: $space-inline; }
 .goods-price { @include type-style('body-strong');  }
-/* #ifdef WEB || MP-WEIXIN */
-.goods-title-button::after, .device-type-tab::after { border: 0; }
-/* #endif */
+.goods-title-button, .device-type-tab { @include borderless-button; }
 
 .secondary-text-dark { color: $text-secondary-dark; }
 

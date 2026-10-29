@@ -94,7 +94,7 @@ async function refresh() {
   try { await controller.load() } finally { if (version === lifecycle) refreshing.value = false }
 }
 function loadMore() { if (!draft.value && !saving.value) void controller.load() }
-useDomainPage(needsRefresh => {
+const { initializing } = useDomainPage(needsRefresh => {
   active = true; owner = session.token
   if (!selection.value || state.loading) return
   if (needsRefresh || !state.loaded) {
@@ -138,8 +138,8 @@ function switchKind(kind: LedgerKind) {
             </view>
           </view>
         </view>
-        <view class="details-list" :aria-busy="state.loading">
-          <view v-if="!state.loaded && state.loading" class="details-pending"><LoadingIndicator ring :label="'正在加载' + title + '明细'" /></view>
+        <view class="details-list" :aria-busy="state.loading || initializing">
+          <view v-if="!state.loaded && (state.loading || initializing)" class="details-pending"><LoadingIndicator ring :label="'正在加载' + title + '明细'" /></view>
           <view v-else-if="state.loaded && !state.items.length" class="details-pending"><text class="details-caption" :class="{ 'details-muted-dark': isDark }">暂无{{ detailTitle }}记录</text></view>
           <view v-for="row in state.items" :key="row.id" class="details-row">
             <button role="button" class="details-edit" :aria-label="'编辑' + detailTitle + '：' + description(row)" :disabled="state.loading || state.page === 0" @click.stop="edit(row)">
@@ -157,6 +157,7 @@ function switchKind(kind: LedgerKind) {
   </MobilePage>
 </template>
 <style scoped lang="scss">
+@use '../../styles/platform' as *;
 @use '../../styles/typography' as *;
 @use '../../styles/spacing.scss';
 @use '../../styles/spacing-tokens' as *;
@@ -165,9 +166,7 @@ function switchKind(kind: LedgerKind) {
 .details-tab-active { background-color: #f4f4f5; }
 .details-tab-active-dark { background-color: #292b30; }
 .details-tab-label { @include type-style('label'); color: #27272a; }
-/* #ifdef WEB || MP-WEIXIN */
-.details-tab::after { border: 0; }
-/* #endif */
+.details-tab { @include borderless-button; }
 .details-main { width: 100%; flex-direction: row; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: $space-inline; }
 .details-summary { margin-top: $space-inline; padding: $space-card; gap: $space-detail; border-radius: 12px; background-color: #f5f6f8; }
 .details-summary-dark { background-color: #25282e; }
@@ -184,9 +183,7 @@ function switchKind(kind: LedgerKind) {
 .details-pending { min-height: $space-controlMin; padding: $space-inline 0; align-items: center; justify-content: center; }
 .details-row { padding: $space-inline 0; gap: $space-detail; }
 .details-edit { display: flex; flex-direction: column; width: 100%; min-height: $space-controlMin; gap: $space-detail; padding: 0; margin: 0; border: 0; border-radius: 6px; text-align: left; background-color: transparent; }
-/* #ifdef WEB || MP-WEIXIN */
-.details-edit::after { border: 0; }
-/* #endif */
+.details-edit { @include borderless-button; }
 .details-description { @include type-style('body'); color: #27272a; flex: 1; min-width: $space-controlMin; overflow-wrap: anywhere; }
 .details-text-dark { color: #ececf0; }
 .details-muted-dark { color: #a1a1aa; }

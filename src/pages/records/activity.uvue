@@ -177,7 +177,7 @@ async function remove(item) {
               <RecordCover :file-id="item.files?.[0]?.id || ''" placeholder="🎵" mode="aspectFit" />
             </view>
             <view class="activity-meta">
-              <text class="activity-title" :class="{ 'activity-title-dark': isDark }">{{ item.performanceName }}</text>
+              <text :max-lines="2" class="activity-title" :class="{ 'activity-title-dark': isDark }">{{ item.performanceName }}</text>
               <text class="activity-type" :class="String(item.performanceType) === '1' ? 'activity-concert' : 'activity-other'">{{ typeName(item.performanceType) }}</text>
               <view v-if="item.performer" class="meta-row"><AppIcon name="lucide:user" :size="13" color="#8b8f99" /><text class="secondary" :class="{ 'record-secondary-dark': isDark }">{{ item.performer }}</text></view>
               <view class="meta-row"><AppIcon name="ant-design:calendar-outlined" :size="13" color="#8b8f99" /><text class="secondary" :class="{ 'record-secondary-dark': isDark }">{{ (item.performanceDate || '—').slice(0, 10) }}</text></view>
@@ -230,6 +230,7 @@ async function remove(item) {
   ><template #fixed><FloatingActionButton label="新增活动" :disabled="loading || !!error" @click="open()" /></template></MobilePage>
 </template>
 <style scoped lang="scss">
+@use '../../styles/platform' as *;
 @use '../../styles/typography' as *;
 @use '../../styles/text-colors' as *;
 @use '../../styles/spacing.scss';
@@ -272,7 +273,7 @@ async function remove(item) {
 .activity-card { width: calc((100% - #{$space-section}) / 2); min-width: 0; overflow: hidden; border-radius: 12px; background-color: #ffffff; }
 .activity-cover { position: relative; aspect-ratio: 2 / 3; background-color: rgba(148,163,184,0.08); }
 .activity-type { align-self: flex-start; padding: $space-micro $space-detail; border-radius: 4px; color: #ffffff; background-color: #5986db; @include type-style('badge'); }
-.activity-title { color: #27272a; @include type-style('body-strong'); overflow-wrap: anywhere; overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+.activity-title { color: #27272a; @include type-style('body-strong'); overflow-wrap: anywhere; overflow: hidden; @include clamp-text(2); }
 .activity-title-dark { color: #eeeeef; }
 .activity-meta { padding: $space-card; gap: $space-detail; }
 .meta-row { flex-direction: row; align-items: flex-start; gap: $space-detail; min-width: 0; }

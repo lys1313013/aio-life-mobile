@@ -17,18 +17,18 @@ async function fixture(kind, t) {
   let source = (await readFile(new URL(`../src/pages/finance/${kind}.uvue`, import.meta.url), 'utf8')).split('<script setup lang="ts">')[1].split('</script>')[0]
   if (source.includes("'./services/use-ledger-page.ts'")) {
     const helper = (await readFile(new URL('../src/pages/finance/services/use-ledger-page.ts', import.meta.url), 'utf8'))
-      .replace(/import \{ onLoad \}[^\n]+/, `const onLoad = callback => globalThis[${JSON.stringify(key)}].load = callback;`)
+      .replace(/import \{ onLoad, onShow \}[^\n]+/, `const onLoad = callback => globalThis[${JSON.stringify(key)}].load = callback; const onShow = callback => globalThis[${JSON.stringify(key)}].show = callback;`)
       .replace(/from 'vue'/g, `from ${JSON.stringify(vueURL)}`)
       .replace(/import \{ useDomainPage \}[^\n]+/, domainImport)
     source = source.replace("'./services/use-ledger-page.ts'", JSON.stringify(moduleURL(helper)))
   }
   source = source.replace(/from 'vue'/g, `from ${JSON.stringify(vueURL)}`)
     .replace(/import \{ useDomainPage \}[^\n]+/, domainImport)
-    .replace(/import Ledger[^\n]+/, '')
+    .replace(/import Ledger[^\n]+/g, '')
   const lines = source.split('\n')
   const imports = lines.filter(line => line.startsWith('import ')).join('\n')
   const body = lines.filter(line => !line.startsWith('import ')).join('\n')
-  const { setup } = await import(moduleURL(`${imports}\nexport function setup() {\n${body}\nreturn { mounted, visible, ledger, initialCreate };\n}`))
+  const { setup } = await import(moduleURL(`${imports}\nexport function setup() {\n${body}\nreturn { mounted, visible, ledger, initialCreate, awaitingLedger };\n}`))
   const scope = effectScope()
   const state = scope.run(setup)
   const calls = []
@@ -45,11 +45,28 @@ for (const kind of ['expense', 'income']) {
     await f.hooks.resume(false)
     await nextTick()
     assert.equal(f.mounted.value, true)
+    assert.equal(f.awaitingLedger.value, true)
     assert.deepEqual(f.calls, [])
     f.ledger.value = f.child
     await nextTick()
     assert.deepEqual(f.calls, [['resume', true]])
+    assert.equal(f.awaitingLedger.value, false)
     assert.deepEqual(f.hooks.options.keys(), [kind, 'userDictData', 'userDictType'])
+  })
+  test(`${kind} 首次仅恢复活动状态不撤占位，直到真实查询同步启动`, async t => {
+    const f = await fixture(kind, t)
+    f.ledger.value = f.child
+    await nextTick()
+    await f.hooks.resume(false)
+    assert.equal(f.awaitingLedger.value, true)
+    f.ledger.value.resume = refresh => {
+      assert.equal(f.awaitingLedger.value, true)
+      f.ledger.value.loading = refresh
+    }
+    const started = f.hooks.resume(true)
+    assert.equal(f.ledger.value.loading, true)
+    assert.equal(f.awaitingLedger.value, false)
+    await started
   })
   test(`${kind} 挂载前离页取消加载，返回时重新查询`, async t => {
     const f = await fixture(kind, t)
@@ -69,6 +86,7 @@ for (const kind of ['expense', 'income']) {
     await nextTick()
     await f.hooks.resume(true)
     f.hooks.suspend(false)
+    assert.equal(f.awaitingLedger.value, false)
     await f.hooks.resume(false)
     assert.deepEqual(f.calls, [['resume', true], ['suspend', false], ['resume', false]])
     f.ledger.value.loading = true
@@ -76,7 +94,22 @@ for (const kind of ['expense', 'income']) {
     assert.equal(f.hooks.options.loading(), true)
     assert.equal(f.hooks.options.error(), '模拟查询失败')
     f.hooks.suspend(true)
+    assert.equal(f.awaitingLedger.value, true)
     assert.deepEqual(f.calls.at(-1), ['suspend', true])
+  })
+  test(`${kind} 同会话返回初始化期间保留页面，权限清理立即隐藏`, async t => {
+    const f = await fixture(kind, t)
+    f.ledger.value = f.child
+    await nextTick()
+    await f.hooks.resume(true)
+    f.hooks.suspend(false)
+    f.hooks.show()
+    assert.equal(f.visible.value, true)
+    assert.equal(f.awaitingLedger.value, false)
+    assert.equal(f.calls.filter(([action]) => action === 'resume').length, 1)
+    f.hooks.suspend(true)
+    assert.equal(f.visible.value, false)
+    assert.equal(f.awaitingLedger.value, true)
   })
 }
 

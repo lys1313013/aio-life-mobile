@@ -186,7 +186,8 @@ for (const kind of ['movie', 'read'])
       page.waitForRequest(
         (r) =>
           r.url().includes(base) &&
-          new URL(r.url()).searchParams.get('status') === 'in_progress',
+          new URL(r.url()).searchParams.getAll('statuses').join(',') ===
+            'in_progress',
       ),
       page.locator('.uni-picker-action-confirm:visible').click(),
     ]);

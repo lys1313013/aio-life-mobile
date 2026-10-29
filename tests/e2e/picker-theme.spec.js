@@ -15,10 +15,10 @@ async function prepare(page, baseURL, mode, colorScheme) {
   await page.emulateMedia({ colorScheme });
   await page.addInitScript(value => localStorage.setItem('aio-life-mobile.theme.v1', value), mode);
   await setup(page, baseURL);
-  await page.route('https://api.github.com/users/*/repos?*', route => route.fulfill({ json: [
+  await page.route('**/api/github/repos?*', route => route.fulfill({ json: { code: 0, data: [
     { id: 1, name: 'mobile-demo', full_name: 'fixture/mobile-demo', description: '移动客户端示例仓库', language: 'JavaScript', stargazers_count: 12, forks_count: 2, pushed_at: '2026-10-01' },
     { id: 2, name: 'life-demo', full_name: 'fixture/life-demo', description: '生活记录示例仓库', language: 'TypeScript', stargazers_count: 3, forks_count: 1, pushed_at: '2026-09-30' },
-  ] }));
+  ] } }));
 }
 
 async function checkWheel(page, dark) {

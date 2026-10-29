@@ -6,6 +6,7 @@ import AioChart from './AioChart.uvue'
 import AppIcon from './AppIcon.uvue'
 import type { Category, TimeRecord } from '../services/dashboard.ts'
 import { request } from '../services/api.ts'
+import { session } from '../services/session.ts'
 import { distributionStats, matchesCategories, recordMinutes, periodStatistics, trendPeriods } from '../services/time-format.ts'
 import { durationLabel } from '../services/dashboard-format.ts'
 const props = defineProps<{
@@ -17,6 +18,10 @@ const props = defineProps<{
   revision: number
 }>()
 const trend = ref<TimeRecord[]>([])
+const queryKey = computed(() => props.mode + ':' + props.date)
+const loadedQueryKey = ref('')
+const loadedOwner = ref('')
+const trendReady = computed(() => !!session.token && loadedOwner.value === session.token && loadedQueryKey.value === queryKey.value)
 const loading = ref(false), error = ref('')
 let generation = 0
 const filtered = computed(() => props.records.filter(r => matchesCategories(r.categoryId, props.selected, props.categories)))
@@ -54,26 +59,41 @@ const trendLabels = computed(() => trendData.value.map(item => props.mode === 'm
 const trendTitle = computed(() => '近 10 ' + (props.mode === 'day' ? '天' : props.mode === 'week' ? '周 · 记录日均' : '个月 · 记录日均'))
 async function loadTrend() {
   const id = ++generation
+  const owner = session.token
+  if (!owner) return
+  const currentKey = queryKey.value
   const range = trendPeriods(props.date, props.mode)
   loading.value = true
   error.value = ''
   try {
     const result = await request<TimeRecord[]>('/timeRecord/queryByDateRange?startDate=' + range[0].start + '&endDate=' + range[9].end)
-    if (id === generation) trend.value = result
+    if (id === generation && owner === session.token) {
+      trend.value = result
+      loadedQueryKey.value = currentKey
+      loadedOwner.value = owner
+    }
   } catch (e) {
-    if (id === generation) error.value = e.message || '加载失败'
+    if (id === generation && owner === session.token) error.value = e.message || '加载失败'
   } finally {
     if (id === generation) loading.value = false
   }
 }
+watch(() => session.token, () => {
+  generation++
+  trend.value = []
+  loadedQueryKey.value = ''
+  loadedOwner.value = ''
+  loading.value = false
+  error.value = ''
+}, { flush: 'sync' })
 watch(() => [props.date, props.mode, props.revision], loadTrend, { immediate: true })
 onUnmounted(() => generation++)
 </script>
 <template>
   <view class="time-statistics">
-    <PageState skeleton="chart" :loading="loading" :error="error" :has-content="trend.length > 0" @retry="loadTrend">
-      <AioChart v-if="trendSeries.length" :label="trendTitle" :labels="trendLabels" :series="trendSeries" unit="h" selectable hide-period-selector hide-legend hide-title />
-      <view v-else class="stats-card" :class="themeClass('stats-card')" :aria-label="trendTitle"><text class="stats-empty" :class="themeClass('stats-empty')">暂无记录</text></view>
+    <PageState skeleton="chart" :content-key="queryKey" :loading="loading" :retain-content="trendReady" :error="error" :has-content="trendReady" @retry="loadTrend">
+      <AioChart v-if="trendReady && trendSeries.length" :label="trendTitle" :labels="trendLabels" :series="trendSeries" unit="h" selectable hide-period-selector hide-legend hide-title />
+      <view v-else-if="trendReady" class="stats-card" :class="themeClass('stats-card')" :aria-label="trendTitle"><text class="stats-empty" :class="themeClass('stats-empty')">暂无记录</text></view>
     </PageState>
     <view v-for="panel in panels" :key="panel.id" class="stats-card" :class="themeClass('stats-card')" role="figure" :aria-label="panel.title">
       <text class="stats-caption" :class="themeClass('stats-caption')">{{ panel.title }}</text>
@@ -95,6 +115,7 @@ onUnmounted(() => generation++)
   </view>
 </template>
 <style scoped lang="scss">
+@use '../styles/platform' as *;
 @use '../styles/typography' as *;
 @use '../styles/spacing.scss';
 @use '../styles/spacing-tokens' as *;
@@ -219,12 +240,8 @@ onUnmounted(() => generation++)
   background-color: #282b32;
 }
 
-/* #ifdef WEB || MP-WEIXIN */
-.stats-tab::after,
-.distribution-toggle::after {
-  border: 0;
-}
-/* #endif */
+.stats-tab,
+.distribution-toggle { @include borderless-button; }
 
 .stats-empty-dark,
 .stat-value-dark,

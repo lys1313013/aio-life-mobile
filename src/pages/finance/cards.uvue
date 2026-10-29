@@ -988,7 +988,7 @@ async function removeTag(value: any) {
         :style="orderDragging ? { overflow: 'visible' } : {}"
         :loading="loading"
         :error="error"
-        :empty="!loading && !cardsByType[layerType].length"
+        :empty="!cardsByType[layerType].length"
         :empty-text="layerType === 'credit' ? '暂无信用卡' : '暂无储蓄卡'"
         @retry="load"
         >
@@ -1246,6 +1246,7 @@ async function removeTag(value: any) {
   ></MobilePage>
 </template>
 <style scoped lang="scss">
+@use '../../styles/platform' as *;
 @use '../../styles/typography' as *;
 @use '../../styles/text-colors' as *;
 @use '../../styles/spacing.scss';
@@ -1304,12 +1305,7 @@ async function removeTag(value: any) {
 }
 .card-grid {
 
-/* #ifndef APP */
-display: grid;
-/* #endif */
-/* #ifdef APP */
-display: flex; flex-direction: row; flex-wrap: wrap; justify-content: space-between;
-/* #endif */
+@include grid-layout;
 
 /* #ifndef APP */
 grid-template-columns: minmax(0, 1fr);
@@ -1360,9 +1356,7 @@ grid-template-columns: minmax(0, 1fr);
 .draft-card-type { position: relative; @include type-style('caption'); color: #f1f4f9; }
 .draft-chip { width: 34px; height: 27px; border-radius: 6px; background-color: #d2c39b80; }
 .editor-more { display: flex; flex-direction: row; align-items: center; justify-content: space-between; min-height: $space-controlMin; width: 100%; margin: 0 0 $space-inline; padding: 0; border: 0; background-color: transparent; }
-/* #ifdef WEB || MP-WEIXIN */
-.editor-more::after, .color-target::after { border: 0; }
-/* #endif */
+.editor-more, .color-target { @include borderless-button; }
 // 芯片为固定尺寸装饰图形，内部线条按芯片几何定位。
 .card-chip {
   width: 34px;
@@ -1510,9 +1504,7 @@ color: inherit;
   @include type-style('body');
 }
 .card-menu-danger { color: #dc5454; }
-/* #ifdef WEB || MP-WEIXIN */
-.header-action::after, .card-type-button::after, .card-more::after, .card-menu-item::after { border: 0; }
-/* #endif */
+.header-action, .card-type-button, .card-more, .card-menu-item { @include borderless-button; }
 .palette {
   flex-wrap: wrap;
 }
@@ -1602,9 +1594,7 @@ color: inherit;
 @media (min-width: 600px) {
   .card-grid {
 
-/* #ifndef APP */
-grid-template-columns: repeat(2, minmax(0, 1fr));
-/* #endif */
+@include grid-columns(2);
 
   }
 }
@@ -1651,12 +1641,7 @@ grid-template-columns: repeat(2, minmax(0, 1fr));
 .error {
   color: #dc5454;
 
-/* #ifndef APP */
-display: block;
-/* #endif */
-/* #ifdef APP */
-display: flex;
-/* #endif */
+@include block-content;
 
 }
 
@@ -1668,16 +1653,9 @@ display: flex;
 .editor-more-dark { color: $text-secondary-dark; }
 .template-grid {
 
-/* #ifndef APP */
-display: grid;
-/* #endif */
-/* #ifdef APP */
-display: flex; flex-direction: row; flex-wrap: wrap; justify-content: space-between;
-/* #endif */
+@include grid-layout;
 
-/* #ifndef APP */
-grid-template-columns: repeat(2, minmax(0, 1fr));
-/* #endif */
+@include grid-columns(2);
 
   gap: $space-inline;
 }

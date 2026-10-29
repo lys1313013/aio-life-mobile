@@ -352,7 +352,7 @@ function nodeName(id: string) {
           <text class="ui-type-label">{{ item }}</text>
         </button>
       </view>
-      <PageState skeleton="graph" :loading="loading || busy" :error="error" :empty="!loading && !filteredNodes.length" empty-text="暂无人物" @retry="load">
+      <PageState skeleton="graph" :loading="loading || busy" :error="error" :empty="!filteredNodes.length" empty-text="暂无人物" @retry="load">
 <template #loading><view class="graph-panel" :class="themeClass('graph-panel')"><view class="topology" :style="{ height: canvasHeight + 'px' }"><LoadingIndicator label="正在加载关系图谱" /></view></view></template>
         <view v-if="results !== null" class="search-results ui-section" :class="themeClass('search-results')">
           <text class="graph-summary" :class="themeClass('graph-summary')">{{ people.length ? '搜索结果 · ' + people.length : '未找到匹配人物' }}</text>
@@ -485,6 +485,7 @@ function nodeName(id: string) {
   </MobilePage>
 </template>
 <style scoped lang="scss">
+@use '../../styles/platform' as *;
 @use '../../styles/typography' as *;
 @use '../../styles/text-colors' as *;
 @use '../../styles/spacing.scss';
@@ -526,12 +527,7 @@ function nodeName(id: string) {
 .graph-node-button { position: absolute; width: 68px; height: 44px; margin: 0; padding: 0 $space-detail; display: flex; flex-direction: row; align-items: center; justify-content: center; gap: $space-detail; border: 1px solid; border-radius: 22px; background-color: #ffffff; color: #263248; }
 .graph-node-button-dark { background-color: #252830; color: #e7e9ee; }
 .node-name { flex: 1; width: 100%; color: #263248;
-/* #ifndef APP */
-display: block;
-/* #endif */
-/* #ifdef APP */
-display: flex;
-/* #endif */
+@include block-content;
  min-width: 0; text-align: center; @include type-style('caption');  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .node-name-dark { color: #e7e9ee; }
 .graph-arrow { position: absolute; right: 0; top: -3px; width: 0; height: 0; border-top: 3px solid transparent; border-bottom: 3px solid transparent; border-left: 5px solid; }
@@ -553,9 +549,7 @@ display: flex;
 .relation-kind { align-items: center; @include type-style('badge'); }
 .relation-direction { color: $text-secondary-light; }
 .relation-description { width: 100%; color: $text-secondary-light; @include type-style('caption'); }
-/* #ifdef WEB || MP-WEIXIN */
-.graph-node-button::after, .category-tab::after, .relations-toggle::after, .editor-section-toggle::after { border: 0; }
-/* #endif */
+.graph-node-button, .category-tab, .relations-toggle, .editor-section-toggle { @include borderless-button; }
 .edge {
   display: flex;
   flex-direction: column;
@@ -571,12 +565,7 @@ display: flex;
 .detail-label-dark { color: $text-secondary-dark; }
 .detail {
 
-/* #ifndef APP */
-display: block;
-/* #endif */
-/* #ifdef APP */
-display: flex;
-/* #endif */
+@include block-content;
 
   @include type-style('body');
   overflow-wrap: anywhere;
@@ -587,12 +576,7 @@ display: flex;
 .error {
   color: #dc5454;
 
-/* #ifndef APP */
-display: block;
-/* #endif */
-/* #ifdef APP */
-display: flex;
-/* #endif */
+@include block-content;
 
 }
 

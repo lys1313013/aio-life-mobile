@@ -235,7 +235,7 @@ function displayDate(value) {
           >
             <view class="note-preview-text" :class="{ 'note-preview-blurred': kind === 'memo' && item.hiddenContent }">
               <text :max-lines="2" v-if="kind === 'memo' && item.title" class="note-title">{{ item.title }}</text>
-              <text :max-lines="8" v-if="kind === 'memo' || !item.hiddenContent" class="note-content" :class="{ 'note-content-memo': kind === 'memo' }">{{ item.content }}</text>
+              <text :max-lines="kind === 'memo' ? 10 : 8" v-if="kind === 'memo' || !item.hiddenContent" class="note-content" :class="{ 'note-content-memo': kind === 'memo' }">{{ item.content }}</text>
               <text v-else class="note-secondary" :class="{ 'secondary-text-dark': isDark }">••••••</text>
             </view>
             <view v-if="kind === 'memo' && item.hiddenContent" class="note-frost" :class="{ 'note-frost-dark': isDark }" />
@@ -265,6 +265,7 @@ function displayDate(value) {
   </MobilePage>
 </template>
 <style scoped lang="scss">
+@use '../../styles/platform' as *;
 @use '../../styles/typography' as *;
 @use '../../styles/text-colors' as *;
 @use '../../styles/spacing.scss';
@@ -322,20 +323,7 @@ function displayDate(value) {
   flex: 1;
   @include type-style('body-strong');
 
-/* #ifndef APP */
-display: -webkit-box;
-/* #endif */
-/* #ifdef APP */
-text-overflow: ellipsis;
-/* #endif */
-
-/* #ifndef APP */
--webkit-line-clamp: 2;
-/* #endif */
-
-/* #ifndef APP */
--webkit-box-orient: vertical;
-/* #endif */
+@include clamp-text(2);
 
   overflow: hidden;
 }
@@ -344,27 +332,9 @@ text-overflow: ellipsis;
 
   white-space: pre-wrap;
 
-/* #ifndef APP */
-word-break: break-word;
-/* #endif */
-/* #ifdef APP */
-word-break: break-all;
-/* #endif */
+@include wrap-long-text;
 
-/* #ifndef APP */
-display: -webkit-box;
-/* #endif */
-/* #ifdef APP */
-text-overflow: ellipsis;
-/* #endif */
-
-/* #ifndef APP */
--webkit-line-clamp: 8;
-/* #endif */
-
-/* #ifndef APP */
--webkit-box-orient: vertical;
-/* #endif */
+@include clamp-text(8);
 
   overflow: hidden;
 }
@@ -383,12 +353,7 @@ text-overflow: ellipsis;
 .note-event-count { flex-direction: row; align-items: center; gap: $space-micro; color: $text-secondary-light; @include type-style('badge'); }
 .note-visibility { display: flex; align-items: center; justify-content: center; flex-shrink: 0; width: $space-controlMin; height: $space-controlMin; margin: (-$space-inline) (-$space-inline) (-$space-inline) 0; padding: 0; border: 0; background-color: transparent; }
 .note-title {
-/* #ifndef APP */
-word-break: break-word;
-/* #endif */
-/* #ifdef APP */
-word-break: break-all;
-/* #endif */
+@include wrap-long-text;
  }
 /* #ifdef WEB || MP-WEIXIN */
 .note-visibility::after { border: 0; }

@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import { usePageRefresh } from '../../services/page-refresh.ts'
+import { currentPageAccess, usePageRefresh } from '../../services/page-refresh.ts'
 import ContentSkeleton from '../../components/ContentSkeleton.uvue';
-import { computed, ref } from 'vue';
-import { onShow, onUnload } from '@dcloudio/uni-app';
+import { computed, ref, watch } from 'vue';
+import { onShow, onHide, onUnload } from '@dcloudio/uni-app';
 import PageHeader from '../../components/PageHeader.uvue';
 import MobilePage from '../../components/MobilePage.uvue';
 import MobileButton from '../../components/MobileButton.uvue';
@@ -40,13 +40,17 @@ const date = ref(todayDate()),
 const showFilters = ref(false);
 const draftSelected = ref<string[]>([]);
 const task = createLatestTask();
-let active = true;
+let active = true, shown = false;
 const modes = [
   { label: '日', value: 'day' },
   { label: '周', value: 'week' },
   { label: '月', value: 'month' },
 ];
 const range = computed(() => periodRange(date.value, mode.value));
+const queryKey = computed(() => mode.value + ':' + date.value);
+const loadedQueryKey = ref('');
+const loadedOwner = ref('');
+const recordsReady = computed(() => !!session.token && loadedOwner.value === session.token && loadedQueryKey.value === queryKey.value);
 const cards = computed(() =>
   categories.value
     .filter(
@@ -72,13 +76,35 @@ const cards = computed(() =>
       };
     }),
 );
-onUnload(() => {
+function suspend() {
   active = false;
   task.invalidate();
-});
+  loading.value = false;
+  refreshing.value = false;
+}
+onHide(suspend);
+onUnload(suspend);
+function clearRecords() {
+  task.invalidate();
+  loadedQueryKey.value = '';
+  loadedOwner.value = '';
+  records.value = [];
+  previous.value = [];
+  categories.value = [];
+  selected.value = [];
+  draftSelected.value = [];
+  showFilters.value = false;
+  error.value = '';
+  loading.value = false;
+  refreshing.value = false;
+}
+watch(() => session.token, clearRecords, { flush: 'sync' });
 const refreshOnShow = usePageRefresh(() => load(), { loading: () => loading.value, error: () => error.value, keys: () => ['timeRecord', 'timeTrackerCategory'] })
 onShow(() => {
+  active = true;
   restoreSession();
+  if (shown && currentPageAccess().expired) clearRecords();
+  shown = true;
   if (!session.token) {
     uni.reLaunch({ url: '/pages/login/index' });
     return;
@@ -86,13 +112,15 @@ onShow(() => {
   refreshOnShow();
 });
 async function load(refresh = false) {
+  if (loadedOwner.value && (loadedOwner.value !== session.token || currentPageAccess().expired)) clearRecords();
   const generation = task.begin(),
     token = session.token;
   loading.value = true;
   refreshing.value = refresh;
   error.value = '';
   const currentDate = date.value,
-    currentMode = mode.value;
+    currentMode = mode.value,
+    currentKey = queryKey.value;
   try {
     const [categoryRows, current, prev] = await Promise.all([
       request('/timeTrackerCategory/all'),
@@ -105,6 +133,8 @@ async function load(refresh = false) {
       categories.value = categoryRows;
       records.value = current;
       previous.value = prev;
+      loadedQueryKey.value = currentKey;
+      loadedOwner.value = token;
       revision.value++;
     }
   } catch (reason) {
@@ -118,10 +148,12 @@ async function load(refresh = false) {
   }
 }
 function setMode(value) {
+  if (mode.value === value) return;
   mode.value = value;
   load();
 }
 function setDate(value) {
+  if (date.value === value) return;
   date.value = value;
   load();
 }
@@ -170,8 +202,8 @@ function applyFilters() {
         </view>
         <text v-if="mode !== 'day'" class="time-dashboard-range" :class="themeClass('time-dashboard-range')">{{ range.start }} — {{ range.end }}</text>
       </view>
-      <PageState skeleton="dashboard" :loading="loading" :error="error" :empty="!records.length" @retry="load()"
-        ><template #loading><view class="time-dashboard-cards ui-row"><view v-for="n in 2" :key="n" class="time-dashboard-card ui-card" :class="themeClass('time-dashboard-card')"><ContentSkeleton variant="summary" /></view></view><ContentSkeleton variant="chart" /><ContentSkeleton variant="distribution" :rows="2" /></template><view class="time-dashboard-cards ui-row"
+      <PageState skeleton="dashboard" :content-key="queryKey" :loading="loading" :retain-content="recordsReady" :has-content="recordsReady" :error="error" :empty="recordsReady && !records.length" @retry="load()"
+        ><template #loading><view class="time-dashboard-cards ui-row"><view v-for="n in 2" :key="n" class="time-dashboard-card ui-card" :class="themeClass('time-dashboard-card')"><ContentSkeleton variant="summary" /></view></view><ContentSkeleton variant="chart" /><ContentSkeleton variant="distribution" :rows="2" /></template><view v-if="recordsReady" class="time-dashboard-cards ui-row"
           ><view
             v-for="card in cards"
             :key="card.id"
@@ -186,7 +218,7 @@ function applyFilters() {
             }}</text></view
           ></view
         ><AioChart
-          v-if="cards.length"
+          v-if="recordsReady && cards.length"
           label="追踪分类与上期对比"
           :labels="cards.map((card) => card.name)"
           :series="[
@@ -195,6 +227,7 @@ function applyFilters() {
           ]"
           kind="bar"
           unit="分钟" /><TimeStatistics
+          v-if="recordsReady"
           :records="records"
           :categories="categories"
           :selected="selected"

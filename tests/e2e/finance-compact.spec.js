@@ -62,6 +62,7 @@ for (const width of [390, 768, 1440]) {
         }));
         await page.getByRole('button', { name: '筛选', exact: true }).click();
         await expect(page.locator('.ledger-row')).toHaveCount(3);
+        await expect(page.getByRole('button', { name: '关联设备', exact: true })).toHaveCount(0);
         await expect(page.locator('.ledger-money').last()).toHaveText('¥12345678.90');
         await page.locator('.section-title').evaluate((element) => element.scrollIntoView({ block: 'start' }));
         const directory = require('node:path').resolve('artifacts/finance-compact');

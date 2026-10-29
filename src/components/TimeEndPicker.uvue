@@ -11,10 +11,10 @@ import WeixinModalBackGuard from './WeixinModalBackGuard.uvue'
 // #endif
 
 const props = withDefaults(defineProps<{
-  value: number; min?: number; max?: number; label?: string; showNow?: boolean;
+  value: number; min?: number; max?: number; label?: string;
   anchor: { left: number; top: number; width: number; height: number };
 }>(), {
-  min: 0, max: 1439, label: '结束时间', showNow: true,
+  min: 0, max: 1439, label: '结束时间',
 })
 const emit = defineEmits(['change', 'close'])
 // #ifdef MP-WEIXIN
@@ -36,26 +36,23 @@ const placement = computed(() => {
   const inset = spacing.overlayInline
   const minTop = (info.safeAreaInsets?.top || 0) + spacing.inline
   const maxBottom = info.windowHeight - (info.safeAreaInsets?.bottom || 0) - spacing.inline
-  // 七行滚轮略大于旧版五行；窄屏限制宽度，短视口先减少行数，仍优先贴在字段下方。
+  // 只水平居中，垂直沿用字段下方优先的定位；空间不足时缩减行数或改放上方。
   const width = Math.min(spacing.controlMin * 7, info.windowWidth - inset * 2)
-  const left = Math.max(inset, Math.min(
-    props.anchor.left + props.anchor.width / 2 - width / 2,
-    info.windowWidth - inset - width,
-  ))
-  const toolbarHeight = props.showNow ? spacing.controlMin : 0
+  const toolbarHeight = spacing.controlMin
+  const reservedHeight = toolbarHeight + spacing.section
   const below = props.anchor.top + props.anchor.height + spacing.detail
   const belowSpace = maxBottom - below
   const aboveSpace = props.anchor.top - spacing.detail - minTop
-  const useAbove = belowSpace < toolbarHeight + minuteRowHeight * 3 && aboveSpace > belowSpace
+  const useAbove = belowSpace < reservedHeight + minuteRowHeight * 3 && aboveSpace > belowSpace
   const availableHeight = Math.max(0, useAbove ? aboveSpace : belowSpace)
-  const fittingRows = Math.floor((availableHeight - toolbarHeight) / minuteRowHeight)
+  const fittingRows = Math.floor((availableHeight - reservedHeight) / minuteRowHeight)
   const rows = Math.max(1, Math.min(7, fittingRows % 2 === 0 ? fittingRows - 1 : fittingRows))
-  const height = toolbarHeight + rows * minuteRowHeight
+  const height = reservedHeight + rows * minuteRowHeight
   const top = Math.max(minTop, Math.min(
     useAbove ? props.anchor.top - spacing.detail - height : below,
     maxBottom - height,
   ))
-  return { left, top, width, rows }
+  return { left: (info.windowWidth - width) / 2, top, width, rows }
 })
 const panelStyle = computed(() => ({
   left: placement.value.left + 'px', top: placement.value.top + 'px', width: placement.value.width + 'px',
@@ -83,7 +80,6 @@ async function change(event, field: string) {
   const previous = selected.value
   if (field === 'hour') hourSelection.value = raw
   selected.value = resolveTimeWheelSelection(previous, raw[0], field, props.min, props.max)
-  if (available.value && selected.value !== previous) emit('change', selected.value)
   // Hour change occurs on native picker input; align the absolute-minute scroll view.
   await nextTick()
   if (!active) return
@@ -103,7 +99,6 @@ function changeMinute(event) {
   if (next !== selected.value) {
     selected.value = next
     hourSelection.value = [Math.floor(next / 60)]
-    emit('change', next)
   }
   scheduleMinuteSnap()
 }
@@ -142,7 +137,6 @@ function endMinuteTouch() {
 function selectMinute(minute: number) {
   if (isDisabled(minute)) return
   selected.value = minute
-  emit('change', minute)
   alignSelection()
 }
 function alignSelection() {
@@ -153,7 +147,7 @@ function alignSelection() {
 }
 watch(() => [props.value, props.min, props.max], () => {
   const next = available.value ? clampTimeSelection(props.value, props.min, props.max) : props.value
-  // 即选即改后的父级回写不重置滚轮，避免每一帧更新打断分钟列的惯性滚动。
+  // 外部值或可选范围变化时重新对齐，滚轮草稿仅在确认时应用。
   if (next === selected.value) return
   selected.value = next
   alignSelection()
@@ -167,6 +161,11 @@ onUnmounted(() => {
   clearInterval(clockTimer)
   clearMinuteSnap()
 })
+function confirmSelection() {
+  if (isDisabled(selected.value)) return
+  emit('change', selected.value)
+  emit('close')
+}
 function useCurrentTime() {
   nowMinute.value = currentMinute()
   if (nowDisabled.value) return
@@ -176,7 +175,7 @@ function useCurrentTime() {
 </script>
 
 <template>
-  <!-- 脱离编辑弹窗滚动区，按触发字段的视口坐标显示，避免被表单裁切。 -->
+  <!-- 脱离编辑弹窗滚动区，水平居中并保持字段附近的垂直位置，避免被表单裁切。 -->
   <!-- #ifdef MP-WEIXIN -->
   <root-portal :enable="true">
     <WeixinModalBackGuard @close="emit('close')" />
@@ -207,9 +206,13 @@ function useCurrentTime() {
           <view class="time-end-minute-mask" :style="maskStyle" />
         </view>
       </view>
-      <view v-if="showNow" class="time-end-toolbar">
+      <view class="time-end-toolbar">
+        <button role="button" class="time-end-action" :class="themeClass('time-end-action')"
+          aria-label="取消" @click="emit('close')"><text :class="buttonLabelClasses(['time-end-action', themeClass('time-end-action')])">取消</text></button>
         <button role="button" class="time-end-action time-end-primary" :class="[themeClass('time-end-primary'), { 'time-option-disabled': nowDisabled }]"
           :aria-label="label + '设为此刻'" :disabled="nowDisabled" @click="useCurrentTime"><text :class="buttonLabelClasses(['time-end-action time-end-primary', [themeClass('time-end-primary'), { 'time-option-disabled': nowDisabled }]])">此刻</text></button>
+        <button role="button" class="time-end-action time-end-primary" :class="[themeClass('time-end-primary'), { 'time-option-disabled': !available }]"
+          aria-label="确定" :disabled="!available" @click="confirmSelection"><text :class="buttonLabelClasses(['time-end-action time-end-primary', [themeClass('time-end-primary'), { 'time-option-disabled': !available }]])">确定</text></button>
       </view>
     </view>
   </view>
@@ -219,6 +222,7 @@ function useCurrentTime() {
 </template>
 
 <style scoped lang="scss">
+@use '../styles/platform' as *;
 @use '../styles/spacing-tokens' as *;
 @use '../styles/typography' as *;
 
@@ -229,7 +233,7 @@ function useCurrentTime() {
   bottom: 0;
   left: 0;
   z-index: 1200;
-  background-color: transparent;
+  background-color: rgba(0, 0, 0, 0.2);
 }
 .time-end-panel {
   position: absolute;
@@ -240,12 +244,14 @@ function useCurrentTime() {
 }
 .time-end-panel-dark { background-color: #1c1e22; }
 .time-end-toolbar {
+  display: flex;
   flex-direction: row;
   align-items: center;
   justify-content: center;
   padding: 0 $space-inline;
 }
 .time-end-action {
+  flex: 1;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -259,21 +265,20 @@ function useCurrentTime() {
   @include type-style('body');
   color: #27272a;
 }
-/* #ifdef WEB || MP-WEIXIN */
-.time-end-action::after { border: 0; }
-/* #endif */
+.time-end-action { @include borderless-button; }
 .time-end-action-dark { color: #eeeeef; }
 .time-end-primary { color: #1d4ed8; }
 .time-end-primary-dark { color: #9bbcff; }
 .time-end-wheels {
   flex-direction: row;
   align-self: center;
+  margin-top: $space-section;
   width: $space-controlMin * 5;
   max-width: 100%;
 }
 .time-end-wheel {
   width: 50%;
-  // 七行滚轮，与选中行的原生 indicator 高度一致；短视口由定位逻辑缩减行数。
+  // 七行滚轮，与选中行的原生 indicator 高度一致；短视口自动缩减行数。
   // 滚轮滑动行可更紧凑，工具栏按钮仍保留 controlMin 点击区。
   height: ($space-controlMin - $space-detail) * 7;
 }

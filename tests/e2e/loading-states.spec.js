@@ -25,28 +25,28 @@ async function fixture(page, hold = {}, commitPageSize = 20) {
     if (hold[path]) await hold[path].promise;
     let data = dashboardFixture(path) ?? [];
     if (path === '/api/user/info') data = { id: '1', accountUsername: 'fixture', nickname: '模拟用户', roles: ['admin'] };
-    if (path === '/api/userbinds/list') data = [{ platform: 'github', platformUsername: 'fixture', accessToken: 'fixture-token' }];
+    if (path === '/api/userbinds/list') data = [{ platform: 'github', platformUsername: 'fixture' }];
     if (path === '/api/github/recent-commits') {
       expect(url.searchParams.get('pageSize')).toBe(String(commitPageSize)); expect(url.searchParams.has('perPage')).toBe(false);
       data = Array.from({ length: commitPageSize }, (_, n) => ({ id: String((Number(url.searchParams.get('page') || 1) - 1) * commitPageSize + n), repo: 'fixture/mobile', message: '模拟提交 ' + n, date: '2026-10-02', actor: 'fixture' }));
     }
     await route.fulfill({ json: { code: 0, data } });
   });
-  await page.route('https://api.github.com/**', async route => {
+  await page.route(/\/api\/github\/(?:calendar|repos|repository\/[^?]+)(?:\?|$)/, async route => {
     const url = new URL(route.request().url());
     if (hold[url.pathname]) await hold[url.pathname].promise;
-    if (url.pathname === '/graphql') {
+    if (url.pathname === '/api/github/calendar') {
       if (hold.failCalendar) return route.fulfill({ status: 503, json: { message: '模拟贡献服务暂不可用' } });
-      return route.fulfill({ json: { data: { user: { contributionsCollection: { contributionCalendar: { totalContributions: 1682, weeks: [{ contributionDays: [{ date: '2026-10-02', contributionCount: 3 }] }] } } } } } });
+      return route.fulfill({ json: { code: 0, data: { data: { user: { contributionsCollection: { contributionCalendar: { totalContributions: 1682, weeks: [{ contributionDays: [{ date: '2026-10-02', contributionCount: 3 }] }] } } } } } } });
     }
-    const data = url.pathname.includes('/users/') ? [{ id: '11', name: '模拟仓库', full_name: 'fixture/mobile', description: '模拟仓库描述', pushed_at: '2026-10-02', stargazers_count: 12, forks_count: 2, html_url: 'https://example.com' }] : [{ login: 'fixture', contributions: 128 }];
-    await route.fulfill({ json: data });
+    const data = url.pathname === '/api/github/repos' ? [{ id: '11', name: '模拟仓库', full_name: 'fixture/mobile', description: '模拟仓库描述', pushed_at: '2026-10-02', stargazers_count: 12, forks_count: 2, html_url: 'https://example.com' }] : [{ login: 'fixture', contributions: 128 }];
+    await route.fulfill({ json: { code: 0, data } });
   });
 }
 for (const width of [390, 768, 1440]) for (const theme of ['light', 'dark']) {
   test(`GitHub skeleton responsive ${width} ${theme}`, async ({ page }, info) => {
     await page.setViewportSize({ width, height: 900 }); await page.emulateMedia({ colorScheme: theme });
-    const hold = { '/graphql': gate(), '/users/fixture/repos': gate(), '/api/github/recent-commits': gate() };
+    const hold = { '/api/github/calendar': gate(), '/api/github/repos': gate(), '/api/github/recent-commits': gate() };
     await fixture(page, hold);
     const errors = []; page.on('pageerror', error => errors.push(error.message));
     await page.goto('/#/pages/coding/github');
@@ -61,10 +61,10 @@ for (const width of [390, 768, 1440]) for (const theme of ['light', 'dark']) {
     const initialOpacity = await skeleton.evaluate(el => getComputedStyle(el).opacity);
     await expect.poll(() => skeleton.evaluate(el => getComputedStyle(el).opacity)).not.toBe(initialOpacity);
     await page.screenshot({ path: info.outputPath('github-loading.png'), fullPage: true });
-    hold['/users/fixture/repos'].release();
+    hold['/api/github/repos'].release();
     await expect(page.getByText('模拟仓库', { exact: true })).toBeVisible();
     await expect(page.locator('.skeleton-calendar')).toBeVisible();
-    hold['/api/github/recent-commits'].release(); hold['/graphql'].release();
+    hold['/api/github/recent-commits'].release(); hold['/api/github/calendar'].release();
     await expect(page.getByText('1682', { exact: true })).toBeVisible();
     await expect(page.locator('.content-skeleton')).toHaveCount(0);
     expect(errors).toEqual([]);
@@ -78,11 +78,11 @@ test('GitHub partial failure retries only failed section and keeps content', asy
   await expect(page.getByText('模拟提交 0', { exact: true })).toBeAttached();
   await expect(page.locator('.metric-card').filter({ hasText: '过去一年提交' }).locator('.metric-number')).toHaveText('—');
   await expect(page.locator('.metric-card').filter({ hasText: '总 Star 数' }).locator('.metric-number')).toHaveText('12');
-  hold.failCalendar = false; hold['/graphql'] = gate();
+  hold.failCalendar = false; hold['/api/github/calendar'] = gate();
   await page.getByRole('button', { name: '重试', exact: true }).click();
   await expect(page.locator('.skeleton-calendar')).toBeVisible();
   await expect(page.getByText('模拟仓库', { exact: true })).toBeVisible();
-  hold['/graphql'].release(); await expect(page.getByText('1682', { exact: true })).toBeVisible();
+  hold['/api/github/calendar'].release(); await expect(page.getByText('1682', { exact: true })).toBeVisible();
   const more = gate(); hold['/api/github/recent-commits'] = more;
   await scrollCommitsToBottom(page);
   await expect(page.getByRole('status', { name: '正在加载更多' })).toBeVisible();
@@ -191,44 +191,44 @@ for (const width of [390, 768, 1440]) for (const theme of ['light', 'dark']) {
     const hold = {}; await fixture(page, hold); await page.goto('/#/pages/coding/github');
     await expect(page.getByText('1682', { exact: true })).toBeVisible();
     await expect(page.getByText('模拟仓库', { exact: true })).toBeVisible();
-    hold['/graphql'] = gate(); hold['/users/fixture/repos'] = gate(); hold['/api/github/recent-commits'] = gate();
+    hold['/api/github/calendar'] = gate(); hold['/api/github/repos'] = gate(); hold['/api/github/recent-commits'] = gate();
     await require('./gestures').pullDown(page, '.mobile-page-scroll');
     await expect(page.getByRole('status', { name: '正在更新内容', includeHidden: true })).toHaveCount(3);
     await expect(page.getByText('1682', { exact: true })).toBeVisible();
     await expect(page.getByText('模拟仓库', { exact: true })).toBeVisible();
     await expect(page.locator('.content-skeleton')).toHaveCount(0);
     await page.screenshot({ path: info.outputPath('github-refresh.png') });
-    hold['/graphql'].release(); hold['/users/fixture/repos'].release(); hold['/api/github/recent-commits'].release();
+    hold['/api/github/calendar'].release(); hold['/api/github/repos'].release(); hold['/api/github/recent-commits'].release();
     await expect(page.getByRole('status', { name: '正在更新内容', includeHidden: true })).toHaveCount(0);
     hold.failCalendar = true;
     await require('./gestures').pullDown(page, '.mobile-page-scroll');
     await expect(page.getByRole('alert')).toBeVisible();
     await expect(page.getByText('1682', { exact: true })).toBeVisible();
     await expect(page.locator('.uni-scroll-view-refresher').last()).toHaveCSS('height', '0px');
-    hold.failCalendar = false; hold['/graphql'] = gate();
+    hold.failCalendar = false; hold['/api/github/calendar'] = gate();
     await page.getByRole('alert').getByRole('button', { name: '重试', exact: true }).click();
     await expect(page.getByRole('status', { name: '正在更新内容', includeHidden: true })).toHaveCount(1);
     await expect(page.getByText('1682', { exact: true })).toBeVisible();
-    hold['/graphql'].release();
+    hold['/api/github/calendar'].release();
     await expect(page.getByRole('status', { name: '正在更新内容', includeHidden: true })).toHaveCount(0);
     await expect(page.getByRole('alert')).toHaveCount(0);
     await page.emulateMedia({ reducedMotion: 'reduce' });
-    hold['/graphql'] = gate(); await page.reload();
+    hold['/api/github/calendar'] = gate(); await page.reload();
     await expect(page.locator('.skeleton-calendar')).toBeVisible();
     expect(await page.locator('.skeleton-content').first().evaluate(el => getComputedStyle(el).animationName)).toBe('none');
-    hold['/graphql'].release();
+    hold['/api/github/calendar'].release();
   });
 }
 
 test('a failed GitHub section can retry while another section is still pending', async ({ page }) => {
-  const hold = { failCalendar: true, '/users/fixture/repos': gate() }; await fixture(page, hold);
+  const hold = { failCalendar: true, '/api/github/repos': gate() }; await fixture(page, hold);
   await page.goto('/#/pages/coding/github'); await expect(page.getByRole('alert')).toBeVisible();
-  hold.failCalendar = false; hold['/graphql'] = gate();
+  hold.failCalendar = false; hold['/api/github/calendar'] = gate();
   await page.getByRole('button', { name: '重试', exact: true }).click();
   await expect(page.locator('.skeleton-calendar')).toBeVisible();
-  hold['/users/fixture/repos'].release(); await expect(page.getByText('模拟仓库', { exact: true })).toBeVisible();
+  hold['/api/github/repos'].release(); await expect(page.getByText('模拟仓库', { exact: true })).toBeVisible();
   await expect(page.locator('.skeleton-calendar')).toBeVisible();
-  hold['/graphql'].release(); await expect(page.getByText('1682', { exact: true })).toBeVisible();
+  hold['/api/github/calendar'].release(); await expect(page.getByText('1682', { exact: true })).toBeVisible();
 });
 
 test('all asynchronous business pages expose loading placeholders', async ({ page }, info) => {

@@ -1,9 +1,7 @@
 <script setup lang="ts">
 import CalendarPicker from '../../components/CalendarPicker.uvue';
-// #ifdef MP-WEIXIN
 import TabPage from '../../components/TabPage.uvue'
-// #endif
-import { usePageRefresh } from '../../services/page-refresh.ts'
+import { currentPageAccess, usePageRefresh } from '../../services/page-refresh.ts'
 import { buttonLabelClasses } from '../../services/button-label.ts'
 import ContentSkeleton from '../../components/ContentSkeleton.uvue';
 import LoadingIndicator from '../../components/LoadingIndicator.uvue';
@@ -13,9 +11,9 @@ import { isDark, themeClass } from '../../services/theme.ts'
 import { useRefreshTheme } from '../../services/refresh-theme.ts'
 const refreshTheme = useRefreshTheme()
 import { takeRecordChange } from '../../services/time-changes.ts'
-import { nextTick, computed, ref, getCurrentInstance, onMounted } from 'vue'
+import { nextTick, computed, ref, getCurrentInstance, onMounted, watch } from 'vue'
 import { useWindowResize } from '../../services/window-resize.ts'
-import { onShow, onHide } from '@dcloudio/uni-app'
+import { onShow, onHide, onReady } from '@dcloudio/uni-app'
 import PageHeader from '../../components/PageHeader.uvue'
 import spacing from '../../styles/spacing.json'
 import FloatingActionButton from '../../components/FloatingActionButton.uvue'
@@ -69,6 +67,8 @@ async function measureTimelineHeight() {
 }
 useWindowResize(measureTimelineHeight)
 onMounted(measureTimelineHeight)
+// App 的 mounted/首次 onShow 可能早于原生布局完成，不能将全天时间轴一直留在 44px。
+onReady(measureTimelineHeight)
 const revision = ref(0)
 function selectView(value: string) {
   viewMode.value = value
@@ -104,6 +104,10 @@ const categories = ref<Category[]>([]),
   records = ref<TimeRecord[]>([]),
   previous = ref<TimeRecord[]>([])
 const range = computed(() => periodRange(date.value, mode.value))
+const queryKey = computed(() => mode.value + ':' + date.value)
+const loadedQueryKey = ref('')
+const loadedOwner = ref('')
+const recordsReady = computed(() => !!session.token && loadedOwner.value === session.token && loadedQueryKey.value === queryKey.value)
 const filtered = computed(() =>
   records.value.filter((r) =>
     matchesCategories(r.categoryId, selectedCategories.value, categories.value),
@@ -148,11 +152,29 @@ const recordedDays = computed(
 const average = computed(() =>
   Math.round(total.value / Math.max(1, recordedDays.value)),
 )
-let generation = 0
+let generation = 0, shown = false
+function clearRecords() {
+  generation++
+  loadedQueryKey.value = ''
+  loadedOwner.value = ''
+  records.value = []
+  previous.value = []
+  categories.value = []
+  selectedCategories.value = []
+  draftCategories.value = []
+  editor.value = null
+  showFilters.value = false
+  errorText.value = ''
+  loading.value = false
+  refreshing.value = false
+}
+watch(() => session.token, clearRecords, { flush: 'sync' })
 const refreshOnShow = usePageRefresh(() => load(), { loading: () => loading.value, error: () => errorText.value, keys: () => ['timeRecord', 'timeTrackerCategory', 'exerciseRecord'], context: () => todayDate() })
 onShow(() => {
   measureTimelineHeight()
   restoreSession()
+  if (shown && currentPageAccess().expired) clearRecords()
+  shown = true
   if (!session.token) {
     uni.reLaunch({ url: '/pages/login/index' })
     return
@@ -169,7 +191,7 @@ onHide(() => {
 })
 function applyRecordChange() {
   const change = takeRecordChange()
-  if (change) {
+  if (change && recordsReady.value) {
     records.value = records.value.filter(
       (r) => r.id !== change.deletedId && r.id !== change.record?.id,
     )
@@ -199,10 +221,12 @@ function applyRecordChange() {
   return false
 }
 async function load() {
+  if (loadedOwner.value && (loadedOwner.value !== session.token || currentPageAccess().expired)) clearRecords()
   const requestId = ++generation,
     token = session.token
   const targetDate = date.value,
-    targetMode = mode.value
+    targetMode = mode.value,
+    targetKey = queryKey.value
   loading.value = true
   errorText.value = ''
   try {
@@ -215,9 +239,11 @@ async function load() {
     categories.value = cats
     records.value = current
     previous.value = prev
+    loadedQueryKey.value = targetKey
+    loadedOwner.value = token
     revision.value++
   } catch (error) {
-    if (requestId !== generation) return
+    if (requestId !== generation || session.token !== token) return
     if (error.name === 'SessionExpiredError') {
       uni.reLaunch({ url: '/pages/login/index' })
       return
@@ -238,6 +264,7 @@ async function pullRefresh() {
   }
 }
 function changePeriod() {
+  loadedQueryKey.value = ''
   records.value = []
   previous.value = []
   load()
@@ -269,9 +296,7 @@ function closeEditor() {
 </script>
 
 <template>
-  <!-- #ifdef MP-WEIXIN -->
   <TabPage page-path="pages/time/index">
-  <!-- #endif -->
   <view class="tab-page" :class="themeClass('tab-page')">
     <PageHeader title="时迹" compact-actions :content-min-width="4 * spacing.controlMin" :actions-min-width="6 * spacing.controlMin + 2 * spacing.inline">
       <template #default>
@@ -320,15 +345,15 @@ function closeEditor() {
             >{{ errorText }}</text
           ><button role="button" class="text-action" @click="load"><text :class="buttonLabelClasses(['text-action'])">重试时迹记录</text></button></view
         >
-        <view v-if="!errorText || records.length > 0" class="time-body">
+        <view v-if="!errorText || recordsReady" class="time-body">
           <view class="time-layout ui-gap-md">
           <view class="time-main-panel" :aria-busy="loading">
-          <LoadingIndicator v-if="loading && !refreshing && records.length" floating label="正在更新时迹" />
+          <LoadingIndicator v-if="loading && !refreshing && recordsReady" floating label="正在更新时迹" />
           <TimeTimeline
             v-if="viewMode === 'timeline'"
             :key="mode"
             :available-height="timelineHeight"
-            :loading="loading && !records.length"
+            :loading="loading && !recordsReady"
             :records="records"
             :selected="selectedCategories"
             :categories="categories"
@@ -339,7 +364,7 @@ function closeEditor() {
           />
           <TimeRecordCards
             v-else
-            :loading="loading && !records.length"
+            :loading="loading && !recordsReady"
             :records="filtered"
             :show-date="mode !== 'day'"
             @change-period="moveDate"
@@ -348,12 +373,12 @@ function closeEditor() {
           />
           </view>
           <view class="time-stats-panel">
-            <view v-if="loading && !records.length" class="time-pending-stats">
+            <view v-if="loading && !recordsReady" class="time-pending-stats">
               <ContentSkeleton variant="metrics" :metrics="2" label="正在加载时间统计" />
               <ContentSkeleton variant="chart" />
               <ContentSkeleton variant="distribution" :rows="2" />
             </view>
-            <view v-else class="time-statistics-content"><view class="summary-grid ui-row ui-mb-section">
+            <view v-else-if="recordsReady" class="time-statistics-content"><view class="ui-row ui-mb-section summary-grid">
               <view class="summary-card ui-pad-card" :class="themeClass('summary-card')"><text class="summary-label" :class="themeClass('summary-label')">时长</text><text class="summary-value" :class="themeClass('summary-value')">{{ durationLabel(total) }}</text></view>
               <view v-if="!selectedCategories.length" class="summary-card ui-pad-card" :class="themeClass('summary-card')"><text class="summary-label" :class="themeClass('summary-label')">空闲</text><text class="summary-value" :class="themeClass('summary-value')">{{ durationLabel(unrecorded) }}</text></view>
               <view v-else-if="mode !== 'day'" class="summary-card ui-pad-card" :class="themeClass('summary-card')"><text class="summary-label" :class="themeClass('summary-label')">平均</text><text class="summary-value" :class="themeClass('summary-value')">{{ durationLabel(average) }}</text></view>
@@ -366,7 +391,7 @@ function closeEditor() {
           </view>
           </view>
           <view
-            v-if="!loading && filtered.length === 0 && !errorText"
+            v-if="recordsReady && filtered.length === 0"
             class="state-card"
             :class="themeClass('state-card')"
             ><text class="empty-title" :class="themeClass('empty-title')">{{
@@ -437,12 +462,11 @@ function closeEditor() {
       @close="closeEditor"
     />
   </view>
-  <!-- #ifdef MP-WEIXIN -->
   </TabPage>
-  <!-- #endif -->
 </template>
 
 <style scoped lang="scss">
+@use '../../styles/platform' as *;
 @use '../../styles/typography' as *;
 @use '../../styles/spacing.scss';
 @use '../../styles/spacing-tokens' as *;
@@ -486,6 +510,12 @@ function closeEditor() {
 .time-main-panel { position: relative; }
 .summary-grid { flex-direction: row; flex-wrap: wrap;   }
 .summary-card { flex: 1; min-width: 100px; height: 86px;  background-color: #ffffff; border-radius: 8px; justify-content: space-between; }
+/* #ifdef APP */
+// 原生端没有 gap。相邻卡片各承担半个间距，外缘由容器抵消，换行后仍保持相同间隔。
+.summary-grid { margin: (-$space-detail) (-$space-detail) ($space-section - $space-detail); }
+.summary-card { flex-basis: 100px; margin: $space-detail; }
+.view-tools, .filter-trigger { margin-left: $space-inline; }
+/* #endif */
 .summary-heading { flex-direction: row; flex-wrap: wrap; justify-content: space-between; gap: $space-micro; }
 .summary-label { @include type-style('badge'); color: $text-secondary-light; }
 .summary-value { @include type-style('metric-compact');   color: #27272a; text-align: center; }
@@ -581,19 +611,15 @@ function closeEditor() {
   color: #ffffff;
 }
 .filter-title-dark, .filter-option-name-dark { color: #eeeeef; }
-/* #ifdef WEB || MP-WEIXIN */
-.date-step::after,
-.period-tab::after,
-.today-button::after,
-.stats-toggle::after,
-.filter-trigger::after,
-.view-tab::after,
-.filter-option::after,
-.filter-cancel::after,
-.filter-apply::after {
-  border: 0;
-}
-/* #endif */
+.date-step,
+.period-tab,
+.today-button,
+.stats-toggle,
+.filter-trigger,
+.view-tab,
+.filter-option,
+.filter-cancel,
+.filter-apply { @include borderless-button; }
 
 
 /* 按钮文字独立声明样式，兼容 App 不继承容器排版。 */

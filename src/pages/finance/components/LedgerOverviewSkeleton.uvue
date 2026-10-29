@@ -1,0 +1,50 @@
+<script setup lang="ts">
+import { computed } from 'vue';
+import FormField from '../../../components/FormField.uvue';
+import MetricCard from '../../../components/MetricCard.uvue';
+import AioChart from '../../../components/AioChart.uvue';
+import ContentSkeleton from '../../../components/ContentSkeleton.uvue';
+import { useAppLayout } from '../../../services/app-layout.ts';
+const props = defineProps<{ kind: string; year: string; years: string[]; disabled?: boolean }>();
+const emit = defineEmits(['update:year']);
+const title = computed(() => props.kind === 'expense' ? '支出' : '收入');
+const { appGridItem } = useAppLayout();
+</script>
+<template>
+  <view class="ledger-overview-skeleton">
+    <view class="finance-summary ui-gap-sm ui-section">
+      <FormField compact stretch hide-label label="选择年份" kind="selector" :options="years" :model-value="year" :disabled="disabled" @update:modelValue="emit('update:year', $event)" />
+      <view class="metrics ui-row">
+        <view :style="appGridItem(2, 'section', [[700, 3]], true)" class="summary-total"><MetricCard :label="'总' + title" value="" loading /></view>
+        <MetricCard :style="appGridItem(2, 'section', [[700, 3]], false)" :label="year + '年总' + title" value="" loading />
+        <MetricCard :style="appGridItem(2, 'section', [[700, 3]], false)" :label="'月均' + title" value="" loading />
+      </view>
+    </view>
+    <view class="chart-grid ui-gap-md">
+      <AioChart :style="appGridItem(1, 'section', [[700, 2]], false)" :label="title + '走势'" kind="bar" period-controls loading :labels="[]" :series="[{ name: title, values: [] }]" unit="元" />
+      <ContentSkeleton :style="appGridItem(1, 'section', [[700, 2]], false)" variant="chart" />
+    </view>
+  </view>
+</template>
+<style scoped lang="scss">
+@use '../../../styles/platform' as *;
+@use '../../../styles/spacing.scss';
+@use '../../../styles/spacing-tokens' as *;
+.finance-summary { display: flex; flex-direction: column; }
+.metrics { @include grid-layout; @include grid-columns(2); }
+.summary-total {
+  /* #ifndef APP */
+  grid-column: 1 / -1;
+  /* #endif */
+}
+.chart-grid { align-items: start; margin-bottom: $space-section; @include grid-layout; @include grid-columns(1); }
+@media (min-width: 700px) {
+  .summary-total {
+    /* #ifndef APP */
+    grid-column: auto;
+    /* #endif */
+  }
+  .metrics { @include grid-columns(3); }
+  .chart-grid { @include grid-columns(2); }
+}
+</style>

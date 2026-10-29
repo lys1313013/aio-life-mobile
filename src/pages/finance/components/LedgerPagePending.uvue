@@ -1,0 +1,45 @@
+<script setup lang="ts">
+import { computed } from 'vue';
+import MobilePage from '../../../components/MobilePage.uvue';
+import PageHeader from '../../../components/PageHeader.uvue';
+import ContentSkeleton from '../../../components/ContentSkeleton.uvue';
+import FormField from '../../../components/FormField.uvue';
+import LedgerOverviewSkeleton from './LedgerOverviewSkeleton.uvue';
+import { useAppLayout } from '../../../services/app-layout.ts';
+import { themeClass } from '../../../services/theme.ts';
+const props = defineProps<{ kind: string }>();
+const title = computed(() => props.kind === 'expense' ? '支出' : '收入');
+const year = String(new Date().getFullYear());
+const { appGridItem } = useAppLayout();
+</script>
+<template>
+  <MobilePage refresh-disabled>
+    <PageHeader :title="title" back @back="uni.navigateBack()" />
+    <view class="ui-page-body ledger-pending" role="status" :aria-label="'正在加载' + title">
+      <view class="pending-toolbar ui-toolbar" aria-hidden="true"><view class="pending-title pending-shape" :class="themeClass('pending-shape')" /><view class="pending-actions pending-shape" :class="themeClass('pending-shape')" /></view>
+      <view v-if="kind === 'expense'" class="ui-section">
+        <LedgerOverviewSkeleton :kind="kind" :year="year" :years="[year]" disabled />
+        <FormField label="统计周期" kind="selector" :options="['月度', '年度']" model-value="月度" disabled />
+        <ContentSkeleton variant="chart" :label="'正在加载' + title + '统计'" />
+      </view>
+      <view class="pending-filters ui-field-row" aria-hidden="true"><view v-for="n in 2" :key="n" :style="appGridItem(2, 'section', [[700, 3]], false)" class="pending-field pending-shape" :class="themeClass('pending-shape')" /></view>
+      <view class="pending-footer ui-section" aria-hidden="true"><view class="pending-actions pending-shape" :class="themeClass('pending-shape')" /></view>
+      <ContentSkeleton variant="list" :label="'正在加载' + title + '明细'" />
+    </view>
+  </MobilePage>
+</template>
+<style scoped lang="scss">
+@use '../../../styles/spacing.scss';
+@use '../../../styles/spacing-tokens' as *;
+@use '../../../styles/platform' as *;
+.pending-toolbar, .pending-footer { display: flex; flex-direction: row; align-items: center; min-height: $space-controlMin; }
+.pending-filters { @include grid-layout; @include grid-columns(2); }
+.pending-toolbar { justify-content: space-between; }
+.pending-footer { justify-content: flex-end; }
+.pending-title { width: 25%; height: $space-inline * 2; }
+.pending-actions { width: 35%; height: $space-controlMin; }
+.pending-field { height: $space-controlMin; }
+.pending-shape { border-radius: 8px; background-color: #e8ecf1; }
+.pending-shape-dark { background-color: #30343c; }
+@media (min-width: 700px) { .pending-filters { @include grid-columns(3); } }
+</style>

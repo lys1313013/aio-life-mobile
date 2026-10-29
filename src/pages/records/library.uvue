@@ -118,7 +118,7 @@ async function load(refresh = false, more = false) {
         pageSize: 30,
         title: keyword.value.trim(),
         ...(type >= 0 ? { type: type + 1 } : {}),
-        ...(status >= 0 ? { status: statuses[status] } : {}),
+        ...(status >= 0 ? { statuses: [statuses[status]] } : {}),
       }),
     );
     if (alive && current === generation) {
@@ -514,6 +514,7 @@ async function submitImport() {
   ></MobilePage>
 </template>
 <style scoped lang="scss">
+@use '../../styles/platform' as *;
 @use '../../styles/typography' as *;
 @use '../../styles/text-colors' as *;
 @use '../../styles/spacing.scss';
@@ -681,11 +682,7 @@ async function submitImport() {
   flex: 1;
   min-width: 0;
 }
-/* #ifdef WEB || MP-WEIXIN */
-.library-search-button::after {
-  border: 0;
-}
-/* #endif */
+.library-search-button { @include borderless-button; }
 /* #ifdef WEB */
 .library-poster:focus-visible { outline: 2px solid #427bea; outline-offset: $space-micro; }
 /* #endif */

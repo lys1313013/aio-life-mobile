@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { openExternalLink } from '../../services/external-link.ts'
 import { readPageTotal, mergePageItems, hasMorePageItems } from '../../services/pagination.ts';
 import { usePageRefresh } from '../../services/page-refresh.ts'
 import { appTextColor } from '../../services/app-layout.ts'
@@ -352,15 +353,7 @@ async function remove(item) {
 }
 function play(url) {
   if (!canPlay(url)) return;
-  // #ifdef WEB
-  window.open(url, '_blank', 'noopener,noreferrer');
-  // #endif
-  // #ifdef APP
-  plus.runtime.openURL(url);
-  // #endif
-  // #ifdef MP-WEIXIN
-  uni.setClipboardData({ data: url });
-  // #endif
+  openExternalLink(url);
 }
 </script>
 <template>
@@ -430,6 +423,7 @@ function play(url) {
   </MobilePage>
 </template>
 <style scoped lang="scss">
+@use '../../styles/platform' as *;
 @use '../../styles/typography' as *;
 @use '../../styles/text-colors' as *;
 @use '../../styles/spacing.scss';
@@ -451,9 +445,7 @@ function play(url) {
 }
 .video-more-toggle-dark { color: $text-secondary-dark; }
 .video-more-label { @include type-style('label'); }
-/* #ifdef WEB || MP-WEIXIN */
-.video-more-toggle::after { border: 0; }
-/* #endif */
+.video-more-toggle { @include borderless-button; }
 .video-page {
   color: #27272a;
 }
@@ -493,6 +485,7 @@ function play(url) {
 </style>
 
 <style scoped lang="scss">
+@use '../../styles/platform' as *;
 @use '../../styles/typography' as *;
 @use '../../styles/text-colors' as *;
 @use '../../styles/spacing-tokens' as *;
@@ -504,12 +497,7 @@ function play(url) {
 .summary-number { @include type-style('metric');  }
 .status-scroll { width: 100%; }
 .status-tabs { flex-direction: row;
-/* #ifndef APP */
-width: max-content;
-/* #endif */
-/* #ifdef APP */
-flex-shrink: 0;
-/* #endif */
+@include intrinsic-width;
  }
 .status-tab::after { border: 0; }
 .status-tab { display: flex; flex-direction: row; align-items: center; justify-content: center; gap: $space-detail; margin: 0; padding: 0 $space-inline; background-color: transparent; @include type-style('label'); min-height: $space-controlMin; flex-shrink: 0; color: $text-secondary-light; border-radius: 0; }
@@ -534,20 +522,7 @@ color: inherit;
 .video-duration { bottom: $space-detail; right: $space-detail; background-color: #0008; }
 .video-body { padding: $space-card; display: flex; flex-direction: column; gap: $space-inline; }
 .video-title {
-/* #ifndef APP */
-display: -webkit-box;
-/* #endif */
-/* #ifdef APP */
-text-overflow: ellipsis;
-/* #endif */
-
-/* #ifndef APP */
--webkit-line-clamp: 2;
-/* #endif */
-
-/* #ifndef APP */
--webkit-box-orient: vertical;
-/* #endif */
+@include clamp-text(2);
  overflow: hidden; @include type-style('body-strong'); min-height: 42px; }
 .video-meta { justify-content: space-between; gap: $space-detail; }
 .video-meta-text { color: $text-secondary-light; @include type-style('caption'); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

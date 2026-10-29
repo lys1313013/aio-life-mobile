@@ -89,7 +89,7 @@ for (const width of [390, 768, 1440])
         ['finance/expense', '月均支出', '新增'],
       ]) {
         await p.goto('/#/pages/' + route);
-        if (route === 'finance/income' || route === 'finance/expense') await p.getByRole('button', { name: '统计', exact: true }).click();
+        if (route === 'finance/income') await p.getByRole('button', { name: '统计', exact: true }).click();
         await expect(
           p.getByText(ready, { exact: true }).filter({ visible: true }).first(),
         ).toBeVisible();

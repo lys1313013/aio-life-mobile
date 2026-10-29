@@ -34,6 +34,7 @@ async function swipe(page, index, dx, dy = 0) {
 }
 test('支出列表去掉冗余信息，点击编辑，批量模式才显示选择框', async ({ page }) => {
   await openExpense(page);
+  await expect(page.getByRole('button', { name: '关联设备', exact: true })).toHaveCount(0);
   await expect(page.locator('.expense-row').first()).not.toContainText(/hidden-order|支付成功|交易金额/);
   await expect(page.locator('.expense-row').nth(1)).toContainText('交易金额 ¥25.00');
   await expect(page.locator('.ledger-summary').nth(1)).toHaveText('模拟食堂');

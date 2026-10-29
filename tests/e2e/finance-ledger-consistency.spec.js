@@ -50,7 +50,7 @@ for (const kind of ['expense', 'income']) test(`${kind} 删除首屏后真实滚
   expect(summaries).toContain('模拟账单51');
   expect(new Set(summaries).size).toBe(100);
   expect(state.requests).toEqual([1, 1, 2]);
-  await page.getByRole('button', { name: '统计', exact: true }).click();
+  if (kind === 'income') await page.getByRole('button', { name: '统计', exact: true }).click();
   await expect(page.locator('.summary-total .metric-number')).toHaveText('100.00');
 });
 test('保存及下拉刷新同步统计，统计失败保留内容且可以独立重试', async ({ page }) => {
@@ -68,7 +68,7 @@ test('保存及下拉刷新同步统计，统计失败保留内容且可以独�
   state.failStats = true;
   await pullDown(page, '.mobile-page-scroll');
   await expect(page.locator('.income-row')).toHaveCount(2);
-  await expect(page.locator('.statistics-panel').getByRole('alert').first()).toContainText('模拟统计失败');
+  await expect(page.locator('.statistics-panel').getByRole('alert').first()).toHaveAccessibleName(/模拟统计失败/);
   await expect(page.locator('.summary-total .metric-number')).toHaveText('200.00');
   state.failStats = false;
   await page.locator('.statistics-panel').getByRole('alert').first().getByRole('button', { name: '重试', exact: true }).click();

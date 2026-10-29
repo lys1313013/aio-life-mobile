@@ -5,7 +5,7 @@ import { appTextColor, useAppLayout } from '../../services/app-layout.ts'
 import { buttonLabelClasses } from '../../services/button-label.ts'
 import { isRequired, missingRequired } from '../../services/form-required.ts';
 import AppIcon from '../../components/AppIcon.uvue';
-import { computed, ref } from 'vue';
+import { computed, ref, watch } from 'vue';
 import { onShow } from '@dcloudio/uni-app';
 import MobilePage from '../../components/MobilePage.uvue';
 import PageHeader from '../../components/PageHeader.uvue';
@@ -17,12 +17,11 @@ import AdaptiveModal from '../../components/AdaptiveModal.uvue';
 import MetricCard from '../../components/MetricCard.uvue';
 import AioChart from '../../components/AioChart.uvue';
 import { isDark } from '../../services/theme.ts';
+import { session } from '../../services/session.ts';
 import { dateLabel, parseDate } from '../../services/time-format.ts';
 import { createRecordScope } from '../../services/records/page-scope.ts';
-import { isMobileBrowser, wereadAppLink, wereadBrowserLink, wereadWebLink } from '../../services/weread-links.ts';
-// #ifdef APP-ANDROID
-import { openWereadBook, openWereadWeb } from '../../uni_modules/aio-weread-launcher';
-// #endif
+import { wereadWebLink } from '../../services/weread-links.ts';
+import { tryOpenWereadApp, openWereadLink, prepareWereadWebTarget } from '../../services/weread-navigation.ts';
 import {
   fetchWereadConnection,
   connectWeread,
@@ -53,6 +52,8 @@ const connection = ref<any>({ connected: false }),
   detailLoading = ref(false),
   detailError = ref(''),
   selectedBook = ref(''),
+  loadedBook = ref(''),
+  loadedBookOwner = ref(''),
   notes = ref<any>(null),
   notesLoading = ref(false),
   notesError = ref(''),
@@ -68,24 +69,12 @@ function bookLink(book) {
 }
 async function openRankBook(book) {
   if (!book || openingBooks.value[book.bookId]) return;
-  const scheme = wereadAppLink(book.bookId);
-  // #ifdef WEB
-  if (scheme && isMobileBrowser(navigator.userAgent, navigator.maxTouchPoints)) {
+  const result = tryOpenWereadApp(book.bookId, bookLink(book));
+  if (result !== 'unavailable') {
     showWebFallback.value[book.bookId] = true;
-    window.location.assign(wereadBrowserLink(book.bookId, navigator.userAgent, bookLink(book)));
+    bookLinkErrors.value[book.bookId] = result === 'failed' ? '无法打开微信读书，可使用网页版阅读' : '';
     return;
   }
-  // #endif
-  // #ifdef APP-ANDROID
-  if (scheme) {
-    showWebFallback.value[book.bookId] = true;
-    bookLinkErrors.value[book.bookId] = '';
-    if (!openWereadBook(book.bookId)) {
-      bookLinkErrors.value[book.bookId] = '无法打开微信读书，可使用网页版阅读';
-    }
-    return;
-  }
-  // #endif
   await openWebBook(book);
 }
 async function openWebBook(book) {
@@ -97,26 +86,15 @@ async function openWebBook(book) {
   const id = book.bookId;
   openingBooks.value[id] = true;
   bookLinkErrors.value[id] = '';
-  // #ifdef WEB
-  const target = window.open('about:blank', '_blank');
-  if (target) target.opener = null;
-  // #endif
+  const target = prepareWereadWebTarget();
   try {
     const result = await scope.wait(fetchWereadBookLink(id));
     const resolved = bookLink(result);
     if (!resolved) throw new Error('暂无可用链接，点击重试');
     bookLinks.value[id] = resolved;
-    // #ifdef WEB
-    if (target && !target.closed) target.location.replace(resolved);
-    else bookLinkErrors.value[id] = '链接已就绪，请再次点击打开';
-    // #endif
-    // #ifndef WEB
-    openLink(resolved);
-    // #endif
+    target.open(resolved);
   } catch (e) {
-    // #ifdef WEB
-    target?.close();
-    // #endif
+    target.close();
     if (e.name !== 'PageInactiveError') bookLinkErrors.value[id] = e.message || '打开失败，点击重试';
   } finally {
     openingBooks.value[id] = false;
@@ -125,31 +103,53 @@ async function openWebBook(book) {
 const { appGridItem } = useAppLayout();
 const modes = { 周: 'weekly', 月: 'monthly', 年: 'annually', 累计: 'overall' };
 let generation = 0,
+  syncRevision = 0,
   statsRevision = 0,
   detailRevision = 0,
   notesRevision = 0,
   appliedMode = '周',
   appliedDate = date.value;
-const scope = createRecordScope((clear) => {
+const contentRevision = ref(0);
+function clearContent(clear: boolean) {
   keyInput.value = '';
   settingsError.value = '';
   detail.value = null;
   detailRevision++;
   notesRevision++;
+  notesLoading.value = false;
   if (clear) {
+    generation++;
+    syncRevision++;
+    statsRevision++;
+    contentRevision.value++;
+    loading.value = false;
+    syncing.value = false;
+    statsLoading.value = false;
+    saving.value = false;
+    detailLoading.value = false;
+    error.value = '';
+    notesError.value = '';
     connection.value = { connected: false };
     snapshot.value = null;
     stats.value = {};
     notes.value = null;
+    loadedBook.value = '';
+    loadedBookOwner.value = '';
     selectedBook.value = '';
     bookLinks.value = {};
     bookLinkErrors.value = {};
     showWebFallback.value = {};
   }
-});
+}
+const scope = createRecordScope(clearContent);
+watch(() => session.token, () => clearContent(true), { flush: 'sync' });
 const refreshOnShow = usePageRefresh(() => initialize(), { loading: () => loading.value, error: () => error.value, keys: () => ['weread', 'userbinds'] })
-onShow(() => refreshOnShow());
+onShow(() => {
+  refreshOnShow();
+  if (selectedBook.value && !notesReady.value && !notesLoading.value) void selectNotebook(selectedBook.value);
+});
 const notebooks = computed(() => snapshot.value?.notebooks?.books || []);
+const notesReady = computed(() => !!session.token && loadedBookOwner.value === session.token && !!selectedBook.value && loadedBook.value === selectedBook.value);
 const notebookMap = computed(() => new Map(notebooks.value.map((notebook) => [notebook.bookId, notebook])));
 const books = computed(() =>
   [...(snapshot.value?.shelf?.books || [])]
@@ -255,32 +255,41 @@ async function initialize() {
       snapshot.value = null;
       stats.value = {};
       notes.value = null;
+      loadedBook.value = '';
+      loadedBookOwner.value = '';
+      notesRevision++;
+      notesLoading.value = false;
       detail.value = null;
       selectedBook.value = '';
     }
     if (result.connected && !snapshot.value) await refresh();
   } catch (e) {
-    if (e.name !== 'PageInactiveError') error.value = e.message;
+    if (current === generation && e.name !== 'PageInactiveError') error.value = e.message;
   } finally {
     if (current === generation) loading.value = false;
   }
 }
 async function refresh() {
   if (syncing.value || saving.value) return;
+  const current = ++syncRevision;
   syncing.value = true;
   error.value = '';
   try {
     const result = await scope.wait(syncWeread(modes[mode.value], timestamp()));
+    if (current !== syncRevision) return;
     snapshot.value = result;
     stats.value = result.stats || {};
     connection.value.lastSyncTime = result.lastSyncTime;
     notesRevision++;
+    notesLoading.value = false;
     notes.value = null;
+    loadedBook.value = '';
+    loadedBookOwner.value = '';
     selectedBook.value = '';
   } catch (e) {
-    if (e.name !== 'PageInactiveError') error.value = e.message;
+    if (current === syncRevision && e.name !== 'PageInactiveError') error.value = e.message;
   } finally {
-    syncing.value = false;
+    if (current === syncRevision) syncing.value = false;
   }
 }
 function timestamp() {
@@ -322,6 +331,7 @@ async function saveConnection() {
     return;
   }
   saving.value = true;
+  const owner = session.token;
   settingsError.value = '';
   try {
     const result = await scope.wait(connectWeread(keyInput.value.trim()));
@@ -329,6 +339,10 @@ async function saveConnection() {
     snapshot.value = null;
     stats.value = {};
     notes.value = null;
+    loadedBook.value = '';
+    loadedBookOwner.value = '';
+    notesRevision++;
+    notesLoading.value = false;
     detail.value = null;
     selectedBook.value = '';
     keyInput.value = '';
@@ -336,9 +350,9 @@ async function saveConnection() {
     saving.value = false;
     await refresh();
   } catch (e) {
-    if (e.name !== 'PageInactiveError') settingsError.value = e.message;
+    if (owner === session.token && e.name !== 'PageInactiveError') settingsError.value = e.message;
   } finally {
-    saving.value = false;
+    if (owner === session.token) saving.value = false;
   }
 }
 async function showBook(book) {
@@ -358,14 +372,16 @@ async function showBook(book) {
 }
 async function selectNotebook(id) {
   const current = ++notesRevision;
-  if (selectedBook.value !== id) notes.value = null;
+  const owner = session.token;
+  if (selectedBook.value !== id || loadedBookOwner.value !== owner) { notes.value = null; loadedBook.value = ''; loadedBookOwner.value = ''; }
   selectedBook.value = id;
   notesLoading.value = true;
   notesError.value = '';
   noteQuery.value = '';
+  if (!id) { notesLoading.value = false; return; }
   try {
     const result = await scope.wait(fetchWereadNotes(id));
-    if (current === notesRevision) notes.value = result;
+    if (current === notesRevision && owner === session.token) { notes.value = result; loadedBook.value = id; loadedBookOwner.value = owner; }
   } catch (e) {
     if (e.name !== 'PageInactiveError' && current === notesRevision) notesError.value = e.message;
   } finally {
@@ -389,25 +405,14 @@ function copy(text) {
   });
 }
 function openLink(url) {
-  if (!safeLink(url)) return;
-  // #ifdef WEB
-  window.open(url, '_blank', 'noopener,noreferrer');
-  // #endif
-  // #ifdef APP-ANDROID
-  if (!openWereadWeb(url)) uni.showToast({ title: '无法打开链接', icon: 'none' });
-  // #endif
-  // #ifdef APP-IOS
-  plus.runtime.openURL(url);
-  // #endif
-  // #ifdef MP-WEIXIN
-  uni.setClipboardData({ data: url });
-  // #endif
+  try { openWereadLink(url); }
+  catch (error) { uni.showToast({ title: error.message || '无法打开链接', icon: 'none' }); }
 }
 </script>
 <template>
   <MobilePage :refreshing="syncing || loading" @refresh="connection.connected ? refresh() : initialize()"
     ><view class="weread-page ui-page-body" :class="{ 'weread-page-dark': isDark }"
-      ><PageHeader title="微信读书" :back="true" @back="uni.navigateBack()" /><PageState skeleton="media" :loading="loading" :error="error" @retry="connection.connected ? refresh() : initialize()"
+      ><PageHeader title="微信读书" :back="true" @back="uni.navigateBack()" /><PageState skeleton="media" :content-key="String(contentRevision)" :loading="loading" :error="error" @retry="connection.connected ? refresh() : initialize()"
         ><template v-if="connection.connected && snapshot"
           ><view class="weread-tabs ui-row ui-section"><button v-for="label in ['阅读看板', '我的书架', '阅读笔记']" :key="label" role="button" class="weread-tab" :class="{ 'weread-tab-dark': isDark, 'weread-tab-active': tab === label }" :aria-pressed="tab === label" @click="tab = label"><text :class="buttonLabelClasses(['weread-tab', { 'weread-tab-dark': isDark, 'weread-tab-active': tab === label }])">{{ label }}</text></button></view><view v-if="tab === '阅读看板'"
             ><view class="toolbar dashboard-filters ui-row ui-section"
@@ -488,7 +493,7 @@ function openLink(url) {
                 <AppIcon v-else name="lucide:book-open" :size="32" color="#8b8f99" />
                 <text class="book-status" :class="{ 'book-status-completed': book.finishReading === 1 }">{{ book.finishReading === 1 ? '已读完' : '未读完' }}</text>
               </view><view class="book-body ui-gap-sm">
-                <text :style="appTextColor()" class="book-title">{{ book.title }}</text>
+                <text :max-lines="2" :style="appTextColor()" class="book-title">{{ book.title }}</text>
                 <text class="book-author" :class="{ 'record-secondary-dark': isDark }">{{ book.author || '作者未知' }}</text>
                 <view class="book-meta ui-row"><text class="book-notes" :class="{ 'record-secondary-dark': isDark }">{{ notebookMap.has(book.bookId) ? (notebookMap.get(book.bookId)?.noteCount || 0) + ' 划线 · ' + (notebookMap.get(book.bookId)?.reviewCount || 0) + ' 点评' : '暂无笔记' }}</text><text v-if="notebookMap.get(book.bookId)?.readingProgress != null" class="book-progress">{{ notebookMap.get(book.bookId)?.readingProgress }}%</text></view>
               </view></view></view><text v-if="!books.length" class="secondary" :class="{ 'record-secondary-dark': isDark }">没有匹配的图书</text></view
@@ -508,12 +513,15 @@ function openLink(url) {
                 v-model="noteKind"
                 :options="['划线', '想法', '书评']" /></view
             ><FormField label="搜索笔记" v-model="noteQuery" /><PageState skeleton="list"
+              :content-key="selectedBook"
               :loading="notesLoading"
+              :retain-content="notesReady"
+              :has-content="notesReady"
               :error="notesError"
-              :empty="!noteItems.length"
+              :empty="notesReady && !noteItems.length"
               @retry="selectNotebook(selectedBook)"
               ><view
-                v-for="item in noteItems"
+                v-for="item in notesReady ? noteItems : []"
                 :key="item.id"
                 class="card ui-card"
                 :class="{ 'card-dark': isDark }"
@@ -580,6 +588,7 @@ function openLink(url) {
   ></MobilePage>
 </template>
 <style scoped lang="scss">
+@use '../../styles/platform' as *;
 @use '../../styles/typography' as *;
 @use '../../styles/text-colors' as *;
 @use '../../styles/spacing.scss';
@@ -633,6 +642,7 @@ function openLink(url) {
 </style>
 
 <style scoped lang="scss">
+@use '../../styles/platform' as *;
 @use '../../styles/typography' as *;
 @use '../../styles/text-colors' as *;
 @use '../../styles/spacing-tokens' as *;
@@ -661,20 +671,7 @@ color: inherit;
 .book-status-completed { color: #178552; background-color: #dcf6e8; }
 .book-body { min-width: 0; padding: $space-card; }
 .book-title {
-/* #ifndef APP */
-display: -webkit-box;
-/* #endif */
-/* #ifdef APP */
-text-overflow: ellipsis;
-/* #endif */
-
-/* #ifndef APP */
--webkit-line-clamp: 2;
-/* #endif */
-
-/* #ifndef APP */
--webkit-box-orient: vertical;
-/* #endif */
+@include clamp-text(2);
  overflow: hidden; @include type-style('body-strong');   height: calc(#{type-line('body')} * 2); }
 .book-author { color: $text-secondary-light; @include type-style('caption');  white-space: nowrap; text-overflow: ellipsis; overflow: hidden; }
 .book-meta { flex-direction: row; align-items: center; flex-wrap: wrap; gap: $space-detail; }
@@ -685,20 +682,7 @@ text-overflow: ellipsis;
 .rank-cover { width: 36px; height: 48px; flex-shrink: 0; }
 .rank-body { flex: 1; min-width: 0; }
 .rank-title {
-/* #ifndef APP */
-display: -webkit-box;
-/* #endif */
-/* #ifdef APP */
-text-overflow: ellipsis;
-/* #endif */
-
-/* #ifndef APP */
--webkit-line-clamp: 2;
-/* #endif */
-
-/* #ifndef APP */
--webkit-box-orient: vertical;
-/* #endif */
+@include clamp-text(2);
  overflow: hidden; @include type-style('body');  }
 .detail-heading { flex-direction: row; align-items: center; }
 .detail-cover { width: 66px; height: 90px; flex-shrink: 0; }
