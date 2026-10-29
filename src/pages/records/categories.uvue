@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import CategoryTabs from "../../components/CategoryTabs.uvue";
+import CategoryPager from '../../components/CategoryPager.uvue';
 import { readPageTotal, mergePageItems, hasMorePageItems } from '../../services/pagination.ts';
 import MobileSwitch from '../../components/MobileSwitch.uvue';
 import { usePageRefresh } from '../../services/page-refresh.ts'
@@ -24,6 +26,8 @@ import {
   saveCategory,
   deleteCategory,
 } from './services/exercise.ts';
+const pager = ref(null);
+const categoryCache = ref<Record<string, any>>({});
 const rows = ref<any[]>([]),
   types = ref<any[]>([]),
   type = ref('exercise_type'),
@@ -40,7 +44,6 @@ const loadedType = ref('');
 const editingIndex = computed(() => form.value?.id ? rows.value.findIndex((item) => item.id === form.value.id) : -1);
 const categoryTabs = computed(() => types.value.filter((item) => item.value !== 'bank_tag'));
 const categoryIndex = computed(() => Math.max(0, categoryTabs.value.findIndex((item) => item.value === type.value)));
-const visibleRows = computed(() => rows.value.filter((item) => statusFilter.value === '全部' || (statusFilter.value === '已启用' ? item.isEnabled === 1 : item.isEnabled === 0)));
 let generation = 0;
 const scope = createRecordScope((clear) => {
   form.value = null;
@@ -48,18 +51,31 @@ const scope = createRecordScope((clear) => {
     rows.value = [];
     types.value = [];
     loadedType.value = '';
+    categoryCache.value = {};
   }
 });
-const refreshOnShow = usePageRefresh(() => load(), { loading: () => loading.value, error: () => error.value, keys: () => ['userDictData', 'userDictType'] })
+const refreshOnShow = usePageRefresh(() => { categoryCache.value = {}; return load(); }, { loading: () => loading.value, error: () => error.value, keys: () => ['userDictData', 'userDictType'] })
 onShow(() => refreshOnShow());
 function selectType(value: string) {
-  if (type.value === value) return;
+  if (type.value === value || form.value || busyId.value || saving.value) return;
+  if (loadedType.value === type.value) categoryCache.value[type.value] = { rows: rows.value, loaded: true, error: error.value };
+  generation++;
   type.value = value;
-  load();
+  const cached = categoryCache.value[value];
+  rows.value = cached?.rows || [];
+  loadedType.value = cached?.loaded ? value : '';
+  error.value = cached?.error || '';
+  loading.value = false;
+  if (!cached?.loaded || cached.error) void load();
 }
+const categoryPages = computed(() => (categoryTabs.value.length ? categoryTabs.value : [{ value: type.value, label: '分类' }]).map(tab => {
+  const state = tab.value === type.value ? { rows: rows.value, loaded: loadedType.value === type.value, loading: loading.value, error: error.value } : categoryCache.value[tab.value] || { rows: [], loaded: false, error: '' };
+  return { ...tab, ...state, filtered: state.rows.filter(item => statusFilter.value === '全部' || (statusFilter.value === '已启用' ? item.isEnabled === 1 : item.isEnabled === 0)) };
+}));
 async function refresh() {
   if (refreshing.value) return;
   refreshing.value = true;
+  categoryCache.value = {};
   try {
     await load();
   } finally {
@@ -94,6 +110,7 @@ async function load() {
   }
 }
 function open(item = null) {
+  if (pager.value?.ignoreClick()) return;
   saved.value = false;
   formError.value = '';
   form.value = item
@@ -189,42 +206,14 @@ function cannotMove(offset: number) {
 }
 </script>
 <template>
-  <MobilePage :refreshing="refreshing" @refresh="refresh"
+  <MobilePage :scroll-locked="true" :refresh-disabled="true"
     ><view class="categories-page ui-page-body" :class="{ 'categories-page-dark': isDark }"
       ><PageHeader title="分类管理" :back="true" @back="uni.navigateBack()" /><view class="ui-toolbar"
-        ><scroll-view
-          class="category-type-scroll"
-          direction="horizontal"
-          :scroll-x="true"
-          :show-scrollbar="false"
-          :scroll-into-view="'category-type-' + categoryIndex"
-          :scroll-with-animation="true"
-        >
-          <view class="category-type-tabs" role="group" aria-label="分类类型">
-            <view
-              v-for="(tab, index) in categoryTabs"
-              :key="tab.value"
-              :id="'category-type-' + index"
-              class="category-type-tab"
-              role="button"
-              tabindex="0"
-              :aria-label="tab.label"
-              :aria-pressed="type === tab.value"
-              @click="selectType(tab.value)"
-              @keydown.enter.prevent="selectType(tab.value)"
-              @keydown.space.prevent="selectType(tab.value)"
-            >
-              <text class="category-type-label" :class="{
-                'category-type-label-dark': isDark,
-                'category-type-selected': type === tab.value,
-                'category-type-selected-dark': type === tab.value && isDark,
-              }">{{ tab.label }}</text>
-            </view>
-          </view>
-        </scroll-view></view>
+        ><CategoryTabs class="category-type-scroll" :items="categoryTabs" :current="categoryIndex" variant="underline" label="分类类型" id-prefix="category-type" item-class="category-type-tab" :disabled="!!form || !!busyId || saving" @change="selectType(categoryTabs[$event].value)" /></view>
       <FormField label="状态" kind="selector" :options="['全部', '已启用', '已禁用']" v-model="statusFilter" />
-      <view class="category-list">
-        <PageState :loading="loading" :retain-content="loadedType === type" :error="error" :empty="!visibleRows.length" empty-text="暂无符合条件的分类" @retry="load">
+      <CategoryPager ref="pager" :items="categoryPages" :current="categoryIndex" :disabled="!!form || !!busyId || saving" :refreshing="refreshing" tabs-selector=".category-type-scroll" @change="selectType(categoryPages[$event].value)" @refresh="refresh"><template #default="{ item: categoryPage, active }">
+      <view class="category-list" :class="{ 'category-page-active': active }">
+        <PageState :loading="categoryPage.loading || (!categoryPage.loaded && !categoryPage.error)" :has-content="categoryPage.loaded" :error="categoryPage.error" :empty="!categoryPage.filtered.length" empty-text="暂无符合条件的分类" @retry="load">
           <template #refreshing>
             <view v-if="!refreshing" class="category-update-progress" role="status" aria-label="正在更新分类">
               <view class="category-update-runner" :class="{ 'category-update-runner-dark': isDark }" />
@@ -246,7 +235,7 @@ function cannotMove(offset: number) {
               </view>
             </view>
           </template>
-          <view v-for="item in visibleRows" :key="item.id" class="category-row" :class="{ 'category-row-dark': isDark }">
+          <view v-for="item in categoryPage.filtered" :key="item.id" class="category-row" :class="{ 'category-row-dark': isDark }">
             <CategoryIcon :icon="item.icon" :color="item.color" />
             <view class="category-copy">
               <text class="category-name" :class="{ 'category-name-dark': isDark, 'category-name-disabled': item.isEnabled === 0, 'category-name-disabled-dark': item.isEnabled === 0 && isDark }">{{ item.dictLabel }}</text>
@@ -267,7 +256,7 @@ function cannotMove(offset: number) {
             </view>
           </view>
         </PageState>
-      </view>
+      </view></template></CategoryPager>
     </view>
     <template #fixed>
       <FloatingActionButton v-if="!form" label="新增分类" :disabled="loading || !!error || !!busyId" @click="open()" />
@@ -324,27 +313,7 @@ function cannotMove(offset: number) {
   min-height: $space-controlMin;
   white-space: nowrap;
 }
-.category-type-tabs {
-  flex-direction: row;
-  flex-wrap: nowrap;
-  gap: $space-section;
-  @include intrinsic-width;
-}
-.category-type-tab {
-  flex-shrink: 0;
-  min-width: $space-controlMin;
-  min-height: $space-controlMin;
-  padding: 0 $space-detail;
-  align-items: center;
-  justify-content: center;
-}
-.category-type-label {
-  color: #52525b;
-  @include type-style('body');
-}
-.category-type-label-dark { color: #b7bac4; }
-.category-type-selected { color: #2563eb; }
-.category-type-selected-dark { color: #6c9cff; }
+
 .category-list {
   // 末行滚动到顶部后，仍可避开通用悬浮新增按钮。
   padding-bottom: 80px;

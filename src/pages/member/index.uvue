@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import CategoryTabs from "../../components/CategoryTabs.uvue";
+import CategoryPager from '../../components/CategoryPager.uvue';
 import MobileSwitch from '../../components/MobileSwitch.uvue';
 import { usePageRefresh } from '../../services/page-refresh.ts'
 import MembershipRecordEditor from '../../components/record-editors/MembershipRecordEditor.uvue';
@@ -12,13 +14,15 @@ import PageState from '../../components/PageState.uvue';
 import MembershipLogo from '../../components/MembershipLogo.uvue';
 import { memberCategories as categories, memberCategoryLabels as categoryLabels } from '../../services/membership-provider.ts';
 import { createRecordScope } from '../../services/records/page-scope.ts';
-import { useTabSwipe } from '../../services/tab-swipe.ts';
+
 import { memberCardStyle } from './services/member-card.ts';
 import { isDark } from '../../services/theme.ts';
 import {
   fetchMembers,
   fetchMemberStats,
 } from './services/member.ts';
+const pager = ref(null);
+const loaded = ref(false);
 const rows = ref<any[]>([]),
   stats = ref<any>({}),
   loading = ref(false),
@@ -51,27 +55,18 @@ watch(categoryTabs, tabs => {
   if (!tabs.some(tab => tab.value === selectedCategory.value)) selectedCategory.value = '';
 });
 const categoryIndex = computed(() => categoryTabs.value.findIndex(tab => tab.value === selectedCategory.value));
-const { swipe: tabSwipe, style: tabSwipeStyle, dragging: tabSwipeDragging } = useTabSwipe(
-  () => categoryIndex.value,
-  () => categoryTabs.value.length,
-  () => loading.value || !!form.value,
-  (index) => selectCategory(index),
-);
 function selectCategory(index: number) {
   const tab = categoryTabs.value[index];
   if (!tab || form.value) return;
   selectedCategory.value = tab.value;
 }
 function toggleExpired() {
-  tabSwipe.cancel();
   includeExpired.value = !includeExpired.value;
 }
-const sortedMembers = computed(() =>
-  visibleMembers.value.filter(item => !selectedCategory.value || categoryOf(item) === selectedCategory.value).sort((a, b) => {
-    const expiredRank = Number(a.status === 'expired') - Number(b.status === 'expired');
-    return expiredRank || Number(a.remainingDays || 0) - Number(b.remainingDays || 0);
-  }),
-);
+const memberPages = computed(() => categoryTabs.value.map(tab => ({ ...tab,
+  rows: visibleMembers.value.filter(item => !tab.value || categoryOf(item) === tab.value).sort((a, b) =>
+    Number(a.status === 'expired') - Number(b.status === 'expired') || Number(a.remainingDays || 0) - Number(b.remainingDays || 0)),
+})));
 const metrics = computed(() => [
   { label: '生效中', value: stats.value.activeCount || 0 },
   { label: '本月到期', value: stats.value.expiringThisMonthCount || 0 },
@@ -85,6 +80,7 @@ const scope = createRecordScope((clearData) => {
     requestedEdit = '';
     requestedCreate = false;
     rows.value = [];
+    loaded.value = false;
     stats.value = {};
   }
 });
@@ -127,6 +123,7 @@ async function load(refresh = false) {
     const data = await scope.wait(fetchMembers());
     if (alive && current === generation) {
       rows.value = data;
+      loaded.value = true;
       if (requestedEdit) {
         const selected = data.find((item) => item.id === requestedEdit);
         if (!selected) throw Error('会员记录不存在或已删除');
@@ -150,7 +147,7 @@ async function load(refresh = false) {
   }
 }
 function open(item = null) {
-  if (tabSwipe.ignoreClick()) return;
+  if (pager.value?.ignoreClick()) return;
   form.value = item ? { ...item } : {};
 }
 function saved(row) {
@@ -167,7 +164,7 @@ function deleted(id) {
 }
 </script>
 <template>
-  <MobilePage :refreshing="refreshing" :refresh-disabled="tabSwipeDragging" @refresh="load(true)">
+  <MobilePage :scroll-locked="true" :refresh-disabled="true">
     <view class="member-page ui-page-body" :class="{ 'member-page-dark': isDark }">
       <PageHeader title="订阅" :back="true" @back="uni.navigateBack()" />
       <PageState skeleton="metrics" :loading="statsLoading" :error="statsError" @retry="loadStats">
@@ -191,19 +188,12 @@ function deleted(id) {
         </view>
       </PageState>
       <view class="member-filters">
-        <scroll-view class="member-category-scroll" direction="horizontal" :scroll-x="true" :show-scrollbar="false" :scroll-into-view="'member-category-' + categoryIndex" :scroll-with-animation="true">
-          <view class="member-category-tabs" aria-label="会员分类">
-            <button v-for="(tab, index) in categoryTabs" :key="tab.value" :id="'member-category-' + index" class="member-category-tab" :class="{ 'member-category-tab-active': selectedCategory === tab.value, 'member-category-tab-active-dark': selectedCategory === tab.value && isDark }" role="button" :aria-pressed="selectedCategory === tab.value" @click="selectCategory(index)">
-              <text class="member-category-label" :class="{ 'secondary-text-dark': isDark, 'member-category-selected': selectedCategory === tab.value, 'member-category-selected-dark': selectedCategory === tab.value && isDark }">{{ tab.label }}</text>
-              <text class="member-category-count" :class="{ 'secondary-text-dark': isDark, 'member-category-selected': selectedCategory === tab.value, 'member-category-selected-dark': selectedCategory === tab.value && isDark }">{{ loading && !rows.length ? '—' : tab.count }}</text>
-            </button>
-          </view>
-        </scroll-view>
+        <CategoryTabs class="member-category-scroll" :items="categoryTabs" :current="categoryIndex" variant="solid" label="会员分类" id-prefix="member-category" item-class="member-category-tab" label-class="member-category-label" count-class="member-category-count" :loading="loading && !loaded" :disabled="!!form" @change="selectCategory" />
         <view class="member-filter-options"><MobileSwitch label="包含过期" aria-label="包含过期" :checked="includeExpired" @change="toggleExpired" /></view>
       </view>
-      <view class="tab-swipe-viewport" @touchstart="tabSwipe.touchStart" @touchmove="tabSwipe.touchMove" @touchend="tabSwipe.touchEnd" @touchcancel="tabSwipe.cancel">
-      <view class="tab-swipe-surface" :style="tabSwipeStyle">
-      <PageState skeleton="list" :loading="loading" :error="error" :empty="!sortedMembers.length" :empty-text="rows.length > 0 && !includeExpired ? '暂无生效中的会员' : '暂无会员'" @retry="load()">
+      <CategoryPager ref="pager" :items="memberPages" :current="categoryIndex" :disabled="!!form" :refreshing="refreshing" :layout-key="[statsLoading, statsError, includeExpired]" tabs-selector=".member-category-scroll" @change="selectCategory" @refresh="load(true)">
+      <template #default="{ item: memberPage, active }"><view :class="{ 'member-page-active': active }">
+      <PageState skeleton="list" :loading="loading" :error="error" :has-content="loaded" :empty="!memberPage.rows.length" :empty-text="rows.length > 0 && !includeExpired ? '暂无生效中的会员' : '暂无会员'" @retry="load()">
         <template #loading>
           <view class="member-grid" aria-hidden="true">
             <view v-for="n in 4" :key="n" class="member-card" :class="{ 'surface-dark': isDark }">
@@ -220,7 +210,7 @@ function deleted(id) {
           </view>
         </template>
         <view class="member-grid">
-          <button role="button" tabindex="0" v-for="item in sortedMembers" :key="item.id" class="member-card ui-type-body" :style="memberCardStyle(item.color, isDark)" :aria-label="'编辑订阅：' + item.name" @click="open(item)" @keydown.enter.prevent="open(item)" @keydown.space.prevent="open(item)">
+          <button role="button" tabindex="0" v-for="item in memberPage.rows" :key="item.id" class="member-card ui-type-body" :style="memberCardStyle(item.color, isDark)" :aria-label="'编辑订阅：' + item.name" @click="open(item)" @keydown.enter.prevent="open(item)" @keydown.space.prevent="open(item)">
             <view class="card-heading">
               <view class="member-logo-frame" :class="{ 'member-logo-frame-dark': isDark }"><MembershipLogo :icon-key="item.providerIconKey" :category="item.category" :name="item.providerName || item.provider || item.name" :size="36" /></view>
               <view class="member-identity">
@@ -248,8 +238,7 @@ function deleted(id) {
           </button>
         </view>
       </PageState>
-      </view>
-      </view>
+      </view></template></CategoryPager>
       <MembershipRecordEditor v-if="form" :record="form"  @close="form = null" @saved="saved" @deleted="deleted" />
     </view>
     <template #fixed>
@@ -263,11 +252,11 @@ function deleted(id) {
 @use '../../styles/text-colors' as *;
 @use '../../styles/spacing.scss';
 @use '../../styles/spacing-tokens' as *;
-@use '../../styles/tab-swipe.scss';
+
 @include type-utilities('body');
 
 /* 为悬浮新增按钮预留滚动空间，确保末行卡片可完整露出。 */
-.member-page { color: #27272a; padding-bottom: calc(56px + #{$space-page} + #{$space-inline}); }
+.member-page { color: #27272a; }
 .member-page-dark { color: #eeeeef; }
 .member-summary { display: flex; flex-direction: column; gap: $space-section; padding: $space-inline 0 $space-section; }
 .summary-cost { min-width: 0; gap: $space-detail; }
@@ -278,15 +267,9 @@ function deleted(id) {
 .metric-value { color: #27272a; @include type-style('metric-compact'); font-variant-numeric: tabular-nums; }
 .member-filters { flex-direction: column; gap: $space-detail; margin-bottom: $space-section; }
 .member-category-scroll { width: 100%; min-width: 0; white-space: nowrap; }
-.member-category-tabs { flex-direction: row; flex-wrap: nowrap; gap: $space-inline;
-@include intrinsic-width;
-}
+
 .member-filter-options { flex-direction: row; justify-content: flex-end; min-height: $space-controlMin; align-items: center; }
-.member-category-tab { display: flex; flex-direction: row; align-items: center; justify-content: center; flex-shrink: 0; gap: $space-detail; min-width: $space-controlMin; min-height: $space-controlMin; margin: 0; padding: 0 $space-card; border: 0; border-radius: 14px; background-color: rgba(125, 140, 160, 0.08); }
-.member-category-label { color: $text-secondary-light; @include type-style('body'); }
-.member-category-count { color: $text-secondary-light; @include type-style('caption'); font-variant-numeric: tabular-nums; }
-.member-category-tab-active { background-color: #2563eb; }
-.member-category-tab-active-dark { background-color: #315fbb; }
+
 .member-grid { display: flex; flex-direction: row; flex-wrap: wrap; gap: $space-section; }
 .member-card { display: flex; flex-direction: column; width: 100%; min-width: 0; box-sizing: border-box; margin: 0; padding: 0; gap: 0; text-align: left; background-color: #ffffff; border: $space-hairline solid #e4e7ec; border-radius: 18px; box-shadow: 0 4px 14px rgba(27, 43, 65, 0.055); }
 /* 标题与副标题共用固定两行几何；长名称截断，不改变同组卡片的高度。 */
@@ -335,11 +318,9 @@ function deleted(id) {
 .skeleton-dark { background-color: #303642; }
 /* #ifdef WEB || MP-WEIXIN */
 .member-card::after { border: 0; }
-.member-category-tab::after { border: 0; }
 /* #endif */
 /* #ifdef WEB */
 .member-card:focus-visible { outline: 2px solid #4285ed; outline-offset: 2px; }
-.member-category-tab:focus-visible { outline: 2px solid #4285ed; outline-offset: -2px; }
 /* #endif */
 @media (min-width: 360px) {
   .member-summary { flex-direction: row; align-items: center; }
@@ -351,8 +332,7 @@ function deleted(id) {
 }
 .text-dark { color: #edf1f7; }
 .secondary-text-dark { color: $text-secondary-dark; }
-.member-category-selected { color: #ffffff; }
-.member-category-selected-dark { color: #ffffff; }
+
 .metric-alert { color: #a56b13; }
 .metric-alert-dark { color: #e4b45e; }
 </style>

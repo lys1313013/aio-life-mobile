@@ -1,5 +1,7 @@
 <script setup lang="ts">
-import { computed, onUnmounted, ref } from "vue";
+import CategoryTabs from "../../components/CategoryTabs.uvue";
+import CategoryPager from '../../components/CategoryPager.uvue';
+import { computed, onUnmounted, ref, watch } from "vue";
 import MobilePage from "../../components/MobilePage.uvue";
 import PageHeader from "../../components/PageHeader.uvue";
 import MobileButton from "../../components/MobileButton.uvue";
@@ -15,6 +17,8 @@ import { useDomainPage } from "../../services/domains/page-session.ts";
 import { apiUrl } from "../../services/api.ts";
 import { isDark, themeClass } from "../../services/theme.ts";
 
+const pager = ref(null);
+const loaded = ref(false);
 const guideOpen = ref(false);
 let serviceAddress = apiUrl("/mcp");
 // #ifdef WEB
@@ -57,7 +61,7 @@ async function load() {
   error.value = "";
   try {
     const data = await fetchTools();
-    if (alive && stamp === requestStamp) tools.value = data;
+    if (alive && stamp === requestStamp) { tools.value = data; loaded.value = true; }
   } catch (e) {
     if (alive && stamp === requestStamp) error.value = e.message;
   } finally {
@@ -76,7 +80,7 @@ useDomainPage(
     alive = false;
     stamp++;
     callStamp++;
-    if (clear) tools.value = [];
+    if (clear) { tools.value = []; loaded.value = false; }
     current.value = null;
     guideOpen.value = false;
     args.value = {};
@@ -94,17 +98,20 @@ const groups = computed(() =>
       tools.value.some((tool) => toolPresentation(tool).group === group.value),
   ),
 );
-const filtered = computed(() =>
-  tools.value.filter((tool) => {
+watch(groups, options => { if (!options.some(group => group.value === activeGroup.value)) activeGroup.value = 'all'; });
+function toolsFor(groupValue) { return tools.value.filter((tool) => {
     const info = toolPresentation(tool);
     return (
-      (activeGroup.value === "all" || info.group === activeGroup.value) &&
+      (groupValue === "all" || info.group === groupValue) &&
       (info.title + " " + tool.name + " " + tool.description)
         .toLowerCase()
         .includes(keyword.value.trim().toLowerCase())
     );
-  }),
-);
+  });
+}
+
+const toolPages = computed(() => groups.value.map(group => ({ ...group, rows: toolsFor(group.value) })));
+const groupIndex = computed(() => Math.max(0, groups.value.findIndex(group => group.value === activeGroup.value)));
 const groupIcons: Record<string, string> = {
   time: "ant-design:clock-circle-outlined",
   plan: "ant-design:check-outlined",
@@ -127,6 +134,7 @@ const resultText = computed(
       .join("\n") || "无返回内容",
 );
 function open(tool: any) {
+  if (pager.value?.ignoreClick()) return;
   if (busy.value) return;
   current.value = tool;
   args.value = {};
@@ -165,13 +173,7 @@ function manageKeys() {
 </script>
 
 <template>
-  <MobilePage
-    :refreshing="refreshing"
-    @refresh="
-      refreshing = true;
-      load();
-    "
-  >
+  <MobilePage :scroll-locked="true" :refresh-disabled="true">
     <PageHeader title="MCP 工具" back @back="uni.navigateBack()">
       <text class="navigation-title" :class="themeClass('navigation-title')"
         >MCP 工具</text
@@ -227,63 +229,39 @@ function manageKeys() {
           variant="ghost"
           @click="keyword = ''"
       /></view>
-      <scroll-view
-        direction="horizontal"
-        :scroll-x="true"
-        :show-scrollbar="false"
-        class="group-scroll"
-      >
-        <view class="group-tabs">
-          <button
-            v-for="group in groups"
-            :key="group.value"
-            role="button"
-            :aria-label="group.label"
-            :aria-pressed="activeGroup === group.value"
-            class="group-tab"
-            :class="[
-              { 'group-tab-active': activeGroup === group.value },
-              themeClass({ 'group-tab-active': activeGroup === group.value }),
-            ]"
-            @click="activeGroup = group.value"
-          >
-            <text
-              class="group-label"
-              :class="[
-                { 'group-label-active': activeGroup === group.value },
-                themeClass([
-                  'secondary-text',
-                  { 'group-label-active': activeGroup === group.value },
-                ]),
-              ]"
-              >{{ group.label }}</text
-            >
-          </button>
-        </view>
-      </scroll-view>
+      <CategoryTabs class="group-scroll" :items="groups" :current="groupIndex" label="工具分类" id-prefix="mcp-group" item-class="group-tab" :disabled="!!current || guideOpen || busy" @change="activeGroup = groups[$event].value" />
+      <CategoryPager ref="pager" :items="toolPages" :current="groupIndex" :disabled="!!current || guideOpen || busy" :refreshing="refreshing" tabs-selector=".group-scroll" @change="activeGroup = toolPages[$event].value" @refresh="refreshing = true; load()"><template #default="{ item: toolPage, active }"><view :class="{ 'mcp-page-active': active }">
       <view class="list-caption"
         ><text class="caption" :class="themeClass('secondary-text')"
           >工具目录</text
         ><text class="caption" :class="themeClass('secondary-text')"
-          >{{ filtered.length }} 个工具</text
+          >{{ toolPage.rows.length }} 个工具</text
         ></view
       >
       <PageState
         skeleton="list"
         :loading="loading"
         :error="error"
-        :has-content="tools.length > 0"
-        :empty="!filtered.length"
+        :has-content="loaded"
+        :empty="!toolPage.rows.length"
         :empty-text="tools.length ? '没有匹配的工具' : '暂无 MCP 工具'"
         @retry="load"
       >
+        <template #loading>
+          <view class="tool-list" :class="themeClass('surface')" role="status" aria-label="正在加载工具">
+            <view v-for="n in 4" :key="n" class="tool-row tool-skeleton" aria-hidden="true">
+              <view class="tool-icon"><view class="tool-placeholder tool-placeholder-icon" :class="themeClass('tool-placeholder')" /></view>
+              <view class="tool-content"><view class="tool-labels"><view class="tool-placeholder tool-placeholder-title" :class="themeClass('tool-placeholder')" /><view class="tool-placeholder tool-placeholder-name" :class="themeClass('tool-placeholder')" /></view><view class="tool-placeholder tool-placeholder-description" :class="themeClass('tool-placeholder')" /></view>
+            </view>
+          </view>
+        </template>
         <view
-          v-if="filtered.length"
+          v-if="toolPage.rows.length"
           class="tool-list"
           :class="themeClass('surface')"
         >
           <button
-            v-for="(tool, index) in filtered"
+            v-for="(tool, index) in toolPage.rows"
             :key="tool.name"
             role="button"
             :aria-label="'输入参数并调用 ' + tool.name"
@@ -335,6 +313,7 @@ function manageKeys() {
           </button>
         </view>
       </PageState>
+      </view></template></CategoryPager>
     </view>
 
     <AdaptiveModal
@@ -506,6 +485,7 @@ function manageKeys() {
 </template>
 
 <style scoped lang="scss">
+@use "../../styles/skeleton";
 @use '../../styles/platform' as *;
 @use "../../styles/typography" as *;
 @use "../../styles/spacing.scss";
@@ -583,41 +563,13 @@ function manageKeys() {
   width: 100%;
   margin-top: $space-detail;
 }
-.group-tabs {
-  display: flex;
-  flex-direction: row;
-  gap: $space-detail;
-}
-.group-tab {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  min-height: $space-controlMin;
-  flex-shrink: 0;
-  padding: 0 $space-card;
-  margin: 0;
-  border: 0;
-  border-radius: 8px;
-  background-color: transparent;
-}
-.group-tab-active {
-  background-color: #e6eefc;
-}
-.group-tab-active-dark {
-  background-color: #253149;
-}
-.group-label {
-  @include type-style("label");
-  color: $text-secondary-light;
-  white-space: nowrap;
-}
-.group-label-active {
-  color: #245cb2;
-  @include type-style("label-strong");
-}
-.group-label-active-dark {
-  color: #a5c3ff;
-}
+
+
+
+
+
+
+
 .list-caption {
   display: flex;
   flex-direction: row;
@@ -648,6 +600,14 @@ function manageKeys() {
   border-radius: 0;
   text-align: left;
 }
+.tool-skeleton { @include skeleton.pulse; }
+.tool-placeholder { @include skeleton.shape; }
+.tool-placeholder-dark { @include skeleton.dark; }
+.tool-placeholder-icon { width: 20px; height: 20px; }
+.tool-placeholder-title { width: 48%; height: type-line('body-strong'); }
+.tool-placeholder-name { width: 70%; height: type-line('badge'); }
+.tool-placeholder-description { width: 90%; height: type-line('label'); }
+
 .tool-row-divided {
   border-top: $space-hairline solid #edf0f4;
 }
@@ -841,6 +801,7 @@ function manageKeys() {
     width: 54%;
     flex-shrink: 0;
   }
+  .tool-placeholder-description { flex: 1; min-width: 0; }
   .tool-description {
     flex: 1;
     min-width: 0;
@@ -850,13 +811,12 @@ function manageKeys() {
     padding-top: 0;
   }
 }
-.group-tab,
 .tool-row { @include borderless-button; }
 /* #ifdef WEB */
-.group-tab:focus-visible,
 .tool-row:focus-visible {
   outline: 2px solid #739feb;
   outline-offset: -2px;
 }
 /* #endif */
+@include skeleton.motion(".tool-skeleton");
 </style>

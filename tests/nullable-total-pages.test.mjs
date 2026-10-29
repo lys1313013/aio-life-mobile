@@ -35,7 +35,16 @@ for (const [path, api] of [
         return response
       },
     }
-    const load = new Function(...Object.keys(values), await functionSource(path, 'load') + '\nreturn load')(...Object.values(values))
+    const isVideo = path === 'pages/records/video.uvue'
+    if (isVideo) {
+      const target = { label: '全部状态', loaded: false, stale: false, revision: 0 }
+      for (const key of ['rows', 'loading', 'error']) Object.defineProperty(target, key, {
+        get: () => values[key].value, set: value => { values[key].value = value },
+      })
+      values.pages = ref([target]); values.currentPage = ref(target); values.pageRequests = new Map()
+    }
+    const load = new Function(...Object.keys(values), await functionSource(path, isVideo ? 'loadPage' : 'load') +
+      (isVideo ? '\nreturn () => loadPage(0, true)' : '\nreturn load'))(...Object.values(values))
     return { ...values, calls, load }
   }
   test(path + ' 未知 total 继续短页，重复 ID 合并，空页终止', async () => {

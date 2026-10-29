@@ -54,11 +54,16 @@ async function prepare(page, onLoading) {
   if (onLoading) {
     try { await onLoading(); } finally { release(); }
   }
-  await expect(page.locator('.member-card')).toHaveCount(4);
+  await expect(page.locator('.member-page-active .member-card')).toHaveCount(4);
   return state;
 }
 
 async function touchSwipe(page, target, dx, dy = 0, cancel = false) {
+  await expect.poll(async () => {
+    const active = await page.locator('.category-pager-active').boundingBox();
+    const pager = await page.locator('.category-pager').boundingBox();
+    return Math.abs(active.x - pager.x);
+  }).toBeLessThan(1);
   await target.scrollIntoViewIfNeeded();
   const box = await target.boundingBox();
   const viewport = page.viewportSize();
@@ -83,72 +88,73 @@ const names = page => tabs(page).evaluateAll(buttons => buttons.map(button => [b
 test('订阅分类真实横滑、首尾停止与编辑防误触', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 900 });
   const state = await prepare(page);
-  const surface = page.locator('.tab-swipe-surface');
+  const surface = page.locator('.category-pager');
   await expect(expiredSwitch(page)).toHaveAttribute('aria-checked', 'false');
   expect(await names(page)).toEqual(['全部 4', 'AI 1', '视频 1', '音乐 1', '购物 1']);
-  await touchSwipe(page, page.locator('.member-card').first(), -120);
+  // 超过半页的有效横滑不依赖快速手势惯性，避免繁忙机器上的事件延迟改变结果。
+  await touchSwipe(page, page.locator('.member-page-active .member-card').first(), -240);
   await expect(tabs(page).nth(1)).toHaveAttribute('aria-pressed', 'true');
   await expect(page.getByRole('button', { name: '编辑订阅：模拟 ChatGPT', exact: true })).toBeVisible();
   await expect(page.getByRole('dialog')).toHaveCount(0);
   const reads = state.reads;
   await touchSwipe(page, surface, 25);
   await touchSwipe(page, surface, 5, -60);
-  await touchSwipe(page, surface, -120, 0, true);
+  await touchSwipe(page, surface, -240, 0, true);
   await expect(tabs(page).nth(1)).toHaveAttribute('aria-pressed', 'true');
-  await touchSwipe(page, surface, -120);
+  await touchSwipe(page, surface, -240);
   await expect(tabs(page).nth(2)).toHaveAttribute('aria-pressed', 'true');
   await expect(page.getByRole('button', { name: '编辑订阅：模拟迅雷', exact: true })).toBeVisible();
-  await touchSwipe(page, surface, 120);
+  await touchSwipe(page, surface, 240);
   await expect(tabs(page).nth(1)).toHaveAttribute('aria-pressed', 'true');
   expect(state.reads).toBe(reads);
-  await page.locator('.member-card').click();
+  await page.locator('.member-page-active .member-card').click();
   const dialog = page.getByRole('dialog', { name: '编辑订阅', exact: true });
   await expect(dialog).toBeVisible();
-  await touchSwipe(page, dialog, -120);
+  await touchSwipe(page, dialog, -240);
   await expect(tabs(page).nth(1)).toHaveAttribute('aria-pressed', 'true');
   await dialog.getByRole('button', { name: '取消', exact: true }).click();
   await tabs(page).first().click();
-  await touchSwipe(page, surface, 120);
+  await touchSwipe(page, surface, 240);
   await expect(tabs(page).first()).toHaveAttribute('aria-pressed', 'true');
   await tabs(page).nth(3).click();
-  await touchSwipe(page, surface, -120);
+  await touchSwipe(page, surface, -240);
   await expect(tabs(page).last()).toHaveAttribute('aria-pressed', 'true');
   await expect.poll(async () => {
     const selected = await tabs(page).last().boundingBox();
     const bar = await page.locator('.member-category-scroll').boundingBox();
     return selected.x >= bar.x - 1 && selected.x + selected.width <= bar.x + bar.width + 1;
   }).toBe(true);
-  await touchSwipe(page, surface, -120);
+  await touchSwipe(page, surface, -240);
   await expect(tabs(page).last()).toHaveAttribute('aria-pressed', 'true');
 });
 
 test('包含过期与分类联动、保存后退回全部、空态和失败重试', async ({ page }) => {
   const state = await prepare(page);
   await expiredSwitch(page).click();
-  await expect(page.locator('.member-card')).toHaveCount(7);
+  await expect(page.locator('.member-page-active .member-card')).toHaveCount(7);
   expect(await names(page)).toEqual(['全部 7', 'AI 2', '视频 2', '音乐 1', '购物 1', '学习 1']);
   await tabs(page).last().click();
-  await expect(page.locator('.member-card')).toHaveCount(1);
+  await expect(page.locator('.member-page-active .member-card')).toHaveCount(1);
   await expiredSwitch(page).click();
   await expect(tabs(page).first()).toHaveAttribute('aria-pressed', 'true');
-  await expect(page.locator('.member-card')).toHaveCount(4);
+  await expect(page.locator('.member-page-active .member-card')).toHaveCount(4);
   await tabs(page).nth(1).click();
-  await page.locator('.member-card').click();
+  await page.locator('.member-page-active .member-card').click();
   await page.getByRole('button', { name: '保存', exact: true }).click();
   await expect(page.getByRole('dialog')).toHaveCount(0);
   await expect(tabs(page).first()).toHaveAttribute('aria-pressed', 'true');
-  await expect(page.locator('.member-card')).toHaveCount(3);
+  await expect(page.locator('.member-page-active .member-card')).toHaveCount(3);
   expect(state.writes.at(-1).id).toBe(records[0].id);
   state.members = records.filter(row => row.status === 'expired');
   await page.reload();
   await expect(page.getByText('暂无生效中的会员', { exact: true })).toBeVisible();
   expect(await names(page)).toEqual(['全部 0']);
   await expiredSwitch(page).click();
-  await expect(page.locator('.member-card')).toHaveCount(3);
+  await expect(page.locator('.member-page-active .member-card')).toHaveCount(3);
   state.members = [];
   await page.reload();
   await expect(page.getByText('暂无会员', { exact: true })).toBeVisible();
-  await touchSwipe(page, page.locator('.tab-swipe-surface'), -120);
+  await touchSwipe(page, page.locator('.category-pager'), -240);
   await expect(tabs(page).first()).toHaveAttribute('aria-pressed', 'true');
   state.fail = true;
   await page.reload();
@@ -166,18 +172,18 @@ for (const width of [390, 768, 1440]) for (const theme of ['light', 'dark']) {
     page.on('pageerror', error => errors.push(error.message));
     let skeleton;
     await prepare(page, async () => {
-      await expect(page.locator('.skeleton-logo')).toHaveCount(4);
-      skeleton = await page.locator('.member-card').evaluateAll(cards => cards.map(card => ({ height: card.getBoundingClientRect().height, top: card.getBoundingClientRect().top })));
+      await expect(page.locator('.member-page-active .skeleton-logo')).toHaveCount(4);
+      skeleton = await page.locator('.member-page-active .member-card').evaluateAll(cards => cards.map(card => ({ height: card.getBoundingClientRect().height, top: card.getBoundingClientRect().top })));
       await page.screenshot({ path: `artifacts/member-filters/${width}-${theme}-loading.png`, fullPage: true });
     });
-    const loaded = await page.locator('.member-card').evaluateAll(cards => cards.map(card => ({ height: card.getBoundingClientRect().height, top: card.getBoundingClientRect().top })));
+    const loaded = await page.locator('.member-page-active .member-card').evaluateAll(cards => cards.map(card => ({ height: card.getBoundingClientRect().height, top: card.getBoundingClientRect().top })));
     for (let i = 0; i < loaded.length; i++) {
       expect(Math.abs(loaded[i].height - skeleton[i].height)).toBeLessThan(1);
       expect(Math.abs(loaded[i].top - skeleton[i].top)).toBeLessThan(1);
     }
     for (const included of [false, true]) {
       if (included) await expiredSwitch(page).click();
-      await expect(page.locator('.member-card')).toHaveCount(included ? 7 : 4);
+      await expect(page.locator('.member-page-active .member-card')).toHaveCount(included ? 7 : 4);
       expect(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)).toBe(false);
       const switchBox = await expiredSwitch(page).boundingBox();
       const scrollBox = await page.locator('.member-category-scroll').boundingBox();
@@ -185,7 +191,7 @@ for (const width of [390, 768, 1440]) for (const theme of ['light', 'dark']) {
       expect(switchBox.y).toBeGreaterThanOrEqual(scrollBox.y + scrollBox.height);
       expect(Math.abs(switchBox.x + switchBox.width - scrollBox.x - scrollBox.width)).toBeLessThan(1);
       expect(switchBox.x + switchBox.width).toBeLessThanOrEqual(width);
-      const cards = await page.locator('.member-card').evaluateAll(nodes => nodes.map(card => {
+      const cards = await page.locator('.member-page-active .member-card').evaluateAll(nodes => nodes.map(card => {
         const box = card.getBoundingClientRect();
         const title = card.querySelector('.member-title');
         const monthly = card.querySelector('.monthly-price');
@@ -211,8 +217,8 @@ for (const width of [390, 768, 1440]) for (const theme of ['light', 'dark']) {
         expect(cards[1].x).toBeGreaterThan(cards[0].x);
         expect(cards[2].y).toBeGreaterThan(cards[0].y);
       }
-      await expect(page.getByText('自动续费', { exact: true })).toBeVisible();
-      await expect(page.locator('.monthly-price').filter({ hasText: '1150.00' })).toHaveCount(1);
+      await expect(page.locator('.member-page-active').getByText('自动续费', { exact: true })).toBeVisible();
+      await expect(page.locator('.member-page-active .monthly-price').filter({ hasText: '1150.00' })).toHaveCount(1);
       await page.screenshot({ path: `artifacts/member-filters/${width}-${theme}-${included ? 'included' : 'active'}.png`, fullPage: true });
     }
     expect(errors).toEqual([]);

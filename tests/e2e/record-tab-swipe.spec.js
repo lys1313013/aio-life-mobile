@@ -1,121 +1,111 @@
 const { test, expect } = require('./support/test');
 
-test.use({ hasTouch: true });
+function gate() { let release; const promise = new Promise(resolve => { release = resolve; }); return { promise, release }; }
+const ok = data => ({ json: { code: 0, data } });
 
-const cases = [
-  {
-    name: '视频状态', route: 'records/video', api: 'b-video', param: 'status',
-    tabs: ['not_started', 'in_progress', 'on_hold', 'completed', ''], initial: 1,
-    tab: '.status-tab', bar: '.status-scroll', card: '.video-card',
-    row: (value) => ({ id: '1', title: '模拟视频 ' + value, status: value || 'in_progress', duration: 100 }),
-  },
-];
-
-async function touchSwipe(page, target, dx, dy = 0, cancel = false) {
-  await target.scrollIntoViewIfNeeded();
-  const box = await target.boundingBox();
-  const viewport = page.viewportSize();
-  const x = dx < 0
-    ? Math.min(box.x + box.width - 18, viewport.width - 24)
-    : Math.max(box.x + 18, 24);
-  const y = box.y + Math.min(box.height / 2, 60);
-  const client = await page.context().newCDPSession(page);
-  try {
-    await client.send('Emulation.setTouchEmulationEnabled', { enabled: true });
-    await client.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y }] });
-    for (let step = 1; step <= 6; step++) {
-      await client.send('Input.dispatchTouchEvent', {
-        type: 'touchMove', touchPoints: [{ x: x + dx * step / 6, y: y + dy * step / 6 }],
-      });
-      await page.waitForTimeout(25);
-    }
-    await client.send('Input.dispatchTouchEvent', { type: cancel ? 'touchCancel' : 'touchEnd', touchPoints: [] });
-    // 等待内容回弹及手势点击抑制结束后，再开始下一次独立操作。
-    await page.waitForTimeout(450);
-  } finally {
-    await client.detach();
-  }
-}
-
-for (const scenario of cases) {
-  test(`${scenario.name}内容真实横滑、空列表、边界与编辑防误触`, async ({ page }) => {
-    await page.setViewportSize({ width: 390, height: 900 });
-    await page.addInitScript(() => localStorage.setItem('aio-life-mobile.access-token.v1', 'tab-swipe-fixture'));
-    const fulfill = (route, data) => route.fulfill({ json: { code: 0, data } });
-    await page.route('**/api/auth/secondary-lock/menus', route => fulfill(route, []));
-    await page.route('**/api/sysDictType/getByDictType?*', route => fulfill(route, {
-      dictDetailList: [{ value: '1', label: '使用中' }],
-    }));
-    await page.route('**/api/b-video/getStatusCount', route => fulfill(route, { in_progress: 1 }));
-    await page.route('**/api/b-video/statistics', route => fulfill(route, { studiedSeconds: 20 }));
+for (const width of [390, 768, 1440]) for (const colorScheme of ['light', 'dark']) {
+  test(`视频分页与加载稳定 ${width} ${colorScheme}`, async ({ page, apiMock }, info) => {
+    await page.setViewportSize({ width, height: 900 });
+    await page.emulateMedia({ colorScheme });
+    await page.addInitScript(() => localStorage.setItem('aio-life-mobile.access-token.v1', 'video-pager-fixture'));
+    let pending = gate(), delayed = true, fail = false;
     const requests = [];
-    const emptyIndex = scenario.initial + 1;
-    let fail = false;
-    await page.route(`**/api/${scenario.api}/query?*`, route => {
-      const value = new URL(route.request().url()).searchParams.get(scenario.param) || '';
-      requests.push(value);
-      if (fail) return route.fulfill({ json: { code: 1, message: '模拟分类加载失败' } });
-      const items = value === scenario.tabs[emptyIndex] ? [] : [scenario.row(value)];
-      return fulfill(route, { items, total: items.length });
+    const row = { id: '9223372036854775807', title: '模拟长标题课程：从设计原则到完整项目实践与复盘', status: 'in_progress', duration: 3600, watchedDuration: 1800, ownerName: '模拟讲师', coverState: 'NONE' };
+    apiMock({
+      'GET /api/user/info': ok({ id: '1', nickname: '模拟用户', roles: ['admin'] }),
+      'GET /api/auth/secondary-lock/menus': ok([]),
+      'GET /api/b-video/getStatusCount': async () => { if (delayed) await pending.promise; return ok({ in_progress: 8, completed: 1, not_started: 1, on_hold: 0 }); },
+      'GET /api/b-video/statistics': async () => { if (delayed) await pending.promise; return ok({ studiedSeconds: 1800, unstudiedSeconds: 1800 }); },
+      'GET /api/b-video/query': async request => {
+        const status = new URL(request.url()).searchParams.get('status') || '';
+        requests.push(status);
+        if (delayed) await pending.promise;
+        if (fail) return { json: { code: 1, message: '模拟视频加载失败' } };
+        const items = status === 'on_hold' ? [] : status === 'in_progress' ? Array.from({ length: 8 }, (_, index) => ({ ...row, id: String(index + 1) })) : [{ ...row, status: status || 'in_progress' }];
+        return ok({ items, total: items.length });
+      },
     });
-    await page.goto('/#/pages/' + scenario.route);
-    const surface = page.locator('.tab-swipe-surface');
-    const tabs = page.locator(scenario.tab);
-    await expect(page.locator(scenario.card)).toHaveCount(1);
-    await expect(tabs.nth(scenario.initial)).toHaveAttribute('aria-pressed', 'true');
-
-    // 卡片横滑应切换至相邻空分类，不能顺便打开编辑。
-    await touchSwipe(page, page.locator(scenario.card).first(), -120);
-    await expect(tabs.nth(emptyIndex)).toHaveAttribute('aria-pressed', 'true');
-    await expect(page.getByText('暂无记录', { exact: true })).toBeVisible();
+    await page.goto('/#/pages/records/video');
+    const active = page.locator('.video-page-active');
+    const summary = page.locator('.video-summary');
+    const pager = page.locator('.video-pager');
+    await expect(active.locator('.video-skeleton-body')).toHaveCount(6);
+    const initialCard = await active.locator('.video-card').first().boundingBox();
+    const initialSummary = await summary.boundingBox();
+    const initialPager = await pager.boundingBox();
+    await page.screenshot({ path: info.outputPath('loading.png') });
+    delayed = false; pending.release();
+    await expect(active.getByRole('button', { name: /^编辑视频/ })).toHaveCount(8);
+    await expect(summary).toHaveAttribute('aria-busy', 'false');
+    expect(Math.abs((await active.locator('.video-card').first().boundingBox()).height - initialCard.height)).toBeLessThanOrEqual(2);
+    expect(Math.abs((await summary.boundingBox()).height - initialSummary.height)).toBeLessThanOrEqual(2);
+    expect(Math.abs((await pager.boundingBox()).y - initialPager.y)).toBeLessThanOrEqual(2);
+    await page.screenshot({ path: info.outputPath('loaded.png') });
+    const bounds = await pager.boundingBox();
+    // 普通鼠标从卡片区域拖动；半途必须同时看到旧页与相邻页。
+    const x = bounds.x + bounds.width * 0.8, y = bounds.y + 90;
+    await page.mouse.move(x, y); await page.mouse.down();
+    await page.mouse.move(x - bounds.width * 0.6, y, { steps: 10 });
+    const panes = page.locator('.video-page-content');
+    expect((await panes.nth(1).boundingBox()).x).toBeLessThan(bounds.x);
+    expect((await panes.nth(2).boundingBox()).x).toBeLessThan(bounds.x + bounds.width);
+    await page.screenshot({ path: info.outputPath('dragging.png') });
+    await page.mouse.up();
+    await expect(page.locator('.status-tab').nth(2)).toHaveAttribute('aria-pressed', 'true');
+    await expect(active.getByText('暂无记录', { exact: true })).toBeVisible();
     await expect(page.getByRole('dialog')).toHaveCount(0);
-    expect(requests.at(-1)).toBe(scenario.tabs[emptyIndex]);
-
-    const beforeIgnored = requests.length;
-    await touchSwipe(page, surface, 25);
-    await touchSwipe(page, surface, 5, -60);
-    await touchSwipe(page, surface, -120, 0, true);
-    expect(requests).toHaveLength(beforeIgnored);
-    await expect(tabs.nth(emptyIndex)).toHaveAttribute('aria-pressed', 'true');
-    await touchSwipe(page, surface, 120);
-    await expect(tabs.nth(scenario.initial)).toHaveAttribute('aria-pressed', 'true');
-    await expect(page.locator(scenario.card)).toHaveCount(1);
-
-    // 正常点击仍可编辑，弹窗中的横滑不切换后台列表。
-    await page.locator(scenario.card).first().click();
-    const dialog = page.getByRole('dialog');
-    await expect(dialog).toBeVisible();
-    const beforeDialog = requests.length;
-    await touchSwipe(page, dialog, -120);
-    expect(requests).toHaveLength(beforeDialog);
-    await dialog.getByRole('button', { name: '取消', exact: true }).click();
-
-    // 首尾停止，不循环；从倒数第二项滑到末项时，标签应自动可见。
-    await tabs.first().click();
-    await expect(page.locator(scenario.card)).toHaveCount(1);
-    await touchSwipe(page, surface, 120);
-    await expect(tabs.first()).toHaveAttribute('aria-pressed', 'true');
-    await tabs.nth(scenario.tabs.length - 2).click();
-    await expect.poll(() => requests.at(-1)).toBe(scenario.tabs.at(-2));
-    await expect(page.locator('.loading-indicator')).toHaveCount(0);
-    await touchSwipe(page, surface, -120);
-    await expect(tabs.last()).toHaveAttribute('aria-pressed', 'true');
-    await expect.poll(async () => {
-      const selected = await tabs.last().boundingBox();
-      const bar = await page.locator(scenario.bar).boundingBox();
-      return selected.x >= bar.x - 1 && selected.x + selected.width <= bar.x + bar.width + 1;
-    }).toBe(true);
-    const beforeBoundary = requests.length;
-    await touchSwipe(page, surface, -120);
-    expect(requests).toHaveLength(beforeBoundary);
-
-    // 失败页保留切换能力，返回相邻分类可重新加载。
-    fail = true;
-    await touchSwipe(page, surface, 120);
-    await expect(page.getByRole('alert', { name: /模拟分类加载失败/ }).or(page.getByRole('alert').filter({ hasText: '模拟分类加载失败' }))).toBeVisible();
+    await page.locator('.status-tab').nth(1).click();
+    await expect(active.getByRole('button', { name: /^编辑视频/ })).toHaveCount(8);
+    expect(requests.filter(value => value === 'in_progress')).toHaveLength(1);
+    await expect.poll(async () => Math.abs((await panes.nth(1).boundingBox()).x - bounds.x)).toBeLessThan(1);
+    // 触摸刷新保留卡片及统计，失败保留内容，再原位重试。
+    const touch = await page.context().newCDPSession(page);
+    await touch.send('Emulation.setTouchEmulationEnabled', { enabled: true });
+    pending = gate(); delayed = true; fail = true;
+    await touch.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y }] });
+    for (let step = 1; step <= 8; step++) await touch.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x, y: y + step * 18 }] });
+    await touch.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+    await expect(active.getByRole('status', { name: '正在更新内容' })).toBeVisible();
+    await expect(active.getByRole('button', { name: /^编辑视频/ })).toHaveCount(8);
+    expect((await active.locator('.video-card').first().boundingBox()).height).toBeCloseTo(initialCard.height, 0);
+    delayed = false; pending.release();
+    await expect(active.getByRole('alert')).toBeVisible();
     fail = false;
-    await touchSwipe(page, surface, -120);
-    await expect(page.getByRole('alert', { name: /模拟分类加载失败/ }).or(page.getByRole('alert').filter({ hasText: '模拟分类加载失败' }))).toHaveCount(0);
-    await expect(tabs.last()).toHaveAttribute('aria-pressed', 'true');
+    await active.getByRole('button', { name: '重试', exact: true }).click();
+    await expect(active.getByRole('alert')).toHaveCount(0);
+    await expect(active.getByRole('status', { name: '正在更新内容' })).toHaveCount(0);
+    await expect(active.locator('.video-skeleton-body')).toHaveCount(0);
+    const scrollbars = await page.locator('.video-pager .category-pager-scroll .uni-scroll-view-scrollbar-hidden').evaluateAll(nodes => nodes.map(node => getComputedStyle(node).scrollbarWidth));
+    expect(scrollbars).toEqual(['none', 'none', 'none', 'none', 'none']);
+    await page.screenshot({ path: info.outputPath('refreshed.png') });
+    // 未访问状态首次失败可重试；切走不让旧状态覆盖当前页。
+    fail = true;
+    await page.locator('.status-tab').nth(0).click();
+    await expect(active.getByRole('alert')).toBeVisible();
+    fail = false;
+    pending = gate(); delayed = true;
+    await active.getByRole('button', { name: '重试', exact: true }).click();
+    await expect(active.locator('.video-skeleton-body')).toHaveCount(6);
+    await page.locator('.status-tab').nth(1).click();
+    await expect(active.getByRole('button', { name: /^编辑视频/ })).toHaveCount(8);
+    delayed = false; pending.release();
+    await page.locator('.status-tab').nth(0).click();
+    await expect(active.getByRole('button', { name: /^编辑视频/ })).toHaveCount(1);
+    await page.locator('.status-tab').nth(4).click();
+    await expect(active.getByRole('button', { name: /^编辑视频/ })).toHaveCount(1);
+    await expect.poll(async () => Math.abs((await panes.nth(4).boundingBox()).x - bounds.x)).toBeLessThan(1);
+    const beforeBoundary = requests.length;
+    await touch.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y }] });
+    await touch.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: x - 100, y }] });
+    await touch.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+    await expect.poll(async () => Math.abs((await panes.nth(4).boundingBox()).x - bounds.x)).toBeLessThan(1);
+    expect(requests).toHaveLength(beforeBoundary);
+    await touch.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: bounds.x + 30, y }] });
+    await touch.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: bounds.x + 150, y }] });
+    await touch.send('Input.dispatchTouchEvent', { type: 'touchCancel', touchPoints: [] });
+    await expect.poll(async () => Math.abs((await panes.nth(4).boundingBox()).x - bounds.x)).toBeLessThan(1);
+    await expect(page.locator('.status-tab').nth(4)).toHaveAttribute('aria-pressed', 'true');
+    await touch.detach();
+
   });
 }

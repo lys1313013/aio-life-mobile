@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import CategoryTabs from "../../components/CategoryTabs.uvue";
+import CategoryPager from '../../components/CategoryPager.uvue';
 import { readPageTotal, mergePageItems, hasMorePageItems } from '../../services/pagination.ts';
 import { isRequired, missingRequired } from '../../services/form-required.ts';
 import { computed, nextTick, onUnmounted, ref, watch } from 'vue';
@@ -28,6 +30,8 @@ import { session } from '../../services/session.ts';
 import { useDomainPage } from '../../services/domains/page-session.ts';
 import spacing from '../../styles/spacing.json';
 import { themeClass } from '../../services/theme.ts';
+const pager = ref(null);
+const loaded = ref(false);
 const userInfo = ref<Record<string, any>>({});
 const mode = ref('消息'),
   filter = ref('全部'),
@@ -94,7 +98,8 @@ onUnmounted(() => {
 });
 const own = computed(() => String(session.user?.id || ''));
 const conversations = computed(() => groupConversations(messages.value, own.value, userInfo.value));
-const visibleConversations = computed(() => conversations.value.filter((item) => filter.value !== '未读' || item.unread));
+const conversationPages = computed(() => ['全部', '未读'].map(label => ({ label, rows: conversations.value.filter(item => label !== '未读' || item.unread) })));
+const filterIndex = computed(() => filter.value === '未读' ? 1 : 0);
 const unreadCount = computed(() => conversations.value.reduce((count, item) => count + item.unread, 0));
 const chatMessages = computed(() => conversationMessages(messages.value, own.value, receiver.value));
 function messageTime(value: string) {
@@ -164,7 +169,7 @@ async function load(more = false) {
       }
     } else {
       const rows = await fetchMessages();
-      if (alive && current === stamp) messages.value = rows;
+      if (alive && current === stamp) { messages.value = rows; loaded.value = true; }
       await loadUserInfo(rows, current);
     }
   } catch (e) {
@@ -185,7 +190,7 @@ useDomainPage(
     alive = false;
     stamp++;
     clearRecipientCheck();
-    if (clear) messages.value = [];
+    if (clear) { messages.value = []; loaded.value = false; }
     if (clear) adminRows.value = [];
     if (clear) receiver.value = '';
     if (clear) draftReceiver.value = '';
@@ -220,6 +225,7 @@ function username(id: string) {
   return String(id) === own.value ? session.user?.name || '我' : userInfo.value[String(id)]?.nickname || id;
 }
 async function selectConversation(id: string) {
+  if (pager.value?.ignoreClick()) return;
   receiver.value = id;
   chatDraft.value = '';
   chatError.value = '';
@@ -339,7 +345,7 @@ async function adminRemove(row: any) {
 }
 </script>
 <template>
-  <MobilePage :scroll-locked="!!receiver" :refreshing="refreshing" @reachbottom="loadMore" @refresh="refreshing = true; load()">
+  <MobilePage :scroll-locked="!!receiver || mode === '消息'" :refresh-disabled="mode === '消息'" :refreshing="refreshing" @reachbottom="loadMore" @refresh="refreshing = true; load()">
     <template v-if="!receiver">
       <PageHeader :title="mode === '管理' ? '消息管理' : '消息中心'" back @back="back">
         <text class="header-title" :class="themeClass('header-title')">{{ mode === '管理' ? '消息管理' : '消息中心' }}</text>
@@ -349,19 +355,23 @@ async function adminRemove(row: any) {
       <view class="ui-page-body">
         <template v-if="mode === '消息'">
           <view class="list-toolbar">
-            <view class="filter-tabs" role="tablist" aria-label="消息筛选">
-              <button v-for="option in ['全部', '未读']" :key="option" class="filter-button" role="tab" :aria-label="option" :aria-selected="filter === option" @click="filter = option">
-                <text class="filter-label" :class="[{ 'filter-active': filter === option }, themeClass(['filter-label', { 'filter-active': filter === option }])]">{{ option }}</text>
-                <text v-if="option === '未读' && unreadCount" class="count" :class="themeClass('count')">{{ unreadCount }}</text>
-              </button>
-            </view>
+            <CategoryTabs class="filter-tabs" :items="[{ label: '全部' }, { label: '未读', count: unreadCount || null }]" :current="filterIndex" label="消息筛选" id-prefix="message-filter" tab-role variant="underline" @change="filter = $event === 1 ? '未读' : '全部'" />
             <ConfirmAction label="全部已读" icon="ant-design:check-outlined" :danger="false" :action="readAll">
               <template #default="{ open, busy }"><MobileButton label="全部已读" icon="ant-design:check-outlined" variant="ghost" :disabled="!unreadCount" :loading="busy" @click="open" /></template>
             </ConfirmAction>
           </view>
-          <PageState :loading="loading" :error="error" :empty="!visibleConversations.length" :empty-text="filter === '未读' ? '暂无未读会话' : '暂无会话'" @retry="load()">
+          <CategoryPager ref="pager" :items="conversationPages" :current="filterIndex" :disabled="modal || !!receiver" :refreshing="refreshing" tabs-selector=".filter-tabs" @change="filter = conversationPages[$event].label" @refresh="refreshing = true; load()"><template #default="{ item: conversationPage, active }"><view :class="{ 'messages-page-active': active }">
+          <PageState :loading="loading" :has-content="loaded" :error="error" :empty="!conversationPage.rows.length" :empty-text="conversationPage.label === '未读' ? '暂无未读会话' : '暂无会话'" @retry="load()">
+            <template #loading>
+              <view class="conversation-list" :class="themeClass('conversation-list')" role="status" aria-label="正在加载会话">
+                <view v-for="n in 4" :key="n" class="conversation conversation-skeleton" aria-hidden="true">
+                  <view class="avatar conversation-placeholder" :class="themeClass('conversation-placeholder')" />
+                  <view class="conversation-info"><view class="conversation-placeholder conversation-placeholder-name" :class="themeClass('conversation-placeholder')" /><view class="conversation-placeholder conversation-placeholder-preview" :class="themeClass('conversation-placeholder')" /></view>
+                </view>
+              </view>
+            </template>
             <view class="conversation-list" :class="themeClass('conversation-list')">
-              <button v-for="item in visibleConversations" :key="item.id" class="conversation" :class="themeClass('conversation')" role="button" :aria-label="'与' + item.name + '的会话'" @click="selectConversation(item.id)">
+              <button v-for="item in conversationPage.rows" :key="item.id" class="conversation" :class="themeClass('conversation')" role="button" :aria-label="'与' + item.name + '的会话'" @click="selectConversation(item.id)">
                 <image v-if="item.avatar" :src="item.avatar" mode="aspectFill" class="avatar" />
                 <view v-else class="avatar avatar-fallback" :class="themeClass('avatar-fallback')"><text class="avatar-letter" :class="themeClass('avatar-letter')">{{ item.name.slice(0, 1) }}</text></view>
                 <view class="conversation-info">
@@ -371,6 +381,7 @@ async function adminRemove(row: any) {
               </button>
             </view>
           </PageState>
+          </view></template></CategoryPager>
         </template>
         <PageState v-else :loading="loading" :error="error" @retry="load()">
           <view class="ui-toolbar"><FormField compact stretch label="用户 ID" v-model="adminUser" /><MobileButton label="筛选" icon="ant-design:search-outlined" :loading="loading" @click="load()" /></view>
@@ -442,6 +453,7 @@ async function adminRemove(row: any) {
   </MobilePage>
 </template>
 <style scoped lang="scss">
+@use "../../styles/skeleton";
 @use '../../styles/platform' as *;
 @use '../../styles/typography' as *;
 @use '../../styles/spacing.scss';
@@ -465,6 +477,12 @@ async function adminRemove(row: any) {
 .conversation-list-dark { background-color: #1c1e22; }
 .conversation { display: flex; flex-direction: row; align-items: center; gap: $space-card; width: 100%; min-height: 76px; box-sizing: border-box; margin: 0; padding: $space-card; background-color: transparent; text-align: left; border-radius: 0; }
 .conversation-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: $space-detail; }
+.conversation-skeleton { @include skeleton.pulse; }
+.conversation-placeholder { @include skeleton.shape; }
+.conversation-placeholder-dark { @include skeleton.dark; }
+.conversation-placeholder-name { width: 40%; height: type-line('body-strong'); }
+.conversation-placeholder-preview { width: 80%; height: type-line('label'); }
+
 .conversation-line { justify-content: space-between; min-width: 0; }
 .conversation-name { @include type-style('body-strong'); color: #27272a; flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .conversation-name-dark { color: #eeeeef; }
@@ -513,4 +531,5 @@ async function adminRemove(row: any) {
 .chat-error { @include type-style('caption'); color: #df5264; flex: 1; min-width: 0; overflow-wrap: anywhere; }
 .chat-error-row { margin-bottom: $space-detail; }
 .conversation, .filter-button { @include borderless-button; }
+@include skeleton.motion(".conversation-skeleton");
 </style>

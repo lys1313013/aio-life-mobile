@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import CategoryTabs from "../../components/CategoryTabs.uvue";
+import CategoryPager from '../../components/CategoryPager.uvue';
 import { computed, onUnmounted, ref } from 'vue';
 import { onLoad, onShow } from '@dcloudio/uni-app';
 import MobilePage from '../../components/MobilePage.uvue';
@@ -20,6 +22,8 @@ import { createRecordScope } from '../../services/records/page-scope.ts';
 import { dateTime, taskPayload, reordered } from '../../services/records/contracts.ts';
 import { fetchColumns, fetchTasks, fetchDetails, saveTaskRecord, deleteTaskRecord, sortTaskRecords, starDetail } from './services/tasks.ts';
 
+const pager = ref(null);
+const loaded = ref(false);
 const columns = ref<any[]>([]), tasks = ref<any[]>([]), groups = ref<any>({});
 const { appGridItem } = useAppLayout();
 const selected = ref('all'), keyword = ref(''), loading = ref(false), refreshing = ref(false), error = ref('');
@@ -35,7 +39,7 @@ const scope = createRecordScope((clearData) => {
   loading.value = false;
   refreshing.value = false;
   Object.values(groups.value).forEach((group: any) => { group.revision++; group.loading = false; });
-  if (clearData) { columns.value = []; tasks.value = []; groups.value = {}; keyword.value = ''; selected.value = 'all'; }
+  if (clearData) { loaded.value = false; columns.value = []; tasks.value = []; groups.value = {}; keyword.value = ''; selected.value = 'all'; }
 });
 onUnmounted(() => { alive = false; generation++; });
 onLoad((options) => { requestedDetail = options?.detailId || ''; requestedTask = options?.taskId || ''; });
@@ -98,8 +102,10 @@ async function load(refresh = false) {
     if (!alive || current !== generation) return;
     columns.value = columnRows;
     tasks.value = rows;
+    loaded.value = true;
     rows.forEach((task) => groupFor(task.id));
     Object.keys(groups.value).forEach((id) => { if (!rows.some((task) => task.id === id)) delete groups.value[id]; });
+    if (selected.value === 'unassigned' && !rows.some(task => !columnRows.some(column => column.id === task.columnId))) selected.value = 'all';
     if (!['all', 'unassigned'].includes(selected.value) && !columnRows.some((column) => column.id === selected.value)) selected.value = 'all';
     // Each group settles independently; a slow or failed group does not hide the rest.
     // Bound fan-out because the existing API returns details for one task at a time.
@@ -120,17 +126,20 @@ async function load(refresh = false) {
 const refreshOnShow = usePageRefresh(() => load(), { loading: () => loading.value, error: () => (error.value || Object.values(groups.value).some((group: any) => group.error || !group.loaded)) ? '待办加载未完成' : '', keys: () => ['tasks', 'taskColumn', 'taskDetails'] });
 onShow(() => refreshOnShow());
 const orphanCount = computed(() => tasks.value.filter((task) => !columns.value.some((column) => column.id === task.columnId)).length);
-const visibleGroups = computed(() => {
+function groupsFor(selectedValue) {
   const search = keyword.value.trim().toLowerCase();
-  return tasks.value.filter((task) => selected.value === 'all' || (selected.value === 'unassigned' ? !columns.value.some((column) => column.id === task.columnId) : task.columnId === selected.value))
+  return tasks.value.filter((task) => selectedValue === 'all' || (selectedValue === 'unassigned' ? !columns.value.some((column) => column.id === task.columnId) : task.columnId === selectedValue))
     .map((task) => {
       const state = groups.value[task.id];
       const matchesGroup = !search || (task.content + ' ' + (task.detail || '')).toLowerCase().includes(search);
       const items = state.items.filter((item) => matchesGroup || item.content.toLowerCase().includes(search));
       return { task, state, pending: items.filter((item) => item.isCompleted !== 1), completed: items.filter((item) => item.isCompleted === 1), matches: matchesGroup || items.length > 0 || !state.loaded || !!state.error };
     }).filter((group) => group.matches);
-});
+}
+const taskPages = computed(() => [{ id: 'all', label: '全部', ariaLabel: '全部清单' }, ...columns.value.map(column => ({ id: column.id, label: column.title })), ...(orphanCount.value ? [{ id: 'unassigned', label: '未归类' }] : [])].map(tab => ({ ...tab, groups: groupsFor(tab.id) })));
+const taskIndex = computed(() => Math.max(0, taskPages.value.findIndex(tab => tab.id === selected.value)));
 function open(type, item = null) {
+  if (pager.value?.ignoreClick()) return;
   if (writing.value || (item && type === 'detail' && groupFor(item.taskId).loading)) return;
   kind.value = type; formError.value = '';
   form.value = item ? { ...item } : type === 'column' ? { title: '', bgColor: '' } : { content: '', detail: '', columnId: columns.value.some((column) => column.id === selected.value) ? selected.value : columns.value[0]?.id, dueDate: null };
@@ -225,7 +234,7 @@ async function move(type, item, offset) {
 }
 </script>
 <template>
-  <MobilePage :refreshing="refreshing" @refresh="load(true)">
+  <MobilePage :scroll-locked="true" :refresh-disabled="true">
     <view class="todo-page ui-page-body" :class="{ 'todo-page-dark': isDark }">
       <PageHeader title="待办" :back="true" @back="uni.navigateBack()" />
       <view class="ui-toolbar">
@@ -233,17 +242,12 @@ async function move(type, item, offset) {
         <MobileButton label="新增清单" icon="ant-design:plus-outlined" :disabled="!columns.length || loading || writing" @click="open('task')" />
         <MobileButton label="管理任务列" icon="ant-design:more-outlined" variant="ghost" @click="managing = true" />
       </view>
-      <scroll-view direction="horizontal" :scroll-x="true" class="column-scroll ui-section">
-        <view class="column-tabs">
-          <view class="column-tab" :class="{ 'column-tab-active': selected === 'all', 'column-tab-active-dark': isDark && selected === 'all' }" role="button" tabindex="0" aria-label="全部清单" :aria-pressed="selected === 'all'" @click="selected = 'all'" @keydown.enter.prevent="selected = 'all'" @keydown.space.prevent="selected = 'all'"><text :style="appTextColor(selected === 'all')" class="column-tab-title">全部</text></view>
-          <view v-for="column in columns" :key="column.id" class="column-tab" :class="{ 'column-tab-active': selected === column.id, 'column-tab-active-dark': isDark && selected === column.id }" role="button" tabindex="0" :aria-label="column.title" :aria-pressed="selected === column.id" @click="selected = column.id" @keydown.enter.prevent="selected = column.id" @keydown.space.prevent="selected = column.id"><text :style="appTextColor(selected === column.id)" class="column-tab-title">{{ column.title }}</text></view>
-          <view v-if="orphanCount" class="column-tab" :class="{ 'column-tab-active': selected === 'unassigned', 'column-tab-active-dark': isDark && selected === 'unassigned' }" role="button" tabindex="0" aria-label="未归类" :aria-pressed="selected === 'unassigned'" @click="selected = 'unassigned'" @keydown.enter.prevent="selected = 'unassigned'" @keydown.space.prevent="selected = 'unassigned'"><text :style="appTextColor(selected === 'unassigned')" class="column-tab-title">未归类</text></view>
-        </view>
-      </scroll-view>
-      <PageState :loading="loading" :error="error" :empty="!visibleGroups.length" :has-content="tasks.length > 0" :empty-text="keyword ? '没有找到相关待办' : '还没有清单'" @retry="load()">
+      <CategoryTabs class="column-scroll ui-section" :items="taskPages" :current="taskIndex" label="任务列" id-prefix="todo-column" item-class="column-tab" :disabled="!!form || managing || writing" @change="selected = taskPages[$event].id" />
+      <CategoryPager ref="pager" :items="taskPages" :current="taskIndex" :disabled="!!form || managing || writing" :refreshing="refreshing" tabs-selector=".column-scroll" @change="selected = taskPages[$event].id" @refresh="load(true)"><template #default="{ item: taskPage, active }"><view :class="{ 'todo-page-active': active }">
+      <PageState :loading="loading" :error="error" :empty="!taskPage.groups.length" :has-content="loaded" :empty-text="keyword ? '没有找到相关待办' : '还没有清单'" @retry="load()">
         <template #loading><view class="task-card ui-pad-card"><ContentSkeleton variant="list" /></view></template>
         <view class="task-groups">
-          <view v-for="group in visibleGroups" :key="group.task.id" class="task-card ui-pad-card" :style="appGridItem(1, 'section', [[768, 2]])" :class="{ 'task-card-dark': isDark }" :aria-label="'清单：' + group.task.content">
+          <view v-for="group in taskPage.groups" :key="group.task.id" class="task-card ui-pad-card" :style="appGridItem(1, 'section', [[768, 2]])" :class="{ 'task-card-dark': isDark }" :aria-label="'清单：' + group.task.content">
             <view class="group-heading">
               <text class="group-title" :class="{ 'primary-text-dark': isDark }">{{ group.task.content }}</text>
               <text v-if="group.state.loaded" class="group-count" :class="{ 'secondary-text-dark': isDark }">{{ group.task.unCompletedCount }}</text>
@@ -268,6 +272,7 @@ async function move(type, item, offset) {
         </view>
         <MobileButton v-if="!tasks.length && !loading && !error" :label="columns.length ? '新增清单' : '新增任务列'" variant="quiet" @click="open(columns.length ? 'task' : 'column')" />
       </PageState>
+      </view></template></CategoryPager>
       <AdaptiveModal v-if="managing && !form" label="管理任务列" show-close @close="managing = false">
         <view v-for="column in columns" :key="column.id" class="group-heading">
           <text class="group-title" :class="{ 'primary-text-dark': isDark }">{{ column.title }}</text>
@@ -357,11 +362,11 @@ async function move(type, item, offset) {
 .todo-page { color: #27272a; }
 .todo-page-dark { color: #eeeeef; }
 .column-scroll { width: 100%; }
-.column-tabs { display: flex; flex-direction: row; gap: $space-detail; }
-.column-tab { display: flex; flex-direction: row; align-items: center; min-height: $space-controlMin; padding: 0 $space-card; border-radius: 12px; flex-shrink: 0; }
-.column-tab-active { background-color: #e8effc; }
-.column-tab-active-dark { background-color: #263a58; }
-.column-tab-title { @include type-style('body'); }
+
+
+
+
+
 .task-groups { display: flex; flex-direction: row; flex-wrap: wrap; align-items: flex-start; gap: $space-section; }
 .task-card { width: 100%; box-sizing: border-box; min-width: 0; background-color: #ffffff; border-radius: 16px; }
 @media (min-width: 768px) { .task-card { width: calc((100% - #{$space-section}) / 2); } }
@@ -389,7 +394,7 @@ async function move(type, item, offset) {
 .primary-text-dark { color: #eeeeef; }
 .secondary-text-dark { color: $text-secondary-dark; }
 /* #ifdef WEB */
-.column-tab, .completed-toggle { cursor: pointer; }
-.column-tab:focus-visible, .completed-toggle:focus-visible { outline: 2px solid #427bea; outline-offset: 2px; }
+.completed-toggle { cursor: pointer; }
+.completed-toggle:focus-visible { outline: 2px solid #427bea; outline-offset: 2px; }
 /* #endif */
 </style>

@@ -10,7 +10,7 @@ let sequence = 0;
 
 async function pageLoadFixture(page, functionEnd) {
   const pageSource = await readFile(new URL(`../src/pages/${page}.uvue`, import.meta.url), 'utf8');
-  const start = pageSource.indexOf('async function load(');
+  const start = pageSource.indexOf(page === 'records/video' ? 'const pageRequests' : 'async function load(');
   const source = pageSource.slice(start, pageSource.indexOf(functionEnd, start));
   const fixture = { selected: null, fail: false, missing: false, detailCalls: [] };
   const key = `__homeEntry${++sequence}`;
@@ -28,6 +28,13 @@ const fetchMemoById=async value=>{fixture.detailCalls.push(value); if(fixture.fa
 const fetchNoteById=async()=>({items:[]});
 const fetchVideoPage=async()=>{if(fixture.fail)throw Error('模拟读取失败'); return {items:fixture.missing?[]:[full],total:fixture.missing?0:1};};
 const fetchDevicePage=fetchVideoPage;
+${page === 'records/video' ? `
+const target = { label: '全部状态', loaded: false, stale: false, revision: 0 };
+for (const [key, value] of Object.entries({rows, loading, error})) Object.defineProperty(target, key, {get:()=>value.value, set:next=>{value.value=next;}});
+const pages={value:[target]}, currentPage={value:target}, statusIndex={value:0};
+const summaryLoaded={value:false}, summaryLoading={value:false}, summaryError={value:''};
+let disposed=false, pageActive=true;
+` : ''}
 ${source}
 export {load, loading, error};`;
   const state = await import(moduleUrl(code));

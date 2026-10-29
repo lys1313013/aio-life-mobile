@@ -1,0 +1,66 @@
+<script setup lang="ts">
+import { isDark } from '../services/theme.ts';
+const props = withDefaults(defineProps<{
+  items: any[]; current: number; label?: string; variant?: 'underline' | 'solid' | 'soft';
+  idPrefix: string; itemClass?: string; labelClass?: string; countClass?: string;
+  loading?: boolean; disabled?: boolean; tabRole?: boolean;
+}>(), { label: '分类', variant: 'soft', itemClass: '', labelClass: '', countClass: '', loading: false, disabled: false, tabRole: false });
+const emit = defineEmits(['change']);
+function select(index: number) { if (!props.disabled && index >= 0 && index < props.items.length) emit('change', index); }
+function keydown(event, index: number) {
+  const next = event.key === 'ArrowRight' ? Math.min(props.items.length - 1, index + 1) : event.key === 'ArrowLeft' ? Math.max(0, index - 1) : event.key === 'Home' ? 0 : event.key === 'End' ? props.items.length - 1 : -1;
+  if (next < 0 || props.disabled) return;
+  event.preventDefault?.();
+  select(next);
+  // #ifdef WEB
+  const button = event.currentTarget?.parentElement?.children[next];
+  button?.focus({ preventScroll: true });
+  // #endif
+}
+</script>
+<template>
+  <scroll-view class="category-tabs" direction="horizontal" :scroll-x="true" :show-scrollbar="false"
+    :scroll-into-view="idPrefix + '-' + current" :scroll-with-animation="true">
+    <view class="category-tabs-track" :role="tabRole ? 'tablist' : 'group'" :aria-label="label">
+      <button v-for="(item, index) in items" :id="idPrefix + '-' + index" :key="item.id ?? item.value ?? item.label"
+        class="category-tab" :class="[itemClass, 'category-tab-' + variant, { ['category-tab-' + variant + '-selected']: current === index, ['category-tab-' + variant + '-selected-dark']: current === index && isDark }]"
+        :role="tabRole ? 'tab' : 'button'" :aria-label="item.ariaLabel || item.label" :aria-pressed="tabRole ? undefined : current === index" :aria-selected="tabRole ? current === index : undefined"
+        :disabled="disabled" :tabindex="disabled || (tabRole && current !== index) ? -1 : 0"
+        @click="select(index)" @keydown="keydown($event, index)" @keydown.enter.prevent="select(index)" @keydown.space.prevent="select(index)">
+        <text class="category-tab-label" :class="[labelClass, { 'category-tab-label-dark': isDark, 'category-tab-label-selected': current === index, 'category-tab-label-selected-dark': current === index && isDark, 'category-tab-label-inverse': current === index && variant === 'solid' }]">{{ item.label }}</text>
+        <text v-if="item.count != null" class="category-tab-count" :class="[countClass, { 'category-tab-label-dark': isDark, 'category-tab-label-selected': current === index, 'category-tab-label-selected-dark': current === index && isDark, 'category-tab-label-inverse': current === index && variant === 'solid' }]">{{ loading ? '—' : item.count }}</text>
+      </button>
+    </view>
+  </scroll-view>
+</template>
+<style scoped lang="scss">
+@use '../styles/platform' as *;
+@use '../styles/spacing-tokens' as *;
+@use '../styles/typography' as *;
+@use '../styles/text-colors' as *;
+@use '../styles/theme-tokens' as *;
+.category-tabs { width: 100%; min-width: 0; }
+.category-tabs-track { @include intrinsic-width; flex-direction: row; gap: $space-inline; }
+/* #ifndef APP */
+.category-tabs-track { min-width: 100%; }
+/* #endif */
+.category-tab { display: flex; flex-direction: row; flex-shrink: 0; align-items: center; justify-content: center; min-width: $space-controlMin; min-height: $space-controlMin; margin: 0; padding: 0 $space-card; gap: $space-detail; border-radius: 12px; background-color: transparent; }
+.category-tab-solid { background-color: rgba(125,140,160,.08); }
+.category-tab-soft-selected { background-color: #e6eefc; }
+.category-tab-soft-selected-dark { background-color: #253149; }
+.category-tab-label { @include type-style('label'); color: $text-secondary-light; white-space: nowrap; }
+.category-tab-count { @include type-style('caption'); color: $text-secondary-light; }
+.category-tab-label-dark { color: $text-secondary-dark; }
+.category-tab-label-selected { color: $theme-accent-light; }
+.category-tab-solid-selected { background-color: $theme-accent-light; }
+.category-tab-solid-selected-dark { background-color: #315fbb; }
+.category-tab-underline { border-radius: 0; border-bottom: 2px solid transparent; background-color: transparent; padding: 0 $space-detail; }
+.category-tab-underline-selected { border-bottom-color: $theme-accent-light; }
+.category-tab-underline-selected-dark { border-bottom-color: $theme-accent-dark; }
+.category-tab-label-selected-dark { color: $theme-accent-dark; }
+.category-tab-label-inverse { color: #ffffff; }
+.category-tab { @include borderless-button; }
+/* #ifdef WEB */
+.category-tab:focus-visible { outline: 2px solid $theme-accent-light; outline-offset: -2px; }
+/* #endif */
+</style>

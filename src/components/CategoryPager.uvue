@@ -1,0 +1,84 @@
+<script setup lang="ts">
+import { getCurrentInstance, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
+import { onResize } from '@dcloudio/uni-app';
+import { isDark } from '../services/theme.ts';
+// #ifdef WEB
+import { bindPagerMouseDrag } from '../services/pager-mouse-drag.ts';
+// #endif
+const props = withDefaults(defineProps<{
+  items: any[]; current: number; disabled?: boolean; refreshing?: boolean; layoutKey?: any;
+  tabsSelector?: string; refreshEnabled?: boolean;
+}>(), { disabled: false, refreshing: false, refreshEnabled: true, tabsSelector: '.category-tabs' });
+const emit = defineEmits(['change', 'refresh', 'reachbottom']);
+const root = ref(null), height = ref(0);
+const instance = getCurrentInstance();
+let disposed = false, startX = 0, startY = 0, ignoreUntil = 0;
+async function measure() {
+  await nextTick();
+  if (disposed || !instance?.proxy) return;
+  uni.createSelectorQuery().in(instance.proxy).select('.category-pager').boundingClientRect(rect => {
+    if (!disposed && rect && !Array.isArray(rect)) height.value = Math.max(1, uni.getWindowInfo().windowHeight - rect.top);
+  }).exec();
+}
+function touchStart(event) { startX = event.touches[0]?.clientX || 0; startY = event.touches[0]?.clientY || 0; }
+function touchMove(event) {
+  const point = event.touches[0];
+  if (point && Math.max(Math.abs(point.clientX - startX), Math.abs(point.clientY - startY)) > 8) ignoreUntil = Date.now() + 400;
+}
+function ignoreClick() { return Date.now() < ignoreUntil; }
+defineExpose({ ignoreClick, measure });
+onMounted(measure);
+onResize(measure);
+watch(() => [props.items.length, props.layoutKey], measure, { flush: 'post' });
+// #ifdef WEB
+let release: (() => void) | undefined;
+async function isolatePages() {
+  await nextTick();
+  const element = root.value?.$el || root.value;
+  if (!element || disposed) return;
+  const panes = element.querySelectorAll('.category-pager-page');
+  panes.forEach((pane, index) => {
+    const inactive = index !== props.current;
+    if (inactive && pane.contains(document.activeElement)) (document.activeElement as HTMLElement)?.blur();
+    pane.inert = inactive;
+  });
+}
+watch(() => [props.current, props.items.length], isolatePages, { flush: 'post' });
+onMounted(isolatePages);
+onMounted(() => {
+  const element = root.value?.$el || root.value;
+  if (element) release = bindPagerMouseDrag(element.closest('.ui-page-body') || element.parentElement, '.category-pager', props.tabsSelector);
+});
+// #endif
+onUnmounted(() => {
+  disposed = true;
+  // #ifdef WEB
+  release?.();
+  // #endif
+});
+</script>
+<template>
+  <swiper ref="root" class="category-pager" :style="{ height: height + 'px' }" :current="Math.max(0, current)"
+    :duration="360" easing-function="easeOutCubic" :circular="false" :disable-touch="disabled"
+    @change="!disabled && emit('change', $event.detail.current)" @touchstart="touchStart" @touchmove="touchMove">
+    <swiper-item v-for="(item, index) in items" :key="item.id ?? item.value ?? item.label ?? index">
+      <scroll-view class="category-pager-scroll" direction="vertical" :scroll-y="true" :show-scrollbar="false"
+        :refresher-enabled="refreshEnabled && index === current && !disabled" :refresher-triggered="refreshing && index === current"
+        :refresher-default-style="isDark ? 'white' : 'black'" @refresherrefresh="emit('refresh', index)" @scrolltolower="index === current && emit('reachbottom', index)">
+        <view class="category-pager-page" :class="{ 'category-pager-active': index === current }" :aria-hidden="index !== current">
+          <slot :item="item" :index="index" :active="index === current" />
+        </view>
+      </scroll-view>
+    </swiper-item>
+  </swiper>
+</template>
+<style scoped lang="scss">
+@use '../styles/spacing-tokens' as *;
+.category-pager { width: calc(100% + #{$space-section}); min-width: 0; }
+.category-pager-scroll { height: 100%; }
+.category-pager-page { box-sizing: border-box; padding-right: $space-section; padding-bottom: calc(56px + #{$space-page} + #{$space-inline} + env(safe-area-inset-bottom)); }
+/* #ifdef WEB */
+.category-pager { cursor: grab; user-select: none; }
+.category-pager:active { cursor: grabbing; }
+/* #endif */
+</style>
