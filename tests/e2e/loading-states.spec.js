@@ -278,17 +278,25 @@ for (const width of [390, 768, 1440]) for (const theme of ['light', 'dark']) {
       await page.getByRole('button', { name: view, exact: true }).click();
       const panel = page.locator('.time-main-panel');
       const before = await panel.boundingBox();
+      await page.locator('uni-tabbar').getByText('首页', { exact: true }).click();
+      // 首页按需加载；等页面及其时迹查询完成，再建立下一次返回刷新的 gate。
+      // 点击结束不代表首页已挂载，立即返回会让两次 tab 导航生命周期交错。
+      await expect(page.locator('.dashboard-page')).toBeVisible();
+      await expect(page.locator('.dashboard-page .time-record-content')).toHaveCount(2);
       const pending = gate();
       hold['/api/timeRecord/query'] = pending;
-      await page.locator('uni-tabbar').getByText('首页', { exact: true }).click();
-      // 自动刷新只在缓存过期后执行；普通切换 tab 会保留当前数据。
-      await page.clock.setFixedTime(new Date(started.getTime() + ++refreshRound * 61 * 60 * 1000));
-      await page.locator('uni-tabbar').getByText('时迹', { exact: true }).click();
-      await expect(page.getByRole('status', { name: '正在更新时迹', exact: true })).toBeVisible();
-      expect(await panel.boundingBox()).toEqual(before);
-      await expect(page.locator(view === '时间轴视图' ? '.timeline-event' : '.record-card')).toHaveCount(2);
-      await page.screenshot({ path: info.outputPath(view === '时间轴视图' ? 'timeline-refresh.png' : 'cards-refresh.png') });
-      pending.release();
+      try {
+        // 自动刷新只在缓存过期后执行；普通切换 tab 会保留当前数据。
+        await page.clock.setFixedTime(new Date(started.getTime() + ++refreshRound * 61 * 60 * 1000));
+        await page.locator('uni-tabbar').getByText('时迹', { exact: true }).click();
+        await expect(page).toHaveURL(/#\/pages\/time\/index$/);
+        await expect(page.getByRole('status', { name: '正在更新时迹', exact: true })).toBeVisible();
+        expect(await panel.boundingBox()).toEqual(before);
+        await expect(page.locator(view === '时间轴视图' ? '.timeline-event' : '.record-card')).toHaveCount(2);
+        await page.screenshot({ path: info.outputPath(view === '时间轴视图' ? 'timeline-refresh.png' : 'cards-refresh.png') });
+      } finally {
+        pending.release();
+      }
       await expect(page.getByRole('status', { name: '正在更新时迹', exact: true })).toHaveCount(0);
       expect(await panel.boundingBox()).toEqual(before);
     }
