@@ -247,7 +247,7 @@ test("菜单搜索、编辑失败恢复、父级新增、保护菜单、排序�
   state.failSort = true;
   await page.getByRole("button", { name: "上移仪表盘", exact: true }).click();
   await expect(
-    page.getByText("部分顺序未保存，已重新加载，请重试"),
+    page.getByRole('alert', { name: '更新失败：部分顺序未保存，已重新加载，请重试', exact: true }),
   ).toBeVisible();
   state.failSort = false;
   await page.getByRole("button", { name: "完成排序", exact: true }).click();

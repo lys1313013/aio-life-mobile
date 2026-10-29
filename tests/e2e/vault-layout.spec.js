@@ -86,6 +86,6 @@ test('密码卡片失败重试、空态和单条刷新保留布局',async({page}
   state.hold=new Promise(resolve=>{state.release=resolve;});await pullDown(page,'.mobile-page-scroll');await expect(empty).toBeVisible();expect(await empty.evaluate(el=>({top:el.offsetTop,height:el.offsetHeight}))).toEqual(before);state.release();state.hold=null;
   await expect(page.getByRole('status',{name:'正在更新内容',exact:true})).toHaveCount(0);
   state.rows=[fixtureRows[0]];await pullDown(page,'.mobile-page-scroll');await expect(page.locator('.vault-card[role="button"]')).toHaveCount(1);
-  state.error=true;await pullDown(page,'.mobile-page-scroll');await expect(page.getByRole('alert')).toContainText('模拟读取失败');await expect(page.locator('.vault-card[role="button"]')).toHaveCount(1);
+  state.error=true;await pullDown(page,'.mobile-page-scroll');await expect(page.getByRole('alert')).toHaveAccessibleName('更新失败：模拟读取失败');await expect(page.locator('.vault-card[role="button"]')).toHaveCount(1);
   state.error=false;await page.getByRole('button',{name:'重试',exact:true}).click();await expect(page.getByRole('alert')).toHaveCount(0);
 });

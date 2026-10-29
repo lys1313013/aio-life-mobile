@@ -36,7 +36,7 @@ test('微信读书下拉同步与失败重试保留数据', async ({ page }) => 
   await expect(page.locator('.uni-scroll-view-refresher')).not.toBeVisible();
   fail = true;
   await pullDown(page, '.mobile-page-scroll');
-  await expect(page.getByRole('alert')).toContainText('模拟同步失败');
+  await expect(page.getByRole('alert')).toHaveAccessibleName('更新失败：模拟同步失败');
   await expect(metric).toContainText('2小时');
   await expect(page.locator('.uni-scroll-view-refresher')).not.toBeVisible();
   fail = false;

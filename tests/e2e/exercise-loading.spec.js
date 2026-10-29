@@ -341,7 +341,7 @@ test('刷新失败后触底不继续旧分页，重试成功后恢复分页', as
   await expect(page.locator('.record-row')).toHaveCount(20);
   state.fail = true;
   await pullDown(page, '.mobile-page-scroll');
-  await expect(page.getByRole('alert').last()).toContainText('模拟刷新失败');
+  await expect(page.getByRole('alert').last()).toHaveAccessibleName('更新失败：模拟刷新失败');
   await bottom(page);
   expect(calls).toEqual([1, 1]);
   await expect(page.locator('.record-row')).toHaveCount(20);

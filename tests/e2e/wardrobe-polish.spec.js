@@ -131,7 +131,7 @@ for (const width of [390, 768, 1440]) for (const theme of ['light', 'dark']) {
     }
     state.readFail = true;
     await pullDown(page, '.mobile-page-scroll');
-    await expect(page.getByRole('alert')).toContainText('模拟衣柜加载失败');
+    await expect(page.getByRole('alert')).toHaveAccessibleName('更新失败：模拟衣柜加载失败');
     await expect(page.locator('.item-title')).toHaveCount(6);
     state.readFail = false;
     await page.getByRole('alert').getByRole('button', { name: '重试', exact: true }).click();

@@ -23,7 +23,7 @@ async function setup(page, options = {}) {
       state.ranges.push([url.searchParams.get('startDate'), url.searchParams.get('endDate')]);
       data = state.records.filter(r => r.date >= url.searchParams.get('startDate') && r.date <= url.searchParams.get('endDate'));
     }
-    if (path === '/api/timeRecord/recommendNext') data = { records: state.records.filter(r => r.date === url.searchParams.get('date')), recommend: state.full ? null : { categoryId: '1', startTime: 600, endTime: 659, date: today } };
+    if (path === '/api/timeRecord/recommendNext') data = { records: state.records.filter(r => r.date === url.searchParams.get('date')), recommend: state.full ? null : { categoryId: '1', startTime: 600, endTime: 659, ...state.recommendation, date: today } };
     if (path === '/api/timeRecord/relateTypes') data = [{ label: '阅读', value: 1 }, { label: '观影', value: 2 }];
     if (path === '/api/userDictType/getByDictType') data = { dictDetailList: state.exerciseTypes || [{ id: '9223372036854775806', dictLabel: '俯卧撑' }] };
     if (path === '/api/timeRecord' && method === 'POST') {
@@ -730,7 +730,7 @@ for (const width of [390, 768, 1440]) for (const colorScheme of ['light', 'dark'
   test(`时迹编辑保持时间轴高度与底部导航 ${width}px ${colorScheme}`, async ({ page }) => {
     await page.setViewportSize({ width, height: 900 });
     await page.emulateMedia({ colorScheme });
-    await setup(page, { records: timelineRecords(), categories: categoryPalette });
+    await setup(page, { records: timelineRecords(), categories: categoryPalette, recommendation: { startTime: 720, endTime: 779 } });
     const track = page.locator('.day-track');
     const tabbar = page.locator('uni-tabbar .uni-tabbar');
     const add = page.getByRole('button', { name: '新增时迹', exact: true });

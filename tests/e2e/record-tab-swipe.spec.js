@@ -112,10 +112,10 @@ for (const scenario of cases) {
     // 失败页保留切换能力，返回相邻分类可重新加载。
     fail = true;
     await touchSwipe(page, surface, 120);
-    await expect(page.getByText('模拟分类加载失败', { exact: true })).toBeVisible();
+    await expect(page.getByRole('alert', { name: /模拟分类加载失败/ }).or(page.getByRole('alert').filter({ hasText: '模拟分类加载失败' }))).toBeVisible();
     fail = false;
     await touchSwipe(page, surface, -120);
-    await expect(page.getByText('模拟分类加载失败', { exact: true })).toHaveCount(0);
+    await expect(page.getByRole('alert', { name: /模拟分类加载失败/ }).or(page.getByRole('alert').filter({ hasText: '模拟分类加载失败' }))).toHaveCount(0);
     await expect(tabs.last()).toHaveAttribute('aria-pressed', 'true');
   });
 }
