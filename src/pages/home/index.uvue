@@ -1,11 +1,9 @@
 <script setup lang="ts">
-// #ifdef MP-WEIXIN
 import TabPage from '../../components/TabPage.uvue'
-// #endif
 import { appTextColor } from '../../services/app-layout.ts'
 
 import { buttonLabelClasses } from '../../services/button-label.ts'
-import ContentSkeleton from '../../components/ContentSkeleton.uvue';
+import HomeOverviewSkeleton from './HomeOverviewSkeleton.uvue';
 import TimeDonut from './TimeDonut.uvue'
 import BusinessCards from './BusinessCards.uvue'
 import SummaryHomeCard from './SummaryHomeCard.uvue'
@@ -65,6 +63,7 @@ import { takeRecordChange } from '../../services/time-changes.ts'
 import { elapsedSinceRecord, shiftDate } from '../../services/time-format.ts'
 import { daySwipeStyle } from '../../services/day-swipe.ts'
 import { createTimeCardSwipe } from './services/time-card-swipe.ts'
+import { homeLayout } from './services/home-layout.ts'
 import { todayDate } from '../../services/dashboard.ts'
 import { durationLabel, summaryDonutLabels, timeSummary } from '../../services/dashboard-format.ts'
 import { openBusinessLink } from '../../services/navigation.ts'
@@ -76,6 +75,14 @@ import typography from '../../styles/typography.json'
 import { readQuickLinks } from '../../services/life-catalog.ts'
 
 const viewportWidth = ref(uni.getWindowInfo().windowWidth)
+const overviewCardStyle = computed(() => {
+  // #ifdef APP
+  return { height: homeLayout(viewportWidth.value).overviewHeight + 'px' }
+  // #endif
+  // #ifndef APP
+  return {}
+  // #endif
+})
 const quickNavEditing = ref(false)
 const quickNavBusy = ref(false)
 const quickNavDragging = ref(false)
@@ -96,6 +103,8 @@ const cardOrder = useHomeCardOrder({
     catch (error) { if (active) uni.showToast({ title: error.message || '排序保存失败，请重试', icon: 'none' }) }
   },
 })
+// 原生模板通过顶层 ref 绑定滚动位置，避免嵌套 ref 在跨线程解包后读取 .value 得到 undefined。
+const cardScrollTop = cardOrder.scrollTop
 watch(orderSignature, () => cardOrder.cancel())
 function sectionVisible(section) {
   if (section.cardKey === 'section.watched') return (states.watched.loading && !states.watched.loaded) || !!states.watched.error || states.watched.locked || watched.value.length > 0
@@ -815,15 +824,13 @@ function trendLines(points) {
 </script>
 
 <template>
-  <!-- #ifdef MP-WEIXIN -->
   <TabPage page-path="pages/home/index">
-  <!-- #endif -->
   <view class="dashboard-page" :class="themeClass('dashboard-page')">
     <!-- #ifndef WEB -->
     <!-- 保留状态栏与微信胶囊的安全空间。 -->
     <PageHeader title="" />
     <!-- #endif -->
-    <scroll-view :scroll-y="!quickNavDragging && !businessSorting && cardOrder.scrollEnabled()" :direction="quickNavDragging || businessSorting || !cardOrder.scrollEnabled() ? 'none' : 'vertical'" :scroll-top="cardOrder.scrollTop.value" @scroll="cardOrder.scrolled" :show-scrollbar="false" class="dashboard-scroll" :refresher-enabled="!quickNavEditing && !businessSorting && !cardOrder.dragging.value" :refresher-triggered="refreshing" refresher-background="transparent" :refresher-default-style="refreshTheme" @refresherrefresh="pullRefresh"
+    <scroll-view :scroll-y="!quickNavDragging && !businessSorting && cardOrder.scrollEnabled()" :direction="quickNavDragging || businessSorting || !cardOrder.scrollEnabled() ? 'none' : 'vertical'" :scroll-top="cardScrollTop" @scroll="cardOrder.scrolled" :show-scrollbar="false" class="dashboard-scroll" :refresher-enabled="!quickNavEditing && !businessSorting && !cardOrder.dragging.value" :refresher-triggered="refreshing" refresher-background="transparent" :refresher-default-style="refreshTheme" @refresherrefresh="pullRefresh"
       ><view class="dashboard-content ui-page-inset ui-tab-page-inset">
         <view v-if="errorText" class="global-error" role="alert"
           ><text class="failure-text" :class="themeClass('failure-text')">{{ errorText }}</text
@@ -836,14 +843,15 @@ function trendLines(points) {
             v-if="(loading || overview.loading) && !overview.loaded"
             v-for="item in homeCardPreferences.items.filter(item => item.group === 'overview' && item.isEnabled)"
             :key="item.cardKey" :card-key="item.cardKey" :title="item.title" group="overview" :order="cardOrder" :disabled="orderDisabled"
-            ><view class="overview-card placeholder-card ui-pad-card"
-               :class="themeClass('overview-card')"><ContentSkeleton variant="summary" label="正在加载概览" /></view>
+            ><view class="overview-card placeholder-card ui-pad-card" :style="overviewCardStyle"
+               :class="themeClass('overview-card')"><HomeOverviewSkeleton /></view>
             </HomeCardSortCell>
           <HomeCardSortCell v-for="item in visibleCards" :key="item.type" :card-key="'overview.' + item.type.toLowerCase()" :title="item.title" group="overview" :order="cardOrder" :disabled="orderDisabled">
             <view
               role="button"
               tabindex="0"
               class="overview-card ui-pad-card"
+              :style="overviewCardStyle"
               :aria-label="
                 (item.locked ? '解锁' : item.error ? '重试' : '刷新') + item.title
               "
@@ -856,8 +864,8 @@ function trendLines(points) {
                 ><view class="card-progress-bar"></view
               ></view><view class="stat-top"
                 ><view class="stat-name"
-                  ><button role="button" class="stat-icon stat-link ui-type-body" :aria-label="item.title + '图标'" @click.stop="openOverviewLink(item, item.iconClickUrl)"><LifeMenuIcon :icon="overviewVisual(item).icon" :size="18" :color="overviewVisual(item).iconColor" /></button><button role="button" class="stat-title stat-link" :aria-label="item.title + '标题'" @click.stop="openOverviewLink(item, item.titleClickUrl)"><text class="stat-title-text" :class="themeClass('stat-title-text')">{{ item.title }}</text></button></view
-                ><text
+                  ><button role="button" class="stat-icon stat-link ui-type-body" :aria-label="item.title + '图标'" @click.stop="openOverviewLink(item, item.iconClickUrl)"><LifeMenuIcon :icon="overviewVisual(item).icon" :size="18" :color="overviewVisual(item).iconColor" /></button><button role="button" class="stat-title stat-link" :aria-label="item.title + '标题'" @click.stop="openOverviewLink(item, item.titleClickUrl)"><text :max-lines="1" class="stat-title-text" :class="themeClass('stat-title-text')">{{ item.title }}</text></button></view
+                ><text :max-lines="1"
                   class="stat-value"
                   :style="{ color: item.valueColor || '' }"
                    :class="themeClass('stat-value')">{{
@@ -991,7 +999,7 @@ function trendLines(points) {
               :locked="states.watched.locked" :refresh-disabled="interactionDisabled" @unlock="unlockSection('watched')"
               navigable @navigate="openLink('/task/todo')"
               @refresh="loadSection('watched')"
-              ><template #loading><view class="watched-loading" :class="{ 'watched-loading-auto': watchedAutoHeight }" role="status" aria-label="正在加载待办"><view class="watched-skeleton-row" aria-hidden="true"><view class="watched-skeleton-check" :class="themeClass('time-skeleton-fill')" /><view class="watched-skeleton-copy"><view class="time-skeleton-fill watched-skeleton-line" :class="themeClass('time-skeleton-fill')" /><view class="time-skeleton-fill watched-skeleton-line" :class="themeClass('time-skeleton-fill')" /></view></view></view></template><scroll-view scroll-y :show-scrollbar="false" class="list-scroll" :class="{ 'list-scroll-auto': watchedAutoHeight }" :style="watchedAutoHeight ? { maxHeight: (sectionHeight('watched') - sectionInset('watched')) + 'px' } : {}"
+              ><template #loading><view class="watched-loading" :class="{ 'watched-loading-auto': watchedAutoHeight }" role="status" aria-label="正在加载待办"><view class="watched-skeleton-row" aria-hidden="true"><view class="time-skeleton-fill watched-skeleton-check" :class="themeClass('time-skeleton-fill')" /><view class="watched-skeleton-copy"><view class="time-skeleton-fill watched-skeleton-line" :class="themeClass('time-skeleton-fill')" /><view class="time-skeleton-fill watched-skeleton-line watched-skeleton-detail" :class="themeClass('time-skeleton-fill')" /></view></view></view></template><scroll-view scroll-y :show-scrollbar="false" class="list-scroll" :class="{ 'list-scroll-auto': watchedAutoHeight }" :style="watchedAutoHeight ? { maxHeight: (sectionHeight('watched') - sectionInset('watched')) + 'px' } : {}"
                 ><view
                   v-for="task in watched"
                   :key="task.id"
@@ -1132,12 +1140,11 @@ function trendLines(points) {
       </view></scroll-view
     ><TimeRecordEditor v-if="timeEditor" :record-id="timeEditor.recordId" :initial-date="timeEditor.initialDate" @close="closeTimeEditor" /><RecordCreateModal v-if="recordCreateKind" :kind="recordCreateKind" :thought-id="recordCreateKind === 'think' ? thoughtEditId : ''" @close="recordCreateKind = null" @saved="handleRecordCreated" @deleted="handleThoughtDeleted" /><WatchedTaskEditModal v-if="watchedEditor" :task="watchedEditor" @close="watchedEditor = null" @saved="handleWatchedSaved" />
   </view>
-  <!-- #ifdef MP-WEIXIN -->
   </TabPage>
-  <!-- #endif -->
 </template>
 
 <style scoped lang="scss">
+@use '../../styles/platform' as *;
 @use '../../styles/typography' as *;
 @use '../../styles/spacing.scss';
 @use '../../styles/spacing-tokens' as *;
@@ -1147,9 +1154,7 @@ function trendLines(points) {
 @include type-utilities('body');
 
 .time-record { padding: 0; margin: 0; border: 0; background-color: transparent; text-align: left; line-height: type-line('label'); }
-/* #ifdef WEB || MP-WEIXIN */
-.task-check::after, .time-record::after { border: 0; }
-/* #endif */
+.task-check, .time-record { @include borderless-button; }
 /* #ifdef WEB */
 /* H5 的实际滚动节点在内置组件内部，避免滚到底后把手势传给整页。 */
 .exercise-scroll :deep(.uni-scroll-view),
@@ -1291,7 +1296,6 @@ function trendLines(points) {
   overflow: hidden;
   text-overflow: ellipsis;
   /* #ifdef APP */
-  max-lines: 1;
   height: $space-controlMin;
   line-height: $space-controlMin;
   /* #endif */
@@ -1304,7 +1308,6 @@ max-width: 50%;
 /* #endif */
 /* #ifdef APP */
 flex-shrink: 0;
-max-lines: 1;
 /* #endif */
 
   color: #27272a;
@@ -1362,7 +1365,7 @@ max-lines: 1;
 }
 /* 占位直接复用时间轴、圆环和记录布局，避免加载结束时结构跳变。 */
 .time-skeleton { animation: time-skeleton-breathe 1.8s ease-in-out infinite; }
-.time-skeleton-total { width: 40px; height: 12px; }
+.time-skeleton-total { width: 32px; height: 8px; }
 .time-skeleton-clock { width: 30px; height: 8px; }
 .time-skeleton-duration { width: 20px; height: 8px; }
 .time-skeleton-name { width: 24px; height: 8px; }
@@ -1452,12 +1455,7 @@ max-lines: 1;
 .donut-label-right { right: 0; align-items: flex-start; }
 .donut-label-name {
 
-/* #ifndef APP */
-max-width: 100%;
-/* #endif */
-/* #ifdef APP */
-flex-shrink: 1;
-/* #endif */
+@include shrink-content;
 
   white-space: nowrap;
   overflow: hidden;
@@ -1552,7 +1550,7 @@ color: inherit;
 .quick-empty-title-dark { color: #eeeeef; }
 .quick-empty-caption { @include type-style('caption'); color: #8b8f99; margin-top: $space-detail; }
 .quick-loading { flex: 1; min-height: 0; padding: 0 $space-card $space-card; overflow: hidden; }
-.quick-skeleton-label { width: 60%; height: type-line('caption'); margin-top: $space-detail; }
+.quick-skeleton-label { width: 48%; height: 8px; margin-top: $space-inline; }
 .quick-link {
   display: flex;
   flex-direction: column;
@@ -1587,10 +1585,11 @@ color: inherit;
 }
 .watched-loading { flex: 1; min-height: 0; padding: 0 $space-card $space-card; }
 .watched-loading-auto { flex: none; }
-.watched-skeleton-row { min-height: 56px; box-sizing: border-box; flex-direction: row; align-items: center; gap: $space-inline; padding: $space-inline; }
-.watched-skeleton-check { width: 20px; height: 20px; border-radius: 50%; }
-.watched-skeleton-copy { flex: 1; gap: $space-detail; }
-.watched-skeleton-line { height: 16px; width: 70%; }
+.watched-skeleton-row { min-height: 56px; box-sizing: border-box; flex-direction: row; align-items: center; padding: $space-inline; }
+.watched-skeleton-check { width: 20px; height: 20px; flex-shrink: 0; border-radius: 50%; margin-right: $space-inline; }
+.watched-skeleton-copy { flex: 1; min-width: 0; }
+.watched-skeleton-line { height: 10px; width: 70%; flex-shrink: 0; }
+.watched-skeleton-detail { height: 8px; width: 42%; margin-top: $space-inline; }
 .list-row {  min-height: 56px; }
 .list-scroll-auto { flex: none; height: auto; }
 .thought-row, .task-row { flex-direction: row; align-items: center; }
@@ -1608,30 +1607,12 @@ color: inherit;
 .priority-low { background-color: #9299a6; }
 .thought-text, .body-text { flex: 1; min-width: 0; color: #3f3f46; @include type-style('body');  }
 .thought-text { @include type-style('caption-strong'); white-space: pre-wrap; overflow: hidden;
-/* #ifndef APP */
-display: -webkit-box;
-/* #endif */
-/* #ifdef APP */
-text-overflow: ellipsis;
-/* #endif */
-
-/* #ifndef APP */
--webkit-line-clamp: 3;
-/* #endif */
-
-/* #ifndef APP */
--webkit-box-orient: vertical;
-/* #endif */
+@include clamp-text(3);
  }
 .list-date { flex-shrink: 0; color: #92929b; @include type-style('chart-label');   }
 .completed { text-decoration: line-through; opacity: 0.6; }
 .tag { align-self: flex-start;
-/* #ifndef APP */
-max-width: 100%;
-/* #endif */
-/* #ifdef APP */
-flex-shrink: 1;
-/* #endif */
+@include shrink-content;
  background-color: #f4f4f5; color: #71717a; border-radius: 4px; padding: 0 $space-fieldLabel; @include type-style('chart-label');  margin-top: $space-tight; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .exercise-day { padding: 0; }
 .exercise-item { box-sizing: border-box; min-height: 40px; padding: $space-tight 0; flex-direction: row; align-items: center; }
@@ -1817,23 +1798,19 @@ align-items: flex-end;
     color: #f7a3a3;
   }
 
-.time-skeleton-fill { background-color: #e8e8ed; border-radius: 4px; }
-.time-skeleton-fill-dark { background-color: #303238; }
-.time-skeleton-ring { border-color: #e8e8ed; }
-.time-skeleton-ring-dark { border-color: #303238; }
+.time-skeleton-fill { background-color: #e8ecf1; border-radius: 4px; flex-shrink: 0; }
+.time-skeleton-fill-dark { background-color: #30343c; }
+.time-skeleton-ring { border-color: #e8ecf1; border-width: 10px; }
+.time-skeleton-ring-dark { border-color: #30343c; }
 
-/* #ifdef WEB || MP-WEIXIN */
-.tool-button::after,
-.overview-card::after,
-.stat-link::after,
-.quick-link::after,
-.text-button::after,
-.pagination-retry::after,
-.cancel-button::after,
-.confirm-button::after {
-  border: 0;
-}
-/* #endif */
+.tool-button,
+.overview-card,
+.stat-link,
+.quick-link,
+.text-button,
+.pagination-retry,
+.cancel-button,
+.confirm-button { @include borderless-button; }
 
 /* 按钮文字独立声明样式，兼容 App 不继承容器排版。 */
 .app-button-label { @include type-style('body'); color: #27272a; }

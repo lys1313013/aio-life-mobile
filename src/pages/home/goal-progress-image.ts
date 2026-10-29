@@ -1,6 +1,9 @@
 // 56px 进度环与原 Canvas 共用圆心、半径、线宽和十二点起点。
+export function goalProgressPercent(percent: number) {
+  return Number.isFinite(percent) ? Math.min(100, Math.max(0, percent)) : 0
+}
 export function goalProgressImage(percent: number, color: string) {
-  const value = Math.min(100, Math.max(0, percent))
+  const value = goalProgressPercent(percent)
   const circumference = Math.PI * 50
   const dash = value < 100
     ? ` stroke-dasharray="${circumference * value / 100} ${circumference}"`

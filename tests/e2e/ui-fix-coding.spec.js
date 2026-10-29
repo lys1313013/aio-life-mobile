@@ -8,22 +8,23 @@ for (const width of [390, 768, 1440]) for (const theme of ['light', 'dark']) {
   test(`编程菜单热力图与列表 ${width} ${theme}`, async ({ page }, testInfo) => {
     await page.setViewportSize({ width, height: 844 });
     await page.addInitScript(value => localStorage.setItem('aio-life-mobile.theme.v1', value), theme);
-    await page.route('https://api.github.com/**', async route => {
+    await page.route(/\/api\/github\/(?:calendar|repos|repository\/[^?]+)(?:\?|$)/, async route => {
       const url = route.request().url();
-      const data = url.includes('/graphql') ? { data: { user: { contributionsCollection: { contributionCalendar: { totalContributions: 1000, weeks: [{ contributionDays: days }] } } } } } : url.includes('/contributors') ? [] : repos;
-      await route.fulfill({ json: data });
+      const data = url.includes('/github/calendar') ? { data: { user: { contributionsCollection: { contributionCalendar: { totalContributions: 1000, weeks: [{ contributionDays: days }] } } } } } : url.includes('/contributors') ? [] : repos;
+      await route.fulfill({ json: { code: 0, data } });
     });
-    await page.route('**/leetcode-api/graphql**', async route => {
-      const query = route.request().postDataJSON().query;
+    await page.route('**/api/leetcode/data/**', async route => {
+      const section = new URL(route.request().url()).pathname.split('/').pop();
       let data = {};
-      if (query.includes('userProfilePublicProfile')) data = { userProfilePublicProfile: { siteRanking: 100, profile: { reputation: 8 } }, userProfileUserQuestionProgress: {} };
-      else if (query.includes('userCalendar')) data = { userCalendar: { submissionCalendar: JSON.stringify({ [Math.floor(Date.now() / 1000)]: 8 }), totalActiveDays: 1 } };
-      else if (query.includes('todayRecord')) data = { todayRecord: [] };
-      else if (query.includes('recentACSubmissions')) data = { recentACSubmissions: [] };
-      await route.fulfill({ json: { data } });
+      if (section === 'profile') data = { userProfilePublicProfile: { siteRanking: 100, profile: { reputation: 8 } }, userProfileUserQuestionProgress: {} };
+      else if (section === 'calendar') data = { userCalendar: { submissionCalendar: JSON.stringify({ [Math.floor(Date.now() / 1000)]: 8 }), totalActiveDays: 1 } };
+      else if (section === 'daily') data = { todayRecord: [] };
+      else if (section === 'recent') data = { recentACSubmissions: [] };
+      await route.fulfill({ json: { code: 0, data } });
     });
     await page.route(`${testInfo.project.use.baseURL}/api/**`, async route => {
       const path = new URL(route.request().url()).pathname;
+      if (/^\/api\/github\/(calendar|repos|repository\/)/.test(path) || path.startsWith('/api/leetcode/data/')) return route.fallback();
       let data = dashboardFixture(path);
       if (path === '/api/auth/login') data = { accessToken: 'coding-ui-fixture' };
       if (path === '/api/user/info') data = { id: '7', nickname: '模拟用户', accountUsername: 'fixture' };

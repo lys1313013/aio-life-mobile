@@ -5,6 +5,9 @@ import { computed, getCurrentInstance, nextTick, onMounted, onUnmounted, ref, wa
 import { iconSource } from '../../services/icon-source.ts'
 import { timeDonutImage } from './time-donut-image.ts'
 // #endif
+// #ifndef MP-WEIXIN
+import { configureCanvasSurface, reduceCanvasMotion } from '../../services/canvas-surface.ts'
+// #endif
 import { summaryDonutLabels, summaryDonutRotation } from '../../services/dashboard-format.ts'
 import { isDark } from '../../services/theme.ts'
 
@@ -87,14 +90,7 @@ function update() {
   stop()
   if (!context || !props.active) return
   current = sectors()
-  let reduceMotion = false
-  // #ifdef APP
-  // 原生首帧直接使用完整环，避免多段动画与外部标签不同步。
-  reduceMotion = true
-  // #endif
-  // #ifdef WEB
-  reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
-  // #endif
+  const reduceMotion = reduceCanvasMotion()
   if (reduceMotion || !current.length) {
     growth = 1
     paint(current)
@@ -129,13 +125,7 @@ async function initialize(animate = true) {
       try {
         context = canvas.getContext('2d')
         if (!context) throw new Error('Canvas unavailable')
-        // App 的画布尺寸由原生布局管理；Web 手动设置高清 backing store。
-        // #ifndef APP
-        const ratio = uni.getWindowInfo().pixelRatio || 1
-        context.canvas.width = Math.round(176 * ratio)
-        context.canvas.height = Math.round(176 * ratio)
-        // #endif
-        context.setTransform(context.canvas.width / 176, 0, 0, context.canvas.height / 176, 0, 0)
+        configureCanvasSurface(context, 176, 176)
         if (animate) update()
         else { current = sectors(); growth = 1; paint(current) }
       } catch (_) { failed.value = true }

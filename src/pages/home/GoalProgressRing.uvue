@@ -2,14 +2,19 @@
 import { computed, getCurrentInstance, nextTick, onMounted, onUnmounted, watch } from 'vue'
 import { isDark } from '../../services/theme.ts'
 import { goalProgressColor } from './services/business-cards.ts'
+import { goalProgressPercent } from './goal-progress-image.ts'
+// #ifndef MP-WEIXIN
+import { configureCanvasSurface } from '../../services/canvas-surface.ts'
+// #endif
 // #ifdef MP-WEIXIN
 import { iconSource } from '../../services/icon-source.ts'
 import { goalProgressImage } from './goal-progress-image.ts'
 // #endif
 
 const props = defineProps<{ percent: number; label: string }>()
+const progress = computed(() => goalProgressPercent(props.percent))
 // #ifdef MP-WEIXIN
-const imageSource = computed(() => iconSource(goalProgressImage(props.percent, goalProgressColor(props.percent)), 56))
+const imageSource = computed(() => iconSource(goalProgressImage(progress.value, goalProgressColor(progress.value)), 56))
 // #endif
 // #ifndef MP-WEIXIN
 const instance = getCurrentInstance()
@@ -20,12 +25,12 @@ let alive = true
 function paint() {
   if (!context) return
   context.clearRect(0, 0, 56, 56)
-  if (props.percent <= 0) return
+  if (progress.value <= 0) return
   context.beginPath()
-  context.arc(28, 28, 25, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * props.percent / 100)
+  context.arc(28, 28, 25, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * progress.value / 100)
   context.lineWidth = 4
   context.lineCap = 'round'
-  context.strokeStyle = goalProgressColor(props.percent)
+  context.strokeStyle = goalProgressColor(progress.value)
   context.stroke()
 }
 
@@ -39,10 +44,7 @@ onMounted(async () => {
       if (!alive) return
       context = canvas.getContext('2d')
       if (!context) return
-      const ratio = uni.getWindowInfo().pixelRatio || 1
-      context.canvas.width = 56 * ratio
-      context.canvas.height = 56 * ratio
-      context.scale(ratio, ratio)
+      configureCanvasSurface(context, 56, 56)
       paint()
     },
   })
@@ -54,7 +56,7 @@ onUnmounted(() => { alive = false; context = null })
 </script>
 
 <template>
-  <view class="goal-progress" role="progressbar" :aria-label="label" :aria-valuenow="percent" :aria-valuemin="0" :aria-valuemax="100">
+  <view class="goal-progress" role="progressbar" :aria-label="label" :aria-valuenow="progress" :aria-valuemin="0" :aria-valuemax="100">
     <view class="goal-progress-track" :class="{ 'goal-progress-track-dark': isDark }" />
     <!-- #ifdef MP-WEIXIN -->
     <image :src="imageSource" mode="aspectFit" class="goal-progress-image" aria-hidden="true" />
@@ -62,7 +64,7 @@ onUnmounted(() => { alive = false; context = null })
     <!-- #ifndef MP-WEIXIN -->
     <canvas :id="canvasId" :canvas-id="canvasId" type="2d" class="goal-progress-canvas" aria-hidden="true" />
     <!-- #endif -->
-    <text class="goal-progress-value" :class="{ 'goal-progress-value-dark': isDark }">{{ percent }}%</text>
+    <text class="goal-progress-value" :class="{ 'goal-progress-value-dark': isDark }">{{ progress }}%</text>
   </view>
 </template>
 

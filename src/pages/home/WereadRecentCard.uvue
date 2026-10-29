@@ -16,10 +16,9 @@ import { businessCardMaxHeight } from './services/business-cards.ts'
 import { wereadShelfWidth, wereadShelfLayout, wereadShelfColumns } from './services/weread-shelf.ts'
 import spacing from '../../styles/spacing.json'
 import { isDark } from '../../services/theme.ts'
-import { wereadAppLink, wereadWebLink, wereadBrowserLink, isMobileBrowser } from '../../services/weread-links.ts'
-// #ifdef APP-ANDROID
-import { openWereadBook, openWereadWeb } from '../../uni_modules/aio-weread-launcher'
-// #endif
+import { useWindowResize } from '../../services/window-resize.ts'
+import { wereadWebLink } from '../../services/weread-links.ts'
+import { tryOpenWereadApp, prepareWereadWebTarget } from '../../services/weread-navigation.ts'
 const props = defineProps<{ active: boolean; preparing?: boolean; sorting?: boolean; height?: number; maxHeight?: number; tablet?: boolean }>()
 const viewportWidth = ref(0)
 const compactShelf = computed(() => !!props.tablet && !!props.height && props.height <= businessCardMaxHeight)
@@ -134,8 +133,8 @@ async function measureViewport() {
   }).exec()
 }
 watch(() => [props.active, props.sorting, loading.value, loadingMore.value, layout.value.rows, columns.value.length, viewportWidth.value], fillViewport, { flush: 'post' })
-onMounted(() => { void measureViewport(); uni.onWindowResize(measureViewport) })
-onUnmounted(() => { uni.offWindowResize(measureViewport) })
+onMounted(() => { void measureViewport() })
+useWindowResize(() => { void measureViewport() })
 function onScroll(event) {
   scrollLeft.value = event.detail.scrollLeft
   // 内层 scroll-view 会消费 touchmove；滚动时仍须取消外层待触发的长按排序。
@@ -157,25 +156,17 @@ async function openBook(book, webOnly = false) {
   if (opening.value || locked.value || !props.active) return
   const owner = session.token, version = generation
   const valid = () => props.active && owner === session.token && version === generation
-  const scheme = wereadAppLink(book.bookId)
   openingError.value = ''
-  // #ifdef WEB
-  if (!webOnly && scheme && isMobileBrowser(navigator.userAgent, navigator.maxTouchPoints)) {
-    webFallback.value = book.bookId
-    window.location.assign(wereadBrowserLink(book.bookId, navigator.userAgent, book.deepLink)); return
+  if (!webOnly) {
+    const result = tryOpenWereadApp(book.bookId, book.deepLink)
+    if (result !== 'unavailable') {
+      webFallback.value = book.bookId
+      if (result === 'failed') openingError.value = '无法打开微信读书，可使用网页版阅读'
+      return
+    }
   }
-  // #endif
-  // #ifdef APP-ANDROID
-  if (!webOnly && scheme) {
-    webFallback.value = book.bookId
-    if (openWereadBook(book.bookId)) return
-  }
-  // #endif
   opening.value = book.bookId
-  // #ifdef WEB
-  const target = window.open('about:blank', '_blank')
-  if (target) target.opener = null
-  // #endif
+  const target = prepareWereadWebTarget()
   try {
     let link = wereadWebLink(book.deepLink)
     if (!link) {
@@ -183,30 +174,14 @@ async function openBook(book, webOnly = false) {
       link = wereadWebLink(data.deepLink)
     }
     if (!valid()) {
-      // #ifdef WEB
-      target?.close()
-      // #endif
+      target.close()
       return
     }
     if (!link) throw Error('暂无可用链接，点击重试')
     book.deepLink = link
-    // #ifdef WEB
-    if (target && !target.closed) target.location.replace(link)
-    else throw Error('请允许打开阅读窗口后重试')
-    // #endif
-    // #ifdef APP-ANDROID
-    if (!openWereadWeb(link)) throw Error('无法打开阅读链接')
-    // #endif
-    // #ifdef APP-IOS
-    plus.runtime.openURL(link)
-    // #endif
-    // #ifdef MP-WEIXIN
-    uni.setClipboardData({ data: link })
-    // #endif
+    target.open(link)
   } catch (e) {
-    // #ifdef WEB
-    target?.close()
-    // #endif
+    target.close()
     if (valid()) openingError.value = e.message || '打开失败，点击重试'
   } finally { if (valid()) opening.value = '' }
 }
@@ -249,6 +224,7 @@ async function openBook(book, webOnly = false) {
   </view>
 </template>
 <style scoped lang="scss">
+@use '../../styles/platform' as *;
 @use '../../styles/typography' as *;
 @use '../../styles/text-colors' as *;
 @use '../../styles/spacing-tokens' as *;
@@ -295,7 +271,5 @@ async function openBook(book, webOnly = false) {
 .book-action { pointer-events: none; }
 .web-fallback { padding: 0; margin: 0; display: flex; background-color: transparent; border: 0; }
 .shelf-status { width: 220px; height: 100%; flex-shrink: 0; justify-content: center; }
-/* #ifdef WEB || MP-WEIXIN */
-.heading-link::after, .book-button::after, .web-fallback::after { border: 0; }
-/* #endif */
+.heading-link, .book-button, .web-fallback { @include borderless-button; }
 </style>

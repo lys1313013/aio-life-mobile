@@ -1,38 +1,65 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue';
+import { computed, getCurrentInstance, inject, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 import ContentSkeleton from './ContentSkeleton.uvue';
 import LoadingIndicator from './LoadingIndicator.uvue';
 import MobileButton from './MobileButton.uvue';
 import { themeClass } from '../services/theme.ts';
 import { displayError } from '../services/display-error.ts';
 const props = withDefaults(
-  defineProps<{ loading?: boolean; error?: string; empty?: boolean; emptyText?: string; skeleton?: string; retainContent?: boolean; hasContent?: boolean }>(),
-  { emptyText: '暂无记录', skeleton: 'list', retainContent: true },
+  defineProps<{ loading?: boolean; error?: string; empty?: boolean; emptyText?: string; skeleton?: string; retainContent?: boolean; hasContent?: boolean; contentKey?: string; inheritInitializing?: boolean }>(),
+  { emptyText: '暂无记录', skeleton: 'list', retainContent: true, contentKey: '', inheritInitializing: true },
 );
-// A completed request (including an empty result) may stay visible during refresh.
-const settled = ref(false);
-watch(() => props.loading, (loading, previous) => {
-  if (previous && !loading && !props.error) settled.value = true;
+// 初始化等待只影响显示；业务请求成功后才记录已加载，空结果同样有效。
+const initializing = inject('domain-page-initializing', ref(false));
+const domainRevision = inject('domain-page-revision', ref(0));
+const contentContext = computed(() => JSON.stringify([props.contentKey, domainRevision.value]));
+const effectiveLoading = computed(() => props.loading || (props.inheritInitializing && initializing.value));
+const settledKey = ref<string | null>(null);
+const retainedContent = computed(() => props.retainContent && (settledKey.value === contentContext.value || props.hasContent));
+const initialHeight = ref(0);
+const pageInstance = getCurrentInstance();
+let measurement = 0;
+let disposed = false;
+watch(() => [props.loading, contentContext.value] as const, ([loading, key], [previous, previousKey]) => {
+  if (key !== previousKey) {
+    settledKey.value = null;
+    initialHeight.value = 0;
+    measurement++;
+  } else if (previous && !loading && !props.error) settledKey.value = key;
 });
+// 首次失败沿用当前业务骨架的实际高度，不为各页面硬编码统一大占位。
+async function measureInitialLoading() {
+  if (!effectiveLoading.value || retainedContent.value || disposed) return;
+  const version = ++measurement;
+  const key = contentContext.value;
+  await nextTick();
+  if (disposed || version !== measurement || key !== contentContext.value || !pageInstance?.proxy) return;
+  uni.createSelectorQuery().in(pageInstance.proxy).select('.page-state-placeholder')
+    .boundingClientRect(rect => {
+      if (disposed || version !== measurement || key !== contentContext.value || retainedContent.value || (!effectiveLoading.value && !props.error)) return;
+      if (rect && !Array.isArray(rect) && rect.height > 0) initialHeight.value = rect.height;
+    }).exec();
+}
+watch(() => [effectiveLoading.value, retainedContent.value, contentContext.value], measureInitialLoading, { flush: 'post' });
+onMounted(measureInitialLoading);
+onUnmounted(() => { disposed = true; measurement++; });
 const emit = defineEmits(['retry']);
 </script>
 <template>
-  <view class="page-state" :class="themeClass('page-state')">
-    <template v-if="loading && !(retainContent && (settled || hasContent))"><slot name="loading"><ContentSkeleton :variant="skeleton" /></slot></template>
-    <slot v-else-if="loading" name="refreshing"><LoadingIndicator label="正在更新内容" floating /></slot>
-    <view v-if="error" class="page-state-notice ui-pad-card ui-gap-md" role="alert"
-      ><text class="ui-type-body page-state-message" :class="themeClass('page-state-message')">{{ displayError(error) }}</text
-      ><MobileButton
-        label="重试"
-        icon="ant-design:reload-outlined"
-        variant="quiet"
-        :loading="loading"
-        @click="emit('retry')"
-    /></view>
-    <view v-if="empty && !error && (!loading || (retainContent && (settled || hasContent)))" class="page-state-notice ui-pad-card ui-gap-md"
-      ><text class="ui-type-body page-state-message" :class="themeClass('page-state-message')">{{ emptyText }}</text></view
-    >
-    <slot v-if="(!loading && !error) || (retainContent && (settled || hasContent))" />
+  <view class="page-state" :class="themeClass('page-state')" :aria-busy="!!effectiveLoading">
+    <view v-if="effectiveLoading && !retainedContent" class="page-state-placeholder"><slot name="loading"><ContentSkeleton :variant="skeleton" /></slot></view>
+    <slot v-else-if="effectiveLoading" name="refreshing"><LoadingIndicator label="正在更新内容" floating /></slot>
+    <view v-if="error && !effectiveLoading && retainedContent" class="page-state-update-error" role="alert" :aria-label="'更新失败：' + displayError(error)">
+      <MobileButton label="重试" icon="ant-design:reload-outlined" variant="quiet" @click="emit('retry')" />
+    </view>
+    <view v-else-if="error && !effectiveLoading" class="page-state-notice page-state-initial-error ui-pad-card ui-gap-md" :style="initialHeight ? { minHeight: initialHeight + 'px' } : {}" role="alert">
+      <text class="ui-type-body page-state-message" :class="themeClass('page-state-message')">{{ displayError(error) }}</text>
+      <MobileButton label="重试" icon="ant-design:reload-outlined" variant="quiet" @click="emit('retry')" />
+    </view>
+    <view v-if="empty && (!error || retainedContent) && (!effectiveLoading || retainedContent)" class="page-state-notice ui-pad-card ui-gap-md">
+      <text class="ui-type-body page-state-message" :class="themeClass('page-state-message')">{{ emptyText }}</text>
+    </view>
+    <slot v-if="(!effectiveLoading && !error) || retainedContent" />
   </view>
 </template>
 <style scoped lang="scss">
@@ -51,11 +78,16 @@ const emit = defineEmits(['retry']);
   color: #eeeeef;
 }
 .page-state-notice {
-
   align-items: center;
-
   @include type-style('body');
 }
+.page-state-initial-error {
+  box-sizing: border-box;
+  min-height: $space-controlMin + $space-card * 2;
+  justify-content: center;
+}
+// 浮动失败入口与更新提示一样脱离文档流，已有内容和空态的位置保持不变。
+.page-state-update-error { position: absolute; top: 0; right: 0; z-index: 2; }
 
 .page-state-message { color: $text-secondary-light; text-align: center; }
 .page-state-message-dark { color: $text-secondary-dark; }

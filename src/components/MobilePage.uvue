@@ -16,6 +16,8 @@ const scrollEnabled = computed(() => {
   // #endif
   return !props.scrollLocked;
 });
+// 原生 scroll-view 会把 undefined 转成 NaN 并中断渲染，未控制滚动位置时使用初始值。
+const nativeScrollTop = computed(() => Number.isFinite(props.scrollTop) ? props.scrollTop : 0);
 // 子组件页面生命周期不可靠；初次挂载检查，401由请求层统一处理。
 onMounted(() => {
   if (props.requiresAuth && session.initialized && !session.token)
@@ -27,7 +29,7 @@ const emit = defineEmits(['refresh', 'reachbottom', 'scroll']);
   <view class="mobile-page" :class="themeClass('mobile-page')">
     <scroll-view
       class="mobile-page-scroll"
-      :scroll-top="scrollTop"
+      :scroll-top="nativeScrollTop"
       @scroll="emit('scroll', $event)"
       :direction="scrollEnabled ? 'vertical' : 'none'"
       :scroll-y="scrollEnabled"

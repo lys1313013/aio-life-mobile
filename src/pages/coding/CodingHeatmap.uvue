@@ -2,12 +2,15 @@
 import { computed, ref } from 'vue';
 import spacing from '../../styles/spacing.json';
 import { themeClass } from '../../services/theme.ts';
-const props = defineProps<{ days: { date: string; count: number }[] }>();
+const props = defineProps<{ days: { date: string; count: number }[]; loading?: boolean }>();
 const selected = ref('');
 const ordered = computed(() => [...props.days].sort((a, b) => a.date.localeCompare(b.date)));
-const range = computed(() => ordered.value.length ? ordered.value[0].date + ' — ' + ordered.value[ordered.value.length - 1].date : '暂无提交记录');
+const range = computed(() => props.loading ? '—' : ordered.value.length ? ordered.value[0].date + ' — ' + ordered.value[ordered.value.length - 1].date : '暂无提交记录');
 const peak = computed(() => Math.max(1, ...ordered.value.map(day => day.count)));
+// 加载态只生成方格占位，复用真实日历几何；不伪造提交记录或数量。
+const pendingWeeks = Array.from({ length: 53 }, (_, week) => ({ key: 'pending-' + week, month: '', cells: Array.from({ length: 7 }, (_, day) => ({ date: 'pending-' + week + '-' + day, valid: true, level: 0, count: 0 })) }));
 const weeks = computed(() => {
+  if (props.loading) return pendingWeeks;
   if (!ordered.value.length) return [];
   const first = Date.parse(ordered.value[0].date + 'T00:00:00Z');
   const last = Date.parse(ordered.value[ordered.value.length - 1].date + 'T00:00:00Z');
@@ -42,19 +45,19 @@ const monthLabels = computed(() => weeks.value.flatMap((week, index) => week.mon
 }] : []));
 </script>
 <template>
-  <view class="heatmap" :class="themeClass('heatmap')">
+  <view class="heatmap" :class="themeClass('heatmap')" :aria-busy="!!loading" :role="loading ? 'status' : undefined" :aria-label="loading ? '正在加载提交日历' : undefined">
     <text class="calendar-range" :class="themeClass('calendar-label')">{{ range }}</text>
     <scroll-view scroll-x class="calendar-scroll">
       <view class="calendar-canvas" :style="{ width: chartWidth + 'px' }">
         <view class="month-track"><text v-for="month in monthLabels" :key="month.key" class="month-label" :class="themeClass('calendar-label')" :style="{ left: month.left + 'px' }">{{ month.text }}</text></view>
         <view class="calendar-weeks">
         <view v-for="week in weeks" :key="week.key" class="calendar-week">
-          <view v-for="day in week.cells" :key="day.date" class="day" :class="['level-' + day.level, themeClass('level-' + day.level), { 'day-hidden': !day.valid }]" :aria-label="day.valid ? day.date + ' · ' + day.count + ' 次提交' : ''" @click="day.valid && (selected = day.date + ' · ' + day.count + ' 次提交')" />
+          <view v-for="day in week.cells" :key="day.date" class="day" :class="['level-' + day.level, themeClass('level-' + day.level), { 'day-hidden': !day.valid }]" :aria-hidden="!!loading" :aria-label="!loading && day.valid ? day.date + ' · ' + day.count + ' 次提交' : ''" @click="!loading && day.valid && (selected = day.date + ' · ' + day.count + ' 次提交')" />
         </view>
         </view>
       </view>
     </scroll-view>
-    <view class="calendar-footer"><text class="calendar-detail" :class="themeClass('calendar-label')" aria-live="polite">{{ selected }}</text><view class="legend"><text class="legend-label" :class="themeClass('calendar-label')">少</text><view v-for="level in [0, 1, 2, 3, 4]" :key="level" class="day" :class="['level-' + level, themeClass('level-' + level)]" /><text class="legend-label" :class="themeClass('calendar-label')">多</text></view></view>
+    <view class="calendar-footer"><text class="calendar-detail" :class="themeClass('calendar-label')" aria-live="polite">{{ loading ? '' : selected }}</text><view class="legend"><text class="legend-label" :class="themeClass('calendar-label')">少</text><view v-for="level in [0, 1, 2, 3, 4]" :key="level" class="day" :class="['level-' + level, themeClass('level-' + level)]" /><text class="legend-label" :class="themeClass('calendar-label')">多</text></view></view>
   </view>
 </template>
 <style scoped lang="scss">

@@ -22,6 +22,7 @@ async function setup(page, extra = {}) {
   let minute = 0;
   const fixtures = {
     '/user/info': { id: 'donut-fixture', nickname: '模拟用户' },
+    '/message/unread-count': { count: 0 },
     '/auth/secondary-lock/menus': [], '/menu/all': [],
     '/menu/visuals': { menus: [], cards: {} },
     '/quick-nav/candidates': [], '/quick-nav/my': [], '/dashboard/tasks': [],
@@ -156,7 +157,9 @@ for (const width of [390, 820, 1440]) for (const theme of ['light', 'dark']) {
     expect(await page.locator('.time-donut-renderer').boundingBox()).toEqual(before);
   });
 
-  test(`首页时迹圆环连续且小分类比例正确 ${width} ${theme}`, async ({ page }, info) => {
+  test(`首页时迹圆环连续且小分类比例正确 ${width} ${theme}`, async ({ page, apiMock }, info) => {
+    // 离页进入“我”也必须完整模拟，未声明接口由严格 mock 拦截，避免请求真实后端。
+    apiMock({});
     await page.setViewportSize({ width, height: 900 });
     await page.emulateMedia({ colorScheme: theme, reducedMotion: 'reduce' });
     const errors = []; page.on('pageerror', error => errors.push(error.message));

@@ -3,7 +3,7 @@ import { useAppLayout } from '../../services/app-layout.ts'
 const { appGridItem } = useAppLayout()
 
 import ContentSkeleton from '../../components/ContentSkeleton.uvue';
-import { computed, onMounted, onUnmounted, ref } from 'vue';
+import { computed, onUnmounted, reactive, ref } from 'vue';
 import MobilePage from '../../components/MobilePage.uvue';
 import PageHeader from '../../components/PageHeader.uvue';
 import PageState from '../../components/PageState.uvue';
@@ -33,6 +33,13 @@ const username = ref(''),
   loading = ref(false),
   refreshing = ref(false),
   error = ref('');
+const sections = reactive({
+  profile: { loading: true, error: '', loaded: false },
+  contest: { loading: true, error: '', loaded: false },
+  calendar: { loading: true, error: '', loaded: false },
+  daily: { loading: true, error: '', loaded: false },
+  recent: { loading: true, error: '', loaded: false },
+});
 let alive = true,
   stamp = 0;
 onUnmounted(() => {
@@ -63,32 +70,42 @@ const difficultyProgress = computed(() => ['EASY', 'MEDIUM', 'HARD'].map((diffic
   total: ['numAcceptedQuestions', 'numFailedQuestions', 'numUntouchedQuestions'].reduce((sum, key) => sum + ((progress.value?.[key] || []).find((row) => row.difficulty === difficulty)?.count || 0), 0),
 })));
 
-async function load() {
-  const current = ++stamp;
+async function load(section = '') {
+  if (!alive || (section ? sections[section].loading : loading.value)) return;
+  const current = section ? stamp : ++stamp;
+  const keys = section ? [section] : ['profile', 'contest', 'calendar', 'daily', 'recent'];
   loading.value = true;
   error.value = '';
+  keys.forEach(key => { sections[key].loading = true; sections[key].error = ''; });
   try {
-    const bindings = await fetchCodingBindings();
-    const account = bindings.find((item) => item.platform === 'leetcode');
-    if (!account?.platformUsername) throw new Error('请先绑定 LeetCode 账号');
-    const data = await Promise.allSettled([
-      fetchLeetcodeProfile(account.platformUsername),
-      fetchLeetcodeContest(account.platformUsername),
-      fetchLeetcodeCalendar(account.platformUsername),
-      fetchLeetcodeDaily(),
-      fetchLeetcodeRecent(account.platformUsername),
-    ]);
-    if (!alive || stamp !== current) return;
-    username.value = account.platformUsername;
-    data.forEach((item, index) => {
-      if (item.status === 'fulfilled') {
-        if (index === 0) {
-          profile.value = item.value.userProfilePublicProfile;
-          progress.value = item.value.userProfileUserQuestionProgress;
-        }
-        if (index === 1) contest.value = item.value.userContestRanking;
-        if (index === 2) {
-          calendar.value = item.value.userCalendar;
+    // 单区重试复用本轮绑定，避免失败区域拖住其他已经展示的内容。
+    let accountName = username.value;
+    if (!section || !accountName) {
+      const bindings = await fetchCodingBindings();
+      if (!alive || stamp !== current) return;
+      accountName = bindings.find(item => item.platform === 'leetcode')?.platformUsername || '';
+      if (username.value !== accountName) {
+        profile.value = null; progress.value = null; contest.value = null; calendar.value = null; days.value = []; daily.value = []; recent.value = [];
+        Object.values(sections).forEach(state => { state.loaded = false; });
+      }
+      username.value = accountName;
+      if (!accountName) throw new Error('请先绑定 LeetCode 账号');
+    }
+    await Promise.all(keys.map(async key => {
+      try {
+        if (key === 'profile') {
+          const result = await fetchLeetcodeProfile();
+          if (!alive || stamp !== current) return;
+          profile.value = result.userProfilePublicProfile;
+          progress.value = result.userProfileUserQuestionProgress;
+        } else if (key === 'contest') {
+          const result = await fetchLeetcodeContest();
+          if (!alive || stamp !== current) return;
+          contest.value = result.userContestRanking;
+        } else if (key === 'calendar') {
+          const result = await fetchLeetcodeCalendar();
+          if (!alive || stamp !== current) return;
+          calendar.value = result.userCalendar;
           const values = JSON.parse(calendar.value.submissionCalendar || '{}');
           const now = new Date();
           now.setHours(0, 0, 0, 0);
@@ -116,17 +133,31 @@ async function load() {
               .reduce((n, [, value]) => n + Number(value), 0);
             return { date: key, count };
           });
+        } else if (key === 'daily') {
+          const result = await fetchLeetcodeDaily();
+          if (!alive || stamp !== current) return;
+          daily.value = result.todayRecord || [];
+        } else {
+          const result = await fetchLeetcodeRecent();
+          if (!alive || stamp !== current) return;
+          recent.value = result.recentACSubmissions || [];
         }
-        if (index === 3) daily.value = item.value.todayRecord || [];
-        if (index === 4) recent.value = item.value.recentACSubmissions || [];
-      } else error.value += (error.value ? '；' : '') + item.reason.message;
-    });
-  } catch (e) {
-    if (alive && stamp === current) error.value = e.message;
+        sections[key].loaded = true;
+      } catch (reason) {
+        if (alive && stamp === current) sections[key].error = reason.message || '加载失败';
+      } finally {
+        if (alive && stamp === current) sections[key].loading = false;
+      }
+    }));
+  } catch (reason) {
+    if (alive && stamp === current) {
+      error.value = reason.message;
+      keys.forEach(key => { sections[key].loading = false; });
+    }
   } finally {
     if (alive && stamp === current) {
-      loading.value = false;
-      refreshing.value = false;
+      loading.value = Object.values(sections).some(state => state.loading);
+      if (!loading.value) refreshing.value = false;
     }
   }
 }
@@ -145,10 +176,12 @@ useDomainPage(
     if (clear) daily.value = [];
     if (clear) recent.value = [];
     if (clear) days.value = [];
+    Object.values(sections).forEach(state => { state.loading = false; if (clear) { state.loaded = false; state.error = ''; } });
+    if (clear) { username.value = ''; error.value = ''; }
     loading.value = false;
     refreshing.value = false;
   },
-  { loading: () => loading.value, error: () => error.value, keys: () => ['leetcode', 'userbinds'] },
+  { loading: () => loading.value, error: () => error.value || Object.values(sections).map(state => state.error).join(''), keys: () => ['leetcode', 'userbinds'] },
 );
 const labels: Record<string, string> = { EASY: '简单', MEDIUM: '中等', HARD: '困难' };
 </script>
@@ -169,22 +202,25 @@ const labels: Record<string, string> = { EASY: '简单', MEDIUM: '中等', HARD:
           icon="ant-design:setting-outlined"
           variant="quiet"
           @click="uni.navigateTo({ url: '/pages/profile/bindings' })" /></view
-      ><PageState :has-content="!!profile || !!contest || days.length > 0 || daily.length > 0 || recent.length > 0" skeleton="dashboard" :loading="loading" :error="error" @retry="load"
-        >
-<template #loading><view class="progress-surface ui-card" :class="themeClass('progress-surface')"><view class="metrics progress-metrics ui-row ui-section"><MetricCard :style="appGridItem(2, 'inline', [[768, 3]], false)" v-for="label in ['已解题', '声望', '累计活跃天数', '最活跃的一天', '今日提交次数', '每日一题']" :key="label" :label="label" value="" loading /></view><text class="heading ui-section">做题进度</text><ContentSkeleton v-for="n in 3" :key="n" variant="goal-tile" compact /></view><ContentSkeleton variant="heatmap" /><ContentSkeleton variant="list" :rows="2" /></template>
-<view class="metrics ui-row ui-section"><MetricCard :style="appGridItem(2, 'inline', [[768, 4]], false)" label="全站排名" :value="String(profile?.siteRanking || '—')" /><MetricCard :style="appGridItem(2, 'inline', [[768, 4]], false)" label="竞赛分数" :value="String(Math.round(contest?.rating || 0))" /><MetricCard :style="appGridItem(2, 'inline', [[768, 4]], false)" label="全球排名" :value="String(contest?.globalRanking || '—')" :unit="'/ ' + (contest?.globalTotalParticipants || '—')" /><MetricCard :style="appGridItem(2, 'inline', [[768, 4]], false)" label="全国排名" :value="String(contest?.localRanking || '—')" :unit="'/ ' + (contest?.localTotalParticipants || '—')" /></view>
-        <view class="progress-surface ui-card" :class="themeClass('progress-surface')"><view class="metrics progress-metrics ui-row ui-section"><MetricCard :style="appGridItem(2, 'inline', [[768, 3]], false)" label="已解题" :value="String(solved)" :unit="'/ ' + total" /><MetricCard :style="appGridItem(2, 'inline', [[768, 3]], false)" label="声望" :value="String(profile?.profile?.reputation || 0)" /><MetricCard :style="appGridItem(2, 'inline', [[768, 3]], false)" label="累计活跃天数" :value="String(calendar?.totalActiveDays || 0)" unit="天" /><MetricCard :style="appGridItem(2, 'inline', [[768, 3]], false)" label="最活跃的一天" :value="String(peakDay.count)" :unit="'次 · ' + peakDay.date" /><MetricCard :style="appGridItem(2, 'inline', [[768, 3]], false)" label="今日提交次数" :value="String(summary.today)" /><MetricCard :style="appGridItem(2, 'inline', [[768, 3]], false)" value-kind="text" label="每日一题" :value="daily.some((item) => item.userStatus === 'FINISH') ? '已完成' : '未完成'" /></view><text class="heading ui-section">做题进度</text><view class="difficulty-list"><view :style="appGridItem(1, 'section', [[768, 3]], false)" v-for="row in difficultyProgress" :key="row.difficulty" class="difficulty-row"><view class="difficulty-head"><text class="difficulty-label" :class="'difficulty-' + row.difficulty">{{ labels[row.difficulty] }}</text><text class="muted" :class="themeClass('muted')">{{ row.accepted }} / {{ row.total }}</text></view><view class="progress-track"><view class="progress-fill" :class="'fill-' + row.difficulty" :style="{ width: (row.total ? Math.round(row.accepted / row.total * 100) : 0) + '%' }" /></view></view></view></view><text class="muted" :class="themeClass('muted')">过去一年共提交 {{ summary.total }} 次 · 连续提交 {{ calendar?.recentStreak || summary.streak }} 天</text
-        ><view class="calendar-surface ui-card" :class="themeClass('calendar-surface')"><CodingHeatmap :days="days" /></view><text class="heading ui-mt-section ui-section">每日一题</text
-        ><view v-for="item in daily" :key="item.date" class="record ui-card" :class="themeClass('record')">
+      ><PageState :content-key="username" :inherit-initializing="false" :has-content="sections.profile.loaded || sections.contest.loaded || sections.calendar.loaded || sections.daily.loaded || sections.recent.loaded" :error="error" @retry="load()">
+        <PageState :content-key="username" class="coding-contest" role="region" aria-label="LeetCode 竞赛排名" :loading="sections.contest.loading && sections.contest.loaded" :error="sections.contest.error" has-content @retry="load('contest')"><view class="metrics ui-row ui-section"><MetricCard :style="appGridItem(2, 'inline', [[768, 4]], false)" label="全站排名" :loading="sections.profile.loading && !sections.profile.loaded" :value="String(profile?.siteRanking || '—')" /><MetricCard :style="appGridItem(2, 'inline', [[768, 4]], false)" label="竞赛分数" :loading="sections.contest.loading && !sections.contest.loaded" :value="sections.contest.loaded ? String(Math.round(contest?.rating || 0)) : '—'" /><MetricCard :style="appGridItem(2, 'inline', [[768, 4]], false)" label="全球排名" :loading="sections.contest.loading && !sections.contest.loaded" :value="String(contest?.globalRanking || '—')" :unit="'/ ' + (contest?.globalTotalParticipants || '—')" /><MetricCard :style="appGridItem(2, 'inline', [[768, 4]], false)" label="全国排名" :loading="sections.contest.loading && !sections.contest.loaded" :value="String(contest?.localRanking || '—')" :unit="'/ ' + (contest?.localTotalParticipants || '—')" /></view></PageState>
+        <view class="progress-surface ui-card" :class="themeClass('progress-surface')"><view class="metrics progress-metrics ui-row ui-section"><MetricCard :style="appGridItem(2, 'inline', [[768, 3]], false)" label="已解题" :loading="sections.profile.loading && !sections.profile.loaded" :value="sections.profile.loaded ? String(solved) : '—'" :unit="'/ ' + total" /><MetricCard :style="appGridItem(2, 'inline', [[768, 3]], false)" label="声望" :loading="sections.profile.loading && !sections.profile.loaded" :value="sections.profile.loaded ? String(profile?.profile?.reputation || 0) : '—'" /><MetricCard :style="appGridItem(2, 'inline', [[768, 3]], false)" label="累计活跃天数" :loading="sections.calendar.loading && !sections.calendar.loaded" :value="sections.calendar.loaded ? String(calendar?.totalActiveDays || 0) : '—'" unit="天" /><MetricCard :style="appGridItem(2, 'inline', [[768, 3]], false)" label="最活跃的一天" :loading="sections.calendar.loading && !sections.calendar.loaded" :value="sections.calendar.loaded ? String(peakDay.count) : '—'" :unit="'次 · ' + peakDay.date" /><MetricCard :style="appGridItem(2, 'inline', [[768, 3]], false)" label="今日提交次数" :loading="sections.calendar.loading && !sections.calendar.loaded" :value="sections.calendar.loaded ? String(summary.today) : '—'" /><MetricCard :style="appGridItem(2, 'inline', [[768, 3]], false)" value-kind="text" label="每日一题" :loading="sections.daily.loading && !sections.daily.loaded" :value="sections.daily.loaded ? (daily.some((item) => item.userStatus === 'FINISH') ? '已完成' : '未完成') : '—'" /></view><text class="heading ui-section">做题进度</text><PageState :content-key="username" class="coding-profile" role="region" aria-label="LeetCode 做题进度" :loading="sections.profile.loading" :error="sections.profile.error" :has-content="sections.profile.loaded" @retry="load('profile')"><template #loading><view class="difficulty-list" role="status" aria-label="正在加载做题进度"><view :style="appGridItem(1, 'section', [[768, 3]], false)" v-for="difficulty in ['EASY', 'MEDIUM', 'HARD']" :key="difficulty" class="difficulty-row" aria-hidden="true"><view class="difficulty-head"><text class="difficulty-label" :class="'difficulty-' + difficulty">{{ labels[difficulty] }}</text><text class="muted" :class="themeClass('muted')">— / —</text></view><view class="progress-track" /></view></view></template><view class="difficulty-list"><view :style="appGridItem(1, 'section', [[768, 3]], false)" v-for="row in difficultyProgress" :key="row.difficulty" class="difficulty-row"><view class="difficulty-head"><text class="difficulty-label" :class="'difficulty-' + row.difficulty">{{ labels[row.difficulty] }}</text><text class="muted" :class="themeClass('muted')">{{ row.accepted }} / {{ row.total }}</text></view><view class="progress-track"><view class="progress-fill" :class="'fill-' + row.difficulty" :style="{ width: (row.total ? Math.round(row.accepted / row.total * 100) : 0) + '%' }" /></view></view></view></PageState></view>
+        <PageState :content-key="username" class="coding-calendar" role="region" aria-label="LeetCode 提交日历" skeleton="heatmap" :loading="sections.calendar.loading" :error="sections.calendar.error" :has-content="sections.calendar.loaded" @retry="load('calendar')"><template #loading><text class="muted" :class="themeClass('muted')">过去一年共提交 — 次 · 连续提交 — 天</text><view class="calendar-surface ui-card" :class="themeClass('calendar-surface')"><CodingHeatmap :days="[]" loading /></view></template><text class="muted" :class="themeClass('muted')">过去一年共提交 {{ summary.total }} 次 · 连续提交 {{ calendar?.recentStreak || summary.streak }} 天</text
+        ><view class="calendar-surface ui-card" :class="themeClass('calendar-surface')"><CodingHeatmap :days="days" /></view></PageState>
+        <text class="heading ui-mt-section ui-section">每日一题</text>
+        <PageState :content-key="username" class="coding-daily" role="region" aria-label="LeetCode 每日一题" :loading="sections.daily.loading" :error="sections.daily.error" :has-content="sections.daily.loaded" :empty="!daily.length" empty-text="暂无每日一题" @retry="load('daily')"><template #loading><view class="record ui-card" :class="themeClass('record')"><ContentSkeleton variant="tile" /></view></template><view v-for="item in daily" :key="item.date" class="record ui-card" :class="themeClass('record')">
           <view class="record-head"><view class="record-copy"><text class="record-title">{{ item.question.translatedTitle || item.question.title }}</text><view class="meta-list"><text class="muted" :class="themeClass('muted')">{{ item.date }}</text><text class="status-tag" :class="item.userStatus === 'FINISH' ? 'status-done' : 'status-pending'">{{ item.userStatus === 'FINISH' ? '已完成' : '未完成' }}</text></view></view><MobileButton label="打开题目" icon="ant-design:export-outlined" variant="quiet" @click="openExternal('https://leetcode.cn/problems/' + item.question.titleSlug + '/')" /></view>
         </view>
+</PageState>
         <text class="heading ui-mt-section ui-section">最近通过</text>
-        <view v-for="item in recent" :key="item.submissionId" class="record ui-card" :class="themeClass('record')">
+        <PageState :content-key="username" class="coding-recent" role="region" aria-label="LeetCode 最近通过" :loading="sections.recent.loading" :error="sections.recent.error" :has-content="sections.recent.loaded" :empty="!recent.length" empty-text="暂无通过记录" @retry="load('recent')"><template #loading><view v-for="n in 2" :key="n" class="record ui-card" :class="themeClass('record')"><ContentSkeleton variant="tile" /></view></template><view v-for="item in recent" :key="item.submissionId" class="record ui-card" :class="themeClass('record')">
           <view class="record-head"><view class="record-copy"><text class="record-title">{{ item.question.questionFrontendId }} · {{ item.question.translatedTitle || item.question.title }}</text><text class="muted" :class="themeClass('muted')">{{ new Date(Number(item.submitTime) * 1000).toLocaleString() }}</text></view><MobileButton label="打开题目" icon="ant-design:export-outlined" variant="quiet" @click="openExternal('https://leetcode.cn/problems/' + item.question.titleSlug + '/')" /></view>
-        </view></PageState></view
-  ></MobilePage>
+        </view></PageState>
+      </PageState></view>
+  </MobilePage>
 </template>
 <style scoped lang="scss">
+@use '../../styles/platform' as *;
 @use '../../styles/typography' as *;
 @use '../../styles/text-colors' as *;
 @use '../../styles/spacing.scss';
@@ -199,24 +235,15 @@ const labels: Record<string, string> = { EASY: '简单', MEDIUM: '中等', HARD:
 }
 .metrics {
 
-/* #ifndef APP */
-display: grid;
-/* #endif */
-/* #ifdef APP */
-display: flex; flex-direction: row; flex-wrap: wrap; justify-content: space-between;
-/* #endif */
+@include grid-layout;
 
-/* #ifndef APP */
-grid-template-columns: repeat(2, minmax(0, 1fr));
-/* #endif */
+@include grid-columns(2);
 
   gap: $space-inline;
 }
 @media (min-width: 768px) {
   .metrics {
-/* #ifndef APP */
-grid-template-columns: repeat(4, minmax(0, 1fr));
-/* #endif */
+@include grid-columns(4);
  }
 }
 .record {
@@ -236,12 +263,7 @@ grid-template-columns: repeat(4, minmax(0, 1fr));
 .heading {
   @include type-style('title');
 
-/* #ifndef APP */
-display: block;
-/* #endif */
-/* #ifdef APP */
-display: flex;
-/* #endif */
+@include block-content;
 
 }
 .calendar-surface { background-color: #ffffff; border-radius: 14px; }
@@ -280,19 +302,10 @@ display: flex;
 .status-done { color: #3a9d78; background-color: rgba(58,157,120,.1); }
 .status-pending { color: #b58a30; background-color: rgba(181,138,48,.1); }
 @media (min-width: 768px) { .progress-metrics {
-/* #ifndef APP */
-grid-template-columns: repeat(3, minmax(0, 1fr));
-/* #endif */
+@include grid-columns(3);
  } .difficulty-list {
-/* #ifndef APP */
-display: grid;
-/* #endif */
-/* #ifdef APP */
-display: flex; flex-direction: row; flex-wrap: wrap; justify-content: space-between;
-/* #endif */
+@include grid-layout;
 
-/* #ifndef APP */
-grid-template-columns: repeat(3, minmax(0, 1fr));
-/* #endif */
+@include grid-columns(3);
  } }
 </style>

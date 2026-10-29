@@ -9,6 +9,7 @@ async function setup(page, { locked = false, failMore = false, readAccess = true
     '/home/cards': homeCardFixture(),
     '/menu/visuals': { menus: [], cards: {} },
     '/user/info': { id: 'fixture-user', nickname: '测试用户' },
+    '/message/unread-count': 0,
     '/auth/secondary-lock/menus': locked ? ['read-menu'] : [],
     '/menu/all': [{ path: '/my-hub/read-record', meta: { menuId: 'read-menu' } }],
     '/quick-nav/candidates': ['/task-center/goal', '/my-hub/anniversary', '/my-hub/read-record', '/membership', '/my-hub/movie'].map(path => ({ path })),
@@ -397,8 +398,8 @@ for (const kind of ['read', 'movie', 'member']) {
       await page.route('**/api/membership/providers', route => route.fulfill({ json: { code: 0, data: [] } }));
     } else {
       await page.route('**/api' + base + '/page?*', route => {
-        const activeOnly = new URL(route.request().url()).searchParams.get('activeOnly') === 'true';
-        const items = !activeOnly || row.status !== 'completed' ? [row] : [];
+        const selectedStatuses = new URL(route.request().url()).searchParams.getAll('statuses');
+        const items = !selectedStatuses.length || selectedStatuses.includes(row.status) ? [row] : [];
         return route.fulfill({ json: { code: 0, data: { items, total: items.length } } });
       });
       await page.route('**/api' + base + '/' + row.id, route => route.fulfill({ json: { code: 0, data: row } }));

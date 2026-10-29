@@ -1,16 +1,24 @@
 <script setup lang="ts">
+// #ifdef MP-WEIXIN
 import PageTabBar from './PageTabBar.uvue'
+// #endif
 defineProps<{ pagePath: string }>()
 </script>
 <template>
   <view class="tab-shell">
+  <!-- #ifdef MP-WEIXIN -->
     <view class="tab-shell-content"><slot /></view>
     <PageTabBar :page-path="pagePath" />
+  <!-- #endif -->
+  <!-- #ifndef MP-WEIXIN -->
+  <slot />
+  <!-- #endif -->
   </view>
 </template>
 <style scoped lang="scss">
 // 微信页面内容与底栏由同一个 flex 容器分配高度；安全区只由底栏负责。
 // 不使用 transform/filter/overflow 创建新的弹窗裁切或定位上下文。
+// 三端保留真实根节点；H5 的 SelectorQuery 无法可靠遍历仅 slot 形成的 Fragment。
 .tab-shell { display: flex; flex-direction: column; height: 100%; min-height: 0; }
 .tab-shell-content { display: flex; flex-direction: column; flex: 1; height: 0; min-height: 0; }
 </style>

@@ -97,7 +97,7 @@ function resume(row) { if (props.active && !props.refreshDisabled && !state.lock
   <view v-if="state.available" class="summary-card" :aria-label="card.title + '首页卡片'" :aria-busy="state.loading" :class="{ 'summary-dark': isDark }">
     <DashboardSection :title="card.title" :icon="visual.icon" :icon-color="visual.iconColor" :height="height" :auto-height="!height" :loading="!financial && !state.data && !state.error && !state.locked" :updating="state.loading && !!state.data" :retain-content="financial || !!state.data" :error="state.error" :locked="state.locked" :refresh-disabled="refreshDisabled" navigable @navigate="navigate()" @unlock="unlockCard" @refresh="manualRefresh">
       <template #actions><DashboardAction :label="actionLabel" @click="create" /></template>
-      <template #loading><view class="summary-pending" role="status" :aria-label="'正在加载' + card.title"><view v-for="n in 3" :key="n" class="summary-skeleton-row"><view v-if="kind === 'video' || kind === 'device'" class="summary-image-placeholder" :class="{ 'summary-video-image': kind === 'video', 'summary-skeleton-dark': isDark }" /><view class="summary-skeleton-copy"><view class="summary-skeleton-line" :class="{ 'summary-skeleton-dark': isDark }" /><view class="summary-skeleton-caption" :class="{ 'summary-skeleton-dark': isDark }" /></view></view></view></template>
+      <template #loading><view class="summary-pending" role="status" :aria-label="'正在加载' + card.title"><view v-for="n in 3" :key="n" class="summary-skeleton-row"><view v-if="kind === 'video' || kind === 'device'" class="summary-image-placeholder" :class="{ 'summary-video-image': kind === 'video', 'summary-skeleton-dark': isDark }" /><view class="summary-skeleton-copy"><view class="summary-skeleton-line" :class="{ 'summary-skeleton-dark': isDark }" /><view class="summary-skeleton-caption summary-skeleton-detail" :class="{ 'summary-skeleton-dark': isDark }" /></view></view></view></template>
       <view v-if="financial" class="finance-summary">
         <view class="finance-range" role="group" :aria-label="card.title + '统计范围'">
           <button v-for="period in summaryPeriods" :key="period.key" class="finance-range-button" :class="{ 'finance-range-selected': (state.data?.period || state.period) === period.key, 'finance-range-dark': isDark, 'finance-range-selected-dark': isDark && (state.data?.period || state.period) === period.key }" role="button" :aria-label="card.title + '：' + period.label" :aria-pressed="(state.data?.period || state.period) === period.key" :aria-busy="state.loading && state.period === period.key" :disabled="refreshDisabled || state.locked" @click.stop="changePeriod(period.key)"><text class="finance-range-label" :class="{ 'finance-range-label-dark': isDark }">{{ period.label }}</text><LoadingIndicator v-if="state.loading && state.period === period.key" class="finance-range-updating" compact :label="'正在加载' + period.label" /></button>
@@ -119,6 +119,7 @@ function resume(row) { if (props.active && !props.refreshDisabled && !state.lock
   </view>
 </template>
 <style scoped lang="scss">
+@use '../../styles/platform' as *;
 @use '../../styles/typography' as *;
 @use '../../styles/spacing-tokens' as *;
 .summary-card { width: 100%; }
@@ -133,16 +134,17 @@ function resume(row) { if (props.active && !props.refreshDisabled && !state.lock
 .finance-metrics { display: flex; flex-direction: row; gap: $space-inline; flex-wrap: wrap; }
 .finance-metric { flex: 1; min-width: 0; gap: $space-detail; }
 .finance-value { @include type-style('body'); color: #27272a; word-break: break-all; }
-.summary-skeleton-row { height: 64px; flex-direction: row; align-items: center; gap: $space-inline; }
-.summary-skeleton-copy { flex: 1; gap: $space-detail; }
-.summary-skeleton-line { height: 18px; width: 75%; background-color: #e8ecf1; border-radius: 4px; }
-.summary-skeleton-caption { height: 14px; width: 60%; background-color: #e8ecf1; border-radius: 4px; }
+.summary-skeleton-row { height: 64px; flex-shrink: 0; flex-direction: row; align-items: center; }
+.summary-skeleton-copy { flex: 1; min-width: 0; }
+.summary-skeleton-line { height: 10px; flex-shrink: 0; width: 75%; background-color: #e8ecf1; border-radius: 4px; }
+.summary-skeleton-caption { height: 8px; flex-shrink: 0; width: 45%; background-color: #e8ecf1; border-radius: 4px; }
+.summary-skeleton-detail { margin-top: $space-inline; }
 .summary-skeleton-dark { background-color: #30343c; }
 .summary-text-dark { color: #ececf0; }
 .summary-caption-dark { color: #a1a1aa; }
 .summary-image, .summary-image-placeholder { width: 44px; height: 44px; flex-shrink: 0; }
 .summary-video-image { width: 72px; }
-.summary-image-placeholder { background-color: #e8ecf1; border-radius: 6px; }
+.summary-image-placeholder { background-color: #e8ecf1; border-radius: 6px; margin-right: $space-inline; }
 .finance-range { flex-direction: row; gap: $space-detail; }
 .finance-range-button { display: flex; position: relative; flex: 1; min-height: $space-controlMin; margin: 0; padding: 0 $space-inline; border: 0; border-radius: 6px; background-color: transparent; align-items: center; justify-content: center; }
 .finance-range-selected { background-color: #eef2ff; }
@@ -154,7 +156,5 @@ function resume(row) { if (props.active && !props.refreshDisabled && !state.lock
 .finance-range-label-dark { color: #ececf0; }
 .finance-pending { gap: $space-inline; min-height: 74px; }
 .finance-value-single { @include type-style('metric'); }
-/* #ifdef WEB || MP-WEIXIN */
-.summary-entry::after, .finance-range-button::after { border: 0; }
-/* #endif */
+.summary-entry, .finance-range-button { @include borderless-button; }
 </style>

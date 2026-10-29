@@ -44,12 +44,10 @@ const sections = reactive({
   commits: { loading: true, error: '', loaded: false },
 });
 let alive = true,
-  stamp = 0,
-  token = '';
+  stamp = 0;
 onUnmounted(() => {
   alive = false;
   stamp++;
-  token = '';
 });
 const sortedRepos = computed(() =>
   [...repos.value]
@@ -102,22 +100,21 @@ async function load(section = '') {
   error.value = '';
   keys.forEach(key => { sections[key].loading = true; sections[key].error = ''; });
   try {
-    const bindings = await fetchCodingBindings(true);
+    const bindings = await fetchCodingBindings();
     if (!alive || stamp !== current) return;
     const account = bindings.find((item) => item.platform === 'github');
     if (!account?.platformUsername) throw new Error('请先绑定 GitHub 账号');
     username.value = account.platformUsername;
-    token = account.accessToken || '';
     await Promise.all(keys.map(async key => {
       try {
         if (key === 'calendar') {
-          const result = await fetchGithubCalendar(username.value, token);
+          const result = await fetchGithubCalendar();
           if (!alive || stamp !== current) return;
           const calendar = result.data.user.contributionsCollection.contributionCalendar;
           total.value = calendar.totalContributions;
           days.value = calendar.weeks.flatMap(week => week.contributionDays.map(day => ({ date: day.date, count: day.contributionCount })));
         } else if (key === 'repos') {
-          const result = await fetchRepos(username.value, token);
+          const result = await fetchRepos();
           if (!alive || stamp !== current) return;
           repos.value = result.map(repo => ({ ...repo, myCommits: null, statsBusy: true }));
           repoStats(current);
@@ -151,14 +148,14 @@ async function repoStats(current: number) {
   for (const repo of repos.value.slice(0, 30)) {
     if (!alive || stamp !== current) return;
     try {
-      const contributors = await fetchRepoContributors(repo.full_name, token);
+      const contributors = await fetchRepoContributors(repo.full_name);
       if (!alive || stamp !== current) return;
       repo.myCommits =
         contributors.find(
           (item) => String(item.login).toLowerCase() === username.value.toLowerCase(),
         )?.contributions || 0;
       if (repo.fork) {
-        const data = await fetchRepoInfo(repo.full_name, token);
+        const data = await fetchRepoInfo(repo.full_name);
         if (!alive || stamp !== current) return;
         repo.sourceStars = data.parent?.stargazers_count;
       }
@@ -199,7 +196,6 @@ useDomainPage(
   (clear) => {
     alive = false;
     stamp++;
-    if (clear) token = '';
     if (clear) repos.value = [];
     if (clear) commits.value = [];
     if (clear) days.value = [];
@@ -280,6 +276,7 @@ useDomainPage(
   ></MobilePage>
 </template>
 <style scoped lang="scss">
+@use '../../styles/platform' as *;
 @use '../../styles/typography' as *;
 @use '../../styles/text-colors' as *;
 @use '../../styles/spacing.scss';
@@ -296,24 +293,15 @@ useDomainPage(
 }
 .metrics {
 
-/* #ifndef APP */
-display: grid;
-/* #endif */
-/* #ifdef APP */
-display: flex; flex-direction: row; flex-wrap: wrap; justify-content: space-between;
-/* #endif */
+@include grid-layout;
 
-/* #ifndef APP */
-grid-template-columns: repeat(2, minmax(0, 1fr));
-/* #endif */
+@include grid-columns(2);
 
   gap: $space-inline;
 }
 @media (min-width: 768px) {
   .metrics {
-/* #ifndef APP */
-grid-template-columns: repeat(3, minmax(0, 1fr));
-/* #endif */
+@include grid-columns(3);
  }
 }
 .record {
@@ -333,12 +321,7 @@ grid-template-columns: repeat(3, minmax(0, 1fr));
 .heading {
   @include type-style('title');
 
-/* #ifndef APP */
-display: block;
-/* #endif */
-/* #ifdef APP */
-display: flex;
-/* #endif */
+@include block-content;
 
 }
 .calendar-surface { background-color: #ffffff; border-radius: 14px; }

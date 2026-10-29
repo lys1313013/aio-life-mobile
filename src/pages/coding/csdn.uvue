@@ -4,7 +4,7 @@ const { appGridItem } = useAppLayout()
 
 import ContentSkeleton from '../../components/ContentSkeleton.uvue';
 import AppIcon from '../../components/AppIcon.uvue';
-import { onMounted, onUnmounted, ref } from 'vue';
+import { onUnmounted, reactive, ref } from 'vue';
 import MobilePage from '../../components/MobilePage.uvue';
 import PageHeader from '../../components/PageHeader.uvue';
 import PageState from '../../components/PageState.uvue';
@@ -24,6 +24,10 @@ const stats = ref<any>(null),
   loading = ref(false),
   refreshing = ref(false),
   error = ref('');
+const sections = reactive({
+  stats: { loading: true, error: '', loaded: false },
+  articles: { loading: true, error: '', loaded: false },
+});
 let alive = true,
   stamp = 0;
 onUnmounted(() => {
@@ -38,32 +42,54 @@ function groupedCount(value: unknown) {
   const text = String(value ?? 0);
   return text.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
 }
-async function load() {
-  const current = ++stamp;
+async function load(section = '') {
+  if (!alive || (section ? sections[section].loading : loading.value)) return;
+  const current = section ? stamp : ++stamp;
+  const keys = section ? [section] : ['stats', 'articles'];
   loading.value = true;
   error.value = '';
+  keys.forEach(key => { sections[key].loading = true; sections[key].error = ''; });
   try {
-    const bindings = await fetchCodingBindings();
-    const account = bindings.find((item) => item.platform === 'csdn');
-    if (!account?.platformUsername) throw new Error('请先绑定 CSDN 账号');
-    const data = await Promise.allSettled([
-      fetchCsdnStats(account.platformUsername),
-      fetchCsdnArticles(account.platformUsername),
-    ]);
-    if (!alive || stamp !== current) return;
-    username.value = account.platformUsername;
-    data.forEach((item, index) => {
-      if (item.status === 'fulfilled') {
-        if (index === 0) stats.value = item.value;
-        else articles.value = item.value;
-      } else error.value += (error.value ? '；' : '') + item.reason.message;
-    });
-  } catch (e) {
-    if (alive && stamp === current) error.value = e.message;
+    // 单区重试复用本轮绑定，避免失败区域拖住其他已经展示的内容。
+    let accountName = username.value;
+    if (!section || !accountName) {
+      const bindings = await fetchCodingBindings();
+      if (!alive || stamp !== current) return;
+      accountName = bindings.find(item => item.platform === 'csdn')?.platformUsername || '';
+      if (username.value !== accountName) {
+        stats.value = null; articles.value = [];
+        Object.values(sections).forEach(state => { state.loaded = false; });
+      }
+      username.value = accountName;
+      if (!accountName) throw new Error('请先绑定 CSDN 账号');
+    }
+    await Promise.all(keys.map(async key => {
+      try {
+        if (key === 'stats') {
+          const result = await fetchCsdnStats(accountName);
+          if (!alive || stamp !== current) return;
+          stats.value = result;
+        } else {
+          const result = await fetchCsdnArticles(accountName);
+          if (!alive || stamp !== current) return;
+          articles.value = result;
+        }
+        sections[key].loaded = true;
+      } catch (reason) {
+        if (alive && stamp === current) sections[key].error = reason.message || '加载失败';
+      } finally {
+        if (alive && stamp === current) sections[key].loading = false;
+      }
+    }));
+  } catch (reason) {
+    if (alive && stamp === current) {
+      error.value = reason.message;
+      keys.forEach(key => { sections[key].loading = false; });
+    }
   } finally {
     if (alive && stamp === current) {
-      loading.value = false;
-      refreshing.value = false;
+      loading.value = Object.values(sections).some(state => state.loading);
+      if (!loading.value) refreshing.value = false;
     }
   }
 }
@@ -77,10 +103,12 @@ useDomainPage(
     stamp++;
     if (clear) stats.value = null;
     if (clear) articles.value = [];
+    Object.values(sections).forEach(state => { state.loading = false; if (clear) { state.loaded = false; state.error = ''; } });
+    if (clear) { username.value = ''; error.value = ''; }
     loading.value = false;
     refreshing.value = false;
   },
-  { loading: () => loading.value, error: () => error.value, keys: () => ['csdn', 'userbinds'] },
+  { loading: () => loading.value, error: () => error.value || Object.values(sections).map(state => state.error).join(''), keys: () => ['csdn', 'userbinds'] },
 );
 </script>
 <template>
@@ -100,28 +128,34 @@ useDomainPage(
           icon="ant-design:setting-outlined"
           variant="quiet"
           @click="uni.navigateTo({ url: '/pages/profile/bindings' })" /></view
-      ><PageState :has-content="!!stats || articles.length > 0" skeleton="articles" :loading="loading" :error="error" @retry="load"
-        >
-<template #loading><view class="metrics ui-row ui-section"><MetricCard :style="appGridItem(2, 'inline', [[768, 3]], false)" v-for="label in ['总访问量', '原创数', '全站排名', '粉丝数', '获赞数', '评论']" :key="label" :label="label" value="" loading /></view><text class="heading ui-section">近期文章</text><view v-for="n in 3" :key="n" class="article ui-card" :class="themeClass('article')"><ContentSkeleton variant="tile" /></view></template>
-<view v-if="stats" class="metrics ui-row ui-section"
-          ><MetricCard :style="appGridItem(2, 'inline', [[768, 3]], false)" label="总访问量" :value="groupedCount(stats.viewCount)" /><MetricCard :style="appGridItem(2, 'inline', [[768, 3]], false)"
+      ><PageState :content-key="username" :inherit-initializing="false" :has-content="sections.stats.loaded || sections.articles.loaded" :error="error" @retry="load()">
+        <PageState :content-key="username" class="coding-stats" role="region" aria-label="CSDN 统计" :loading="sections.stats.loading" :error="sections.stats.error" :has-content="sections.stats.loaded" @retry="load('stats')">
+          <template #loading><view class="metrics ui-row ui-section"><MetricCard :style="appGridItem(2, 'inline', [[768, 3]], false)" v-for="label in ['总访问量', '原创数', '全站排名', '粉丝数', '获赞数', '评论']" :key="label" :label="label" value="" loading /></view></template>
+          <view class="metrics ui-row ui-section"
+          ><MetricCard :style="appGridItem(2, 'inline', [[768, 3]], false)" label="总访问量" :value="groupedCount(stats?.viewCount)" /><MetricCard :style="appGridItem(2, 'inline', [[768, 3]], false)"
             label="原创数"
-            :value="groupedCount(stats.originalCount)" /><MetricCard :style="appGridItem(2, 'inline', [[768, 3]], false)"
+            :value="groupedCount(stats?.originalCount)" /><MetricCard :style="appGridItem(2, 'inline', [[768, 3]], false)"
             label="全站排名"
-            :value="groupedCount(stats.rank)" /><MetricCard :style="appGridItem(2, 'inline', [[768, 3]], false)"
+            :value="groupedCount(stats?.rank)" /><MetricCard :style="appGridItem(2, 'inline', [[768, 3]], false)"
             label="粉丝数"
-            :value="groupedCount(stats.fansCount)" /><MetricCard :style="appGridItem(2, 'inline', [[768, 3]], false)"
+            :value="groupedCount(stats?.fansCount)" /><MetricCard :style="appGridItem(2, 'inline', [[768, 3]], false)"
             label="获赞数"
-            :value="groupedCount(stats.likeCount)" /><MetricCard :style="appGridItem(2, 'inline', [[768, 3]], false)"
+            :value="groupedCount(stats?.likeCount)" /><MetricCard :style="appGridItem(2, 'inline', [[768, 3]], false)"
             label="评论"
-            :value="groupedCount(stats.commentCount)" /></view
-        ><text class="heading ui-section">近期文章</text><view v-if="!articles.length" class="article empty ui-card" :class="themeClass('article')"><text class="muted" :class="themeClass('muted')">暂无近期文章</text></view><view v-for="item in articles" :key="item.id" class="article ui-card" :class="themeClass('article')"
+            :value="groupedCount(stats?.commentCount)" /></view
+        ></PageState>
+        <text class="heading ui-section">近期文章</text>
+        <PageState :content-key="username" class="coding-articles" role="region" aria-label="CSDN 近期文章" :loading="sections.articles.loading" :error="sections.articles.error" :has-content="sections.articles.loaded" @retry="load('articles')">
+          <template #loading><view v-for="n in 3" :key="n" class="article ui-card" :class="themeClass('article')"><ContentSkeleton variant="tile" /></view></template>
+          <view v-if="!articles.length" class="article empty ui-card" :class="themeClass('article')"><text class="muted" :class="themeClass('muted')">暂无近期文章</text></view><view v-for="item in articles" :key="item.id" class="article ui-card" :class="themeClass('article')"
           ><view class="record-head"><text class="record-title record-copy">{{ item.title }}</text><MobileButton label="打开文章" icon="ant-design:export-outlined" variant="quiet" @click="openExternal(item.url)" /></view>
-          <text v-if="item.description" class="record-description" :class="[themeClass('description'), { 'description-collapsed': !expandedArticles.includes(String(item.id)) }]">{{ item.description }}</text><MobileButton v-if="item.description" :label="expandedArticles.includes(String(item.id)) ? '收起摘要' : '展开摘要'" variant="ghost" compact @click="toggleSummary(String(item.id))" />
-          <view class="meta-list"><text class="meta-item" :class="themeClass('meta-item')">{{ item.postTime }}</text><view class="meta-item" :class="themeClass('meta-item')" :aria-label="'浏览 ' + item.viewCount"><AppIcon name="ant-design:eye-outlined" :size="13" /><text class="meta-value">{{ groupedCount(item.viewCount) }}</text></view><view class="meta-item" :class="themeClass('meta-item')" :aria-label="'评论 ' + item.commentCount"><AppIcon name="ant-design:message-outlined" :size="13" /><text class="meta-value">{{ groupedCount(item.commentCount) }}</text></view><view class="meta-item" :class="themeClass('meta-item')" :aria-label="'点赞 ' + (item.likeCount || 0)"><AppIcon name="ant-design:like-outlined" :size="13" /><text class="meta-value">{{ groupedCount(item.likeCount) }}</text></view><view class="meta-item" :class="themeClass('meta-item')" :aria-label="'收藏 ' + (item.collectCount || 0)"><AppIcon name="ant-design:star-outlined" :size="13" /><text class="meta-value">{{ groupedCount(item.collectCount) }}</text></view></view></view></PageState></view
-  ></MobilePage>
+          <text :max-lines="expandedArticles.includes(String(item.id)) ? -1 : 2" v-if="item.description" class="record-description" :class="[themeClass('description'), { 'description-collapsed': !expandedArticles.includes(String(item.id)) }]">{{ item.description }}</text><MobileButton v-if="item.description" :label="expandedArticles.includes(String(item.id)) ? '收起摘要' : '展开摘要'" variant="ghost" compact @click="toggleSummary(String(item.id))" />
+          <view class="meta-list"><text class="meta-item" :class="themeClass('meta-item')">{{ item.postTime }}</text><view class="meta-item" :class="themeClass('meta-item')" :aria-label="'浏览 ' + item.viewCount"><AppIcon name="ant-design:eye-outlined" :size="13" /><text class="meta-value">{{ groupedCount(item.viewCount) }}</text></view><view class="meta-item" :class="themeClass('meta-item')" :aria-label="'评论 ' + item.commentCount"><AppIcon name="ant-design:message-outlined" :size="13" /><text class="meta-value">{{ groupedCount(item.commentCount) }}</text></view><view class="meta-item" :class="themeClass('meta-item')" :aria-label="'点赞 ' + (item.likeCount || 0)"><AppIcon name="ant-design:like-outlined" :size="13" /><text class="meta-value">{{ groupedCount(item.likeCount) }}</text></view><view class="meta-item" :class="themeClass('meta-item')" :aria-label="'收藏 ' + (item.collectCount || 0)"><AppIcon name="ant-design:star-outlined" :size="13" /><text class="meta-value">{{ groupedCount(item.collectCount) }}</text></view></view></view></PageState>
+      </PageState></view>
+  </MobilePage>
 </template>
 <style scoped lang="scss">
+@use '../../styles/platform' as *;
 @use '../../styles/typography' as *;
 @use '../../styles/text-colors' as *;
 @use '../../styles/spacing.scss';
@@ -136,24 +170,15 @@ useDomainPage(
 }
 .metrics {
 
-/* #ifndef APP */
-display: grid;
-/* #endif */
-/* #ifdef APP */
-display: flex; flex-direction: row; flex-wrap: wrap; justify-content: space-between;
-/* #endif */
+@include grid-layout;
 
-/* #ifndef APP */
-grid-template-columns: repeat(2, minmax(0, 1fr));
-/* #endif */
+@include grid-columns(2);
 
   gap: $space-inline;
 }
 @media (min-width: 768px) {
   .metrics {
-/* #ifndef APP */
-grid-template-columns: repeat(3, minmax(0, 1fr));
-/* #endif */
+@include grid-columns(3);
  }
 }
 .article {
@@ -172,12 +197,7 @@ grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 .record-dark, .article-dark { background-color: #1c1e22; }
 .heading {
-/* #ifndef APP */
-display: block;
-/* #endif */
-/* #ifdef APP */
-display: flex;
-/* #endif */
+@include block-content;
  @include type-style('title');  }
 .empty { min-height: 88px; align-items: center; justify-content: center; }
 
@@ -193,15 +213,7 @@ display: flex;
 
 .description-collapsed {
   overflow: hidden;
-  /* #ifndef APP */
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-  /* #endif */
-  /* #ifdef APP */
-  lines: 2;
-  text-overflow: ellipsis;
-  /* #endif */
+  @include clamp-text(2);
 }
 .meta-value { @include type-style('caption'); }
 </style>

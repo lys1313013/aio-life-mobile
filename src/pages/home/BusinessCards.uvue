@@ -45,6 +45,10 @@ const recordOrders = Object.fromEntries(businessCards.filter(card => card.pinned
   save: (from, to) => reorderPinned(card, from, to),
 })]))
 provide('home-business-orders', recordOrders)
+function recordScrollTop(key: string) {
+  const value = recordOrders[key]?.scrollTop.value
+  return Number.isFinite(value) ? value : 0
+}
 watch(() => Object.values(recordOrders).some(order => !!order.dragging.value), sorting => emit('sorting', sorting), { flush: 'sync' })
 const shown = computed(() => businessCards.filter(card => {
   const state = states[card.key]
@@ -306,7 +310,7 @@ function placeholderHeight(card) {
         <MovieList v-else-if="card.key === 'movie' && (states[card.key].rows.length || cardLoading(card))" :max-height="cardMaxHeight" :rows="states[card.key].rows" :loading="cardLoading(card)" :more-loading="states[card.key].moreLoading" :error="states[card.key].moreError" @edit="open(card, $event)" @more="nextPage(card)" @retry="load(card, true)" />
         <view v-else-if="!states[card.key].rows.length && cardLoading(card)"><BusinessCardSkeleton v-for="row in (card.key === 'goal' ? 3 : 1)" :key="row" :kind="card.key" :label="'正在加载' + card.title" /></view>
         <view v-else-if="!states[card.key].rows.length && states[card.key].error" class="card-placeholder" :style="{ minHeight: placeholderHeight(card) + 'px' }"><text class="error-text">{{ states[card.key].error }}</text><button role="button" class="icon-action" :aria-label="'重试' + card.title" @click="refreshCard(card)"><AppIcon name="lucide:rotate-cw" :size="18" color="#5879ce" /></button></view>
-        <scroll-view v-else-if="states[card.key].rows.length" :scroll-y="!recordOrders[card.key] || recordOrders[card.key].scrollEnabled()" :scroll-top="recordOrders[card.key] ? recordOrders[card.key].scrollTop.value : undefined" :show-scrollbar="false" :lower-threshold="40" class="business-scroll" :class="card.pinned ? ['business-order-scroll', 'business-order-scroll-' + card.key] : []" @scroll="recordOrders[card.key]?.scrolled($event)" :style="{ height: listHeight(card) + 'px' }" @scrolltolower="nextPage(card)">
+        <scroll-view v-else-if="states[card.key].rows.length" :scroll-y="!recordOrders[card.key] || recordOrders[card.key].scrollEnabled()" :scroll-top="recordScrollTop(card.key)" :show-scrollbar="false" :lower-threshold="40" class="business-scroll" :class="card.pinned ? ['business-order-scroll', 'business-order-scroll-' + card.key] : []" @scroll="recordOrders[card.key]?.scrolled($event)" :style="{ height: listHeight(card) + 'px' }" @scrolltolower="nextPage(card)">
           <view class="business-list">
             <BusinessCardRow v-for="item in states[card.key].rows" :key="item.id" :card="card" :item="item" @edit="open(card, item)"  />
           </view>
@@ -335,6 +339,7 @@ function placeholderHeight(card) {
     </view>
 </template>
 <style scoped lang="scss">
+@use '../../styles/platform' as *;
 @use '../../styles/typography' as *;
 @use '../../styles/spacing-tokens' as *;
 .business-group { width: 100%; display: flex; flex-direction: row; flex-wrap: wrap; }
@@ -358,9 +363,7 @@ function placeholderHeight(card) {
 .status-error { flex: 1; min-width: 0; }
 @media (min-width: 768px) { .business-group-single { width: 50%; } .business-cell { width: 50%; } }
 @media (min-width: 1200px) { .business-group-single { width: 33.3333%; } .business-cell { width: 33.3333%; } }
-/* #ifdef WEB || MP-WEIXIN */
-.heading-link::after, .icon-action::after, .lock-action::after { border: 0; }
-/* #endif */
+.heading-link, .icon-action, .lock-action { @include borderless-button; }
 /* #ifdef WEB */
 .business-order-scroll { user-select: none; -webkit-touch-callout: none; }
 .business-scroll :deep(.uni-scroll-view) { overscroll-behavior-y: contain; }

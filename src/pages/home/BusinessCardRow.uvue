@@ -33,7 +33,7 @@ function rowStyle() {
       <text v-else-if="card.key === 'anniversary'" class="record-emoji">{{ item.icon || '🎉' }}</text>
       <MembershipLogo v-else-if="card.key === 'member'" :icon-key="item.providerIconKey" :category="item.category" :name="item.providerName || item.provider || title(item)" :size="22" />
       <view class="record-copy">
-        <text class="record-title" :class="{ 'text-dark': isDark }">{{ title(item) }}</text>
+        <text :max-lines="2" class="record-title" :class="{ 'text-dark': isDark }">{{ title(item) }}</text>
         <view v-if="card.key === 'goal'" class="goal-meta">
           <text class="caption" :class="{ 'caption-dark': isDark }">{{ cardCaption(card, item) }}</text>
           <view v-if="item.endDate" class="goal-due" :aria-label="'截止 ' + item.endDate.slice(0, 10)">
@@ -50,6 +50,7 @@ function rowStyle() {
   </view>
 </template>
 <style scoped lang="scss">
+@use '../../styles/platform' as *;
 @use '../../styles/typography' as *;
 @use '../../styles/spacing-tokens' as *;
 .business-row { flex-shrink: 0; box-sizing: border-box; display: flex; flex-direction: row; align-items: center; padding: $space-detail $space-card; }
@@ -64,12 +65,7 @@ function rowStyle() {
 .goal-meta { display: flex; flex-direction: row; flex-wrap: wrap; align-items: center; column-gap: $space-detail; }
 .goal-due { display: flex; flex-direction: row; align-items: center; gap: $space-detail; flex-shrink: 0; }
 .record-title { @include type-style('label-strong'); line-height: type-line('caption'); color: #3f3f46; overflow: hidden;
-/* #ifndef APP */
-display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
-/* #endif */
-/* #ifdef APP */
-max-lines: 2; text-overflow: ellipsis;
-/* #endif */
+@include clamp-text(2);
 }
 .caption { @include type-style('caption'); color: #71717a; }
 .record-caption { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

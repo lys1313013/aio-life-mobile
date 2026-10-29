@@ -1,7 +1,16 @@
 <script setup lang="ts">
 import { provide } from 'vue'
+// #ifdef APP
+import { ref } from 'vue'
+import { useWindowResize } from '../../services/window-resize.ts'
+import { homeLayout } from './services/home-layout.ts'
+// #endif
 import { isDark } from '../../services/theme.ts'
 const props = withDefaults(defineProps<{ cardKey: string; title: string; group: string; order: any; disabled: boolean; visible?: boolean; wide?: boolean }>(), { visible: true, wide: false })
+// #ifdef APP
+const windowWidth = ref(uni.getWindowInfo().windowWidth)
+useWindowResize(() => { windowWidth.value = uni.getWindowInfo().windowWidth })
+// #endif
 let actionTouch = false
 provide('home-card-action-touch', () => { actionTouch = true })
 function blockClick(event) {
@@ -20,7 +29,18 @@ function start(event, mouse = false) {
 function finish(event) { actionTouch = false; props.order.finish(event) }
 function cancel() { actionTouch = false; props.order.cancel() }
 // Read high-frequency offsets here; card content and charts stay in the parent slot.
-function style() { return props.order.style(props.cardKey) }
+function style() {
+  let layout = {}
+  // #ifdef APP
+  const columns = homeLayout(windowWidth.value)
+  layout = {
+    width: (props.wide ? 100 : 100 / (props.group === 'overview' ? columns.overviewColumns : columns.sectionColumns)) + '%',
+    flexGrow: props.group === 'overview' && windowWidth.value >= 1200 ? 1 : 0,
+    flexShrink: 0,
+  }
+  // #endif
+  return { ...layout, ...props.order.style(props.cardKey) }
+}
 </script>
 <template>
   <view class="home-sort-cell"  :data-card-key="cardKey" :id="'home-order-' + cardKey" :style="visible === false ? { display: 'none' } : style()" :class="[group === 'overview' ? 'overview-cell home-order-overview ui-pad-xs' : 'section-cell home-order-section', { 'home-sort-hidden': visible === false, 'home-sort-wide': wide, 'home-sort-lifted': order.dragging.value === cardKey, 'home-sort-target': order.dragging.value && order.target.value === cardKey && order.dragging.value !== cardKey, 'home-sort-dark': isDark }]"
