@@ -1,0 +1,169 @@
+<script setup lang="ts">
+import { computed, getCurrentInstance, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
+import { onHide, onReady } from '@dcloudio/uni-app'
+import TimeTimeline from '../../../components/TimeTimeline.uvue'
+import TimeRecordCards from '../../../components/TimeRecordCards.uvue'
+import { matchesCategories, periodRange, shiftDate } from '../../../services/time-format.ts'
+import { useWindowResize } from '../../../services/window-resize.ts'
+import { themeClass } from '../../../services/theme.ts'
+import { createPeriodSwipe } from '../services/period-swipe.ts'
+import type { Category, TimeRecord } from '../../../services/dashboard.ts'
+
+const props = defineProps<{
+  date: string; mode: string; view: string; records: TimeRecord[]; categories: Category[]; selected: string[]
+  neighbours: { date: string; records: TimeRecord[]; ready: boolean; error: string }[]
+  loading: boolean; disabled: boolean; availableHeight: number
+}>()
+const emit = defineEmits(['change-period', 'edit'])
+const root = ref(null), timeline = ref(null)
+const instance = getCurrentInstance()
+const width = ref(0), offset = ref(0), phase = ref('idle'), previews = ref(false)
+let targetStep = 0, timer: ReturnType<typeof setTimeout> | undefined, disposed = false
+const panes = computed(() => [0, ...(previews.value ? [-1, 1] : [])].map(step => {
+  const date = shiftDate(props.date, step, props.mode)
+  const neighbour = props.neighbours.find(item => item.date === date)
+  const records = step === 0 ? props.records : neighbour?.records || []
+  return { step, date, range: periodRange(date, props.mode), records,
+    filtered: records.filter(record => matchesCategories(record.categoryId, props.selected, props.categories)),
+    loading: step === 0 ? props.loading : !neighbour?.ready && !neighbour?.error,
+    error: step === 0 ? '' : neighbour?.error || '' }
+}))
+const surfaceStyle = computed(() => ({
+  // 静止时移除 transform，日期详情弹窗仍以视口定位并覆盖底栏。
+  transform: phase.value === 'idle' ? 'none' : `translateX(${offset.value}px)`,
+  // 与设备页相同的 360ms easeOutCubic；翻页到目标位置后才更换当前内容。
+  transition: phase.value === 'settling' ? 'transform 360ms cubic-bezier(0.215, 0.61, 0.355, 1)' : 'none',
+}))
+const swipe = createPeriodSwipe({
+  enabled: () => !props.disabled && !props.loading && width.value > 0 && phase.value !== 'settling' && phase.value !== 'committing',
+  width: () => width.value,
+  canChange: step => props.view !== 'timeline' || timeline.value?.canChangePeriod(step) === true,
+  drag: value => { phase.value = 'dragging'; offset.value = value },
+  settle: step => {
+    targetStep = step
+    phase.value = 'settling'
+    offset.value = -step * width.value
+    // 原生端及减少动画模式不一定发送 transitionend，保留同一动画时长的完成兜底。
+    timer = setTimeout(finish, 360)
+  },
+})
+async function finish() {
+  if (phase.value !== 'settling') return
+  if (timer) clearTimeout(timer)
+  phase.value = 'committing'
+  if (targetStep) emit('change-period', targetStep)
+  await nextTick()
+  if (!disposed) reset()
+}
+function reset() {
+  if (timer) clearTimeout(timer)
+  swipe.cancel()
+  targetStep = 0
+  offset.value = 0
+  phase.value = 'idle'
+  previews.value = false
+}
+function start(event) {
+  if (phase.value !== 'idle' || props.disabled || props.loading) return
+  if (props.view === 'timeline' && !timeline.value?.canChangePeriod(-1) && !timeline.value?.canChangePeriod(1)) {
+    swipe.touchStart(event)
+    return
+  }
+  previews.value = true
+  swipe.touchStart(event)
+}
+function end(event) { swipe.touchEnd(event); if (phase.value === 'idle') previews.value = false }
+function cancel() { swipe.touchCancel(); if (phase.value === 'idle') previews.value = false }
+function ignoreClick() { return phase.value !== 'idle' || swipe.ignoreClick() }
+function edit(record) { if (!ignoreClick() && !props.disabled) emit('edit', record) }
+function setTimeline(value, step) { if (step === 0) timeline.value = value }
+async function measure() {
+  await nextTick()
+  if (disposed) return
+  uni.createSelectorQuery().in(instance?.proxy).select('.time-period-pager').boundingClientRect(rect => {
+    if (!disposed && rect && !Array.isArray(rect)) width.value = rect.width
+  }).exec()
+}
+watch(() => [props.date, props.mode, props.view, props.disabled], () => {
+  if (phase.value !== 'committing') reset()
+})
+useWindowResize(() => { reset(); measure() })
+onMounted(measure)
+onReady(measure)
+watch(() => props.availableHeight, measure, { flush: 'post' })
+onHide(reset)
+// #ifdef WEB
+let release: (() => void) | undefined
+onMounted(() => {
+  const element = root.value?.$el || root.value
+  if (!element) return
+  let tracking = false
+  const eventOf = (event: MouseEvent, ended = false) => ({ touches: ended ? [] : [event], changedTouches: [event], preventDefault: () => event.preventDefault() })
+  const down = (event: MouseEvent) => {
+    if (event.button !== 0 || (event.target as HTMLElement).closest('input, textarea, [role="dialog"]')) return
+    tracking = true
+    event.preventDefault()
+    start(eventOf(event))
+  }
+  const move = (event: MouseEvent) => { if (tracking) swipe.touchMove(eventOf(event)) }
+  const up = (event: MouseEvent) => { if (tracking) { tracking = false; end(eventOf(event, true)) } }
+  const blur = () => { tracking = false; cancel() }
+  const click = (event: MouseEvent) => {
+    if (event.detail !== 0 && ignoreClick()) { event.preventDefault(); event.stopImmediatePropagation() }
+  }
+  element.addEventListener('mousedown', down)
+  element.addEventListener('click', click, true)
+  document.addEventListener('mousemove', move)
+  document.addEventListener('mouseup', up)
+  window.addEventListener('blur', blur)
+  release = () => {
+    element.removeEventListener('mousedown', down)
+    element.removeEventListener('click', click, true)
+    document.removeEventListener('mousemove', move)
+    document.removeEventListener('mouseup', up)
+    window.removeEventListener('blur', blur)
+  }
+})
+// #endif
+onUnmounted(() => {
+  disposed = true
+  reset()
+  // #ifdef WEB
+  release?.()
+  // #endif
+})
+</script>
+<template>
+  <view ref="root" class="time-period-pager" :class="{ 'time-period-vertical': view === 'card' || mode === 'day' }" :data-phase="phase"
+    @touchstart="start" @touchmove="swipe.touchMove" @touchend="end" @touchcancel="cancel">
+    <view class="day-swipe-surface time-period-surface" :style="surfaceStyle" @transitionend.self="finish">
+      <view v-for="pane in panes" :key="pane.step" class="time-period-pane" :class="{ 'time-period-preview': pane.step !== 0 }"
+        :style="pane.step ? { left: pane.step * 100 + '%' } : {}" :aria-hidden="pane.step !== 0" :inert="pane.step !== 0 ? '' : null">
+        <view v-if="pane.error" class="period-preview-state" :style="{ minHeight: availableHeight / 4 + 'px' }"><text class="period-preview-text" :class="themeClass('period-preview-text')">该周期加载失败，切换后可重试</text></view>
+        <TimeTimeline v-else-if="view === 'timeline'" :ref="value => setTimeline(value, pane.step)"
+          :available-height="availableHeight" :loading="pane.loading" :records="pane.records" :selected="selected"
+          :categories="categories" :start-date="pane.range.start" :days="pane.range.days" :ignore-click="ignoreClick" @edit="edit" />
+        <TimeRecordCards v-else :loading="pane.loading" :records="pane.filtered" :show-date="mode !== 'day'" :categories="categories" :ignore-click="ignoreClick" @edit="edit" />
+      </view>
+    </view>
+  </view>
+</template>
+<style scoped lang="scss">
+@use '../../../styles/spacing-tokens' as *;
+@use '../../../styles/typography' as *;
+@use '../../../styles/text-colors' as *;
+.time-period-pager { overflow: hidden; width: 100%; }
+// uni-app x 的 view 默认裁切子节点；只由最外层视口裁切，轨道必须绘制两侧页面。
+.time-period-surface { position: relative; width: 100%; overflow: visible; }
+.time-period-pane { width: 100%; overflow: visible; }
+.time-period-preview { position: absolute; top: 0; pointer-events: none; }
+.period-preview-state { justify-content: center; align-items: center; padding: $space-card; }
+.period-preview-text { @include type-style('body'); color: $text-secondary-light; }
+.period-preview-text-dark { color: $text-secondary-dark; }
+/* #ifdef WEB */
+.time-period-pager { cursor: grab; user-select: none; }
+.time-period-vertical { touch-action: pan-y pinch-zoom; }
+.time-period-pager:active { cursor: grabbing; }
+@media (prefers-reduced-motion: reduce) { .time-period-surface { transition: none !important; } }
+/* #endif */
+</style>

@@ -1,7 +1,6 @@
 <script setup lang="ts">
-import { createDaySwipe, daySwipeStyle } from '../services/day-swipe.ts'
 import { themeClass } from '../services/theme.ts'
-import { computed, ref } from 'vue'
+import { computed } from 'vue'
 import CategoryIcon from './CategoryIcon.uvue'
 import type { Category, TimeRecord } from '../services/dashboard.ts'
 import {
@@ -10,20 +9,10 @@ import {
   recordMinutes,
 } from '../services/time-format.ts'
 import { clockLabel, durationLabel } from '../services/dashboard-format.ts'
-const props = defineProps<{ records: TimeRecord[]; categories: Category[]; showDate?: boolean; loading?: boolean }>()
-const emit = defineEmits(['edit', 'change-period'])
-const swipeOffset = ref(0)
-const swipeDragging = ref(false)
-const daySwipe = createDaySwipe(
-  () => !props.loading,
-  (offset) => emit('change-period', offset),
-  (offset, dragging) => {
-    swipeOffset.value = offset
-    swipeDragging.value = dragging
-  },
-)
+const props = defineProps<{ records: TimeRecord[]; categories: Category[]; showDate?: boolean; loading?: boolean; ignoreClick?: () => boolean }>()
+const emit = defineEmits(['edit'])
 function edit(record: TimeRecord) {
-  if (!props.loading && !daySwipe.ignoreClick()) emit('edit', record)
+  if (!props.loading && !props.ignoreClick?.()) emit('edit', record)
 }
 const groups = computed(() => {
   const dates = [...new Set(props.records.map((r) => r.date || ''))].sort()
@@ -42,8 +31,7 @@ const groups = computed(() => {
 })
 </script>
 <template>
-  <view class="day-swipe-viewport" @touchstart="daySwipe.touchStart" @touchmove="daySwipe.touchMove" @touchend="daySwipe.touchEnd" @touchcancel="daySwipe.cancel">
-  <view class="record-groups day-swipe-surface day-swipe-panel" :style="daySwipeStyle(swipeOffset, swipeDragging)" :class="{ 'day-swipe-empty': !records.length }">
+  <view class="record-groups" :class="{ 'day-swipe-empty': !records.length }">
     <view v-if="loading && !records.length" class="record-list" :class="themeClass('record-list')" role="status" aria-label="正在加载时迹清单">
       <view v-for="n in 6" :key="n" class="record-card-cell" :class="[themeClass('record-card-cell'), { 'record-row-divider': n > 1 }]" aria-hidden="true">
         <view class="record-card record-card-summary">
@@ -99,13 +87,11 @@ const groups = computed(() => {
       </view>
     </view>
   </view>
-  </view>
 </template>
 <style scoped lang="scss">
 @use '../styles/platform' as *;
 @use '../styles/typography' as *;
 @use '../styles/spacing.scss';
-@use '../styles/day-swipe.scss';
 @use '../styles/spacing-tokens' as *;
 @use '../styles/text-colors' as *;
 @include type-utilities('body');
@@ -117,9 +103,6 @@ min-height: 25vh;
 /* #endif */
  }
 
-/* #ifdef WEB */
-.day-swipe-panel { touch-action: pan-y pinch-zoom; }
-/* #endif */
 
 .record-group {
   margin-bottom: $space-section;

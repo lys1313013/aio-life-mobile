@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { useWindowResize } from '../services/window-resize.ts'
 useWindowResize(resize)
-import { createDaySwipe, daySwipeStyle } from '../services/day-swipe.ts'
 import LoadingIndicator from './LoadingIndicator.uvue'
 import AppIcon from './AppIcon.uvue'
 import { themeClass } from '../services/theme.ts'
@@ -29,8 +28,9 @@ const props = defineProps<{
   selected?: string[]
   loading?: boolean
   availableHeight: number
+  ignoreClick?: () => boolean
 }>()
-const emit = defineEmits(['edit', 'change-period'])
+const emit = defineEmits(['edit'])
 const selectedDay = ref('')
 const instance = getCurrentInstance()
 const scrollLeft = ref(0)
@@ -40,7 +40,6 @@ watch(() => props.startDate, () => {
   selectedDay.value = ''
   scrollLeft.value = 0
   scrollWidth.value = 0
-  daySwipe.cancel()
 })
 function trackScroll(event) {
   scrollLeft.value = event.detail.scrollLeft
@@ -54,24 +53,15 @@ async function measureViewport() {
     }).exec()
 }
 function canChangePeriod(offset: number) {
+  if (props.loading || selectedDay.value) return false
   if (props.days === 1) return true
   if (!viewportWidth.value) return false
   const contentWidth = Math.max(scrollWidth.value, columnsMinWidth.value)
   return offset < 0 ? scrollLeft.value <= 1 : scrollLeft.value + viewportWidth.value >= contentWidth - 1
 }
-const swipeOffset = ref(0)
-const swipeDragging = ref(false)
-const daySwipe = createDaySwipe(
-  () => !props.loading && !selectedDay.value,
-  (offset) => emit('change-period', offset),
-  (offset, dragging) => {
-    swipeOffset.value = offset
-    swipeDragging.value = dragging
-  },
-  canChangePeriod,
-)
+defineExpose({ canChangePeriod })
 function openDay(date: string) {
-  if (!props.loading && !daySwipe.ignoreClick()) selectedDay.value = date
+  if (!props.loading && !props.ignoreClick?.()) selectedDay.value = date
 }
 // 全天随视口缩放；短记录从日期列表 / 卡片进入，保持真实时间比例。
 const windowWidth = ref(uni.getWindowInfo().windowWidth)
@@ -152,15 +142,14 @@ const selected = computed(() =>
   columns.value.find((column) => column.date === selectedDay.value),
 )
 function edit(record: TimeRecord) {
-  if (props.loading || daySwipe.ignoreClick()) return
+  if (props.loading || props.ignoreClick?.()) return
   selectedDay.value = ''
   emit('edit', record)
 }
 </script>
 
 <template>
-  <view class="day-swipe-viewport" @touchstart="daySwipe.touchStart" @touchmove="daySwipe.touchMove" @touchend="daySwipe.touchEnd" @touchcancel="daySwipe.cancel">
-  <view class="timeline day-swipe-surface" :style="daySwipeStyle(swipeOffset, swipeDragging)" :aria-busy="loading" :class="[themeClass('timeline'), { 'timeline-multiple': days > 1, 'day-swipe-panel': days === 1 }]">
+  <view class="timeline" :aria-busy="loading" :class="[themeClass('timeline'), { 'timeline-multiple': days > 1 }]">
     <LoadingIndicator v-if="loading" floating label="正在加载时迹" />
     <view class="timeline-axis" :class="themeClass('timeline-axis')">
       <view class="axis-heading" :class="themeClass('axis-heading')" />
@@ -244,7 +233,6 @@ function edit(record: TimeRecord) {
       </view>
     </scroll-view>
   </view>
-  </view>
   <!-- 短记录保持真实比例，通过日期标题打开大触控区域的记录列表。 -->
   <AdaptiveModal
     v-if="selected"
@@ -296,13 +284,9 @@ function edit(record: TimeRecord) {
 @use '../styles/platform' as *;
 @use '../styles/typography' as *;
 @use '../styles/spacing.scss';
-@use '../styles/day-swipe.scss';
 @use '../styles/spacing-tokens' as *;
 @include type-utilities('body');
 
-/* #ifdef WEB */
-.day-swipe-panel { touch-action: pan-y pinch-zoom; }
-/* #endif */
 
 .timeline { position: relative; flex-direction: row; background-color: #ffffff; border-radius: 6px; overflow: hidden; }
 .timeline-axis { width: 28px; flex-shrink: 0; border-right: 1px solid #eef0f3; }

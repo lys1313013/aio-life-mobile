@@ -111,7 +111,7 @@ for (const mode of ['light', 'dark']) {
     expect(background).toBe(mode === 'dark' ? 'rgb(28, 30, 34)' : 'rgb(255, 255, 255)');
     const number = timePicker.locator('.time-end-number[aria-disabled="false"]').first();
     expect(contrast(await number.evaluate(node => getComputedStyle(node).color), background)).toBeGreaterThanOrEqual(4.5);
-    const mask = await timePicker.locator('.uni-picker-view-mask').first().evaluate(node => getComputedStyle(node).backgroundImage);
+    const mask = await timePicker.locator('.time-end-wheel-mask').first().evaluate(node => getComputedStyle(node).backgroundImage);
     expect(mask).toContain(mode === 'dark' ? 'rgba(28, 30, 34,' : 'rgba(255, 255, 255,');
     await page.screenshot({ path: `artifacts/picker-theme/开始时间-${mode}.png` });
     await page.locator('.time-end-mask').click({ position: { x: 8, y: 8 } });

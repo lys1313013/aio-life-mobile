@@ -62,6 +62,11 @@ const form = ref<TimeRecord>({
 })
 const choosingCategory = ref(false)
 const choosingTime = ref('')
+const timePreview = ref<number | null>(null)
+const displayedTime = computed(() => {
+  if (!choosingTime.value || timePreview.value === null) return form.value
+  return { ...form.value, [choosingTime.value]: timePreview.value }
+})
 const editorInstance = getCurrentInstance()
 const timeAnchor = ref({ left: 0, top: 0, width: 0, height: 0 })
 let timeAnchorRequest = 0
@@ -83,6 +88,7 @@ async function openTimePicker(field: string) {
 function closeTimePicker() {
   timeAnchorRequest++
   choosingTime.value = ''
+  timePreview.value = null
 }
 useWindowResize(() => {
   if (choosingTime.value) openTimePicker(choosingTime.value)
@@ -99,7 +105,7 @@ const categoryName = computed(() =>
 const selectedCategory = computed(() =>
   categories.value.find((item) => item.id === form.value.categoryId),
 )
-const duration = computed(() => recordMinutes(form.value))
+const duration = computed(() => recordMinutes(displayedTime.value))
 const displayDate = computed(() => {
   const [year, month, day] = date.value.split('-').map(Number)
   const weekday = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'][new Date(year, month - 1, day).getDay()]
@@ -216,7 +222,7 @@ function report(error) {
 }
 async function initialize(targetDate = date.value) {
   const preserveDraft = ready.value && targetDate !== date.value
-  choosingTime.value = ''
+  closeTimePicker()
   const serial = ++generation,
     token = session.token
   loading.value = true
@@ -587,7 +593,7 @@ function closeSelection() {
                 :disabled="saving || deleting" @click="openTimePicker('startTime')">
                 <view class="compact-time-field">
                   <text class="compact-time-label" :class="themeClass('compact-time-label')">开始</text>
-                  <text class="compact-time-number" :class="themeClass('compact-time-number')">{{ clockLabel(form.startTime) }}</text>
+                  <text class="compact-time-number" :class="themeClass('compact-time-number')">{{ clockLabel(displayedTime.startTime) }}</text>
                 </view>
               </button>
               <view class="compact-time-summary">
@@ -601,7 +607,7 @@ function closeSelection() {
                 :disabled="saving || deleting" @click="openTimePicker('endTime')">
                 <view class="compact-time-field">
                   <text class="compact-time-label" :class="themeClass('compact-time-label')">结束</text>
-                  <text class="compact-time-number" :class="themeClass('compact-time-number')">{{ clockLabel(form.endTime) }}</text>
+                  <text class="compact-time-number" :class="themeClass('compact-time-number')">{{ clockLabel(displayedTime.endTime) }}</text>
                 </view>
               </button>
             </view>
@@ -676,7 +682,7 @@ function closeSelection() {
                   :class="'time-anchor-' + field"
                   :aria-label="field === 'startTime' ? '开始时间' : '结束时间'"
                   :disabled="saving || deleting" @click="openTimePicker(field)">
-                  <view class="time-field"><text class="time-number" :class="themeClass('time-number')">{{ clockLabel(form[field]) }}</text></view>
+                  <view class="time-field"><text class="time-number" :class="themeClass('time-number')">{{ clockLabel(displayedTime[field]) }}</text></view>
                 </button>
                 <button
                   role="button"
@@ -931,7 +937,7 @@ function closeSelection() {
     :anchor="timeAnchor"
     :min="pickerBounds.min" :max="pickerBounds.max"
     :label="choosingTime === 'startTime' ? '开始时间' : '结束时间'"
-    @change="changeTime" @close="closeTimePicker" />
+    @preview="timePreview = $event" @change="changeTime" @close="closeTimePicker" />
 </template>
 
 <style scoped lang="scss">
@@ -1385,10 +1391,12 @@ function closeSelection() {
 }
 .compact-time-arrow {
   position: relative;
-  width: 100%;
+  // 固定方向提示的几何宽度，避免时长位数变化时箭头伸缩。
+  width: $space-compactRowMin;
+  flex-shrink: 0;
   height: type-line('glyph-chevron');
 }
-// 1px 横线保持清晰，较小的尖端仅承担方向提示；长度随时长文字自适应。
+// 1px 横线保持清晰，较小的尖端仅承担方向提示。
 .compact-time-arrow-line {
   position: absolute;
   top: 50%;
@@ -1410,6 +1418,8 @@ function closeSelection() {
   transform: rotate(45deg);
 }
 .compact-time-summary {
+  // 为最长的“23小时59分”预留固定列宽，时长变化不能挤动两侧时间。
+  width: $space-controlMin * 2;
   flex-shrink: 0;
   align-items: center;
   justify-content: center;
@@ -1459,6 +1469,8 @@ function closeSelection() {
   color: #27272a;
 }
 .compact-duration {
+  width: 100%;
+  box-sizing: border-box;
   padding: 0 $space-detail;
   text-align: center;
   @include type-style('caption');

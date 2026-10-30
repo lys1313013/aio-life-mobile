@@ -20,9 +20,9 @@ import FloatingActionButton from '../../components/FloatingActionButton.uvue'
 import AdaptiveModal from '../../components/AdaptiveModal.uvue'
 import FormActions from '../../components/FormActions.uvue'
 import CategoryIcon from '../../components/CategoryIcon.uvue'
-import TimeRecordCards from '../../components/TimeRecordCards.uvue'
+import TimePeriodPager from './components/TimePeriodPager.uvue'
+import { createPeriodCache } from './services/period-cache.ts'
 import TimeStatistics from '../../components/TimeStatistics.uvue'
-import TimeTimeline from '../../components/TimeTimeline.uvue'
 import TimeRecordEditor from '../../components/TimeRecordEditor.uvue'
 import { todayDate } from '../../services/dashboard.ts'
 import type { Category, TimeRecord } from '../../services/dashboard.ts'
@@ -103,6 +103,8 @@ const errorText = ref('')
 const categories = ref<Category[]>([]),
   records = ref<TimeRecord[]>([]),
   previous = ref<TimeRecord[]>([])
+const periodCache = createPeriodCache(getPeriodRecords)
+const neighbours = ref<{ date: string; records: TimeRecord[]; ready: boolean; error: string }[]>([])
 const range = computed(() => periodRange(date.value, mode.value))
 const queryKey = computed(() => mode.value + ':' + date.value)
 const loadedQueryKey = ref('')
@@ -155,6 +157,8 @@ const average = computed(() =>
 let generation = 0, shown = false
 function clearRecords() {
   generation++
+  periodCache.clear()
+  neighbours.value = []
   loadedQueryKey.value = ''
   loadedOwner.value = ''
   records.value = []
@@ -181,11 +185,14 @@ onShow(() => {
   }
   if (applyRecordChange()) return
   refreshOnShow()
+  if (recordsReady.value && !loading.value) prefetchNeighbours()
 })
 onHide(() => {
   editor.value = null
   showFilters.value = false
   generation++
+  periodCache.clear()
+  neighbours.value = []
   loading.value = false
   refreshing.value = false
 })
@@ -216,12 +223,36 @@ function applyRecordChange() {
     )
       records.value.push(item)
     revision.value++
+    generation++
+    loading.value = false
+    refreshing.value = false
+    periodCache.clear()
+    prefetchNeighbours()
     return true
   }
   return false
 }
-async function load() {
+function prefetchNeighbours() {
+  const requestId = generation, token = session.token, targetDate = date.value, targetMode = mode.value
+  periodCache.set(targetDate, targetMode, records.value)
+  periodCache.set(shiftDate(targetDate, -1, targetMode), targetMode, previous.value)
+  neighbours.value = [-1, 1].map(step => {
+    const date = shiftDate(targetDate, step, targetMode)
+    const cached = periodCache.read(date, targetMode)
+    return { date, records: cached || [], ready: cached !== undefined, error: '' }
+  })
+  const nextDate = shiftDate(targetDate, 1, targetMode)
+  periodCache.get(nextDate, targetMode).then(items => {
+    if (requestId !== generation || session.token !== token) return
+    neighbours.value = neighbours.value.map(item => item.date === nextDate ? { ...item, records: items, ready: true } : item)
+  }).catch(error => {
+    if (requestId !== generation || session.token !== token) return
+    neighbours.value = neighbours.value.map(item => item.date === nextDate ? { ...item, error: error.message || '加载失败' } : item)
+  })
+}
+async function load(useCache = false) {
   if (loadedOwner.value && (loadedOwner.value !== session.token || currentPageAccess().expired)) clearRecords()
+  if (useCache !== true) { periodCache.clear(); neighbours.value = [] }
   const requestId = ++generation,
     token = session.token
   const targetDate = date.value,
@@ -231,9 +262,9 @@ async function load() {
   errorText.value = ''
   try {
     const [cats, current, prev] = await Promise.all([
-      getCategories(),
-      getPeriodRecords(targetDate, targetMode),
-      getPeriodRecords(shiftDate(targetDate, -1, targetMode), targetMode),
+      useCache === true && categories.value.length ? Promise.resolve(categories.value) : getCategories(),
+      periodCache.get(targetDate, targetMode),
+      periodCache.get(shiftDate(targetDate, -1, targetMode), targetMode),
     ])
     if (requestId !== generation || session.token !== token) return
     categories.value = cats
@@ -242,6 +273,7 @@ async function load() {
     loadedQueryKey.value = targetKey
     loadedOwner.value = token
     revision.value++
+    prefetchNeighbours()
   } catch (error) {
     if (requestId !== generation || session.token !== token) return
     if (error.name === 'SessionExpiredError') {
@@ -265,9 +297,10 @@ async function pullRefresh() {
 }
 function changePeriod() {
   loadedQueryKey.value = ''
-  records.value = []
-  previous.value = []
-  load()
+  records.value = periodCache.read(date.value, mode.value) || []
+  previous.value = periodCache.read(shiftDate(date.value, -1, mode.value), mode.value) || []
+  neighbours.value = []
+  load(true)
 }
 function selectDate(event) {
   date.value = event.detail.value
@@ -349,27 +382,12 @@ function closeEditor() {
           <view class="time-layout ui-gap-md">
           <view class="time-main-panel" :aria-busy="loading">
           <LoadingIndicator v-if="loading && !refreshing && recordsReady" floating label="正在更新时迹" />
-          <TimeTimeline
-            v-if="viewMode === 'timeline'"
-            :key="mode"
-            :available-height="timelineHeight"
-            :loading="loading && !recordsReady"
-            :records="records"
-            :selected="selectedCategories"
-            :categories="categories"
-            :start-date="range.start"
-            :days="range.days"
-            @change-period="moveDate"
-            @edit="edit"
-          />
-          <TimeRecordCards
-            v-else
-            :loading="loading && !recordsReady"
-            :records="filtered"
-            :show-date="mode !== 'day'"
-            @change-period="moveDate"
-            :categories="categories"
-            @edit="edit"
+          <TimePeriodPager
+            :date="date" :mode="mode" :view="viewMode"
+            :available-height="timelineHeight" :loading="loading && !recordsReady"
+            :disabled="loading || !!editor || showFilters || !!errorText"
+            :records="records" :categories="categories" :selected="selectedCategories" :neighbours="neighbours"
+            @change-period="moveDate" @edit="edit"
           />
           </view>
           <view class="time-stats-panel">

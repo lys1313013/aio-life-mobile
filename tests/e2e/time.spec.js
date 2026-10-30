@@ -119,14 +119,14 @@ async function previousMinute(page, label, delta = -1, dismiss = true) {
 }
 async function expectTimeDraft(picker, time) {
   const [hour, minute] = time.split(':');
-  await expect(picker.locator('uni-picker-view-column [aria-selected="true"]')).toHaveText(hour);
+  await expect(picker.locator('.time-end-hour-scroll [aria-selected="true"]')).toHaveText(hour);
   await expect(picker.locator('.time-end-minute-scroll [aria-selected="true"]')).toHaveText(minute);
 }
-async function moveTimeWheel(page, columnIndex, delta) {
+async function moveTimeWheel(page, columnIndex, delta, beforeRelease) {
   const cdp = await page.context().newCDPSession(page);
   await cdp.send('Emulation.setTouchEmulationEnabled', { enabled: true });
   const column = columnIndex === 0
-    ? page.locator('uni-picker-view-column:visible').nth(0)
+    ? page.locator('.time-end-hour-scroll:visible')
     : page.locator('.time-end-minute-scroll:visible');
   await expect(column).toBeVisible();
   const target = await column.boundingBox();
@@ -139,6 +139,13 @@ async function moveTimeWheel(page, columnIndex, delta) {
     await page.waitForTimeout(50);
   }
   await page.waitForTimeout(200);
+  try {
+    if (beforeRelease) await beforeRelease();
+  } catch (error) {
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+    await cdp.detach();
+    throw error;
+  }
   await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
   await expect.poll(async () => {
     const selected = await column.locator('[aria-selected="true"]').boundingBox();
@@ -178,7 +185,7 @@ for (const width of [390, 768, 1440]) for (const colorScheme of ['light', 'dark'
   const triggerBox = await editor.getByRole('button', { name: '结束时间', exact: true }).boundingBox();
   expect(Math.abs(pickerBox.y - triggerBox.y - triggerBox.height - spacing.detail)).toBeLessThan(1);
   await expect(picker.locator('.time-end-toolbar')).toHaveCSS('border-top-width', '0px');
-  await expect(picker.locator('.uni-picker-view-indicator')).toHaveCSS('opacity', '0');
+  await expect(picker.locator('.time-end-wheel-mask')).toHaveCount(2);
   // 模拟滚动停在同一分钟的半行内：绑定的目标值与原来相同，仍必须重新对齐。
   for (const offset of [0.3, -0.3, 0.3]) {
     await scroll.evaluate((element, pixels) => { element.scrollTop += pixels; }, (spacing.controlMin - spacing.detail) * offset);
@@ -190,8 +197,9 @@ for (const width of [390, 768, 1440]) for (const colorScheme of ['light', 'dark'
   await expect.poll(centered).toBeLessThan(1);
   await picker.locator('.time-end-minute-scroll .time-end-item').nth(602).click();
   await expect.poll(centered).toBeLessThan(1);
-  await expect(editor.locator('.compact-time-number').nth(1)).toHaveText('09:59');
-  await expect(picker.locator('uni-picker-view-column [aria-selected="true"]')).toHaveText('10');
+  await expect(editor.locator('.compact-time-number').nth(1)).toHaveText('10:02');
+  await expect(editor.locator('[aria-label="记录时长"]')).toHaveText('1小时3分');
+  await expect(picker.locator('.time-end-hour-scroll [aria-selected="true"]')).toHaveText('10');
   await expect(picker.locator('.time-end-minute-scroll .time-end-number-selected')).toHaveText('02');
   await page.screenshot({ path: `artifacts/time-end-picker/snap-footer-${width}-${colorScheme}.png` });
   await confirmTimePicker(page);
@@ -213,18 +221,30 @@ for (const width of [390, 768, 1440]) for (const colorScheme of ['light', 'dark'
   const picker = page.getByRole('dialog', { name: '选择结束时间', exact: true });
   await moveTimeWheel(page, 0, 2);
   await expectTimeDraft(picker, '11:59');
-  await moveTimeWheel(page, 1, 1);
+  await expect(end).toHaveText('11:59');
+  await expect(editor.locator('[aria-label="记录时长"]')).toHaveText('3小时');
+  await moveTimeWheel(page, 1, 1, async () => {
+    // 手指尚未松开、滚轮尚未吸附时，表单也必须显示当前选中的时间和时长。
+    await expect(end).toHaveText('12:00');
+    await expect(editor.locator('[aria-label="记录时长"]')).toHaveText('3小时1分');
+  });
   await expectTimeDraft(picker, '12:00');
+  await expect(end).toHaveText('12:00');
+  await expect(editor.locator('[aria-label="记录时长"]')).toHaveText('3小时1分');
   await moveTimeWheel(page, 1, 1);
   await expectTimeDraft(picker, '12:01');
   await moveTimeWheel(page, 1, -2);
   await expectTimeDraft(picker, '11:59');
+  await expect(end).toHaveText('11:59');
+  await expect(editor.locator('[aria-label="记录时长"]')).toHaveText('3小时');
   await moveTimeWheel(page, 1, -1);
   await expectTimeDraft(picker, '11:58');
   await moveTimeWheel(page, 0, -1);
   await expectTimeDraft(picker, '10:58');
   await moveTimeWheel(page, 1, 2);
   await expectTimeDraft(picker, '11:00');
+  await expect(end).toHaveText('11:00');
+  await expect(editor.locator('[aria-label="记录时长"]')).toHaveText('2小时1分');
   await page.screenshot({ path: `artifacts/time-end-picker/hour-minute-${width}-${colorScheme}.png` });
   await expect(picker).toBeVisible();
   await confirmTimePicker(page);
@@ -247,16 +267,26 @@ for (const width of [390, 768, 1440]) for (const colorScheme of ['light', 'dark'
   const editor = page.getByRole('dialog', { name: '编辑时迹', exact: true });
   const values = editor.locator('.compact-time-number');
   await previousMinute(page, '结束时间', 1, false);
-  await expect(values.nth(1)).toHaveText('09:59');
+  await expect(values.nth(1)).toHaveText('10:00');
   const picker = page.getByRole('dialog', { name: '选择结束时间', exact: true });
   await expect(picker.locator('[aria-label="可选时间范围"]')).toHaveCount(0);
   await expectTimeDraft(picker, '10:00');
-  await expect(editor.locator('[aria-label="记录时长"]')).toHaveText('40分');
-  const hourColumn = picker.locator('uni-picker-view-column');
+  await expect(editor.locator('[aria-label="记录时长"]')).toHaveText('41分');
+  const hourColumn = picker.locator('.time-end-hour-scroll');
   const minuteColumn = picker.locator('.time-end-minute-scroll .time-end-number');
   await expect(hourColumn.locator('.time-end-number').nth(11)).toHaveAttribute('aria-disabled', 'true');
   await expect(minuteColumn.nth(600)).toHaveAttribute('aria-disabled', 'false');
   await expect(minuteColumn.nth(601)).toHaveAttribute('aria-disabled', 'true');
+  // 拖入禁选小时后按住：预览停在合法边界，滚动位置仍跟随手指，不被回写抢走。
+  for (const delta of [1, 2]) {
+    await moveTimeWheel(page, 0, delta, async () => {
+      await expectTimeDraft(picker, '10:00');
+      await expect(values.nth(1)).toHaveText('10:00');
+      await expect.poll(() => hourColumn.locator('.uni-scroll-view-scrollbar-hidden').evaluate(node => node.scrollTop))
+        .toBeGreaterThan((10 + delta / 2) * (spacing.controlMin - spacing.detail));
+    });
+    await expectTimeDraft(picker, '10:00');
+  }
   await page.screenshot({ path: `artifacts/time-end-picker/bounds-${width}-${colorScheme}.png` });
   await confirmTimePicker(page);
   await previousMinute(page, '结束时间', 1);
@@ -264,11 +294,19 @@ for (const width of [390, 768, 1440]) for (const colorScheme of ['light', 'dark'
   await previousMinute(page, '结束时间');
   await expect(values.nth(1)).toHaveText('09:59');
   await previousMinute(page, '开始时间', -1, false);
-  await expect(values.nth(0)).toHaveText('09:20');
+  await expect(values.nth(0)).toHaveText('09:19');
+  await expect(editor.locator('[aria-label="记录时长"]')).toHaveText('41分');
   const startPicker = page.getByRole('dialog', { name: '选择开始时间', exact: true });
   await expect(startPicker.locator('[aria-label="可选时间范围"]')).toHaveCount(0);
   await expectTimeDraft(startPicker, '09:19');
   await expect(startPicker.getByRole('button')).toHaveCount(3);
+  await moveTimeWheel(page, 0, -1, async () => {
+    await expectTimeDraft(startPicker, '09:19');
+    await expect(values.nth(0)).toHaveText('09:19');
+    await expect.poll(() => startPicker.locator('.time-end-hour-scroll .uni-scroll-view-scrollbar-hidden').evaluate(node => node.scrollTop))
+      .toBeLessThan(8.5 * (spacing.controlMin - spacing.detail));
+  });
+  await expectTimeDraft(startPicker, '09:19');
   await confirmTimePicker(page);
   await expect(values.nth(0)).toHaveText('09:19');
   await previousMinute(page, '开始时间');
@@ -290,7 +328,7 @@ for (const width of [390, 768, 1440]) for (const colorScheme of ['light', 'dark'
 });
 
 for (const width of [390, 768, 1440]) for (const colorScheme of ['light', 'dark']) {
-  test(`时间选择水平居中并保持字段下方，取消放弃、确定应用、此刻更新后收起 ${width} ${colorScheme}`, async ({ page }) => {
+  test(`时间选择实时预览时间与时长，取消还原、确定应用、此刻更新后收起 ${width} ${colorScheme}`, async ({ page }) => {
     await page.setViewportSize({ width, height: 900 });
     await page.emulateMedia({ colorScheme });
     await page.clock.setFixedTime(new Date(`${today}T11:22:00`));
@@ -302,27 +340,36 @@ for (const width of [390, 768, 1440]) for (const colorScheme of ['light', 'dark'
     const picker = page.getByRole('dialog', { name: '选择结束时间', exact: true });
     await expect(picker).toBeVisible();
     await expectTimeDraft(picker, '10:00');
-    await expect(editor.locator('[aria-label="记录时长"]')).toHaveText('1小时');
-    await expect(editor.locator('.compact-time-number').nth(1)).toHaveText('09:59');
+    await expect(editor.locator('[aria-label="记录时长"]')).toHaveText('1小时1分');
+    await expect(editor.locator('.compact-time-number').nth(1)).toHaveText('10:00');
     await expect(picker.locator('[aria-label="可选时间范围"]')).toHaveCount(0);
     expect(state.updates).toHaveLength(0);
     await page.screenshot({ path: `artifacts/time-end-picker/${width}-${colorScheme}.png` });
     await picker.getByRole('button', { name: '取消', exact: true }).click();
     await expect(picker).toHaveCount(0);
     await expect(editor.locator('.compact-time-number').nth(1)).toHaveText('09:59');
+    await expect(editor.locator('[aria-label="记录时长"]')).toHaveText('1小时');
     await previousMinute(page, '结束时间', 1, false);
     await expectTimeDraft(picker, '10:00');
     await page.locator('.time-end-mask').click({ position: { x: 8, y: 8 } });
     await expect(picker).toHaveCount(0);
     await expect(editor.locator('.compact-time-number').nth(1)).toHaveText('09:59');
+    await expect(editor.locator('[aria-label="记录时长"]')).toHaveText('1小时');
     await previousMinute(page, '结束时间', 1);
     await expect(editor.locator('.compact-time-number').nth(1)).toHaveText('10:00');
     await expect(editor.locator('[aria-label="记录时长"]')).toHaveText('1小时1分');
     await previousMinute(page, '开始时间', 1, false);
     await expectTimeDraft(page.getByRole('dialog', { name: '选择开始时间', exact: true }), '09:01');
-    await expect(editor.locator('[aria-label="记录时长"]')).toHaveText('1小时1分');
+    await expect(editor.locator('[aria-label="记录时长"]')).toHaveText('1小时');
+    await expect(editor.locator('.compact-time-number').nth(0)).toHaveText('09:01');
+    const startPicker = page.getByRole('dialog', { name: '选择开始时间', exact: true });
+    await expect(startPicker.locator('[aria-label="可选时间范围"]')).toHaveCount(0);
+    await startPicker.getByRole('button', { name: '取消', exact: true }).click();
+    await expect(startPicker).toHaveCount(0);
     await expect(editor.locator('.compact-time-number').nth(0)).toHaveText('09:00');
-    await expect(page.getByRole('dialog', { name: '选择开始时间', exact: true }).locator('[aria-label="可选时间范围"]')).toHaveCount(0);
+    await expect(editor.locator('[aria-label="记录时长"]')).toHaveText('1小时1分');
+    await previousMinute(page, '开始时间', 1, false);
+    await expectTimeDraft(startPicker, '09:01');
     await confirmTimePicker(page);
     await expect(editor.locator('[aria-label="记录时长"]')).toHaveText('1小时');
     await expect(editor.locator('.compact-time-number').nth(0)).toHaveText('09:01');
@@ -1295,16 +1342,17 @@ test('关联卡片详情列表封面失败恢复与分页', async ({ page }) => 
   expect(state.updates).toHaveLength(0);
 });
 
-for (const view of ['时间轴视图', '卡片视图']) {
-  test(`日视图真实横滑切日且不误开编辑 ${view}`, async ({ page }) => {
-    await page.setViewportSize({ width: 390, height: 844 });
+for (const view of ['时间轴视图', '卡片视图']) for (const width of [390, 768, 1440]) for (const theme of ['light', 'dark']) {
+  test(`日视图真实横滑切日且不误开编辑 ${view} ${width} ${theme}`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 844 });
+    await page.emulateMedia({ colorScheme: theme });
     await setup(page);
     await page.getByRole('button', { name: view, exact: true }).click();
     const cdp = await page.context().newCDPSession(page);
     await cdp.send('Emulation.setTouchEmulationEnabled', { enabled: true });
     async function swipe(target, dx, dy = 0) {
       const surface = page.locator('.day-swipe-surface').first();
-      await expect.poll(() => surface.evaluate(el => getComputedStyle(el).transform)).toBe('matrix(1, 0, 0, 1, 0, 0)');
+      await expect(page.locator('.time-period-pager')).toHaveAttribute('data-phase', 'idle');
       const surfaceX = (await surface.boundingBox()).x;
       const box = await target.boundingBox();
       const x = box.x + (dx < 0 ? box.width * 0.8 : box.width * 0.2);
@@ -1312,13 +1360,41 @@ for (const view of ['时间轴视图', '卡片视图']) {
       await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y }] });
       for (let step = 1; step <= 6; step++) {
         await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: x + dx * step / 6, y: y + dy * step / 6 }] });
+        // 控制手势持续时间，覆盖完整跟手而非一次性位移。
         await page.waitForTimeout(20);
       }
       if (dy === 0 && await page.getByRole('button', { name: '日视图', exact: true }).getAttribute('aria-pressed') === 'true') {
-        await expect.poll(async () => Math.abs((await surface.boundingBox()).x - surfaceX)).toBeGreaterThan(20);
+        await expect.poll(async () => Math.abs((await surface.boundingBox()).x - surfaceX)).toBeGreaterThan(90);
+        await expect(surface).toHaveCSS('opacity', '1');
+        const screenshot = await page.screenshot();
+        await test.info().attach('period-drag-' + (dx < 0 ? 'next' : 'previous'), { body: screenshot, contentType: 'image/png' });
+        if (view === '时间轴视图') {
+          const sample = await page.locator('.time-period-pager').evaluate((pager, dx) => {
+            const rect = pager.getBoundingClientRect();
+            const pane = pager.querySelectorAll('.time-period-preview')[dx < 0 ? 1 : 0];
+            const timeline = pane.querySelector('.timeline');
+            return { x: Math.round(dx < 0 ? rect.right - 12 : rect.left + 12), y: Math.round(rect.top + 60), color: getComputedStyle(timeline).backgroundColor };
+          }, dx);
+          // 真实截图像素必须是相邻时间轴的表面色，不能只是 DOM 在正确位置却被裁掉。
+          const painted = await page.evaluate(async ({ png, sample }) => {
+            const image = new Image(); image.src = 'data:image/png;base64,' + png; await image.decode();
+            const canvas = document.createElement('canvas'); canvas.width = image.width; canvas.height = image.height;
+            const ctx = canvas.getContext('2d'); ctx.drawImage(image, 0, 0);
+            const scale = image.width / innerWidth;
+            const pixel = ctx.getImageData(Math.round(sample.x * scale), Math.round(sample.y * scale), 1, 1).data;
+            return `rgb(${pixel[0]}, ${pixel[1]}, ${pixel[2]})`;
+          }, { png: screenshot.toString('base64'), sample });
+          expect(painted, '相邻时间轴必须实际绘制，露出的区域不能是页面底色').toBe(sample.color);
+        }
+        const preview = page.locator('.time-period-preview').filter({ has: page.locator(view === '时间轴视图' ? '.timeline' : '.record-groups') });
+        await expect(preview).toHaveCount(2);
+        // 相邻页紧贴当前页，手指尚未松开时目标内容已进入视口。
+        const boxes = await preview.evaluateAll(items => items.map(item => { const rect = item.getBoundingClientRect(); return { x: rect.x, width: rect.width }; }));
+        const moving = await surface.boundingBox();
+        expect(boxes.some(box => Math.abs(box.x - (moving.x + (dx < 0 ? moving.width : -moving.width))) < 2)).toBe(true);
       }
       await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
-      await expect.poll(() => surface.evaluate(el => getComputedStyle(el).transform)).toBe('matrix(1, 0, 0, 1, 0, 0)');
+      await expect(page.locator('.time-period-pager')).toHaveAttribute('data-phase', 'idle');
     }
     const record = page.getByRole('button', { name: '编辑记录 晨间运动' });
     const tomorrow = new Date(today + 'T12:00:00');
@@ -1353,7 +1429,7 @@ for (const view of ['时间轴视图', '卡片视图']) {
 // 真实触摸事件覆盖周期切换，以及月内滚动与翻月之间的边界。
 async function periodSwipe(page, cdp, dx, dy = 0) {
   const surface = page.locator('.day-swipe-surface').first();
-  await expect.poll(() => surface.evaluate(el => getComputedStyle(el).transform)).toBe('matrix(1, 0, 0, 1, 0, 0)');
+  await expect(page.locator('.time-period-pager')).toHaveAttribute('data-phase', 'idle');
   const target = page.locator('.timeline-scroll, .record-groups').first();
   await target.scrollIntoViewIfNeeded();
   // 纵向触摸滚动有惯性，待其结束后再开始下一次独立横滑。
@@ -1367,7 +1443,7 @@ async function periodSwipe(page, cdp, dx, dy = 0) {
     await page.waitForTimeout(20);
   }
   await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
-  await expect.poll(() => surface.evaluate(el => getComputedStyle(el).transform)).toBe('matrix(1, 0, 0, 1, 0, 0)');
+  await expect(page.locator('.time-period-pager')).toHaveAttribute('data-phase', 'idle');
 }
 
 for (const view of ['时间轴视图', '卡片视图']) for (const period of ['周', '月']) {
