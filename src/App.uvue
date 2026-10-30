@@ -5,8 +5,15 @@ import { installUnlockLifecycle, invalidateUnlocks } from './services/secondary-
 import { needsMenuCheck, checkMenuAccess, installMenuAccessWarmup } from './services/menu-access.ts'
 
 import { initializeTheme } from './services/theme.ts'
+// #ifdef MP-WEIXIN
+import { installMiniProgramUpdates } from './services/mini-program-updates.ts'
+import { clearClientData } from './services/client-reset.ts'
+// #endif
 
 onLaunch(() => { installUnlockLifecycle(needsMenuCheck, checkMenuAccess); initializeTheme(); restoreSession(); installMenuAccessWarmup() })
+// #ifdef MP-WEIXIN
+onLaunch(() => installMiniProgramUpdates(uni, import.meta.env.VITE_APP_BUILD_TIME, clearClientData))
+// #endif
 onHide(invalidateUnlocks)
 </script>
 

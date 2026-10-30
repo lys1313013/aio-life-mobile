@@ -16,7 +16,7 @@ import ConfirmAction from '../../components/ConfirmAction.uvue';
 import AdaptiveModal from '../../components/AdaptiveModal.uvue';
 import { logout, request } from '../../services/api.ts';
 import { session, restoreSession } from '../../services/session.ts';
-import { clearLifeCatalogCache } from '../../services/life-catalog-cache.ts';
+import { clearClientData } from '../../services/client-reset.ts';
 import type { ThemeMode } from '../../services/theme.ts';
 import { isDark, themeClass, setThemeMode, theme } from '../../services/theme.ts';
 import {
@@ -201,16 +201,8 @@ async function resetMenus() {
   await load();
 }
 async function clearCache() {
-  clearLifeCatalogCache();
-  const keys = uni.getStorageInfoSync().keys;
-  for (const key of keys)
-    if (
-      key.startsWith('aio-life-mobile.') &&
-      !['aio-life-mobile.access-token.v1', 'aio-life-mobile.theme.v1'].includes(key) &&
-      !key.includes('password-vault')
-    )
-      uni.removeStorageSync(key);
-  uni.reLaunch({ url: '/pages/home/index' });
+  await clearClientData();
+  uni.reLaunch({ url: '/pages/login/index' });
 }
 function back() {
   uni.navigateBack({ fail: () => uni.switchTab({ url: '/pages/profile/index' }) });
@@ -329,7 +321,7 @@ function back() {
             ><text class="preference-name">清除缓存</text
             ><ConfirmAction
               label="清除缓存"
-              message="清除本机显示缓存并返回首页，保留登录状态和主题。"
+              message="清除本机缓存、登录状态和本地设置，需要重新登录。云端数据不受影响，请先保存未提交的内容。"
               :action="clearCache"
               icon="ant-design:undo-outlined"
           /></view>
