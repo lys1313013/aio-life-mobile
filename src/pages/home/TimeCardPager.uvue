@@ -1,0 +1,136 @@
+<script setup lang="ts">
+import { computed, nextTick, onMounted, onBeforeUnmount, ref, watch } from 'vue'
+import { shiftDate } from '../../services/time-format.ts'
+import { createTimeCardWheel } from './services/time-card-swipe.ts'
+import TimeCardDay from './TimeCardDay.uvue'
+import TimeCardSkeleton from './TimeCardSkeleton.uvue'
+// #ifdef WEB
+import { bindPagerMouseDrag } from '../../services/pager-mouse-drag.ts'
+// #endif
+
+const props = defineProps<{ date: string; today: string; summary: any; height: number; loading: boolean; disabled: boolean; chartActive: boolean }>()
+const emit = defineEmits<{ change: [date: string]; edit: [id: string] }>()
+const root = ref(null)
+const baseDate = ref(props.date)
+const current = ref(1)
+const generation = ref(0)
+const moving = ref(false)
+const summaries = ref<Record<string, any>>({})
+const dates = computed(() => baseDate.value
+  ? [-1, 0, 1].map(step => shiftDate(baseDate.value, step)).filter(date => date <= props.today) : [])
+const blocked = computed(() => props.disabled || props.loading || moving.value || !props.date)
+let awaitingDate = false
+let ignoreUntil = 0
+let startX = 0, startY = 0
+let touching = false
+
+function remember() {
+  if (props.date) summaries.value = { ...summaries.value, [props.date]: props.summary }
+}
+function rebase() {
+  baseDate.value = props.date
+  current.value = 1
+  moving.value = false
+  awaitingDate = false
+  // 仅保留当前及相邻日期；换窗口只在吸附和请求都结束后进行，避免松手回弹。
+  summaries.value = Object.fromEntries(dates.value.filter(date => summaries.value[date]).map(date => [date, summaries.value[date]]))
+  generation.value++
+}
+function settle() {
+  if (!moving.value && !props.loading) rebase()
+}
+function changed(event) {
+  const index = event.detail.current
+  const date = dates.value[index]
+  if (!date || index === 1 || awaitingDate) return
+  if (props.disabled || props.loading) { cancel(); return }
+  current.value = index
+  moving.value = true
+  awaitingDate = true
+  ignoreUntil = Date.now() + 400
+  emit('change', date)
+}
+function animationFinished() {
+  moving.value = false
+  if (awaitingDate) settle()
+}
+function touchStart(event) {
+  touching = true
+  startX = event.touches[0]?.clientX || 0
+  startY = event.touches[0]?.clientY || 0
+}
+function touchMove(event) {
+  const point = event.touches[0]
+  if (point && Math.max(Math.abs(point.clientX - startX), Math.abs(point.clientY - startY)) > 8) ignoreUntil = Date.now() + 400
+}
+function cancel() {
+  // 弹窗打开、离页或尺寸变化也会重置翻页器；没有手势时不能制造点击冷却期。
+  if (touching || moving.value || awaitingDate) ignoreUntil = Date.now() + 400
+  touching = false
+  wheel.cancel()
+  rebase()
+}
+const wheel = createTimeCardWheel(() => !blocked.value, step => { current.value = 1 + step }, step => !!dates.value[1 + step])
+function ignoreClick() { return awaitingDate || moving.value || Date.now() < ignoreUntil || wheel.ignoreClick() }
+defineExpose({ cancel, ignoreClick })
+watch(() => [props.date, props.summary, props.loading], (values, previous) => {
+  // 同一天刷新/编辑后，丢弃邻日快照，避免跨日期修改后再次展示旧记录。
+  if (previous && values[0] === previous[0] && values[1] !== previous[1]) summaries.value = {}
+  remember()
+  if (!props.loading && !moving.value && (awaitingDate || baseDate.value !== props.date)) rebase()
+}, { immediate: true })
+watch(() => props.disabled, disabled => { if (disabled) cancel() })
+watch(() => props.loading, loading => { if (loading && touching && !awaitingDate) cancel() })
+
+// #ifdef WEB
+let release: (() => void) | undefined
+async function isolatePages() {
+  await nextTick()
+  const element = root.value?.$el || root.value
+  element?.querySelectorAll('.time-date-page').forEach((pane, index) => {
+    const inactive = index !== current.value || awaitingDate
+    if (inactive && pane.contains(document.activeElement)) (document.activeElement as HTMLElement)?.blur()
+    pane.inert = inactive
+  })
+}
+watch(() => [current.value, generation.value, props.loading], isolatePages, { flush: 'post' })
+onMounted(() => {
+  const element = root.value?.$el || root.value
+  if (element) release = bindPagerMouseDrag(element, '.time-date-pager', '.time-date-no-tabs')
+  void isolatePages()
+})
+// #endif
+onBeforeUnmount(() => {
+  wheel.cancel()
+  // #ifdef WEB
+  release?.()
+  // #endif
+})
+</script>
+
+<template>
+  <view ref="root" class="time-date-viewport" :style="{ height: height + 'px' }" @wheel="wheel.wheel">
+    <!-- 原生 swiper 的普通 key 属性不会销毁节点；单项 keyed 列表让微信也真正重建日期窗口。 -->
+    <swiper v-for="windowId in [generation]" :key="windowId" class="time-date-pager" :current="current" :duration="360" easing-function="easeOutCubic"
+      :circular="false" :disable-touch="blocked" @change="changed" @animationfinish="animationFinished"
+      @touchstart="touchStart" @touchmove="touchMove" @touchend="touching = false" @touchcancel="cancel">
+      <swiper-item v-for="(date, index) in dates" :key="date">
+        <view class="time-date-page" :class="{ 'time-date-active': index === current }" :aria-hidden="index !== current" :data-date="date">
+          <TimeCardDay v-if="summaries[date]" :day="summaries[date]" :day-date="date" :today="today" :height="height"
+            :active="index === current && !awaitingDate" :loading="loading" :chart-active="chartActive"
+            :animate="generation === 0 && index === current" @edit="emit('edit', $event)" />
+          <TimeCardSkeleton v-else :height="height" />
+        </view>
+      </swiper-item>
+    </swiper>
+  </view>
+</template>
+
+<style scoped lang="scss">
+.time-date-viewport { width: 100%; min-height: 0; overflow: hidden; }
+.time-date-pager, .time-date-page { width: 100%; height: 100%; }
+/* #ifdef WEB */
+.time-date-viewport { touch-action: pan-y; user-select: none; cursor: grab; }
+.time-date-viewport:active { cursor: grabbing; }
+/* #endif */
+</style>

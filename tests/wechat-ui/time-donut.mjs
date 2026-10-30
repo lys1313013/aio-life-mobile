@@ -28,6 +28,11 @@ module.exports = {
   ...base,
   testDir: ${JSON.stringify(path.join(root, 'tests/e2e'))},
   testMatch: 'home-time-donut.spec.js',
+  reporter: [
+    ['list'],
+    ['html', { open: 'never', outputFolder: ${JSON.stringify(path.join(output, 'report'))} }],
+    [${JSON.stringify(path.join(root, 'scripts/e2e-summary-reporter.cjs'))}, { outputDir: ${JSON.stringify(path.join(output, 'diagnostics'))} }],
+  ],
   outputDir: ${JSON.stringify(path.join(output, 'results'))},
   webServer: { ...base.webServer, cwd: ${JSON.stringify(project)} },
 };

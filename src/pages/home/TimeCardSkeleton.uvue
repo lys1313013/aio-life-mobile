@@ -1,0 +1,34 @@
+<script setup lang="ts">
+import { isDark } from '../../services/theme.ts'
+defineProps<{ height: number }>()
+</script>
+<template>
+  <view class="time-card-skeleton" :style="{ height: height + 'px' }" role="status" aria-label="正在加载时迹">
+    <view class="skeleton-axis"><text class="skeleton-axis-label">0</text><view class="skeleton-bar skeleton-fill" :class="{ 'skeleton-fill-dark': isDark }" /><text class="skeleton-axis-label">24</text></view>
+    <view class="skeleton-chart"><view class="skeleton-ring" :class="{ 'skeleton-ring-dark': isDark }" /></view>
+    <view class="skeleton-records"><view v-for="n in 5" :key="n" class="skeleton-record" :style="{ height: height / 5 + 'px' }">
+      <view class="skeleton-clock skeleton-fill" :class="{ 'skeleton-fill-dark': isDark }" /><view class="skeleton-duration skeleton-fill" :class="{ 'skeleton-fill-dark': isDark }" /><view class="skeleton-name skeleton-fill" :class="{ 'skeleton-fill-dark': isDark }" />
+    </view></view>
+  </view>
+</template>
+<style scoped lang="scss">
+@use '../../styles/spacing-tokens' as *;
+@use '../../styles/typography' as *;
+@use '../../styles/theme-tokens' as *;
+@use '../../styles/skeleton' as skeleton;
+.time-card-skeleton { width: 100%; flex-direction: row; align-items: center; @include skeleton.pulse; }
+.skeleton-axis { width: 14px; height: 164px; flex-shrink: 0; align-items: center; margin-right: $space-detail; }
+.skeleton-axis-label { color: #a1a1aa; @include type-style('chart-label'); }
+.skeleton-bar { flex: 1; width: 8px; }
+.skeleton-chart { flex: 1; min-width: 0; height: 176px; align-items: center; justify-content: center; }
+.skeleton-ring { width: 108px; height: 108px; border: 10px solid $theme-skeleton-light; border-radius: 54px; }
+.skeleton-ring-dark { border-color: $theme-skeleton-dark; }
+.skeleton-records { width: 112px; flex-shrink: 0; margin-left: $space-inline; }
+.skeleton-record { flex-direction: row; align-items: center; justify-content: flex-end; gap: $space-detail; }
+.skeleton-fill { @include skeleton.shape; }
+.skeleton-fill-dark { @include skeleton.dark; }
+.skeleton-clock { width: 30px; height: 8px; }
+.skeleton-duration { width: 20px; height: 8px; }
+.skeleton-name { width: 24px; height: 8px; }
+@include skeleton.motion('.time-card-skeleton');
+</style>

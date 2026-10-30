@@ -1,0 +1,220 @@
+<script setup lang="ts">
+import TimeDonut from './TimeDonut.uvue'
+import { summaryDonutLabels } from '../../services/dashboard-format.ts'
+import { themeClass } from '../../services/theme.ts'
+defineProps<{ day: any; dayDate: string; today: string; height: number; active: boolean; loading: boolean; chartActive: boolean; animate: boolean }>()
+defineEmits<{ edit: [id: string] }>()
+</script>
+<template>
+<view class="time-layout" :style="{ height: height + 'px' }">
+                <view class="timeline-labels"
+                  ><text class="axis-label">0</text
+                  ><view class="timeline"
+                     :class="themeClass('timeline')"><view
+                      v-for="block in day.timeline"
+                      :key="block.id"
+                      class="timeline-block"
+                      :style="block"
+                    ></view></view
+                  ><text class="axis-label">24</text></view
+                ><view class="donut-stage"><view
+                  class="donut"
+                  role="img"
+                  :aria-label="(dayDate === today ? '今日' : dayDate) + '已记录 ' + day.total"
+                  ><TimeDonut :groups="day.groups" :active="chartActive" :animate-on-mount="animate" /><view v-if="day.groups.length" class="donut-center"><text class="donut-total" :class="themeClass('donut-total')">{{ day.total }}</text></view><view v-for="label in summaryDonutLabels(day.groups)" :key="label.id" class="donut-annotation">
+                    <view class="donut-label" :class="['donut-label-' + label.side, themeClass('donut-label')]" :style="label.position">
+                      <text class="donut-label-name" :class="themeClass('donut-label-text')">{{ label.name }}</text><text class="donut-label-duration" :class="themeClass('donut-label-text')">{{ label.duration }}</text>
+                    </view>
+                  </view>
+                </view></view><scroll-view scroll-y :show-scrollbar="false" class="recent-times ui-ml-sm"><view class="recent-time-list"
+                  ><text v-if="day.recent.length === 0" class="empty-label"
+                     :class="themeClass('empty-label')">{{ dayDate === today ? '今日' : dayDate }}暂无记录</text
+                  ><button role="button"
+                    v-for="record in day.recent"
+                    :key="record.id"
+                    class="time-record" :disabled="!active || loading" :aria-label="'编辑时迹 ' + record.name" @click="$emit('edit', record.id)"
+                    :style="{ color: record.color, height: (height / 5) + 'px' }"
+                    ><view class="time-record-content"><text :style="{ color: record.color }" class="record-clock">{{ record.startLabel }}</text><text :style="{ color: record.color }" class="record-duration">{{ record.durationLabel }}</text><text :style="{ color: record.color }" class="record-name">{{ record.shortName }}</text></view></button
+                  ></view></scroll-view>
+              </view>
+</template>
+<style scoped lang="scss">
+@use '../../styles/platform' as *;
+@use '../../styles/typography' as *;
+@use '../../styles/spacing.scss';
+@use '../../styles/spacing-tokens' as *;
+.time-layout {
+  flex: 1;
+  min-height: 0;
+  flex-direction: row;
+  align-items: center;
+}
+.timeline-labels {
+  width: 14px;
+  height: 164px;
+  flex-shrink: 0;
+  align-items: center;
+  margin-right: $space-detail;
+}
+.axis-label {
+  color: #a1a1aa;
+  @include type-style('chart-label');
+
+}
+.timeline {
+  flex: 1;
+  width: 8px;
+  background-color: #f4f4f5;
+  border-radius: 5px;
+  position: relative;
+}
+.timeline-block {
+  position: absolute;
+  left: 0;
+  width: 8px;
+  min-height: 1px;
+}
+.donut-stage {
+  flex: 1;
+  min-width: 0;
+  align-items: center;
+  justify-content: center;
+}
+.donut {
+  width: 176px;
+  height: 176px;
+  position: relative;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+}
+.donut-center {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 176px;
+  height: 176px;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+.donut-total {
+  color: #3f3f46;
+  @include type-style('metric-inline');
+
+}
+.donut-annotation {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 176px;
+  height: 176px;
+  pointer-events: none;
+}
+.donut-label {
+  position: absolute;
+  width: 32px;
+  color: #52525b;
+  @include type-style('chart-label');
+
+}
+.donut-label-left { left: 0; align-items: flex-end; text-align: right; }
+.donut-label-right { right: 0; align-items: flex-start; }
+.donut-label-name {
+
+@include shrink-content;
+
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.donut-label-name, .donut-label-duration {
+  @include type-style('chart-label');
+  color: #52525b;
+
+  white-space: nowrap;
+}
+.donut-label-dark { color: #d0d0d6; }
+.donut-label-text-dark { color: #d0d0d6; }
+.recent-times {
+  width: 112px;
+  height: 100%;
+  min-height: 0;
+  flex-shrink: 0;
+}
+.recent-time-list {
+
+/* #ifndef APP */
+min-height: 100%;
+/* #endif */
+/* #ifdef APP */
+flex-grow: 1;
+/* #endif */
+
+  align-items: flex-end;
+  justify-content: center;
+}
+.time-record {
+  display: flex;
+  padding: 0;
+  margin: 0;
+  background-color: transparent;
+  border: 0;
+  border-radius: 0;
+  width: 100%;
+  flex-shrink: 0;
+  flex-direction: row;
+  align-items: center;
+  justify-content: flex-end;
+  text-align: right;
+  @include type-style('badge');
+  font-family: type-family('mono');
+
+}
+.time-record-content {
+  flex-direction: row;
+  align-items: center;
+  justify-content: flex-end;
+  width: 100%;
+  height: 100%;
+}
+.record-clock { flex-shrink: 0; }
+.record-duration { flex-shrink: 0; margin-left: $space-detail; }
+.record-clock, .record-duration, .record-name {
+  @include type-style('badge');
+
+/* #ifndef APP */
+color: inherit;
+/* #endif */
+
+  white-space: nowrap;
+}
+.record-name {
+  min-width: 0;
+  max-width: 44px;
+  flex-shrink: 1;
+  margin-left: $space-detail;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+@media (max-width: 374px) {
+  .donut { transform: scale(0.8); }
+  .recent-times { width: 100px; }
+}
+@media (min-width: 1400px) {
+  .time-record, .record-clock, .record-duration, .record-name { @include type-style('caption'); }
+}
+@media (min-width: 1200px) {
+  /* 三列卡片按可用宽度分配明细，名称独占一行，时间与时长保留在次级行。 */
+  .donut { transform: scale(0.8); }
+  .recent-times { width: 32%; }
+  .time-record-content { flex-wrap: wrap; align-content: center; height: auto; }
+  .record-name { order: -1; width: 100%; max-width: 100%; margin-left: 0; }
+}
+.donut-total-dark { color: #eeeeef; }
+.timeline-dark { background-color: #292d35; }
+.empty-label { color: #85858e; @include type-style('caption'); }
+.empty-label-dark { color: #9c9ca6; }
+.time-record { @include borderless-button; }
+</style>

@@ -13,7 +13,7 @@ import { isDark } from '../../services/theme.ts'
 
 type Group = { id: string; color: string; minutes: number }
 type Sector = { id: string; color: string; start: number; end: number }
-const props = defineProps<{ groups: Group[]; active: boolean }>()
+const props = withDefaults(defineProps<{ groups: Group[]; active: boolean; animateOnMount?: boolean }>(), { animateOnMount: true })
 const failed = ref(false)
 // #ifdef MP-WEIXIN
 const imageSource = computed(() => iconSource(timeDonutImage(props.groups, isDark.value), 176))
@@ -133,7 +133,7 @@ async function initialize(animate = true) {
     fail() { if (alive && requestId === generation) failed.value = true },
   })
 }
-onMounted(initialize)
+onMounted(() => initialize(props.animateOnMount))
 watch(() => props.groups, update, { deep: true })
 watch(isDark, () => paint(current))
 watch(() => props.active, value => {

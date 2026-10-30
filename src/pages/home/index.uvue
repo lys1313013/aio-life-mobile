@@ -4,7 +4,8 @@ import { appTextColor } from '../../services/app-layout.ts'
 
 import { buttonLabelClasses } from '../../services/button-label.ts'
 import HomeOverviewSkeleton from './HomeOverviewSkeleton.uvue';
-import TimeDonut from './TimeDonut.uvue'
+import TimeCardPager from './TimeCardPager.uvue'
+import TimeCardSkeleton from './TimeCardSkeleton.uvue'
 import BusinessCards from './BusinessCards.uvue'
 import SummaryHomeCard from './SummaryHomeCard.uvue'
 import FinanceCalendarCard from './FinanceCalendarCard.uvue'
@@ -60,12 +61,10 @@ import TimeRecordEditor from '../../components/TimeRecordEditor.uvue'
 import RecordCreateModal from './RecordCreateModal.uvue'
 import WatchedTaskEditModal from './WatchedTaskEditModal.uvue'
 import { takeRecordChange } from '../../services/time-changes.ts'
-import { elapsedSinceRecord, shiftDate } from '../../services/time-format.ts'
-import { daySwipeStyle } from '../../services/day-swipe.ts'
-import { createTimeCardSwipe } from './services/time-card-swipe.ts'
+import { elapsedSinceRecord } from '../../services/time-format.ts'
 import { homeLayout } from './services/home-layout.ts'
 import { todayDate } from '../../services/dashboard.ts'
-import { durationLabel, summaryDonutLabels, timeSummary } from '../../services/dashboard-format.ts'
+import { durationLabel, timeSummary } from '../../services/dashboard-format.ts'
 import { openBusinessLink } from '../../services/navigation.ts'
 import { lockedMenuPaths, nativeDestination } from '../../services/life-catalog.ts'
 import LifeMenuIcon from '../../components/LifeMenuIcon.uvue'
@@ -161,7 +160,6 @@ const watched = ref<WatchedTask[]>([])
 const exercise = ref<ExercisePage>({ days: [] })
 const commits = ref<Commit[]>([])
 const time = ref(timeSummary([], []))
-const timeDonutLabels = computed(() => summaryDonutLabels(time.value.groups))
 // 与 Web 一致的响应式上限；多列等高，单列按首屏内容量收缩。
 const cardHeightLimit = computed(() => viewportWidth.value >= 1024 ? 280 : viewportWidth.value >= 640 ? 250 : 240)
 const multiColumnCardHeight = computed(() => viewportWidth.value >= 768 ? cardHeightLimit.value : undefined)
@@ -190,39 +188,22 @@ function sectionHeight(section: string) {
   if (section === 'commits') return Math.min(limit, inset + Math.max(1, states.commits.loaded ? commits.value.length : 2) * commitRowHeight)
   return limit
 }
-// 图表明细沿用 Web 的紧凑五行布局，按内容区高度均分，不撑高卡片。
-const timeRecordHeight = computed(() => (sectionHeight('time') - sectionInset('time')) / 5)
 const timeDate = ref('')
 // 空值跟随今天；历史日期独立保存，周期刷新仍读取正在浏览的日期。
 const selectedTimeDate = ref('')
 const timeDayLabel = computed(() => !timeDate.value || timeDate.value === todayDate() ? '今日' : timeDate.value)
-const timeSwipeOffset = ref(0)
-const timeSwipeDragging = ref(false)
-const timeSwipeVisual = computed(() => daySwipeStyle(timeSwipeOffset.value, timeSwipeDragging.value))
-const timeSwipe = createTimeCardSwipe(
-  () => !interactionDisabled.value && !states.time.loading && !states.time.locked && !!timeDate.value && !timeEditor.value,
-  step => {
-    const next = shiftDate(timeDate.value || todayDate(), step)
-    selectedTimeDate.value = next === todayDate() ? '' : next
-    void loadSection('time', true)
-  },
-  step => shiftDate(timeDate.value || todayDate(), step) <= todayDate(),
-  (offset, dragging) => { timeSwipeOffset.value = offset; timeSwipeDragging.value = dragging },
-)
-// #ifdef WEB
-// 监听窗口以处理拖出卡片后松手；触屏仍走跨端 touch 事件。
-onMounted(() => {
-  window.addEventListener('mousemove', timeSwipe.mouseMove)
-  window.addEventListener('mouseup', timeSwipe.mouseEnd)
-  window.addEventListener('blur', timeSwipe.cancel)
-})
-onBeforeUnmount(() => {
-  timeSwipe.cancel()
-  window.removeEventListener('mousemove', timeSwipe.mouseMove)
-  window.removeEventListener('mouseup', timeSwipe.mouseEnd)
-  window.removeEventListener('blur', timeSwipe.cancel)
-})
-// #endif
+type TimePagerHandle = { cancel: () => void; ignoreClick: () => boolean }
+const timePager = ref<TimePagerHandle | null>(null)
+// 卡片位于 v-for 内；函数 ref 保留唯一的时迹组件实例，避免字符串 ref 收集成数组。
+function setTimePager(instance: TimePagerHandle | null) { timePager.value = instance }
+const timeSwipe = {
+  cancel: () => timePager.value?.cancel(),
+  ignoreClick: () => timePager.value?.ignoreClick() || false,
+}
+function changeTimeDate(date: string) {
+  selectedTimeDate.value = date === todayDate() ? '' : date
+  void loadSection('time', true)
+}
 const timeChartActive = ref(true)
 const nowMinutes = ref(0)
 let minuteTimer: ReturnType<typeof setInterval> | null = null
@@ -243,7 +224,8 @@ const thoughtEditId = ref('')
 const watchedEditor = ref<WatchedTask | null>(null)
 const editVersions = { thoughts: 0, watched: 0 }
 function openTimeRecord(id = '') {
-  if (timeSwipe.ignoreClick() || states.time.loading) return
+  // 加号和快捷入口不在滑动内容区内，只拦截拖动后的记录点击。
+  if (states.time.loading || (id && timeSwipe.ignoreClick())) return
   timeEditor.value = { recordId: id, initialDate: timeDate.value || todayDate() }
 }
 function closeTimeEditor() {
@@ -900,53 +882,13 @@ function trendLines(points) {
                 <DashboardAction v-if="timeDate && states.time.error" label="时迹更新失败，点击重试" icon="ant-design:reload-outlined" @click="loadSection('time')" /><DashboardAction v-else label="新增时迹" :text="timeElapsed" :loading="states.time.loading && !!timeDate" :disabled="states.time.loading" @click="openTimeRecord()" />
               </template><template #loading>
                 <view class="time-loading" role="status" aria-label="正在加载时迹" aria-live="polite">
-                  <view class="time-layout time-skeleton" :style="{ height: (sectionHeight('time') - sectionInset('time')) + 'px' }" aria-hidden="true">
-                    <view class="timeline-labels">
-                      <text class="axis-label">0</text><view class="timeline time-skeleton-fill" :class="themeClass('time-skeleton-fill')" /><text class="axis-label">24</text>
-                    </view><view class="donut-stage"><view class="donut">
-                      <view class="donut-ring time-skeleton-ring" :class="themeClass('time-skeleton-ring')" /><view class="time-skeleton-fill time-skeleton-total" :class="themeClass('time-skeleton-fill')" />
-                    </view></view><view class="recent-times ui-ml-sm"><view class="recent-time-list">
-                      <view v-for="n in 5" :key="n" class="time-record" :style="{ height: timeRecordHeight + 'px' }">
-                        <view class="time-skeleton-fill time-skeleton-clock" :class="themeClass('time-skeleton-fill')" /><view :style="appTextColor()" class="time-skeleton-fill time-skeleton-duration record-duration" :class="themeClass('time-skeleton-fill')" /><view :style="appTextColor()" class="time-skeleton-fill time-skeleton-name record-name" :class="themeClass('time-skeleton-fill')" />
-                      </view>
-                    </view></view>
-                  </view>
+                  <TimeCardSkeleton :height="sectionHeight('time') - sectionInset('time')" />
                 </view>
-              </template><view class="time-layout time-swipe-surface"
-                @touchstart="timeSwipe.touchStart" @touchmove="timeSwipe.touchMove"
-                @touchend="timeSwipe.touchEnd" @touchcancel="timeSwipe.cancel"
-                @mousedown="timeSwipe.mouseStart" @wheel="timeSwipe.wheel"
-                :style="{ ...timeSwipeVisual, height: (sectionHeight('time') - sectionInset('time')) + 'px' }">
-                <view class="timeline-labels"
-                  ><text class="axis-label">0</text
-                  ><view class="timeline"
-                     :class="themeClass('timeline')"><view
-                      v-for="block in time.timeline"
-                      :key="block.id"
-                      class="timeline-block"
-                      :style="block"
-                    ></view></view
-                  ><text class="axis-label">24</text></view
-                ><view class="donut-stage"><view
-                  class="donut"
-                  role="img"
-                  :aria-label="timeDayLabel + '已记录 ' + time.total"
-                  ><TimeDonut :groups="time.groups" :active="timeChartActive" /><view v-if="time.groups.length" class="donut-center"><text class="donut-total" :class="themeClass('donut-total')">{{ time.total }}</text></view><view v-for="label in timeDonutLabels" :key="label.id" class="donut-annotation">
-                    <view class="donut-label" :class="['donut-label-' + label.side, themeClass('donut-label')]" :style="label.position">
-                      <text class="donut-label-name" :class="themeClass('donut-label-text')">{{ label.name }}</text><text class="donut-label-duration" :class="themeClass('donut-label-text')">{{ label.duration }}</text>
-                    </view>
-                  </view>
-                </view></view><scroll-view scroll-y :show-scrollbar="false" class="recent-times ui-ml-sm"><view class="recent-time-list"
-                  ><text v-if="time.recent.length === 0" class="empty-label"
-                     :class="themeClass('empty-label')">{{ timeDayLabel }}暂无记录</text
-                  ><button role="button"
-                    v-for="record in time.recent"
-                    :key="record.id"
-                    class="time-record" :aria-label="'编辑时迹 ' + record.name" @click="openTimeRecord(record.id)"
-                    :style="{ color: record.color, height: timeRecordHeight + 'px' }"
-                    ><view class="time-record-content"><text :style="{ color: record.color }" class="record-clock">{{ record.startLabel }}</text><text :style="{ color: record.color }" class="record-duration">{{ record.durationLabel }}</text><text :style="{ color: record.color }" class="record-name">{{ record.shortName }}</text></view></button
-                  ></view></scroll-view>
-              </view>
+              </template><TimeCardPager :ref="setTimePager" :date="timeDate" :today="todayDate()" :summary="time"
+                :height="sectionHeight('time') - sectionInset('time')" :loading="states.time.loading" :chart-active="timeChartActive"
+                :disabled="interactionDisabled || states.time.locked || !!timeEditor"
+                @change="changeTimeDate" @edit="openTimeRecord">
+              </TimeCardPager>
             </DashboardSection></view
           ><view v-if="section.cardKey === 'section.links'" class="section-content ui-pad-xs"
             ><DashboardSection
@@ -1148,13 +1090,9 @@ function trendLines(points) {
 @use '../../styles/typography' as *;
 @use '../../styles/spacing.scss';
 @use '../../styles/spacing-tokens' as *;
-/* #ifdef WEB */
-.time-swipe-surface { touch-action: pan-y; user-select: none; }
-/* #endif */
 @include type-utilities('body');
 
-.time-record { padding: 0; margin: 0; border: 0; background-color: transparent; text-align: left; line-height: type-line('label'); }
-.task-check, .time-record { @include borderless-button; }
+.task-check { @include borderless-button; }
 /* #ifdef WEB */
 /* H5 的实际滚动节点在内置组件内部，避免滚到底后把手势传给整页。 */
 .exercise-scroll :deep(.uni-scroll-view),
@@ -1352,188 +1290,10 @@ flex-shrink: 0;
   @include type-style('glyph-display');
 
 }
-.time-layout {
-  flex: 1;
-  min-height: 0;
-  flex-direction: row;
-  align-items: center;
-}
 .time-loading {
   flex: 1;
   min-height: 0;
   padding: 0 $space-card $space-card;
-}
-/* 占位直接复用时间轴、圆环和记录布局，避免加载结束时结构跳变。 */
-.time-skeleton { animation: time-skeleton-breathe 1.8s ease-in-out infinite; }
-.time-skeleton-total { width: 32px; height: 8px; }
-.time-skeleton-clock { width: 30px; height: 8px; }
-.time-skeleton-duration { width: 20px; height: 8px; }
-.time-skeleton-name { width: 24px; height: 8px; }
-@keyframes time-skeleton-breathe { 0%, 100% { opacity: 1; } 50% { opacity: .5; } }
-/* #ifdef WEB */
-@media (prefers-reduced-motion: reduce) { .time-skeleton { animation: none; } }
-/* #endif */
-.timeline-labels {
-  width: 14px;
-  height: 164px;
-  flex-shrink: 0;
-  align-items: center;
-  margin-right: $space-detail;
-}
-.axis-label {
-  color: #a1a1aa;
-  @include type-style('chart-label');
-
-}
-.timeline {
-  flex: 1;
-  width: 8px;
-  background-color: #f4f4f5;
-  border-radius: 5px;
-  position: relative;
-}
-.timeline-block {
-  position: absolute;
-  left: 0;
-  width: 8px;
-  min-height: 1px;
-}
-.donut-stage {
-  flex: 1;
-  min-width: 0;
-  align-items: center;
-  justify-content: center;
-}
-.donut {
-  width: 176px;
-  height: 176px;
-  position: relative;
-  flex-shrink: 0;
-  align-items: center;
-  justify-content: center;
-}
-.donut-ring {
-  position: absolute;
-  width: 108px;
-  height: 108px;
-  top: 34px;
-  left: 34px;
-  border: 19px solid #c9c9cc;
-  border-radius: 54px;
-}
-.donut-center {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 176px;
-  height: 176px;
-  align-items: center;
-  justify-content: center;
-  pointer-events: none;
-}
-.donut-total {
-  color: #3f3f46;
-  @include type-style('metric-inline');
-
-}
-.donut-annotation {
-  position: absolute;
-  left: 0;
-  top: 0;
-  width: 176px;
-  height: 176px;
-  pointer-events: none;
-}
-.donut-label {
-  position: absolute;
-  width: 32px;
-  color: #52525b;
-  @include type-style('chart-label');
-
-}
-.donut-label-left { left: 0; align-items: flex-end; text-align: right; }
-.donut-label-right { right: 0; align-items: flex-start; }
-.donut-label-name {
-
-@include shrink-content;
-
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.donut-label-name, .donut-label-duration {
-  @include type-style('chart-label');
-  color: #52525b;
-
-  white-space: nowrap;
-}
-.donut-label-dark { color: #d0d0d6; }
-.donut-label-text-dark { color: #d0d0d6; }
-.recent-times {
-  width: 112px;
-  height: 100%;
-  min-height: 0;
-  flex-shrink: 0;
-}
-.recent-time-list {
-
-/* #ifndef APP */
-min-height: 100%;
-/* #endif */
-/* #ifdef APP */
-flex-grow: 1;
-/* #endif */
-
-  align-items: flex-end;
-  justify-content: center;
-}
-.time-record {
-  display: flex;
-  padding: 0;
-  margin: 0;
-  background-color: transparent;
-  border: 0;
-  border-radius: 0;
-  width: 100%;
-  flex-shrink: 0;
-  flex-direction: row;
-  align-items: center;
-  justify-content: flex-end;
-  text-align: right;
-  @include type-style('badge');
-  font-family: type-family('mono');
-
-}
-.time-record-content {
-  flex-direction: row;
-  align-items: center;
-  justify-content: flex-end;
-  width: 100%;
-  height: 100%;
-}
-.record-clock { flex-shrink: 0; }
-.record-duration { flex-shrink: 0; margin-left: $space-detail; }
-.record-clock, .record-duration, .record-name {
-  @include type-style('badge');
-
-/* #ifndef APP */
-color: inherit;
-/* #endif */
-
-  white-space: nowrap;
-}
-.record-name {
-  min-width: 0;
-  max-width: 44px;
-  flex-shrink: 1;
-  margin-left: $space-detail;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-@media (max-width: 374px) {
-  .donut { transform: scale(0.8); }
-  .recent-times { width: 100px; }
 }
 .quick-grid {
   flex-direction: row;
@@ -1727,15 +1487,7 @@ align-items: flex-end;
     width: 50%;
   }
 }
-@media (min-width: 1400px) {
-  .time-record, .record-clock, .record-duration, .record-name { @include type-style('caption'); }
-}
 @media (min-width: 1200px) {
-  /* 三列卡片按可用宽度分配明细，名称独占一行，时间与时长保留在次级行。 */
-  .donut { transform: scale(0.8); }
-  .recent-times { width: 32%; }
-  .time-record-content { flex-wrap: wrap; align-content: center; height: auto; }
-  .record-name { order: -1; width: 100%; max-width: 100%; margin-left: 0; }
   .dashboard-content {
 
   }
@@ -1761,8 +1513,7 @@ align-items: flex-end;
     border-color: #303238;
   }
   .stat-title-text-dark,
-  .stat-value-dark,
-  .donut-total-dark {
+  .stat-value-dark {
     color: #eeeeef;
   }
   .home-label-dark {
@@ -1776,20 +1527,15 @@ align-items: flex-end;
   .body-text-dark,
   .thought-text-dark,
   .quick-title-dark,
-  .record-name-dark,
   .day-label-dark,
   .exercise-name-dark,
   .exercise-count-dark,
   .repo-label-dark {
     color: #d0d0d6;
   }
-  .timeline-dark,
   .tag-dark,
   .cancel-button-dark {
     background-color: #292d35;
-  }
-  .donut-ring-dark {
-    border-color: #555960;
   }
   .commit-message-dark {
     color: #a6a6b0;
@@ -1800,8 +1546,6 @@ align-items: flex-end;
 
 .time-skeleton-fill { background-color: #e8ecf1; border-radius: 4px; flex-shrink: 0; }
 .time-skeleton-fill-dark { background-color: #30343c; }
-.time-skeleton-ring { border-color: #e8ecf1; border-width: 10px; }
-.time-skeleton-ring-dark { border-color: #30343c; }
 
 .tool-button,
 .overview-card,
