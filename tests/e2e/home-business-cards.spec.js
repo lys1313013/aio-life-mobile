@@ -384,6 +384,8 @@ test('首页会员新增失败恢复、分类切换及取消后重开', async ({
 for (const kind of ['read', 'movie', 'member']) {
   test(`首页 ${kind} 条目在首页直接弹窗，保存后同步卡片`, async ({ page }) => {
     await page.setViewportSize({ width: 820, height: 1000 });
+    // 本场景编辑有效会员，固定时间起点，避免自然日期越过夹具的到期日。
+    if (kind === 'member') await page.clock.install({ time: new Date('2026-10-29T04:00:00Z') });
     await setup(page);
     const label = kind === 'read' ? '阅读' : kind === 'movie' ? '观影' : '会员';
     const base = kind === 'read' ? '/read-record' : kind === 'movie' ? '/movie' : '/membership';

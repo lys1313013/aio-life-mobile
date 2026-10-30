@@ -3,6 +3,7 @@ const { pullDown } = require('./gestures');
 
 async function fixtures(page) {
   const calls = {};
+  const timeQueries = {};
   const errors = [];
   page.on('pageerror', error => errors.push(error.message));
   await page.addInitScript(() => localStorage.setItem('aio-life-mobile.access-token.v1', JSON.stringify({ type: 'string', data: 'fixture-page-refresh' })));
@@ -18,7 +19,12 @@ async function fixtures(page) {
   await route('/auth/secondary-lock/menus', []);
   await route('/user/info', { id: 'fixture-user', nickname: '模拟用户', roles: [] });
   await route('/timeTrackerCategory/list', []);
-  await route('/timeRecord/query', []);
+  await route('/timeRecord/query', url => {
+    const date = url.searchParams.get('date');
+    timeQueries[date] = (timeQueries[date] || 0) + 1;
+    return [];
+  });
+  await route('/timeRecord/queryByDateRange', []);
   await route('/menu/visuals', { menus: [], cards: {} });
   await route('/userDictType/getByDictType', { dictDetailList: [{ id: 'type', dictLabel: '模拟分类' }] });
   await route('/goals', [{ id: '1', title: '模拟目标', type: 1, status: 'in_progress', isPinned: 0 }]);
@@ -29,7 +35,7 @@ async function fixtures(page) {
   });
   await route('/expense/query', { items: [{ id: '1', amt: 12, expDesc: '模拟支出', expTime: '2026-10-05 12:00:00', expTypeId: 'type', payTypeId: 'type' }], total: 1 });
   await route('/expense/statisticsByMonth', []);
-  return { calls, errors };
+  return { calls, timeQueries, errors };
 }
 async function visibility(page, value) {
   await page.evaluate(value => {
@@ -38,17 +44,32 @@ async function visibility(page, value) {
   }, value);
 }
 for (const width of [390, 820]) {
-  test(`时迹页空态返回浏览器不重新查询 ${width}`, async ({ page }) => {
+  test(`时迹页空态返回浏览器保留当前数据，仅重新预取相邻日 ${width}`, async ({ page }) => {
     await page.setViewportSize({ width, height: 900 });
-    const { calls, errors } = await fixtures(page);
+    const { calls, timeQueries, errors } = await fixtures(page);
     await page.goto('/#/pages/time/index');
     await expect.poll(() => calls['/timeRecord/query'] || 0).toBeGreaterThan(0);
     await expect(page.getByText('加载失败，请重试', { exact: true })).toHaveCount(0);
-    await page.waitForTimeout(100);
+    await expect(page.locator('.time-main-panel')).toHaveAttribute('aria-busy', 'false');
+    await expect.poll(() => calls['/timeRecord/queryByDateRange'] || 0).toBe(1);
+    await expect.poll(() => calls['/timeRecord/query'] || 0).toBe(3);
+    const current = await page.locator('.date-value').innerText();
+    const next = new Date(current + 'T12:00:00Z');
+    next.setUTCDate(next.getUTCDate() + 1);
+    const nextDate = next.toISOString().slice(0, 10);
+    const queries = { ...timeQueries };
+    expect(queries[current]).toBe(1);
+    expect(queries[nextDate]).toBe(1);
     const counts = { ...calls };
-    for (let i = 0; i < 3; i++) { await visibility(page, 'hidden'); await visibility(page, 'visible'); }
-    await page.waitForTimeout(100);
-    expect(calls).toEqual(counts);
+    // 离页会清理预取缓存；返回时保留当前日和对比日，只重新预取下一日。
+    for (let i = 0; i < 3; i++) {
+      await visibility(page, 'hidden'); await visibility(page, 'visible');
+      await expect.poll(() => timeQueries[nextDate]).toBe(queries[nextDate] + i + 1);
+    }
+    expect(timeQueries).toEqual({ ...queries, [nextDate]: queries[nextDate] + 3 });
+    expect(calls).toEqual({ ...counts, '/timeRecord/query': counts['/timeRecord/query'] + 3 });
+    await expect(page.locator('.date-value')).toHaveText(current);
+    await expect(page).toHaveURL(/pages\/time\/index/);
     expect(errors).toEqual([]);
   });
   test(`目标页返回浏览器不刷新；59 分钟保留，60 分钟自动更新 ${width}`, async ({ page }) => {

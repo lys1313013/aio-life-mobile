@@ -36,6 +36,13 @@ async function donut() {
   const fixture = {
     computed, ref, watch, nextTick, isDark, timeDonutImage, iconSource: svg => svg,
     defineProps: () => props,
+    // 此夹具直接执行脚本，补齐编译宏，并保留调用方使用的响应式 props 引用。
+    withDefaults: (values, defaults) => {
+      for (const [key, value] of Object.entries(defaults)) {
+        if (values[key] === undefined) values[key] = value
+      }
+      return values
+    },
     // 小程序分支不能再申请屏幕 Canvas，弹窗、滚动和离页均不需要原生层恢复。
     uni: { createCanvasContextAsync: () => assert.fail('微信时迹不应创建 Canvas') },
   }
@@ -56,6 +63,7 @@ test('嵌套弹窗全部关闭才恢复，重复释放不影响后续弹窗', as
 
 test('微信环图在嵌套弹窗、离页和返回时始终使用普通图像，更新保留最新数据', async () => {
   const h = await donut()
+  assert.equal(h.props.animateOnMount, true)
   const close = h.registerModal(), closeNested = h.registerModal()
   h.props.groups = [{ id: 'two', minutes: 30, color: '#722ed1' }]
   h.isDark.value = true

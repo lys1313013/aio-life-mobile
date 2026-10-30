@@ -309,6 +309,8 @@ for (const width of [390, 820, 1440]) for (const theme of ['light', 'dark']) {
     await expect(modal.getByRole('alert')).toHaveText('二级密码错误');
     expect(fixture.calls).not.toContain('/home/sections/finance/calendar');
     await modal.locator('input').fill('001234');
+    // uni-input 的 input 事件有节流；错误消失说明新的密码已进入业务状态。
+    await expect(modal.getByRole('alert')).toHaveCount(0);
     await modal.getByRole('button', { name: '确认密码', exact: true }).click();
     await expect(modal).toHaveCount(0);
     await expect(card).toContainText('10,000.00');

@@ -138,6 +138,13 @@ for (const width of [390, 768, 1440]) for (const theme of ['light', 'dark']) {
         return failed ? { json: { code: 1, message: '模拟 B 书加载失败', data: null } } : ok({ marks: { chapters: [], updated: [] }, reviews: [] });
       },
     });
+    async function waitForTab(label) {
+      await expect(page.getByRole('button', { name: label, exact: true })).toHaveAttribute('aria-pressed', 'true');
+      await expect.poll(() => page.locator('.category-pager-active').evaluate(element => {
+        const viewport = element.closest('.category-pager').getBoundingClientRect();
+        return Math.abs(element.getBoundingClientRect().x - viewport.x);
+      }), { message: '等待当前页签完成翻页后再操作内容' }).toBeLessThan(1);
+    }
     async function selectBook(title) {
       await page.locator('uni-picker[aria-label="笔记本"]').click();
       await page.locator('.uni-picker-select:visible, .uni-picker-view-indicator:visible').first().waitFor();
@@ -161,9 +168,10 @@ for (const width of [390, 768, 1440]) for (const theme of ['light', 'dark']) {
     try {
       await page.goto('/#/pages/records/weread');
       await page.getByRole('button', { name: '我的书架', exact: true }).click();
+      await waitForTab('我的书架');
       await page.getByRole('button', { name: '书籍详情：模拟书籍 A', exact: true }).click();
       await page.getByRole('button', { name: '查看笔记', exact: true }).click();
-      await expect(page.getByRole('button', { name: '阅读笔记', exact: true })).toHaveAttribute('aria-pressed', 'true');
+      await waitForTab('阅读笔记');
       await expect(page.getByText('模拟 A 书笔记', { exact: true })).toBeVisible();
       await selectBook('模拟书籍 B');
       await expect.poll(() => queries).toBe(2);

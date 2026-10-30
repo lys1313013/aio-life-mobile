@@ -15,8 +15,9 @@ test('四栏切换、日期查询、退出清理与重新登录', async ({ page 
     if (path === '/api/quick-nav/candidates') data = [];
     if (path === '/api/menu/preferences') data = { menus: [], hiddenMenuIds: [] };
     if (path === '/api/timeRecord/query') {
-      dates.push(url.searchParams.get('date'));
-      const records = Array.from({ length: 8 }, (_, i) => ({ id: String(i + 1), categoryId: '1', startTime: i * 60, endTime: i * 60 + 29 }));
+      const recordDate = url.searchParams.get('date');
+      dates.push(recordDate);
+      const records = Array.from({ length: 8 }, (_, i) => ({ id: String(i + 1), date: recordDate, title: '模拟记录 ' + recordDate + ' ' + i, categoryId: '1', startTime: i * 60, endTime: i * 60 + 29 }));
       expect(url.searchParams.has('page')).toBe(false);
       expect(url.searchParams.has('pageSize')).toBe(false);
       data = records;
@@ -40,15 +41,16 @@ test('四栏切换、日期查询、退出清理与重新登录', async ({ page 
   await expect(homeIcon).toHaveAttribute('src', /home-house\.png(?:\?.*)?$/);
   await expect(page.locator('.timeline-event')).toHaveCount(8);
   const today = await page.locator('.date-value').innerText();
-  const initialRequestCount = dates.length;
   await page.getByRole('button', { name: '前一天' }).click();
   await expect(page.locator('.date-value')).not.toHaveText(today);
-  await expect.poll(() => dates.length).toBeGreaterThan(initialRequestCount);
   const selected = await page.locator('.date-value').innerText();
-  expect(dates.slice(initialRequestCount)).toContain(selected);
+  // 相邻日可能已预取；按选中日期验证实际展示的数据，而不是要求重复请求。
+  await expect.poll(() => dates.includes(selected)).toBe(true);
+  await expect(page.locator('.timeline-event .event-title').first()).toHaveText('模拟记录 ' + selected + ' 0');
   await page.getByRole('button', { name: '后一天' }).click();
   await expect(page.locator('.date-value')).toHaveText(today);
-  await expect.poll(() => dates.slice(initialRequestCount).includes(today)).toBe(true);
+  await expect.poll(() => dates.includes(today)).toBe(true);
+  await expect(page.locator('.timeline-event .event-title').first()).toHaveText('模拟记录 ' + today + ' 0');
   await page.locator('uni-tabbar').getByText('全部', { exact: true }).click();
   await expect(page.getByText('暂无可用功能', { exact: true })).toBeVisible();
   await expect(homeIcon).toHaveAttribute('src', /home-house\.png(?:\?.*)?$/);
