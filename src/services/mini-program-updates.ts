@@ -1,62 +1,51 @@
 export const buildSeenKey = 'aio-life-mobile.build-seen.v1'
-export const updateCleanedKey = 'aio-life-mobile.update-cleaned.v1'
 
 /** 使用构建时间识别同一版本号下的不同发布包；由微信负责下载和应用新代码包。 */
-export function installMiniProgramUpdates(runtime, buildId: string, clearData: () => Promise<void>) {
+export function installMiniProgramUpdates(runtime, buildId: string) {
   const manager = runtime.getUpdateManager()
   let ready = false
   let prompting = false
   let applying = false
   let downloadedPrompted = false
-  const seen = runtime.getStorageSync(buildSeenKey)
-  const cleanedBeforeUpdate = runtime.getStorageSync(updateCleanedKey) === true
-  const existingData = runtime.getStorageInfoSync().keys.some(key => key.startsWith('aio-life-mobile.') && key !== buildSeenKey && key !== updateCleanedKey)
-  let changedBuild = !!buildId && seen !== buildId && (!!seen || existingData) && !cleanedBeforeUpdate
-  if (buildId && (!changedBuild || cleanedBeforeUpdate)) runtime.setStorageSync(buildSeenKey, buildId)
-  runtime.removeStorageSync(updateCleanedKey)
+  let changedBuild = false
+  if (buildId) {
+    try {
+      const seen = runtime.getStorageSync(buildSeenKey)
+      const existingData = runtime.getStorageInfoSync().keys.some(key => key.startsWith('aio-life-mobile.') && key !== buildSeenKey)
+      changedBuild = seen !== buildId && (!!seen || existingData)
+      runtime.setStorageSync(buildSeenKey, buildId)
+    } catch (_) { /* 版本记录不可用时仍允许正常使用和更新，不重置任何用户数据。 */ }
+  }
 
   function errorNotice(message: string) {
-    runtime.showModal({ title: '未完成更新', content: message, showCancel: false })
+    runtime.showModal({ title: '更新失败', content: message, showCancel: false })
   }
-  async function apply(downloaded: boolean) {
+  function apply() {
+    if (!ready || applying) return
     applying = true
     try {
-      await clearData()
-      if (downloaded) {
-        // 新包启动后不重复弹出“已更新”清理提示。
-        runtime.setStorageSync(updateCleanedKey, true)
-        manager.applyUpdate()
-      } else {
-        if (buildId) runtime.setStorageSync(buildSeenKey, buildId)
-        changedBuild = false
-        await new Promise<void>((resolve, reject) => runtime.reLaunch({ url: '/pages/login/index', success: () => resolve(), fail: reject }))
-      }
+      // 更新仅替换微信代码包，不能调用清理存储、退出登录或重置设置的流程。
+      manager.applyUpdate()
     } catch (_) {
-      runtime.removeStorageSync(updateCleanedKey)
-      downloadedPrompted = false
-      errorNotice('清理或重启未完成，请重新打开小程序后重试。')
-    } finally {
       applying = false
-      // 处理清理期间刚下载完成的新包。
-      if (!downloaded && ready) prompt()
+      downloadedPrompted = false
+      errorNotice('重启失败，请重新打开小程序。')
     }
   }
   function prompt() {
     if (prompting || applying || (ready ? downloadedPrompted : !changedBuild)) return
     const downloaded = ready
     if (downloaded) downloadedPrompted = true
+    else changedBuild = false
     prompting = true
     runtime.showModal({
-      title: downloaded ? '新版本已准备好' : '已更新到新版本',
-      content: '清除本机缓存、登录状态和本地设置后重新进入，需要重新登录。云端数据不受影响，请先保存未提交的内容。',
-      confirmText: downloaded ? '清理更新' : '清理重进', cancelText: '稍后',
+      title: downloaded ? '发现新版本' : '更新完成',
+      content: downloaded ? '重启后生效，请先保存未提交内容。' : '新版本已生效。',
+      confirmText: downloaded ? '立即更新' : '知道了', cancelText: '稍后', showCancel: downloaded,
       success(result) {
         prompting = false
-        if (result.confirm) void apply(downloaded)
-        else {
-          if (!downloaded) changedBuild = false
-          if (ready && !downloaded) prompt()
-        }
+        if (downloaded && result.confirm) apply()
+        if (!downloaded && ready) prompt()
       },
       fail() { prompting = false; downloadedPrompted = false },
     })
@@ -65,7 +54,7 @@ export function installMiniProgramUpdates(runtime, buildId: string, clearData: (
   manager.onUpdateFailed(() => {
     ready = false
     downloadedPrompted = false
-    errorNotice('新版本下载失败，当前数据未清理。请检查网络并重新打开小程序。')
+    errorNotice('下载失败，请重新打开小程序。')
   })
   prompt()
 }
