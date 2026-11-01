@@ -163,7 +163,7 @@ for (const width of [390, 768, 1440]) for (const colorScheme of ['light', 'dark'
   const editor = page.getByRole('dialog', { name: '编辑时迹', exact: true });
   await editor.getByRole('button', { name: '结束时间', exact: true }).click();
   const picker = page.getByRole('dialog', { name: '选择结束时间', exact: true });
-  const scroll = picker.locator('.time-end-minute-scroll .uni-scroll-view').first();
+  const scroll = picker.locator('.time-end-minute-scroll .uni-scroll-view-scrollbar-hidden');
   const minuteWheel = picker.locator('.time-end-minute-scroll');
   const centered = async () => {
     const selected = await picker.locator('.time-end-minute-scroll [aria-selected="true"]').boundingBox();
@@ -186,9 +186,12 @@ for (const width of [390, 768, 1440]) for (const colorScheme of ['light', 'dark'
   expect(Math.abs(pickerBox.y - triggerBox.y - triggerBox.height - spacing.detail)).toBeLessThan(1);
   await expect(picker.locator('.time-end-toolbar')).toHaveCSS('border-top-width', '0px');
   await expect(picker.locator('.time-end-wheel-mask')).toHaveCount(2);
-  // 模拟滚动停在同一分钟的半行内：绑定的目标值与原来相同，仍必须重新对齐。
+  // 真实鼠标滚轮停在同一分钟的半行内：目标值与原来相同，仍必须重新对齐。
   for (const offset of [0.3, -0.3, 0.3]) {
-    await scroll.evaluate((element, pixels) => { element.scrollTop += pixels; }, (spacing.controlMin - spacing.detail) * offset);
+    const original = await scroll.evaluate(element => element.scrollTop);
+    await scroll.hover();
+    await page.mouse.wheel(0, (spacing.controlMin - spacing.detail) * offset);
+    await expect.poll(() => scroll.evaluate(element => element.scrollTop)).not.toBe(original);
     await expect.poll(centered).toBeLessThan(1);
     await expect(editor.locator('.compact-time-number').nth(1)).toHaveText('09:59');
   }
@@ -233,6 +236,12 @@ for (const width of [390, 768, 1440]) for (const colorScheme of ['light', 'dark'
   await expect(editor.locator('[aria-label="记录时长"]')).toHaveText('3小时1分');
   await moveTimeWheel(page, 1, 1);
   await expectTimeDraft(picker, '12:01');
+  // 连续往前调小时不能改变分钟；随后反向返回仍可继续跨 59/00。
+  for (const [delta, expected] of [[-2, '10:01'], [-1, '09:01'], [3, '12:01']]) {
+    await moveTimeWheel(page, 0, delta);
+    await expectTimeDraft(picker, expected);
+    await expect(end).toHaveText(expected);
+  }
   await moveTimeWheel(page, 1, -2);
   await expectTimeDraft(picker, '11:59');
   await expect(end).toHaveText('11:59');

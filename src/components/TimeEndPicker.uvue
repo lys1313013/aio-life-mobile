@@ -63,11 +63,14 @@ const spacerStyle = computed(() => ({ height: (placement.value.rows - 1) / 2 * m
 function createWheelState(top: number) {
   return {
     timer: null as ReturnType<typeof setTimeout> | null,
-    ignoreInitial: true, actualTop: top, touching: false, request: 0,
+    actualTop: top, touching: false, request: 0,
   }
 }
 const hourWheel = createWheelState(hourScrollTop.value)
 const minuteWheel = createWheelState(minuteScrollTop.value)
+// 微信的 scroll-top 回执会延迟到后续手势之后。只有用户取得操作权的列
+// 可以修改草稿；联动定位、初始化和停滚吸附的回执只记录实际位置。
+let inputWheel = ''
 function wheelState(field: string) { return field === 'hour' ? hourWheel : minuteWheel }
 function selectedIndex(field: string) { return field === 'hour' ? Math.floor(selected.value / 60) : selected.value }
 let active = true
@@ -86,11 +89,11 @@ function changeWheel(event, field: string) {
   const wheel = wheelState(field)
   const scrollTop = Math.max(0, Number(event.detail.scrollTop) || 0)
   const index = Math.min(field === 'hour' ? 23 : 1439, Math.round(scrollTop / minuteRowHeight))
-  if (wheel.ignoreInitial) {
-    wheel.ignoreInitial = false
-    if (Math.abs(scrollTop - selectedIndex(field) * minuteRowHeight) > minuteRowHeight / 2) return
-  }
   wheel.actualTop = scrollTop
+  if (inputWheel !== field) {
+    if (Math.abs(scrollTop - selectedIndex(field) * minuteRowHeight) >= 1) scheduleWheelSnap(field)
+    return
+  }
   wheel.request++
   const next = resolveTimeWheelSelection(selected.value, index, field, props.min, props.max)
   if (next !== selected.value) {
@@ -114,6 +117,8 @@ function scheduleWheelSnap(field: string) {
   // 惯性滚动每次通知都重新计时，停滚后再吸附；手指按住时不抢滚动位置。
   wheel.timer = setTimeout(() => {
     wheel.timer = null
+    // 先结束输入，再定位；中间 scroll 回执不能取消 nextTick 后的目标位置。
+    if (inputWheel === field) inputWheel = ''
     snapWheel(field)
   }, 120)
 }
@@ -130,11 +135,24 @@ async function snapWheel(field: string) {
   if (!active || wheel.touching || request !== wheel.request) return
   scrollTop.value = selectedIndex(field) * minuteRowHeight
 }
-function startWheelTouch(field: string) {
+function startWheelInput(field: string) {
+  if (inputWheel && inputWheel !== field) {
+    wheelState(inputWheel).touching = false
+    scheduleWheelSnap(inputWheel)
+  }
+  inputWheel = field
   const wheel = wheelState(field)
-  wheel.touching = true
   wheel.request++
   clearWheelSnap(field)
+}
+function startWheelTouch(field: string) {
+  startWheelInput(field)
+  wheelState(field).touching = true
+}
+// H5 鼠标/触控板由 wheel 取得操作权；程序设置 scrollTop 不会触发 wheel。
+function startWheelScroll(field: string) {
+  startWheelInput(field)
+  scheduleWheelSnap(field)
 }
 function endWheelTouch(field: string) {
   wheelState(field).touching = false
@@ -146,6 +164,7 @@ function selectWheel(index: number, field: string) {
   alignSelection()
 }
 function alignSelection() {
+  inputWheel = ''
   for (const field of ['hour', 'minute']) {
     clearWheelSnap(field)
     snapWheel(field)
@@ -157,8 +176,6 @@ watch(() => [props.value, props.min, props.max], () => {
   if (next === selected.value) return
   selected.value = next
   alignSelection()
-  hourWheel.ignoreInitial = true
-  minuteWheel.ignoreInitial = true
 })
 // 弹层停留期间保持“此刻”的禁用状态准确，点击时再次读取最新时间。
 const clockTimer = setInterval(() => { nowMinute.value = currentMinute() }, 1000)
@@ -196,6 +213,7 @@ function useCurrentTime() {
         <view class="time-end-wheel" :style="wheelStyle">
           <scroll-view class="time-end-scroll time-end-hour-scroll" aria-label="小时" :scroll-y="true" :scroll-top="hourScrollTop"
             :scroll-with-animation="false" :show-scrollbar="false" @scroll="changeWheel($event, 'hour')"
+            @wheel="startWheelScroll('hour')"
             @touchstart="startWheelTouch('hour')" @touchend="endWheelTouch('hour')" @touchcancel="endWheelTouch('hour')">
             <view class="time-end-spacer" :style="spacerStyle" />
             <view v-for="hour in hours" :key="hour" class="time-end-item" @click="selectWheel(hour, 'hour')">
@@ -208,6 +226,7 @@ function useCurrentTime() {
         <view class="time-end-wheel" :style="wheelStyle">
           <scroll-view class="time-end-scroll time-end-minute-scroll" aria-label="分钟" :scroll-y="true" :scroll-top="minuteScrollTop"
             :scroll-with-animation="false" :show-scrollbar="false" @scroll="changeWheel($event, 'minute')"
+            @wheel="startWheelScroll('minute')"
             @touchstart="startWheelTouch('minute')" @touchend="endWheelTouch('minute')" @touchcancel="endWheelTouch('minute')">
             <view class="time-end-spacer" :style="spacerStyle" />
             <view v-for="minute in minutes" :key="minute" class="time-end-item" @click="selectWheel(minute, 'minute')">
