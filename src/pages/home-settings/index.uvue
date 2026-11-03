@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import MobileSwitch from '../../components/MobileSwitch.uvue';
 import { usePageRefresh } from '../../services/page-refresh.ts'
-import { computed, getCurrentInstance, onUnmounted, ref } from 'vue'
+import { computed, getCurrentInstance, nextTick, onUnmounted, ref } from 'vue'
 import { onShow, onHide } from '@dcloudio/uni-app'
 import PageHeader from '../../components/PageHeader.uvue'
 import PageState from '../../components/PageState.uvue'
@@ -17,7 +17,8 @@ import spacing from '../../styles/spacing.json'
 
 const groups = [{ key: 'overview', title: '概览' }, { key: 'section', title: '详情' }]
 const rows = (group: string) => state.items.filter(item => item.group === group)
-const busy = computed(() => !!state.busy || state.loading)
+const settling = ref(false)
+const busy = computed(() => !!state.busy || state.loading || settling.value)
 const dragging = ref(''), dragGroup = ref(''), from = ref(-1), target = ref(-1), offset = ref(0)
 const scrollTop = ref(0)
 let actualScroll = 0, startScroll = 0, startY = 0, lastY = 0, rowHeight = spacing.controlMin + spacing.detail
@@ -47,6 +48,7 @@ function cancel() {
   if (timer) clearTimeout(timer)
   if (autoScroll) clearInterval(autoScroll)
   timer = null; autoScroll = null
+  settling.value = false
   dragging.value = ''; dragGroup.value = ''; offset.value = 0; from.value = -1; target.value = -1
 }
 function start(group: string, item, index: number, event) {
@@ -93,10 +95,20 @@ function scrolled(event) {
 async function finish() {
   if (!dragging.value) { cancel(); return }
   const group = dragGroup.value, oldIndex = from.value, newIndex = target.value
+  const original = rows(group).map(item => item.cardKey).join('|')
   const keys = moveHomeCard(rows(group), oldIndex, newIndex).map(item => item.cardKey)
   cancel()
   if (oldIndex === newIndex) return
-  try { await homeCards.reorder(group, keys) } catch (error) { report(error) }
+  const version = gesture
+  settling.value = true
+  try {
+    // 微信端等待复位的 setData 完成，再移动 keyed 行，避免旧位移留在新索引上。
+    if (instance?.proxy) await instance.proxy.$nextTick()
+    else await nextTick()
+    if (!visible || version !== gesture || state.loading || state.busy || rows(group).map(item => item.cardKey).join('|') !== original) return
+    await homeCards.reorder(group, keys)
+  } catch (error) { report(error) }
+  finally { if (version === gesture) settling.value = false }
 }
 // Keyboard fallback on H5 without adding permanent arrow buttons.
 async function keyboard(group: string, index: number, direction: number) {
@@ -105,7 +117,8 @@ async function keyboard(group: string, index: number, direction: number) {
   catch (error) { report(error) }
 }
 function rowStyle(item) {
-  return dragging.value === item.cardKey ? { transform: 'translateY(' + offset.value + 'px)', zIndex: 2 } : {}
+  // 显式覆盖每一行的临时样式，不能依赖空对象在微信视图层删除旧属性。
+  return { transform: dragging.value === item.cardKey ? 'translateY(' + offset.value + 'px)' : 'none', zIndex: dragging.value === item.cardKey ? 2 : 0 }
 }
 </script>
 <template>
@@ -118,7 +131,7 @@ function rowStyle(item) {
         <PageState :loading="state.loading && !state.ready" :error="state.error" skeleton="form" @retry="homeCards.load">
           <view v-for="group in groups" :key="group.key" class="preference-group">
             <view class="group-heading"><text class="group-label" :class="{ 'muted-dark': isDark }">{{ group.title }}</text><LoadingIndicator v-if="state.busy === group.key" compact /></view>
-            <view v-for="(item, index) in rows(group.key)" :key="item.cardKey" class="preference-row" :class="{ 'row-dark': isDark, 'row-dragging': dragging === item.cardKey, 'insert-before': dragging && dragGroup === group.key && target === index && target < from, 'insert-after': dragging && dragGroup === group.key && target === index && target > from }" :style="rowStyle(item)">
+            <view v-for="(item, index) in rows(group.key)" :key="item.cardKey" class="preference-row" :data-card-key="item.cardKey" :class="{ 'row-dark': isDark, 'row-dragging': dragging === item.cardKey, 'insert-before': dragging && dragGroup === group.key && target === index && target < from, 'insert-after': dragging && dragGroup === group.key && target === index && target > from }" :style="rowStyle(item)">
               <view role="button" tabindex="0" class="drag-handle" :aria-label="'拖动调整' + item.title + '顺序'" @touchstart="start(group.key, item, index, $event)" @touchmove.stop.prevent="move" @touchend="finish" @touchcancel="cancel" @keydown.up.prevent="keyboard(group.key, index, -1)" @keydown.down.prevent="keyboard(group.key, index, 1)">
                 <view class="grip"><view v-for="dot in 6" :key="dot" class="grip-dot" :class="{ 'grip-dot-dark': isDark }" /></view>
               </view>
@@ -154,8 +167,8 @@ function rowStyle(item) {
 .grip-dot { width: 3px; height: 3px; border-radius: 2px; background-color: #a1a1aa; }
 .grip-dot-dark { background-color: #71717a; }
 .row-dragging { box-shadow: 0 4px 14px rgba(0,0,0,.12); border-radius: 6px; }
-.insert-before { border-top: 2px solid #5879ce; }
-.insert-after { border-bottom: 2px solid #5879ce; }
+.insert-before { box-shadow: inset 0 2px 0 #5879ce; }
+.insert-after { box-shadow: inset 0 -2px 0 #5879ce; }
 .text-dark { color: #ececf0; }
 .muted-dark { color: #a1a1aa; }
 /* #ifdef WEB */

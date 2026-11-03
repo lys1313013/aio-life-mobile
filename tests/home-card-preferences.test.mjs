@@ -74,3 +74,39 @@ test('排序列表不完整或重复时不改变本地顺序，也不提交', as
   await assert.rejects(controller.reorder('section', ['section.goal', 'section.goal']), /列表已变化/)
   assert.equal(state.items, items); assert.equal(calls, 0)
 })
+
+// 执行设置页的真实脚本，用受控视图回调模拟微信 setData 尚未完成的阶段。
+async function settingsController(state, homeCards, viewTick) {
+  const { transform } = await import('esbuild')
+  const page = await readFile(new URL('../src/pages/home-settings/index.uvue', import.meta.url), 'utf8')
+  const script = page.match(/<script setup lang="ts">([\s\S]*?)<\/script>/)[1].replace(/^import .*$/gm, '')
+  const { code } = await transform(`export function create(state, homeCards, viewTick, moveHomeCard) {
+    const ref = value => ({ value }), computed = get => ({ get value() { return get() } });
+    const getCurrentInstance = () => ({ proxy: { $nextTick: viewTick } });
+    const nextTick = () => Promise.resolve(), onShow = () => {}, onHide = () => {}, onUnmounted = () => {};
+    const usePageRefresh = () => () => {}, menuVisuals = {}, request = () => {};
+    const spacing = { controlMin: 44, detail: 4 }, uni = { showToast: () => {} };
+    ${script}
+    return { dragging, dragGroup, from, target, offset, busy, finish, cancel, rowStyle };
+  }`, { loader: 'ts', format: 'esm' })
+  const module = await import('data:text/javascript;base64,' + Buffer.from(code).toString('base64'))
+  return module.create(state, homeCards, viewTick, moveHomeCard)
+}
+
+for (const interruption of ['none', 'cancel', 'reload']) test(`设置页先清除位移再换序，视图等待期间 ${interruption}`, async () => {
+  const state = { ...homeCardState(), ready: true, items: [...items] }
+  const rendered = deferred(), calls = []
+  const order = await settingsController(state, { reorder: async (...args) => { calls.push(args) } }, () => rendered.promise)
+  order.dragging.value = items[0].cardKey; order.dragGroup.value = 'section'
+  order.from.value = 0; order.target.value = 1; order.offset.value = 48
+  assert.deepEqual(order.rowStyle(items[0]), { transform: 'translateY(48px)', zIndex: 2 })
+  const finish = order.finish()
+  assert.equal(order.busy.value, true)
+  for (const item of items) assert.deepEqual(order.rowStyle(item), { transform: 'none', zIndex: 0 })
+  assert.deepEqual(calls, [])
+  if (interruption === 'cancel') order.cancel()
+  if (interruption === 'reload') state.items = [...items].reverse()
+  rendered.resolve(); await finish
+  assert.deepEqual(calls, interruption === 'none' ? [['section', ['section.reading', 'section.goal']]] : [])
+  assert.equal(order.busy.value, false)
+})

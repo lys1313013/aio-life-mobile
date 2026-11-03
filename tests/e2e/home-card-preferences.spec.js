@@ -38,10 +38,21 @@ async function touchDrag(page, from, to) {
   const cdp = await page.context().newCDPSession(page);
   await cdp.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints:1 });
   await cdp.send('Input.dispatchTouchEvent', {type:'touchStart',touchPoints:[{x:a.x+a.width/2,y:a.y+a.height/2}]});
-  await page.waitForTimeout(400);
+  await expect(page.locator('.row-dragging')).toHaveCount(1);
+  const heights = await page.locator('.preference-row').evaluateAll(rows => rows.map(row => row.getBoundingClientRect().height));
   for (let i=1;i<=8;i++) await cdp.send('Input.dispatchTouchEvent', {type:'touchMove',touchPoints:[{x:a.x+a.width/2,y:a.y+a.height/2+(b.y-a.y)*i/8}]});
+  expect(await page.locator('.preference-row').evaluateAll(rows => rows.map(row => row.getBoundingClientRect().height))).toEqual(heights);
   await cdp.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});
   await cdp.detach();
+}
+async function expectCompactRows(page) {
+  await expect(page.locator('.row-dragging,.insert-before,.insert-after')).toHaveCount(0);
+  for (const group of await page.locator('.preference-group').all()) {
+    await expect.poll(() => group.locator('.preference-row').evaluateAll(rows => rows.every((row, index) => {
+      const rect = row.getBoundingClientRect();
+      return getComputedStyle(row).transform === 'none' && (index === 0 || Math.abs(rect.top - rows[index - 1].getBoundingClientRect().bottom) < 1);
+    }))).toBe(true);
+  }
 }
 test('开关即时保存、失败回退、拖动排序和刷新恢复', async ({page}) => {
   await page.setViewportSize({width:390,height:844});
@@ -69,7 +80,24 @@ for (const width of [390,820,1440]) for (const dark of [false,true]) {
   test(`布局 ${width} ${dark?'dark':'light'}`, async ({page}) => {
     await page.setViewportSize({width,height:960});
     await page.addInitScript(dark => localStorage.setItem('aio-life-mobile.theme.v1', JSON.stringify({type:'string',data:dark?'dark':'light'})),dark);
-    await setup(page);
+    const state = await setup(page);
+    const first = page.locator('[data-card-key="section.time"]');
+    const third = page.locator('[data-card-key="section.watched"]');
+    await touchDrag(page, first.locator('.drag-handle'), third.locator('.drag-handle'));
+    await expect.poll(() => state.calls.filter(call => call.path.endsWith('/order')).length).toBe(1);
+    await expect(page.locator('.preference-group').nth(1).locator('.card-name').first()).toHaveText('快捷导航');
+    await expectCompactRows(page);
+    await expect(page.getByRole('switch').first()).toBeEnabled();
+    await touchDrag(page, first.locator('.drag-handle'), page.locator('[data-card-key="section.links"] .drag-handle'));
+    await expect.poll(() => state.calls.filter(call => call.path.endsWith('/order')).length).toBe(2);
+    await expect(page.locator('.preference-group').nth(1).locator('.card-name').first()).toHaveText('时迹');
+    await expectCompactRows(page);
+    await expect(page.getByRole('switch').first()).toBeEnabled();
+    state.fail = true;
+    await touchDrag(page, first.locator('.drag-handle'), third.locator('.drag-handle'));
+    await expect(page.getByText('模拟保存失败', { exact: true })).toBeVisible();
+    await expect(page.locator('.preference-group').nth(1).locator('.card-name').first()).toHaveText('时迹');
+    await expectCompactRows(page);
     const output = path.resolve('artifacts/home-card-preferences'); await fs.mkdir(output,{recursive:true});
     await page.screenshot({path:path.join(output,`mobile-${width}-${dark?'dark':'light'}.png`),fullPage:true});
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
