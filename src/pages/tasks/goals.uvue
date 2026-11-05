@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { goalDisplayStatus, goalProgressPercent } from '../../services/goal-progress.ts'
 import { usePageRefresh } from '../../services/page-refresh.ts'
 import ContentSkeleton from '../../components/ContentSkeleton.uvue';
 import { onMounted, onUnmounted, ref } from 'vue';
@@ -96,25 +97,26 @@ function open(item = null, pinned = false) {
   if (!pinningId.value) editor.value?.open(item, pinned);
 }
 function saved(row) {
+  generation++; loading.value = false; refreshing.value = false;
   const index = goals.value.findIndex(item => item.id === row.id);
+  const type = goalTypes.indexOf(typeFilter.value), status = statusLabels.indexOf(statusFilter.value);
+  const search = keyword.value.trim().toLocaleLowerCase();
+  const matches = (type < 0 || row.type === type + 1)
+    && (status < 0 || goalDisplayStatus(row) === statuses[status])
+    && (!search || [row.title, row.description, row.tags].some(value => String(value || '').toLocaleLowerCase().includes(search)));
+  if (!matches) { if (index >= 0) goals.value.splice(index, 1); return; }
   if (index >= 0) goals.value[index] = row;
   else goals.value.unshift(row);
 }
-function deleted(id) { goals.value = goals.value.filter(item => item.id !== id); }
-function progress(item) {
-  return item.targetValue > 0
-    ? Math.min(100, Math.round(((item.currentValue || 0) / item.targetValue) * 100))
-    : item.status === 'completed'
-      ? 100
-      : 0;
-}
+function deleted(id) { generation++; loading.value = false; refreshing.value = false; goals.value = goals.value.filter(item => item.id !== id); }
+const progress = goalProgressPercent;
 async function togglePinned(item) {
   if (pinningId.value) return;
   pinningId.value = item.id;
   try {
-    const saved = await scope.wait(setGoalPinned(item.id, item.isPinned === 1 ? 0 : 1));
+    const result = await scope.wait(setGoalPinned(item.id, item.isPinned === 1 ? 0 : 1));
     const index = goals.value.findIndex((row) => row.id === item.id);
-    if (index >= 0) goals.value[index] = { ...goals.value[index], ...saved };
+    if (index >= 0) saved({ ...goals.value[index], ...result });
   } catch (e) {
     if (e.name !== 'PageInactiveError') uni.showToast({ title: e.message || '固定失败，请重试', icon: 'none' });
   } finally {
@@ -153,13 +155,14 @@ async function togglePinned(item) {
           <view v-for="item in goals" :key="item.id" class="record-card ui-card" :class="{ 'record-card-dark': isDark }" role="button" tabindex="0" :aria-label="'编辑目标：' + item.title" @click="open(item)" @keydown.enter.prevent="open(item)" @keydown.space.prevent="open(item)">
             <view class="goal-meta ui-row">
               <text class="goal-type" :class="['goal-type-' + item.type, { 'goal-type-dark': isDark }]">{{ goalTypes[item.type - 1] }}</text>
-              <view class="goal-status ui-row"><view class="status-dot" :class="'status-' + item.status" /><text class="goal-status-text ui-type-caption" :class="{ 'secondary-text-dark': isDark }">{{ statusLabels[statuses.indexOf(item.status)] }}</text></view>
+              <view class="goal-status ui-row"><view class="status-dot" :class="'status-' + goalDisplayStatus(item)" /><text class="goal-status-text ui-type-caption" :class="{ 'secondary-text-dark': isDark }">{{ statusLabels[statuses.indexOf(goalDisplayStatus(item))] }}</text></view>
             </view>
             <view class="goal-heading ui-row"><text :max-lines="2" class="record-title">{{ item.title }}</text><view @click.stop @keydown.enter.stop @keydown.space.stop><MobileButton :label="item.isPinned === 1 ? '取消固定到首页' : '固定到首页'" :icon="item.isPinned === 1 ? 'ant-design:pushpin-filled' : 'ant-design:pushpin-outlined'" variant="ghost" :loading="pinningId === item.id" :disabled="!!pinningId" @click="togglePinned(item)" /></view></view>
             <view v-if="goalTags(item.tags).length" class="goal-tags"><text v-for="tag in goalTags(item.tags)" :key="tag" class="goal-tag" :class="{ 'goal-tag-dark': isDark }">{{ tag }}</text></view>
             <text :max-lines="3" v-if="item.description" class="record-content" :class="{ 'secondary-text-dark': isDark }">{{ item.description }}</text>
+            <text v-if="item.progressError" role="alert" class="ui-type-caption">{{ item.progressError }}</text>
             <view class="goal-progress"><view class="goal-footer ui-row"><text class="record-secondary goal-dates" :class="{ 'secondary-text-dark': isDark }">{{ goalDates(item) }}</text><text class="record-secondary" :class="{ 'secondary-text-dark': isDark }">{{ progress(item) }}%</text></view>
-            <view class="progress-track" :class="{ 'progress-track-dark': isDark }"><view class="progress-fill" :class="{ 'progress-completed': item.status === 'completed' }" :style="{ width: progress(item) + '%' }" /></view></view>
+            <view class="progress-track" :class="{ 'progress-track-dark': isDark }"><view class="progress-fill" :class="{ 'progress-completed': goalDisplayStatus(item) === 'completed' }" :style="{ width: progress(item) + '%' }" /></view></view>
           </view>
         </view>
       </PageState>

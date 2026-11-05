@@ -187,7 +187,7 @@ async function load(card, more = false) {
     if (['/pages/home/index', card.route].some(url => lockedMenuPaths(url, config.menus, config.ids).some(path => !isMenuUnlocked(path)))) {
       const error = new Error('需要二级密码验证'); error.name = 'SecondaryLockRequiredError'; throw error
     }
-    await loadBusinessCard(card, state, path => request(path, 'GET', null, true, null, true), more)
+    await loadBusinessCard(card, state, (path, method = 'GET', payload = null) => request(path, method, payload, true, null, true), more)
     if (current !== epoch || !props.active) return
     checkAccess()
     if (!more && !state.error && !state.locked) freshness[card.key] = { at: Date.now(), revision }

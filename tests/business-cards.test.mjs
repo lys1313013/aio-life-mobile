@@ -2,7 +2,8 @@ import { readFile } from 'node:fs/promises'
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-const source = await readFile(new URL('../src/pages/home/services/business-cards.ts', import.meta.url), 'utf8')
+const goalSource = await readFile(new URL('../src/services/goal-progress.ts', import.meta.url), 'utf8')
+const source = (await readFile(new URL('../src/pages/home/services/business-cards.ts', import.meta.url), 'utf8')).replace(/^import .*$/gm, '') + '\n' + goalSource
 const { businessCards, cardState, loadBusinessCard, failBusinessAccess, cardRows, sortMemberships } = await import(`data:text/javascript;base64,${Buffer.from(source).toString('base64')}`)
 const read = businessCards.find(card => card.key === 'read')
 const goal = businessCards.find(card => card.key === 'goal')

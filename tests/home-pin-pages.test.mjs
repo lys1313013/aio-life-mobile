@@ -10,29 +10,31 @@ async function pageHarness(kind) {
   const js = (await transform(script, { loader: 'ts', format: 'esm' })).code.replace(/^import[\s\S]*?;\n/gm, '');
   const records = [{ id: '9223372036854775807', title: '模拟记录', isPinned: 0 }];
   const hooks = {}, writes = [], toasts = [];
-  let failPin = false;
+  let failPin = false, heldRead = null;
   const pin = async (id, isPinned) => {
     writes.push({ id, isPinned });
     if (failPin) throw new Error('模拟固定失败');
     return { ...records[0], isPinned };
   };
-  const fixture = {
+  const goalSource = await readFile(new URL('../src/services/goal-progress.ts', import.meta.url), 'utf8');
+  const goalRules = await import('data:text/javascript;base64,' + Buffer.from(goalSource).toString('base64'));
+  const fixture = { ...goalRules,
     ref: value => ({ value }), computed: fn => ({ get value() { return fn(); } }),
     onMounted: fn => { hooks.mount = fn; }, onLoad: fn => { hooks.load = fn; }, onShow: () => {}, onUnmounted: () => {},
     usePageRefresh: load => load,
     createRecordScope: () => ({ wait: promise => promise }),
-    fetchGoals: async () => records, fetchEvents: async () => records,
+    fetchGoals: async () => heldRead || records, fetchEvents: async () => records,
     setGoalPinned: pin, setAnniversaryPinned: pin,
     goalTypes: ['日'], statusLabels: [], statuses: [],
     textTags: value => value || '', daysFromToday: () => 0,
     uni: { showToast: value => toasts.push(value) },
   };
-  const api = new Function(...Object.keys(fixture), `${js}\nreturn { load, open, togglePinned, ${kind === 'goal' ? 'editor' : 'form'}, pinningId, rows: ${kind === 'goal' ? 'goals' : 'rows'} };`)(...Object.values(fixture));
+  const api = new Function(...Object.keys(fixture), `${js}\nreturn { load, open, togglePinned, ${kind === 'goal' ? 'saved, deleted,' : ''} ${kind === 'goal' ? 'editor' : 'form'}, pinningId, rows: ${kind === 'goal' ? 'goals' : 'rows'} };`)(...Object.values(fixture));
   if (kind === 'goal') {
     api.form = { value: null };
     api.editor.value = { open: (item = null, pinned = false) => { api.form.value = item ? { ...item } : { isPinned: pinned ? 1 : 0 }; } };
   }
-  return { ...api, hooks, records, writes, toasts, failPin: (value = true) => { failPin = value; } };
+  return { ...api, hooks, records, writes, toasts, holdRead: promise => { heldRead = promise; }, failPin: (value = true) => { failPin = value; } };
 }
 
 for (const kind of ['goal', 'anniversary']) {
@@ -75,3 +77,14 @@ for (const kind of ['goal', 'anniversary']) {
     assert.match(page.toasts[0].title, /已删除或不可访问/);
   });
 }
+
+test('目标保存或删除后，未完成的旧列表响应不得覆盖局部成功状态', async () => {
+  const page = await pageHarness('goal'); await page.load();
+  const old = { ...page.rows.value[0], title: '旧标题' };
+  let resolve; const slow = new Promise(done => { resolve = done; }); page.holdRead(slow);
+  const pending = page.load(); page.saved({ ...old, title: '新标题' }); resolve([old]); await pending;
+  assert.equal(page.rows.value[0].title, '新标题');
+  let finish; page.holdRead(new Promise(done => { finish = done; }));
+  const pendingDelete = page.load(); page.deleted(old.id); finish([old]); await pendingDelete;
+  assert.deepEqual(page.rows.value, []);
+});

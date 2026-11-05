@@ -10,7 +10,7 @@ test('目标保留长 ID、父子关联、行动计划和标签，校验数值�
   const payload = goalPayload({ id, parentId: '9223372036854775806', title: ' 模拟读书 ', type: 3, status: 'in_progress', currentValue: '2', targetValue: '10', tags: '阅读，学习', content: '每日记录', startDate: '2026-10-01 00:00:00', endDate: '2026-10-31 23:59:59' })
   assert.equal(payload.id, id); assert.equal(payload.parentId, '9223372036854775806'); assert.equal(payload.content, '每日记录'); assert.equal(payload.tags, '["阅读","学习"]'); assert.equal(payload.currentValue, 2)
   assert.throws(() => recordId(9223372036854775807), /ID/)
-  assert.throws(() => goalPayload({ ...payload, targetValue: '-1' }), /非负整数/)
+  assert.throws(() => goalPayload({ ...payload, targetValue: '-1' }), /非负数/)
   assert.throws(() => goalPayload({ ...payload, endDate: '2026-09-01 00:00:00' }), /结束时间/)
 })
 test('待办新增要求字符串关联 ID，日期时间保持统一空格格式且不丢失秒', () => {
@@ -44,6 +44,8 @@ test('待办 API 使用统一 page/pageSize 分页、PUT路径、数组排序、
   const calls = []; globalThis.__recordsRequest = async (...args) => { calls.push(args); return {} }
   let source = await readFile(new URL('../src/pages/tasks/services/tasks.ts', import.meta.url), 'utf8')
   source = source.replace("import { request } from '../../../services/api.ts'", 'const request = globalThis.__recordsRequest').replace("import { recordId } from '../../../services/records/contracts.ts'", `const recordId = ${recordId.toString()}`).replace(/request<any(?:\[\])?>/g, 'request')
+  const goalSource = await readFile(new URL('../src/services/goal-progress.ts', import.meta.url), 'utf8')
+  source = source.replace("import { session } from '../../../services/session.ts'", 'const session = { token: \'fixture\' }').replace("import { goalDisplayStatus, refreshGoalRows } from '../../../services/goal-progress.ts'", '') + '\n' + goalSource
   const api = await importSource(source)
   await api.fetchTasks(2); await api.saveTaskRecord('task', { id, columnId: '8', content: '模拟' }); await api.saveTaskRecord('detail', { id }); await api.sortTaskRecords('detail', [{ id, sortOrder: 1 }]); await api.starDetail(id, false); await api.deleteGoal(id)
   assert.deepEqual(calls, [['/tasks', 'GET', { page: 2, pageSize: 100 }], ['/tasks/' + id, 'PUT', { id, columnId: '8', content: '模拟' }], ['/taskDetails', 'PUT', { id }], ['/taskDetails/reSort', 'POST', [{ id, sortOrder: 1 }]], ['/taskDetails/unstar/' + id, 'POST'], ['/goals/batchDelete', 'POST', { idList: [id] }]])
@@ -75,4 +77,10 @@ test('页面请求在离页或跨账号后失效，回页仍可再次操作', as
   hooks.show(); assert.deepEqual(cleared, [false, true]); hooks.unmount()
   await assert.rejects(scope.wait(Promise.resolve('disposed')), error => error.name === 'PageInactiveError')
   delete globalThis.__scopeFixture
+})
+
+test('目标金额精确支持两位小数，细小的第三位以后小数也不能被容差吞掉', () => {
+  const form = { title: '金额目标', type: 6, status: 'in_progress', currentValue: '15000.25', targetValue: '20000.50' }
+  assert.equal(goalPayload(form).currentValue, 15000.25)
+  for (const value of ['1.001', '1.00001', '0.000001', 'Infinity']) assert.throws(() => goalPayload({ ...form, targetValue: value }), /两位小数/)
 })

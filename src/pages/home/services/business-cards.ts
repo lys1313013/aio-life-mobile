@@ -1,3 +1,4 @@
+import { goalDisplayStatus, goalProgressPercent, refreshGoalRows } from '../../../services/goal-progress.ts'
 // 首页仅依赖轻量接口与展示规则，不同步引用业务分包。
 export const businessCards = [
   { key: 'goal', title: '目标', cardKey: 'section.goal', route: '/pages/tasks/goals', endpoint: '/goals', pinned: true },
@@ -51,7 +52,8 @@ export async function loadBusinessCard(card, state, fetch, more = false) {
   try {
     const data = await fetch(cardPath(card, page))
     if (state.version !== version) return
-    const rows = cardRows(card, data)
+    const rows = card.key === 'goal' ? await refreshGoalRows(cardRows(card, data), fetch, () => state.version === version) : cardRows(card, data)
+    if (state.version !== version) return
     const seen = new Set(more ? state.rows.map(item => item.id) : [])
     const unique = rows.filter(item => { if (seen.has(item.id)) return false; seen.add(item.id); return true })
     state.rows = more ? [...state.rows, ...unique] : unique
@@ -76,7 +78,7 @@ export function goalProgressColor(percent) {
   return '#69957a'
 }
 export function cardProgress(card, item) {
-  if (card.key === 'goal') return item.targetValue > 0 ? Math.max(0, Math.min(100, Math.round((item.currentValue || 0) / item.targetValue * 100))) : item.status === 'completed' ? 100 : 0
+  if (card.key === 'goal') return goalProgressPercent(item)
   if ((card.key === 'read' || card.key === 'movie') && item.totalProgress > 0) return Math.max(0, Math.min(100, Math.round((item.currentProgress || 0) / item.totalProgress * 100)))
   return null
 }
@@ -91,7 +93,7 @@ export function cardCaption(card, item) {
   }
   const statuses = card.key === 'goal' ? { in_progress: '进行中', completed: '已完成', on_hold: '已搁置', shelved: '已搁置', paused: '已搁置', not_started: '未开始' } : card.key === 'read' ? { in_progress: '在读', not_started: '想读' } : { in_progress: '在看', not_started: '想看' }
   const parts = [statuses[item.status] || item.status || '']
-  if (card.key === 'goal') return parts[0]
+  if (card.key === 'goal') return item.progressError || statuses[goalDisplayStatus(item)] || item.status
   if (item.totalProgress > 0) parts.push((item.currentProgress || 0) + ' / ' + item.totalProgress)
   else if (item.currentProgress > 0) parts.push(String(item.currentProgress))
   return parts.filter(Boolean).join(' · ')

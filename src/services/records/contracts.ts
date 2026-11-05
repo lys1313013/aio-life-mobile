@@ -12,17 +12,28 @@ export function textTags(value) {
   try { const tags = JSON.parse(value); return Array.isArray(tags) ? tags.join('，') : value } catch (_) { return value }
 }
 export function dateTime(date, time = '00:00') { return date ? date.slice(0, 10) + ' ' + time.slice(0, 5) + ':00' : null }
-export function goalPayload(form) {
-  if (missingRequired('goal', form, 'title')) throw new Error('请输入目标标题')
+export function goalPayload(form, preview = false) {
+  if (!preview && missingRequired('goal', form, 'title')) throw new Error('请输入目标标题')
   if (!Number.isInteger(Number(form.type)) || form.type < 1 || form.type > 10) throw new Error('请选择目标类型')
   if (!statuses.includes(form.status)) throw new Error('请选择目标状态')
   const payload = { ...form, title: form.title.trim(), type: Number(form.type), tags: JSON.stringify(textTags(form.tags).split(/[,，]/).map(t => t.trim()).filter(Boolean)) }
   if (form.id) payload.id = recordId(form.id)
   for (const key of ['targetValue', 'currentValue']) {
     if (form[key] === '' || form[key] == null) payload[key] = null
-    else { const value = Number(form[key]); if (!Number.isInteger(value) || value < 0) throw new Error('目标值和当前值必须为非负整数'); payload[key] = value }
+    else { const value = Number(form[key]); if (!Number.isFinite(value) || value < 0 || value > 999999999999.99 || !/^\d+(?:\.\d{1,2})?$/.test(String(value))) throw new Error('目标值和当前值必须为非负数，最多两位小数'); payload[key] = value }
   }
   if (payload.startDate && payload.endDate && payload.endDate < payload.startDate) throw new Error('结束时间不能早于开始时间')
+  if (form.progressMode === 'graphql') {
+    for (const key of ['progressVariables', 'progressVariableBindings']) {
+      let value
+      try { value = JSON.parse(form[key] || '{}') } catch (_) { throw new Error('变量 JSON 格式错误') }
+      if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('变量必须为 JSON 对象')
+      payload[key] = JSON.stringify(value)
+    }
+    if (!form.progressQuery?.trim() || !form.progressValuePath?.trim()) throw new Error('请填写查询和结果路径')
+    if (!(payload.targetValue > 0)) throw new Error('自动查询需要大于零的目标值')
+    delete payload.currentValue
+  }
   return payload
 }
 export function taskPayload(form, kind) {

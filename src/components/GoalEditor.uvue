@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { request } from '../services/api.ts';
+import { refreshGoalRows } from '../services/goal-progress.ts';
 import MobileSwitch from './MobileSwitch.uvue';
 import { computed, ref, watch } from 'vue';
 import AppIcon from './AppIcon.uvue';
@@ -16,6 +18,7 @@ const props = defineProps<{ saveRecord: (payload: any) => Promise<any>; deleteRe
 const emit = defineEmits(['saved', 'deleted']);
 const form = ref<any>(null), saving = ref(false), formError = ref('');
 const detailsOpen = ref(false);
+const previewing = ref(false), previewText = ref('');
 const detailSummary = computed(() => {
   if (!form.value) return '';
   return [form.value.description ? '描述' : '', form.value.content ? '行动计划' : '', form.value.tags ? '标签' : ''].filter(Boolean).join('、');
@@ -31,9 +34,10 @@ watch(() => session.token, () => { form.value = null; });
 function open(item = null, pinned = false) {
   if (saving.value) return;
   formError.value = '';
+  previewText.value = '';
   detailsOpen.value = false;
   form.value = item
-    ? { ...item, isPinned: item.isPinned === 1 ? 1 : 0, tags: textTags(item.tags) }
+    ? { progressMode: 'manual', progressQuery: '', progressVariables: '{}', progressVariableBindings: '{}', progressValuePath: '', targetOperator: 'gte', ...item, isPinned: item.isPinned === 1 ? 1 : 0, tags: textTags(item.tags) }
     : {
         title: '',
         isPinned: pinned ? 1 : 0,
@@ -42,6 +46,7 @@ function open(item = null, pinned = false) {
         description: '',
         content: '',
         tags: '',
+        progressMode: 'manual', progressQuery: '', progressVariables: '{}', progressVariableBindings: '{}', progressValuePath: '', targetOperator: 'gte',
         currentValue: '',
         targetValue: '',
         startDate: null,
@@ -63,7 +68,7 @@ function setTime(key, time) {
   );
 }
 async function save() {
-  if (saving.value || !form.value) return;
+  if (saving.value || previewing.value || !form.value) return;
   let payload;
   try { payload = goalPayload(form.value); }
   catch (error) { formError.value = error.message; return; }
@@ -71,11 +76,23 @@ async function save() {
   formError.value = '';
   try {
     const saved = await scope.wait(props.saveRecord(payload));
-    emit('saved', { ...payload, ...saved, id: payload.id || saved.id });
+    const [latest] = await scope.wait(refreshGoalRows([{ ...payload, ...saved, id: payload.id || saved.id }], request));
+    emit('saved', latest);
     form.value = null;
   } catch (error) {
     if (error.name !== 'PageInactiveError') formError.value = error.message;
   } finally { saving.value = false; }
+}
+async function previewQuery() {
+  if (previewing.value) return;
+  previewing.value = true; previewText.value = ''; formError.value = '';
+  try {
+    const stamp = JSON.stringify(form.value);
+    const result = await scope.wait(request<any>('/goals/progress/preview', 'POST', goalPayload(form.value, true)));
+    if (!form.value || JSON.stringify(form.value) !== stamp) return;
+    previewText.value = '当前值 ' + result.currentValue + ' · ' + result.progressPercent + '% · ' + (result.achieved ? '已达标' : '未达标') + '\n' + JSON.stringify(result.variables);
+  } catch (error) { if (error.name !== 'PageInactiveError') formError.value = error.message; }
+  finally { previewing.value = false; }
 }
 async function remove(item) {
   if (saving.value) return;
@@ -89,15 +106,25 @@ async function remove(item) {
 defineExpose({ open });
 </script>
 <template>
-      <AdaptiveModal v-if="form" label="编辑目标" :show-close="false" :busy="saving" @close="form = null">
+      <AdaptiveModal v-if="form" label="编辑目标" :show-close="false" :busy="saving || previewing" @close="form = null">
         <view class="goal-title-row ui-field-row"><FormField :required="isRequired('goal', 'title')" appearance="soft" compact stretch label="标题" v-model="form.title" /><MobileButton label="关闭" icon="ant-design:close-outlined" variant="quiet" :disabled="saving" @click="form = null" /></view>
         <view class="filters ui-field-row">
           <FormField :required="isRequired('goal', 'type')" appearance="soft" compact stretch label="类型" kind="selector" :model-value="goalTypes[form.type - 1]" :options="goalTypes" @update:model-value="setType($event)" />
           <FormField :required="isRequired('goal', 'status')" appearance="soft" compact stretch label="状态" kind="selector" :model-value="statusLabels[statuses.indexOf(form.status)]" :options="statusLabels" @update:model-value="form.status = statuses[statusLabels.indexOf($event)]" />
         </view>
+        <FormField appearance="soft" label="进度来源" kind="selector" :model-value="form.progressMode === 'graphql' ? 'GraphQL 查询' : '手动填写'" :options="['手动填写', 'GraphQL 查询']" @update:model-value="form.progressMode = $event === 'GraphQL 查询' ? 'graphql' : 'manual'" />
         <view class="filters ui-field-row">
-          <FormField appearance="soft" compact stretch label="当前值" input-type="number" v-model="form.currentValue" />
-          <FormField appearance="soft" compact stretch label="目标值" input-type="number" v-model="form.targetValue" />
+          <FormField v-if="form.progressMode !== 'graphql'" appearance="soft" compact stretch label="当前值" input-type="digit" v-model="form.currentValue" />
+          <FormField appearance="soft" compact stretch label="目标值" input-type="digit" v-model="form.targetValue" />
+        </view>
+        <FormField appearance="soft" label="达标条件" kind="selector" :model-value="form.targetOperator === 'gt' ? '超过目标值（＞）' : '达到目标值（≥）'" :options="['达到目标值（≥）', '超过目标值（＞）']" @update:model-value="form.targetOperator = $event === '超过目标值（＞）' ? 'gt' : 'gte'" />
+        <view v-if="form.progressMode === 'graphql'">
+          <FormField appearance="soft" label="GraphQL 查询" kind="textarea" textarea-size="regular" v-model="form.progressQuery" />
+          <FormField appearance="soft" label="固定变量 JSON" kind="textarea" v-model="form.progressVariables" />
+          <FormField appearance="soft" label="日期绑定 JSON" kind="textarea" placeholder='{"start":"goal.startDate","end":"goal.endDateExclusive"}' v-model="form.progressVariableBindings" />
+          <FormField appearance="soft" label="结果路径" placeholder="progress.exerciseCount.max" v-model="form.progressValuePath" />
+          <MobileButton label="执行预览" :loading="previewing" :disabled="saving" @click="previewQuery" />
+          <text v-if="previewText" role="status" class="goal-query-result ui-type-body">{{ previewText }}</text>
         </view>
         <view class="filters ui-field-row"
           ><FormField appearance="soft" compact stretch
@@ -165,5 +192,6 @@ defineExpose({ open });
 .goal-more-label-dark { color: #eeeeef; }
 .goal-more-summary { flex: 1; min-width: 0; text-align: right; @include type-style('caption'); color: $text-secondary-light; }
 .goal-more-summary-dark { color: $text-secondary-dark; }
+.goal-query-result { white-space: pre-wrap; word-break: break-all; margin-top: $space-inline; }
 .record-error { color: #e05252; }
 </style>
