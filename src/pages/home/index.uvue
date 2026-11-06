@@ -10,6 +10,7 @@ import BusinessCards from './BusinessCards.uvue'
 import SummaryHomeCard from './SummaryHomeCard.uvue'
 import FinanceCalendarCard from './FinanceCalendarCard.uvue'
 import WereadRecentCard from './WereadRecentCard.uvue'
+import WereadStatsCard from './WereadStatsCard.uvue'
 import QuickNavEditor from './QuickNavEditor.uvue'
 import HomeCardSortCell from './HomeCardSortCell.uvue'
 import HomeListSkeleton from './HomeListSkeleton.uvue'
@@ -1075,6 +1076,7 @@ function trendLines(points) {
             ></view
           >
         <view v-if="section.cardKey === 'section.weread'" class="section-content ui-pad-xs"><WereadRecentCard :height="multiColumnCardHeight" :max-height="cardHeightLimit" :tablet="viewportWidth >= 768 && viewportWidth < 1024" @scrolling="cardOrder.cancel()" :sorting="cardOrder.dragging.value === section.cardKey" :ref="el => { businessCardRefs[section.cardKey] = el }" :active="businessActive" :preparing="loading && !businessActive" @visibility="businessVisibility[section.cardKey] = $event" /></view>
+        <view v-if="section.cardKey === 'section.weread-stats'" class="section-content ui-pad-xs"><WereadStatsCard :height="multiColumnCardHeight" :ref="el => { businessCardRefs[section.cardKey] = el }" :active="businessActive" :preparing="loading && !businessActive" :refresh-disabled="interactionDisabled" @visibility="businessVisibility[section.cardKey] = $event" /></view>
         <view v-if="['section.memo', 'section.video', 'section.device'].includes(section.cardKey)" class="section-content ui-pad-xs"><SummaryHomeCard :kind="section.cardKey.slice(8)" :height="multiColumnCardHeight" :ref="el => { businessCardRefs[section.cardKey] = el }" :active="businessActive" :preparing="loading && !businessActive" :refresh-disabled="interactionDisabled" @visibility="businessVisibility[section.cardKey] = $event" /></view>
         <view v-if="['section.finance', 'section.income', 'section.expense'].includes(section.cardKey)" class="section-content ui-pad-xs"><FinanceCalendarCard :kind="section.cardKey.slice(8)" :height="multiColumnCardHeight" :ref="el => { businessCardRefs[section.cardKey] = el }" :active="businessActive" :preparing="loading && !businessActive" :refresh-disabled="interactionDisabled" @visibility="businessVisibility[section.cardKey] = $event" /></view>
         <BusinessCards v-if="['section.goal', 'section.anniversary', 'section.reading', 'section.membership', 'section.movie'].includes(section.cardKey)" :height="multiColumnCardHeight" :max-height="cardHeightLimit" :ref="el => { businessCardRefs[section.cardKey] = el }" :only="section.cardKey.slice(8)" :refresh-disabled="interactionDisabled" embedded @visibility="businessVisibility[section.cardKey] = $event" :active="businessActive" :preparing="loading && !businessActive" @sorting="businessSorting = $event" />

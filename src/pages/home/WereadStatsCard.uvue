@@ -1,0 +1,265 @@
+<script setup lang="ts">
+import { computed, onUnmounted, reactive, ref, watch } from 'vue'
+import DashboardSection from '../../components/DashboardSection.uvue'
+import { request } from '../../services/api.ts'
+import { session } from '../../services/session.ts'
+import { menuVisualState, menuVisuals } from '../../services/menu-visuals.ts'
+import { cachedMenuAccess, loadMenuAccess } from '../../services/menu-access-cache.ts'
+import { lockedMenuPaths } from '../../services/life-catalog.ts'
+import { isMenuUnlocked } from '../../services/secondary-lock.ts'
+import { unlockHomeCard } from './services/card-unlock.ts'
+import { createHomeRefreshScheduler } from './services/refresh-scheduler.ts'
+import { isDark } from '../../services/theme.ts'
+import { formatWereadDuration, readWereadStats, readWereadStatsGranularity, saveWereadStatsGranularity, wereadBarHeights, wereadBucketDate, wereadStatsChange, wereadStatsModes } from './services/weread-stats.ts'
+import type { WereadStatsData, WereadStatsGranularity } from './services/weread-stats.ts'
+
+const props = defineProps<{ active: boolean; preparing?: boolean; height?: number; refreshDisabled?: boolean }>()
+const emit = defineEmits(['visibility'])
+const route = '/pages/records/weread'
+// 显式调用 uni 方法，让跨端编译器保留对应 API；裁剪后的 uni 对象不能传给适配器。
+const storage = { getStorageSync: (key: string) => uni.getStorageSync(key), setStorageSync: (key: string, value: string) => uni.setStorageSync(key, value) }
+const owner = computed(() => String(session.user?.id || ''))
+const granularity = ref<WereadStatsGranularity>(readWereadStatsGranularity(owner.value, storage))
+const selectedIndex = ref(-1)
+const denied = ref(false)
+const state = reactive({ data: null as WereadStatsData | null, loading: false, error: '', locked: false, unlockRoute: '' })
+const modes = wereadStatsModes
+const scheduler = createHomeRefreshScheduler()
+let generation = 0, pending: Promise<void> | null = null, updatedAt = 0
+const fetch = path => request(path, 'GET', null, true, null, true)
+const available = computed(() => !!menuVisualState.cards['section.weread-stats']?.menuId)
+const visual = computed(() => menuVisuals.visual('section.weread-stats'))
+const buckets = computed(() => state.data?.buckets || [])
+// 切换粒度请求期间继续展示上一份数据，文案跟随数据本身的粒度。
+const displayGranularity = computed(() => state.data?.granularity || granularity.value)
+const periodLabel = computed(() => displayGranularity.value === 'month' ? '本月' : displayGranularity.value === 'year' ? '本年' : '本周')
+const previousLabel = computed(() => displayGranularity.value === 'month' ? '上月' : displayGranularity.value === 'year' ? '上年' : '上周')
+const emptyText = computed(() => displayGranularity.value === 'month' ? '本月还没有阅读记录' : displayGranularity.value === 'year' ? '本年还没有阅读记录' : '本周还没有阅读记录')
+const totalText = computed(() => state.data ? formatWereadDuration(state.data.totalSeconds) : '—')
+const averageText = computed(() => state.data ? formatWereadDuration(state.data.dailyAverageSeconds) : '—')
+const change = computed(() => state.data ? wereadStatsChange(state.data.totalSeconds, state.data.previousTotalSeconds) : null)
+const chartHeight = computed(() => props.height ? Math.max(72, Math.min(150, props.height - 150)) : 92)
+const barHeights = computed(() => wereadBarHeights(buckets.value, chartHeight.value - 6))
+const skeletonBars = computed(() => granularity.value === 'week' ? 7 : granularity.value === 'month' ? 31 : 12)
+const barColor = computed(() => visual.value.iconColor || (isDark.value ? '#8ab4f8' : '#3FB27F'))
+const zeroColor = computed(() => isDark.value ? '#3a3d44' : '#e4e4e7')
+const selectedBucket = computed(() => selectedIndex.value >= 0 ? buckets.value[selectedIndex.value] : null)
+const selectedText = computed(() => selectedBucket.value ? wereadBucketDate(selectedBucket.value, displayGranularity.value) + ' · ' + (selectedBucket.value.seconds > 0 ? formatWereadDuration(selectedBucket.value.seconds) : '未阅读') : '')
+const chartLabel = computed(() => state.data ? periodLabel.value + '阅读 ' + totalText.value + '，日均 ' + averageText.value : '阅读统计')
+const visible = computed(() => (props.active || props.preparing) && available.value && !denied.value && (state.data?.connected !== false || !!state.error || state.locked))
+watch(visible, value => emit('visibility', value), { immediate: true })
+
+function lockedRoute(config) {
+  return ['/pages/home/index', route].find(path => lockedMenuPaths(path, config.menus, config.ids).some(item => !isMenuUnlocked(item))) || ''
+}
+function invalidate(clear = false) {
+  generation++; pending = null; state.loading = false
+  if (clear) { state.data = null; state.error = ''; updatedAt = 0 }
+}
+function checkAccess() {
+  const config = cachedMenuAccess()
+  const lock = config ? lockedRoute(config) : ''
+  if (!lock) return
+  state.locked = true; state.unlockRoute = lock
+  if (state.data) invalidate(true)
+  scheduler.clear()
+}
+async function refresh(force = true) {
+  if (!props.active || !session.token || !available.value) return
+  if (pending && !force) return pending
+  const current = ++generation, token = session.token
+  const valid = () => props.active && current === generation && session.token === token
+  state.loading = true; state.error = ''
+  const task = (async () => {
+    try {
+      const config = await loadMenuAccess(fetch)
+      if (!valid()) return
+      const lock = lockedRoute(config)
+      state.locked = !!lock; state.unlockRoute = lock
+      if (lock) { state.data = null; return }
+      if (!force && state.data && state.data.connected !== false && state.data.granularity === granularity.value && Date.now() - updatedAt < 300000) return
+      const raw = await request('/home/sections/weread-stats', 'GET', { granularity: granularity.value }, true, null, true)
+      if (!valid()) return
+      const data = readWereadStats(raw, granularity.value)
+      if (!valid()) return
+      state.data = data; updatedAt = Date.now(); selectedIndex.value = -1
+    } catch (error) {
+      if (!valid()) return
+      if (error.name === 'SecondaryLockRequiredError') {
+        state.data = null; state.locked = true; state.unlockRoute = error.menuPath || ''
+      } else if (error.name === 'ForbiddenError') {
+        state.data = null; denied.value = true
+      } else {
+        state.error = error.message || '加载失败，请重试'
+      }
+    } finally {
+      if (valid()) {
+        state.loading = false; pending = null
+        scheduler.set('weread-stats', state.data?.connected === false ? 0 : state.data?.refreshInterval, () => refresh(false))
+        scheduler.resume()
+      }
+    }
+  })()
+  pending = task
+  return task
+}
+function selectMode(mode: WereadStatsGranularity) {
+  if (!props.active || props.refreshDisabled || state.locked || state.loading) return
+  if (mode === granularity.value) { if (state.error) void refresh(true); return }
+  granularity.value = mode
+}
+function selectBar(index: number) {
+  selectedIndex.value = selectedIndex.value === index ? -1 : index
+}
+function showLabel(index: number) {
+  if (displayGranularity.value !== 'month') return true
+  return index % 7 === 0
+}
+function bucketAria(bucket) {
+  return wereadBucketDate(bucket, displayGranularity.value) + '，' + (bucket.seconds > 0 ? formatWereadDuration(bucket.seconds) : '未阅读')
+}
+function openPage() {
+  if (props.active && !props.refreshDisabled) uni.navigateTo({ url: route })
+}
+function manualRefresh() {
+  if (!props.refreshDisabled) void refresh(true)
+}
+function unlockCard() {
+  return unlockHomeCard(['/pages/home/index', route], () => refresh(true), () => props.active && !props.refreshDisabled && available.value)
+}
+function skeletonHeight(index: number) {
+  return Math.round(14 + (index * 19 % 60) * (chartHeight.value - 20) / 100)
+}
+watch(granularity, (value) => {
+  saveWereadStatsGranularity(owner.value, value, storage)
+  selectedIndex.value = -1
+  if (!props.active || state.locked) return
+  invalidate()
+  void refresh(false)
+})
+watch(() => session.token, () => {
+  scheduler.clear(); invalidate(true)
+  state.data = null; state.error = ''; state.locked = false; state.unlockRoute = ''; denied.value = false; selectedIndex.value = -1; updatedAt = 0
+  granularity.value = readWereadStatsGranularity(owner.value, storage)
+  if (props.active) { void refresh(false); scheduler.resume() }
+}, { flush: 'sync' })
+watch(() => props.active, (active) => {
+  if (active) { checkAccess(); scheduler.resume(); void refresh(false) }
+  else { scheduler.pause(); invalidate() }
+}, { immediate: true })
+watch(() => props.preparing, (preparing) => { if (preparing) checkAccess() })
+watch(available, (value) => {
+  if (value && props.active && !state.data && !state.loading) void refresh(false)
+}, { flush: 'sync' })
+onUnmounted(() => { scheduler.clear(); invalidate() })
+defineExpose({ refresh, checkAccess })
+</script>
+
+<template>
+  <view v-if="visible" class="weread-stats-card">
+    <DashboardSection
+      title="阅读统计" :icon="visual.icon" :icon-color="visual.iconColor" :height="height" :auto-height="!height"
+      :loading="!state.data && !state.error && !state.locked" :updating="state.loading && !!state.data"
+      :retain-content="!!state.data" :error="state.error" :locked="state.locked" :refresh-disabled="refreshDisabled"
+      navigable title-label="查看微信读书" @navigate="openPage" @unlock="unlockCard" @refresh="manualRefresh"
+    >
+      <template #actions>
+        <view class="weread-stats-modes" role="group" aria-label="阅读统计粒度">
+          <button v-for="mode in modes" :key="mode.key" role="button" class="weread-stats-mode" :aria-label="'按' + mode.label + '统计'" :aria-pressed="granularity === mode.key" :disabled="refreshDisabled || state.locked || state.loading" @click.stop="selectMode(mode.key)">
+            <view class="weread-stats-mode-surface" :class="{ 'weread-stats-mode-surface-active': granularity === mode.key, 'weread-stats-mode-surface-active-dark': isDark && granularity === mode.key }">
+              <text class="weread-stats-mode-text" :class="{ 'weread-stats-mode-text-active': granularity === mode.key, 'weread-stats-mode-text-dark': isDark, 'weread-stats-mode-text-active-dark': isDark && granularity === mode.key }">{{ mode.label }}</text>
+            </view>
+          </button>
+        </view>
+      </template>
+      <template #loading>
+        <view class="weread-stats-pending" role="status" aria-label="正在加载阅读统计">
+          <view class="weread-stats-pending-total" :class="{ 'weread-stats-skeleton-dark': isDark }" />
+          <view class="weread-stats-pending-caption" :class="{ 'weread-stats-skeleton-dark': isDark }" />
+          <view class="weread-stats-pending-chart" :style="{ height: chartHeight + 'px' }">
+            <view v-for="n in skeletonBars" :key="n" class="weread-stats-pending-bar" :class="{ 'weread-stats-skeleton-dark': isDark }" :style="{ height: skeletonHeight(n) + 'px' }" />
+          </view>
+          <view class="weread-stats-pending-labels">
+            <view v-for="n in skeletonBars" :key="n" class="weread-stats-pending-label-cell" />
+          </view>
+        </view>
+      </template>
+      <view v-if="state.data" class="weread-stats-body">
+        <view class="weread-stats-summary">
+          <view class="weread-stats-summary-main">
+            <text class="weread-stats-total" :class="{ 'weread-stats-text-dark': isDark }">{{ periodLabel }} {{ totalText }}</text>
+            <view v-if="change" class="weread-stats-change" :aria-label="'较' + previousLabel + '同期' + change.text">
+              <text class="weread-stats-change-text" :class="{ 'weread-stats-caption-dark': isDark }">{{ change.direction > 0 ? '↑ ' : change.direction < 0 ? '↓ ' : '' }}{{ change.text }}</text>
+            </view>
+          </view>
+          <text class="weread-stats-average" :class="{ 'weread-stats-caption-dark': isDark }">日均 {{ averageText }}</text>
+        </view>
+        <view class="weread-stats-chart" :style="{ height: chartHeight + 'px' }" :aria-label="chartLabel">
+          <view class="weread-stats-bars" :class="{ 'weread-stats-bars-dense': granularity === 'month' }" role="group" :aria-label="chartLabel">
+            <button v-for="(bucket, index) in buckets" :key="bucket.key" role="button" class="weread-stats-bar-hit" :aria-label="bucketAria(bucket)" @click.stop="selectBar(index)">
+              <view class="weread-stats-bar" :style="{ height: barHeights[index] + 'px', backgroundColor: bucket.seconds > 0 ? barColor : zeroColor }" />
+            </button>
+          </view>
+          <view v-if="selectedBucket" class="weread-stats-tip" :class="{ 'weread-stats-tip-dark': isDark }"><text class="weread-stats-tip-text" :class="{ 'weread-stats-tip-text-dark': isDark }">{{ selectedText }}</text></view>
+          <view v-if="state.data.totalSeconds === 0" class="weread-stats-empty"><text class="weread-stats-empty-text" :class="{ 'weread-stats-caption-dark': isDark }">{{ emptyText }}</text></view>
+        </view>
+        <view class="weread-stats-labels" :class="{ 'weread-stats-labels-dense': granularity === 'month' }">
+          <view v-for="(bucket, index) in buckets" :key="bucket.key" class="weread-stats-label-cell">
+            <text v-if="showLabel(index)" class="weread-stats-label" :class="{ 'weread-stats-caption-dark': isDark }">{{ bucket.label }}</text>
+          </view>
+        </view>
+      </view>
+    </DashboardSection>
+  </view>
+</template>
+
+<style scoped lang="scss">
+@use '../../styles/platform' as *;
+@use '../../styles/typography' as *;
+@use '../../styles/spacing-tokens' as *;
+
+.weread-stats-card { width: 100%; }
+.weread-stats-modes { position: relative; z-index: 1; display: flex; flex-direction: row; align-items: center; gap: $space-detail; }
+.weread-stats-mode { display: flex; align-items: center; justify-content: center; min-width: 40px; height: $space-controlMin; padding: 0 $space-detail; margin: 0; border: 0; border-radius: 6px; background-color: transparent; }
+.weread-stats-mode-surface { display: flex; align-items: center; justify-content: center; min-width: 28px; height: 24px; padding: 0 $space-detail; border-radius: 6px; }
+.weread-stats-mode-surface-active { background-color: #eef2ff; }
+.weread-stats-mode-surface-active-dark { background-color: #344566; }
+.weread-stats-mode-text { @include type-style('caption'); color: #71717a; }
+.weread-stats-mode-text-active { color: #3662da; }
+.weread-stats-mode-text-dark { color: #a1a1aa; }
+.weread-stats-mode-text-active-dark { color: #a9bfff; }
+.weread-stats-body { display: flex; flex: 1; min-height: 0; flex-direction: column; }
+.weread-stats-summary { display: flex; flex-direction: column; gap: 0; }
+.weread-stats-summary-main { display: flex; flex-direction: row; align-items: baseline; justify-content: space-between; gap: $space-inline; }
+.weread-stats-total { @include type-style('metric-compact'); color: #27272a; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.weread-stats-average { @include type-style('caption'); color: #71717a; }
+.weread-stats-change { flex-shrink: 0; }
+.weread-stats-change-text { @include type-style('caption'); color: #71717a; }
+.weread-stats-text-dark { color: #ececf0; }
+.weread-stats-caption-dark { color: #a1a1aa; }
+.weread-stats-chart { position: relative; width: 100%; margin-top: $space-detail; }
+.weread-stats-bars { display: flex; flex-direction: row; align-items: flex-end; gap: $space-detail; height: 100%; }
+.weread-stats-bars-dense { gap: 1px; }
+.weread-stats-bar-hit { display: flex; flex: 1; min-width: 0; height: 100%; align-items: flex-end; justify-content: center; padding: 0; margin: 0; border: 0; background-color: transparent; }
+.weread-stats-bar { width: 100%; max-width: 24px; border-radius: 3px 3px 0 0; }
+.weread-stats-labels { display: flex; flex-direction: row; gap: $space-detail; }
+.weread-stats-labels-dense { gap: 1px; }
+.weread-stats-label-cell { display: flex; flex: 1; min-width: 0; align-items: center; justify-content: center; }
+.weread-stats-label { @include type-style('chart-label'); color: #71717a; }
+.weread-stats-tip { position: absolute; top: 0; left: 0; right: 0; display: flex; flex-direction: row; justify-content: center; align-items: center; pointer-events: none; }
+.weread-stats-tip-text { @include type-style('caption'); color: #3f3f46; background-color: #f4f4f5; padding: 2px $space-inline; border-radius: 4px; }
+.weread-stats-tip-dark { background-color: transparent; }
+.weread-stats-tip-text-dark { color: #e4e4e7; background-color: #303238; }
+.weread-stats-empty { position: absolute; top: 0; right: 0; bottom: 0; left: 0; display: flex; align-items: center; justify-content: center; pointer-events: none; }
+.weread-stats-empty-text { @include type-style('caption'); color: #71717a; }
+.weread-stats-pending { display: flex; flex-direction: column; padding: 0 $space-card $space-card; }
+.weread-stats-pending-total { width: 132px; height: 28px; border-radius: 4px; background-color: #e8ecf1; }
+.weread-stats-pending-caption { width: 84px; height: 18px; border-radius: 4px; background-color: #e8ecf1; }
+.weread-stats-pending-chart { display: flex; flex-direction: row; align-items: flex-end; gap: 1px; margin-top: $space-detail; }
+.weread-stats-pending-labels { display: flex; flex-direction: row; gap: 1px; height: 14px; }
+.weread-stats-pending-label-cell { flex: 1; min-width: 0; display: flex; align-items: center; justify-content: center; }
+.weread-stats-pending-label-cell::before { content: ''; width: 60%; height: 8px; border-radius: 3px; background-color: #e8ecf1; }
+.weread-stats-pending-bar { flex: 1; min-width: 0; border-radius: 3px 3px 0 0; background-color: #e8ecf1; }
+.weread-stats-skeleton-dark { background-color: #30343c; }
+.weread-stats-mode, .weread-stats-bar-hit { @include borderless-button; }
+</style>
