@@ -4,7 +4,7 @@ const out='test-results/page-audit/platform';fs.mkdirSync(out,{recursive:true});
 async function shot(page,name){await page.waitForTimeout(300);fs.mkdirSync(out,{recursive:true});await page.screenshot({path:`${out}/${name}.png`,fullPage:true});fs.copyFileSync(`${out}/${name}.png`,`/tmp/qa-platform-evidence/${name}.png`);const geom=await page.locator('.navigation-button,.icon-button,.dashboard-action,.life-action,.task-check,.delete-button,.category-option').evaluateAll(nodes=>nodes.map(n=>{const b=n.getBoundingClientRect(),child=n.querySelector('svg,img,.category-icon,.navigation-back-surface,.action-content,.delete-icon');const c=child?.getBoundingClientRect();return{class:n.className,label:n.getAttribute('aria-label'),width:b.width,height:b.height,display:getComputedStyle(n).display,dx:c?c.x+c.width/2-b.x-b.width/2:null,dy:c?c.y+c.height/2-b.y-b.height/2:null}}));fs.writeFileSync(`${out}/${name}-geometry.json`,JSON.stringify(geom,null,2));fs.writeFileSync(`/tmp/qa-platform-evidence/${name}-geometry.json`,JSON.stringify(geom,null,2));expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);const modal=page.getByRole('dialog').last();if(await modal.count()){const b=await modal.boundingBox();if(b&&b.height>650){await page.mouse.move(b.x+b.width/2,b.y+b.height/2);await page.mouse.wheel(0,1800);await page.waitForTimeout(100);await page.screenshot({path:`${out}/${name}-bottom.png`,fullPage:true});fs.copyFileSync(`${out}/${name}-bottom.png`,`/tmp/qa-platform-evidence/${name}-bottom.png`);}}}
 async function click(page,name){
  if ((name === 'API Key' || settingsProfileEntries.includes(name)) && page.url().includes('/pages/profile/index')) return openProfileEntry(page, name);
- if (page.url().includes('/pages/mcp/api-keys')) name = ({ '新增': '生成新 API Key', '删除': '删除 API Key', '保存': '生成' })[name] || name;
+ if (page.url().includes('/pages/mcp/api-keys')) name = ({ '新增': '创建 API Key', '删除': '删除 API Key', '保存': '创建' })[name] || name;
  if (['dict-data','dict-types'].some(kind => page.url().includes('kind=' + kind)) && ['编辑','删除'].includes(name) && await page.getByRole('dialog').count() === 0) {
   await page.getByRole('button',{name:/更多操作$/}).first().click();
  }
@@ -61,7 +61,7 @@ await page.locator('[aria-label="账号"] input').fill('fixture');await page.loc
 });
 test('真实点击错误重试401403与生成API Key',async({page})=>{
 await page.setViewportSize({width:390,height:900});const state=await setup(page,true);await page.locator('uni-tabbar').getByText('我',{exact:true}).click();
-await click(page,'API Key');await click(page,'新增');await page.locator('[aria-label="备注"] input').fill('模拟生成Key');await click(page,'保存');await expect(page.getByRole('dialog',{name:'新 API Key',exact:true})).toBeVisible();await shot(page,'390-light-key-generated');await dismissModal(page);await back(page);
+await click(page,'API Key');await click(page,'新增');await page.locator('[aria-label="备注"] input').fill('模拟生成Key');await click(page,'保存');await expect(page.getByRole('dialog',{name:'API Key 已创建',exact:true})).toBeVisible();await shot(page,'390-light-key-generated');await dismissModal(page);await back(page);
 await openProfileEntry(page,'管理与配置');state.failPath='/api/user-center/list';await click(page,'用户中心');await expect(page.getByRole('alert')).toContainText('模拟加载失败');await shot(page,'390-light-admin-failed');state.failPath='';await click(page,'重试');
 // 重试期间有三张骨架卡；列表断言等待它们被唯一的真实用户替换。
 await expect(page.locator('.user-username')).toHaveText(['@fixture-row']);

@@ -127,7 +127,7 @@ function switchKind(kind: LedgerKind) {
       <PageHeader :title="title + '明细'" back @back="back" />
       <text v-if="routeError" class="details-error" role="alert">{{ routeError }}</text>
       <template v-else>
-        <view v-if="kind === 'finance'" class="details-tabs" role="group" aria-label="明细类型"><button v-for="item in [{ key: 'income', label: '收入' }, { key: 'expense', label: '支出' }]" :key="item.key" role="button" class="details-tab" :class="{ 'details-tab-active': displayedKind === item.key, 'details-tab-active-dark': isDark && displayedKind === item.key }" :aria-label="item.label + '明细'" :aria-pressed="displayedKind === item.key" :aria-busy="state.loading && detailKind === item.key" @click="switchKind(item.key)"><text class="details-tab-label" :class="{ 'details-text-dark': isDark }">{{ item.label }}</text></button></view>
+        <view v-if="kind === 'finance'" class="details-tabs" role="group" aria-label="明细类型"><button hover-class="none" v-for="item in [{ key: 'income', label: '收入' }, { key: 'expense', label: '支出' }]" :key="item.key" role="button" class="details-tab" :class="{ 'details-tab-active': displayedKind === item.key, 'details-tab-active-dark': isDark && displayedKind === item.key }" :aria-label="item.label + '明细'" :aria-pressed="displayedKind === item.key" :aria-busy="state.loading && detailKind === item.key" @click="switchKind(item.key)"><text class="details-tab-label" :class="{ 'details-text-dark': isDark }">{{ item.label }}</text></button></view>
         <view class="details-summary" :class="{ 'details-summary-dark': isDark }">
           <text class="details-period" :class="{ 'details-muted-dark': isDark }">{{ bucket ? calendarPeriod(bucket) : '正在加载所选时段' }}</text>
           <view class="details-summary-main">
@@ -142,13 +142,13 @@ function switchKind(kind: LedgerKind) {
           <view v-if="!state.loaded && (state.loading || initializing)" class="details-pending"><LoadingIndicator ring :label="'正在加载' + title + '明细'" /></view>
           <view v-else-if="state.loaded && !state.items.length" class="details-pending"><text class="details-caption" :class="{ 'details-muted-dark': isDark }">暂无{{ detailTitle }}记录</text></view>
           <view v-for="row in state.items" :key="row.id" class="details-row">
-            <button role="button" class="details-edit" :aria-label="'编辑' + detailTitle + '：' + description(row)" :disabled="state.loading || state.page === 0" @click.stop="edit(row)">
+            <button hover-class="none" role="button" class="details-edit" :aria-label="'编辑' + detailTitle + '：' + description(row)" :disabled="state.loading || state.page === 0" @click.stop="edit(row)">
             <view class="details-main"><text class="details-description" :class="{ 'details-text-dark': isDark }">{{ description(row) }}</text><text class="details-amount" :class="{ 'details-text-dark': isDark }">{{ row.amt == null ? '—' : '¥' + calendarMoney(row.amt) }}</text></view>
             <text v-for="(line, index) in captions(row)" :key="index" class="details-caption" :class="{ 'details-muted-dark': isDark }">{{ line }}</text>
             </button>
             <text v-if="row.transactionAmt != null && row.transactionAmt !== row.amt" class="details-caption" :class="{ 'details-muted-dark': isDark }">交易金额：{{ calendarMoney(row.transactionAmt) }}</text>
           </view>
-          <view v-if="state.loaded && state.page === 0 && (state.loading || state.error)" class="details-switching" :class="{ 'details-switching-dark': isDark }"><LoadingIndicator v-if="state.loading" ring :label="'正在加载' + (detailKind === 'income' ? '收入' : '支出') + '明细'" /><template v-else><text class="details-error" role="alert">{{ state.error }}</text><button role="button" class="details-tab" aria-label="重试切换明细" @click="controller.load()"><text class="details-tab-label" :class="{ 'details-text-dark': isDark }">重试</text></button></template></view>
+          <view v-if="state.loaded && state.page === 0 && (state.loading || state.error)" class="details-switching" :class="{ 'details-switching-dark': isDark }"><LoadingIndicator v-if="state.loading" ring :label="'正在加载' + (detailKind === 'income' ? '收入' : '支出') + '明细'" /><template v-else><text class="details-error" role="alert">{{ state.error }}</text><button hover-class="none" role="button" class="details-tab" aria-label="重试切换明细" @click="controller.load()"><text class="details-tab-label" :class="{ 'details-text-dark': isDark }">重试</text></button></template></view>
           <LoadMore :loading="state.loaded && state.page > 0 && state.loading" :has-more="state.hasMore" :error="state.loaded && state.page === 0 ? '' : state.error" @load="controller.load()" />
         </view>
       </template>

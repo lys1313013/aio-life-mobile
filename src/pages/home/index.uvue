@@ -165,7 +165,7 @@ const time = ref(timeSummary([], []))
 const cardHeightLimit = computed(() => viewportWidth.value >= 1024 ? 280 : viewportWidth.value >= 640 ? 250 : 240)
 const multiColumnCardHeight = computed(() => viewportWidth.value >= 768 ? cardHeightLimit.value : undefined)
 const thoughtRowHeight = spacing.compactRowMin
-const commitRowHeight = spacing.controlMin + spacing.section
+const commitRowHeight = spacing.controlMin
 const quickRowHeight = computed(() => quickIconSize.value + typography.roles.caption.lineHeight + spacing.detail + spacing.inline * 2
   + (links.value.some(link => !nativeDestination(link.path)) ? typography.roles['chart-label'].lineHeight + spacing.micro : 0))
 function sectionInset(_section: string) {
@@ -817,10 +817,10 @@ function trendLines(points) {
       ><view class="dashboard-content ui-page-inset ui-tab-page-inset">
         <view v-if="errorText" class="global-error" role="alert"
           ><text class="failure-text" :class="themeClass('failure-text')">{{ errorText }}</text
-          ><button role="button" class="text-button ui-pad-sm" @click="refresh"><text :class="buttonLabelClasses(['text-button ui-pad-sm'])">重新加载</text></button></view
+          ><button hover-class="none" role="button" class="text-button ui-pad-sm" @click="refresh"><text :class="buttonLabelClasses(['text-button ui-pad-sm'])">重新加载</text></button></view
         ><view v-if="overview.error" class="global-error" role="alert"
           ><text class="failure-text" :class="themeClass('failure-text')">{{ overview.error }}</text
-          ><button role="button" class="text-button ui-pad-sm" @click="loadOverview"><text :class="buttonLabelClasses(['text-button ui-pad-sm'])">重试统计卡片</text></button></view
+          ><button hover-class="none" role="button" class="text-button ui-pad-sm" @click="loadOverview"><text :class="buttonLabelClasses(['text-button ui-pad-sm'])">重试统计卡片</text></button></view
         ><view v-if="homeCardPreferences.ready" class="overview-grid">
           <HomeCardSortCell
             v-if="(loading || overview.loading) && !overview.loaded"
@@ -847,7 +847,7 @@ function trendLines(points) {
                 ><view class="card-progress-bar"></view
               ></view><view class="stat-top"
                 ><view class="stat-name"
-                  ><button role="button" class="stat-icon stat-link ui-type-body" :aria-label="item.title + '图标'" @click.stop="openOverviewLink(item, item.iconClickUrl)"><LifeMenuIcon :icon="overviewVisual(item).icon" :size="18" :color="overviewVisual(item).iconColor" /></button><button role="button" class="stat-title stat-link" :aria-label="item.title + '标题'" @click.stop="openOverviewLink(item, item.titleClickUrl)"><text :max-lines="1" class="stat-title-text" :class="themeClass('stat-title-text')">{{ item.title }}</text></button></view
+                  ><button hover-class="none" role="button" class="stat-icon stat-link ui-type-body" :aria-label="item.title + '图标'" @click.stop="openOverviewLink(item, item.iconClickUrl)"><LifeMenuIcon :icon="overviewVisual(item).icon" :size="18" :color="overviewVisual(item).iconColor" /></button><button hover-class="none" role="button" class="stat-title stat-link" :aria-label="item.title + '标题'" @click.stop="openOverviewLink(item, item.titleClickUrl)"><text :max-lines="1" class="stat-title-text" :class="themeClass('stat-title-text')">{{ item.title }}</text></button></view
                 ><text :max-lines="1"
                   class="stat-value"
                   :style="{ color: item.valueColor || '' }"
@@ -911,12 +911,12 @@ function trendLines(points) {
                 </view>
                 <DashboardAction v-else label="管理快捷导航" :disabled="!states.links.loaded" icon="lucide:settings-2" @click="openQuickNavEditor()" />
               </template><template #loading><view class="quick-loading" role="status" aria-label="正在加载快捷导航"><view class="quick-grid" aria-hidden="true"><view v-for="n in 10" :key="n" class="quick-link" :style="{ height: quickRowHeight + 'px' }"><view class="time-skeleton-fill" :class="themeClass('time-skeleton-fill')" :style="{ width: quickIconSize + 'px', height: quickIconSize + 'px' }" /><view class="quick-skeleton-label time-skeleton-fill" :class="themeClass('time-skeleton-fill')" /></view></view></view>
-              </template><QuickNavEditor v-if="quickNavEditing" :items="savedQuickLinks" :start-picker="quickNavStartPicker" :save-signal="quickNavSaveSignal" @busy="quickNavBusy = $event" @dragging="quickNavDragging = $event" @saved="quickNavSaved" /><button v-else-if="links.length === 0" role="button" class="quick-empty ui-pad-card" aria-label="添加常用功能" @click="openQuickNavEditor(true)"
+              </template><QuickNavEditor v-if="quickNavEditing" :items="savedQuickLinks" :start-picker="quickNavStartPicker" :save-signal="quickNavSaveSignal" @busy="quickNavBusy = $event" @dragging="quickNavDragging = $event" @saved="quickNavSaved" /><button hover-class="none" v-else-if="links.length === 0" role="button" class="quick-empty ui-pad-card" aria-label="添加常用功能" @click="openQuickNavEditor(true)"
                 ><view class="quick-empty-icon" :class="themeClass('quick-empty-icon')"><AppIcon name="ant-design:plus-outlined" :size="20" color="#427bea" /></view
                 ><text class="quick-empty-title" :class="themeClass('quick-empty-title')">添加你的第一个快捷方式</text
                 ><text class="quick-empty-caption">从菜单挑选常用功能，首页一触即达</text></button
               ><scroll-view v-else scroll-y :show-scrollbar="false" class="quick-scroll"><view class="quick-grid"
-                ><button
+                ><button hover-class="none"
                   v-for="link in links"
                   :key="link.menuId"
                   role="button"
@@ -947,7 +947,7 @@ function trendLines(points) {
                   v-for="task in watched"
                   :key="task.id"
                   class="list-row task-row ui-pad-sm"
-                  ><button role="button" class="task-check ui-type-body" :aria-label="task.isCompleted === 1 ? '标记未完成' : '完成待办'" :aria-busy="taskBusy === task.id" :loading="taskBusy === task.id" :disabled="!!taskBusy" @click="completeWatched(task)"><CategoryIcon v-if="taskBusy !== task.id" :icon="task.isCompleted === 1 ? 'lucide:circle-check' : 'lucide:circle'" :size="20" :color="task.isCompleted === 1 ? '#5b8ff9' : isDark ? '#a1a1aa' : '#71717a'" /></button><view class="task-copy" role="button" :aria-label="'编辑待办 '+task.content" @click="openWatched(task)"
+                  ><button hover-class="none" role="button" class="task-check ui-type-body" :aria-label="task.isCompleted === 1 ? '标记未完成' : '完成待办'" :aria-busy="taskBusy === task.id" :loading="taskBusy === task.id" :disabled="!!taskBusy" @click="completeWatched(task)"><CategoryIcon v-if="taskBusy !== task.id" :icon="task.isCompleted === 1 ? 'lucide:circle-check' : 'lucide:circle'" :size="20" :color="task.isCompleted === 1 ? '#5b8ff9' : isDark ? '#a1a1aa' : '#71717a'" /></button><view class="task-copy" role="button" :aria-label="'编辑待办 '+task.content" @click="openWatched(task)"
                     ><view class="task-main"><text v-if="task.priority === 1 || task.priority === 10 || task.priority === 20" class="task-priority" :class="task.priority === 1 ? 'priority-high' : task.priority === 10 ? 'priority-medium' : 'priority-low'">{{ task.priority === 1 ? '高' : task.priority === 10 ? '中' : '低' }}</text><text class="body-text" :class="[{ completed: task.isCompleted === 1 }, themeClass('body-text')]">{{ task.content }}</text></view><text v-if="task.taskName" class="tag" :class="themeClass('tag')">{{ task.taskName }}</text><text v-if="task.startTime || task.endTime" class="task-dates" :class="themeClass('task-dates')">{{ taskTimeRange(task) }}</text></view
                   ></view
                 ></scroll-view
@@ -1039,7 +1039,7 @@ function trendLines(points) {
                         }"
                       ></view></view></view></view
                 ><view v-if="moreExercise || moreErrors.exercise" class="pagination-status">
-                  <view v-if="moreExercise" class="pagination-spinner" role="status" aria-label="正在加载更多运动" /><button v-else role="button" class="pagination-retry ui-type-body" aria-label="加载失败，重试更多运动" @click="loadMore('exercise')"><CategoryIcon icon="lucide:rotate-cw" :size="16" :color="isDark ? '#a9bfff' : '#5879ce'" /></button>
+                  <view v-if="moreExercise" class="pagination-spinner" role="status" aria-label="正在加载更多运动" /><button hover-class="none" v-else role="button" class="pagination-retry ui-type-body" aria-label="加载失败，重试更多运动" @click="loadMore('exercise')"><CategoryIcon icon="lucide:rotate-cw" :size="16" :color="isDark ? '#a9bfff' : '#5879ce'" /></button>
                 </view></scroll-view
               ></DashboardSection
             ></view
@@ -1054,23 +1054,21 @@ function trendLines(points) {
               :locked="states.commits.locked" :refresh-disabled="interactionDisabled" @unlock="unlockSection('commits')"
               navigable :title-label="githubProfile ? '访问 GitHub 主页' : '查看 GitHub'" @navigate="openGithub"
               @refresh="loadSection('commits')"
-              ><template #loading><HomeListSkeleton label="正在加载最近提交" :rows="2" :row-height="commitRowHeight" /></template><view v-if="commits.length === 0" class="empty-state ui-pad-card"
+              ><template #loading><HomeListSkeleton label="正在加载最近提交" :rows="2" :row-height="commitRowHeight" single-line /></template><view v-if="commits.length === 0" class="empty-state ui-pad-card"
                 ><text class="empty-label" :class="themeClass('empty-label')">暂无最近提交</text></view
               ><scroll-view v-else scroll-y :show-scrollbar="false" class="list-scroll commits-scroll" :lower-threshold="40" @scrolltolower="maybeLoadMore('commits')" @touchstart="startCardSwipe('commits', $event)" @touchend="finishCardSwipe('commits', $event)"
                 ><view
                   v-for="(commit, index) in commits"
                   :key="commit.id || index"
                   class="commit-row home-card-drag-area" role="button" tabindex="0" :aria-label="'查看提交：' + commit.message" @click="viewCommit(commit)" @keydown.enter.self="viewCommit(commit)" @keydown.space.prevent.self="viewCommit(commit)"
-                  ><view class="commit-top"
-                    ><text class="repo-label" :class="themeClass('repo-label')">{{ commit.repo }}</text
-                    ><text class="list-date ui-ml-section">{{
-                      shortDate(commit.date)
-                    }}</text></view
-                  ><text class="commit-message" :class="themeClass('commit-message')">{{
+                  ><text :max-lines="1" class="repo-label" :class="themeClass('repo-label')">{{ commit.repo }}</text
+                  ><text :max-lines="1" class="commit-message" :class="themeClass('commit-message')">{{
                     commit.message
+                  }}</text><text class="list-date commit-date">{{
+                    shortDate(commit.date)
                   }}</text></view
                 ><view v-if="moreCommits || moreErrors.commits" class="pagination-status">
-                  <view v-if="moreCommits" class="pagination-spinner" role="status" aria-label="正在加载更多提交" /><button v-else role="button" class="pagination-retry ui-type-body" aria-label="加载失败，重试更多提交" @click="loadMore('commits')"><CategoryIcon icon="lucide:rotate-cw" :size="16" :color="isDark ? '#a9bfff' : '#5879ce'" /></button>
+                  <view v-if="moreCommits" class="pagination-spinner" role="status" aria-label="正在加载更多提交" /><button hover-class="none" v-else role="button" class="pagination-retry ui-type-body" aria-label="加载失败，重试更多提交" @click="loadMore('commits')"><CategoryIcon icon="lucide:rotate-cw" :size="16" :color="isDark ? '#a9bfff' : '#5879ce'" /></button>
                 </view></scroll-view
               ></DashboardSection
             ></view
@@ -1421,13 +1419,11 @@ align-items: flex-end;
 .pagination-retry { display: flex; align-items: center; justify-content: center; width: 44px; height: 44px; margin: 0; padding: 0; border: 0; background-color: transparent; }
 .commit-row {
   box-sizing: border-box;
-  min-height: $space-controlMin + $space-section;
-  padding: $space-detail $space-inline;
-}
-.commit-top {
+  min-height: $space-controlMin;
   flex-direction: row;
   align-items: center;
-  justify-content: space-between;
+  gap: $space-inline;
+  padding: $space-detail $space-inline;
 }
 .repo-label {
   color: #52525b;
@@ -1437,14 +1433,20 @@ align-items: flex-end;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  flex: 1;
+  max-width: 28%;
+  flex-shrink: 0;
 }
 .commit-message {
   color: #71717a;
   @include type-style('caption');
 
-  margin-top: $space-tight;
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
+.commit-date { flex-shrink: 0; white-space: nowrap; }
 .text-button {
   background-color: transparent;
   border: 0;

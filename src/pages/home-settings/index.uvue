@@ -10,6 +10,7 @@ import { menuVisuals } from '../../services/menu-visuals.ts'
 import { request } from '../../services/api.ts'
 import LoadingIndicator from '../../components/LoadingIndicator.uvue'
 import ConfirmAction from '../../components/ConfirmAction.uvue'
+import MobileButton from '../../components/MobileButton.uvue'
 import { isDark } from '../../services/theme.ts'
 import { homeCards, homeCardPreferences as state } from '../../services/home-cards.ts'
 import { moveHomeCard } from '../../services/home-card-preferences.ts'
@@ -124,7 +125,17 @@ function rowStyle(item) {
 <template>
   <view class="preferences-page" :class="{ 'preferences-page-dark': isDark }">
     <PageHeader title="首页卡片" back @back="back">
-      <view class="preferences-header"><text class="preferences-title" :class="{ 'text-dark': isDark }">首页卡片</text><view v-if="!busy && !dragging && state.ready"><ConfirmAction label="恢复默认" icon="ant-design:undo-outlined" message="恢复全部卡片的默认显示和顺序？" :danger="false" :action="reset" /></view><LoadingIndicator v-else-if="state.busy === 'reset'" compact /></view>
+      <view class="preferences-header">
+        <text class="preferences-title" :class="{ 'text-dark': isDark }">首页卡片</text>
+        <view v-if="!busy && !dragging && state.ready">
+          <ConfirmAction label="恢复默认" message="恢复全部卡片的默认显示和顺序？" :danger="false" :action="reset">
+            <template #default="{ open, busy: resetting }">
+              <MobileButton label="恢复默认" icon="ant-design:undo-outlined" variant="ghost" :loading="resetting" @click="open" />
+            </template>
+          </ConfirmAction>
+        </view>
+        <LoadingIndicator v-else-if="state.busy === 'reset'" compact />
+      </view>
     </PageHeader>
     <scroll-view class="card-preferences-scroll" :scroll-y="!dragging" :scroll-top="scrollTop" @scroll="scrolled">
       <view class="preferences-content ui-page-inset">

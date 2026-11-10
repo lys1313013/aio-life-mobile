@@ -1,9 +1,39 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { transformSync } from 'esbuild';
 import { parse } from '@vue/compiler-sfc';
+import { parse as parseTemplate } from '@vue/compiler-dom';
 import { transformNativeButtons } from '../scripts/prepare-native-buttons.mjs';
+
+test('所有页面及公共控件关闭平台按下反馈，避免默认灰底和透明度闪动', () => {
+  const missing = [];
+  function visit(node, file) {
+    if (node.type === 1) {
+      const feedback = node.props.filter(prop => prop.name === 'hover-class' || (prop.name === 'bind' && prop.arg?.content === 'hover-class'));
+      if (node.tag === 'button' || feedback.length) {
+        if (feedback.length !== 1 || feedback[0].type !== 6 || feedback[0].value?.content !== 'none') {
+          missing.push(`${file}:${node.loc.start.line} <${node.tag}>`);
+        }
+      }
+    }
+    for (const child of node.children || []) visit(child, file);
+  }
+  function walk(directory) {
+    for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+      const file = path.join(directory, entry.name);
+      if (entry.isDirectory() && entry.name !== 'uni_modules') walk(file);
+      else if (entry.isFile() && entry.name.endsWith('.uvue')) {
+        const { descriptor } = parse(fs.readFileSync(file, 'utf8'));
+        if (descriptor.template) visit(parseTemplate(descriptor.template.content), file);
+      }
+    }
+  }
+  walk(fileURLToPath(new URL('../src', import.meta.url)));
+  assert.deepEqual(missing, [], '自绘按钮必须显式使用 hover-class="none"，保留 loading、选中与键盘焦点状态');
+});
 
 test('App 工程转换嵌套组件按钮并保留点击、禁用和无障碍属性', () => {
   const source = `<script setup lang="ts">const busy = false</script>

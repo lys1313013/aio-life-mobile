@@ -72,7 +72,17 @@ for (const width of [390, 768, 1440]) for (const theme of ['light', 'dark']) {
     const box = await dialog.boundingBox();
     expect(box.width).toBeLessThanOrEqual(320); expect(Math.abs(box.x + box.width / 2 - width / 2)).toBeLessThan(3);
     const key = await dialog.getByRole('button', { name: '1', exact: true }).boundingBox(); expect(key.width).toBeGreaterThanOrEqual(44); expect(key.height).toBeGreaterThanOrEqual(44);
-    await page.screenshot({ path: `artifacts/numeric-secondary-password/${width}-${theme}.png` });
+    const digit = dialog.getByRole('button', { name: '1', exact: true });
+    await page.mouse.move(key.x + key.width / 2, key.y + key.height / 2);
+    await page.mouse.down();
+    try {
+      await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+      await expect(digit).toHaveCSS('opacity', '1');
+      await expect(digit).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+      await expect(digit).not.toHaveClass(/button-hover|[\w-]+-pressed/);
+      await page.screenshot({ path: `artifacts/numeric-secondary-password/${width}-${theme}.png` });
+    } finally { await page.mouse.up(); }
+    await expect(dialog.locator('input')).toHaveValue('1');
   });
 }
 

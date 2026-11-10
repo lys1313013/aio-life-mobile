@@ -21,6 +21,7 @@ const saving = ref(false);
 const error = ref("");
 const formError = ref("");
 const editing = ref(false);
+const editingId = ref("");
 const generatedKey = ref("");
 const expiry = ["永不过期", "1 天", "7 天", "30 天"];
 const form = ref({ remark: "", expiry: expiry[0] });
@@ -58,6 +59,7 @@ useDomainPage(
     loading.value = false;
     saving.value = false;
     editing.value = false;
+    editingId.value = "";
     generatedKey.value = "";
     form.value = { remark: "", expiry: expiry[0] };
     error.value = "";
@@ -65,8 +67,9 @@ useDomainPage(
   },
   { loading: () => loading.value, error: () => error.value, keys: () => ['api-key'] },
 );
-function edit() {
-  form.value = { remark: "", expiry: expiry[0] };
+function edit(row?: any) {
+  editingId.value = row?.id ?? "";
+  form.value = { remark: row?.remark ?? "", expiry: expiry[0] };
   formError.value = "";
   editing.value = true;
 }
@@ -78,11 +81,22 @@ async function save() {
   const version = revision;
   try {
     if (missingRequired("apiKey", form.value)) throw new Error("请输入备注");
+    if (form.value.remark.trim().length > 255) throw new Error("备注不能超过 255 个字符");
+    if (editingId.value) {
+      const updated: any = await request("/api-key/" + encodeURIComponent(editingId.value), "PUT", {
+        remark: form.value.remark.trim(),
+      });
+      if (!active || token !== session.token || version !== revision) return;
+      items.value = items.value.map((item) => item.id === updated.id ? updated : item);
+      editing.value = false;
+      uni.showToast({ title: "备注已更新", icon: "success" });
+      return;
+    }
     const data: any = await request("/api-key/generate", "POST", {
       remark: form.value.remark.trim(),
       expireDays: [0, 1, 7, 30][expiry.indexOf(form.value.expiry)],
     });
-    if (!data?.apiKey) throw new Error("生成结果异常");
+    if (!data?.apiKey) throw new Error("创建结果异常");
     if (!active || token !== session.token || version !== revision) return;
     generatedKey.value = data.apiKey;
     editing.value = false;
@@ -119,11 +133,11 @@ function back() {
         >API Key 管理</text
       >
       <MobileButton
-        label="生成新 API Key"
+        label="创建 API Key"
         icon="ant-design:plus-outlined"
         variant="ghost"
         :disabled="!ready"
-        @click="edit"
+        @click="edit()"
       />
     </PageHeader>
     <view class="ui-page-body">
@@ -155,9 +169,15 @@ function back() {
                 >{{ item.createTime }} 创建</text
               >
             </view>
+            <MobileButton
+              label="修改备注"
+              icon="ant-design:edit-outlined"
+              variant="ghost"
+              @click="edit(item)"
+            />
             <ConfirmAction
               label="删除 API Key"
-              :message="'删除 ' + item.remark + '？'"
+              :message="'删除 ' + item.remark + '？使用此密钥的应用将无法访问。'"
               :action="() => remove(item)"
             />
           </view>
@@ -166,7 +186,7 @@ function back() {
     </view>
     <AdaptiveModal
       v-if="editing"
-      label="生成新 API Key"
+      :label="editingId ? '修改备注' : '创建 API Key'"
       :busy="saving"
       :max-width="520"
       @close="editing = false"
@@ -178,6 +198,7 @@ function back() {
         placeholder="请输入 API Key 备注"
       />
       <FormField
+        v-if="!editingId"
         v-model="form.expiry"
         label="有效期"
         kind="selector"
@@ -193,17 +214,17 @@ function back() {
           :disabled="saving"
           @click="editing = false"
         />
-        <MobileButton label="生成" :loading="saving" @click="save" />
+        <MobileButton :label="editingId ? '保存' : '创建'" :loading="saving" @click="save" />
       </FormActions>
     </AdaptiveModal>
     <AdaptiveModal
       v-if="generatedKey"
-      label="新 API Key"
+      label="API Key 已创建"
       :max-width="520"
       @close="generatedKey = ''"
     >
       <text class="key-detail" :class="themeClass('key-detail')"
-        >仅本次显示完整密钥，请妥善保存。</text
+        >完整密钥仅显示一次，请复制并妥善保存。</text
       >
       <text
         class="key-secret ui-mb-section ui-mt-section"

@@ -12,10 +12,19 @@ for (const width of [390, 480, 768, 1440]) for (const theme of ['light', 'dark']
     await page.getByRole('button', { name: '编辑闪念', exact: true }).click();
     const dialog = page.getByRole('dialog', { name: '编辑闪念', exact: true });
     const add = dialog.getByRole('button', { name: '新增关联事件' });
+    const idle = await add.evaluate(node => {
+      const style = getComputedStyle(node);
+      return { opacity: style.opacity, transform: style.transform, background: style.backgroundColor };
+    });
     const addBox = await add.boundingBox();
     await page.mouse.move(addBox.x + addBox.width / 2, addBox.y + addBox.height / 2);
     await page.mouse.down();
-    await expect(add).toHaveClass(/mobile-button-pressed/);
+    await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+    await expect(add).not.toHaveClass(/button-hover|[\w-]+-pressed/);
+    expect(await add.evaluate(node => {
+      const style = getComputedStyle(node);
+      return { opacity: style.opacity, transform: style.transform, background: style.backgroundColor };
+    })).toEqual(idle);
     await expect(add).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
     await page.mouse.up();
     await expect(dialog.getByRole('textbox', { name: '关联事件 2' })).toBeVisible();

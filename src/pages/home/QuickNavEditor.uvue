@@ -137,19 +137,19 @@ function visual(item: QuickLink) {
         <view v-for="(item, index) in draft" :key="item.menuId"
           class="quick-editor-tile" :class="[{ 'quick-editor-shifting': !!drag.dragging.value, 'quick-editor-dragging': drag.dragging.value === item.menuId }, themeClass({ 'quick-editor-dragging': drag.dragging.value === item.menuId })]"
           :style="drag.style(item.menuId)">
-          <button role="button" class="quick-editor-drag" :aria-label="'拖动排序' + item.title" :disabled="saving" :aria-disabled="saving" :tabindex="saving ? -1 : 0"
+          <button hover-class="none" role="button" class="quick-editor-drag" :aria-label="'拖动排序' + item.title" :disabled="saving" :aria-disabled="saving" :tabindex="saving ? -1 : 0"
             @touchstart.stop="drag.start(item.menuId, $event)" @touchmove.stop="drag.move" @touchend.stop="drag.finish" @touchcancel.stop="drag.cancel" @contextmenu.prevent
             @mousedown.stop="drag.start(item.menuId, $event, true)" @keydown.left.prevent="move(index, -1)" @keydown.right.prevent="move(index, 1)">
             <view class="quick-editor-grip-dots" aria-hidden="true"><view v-for="dot in 6" :key="dot" class="quick-editor-grip-dot" /></view>
             <LifeMenuIcon :icon="visual(item).icon" :size="24" :color="visual(item).iconColor" />
             <text class="quick-editor-title" :class="[themeClass('quick-editor-title'), { 'quick-editor-hidden': item.isEnabled === 0 }]">{{ item.title }}</text>
           </button>
-          <button role="button" class="quick-editor-remove" :aria-label="'移除' + item.title" :disabled="saving" :aria-disabled="saving"
+          <button hover-class="none" role="button" class="quick-editor-remove" :aria-label="'移除' + item.title" :disabled="saving" :aria-disabled="saving"
             @touchstart.stop @touchend.stop @mousedown.stop @click.stop="remove(index)">
             <view class="quick-editor-remove-icon"><AppIcon name="ant-design:close-outlined" :size="12" :color="isDark ? '#a1a1aa' : '#71717a'" /></view>
           </button>
         </view>
-        <button v-if="draft.length < QUICK_NAV_MAX" role="button" class="quick-editor-add" :class="themeClass('quick-editor-add')" aria-label="添加快捷方式" :disabled="saving" :aria-disabled="saving" @click="openPicker">
+        <button hover-class="none" v-if="draft.length < QUICK_NAV_MAX" role="button" class="quick-editor-add" :class="themeClass('quick-editor-add')" aria-label="添加快捷方式" :disabled="saving" :aria-disabled="saving" @click="openPicker">
           <AppIcon name="ant-design:plus-outlined" :size="24" color="#8b8f99" />
           <text class="quick-editor-add-label">添加</text>
         </button>
@@ -161,7 +161,7 @@ function visual(item: QuickLink) {
         <view v-else-if="error" class="quick-editor-state"><text class="quick-editor-error" role="alert">{{ error }}</text><MobileButton label="重试加载功能" variant="ghost" @click="loadCandidates" /></view>
         <text v-else-if="!choices.length" class="quick-picker-muted">{{ candidates.length ? '暂无可添加的功能' : '暂无可用功能' }}</text>
         <view v-for="group in choiceGroups" :key="group.title" class="quick-picker-group">
-          <button role="button" class="quick-picker-group-toggle" :aria-label="group.title + '分组'" :aria-expanded="groupExpanded(group.title)" @click="toggleGroup(group.title)">
+          <button hover-class="none" role="button" class="quick-picker-group-toggle" :aria-label="group.title + '分组'" :aria-expanded="groupExpanded(group.title)" @click="toggleGroup(group.title)">
             <AppIcon :name="groupExpanded(group.title) ? 'ant-design:down-outlined' : 'ant-design:right-outlined'" :size="16" color="#8b8f99" />
             <text class="quick-picker-group-title" :class="themeClass('quick-picker-group-title')">{{ group.title }}</text>
             <text class="quick-picker-muted">{{ group.items.length }}</text>

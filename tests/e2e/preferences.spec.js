@@ -68,7 +68,7 @@ test('接口菜单锁解锁后重试一次，隐藏菜单保留长ID',async({pag
  await dialog.locator('[aria-label="二级密码"] input').fill('001234');
  await dialog.getByRole('button',{name:'确认密码',exact:true}).click();
  await expect(dialog).toHaveCount(0);
- await expect(page.getByRole('button',{name:'生成新 API Key',exact:true})).toBeEnabled();
+ await expect(page.getByRole('button',{name:'创建 API Key',exact:true})).toBeEnabled();
  expect(state.unlock).toBe(true);
  await page.goto('/#/pages/profile/preferences?section=menus');
  await page.reload();

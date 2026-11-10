@@ -11,17 +11,17 @@ defineEmits<{ refresh: []; navigate: []; unlock: [] }>()
 <template>
   <view class="dashboard-section" :class="themeClass('dashboard-section')" :style="autoHeight && !locked ? { height: 'auto' } : height ? { height: height + 'px' } : {}">
     <HomeCardHeader class="section-heading" :label="'刷新' + title + (caption ? ' ' + caption : '')" :loading="loading || updating" :disabled="refreshDisabled || locked" @refresh="$emit('refresh')">
-      <button v-if="navigable" role="button" class="section-label heading-link" :aria-label="titleLabel || '查看' + title" @click.stop="$emit('navigate')"><LifeMenuIcon v-if="icon" :icon="icon" :size="16" :color="iconColor" /><text class="section-title" :class="[{ 'section-title-with-icon': !!icon }, themeClass('section-title')]">{{ title }}</text></button>
+      <button hover-class="none" v-if="navigable" role="button" class="section-label heading-link" :aria-label="titleLabel || '查看' + title" @click.stop="$emit('navigate')"><LifeMenuIcon v-if="icon" :icon="icon" :size="16" :color="iconColor" /><text class="section-title" :class="[{ 'section-title-with-icon': !!icon }, themeClass('section-title')]">{{ title }}</text></button>
       <view v-else class="section-label section-label-static"><LifeMenuIcon v-if="icon" :icon="icon" :size="16" :color="iconColor" /><text class="section-title" :class="[{ 'section-title-with-icon': !!icon }, themeClass('section-title')]">{{ title }}</text></view>
       <text v-if="caption" class="section-caption" :class="themeClass('section-caption')">{{ caption }}</text>
       <slot name="actions" />
       <LoadingIndicator v-if="updating" class="section-updating" compact :label="'正在更新' + title" />
-      <button v-else-if="error && retainContent" role="button" class="section-update-retry" :disabled="refreshDisabled" :aria-label="'重试' + title + '：' + error" @click.stop="$emit('refresh')"><CategoryIcon icon="lucide:rotate-cw" :size="18" :color="isDark ? '#a9bfff' : '#5879ce'" /></button>
+      <button hover-class="none" v-else-if="error && retainContent" role="button" class="section-update-retry" :disabled="refreshDisabled" :aria-label="'重试' + title + '：' + error" @click.stop="$emit('refresh')"><CategoryIcon icon="lucide:rotate-cw" :size="18" :color="isDark ? '#a9bfff' : '#5879ce'" /></button>
     </HomeCardHeader>
-    <button v-if="locked" role="button" class="section-unlock" :class="themeClass('section-unlock')" :aria-label="'解锁' + title" :disabled="refreshDisabled" hover-class="section-unlock-pressed" @click.stop="$emit('unlock')"><CategoryIcon icon="ant-design:lock-outlined" :size="24" :color="isDark ? '#a1a1aa' : '#71717a'" /></button>
+    <button v-if="locked" role="button" class="section-unlock" :class="themeClass('section-unlock')" :aria-label="'解锁' + title" :disabled="refreshDisabled" hover-class="none" @click.stop="$emit('unlock')"><CategoryIcon icon="ant-design:lock-outlined" :size="24" :color="isDark ? '#a1a1aa' : '#71717a'" /></button>
     <view v-else-if="error && !retainContent" class="section-error" role="alert">
       <text class="section-error-text" :class="themeClass('section-error-text')">{{ error }}</text>
-      <button
+      <button hover-class="none"
         role="button"
         class="section-retry"
         :aria-label="'重试' + title"
@@ -87,7 +87,6 @@ defineEmits<{ refresh: []; navigate: []; unlock: [] }>()
 }
 .section-unlock { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); display: flex; align-items: center; justify-content: center; width: $space-controlMin; height: $space-controlMin; padding: 0; margin: 0; border: 0; border-radius: 50%; background-color: #f4f4f5; }
 .section-unlock-dark { background-color: #27292f; }
-.section-unlock-pressed { opacity: 0.65; }
 .section-error-text {
   color: #bc4949;
   @include type-style('caption');

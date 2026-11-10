@@ -58,7 +58,15 @@ test('开关即时保存、失败回退、拖动排序和刷新恢复', async ({
   await page.setViewportSize({width:390,height:844});
   const state = await setup(page);
   const first = page.locator('.preference-row').first();
-  await first.getByRole('switch').click();
+  const toggle = first.getByRole('switch');
+  const toggleBox = await toggle.boundingBox();
+  await page.mouse.move(toggleBox.x + toggleBox.width / 2, toggleBox.y + toggleBox.height / 2);
+  await page.mouse.down();
+  try {
+    await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+    await expect(toggle).toHaveCSS('opacity', '1');
+    await expect(toggle).not.toHaveClass(/button-hover|[\w-]+-pressed/);
+  } finally { await page.mouse.up(); }
   await expect.poll(() => state.items[0].isEnabled).toBe(0);
   state.fail = true;
   await first.getByRole('switch').click();

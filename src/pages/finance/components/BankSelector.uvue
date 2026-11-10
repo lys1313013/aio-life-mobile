@@ -66,17 +66,17 @@ function close() {
       <input class="bank-input" :class="themeClass('bank-input')" :style="appTextColor()" :value="keyword" :disabled="disabled"
         placeholder="输入银行名称或代码" aria-label="银行" :aria-expanded="open"
         confirm-type="search" @input="search" @focus="open = true" @confirm="open = true" />
-      <button v-if="open" class="bank-icon" role="button" aria-label="收起银行选项" @click="close">
+      <button hover-class="none" v-if="open" class="bank-icon" role="button" aria-label="收起银行选项" @click="close">
         <AppIcon name="ant-design:up-outlined" :size="16" />
       </button>
-      <button v-else class="bank-icon" role="button" aria-label="展开银行选项" :disabled="disabled" @click="open = true">
+      <button hover-class="none" v-else class="bank-icon" role="button" aria-label="展开银行选项" :disabled="disabled" @click="open = true">
         <AppIcon name="ant-design:down-outlined" :size="16" />
       </button>
     </view>
     <view v-if="open" class="bank-results" :class="themeClass('bank-results')">
       <scroll-view :key="keyword" class="bank-results-scroll" :style="{ height: Math.min(Math.max(matches.length, 1), 5) * spacing.controlMin + 'px' }" scroll-y :show-scrollbar="false"
         @scrolltolower="visibleCount = Math.min(visibleCount + 40, matches.length)">
-        <button v-for="bank in visibleBanks" :key="bank.id" class="bank-option" role="button"
+        <button hover-class="none" v-for="bank in visibleBanks" :key="bank.id" class="bank-option" role="button"
           :aria-label="'选择' + bank.name" :aria-disabled="disabled || (bank.isEnabled === 0 && String(bank.id) !== originalBankId)" :disabled="disabled || (bank.isEnabled === 0 && String(bank.id) !== originalBankId)"
           @click="choose(bank)">
           <text class="bank-option-name" :class="themeClass('bank-option-name')" :style="appTextColor()">{{ bank.name }}</text>
@@ -85,7 +85,7 @@ function close() {
         </button>
         <text v-if="!matches.length" class="bank-empty bank-meta" :class="themeClass('bank-meta')">未找到匹配银行</text>
       </scroll-view>
-      <button v-if="customAllowed" class="bank-option bank-custom" role="button" aria-label="使用自定义银行" :disabled="disabled" @click="custom">
+      <button hover-class="none" v-if="customAllowed" class="bank-option bank-custom" role="button" aria-label="使用自定义银行" :disabled="disabled" @click="custom">
         <AppIcon name="ant-design:plus-outlined" :size="18" />
         <text class="bank-option-name" :class="themeClass('bank-option-name')" :style="appTextColor()">使用“{{ keyword.trim() }}”</text>
       </button>

@@ -189,11 +189,11 @@ async function openBook(book, webOnly = false) {
 <template>
   <view v-if="visible" class="weread-card" :class="{ 'weread-card-dark': isDark, 'weread-card-tablet': compactShelf }" :style="{ height: height ? height + 'px' : 'auto', maxHeight: (maxHeight || businessCardMaxHeight) + 'px' }" aria-label="微信读书首页卡片" :aria-busy="loading" @click="refresh()">
     <view class="weread-heading">
-      <button class="heading-link" role="button" aria-label="查看微信读书" @click.stop="openPage"><BusinessIcon card-key="section.weread" :size="16" /><text class="card-title" :class="{ 'text-dark': isDark }">微信读书</text></button>
+      <button hover-class="none" class="heading-link" role="button" aria-label="查看微信读书" @click.stop="openPage"><BusinessIcon card-key="section.weread" :size="16" /><text class="card-title" :class="{ 'text-dark': isDark }">微信读书</text></button>
       <LoadingIndicator v-if="loading" class="updating" compact label="正在加载最近阅读" />
       <text v-else-if="error && books.length" class="error-text" role="alert">刷新失败</text>
     </view>
-    <view v-if="locked" class="placeholder" :style="bodyStyle"><button class="heading-link" role="button" aria-label="解锁微信读书" :disabled="sorting" @click.stop="unlockCard"><text class="caption" :class="{ 'caption-dark': isDark }">点击解锁</text></button></view>
+    <view v-if="locked" class="placeholder" :style="bodyStyle"><button hover-class="none" class="heading-link" role="button" aria-label="解锁微信读书" :disabled="sorting" @click.stop="unlockCard"><text class="caption" :class="{ 'caption-dark': isDark }">点击解锁</text></button></view>
     <view v-else-if="!loaded && (loading || preparing || !error)" class="shelf-loading" :style="bodyStyle" role="status" aria-label="正在加载最近阅读">
       <view class="book-list" :style="bodyStyle">
         <view v-for="column in shelfWidth.visibleColumns" :key="column" class="book-column" :style="columnStyle">
@@ -205,7 +205,7 @@ async function openBook(book, webOnly = false) {
       <view class="book-list" :style="trackStyle">
         <view v-for="column in columns" :key="column[0].bookId" class="book-column" :style="columnStyle">
           <view v-for="book in column" :key="book.bookId" class="book-row-wrap" :style="itemStyle">
-            <button class="book-row book-button home-card-drag-area" role="button" :aria-label="'在微信读书打开：' + book.title" :disabled="!!opening" @click.stop="openBook(book)">
+            <button hover-class="none" class="book-row book-button home-card-drag-area" role="button" :aria-label="'在微信读书打开：' + book.title" :disabled="!!opening" @click.stop="openBook(book)">
               <image v-if="book.cover" class="book-cover" :style="coverStyle" :src="book.cover" mode="aspectFit" /><view v-else class="book-cover cover-fallback" :style="coverStyle"><BusinessIcon card-key="section.weread" :size="20" /></view>
               <view class="book-content">
                 <text class="book-title" :class="{ 'text-dark': isDark }">{{ book.title }}</text>
@@ -213,7 +213,7 @@ async function openBook(book, webOnly = false) {
               </view>
             </button>
             <view v-if="opening === book.bookId" class="book-action"><LoadingIndicator compact label="正在打开书籍" /></view>
-            <button v-if="webFallback === book.bookId" class="web-fallback" role="button" aria-label="网页版阅读" @click.stop="openBook(book, true)"><AppIcon name="ant-design:export-outlined" :size="16" :color="isDark ? '#9bbcff' : '#5879ce'" /></button>
+            <button hover-class="none" v-if="webFallback === book.bookId" class="web-fallback" role="button" aria-label="网页版阅读" @click.stop="openBook(book, true)"><AppIcon name="ant-design:export-outlined" :size="16" :color="isDark ? '#9bbcff' : '#5879ce'" /></button>
           </view>
         </view>
         <view v-if="loadingMore || moreError" class="shelf-status" @click.stop><LoadMore :loading="loadingMore" :error="moreError" @load="loadMore" /></view>
