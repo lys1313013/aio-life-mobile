@@ -10,7 +10,7 @@ import { isMenuUnlocked } from '../../services/secondary-lock.ts'
 import { unlockHomeCard } from './services/card-unlock.ts'
 import { createHomeRefreshScheduler } from './services/refresh-scheduler.ts'
 import { isDark } from '../../services/theme.ts'
-import { formatWereadDuration, readWereadStats, readWereadStatsGranularity, saveWereadStatsGranularity, wereadBarHeights, wereadBucketDate, wereadStatsChange, wereadStatsModes } from './services/weread-stats.ts'
+import { formatWereadDuration, readWereadStats, readWereadStatsGranularity, saveWereadStatsGranularity, wereadBarHeights, wereadBucketDate, wereadBucketLabel, wereadStatsChange, wereadStatsModes } from './services/weread-stats.ts'
 import type { WereadStatsData, WereadStatsGranularity } from './services/weread-stats.ts'
 
 const props = defineProps<{ active: boolean; preparing?: boolean; height?: number; refreshDisabled?: boolean }>()
@@ -41,8 +41,6 @@ const change = computed(() => state.data ? wereadStatsChange(state.data.totalSec
 const chartHeight = computed(() => props.height ? Math.max(72, Math.min(150, props.height - 150)) : 92)
 const barHeights = computed(() => wereadBarHeights(buckets.value, chartHeight.value - 6))
 const skeletonBars = computed(() => granularity.value === 'week' ? 7 : granularity.value === 'month' ? 31 : 12)
-const barColor = computed(() => visual.value.iconColor || (isDark.value ? '#8ab4f8' : '#3FB27F'))
-const zeroColor = computed(() => isDark.value ? '#3a3d44' : '#e4e4e7')
 const selectedBucket = computed(() => selectedIndex.value >= 0 ? buckets.value[selectedIndex.value] : null)
 const selectedText = computed(() => selectedBucket.value ? wereadBucketDate(selectedBucket.value, displayGranularity.value) + ' · ' + (selectedBucket.value.seconds > 0 ? formatWereadDuration(selectedBucket.value.seconds) : '未阅读') : '')
 const chartLabel = computed(() => state.data ? periodLabel.value + '阅读 ' + totalText.value + '，日均 ' + averageText.value : '阅读统计')
@@ -188,24 +186,26 @@ defineExpose({ refresh, checkAccess })
         <view class="weread-stats-summary">
           <view class="weread-stats-summary-main">
             <text class="weread-stats-total" :class="{ 'weread-stats-text-dark': isDark }">{{ periodLabel }} {{ totalText }}</text>
+          </view>
+          <view class="weread-stats-summary-caption">
+            <text class="weread-stats-average" :class="{ 'weread-stats-caption-dark': isDark }">日均 {{ averageText }}</text>
             <view v-if="change" class="weread-stats-change" :aria-label="'较' + previousLabel + '同期' + change.text">
-              <text class="weread-stats-change-text" :class="{ 'weread-stats-caption-dark': isDark }">{{ change.direction > 0 ? '↑ ' : change.direction < 0 ? '↓ ' : '' }}{{ change.text }}</text>
+              <text class="weread-stats-change-text" :class="{ 'weread-stats-caption-dark': isDark }">比{{ previousLabel }} {{ change.direction > 0 ? '↑ ' : change.direction < 0 ? '↓ ' : '' }}{{ change.text }}</text>
             </view>
           </view>
-          <text class="weread-stats-average" :class="{ 'weread-stats-caption-dark': isDark }">日均 {{ averageText }}</text>
         </view>
         <view class="weread-stats-chart" :style="{ height: chartHeight + 'px' }" :aria-label="chartLabel">
-          <view class="weread-stats-bars" :class="{ 'weread-stats-bars-dense': granularity === 'month' }" role="group" :aria-label="chartLabel">
+          <view class="weread-stats-bars" :class="{ 'weread-stats-bars-dense': displayGranularity === 'month' }" role="group" :aria-label="chartLabel">
             <button hover-class="none" v-for="(bucket, index) in buckets" :key="bucket.key" role="button" class="weread-stats-bar-hit" :aria-label="bucketAria(bucket)" @click.stop="selectBar(index)">
-              <view class="weread-stats-bar" :style="{ height: barHeights[index] + 'px', backgroundColor: bucket.seconds > 0 ? barColor : zeroColor }" />
+              <view v-if="bucket.seconds > 0" class="weread-stats-bar" :class="{ 'weread-stats-bar-week': displayGranularity === 'week' }" :style="{ height: barHeights[index] + 'px' }" />
             </button>
           </view>
           <view v-if="selectedBucket" class="weread-stats-tip" :class="{ 'weread-stats-tip-dark': isDark }"><text class="weread-stats-tip-text" :class="{ 'weread-stats-tip-text-dark': isDark }">{{ selectedText }}</text></view>
           <view v-if="state.data.totalSeconds === 0" class="weread-stats-empty"><text class="weread-stats-empty-text" :class="{ 'weread-stats-caption-dark': isDark }">{{ emptyText }}</text></view>
         </view>
-        <view class="weread-stats-labels" :class="{ 'weread-stats-labels-dense': granularity === 'month' }">
+        <view class="weread-stats-labels" :class="{ 'weread-stats-labels-dense': displayGranularity === 'month' }">
           <view v-for="(bucket, index) in buckets" :key="bucket.key" class="weread-stats-label-cell">
-            <text v-if="showLabel(index)" class="weread-stats-label" :class="{ 'weread-stats-caption-dark': isDark }">{{ bucket.label }}</text>
+            <text v-if="showLabel(index)" class="weread-stats-label" :class="{ 'weread-stats-caption-dark': isDark }">{{ wereadBucketLabel(bucket, displayGranularity) }}</text>
           </view>
         </view>
       </view>
@@ -232,16 +232,18 @@ defineExpose({ refresh, checkAccess })
 .weread-stats-summary { display: flex; flex-direction: column; gap: 0; }
 .weread-stats-summary-main { display: flex; flex-direction: row; align-items: baseline; justify-content: space-between; gap: $space-inline; }
 .weread-stats-total { @include type-style('metric-compact'); color: #27272a; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.weread-stats-summary-caption { display: flex; flex-direction: row; flex-wrap: wrap; align-items: baseline; column-gap: calc(2 * $space-inline); row-gap: 0; }
 .weread-stats-average { @include type-style('caption'); color: #71717a; }
-.weread-stats-change { flex-shrink: 0; }
+.weread-stats-change { flex-shrink: 0; white-space: nowrap; }
 .weread-stats-change-text { @include type-style('caption'); color: #71717a; }
 .weread-stats-text-dark { color: #ececf0; }
 .weread-stats-caption-dark { color: #a1a1aa; }
-.weread-stats-chart { position: relative; width: 100%; margin-top: $space-detail; }
+.weread-stats-chart { position: relative; width: 100%; margin-top: $space-detail; border-bottom: 1px solid rgba(128, 128, 128, 0.25); }
 .weread-stats-bars { display: flex; flex-direction: row; align-items: flex-end; gap: $space-detail; height: 100%; }
 .weread-stats-bars-dense { gap: 1px; }
 .weread-stats-bar-hit { display: flex; flex: 1; min-width: 0; height: 100%; align-items: flex-end; justify-content: center; padding: 0; margin: 0; border: 0; background-color: transparent; }
-.weread-stats-bar { width: 100%; max-width: 24px; border-radius: 3px 3px 0 0; }
+.weread-stats-bar { width: 100%; max-width: 24px; border-radius: 3px 3px 0 0; background-color: #34a6ff; }
+.weread-stats-bar-week { width: 80%; max-width: 36px; }
 .weread-stats-labels { display: flex; flex-direction: row; gap: $space-detail; }
 .weread-stats-labels-dense { gap: 1px; }
 .weread-stats-label-cell { display: flex; flex: 1; min-width: 0; align-items: center; justify-content: center; }

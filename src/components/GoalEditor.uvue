@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { request } from '../services/api.ts';
 import { refreshGoalRows } from '../services/goal-progress.ts';
+import { queryVariables, readVariableValues, variableKind, variableSources, writeVariableValues } from '../services/goal-query-variables.ts';
 import MobileSwitch from './MobileSwitch.uvue';
 import { computed, ref, watch } from 'vue';
 import AppIcon from './AppIcon.uvue';
@@ -19,6 +20,24 @@ const emit = defineEmits(['saved', 'deleted']);
 const form = ref<any>(null), saving = ref(false), formError = ref('');
 const detailsOpen = ref(false);
 const previewing = ref(false), previewText = ref('');
+const variableValues = ref<any>({});
+const variableDefinition = computed(() => {
+  try { return { fields: queryVariables(form.value?.progressQuery || ''), error: '' }; }
+  catch (error) { return { fields: [], error: error.message }; }
+});
+function resetVariables() {
+  try { variableValues.value = readVariableValues(form.value.progressQuery, form.value.progressVariables, form.value.progressVariableBindings); }
+  catch (error) { variableValues.value = {}; formError.value = error.message; }
+}
+function sourceLabel(variable) { return variableSources.find(source => source.value === variableValues.value[variable.name]?.source)?.label || ''; }
+function selectSource(variable, label) { variableValues.value[variable.name].source = variableSources.find(source => source.label === label)?.value || 'fixed'; }
+function queryForm() {
+  return { ...form.value, ...(form.value.progressMode === 'graphql' ? writeVariableValues(form.value.progressQuery, variableValues.value) : {}) };
+}
+watch(variableDefinition, ({ fields }) => {
+  for (const variable of fields) variableValues.value[variable.name] ??= { source: 'fixed', value: '' };
+});
+watch([form, variableValues], () => { previewText.value = ''; }, { deep: true });
 const detailSummary = computed(() => {
   if (!form.value) return '';
   return [form.value.description ? '描述' : '', form.value.content ? '行动计划' : '', form.value.tags ? '标签' : ''].filter(Boolean).join('、');
@@ -52,6 +71,7 @@ function open(item = null, pinned = false) {
         startDate: null,
         endDate: null,
       };
+  resetVariables();
 }
 function setType(label) {
   const type = goalTypes.indexOf(label) + 1;
@@ -70,7 +90,7 @@ function setTime(key, time) {
 async function save() {
   if (saving.value || previewing.value || !form.value) return;
   let payload;
-  try { payload = goalPayload(form.value); }
+  try { payload = goalPayload(queryForm()); }
   catch (error) { formError.value = error.message; return; }
   saving.value = true;
   formError.value = '';
@@ -87,10 +107,10 @@ async function previewQuery() {
   if (previewing.value) return;
   previewing.value = true; previewText.value = ''; formError.value = '';
   try {
-    const stamp = JSON.stringify(form.value);
-    const result = await scope.wait(request<any>('/goals/progress/preview', 'POST', goalPayload(form.value, true)));
-    if (!form.value || JSON.stringify(form.value) !== stamp) return;
-    previewText.value = '当前值 ' + result.currentValue + ' · ' + result.progressPercent + '% · ' + (result.achieved ? '已达标' : '未达标') + '\n' + JSON.stringify(result.variables);
+    const stamp = JSON.stringify([form.value, variableValues.value]);
+    const result = await scope.wait(request<any>('/goals/progress/preview', 'POST', goalPayload(queryForm(), true)));
+    if (!form.value || JSON.stringify([form.value, variableValues.value]) !== stamp) return;
+    previewText.value = '当前值 ' + result.currentValue + ' · ' + result.progressPercent + '% · ' + (result.achieved ? '已达标' : '未达标');
   } catch (error) { if (error.name !== 'PageInactiveError') formError.value = error.message; }
   finally { previewing.value = false; }
 }
@@ -120,8 +140,16 @@ defineExpose({ open });
         <FormField appearance="soft" label="达标条件" kind="selector" :model-value="form.targetOperator === 'gt' ? '超过目标值（＞）' : '达到目标值（≥）'" :options="['达到目标值（≥）', '超过目标值（＞）']" @update:model-value="form.targetOperator = $event === '超过目标值（＞）' ? 'gt' : 'gte'" />
         <view v-if="form.progressMode === 'graphql'">
           <FormField appearance="soft" label="GraphQL 查询" kind="textarea" textarea-size="regular" v-model="form.progressQuery" />
-          <FormField appearance="soft" label="固定变量 JSON" kind="textarea" v-model="form.progressVariables" />
-          <FormField appearance="soft" label="日期绑定 JSON" kind="textarea" placeholder='{"start":"goal.startDate","end":"goal.endDateExclusive"}' v-model="form.progressVariableBindings" />
+          <text v-if="variableDefinition.error" role="alert" class="record-error ui-type-body">{{ variableDefinition.error }}</text>
+          <view v-for="variable in variableDefinition.fields" :key="variable.name">
+            <template v-if="variableValues[variable.name]">
+              <FormField v-if="variable.type.replaceAll('!', '') === 'String'" appearance="soft" :label="variable.name + '来源'" kind="selector" :model-value="sourceLabel(variable)" :options="variableSources.map(source => source.label)" @update:model-value="selectSource(variable, $event)" />
+              <template v-if="variableValues[variable.name].source === 'fixed'">
+                <FormField v-if="variableKind(variable) === 'boolean'" appearance="soft" :required="variable.required" :label="variable.name" kind="selector" :model-value="variableValues[variable.name].value === 'true' ? '是' : variableValues[variable.name].value === 'false' ? '否' : ''" :options="['是', '否']" @update:model-value="variableValues[variable.name].value = $event === '是' ? 'true' : 'false'" />
+                <FormField v-else appearance="soft" :required="variable.required" :label="variable.name" :kind="variableKind(variable) === 'json' ? 'textarea' : 'text'" :input-type="variableKind(variable) === 'number' ? 'digit' : 'text'" v-model="variableValues[variable.name].value" />
+              </template>
+            </template>
+          </view>
           <FormField appearance="soft" label="结果路径" placeholder="progress.exerciseCount.max" v-model="form.progressValuePath" />
           <MobileButton label="执行预览" :loading="previewing" :disabled="saving" @click="previewQuery" />
           <text v-if="previewText" role="status" class="goal-query-result ui-type-body">{{ previewText }}</text>

@@ -71,11 +71,11 @@ export function wereadStatsChange(totalSeconds: number, previousTotalSeconds: nu
   return { direction: percent > 0 ? 1 : -1, text: (percent > 0 ? '+' : '') + percent + '%' }
 }
 
-// 柱高按周期最大值等比缩放；零值保留 2px 底座，避免日期序列出现断档。
+// 柱高按周期最大值等比缩放；零值不绘制柱体，日期位置与点击区域由组件保留。
 export function wereadBarHeights(buckets: Array<{ seconds: number }>, height: number) {
   const usable = Math.max(16, height)
   const max = Math.max(1, ...buckets.map(bucket => bucket.seconds))
-  return buckets.map(bucket => Math.max(bucket.seconds > 0 ? 3 : 2, Math.round(bucket.seconds / max * usable)))
+  return buckets.map(bucket => bucket.seconds > 0 ? Math.max(3, Math.round(bucket.seconds / max * usable)) : 0)
 }
 
 export function wereadBucketDate(bucket: { key: string }, granularity: WereadStatsGranularity) {
@@ -85,4 +85,10 @@ export function wereadBucketDate(bucket: { key: string }, granularity: WereadSta
   }
   const [, month, day] = bucket.key.split('-')
   return Number(month) + '月' + Number(day) + '日'
+}
+
+export function wereadBucketLabel(bucket: { label: string }, granularity: WereadStatsGranularity) {
+  if (granularity === 'week') return bucket.label.replace(/^周/, '')
+  if (granularity === 'year') return bucket.label.replace(/月$/, '')
+  return bucket.label
 }

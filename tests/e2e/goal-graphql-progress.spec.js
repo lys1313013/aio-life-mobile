@@ -24,7 +24,7 @@ async function setup(page, apiMock) {
     'POST /api/goals/progress/preview': req => {
       state.previewCalls.push(req.postDataJSON());
       if (state.previewFail) return { json: { code: 1, message: '模拟预览失败' } };
-      return reply({ currentValue: 25, achieved: false, progressPercent: 31, variables: { start: '2026-01-01', end: '2027-01-01', category: '1' } });
+      return reply({ currentValue: 25, achieved: false, progressPercent: 31, variables: { start: '2026-01-01', end: '2027-01-01', categoryName: '休息' } });
     },
     'PUT /api/goals': req => {
       const body = req.postDataJSON(); state.writes.push(body);
@@ -54,18 +54,24 @@ for (const width of [390, 768, 1440]) for (const theme of ['light', 'dark']) {
     await expect(dialog.getByRole('textbox', { name: 'GraphQL 查询', exact: true })).toHaveValue(rows[1].progressQuery);
     await expect(dialog.getByRole('textbox', { name: '结果路径', exact: true })).toHaveValue('progress.date.countDistinct');
     await expect(dialog.getByRole('textbox', { name: '当前值', exact: true })).toHaveCount(0);
-    await dialog.getByRole('textbox', { name: '固定变量 JSON', exact: true }).fill('{bad');
+    await expect(dialog.getByRole('textbox', { name: '固定变量 JSON', exact: true })).toHaveCount(0);
+    await expect(dialog.getByRole('textbox', { name: '日期绑定 JSON', exact: true })).toHaveCount(0);
+    await expect(dialog.getByLabel('start来源', { exact: true }).locator('.form-field-picker-value')).toHaveText('目标开始日期');
+    await expect(dialog.getByLabel('end来源', { exact: true }).locator('.form-field-picker-value')).toHaveText('目标结束日期（包含当天）');
+    const categoryName = dialog.getByRole('textbox', { name: 'categoryName', exact: true });
+    await expect(categoryName).toHaveValue('休息');
+    await categoryName.fill('');
     await dialog.getByRole('button', { name: '执行预览', exact: true }).click();
-    await expect(dialog.getByRole('alert')).toContainText('变量 JSON 格式错误');
+    await expect(dialog.getByRole('alert')).toContainText('请填写categoryName');
     expect(state.previewCalls).toHaveLength(0);
-    await dialog.getByRole('textbox', { name: '固定变量 JSON', exact: true }).fill(rows[1].progressVariables);
+    await categoryName.fill('休息');
     state.previewFail = true;
     await dialog.getByRole('button', { name: '执行预览', exact: true }).click();
     await expect(dialog.getByRole('alert')).toContainText('模拟预览失败');
     state.previewFail = false;
     await dialog.getByRole('button', { name: '执行预览', exact: true }).click();
     await expect(dialog.getByRole('status')).toContainText('当前值 25');
-    await expect(dialog.getByRole('status')).toContainText('2027-01-01');
+    expect(JSON.parse(state.previewCalls.at(-1).progressVariableBindings)).toEqual({ start: 'goal.startDate', end: 'goal.endDateExclusive' });
     await page.screenshot({ path: info.outputPath('query-editor.png'), fullPage: true });
     await expect(dialog.getByRole('button', { name: '保存', exact: true })).toBeInViewport();
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
@@ -73,7 +79,7 @@ for (const width of [390, 768, 1440]) for (const theme of ['light', 'dark']) {
     await expect(dialog).toHaveCount(0);
     expect(state.writes[0]).toMatchObject({ id: rows[1].id, progressMode: 'graphql', progressQuery: rows[1].progressQuery, progressValuePath: 'progress.date.countDistinct', targetOperator: 'gt' });
     expect(state.writes[0].currentValue).toBeUndefined();
-    expect(JSON.parse(state.writes[0].progressVariables).category).toBe('1');
+    expect(JSON.parse(state.writes[0].progressVariables)).toEqual({ categoryName: '休息' });
     await expect(cards.nth(1)).toContainText('31%');
   });
 }
@@ -110,4 +116,21 @@ test('查询预览不要求先填写目标标题', async ({ page, apiMock }) => 
   await expect(dialog.getByRole('status')).toContainText('当前值 25');
   expect(state.previewCalls).toHaveLength(1);
   expect(state.writes).toHaveLength(0);
+});
+
+test('运动和收入类型直接输入名称，预览与保存原样提交名称变量', async ({ page, apiMock }) => {
+  const { state, rows } = await setup(page, apiMock);
+  for (const [index, variable, name] of [[0, 'exerciseTypeName', '俯卧撑'], [2, 'incomeTypeName', '工资']]) {
+    await page.getByRole('button', { name: '编辑目标：' + rows[index].title, exact: true }).click();
+    const dialog = page.getByRole('dialog', { name: '编辑目标', exact: true });
+    await expect(dialog.getByRole('textbox', { name: variable, exact: true })).toHaveValue(name);
+    await dialog.getByRole('textbox', { name: variable, exact: true }).fill(name);
+    await dialog.getByRole('button', { name: '执行预览', exact: true }).click();
+    await expect(dialog.getByRole('status')).toContainText('当前值 25');
+    expect(JSON.parse(state.previewCalls.at(-1).progressVariables)).toEqual({ [variable]: name });
+    expect(state.previewCalls.at(-1).progressQuery).not.toMatch(/(?:exercise|income)TypeId/);
+    await dialog.getByRole('button', { name: '保存', exact: true }).click();
+    await expect(dialog).toHaveCount(0);
+    expect(JSON.parse(state.writes.at(-1).progressVariables)).toEqual({ [variable]: name });
+  }
 });

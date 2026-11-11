@@ -43,6 +43,11 @@ function monthFixture() {
   });
 }
 
+function yearFixture() {
+  const buckets = Array.from({ length: 12 }, (_, index) => ({ key: '2026-' + String(index + 1).padStart(2, '0'), label: (index + 1) + '月', seconds: index < 3 ? 3600 : 0 }));
+  return weekFixture({ granularity: 'year', buckets, totalSeconds: 10800, dailyAverageSeconds: 60 });
+}
+
 function handlers(state) {
   const data = {
     '/api/home/cards': [{ cardKey: 'section.weread-stats', title: '阅读统计', icon: 'lucide:book-open', iconColor: '#3FB27F', group: 'section', isEnabled: 1, sortOrder: 0 }],
@@ -63,7 +68,9 @@ function handlers(state) {
       if (state.delay) await new Promise(resolve => setTimeout(resolve, state.delay));
       if (state.fail) return { json: { code: 1, message: '模拟阅读统计失败' } };
       const granularity = new URL(request.url()).searchParams.get('granularity');
-      return { json: { code: 0, message: null, data: granularity === 'month' ? monthFixture() : weekFixture({ connected: state.connected }) } };
+      const result = granularity === 'year' ? yearFixture() : granularity === 'month' ? monthFixture() : weekFixture({ connected: state.connected });
+      if (state.empty) { result.buckets = result.buckets.map(bucket => ({ ...bucket, seconds: 0 })); result.totalSeconds = 0; result.dailyAverageSeconds = 0; }
+      return { json: { code: 0, message: null, data: result } };
     },
   };
 }
@@ -95,8 +102,14 @@ for (const width of [390, 820, 1440]) {
       await expect(target).toContainText('本周');
       await expect(target).toContainText('2 小时 30 分');
       await expect(target).toContainText('日均 30 分钟');
+      await expect(target).toContainText('比上周');
       await expect(target).toContainText('+25%');
+      await expect(target.locator('.weread-stats-label')).toHaveText(['一', '二', '三', '四', '五', '六', '日']);
+      await expect(target.locator('.weread-stats-bar-hit').nth(2).locator('.weread-stats-bar')).toHaveCount(0);
+      await target.locator('.weread-stats-bar-hit').nth(2).click();
+      await expect(target).toContainText('未阅读');
       await expect(target.locator('.weread-stats-bar-hit')).toHaveCount(7);
+      await page.screenshot({ path: info.outputPath('stats-week.png'), fullPage: true });
       const loadedBox = await cardBody.boundingBox();
       expect(Math.abs(loadingBox.height - loadedBox.height)).toBeLessThanOrEqual(6);
       expect(loadedBox.height).toBeLessThanOrEqual(width >= 1024 ? 280 : width >= 640 ? 250 : 240);
@@ -111,7 +124,20 @@ for (const width of [390, 820, 1440]) {
       await expect(target).toContainText('本月');
       await expect(target.locator('.weread-stats-bar-hit')).toHaveCount(30);
       expect(fixture.calls().some(call => call.includes('granularity=month'))).toBe(true);
+      await expect(target).toContainText('比上月');
       await page.screenshot({ path: info.outputPath('stats-month.png'), fullPage: true });
+      await target.getByRole('button', { name: '按年统计' }).click();
+      await expect(target).toContainText('比上年');
+      await expect(target.locator('.weread-stats-label')).toHaveText(Array.from({ length: 12 }, (_, i) => String(i + 1)));
+      await expect(target.locator('.weread-stats-bar')).toHaveCount(3);
+      await page.screenshot({ path: info.outputPath('stats-year.png'), fullPage: true });
+      fixture.state.empty = true;
+      await target.getByRole('button', { name: '按周统计' }).click();
+      await expect(target).toContainText('本周还没有阅读记录');
+      await expect(target.locator('.weread-stats-bar')).toHaveCount(0);
+      await expect(target.locator('.weread-stats-bar-hit')).toHaveCount(7);
+      await page.screenshot({ path: info.outputPath('stats-empty.png'), fullPage: true });
+      expect(Math.abs((await cardBody.boundingBox()).height - loadedBox.height)).toBeLessThanOrEqual(6);
 
       const folder = path.resolve('artifacts/home-weread-stats');
       fs.mkdirSync(folder, { recursive: true });

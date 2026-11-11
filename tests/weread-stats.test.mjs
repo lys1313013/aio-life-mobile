@@ -16,6 +16,7 @@ const {
   saveWereadStatsGranularity,
   wereadBarHeights,
   wereadBucketDate,
+  wereadBucketLabel,
   wereadStatsChange,
 } = await import('data:text/javascript;base64,' + Buffer.from(bundle.outputFiles[0].text).toString('base64'))
 
@@ -81,17 +82,23 @@ test('时长格式化与同期变化覆盖零值、增长和下降', () => {
   assert.deepEqual(wereadStatsChange(3000, 3000), { direction: 0, text: '持平' })
 })
 
-test('柱高按最大值等比缩放，零值保留底座且不超过图表高度', () => {
+test('柱高按最大值等比缩放，零值不绘制柱体', () => {
   const heights = wereadBarHeights([{ seconds: 3600 }, { seconds: 1800 }, { seconds: 0 }], 100)
   assert.equal(heights[0], 100)
   assert.equal(heights[1], 50)
-  assert.equal(heights[2], 2)
+  assert.equal(heights[2], 0)
   assert.deepEqual(wereadBarHeights([], 100), [])
-  assert.ok(wereadBarHeights([{ seconds: 0 }], 4)[0] >= 2)
+  assert.deepEqual(wereadBarHeights([{ seconds: 0 }, { seconds: 0 }], 4), [0, 0])
 })
 
 test('年视图按月、周与月视图按日生成提示日期', () => {
   assert.equal(wereadBucketDate({ key: '2026-11-02' }, 'week'), '11月2日')
   assert.equal(wereadBucketDate({ key: '2026-11-02' }, 'month'), '11月2日')
   assert.equal(wereadBucketDate({ key: '2026-03' }, 'year'), '2026年3月')
+})
+
+test('横轴简写周和月份，提示日期保留完整单位', () => {
+  assert.deepEqual(['周一', '周二', '周三', '周四', '周五', '周六', '周日'].map(label => wereadBucketLabel({ label }, 'week')), ['一', '二', '三', '四', '五', '六', '日'])
+  assert.deepEqual(Array.from({ length: 12 }, (_, i) => wereadBucketLabel({ label: (i + 1) + '月' }, 'year')), Array.from({ length: 12 }, (_, i) => String(i + 1)))
+  assert.equal(wereadBucketLabel({ label: '29' }, 'month'), '29')
 })
