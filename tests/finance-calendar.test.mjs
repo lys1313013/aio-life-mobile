@@ -35,7 +35,7 @@ test('明细请求使用半开区间，收入日期与支出日期时间契约�
   const bucket = { startDate: '2026-08-31', endDate: '2026-09-01' }
   assert.deepEqual(detailQuery('income', bucket, 2), { page: 2, pageSize: 20, startTime: '2026-08-31', endTimeBefore: '2026-09-01' })
   assert.equal(detailQuery('expense', bucket).endTimeBefore, '2026-09-01 00:00:00')
-  assert.deepEqual(detailQuery('income', { startDate: null, endDate: null }), { page: 1, pageSize: 20, undated: true })
+  assert.throws(() => detailQuery('income', { startDate: null, endDate: null }), /财务日历范围缺少日期/)
 })
 test('共用摘要控制器隔离日历范围慢响应并在失败时保留旧范围', async () => {
   const state = summaryState(); let scope = calendarScope('income', 'week', '2026-08'), delayed = gate(), fail = false
