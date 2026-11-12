@@ -26,13 +26,6 @@ const schemas = {
     { key: 'mapStyleId', label: '样式编号', value: 'style1', advanced: true },
     { key: 'timeoutMs', label: '搜索解析超时（毫秒）', value: 5000, min: 1000, max: 15000, advanced: true },
   ],
-  'typesafe.recommendation': [
-    { key: 'enabled', label: '启用智能推荐', value: true, toggle: true },
-    { key: 'apiKey', label: 'API Key', secret: true },
-    { key: 'model', label: '模型', value: 'jev-latest' },
-    { key: 'requestTimeoutMs', label: '请求超时（毫秒）', value: 1500, min: 1, max: 60000, advanced: true },
-    { key: 'dataCacheTtlMs', label: '数据缓存时长（毫秒，0 为关闭）', value: 18000000, min: 0, max: 604800000, advanced: true },
-  ],
   'mbti.api': [
     { key: 'apiKey', label: 'API Key', secret: true },
     { key: 'baseUrl', label: '接口地址', value: 'https://api.devil.ai' },
@@ -70,7 +63,6 @@ async function submit() {
     } else payload[field.key] = value;
     if (field.secret) payload[clearKey(field)] = form[clearKey(field)];
   }
-  if ('model' in payload && !/^[\w./:-]{1,128}$/.test(payload.model)) { error.value = '请输入有效模型名称'; return; }
   if ('baseUrl' in payload && !/^https:\/\/[^\s/]+(?:\/[^\s]*)?$/.test(payload.baseUrl)) { error.value = '请输入有效的 HTTPS 接口地址'; return; }
   const token = session.token, current = revision;
   saving.value = true; error.value = '';

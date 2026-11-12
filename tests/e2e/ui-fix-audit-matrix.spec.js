@@ -261,7 +261,7 @@ for (const width of [390, 768, 1440]) for (const theme of ['light', 'dark']) {
       await page.getByRole('button', { name: /更多操作$/ }).first().click();
       await audit.shot('row-menu'); await safeEditors(page, audit);
     }
-    if (kind === 'config') audit.gaps.push('qa-platform populated fixture 仅包含普通 JSON 配置；百度/腾讯/Typesafe/MBTI 结构化配置未提供专属 fixture，不把它们计作已验收');
+    if (kind === 'config') audit.gaps.push('qa-platform populated fixture 仅包含普通 JSON 配置；百度/腾讯/MBTI 结构化配置未提供专属 fixture，不把它们计作已验收');
     if (kind === 'feedback') {
       await page.getByRole('button', { name: '详情', exact: true }).first().click();
       await audit.panel('feedback-detail'); await dismissAll(page);
