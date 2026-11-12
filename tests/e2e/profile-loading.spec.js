@@ -1,3 +1,4 @@
+const { waitForMotion } = require('./support/motion');
 const { test, expect } = require('./support/test');
 const themes = require('../../src/theme.json');
 const ok = data => ({ json: { code: 0, data } });
@@ -69,6 +70,7 @@ for (const width of [390, 768, 1440]) for (const theme of ['light', 'dark']) {
       await expect(empty).toContainText('还没有绑定账号');
       const oldHeight = (await empty.boundingBox()).height;
       pending = gate(); delayed = true; fail = true;
+      await waitForMotion(page);
       const touch = await page.context().newCDPSession(page);
       try {
         await touch.send('Emulation.setTouchEmulationEnabled', { enabled: true });

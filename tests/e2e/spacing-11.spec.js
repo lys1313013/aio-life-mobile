@@ -1,3 +1,4 @@
+const { waitForMotion } = require('./support/motion');
 const { dismissModal } = require('./modal');
 const {test,expect}=require('./support/test');
 const fs=require('node:fs'); const {setup,admin}=require('./qa-platform-fixtures');
@@ -5,13 +6,19 @@ const out='artifacts/spacing-audit/11';fs.mkdirSync(out,{recursive:true});
 async function click(p,n){
  if ((n === 'API Key' || settingsProfileEntries.includes(n)) && p.url().includes('/pages/profile/index')) return openProfileEntry(p, n);
  if (p.url().includes('/pages/mcp/api-keys') && n === '新增') n = '创建 API Key';
- if (['dict-data','dict-types'].some(kind => p.url().includes('kind=' + kind)) && ['编辑','删除'].includes(n) && await p.getByRole('dialog').count() === 0) {
+ if (['dict-data','dict-types'].some(kind => (p.url().includes('kind=' + kind) || p.url().includes('/pages/admin/' + kind))) && ['编辑','删除'].includes(n) && await p.getByRole('dialog').count() === 0) {
   await p.getByRole('button',{name:/更多操作$/}).first().click();
  }
  if (p.url().includes('/pages/profile/index') && ['修改密码','菜单锁'].includes(n)) {
   await p.getByRole('button',{name:'账号与安全',exact:true}).click();
  }
+ const directory = p.url().includes('/pages/admin/directory');
+ const previous = p.url();
  await p.getByRole('button',{name:n,exact:true}).last().click();
+ if (directory && admin.some(([, , title]) => title === n)) {
+  await expect(p).not.toHaveURL(previous);
+  await waitForMotion(p);
+ }
 }
 const { createProfileNavigation, settingsProfileEntries } = require('./profile-navigation');
 const { openProfileEntry, back } = createProfileNavigation(click);
@@ -21,6 +28,6 @@ async function dialog(p,n,action){await click(p,action);const d=p.getByRole('dia
 test('11 手机平台全部物理页与模式',async({page:p})=>{test.setTimeout(180000);await p.setViewportSize({width:390,height:900});await setup(p,true);await p.route('**/api/menu/preferences?client=mobile',r=>r.fulfill({json:{code:0,data:{menus:[{id:'category',title:'个人分类',children:[]},{id:'categoryadmin',title:'管理分类',children:[]},{id:'dashboard',title:'时间看板',children:[]}],hiddenMenuIds:[]}}}));await p.locator('uni-tabbar').getByText('我',{exact:true}).click();await shot(p,'390-light-profile');let i=0;
 for(const [entry,key,action] of [['基本设置','settings',null],['账号绑定','bindings','新增绑定'],['修改密码','password',null],['菜单显示','menu',null],['菜单锁','security','修改二级密码'],['API Key','keys','新增'],['消息通知','notifications','配置飞书'],['系统设置','system',null],['MBTI 测试','mbti','历史详情'],['CBTI 测试','cbti','QA · 模拟人格'],['关于','about',null]]){const theme=i++%2?'dark':'light';await p.emulateMedia({colorScheme:theme});await openProfileEntry(p,entry);await shot(p,`390-${theme}-${key}`);if(action)await dialog(p,`390-${theme}-${key}-modal`,action);if(key==='mbti'){await click(p,'开始测试');await expect(p).toHaveURL(/personality\/external/);await shot(p,'390-light-external');await back(p);}await back(p);}
 await openProfileEntry(p,'管理与配置');await shot(p,'390-light-admin-directory');for(const [kind,path,title] of admin){await p.emulateMedia({colorScheme:i++%2?'dark':'light'});await click(p,title);await shot(p,`390-admin-${kind}`);if(['users','menus','user-dict','dict-types','dict-data'].includes(kind)){await dialog(p,`390-admin-${kind}-new`,'新增');await dialog(p,`390-admin-${kind}-edit`,kind==='menus'?'编辑模拟菜单':kind==='user-dict'?'编辑模拟字典值，排序 0，启用':'编辑');}await back(p);}await click(p,'管理分类');await shot(p,'390-dark-categories-admin');await dialog(p,'390-dark-categories-admin-modal','编辑分类');await back(p);await back(p);
-await p.locator('uni-tabbar').getByText('全部',{exact:true}).click();await click(p,'个人分类');await shot(p,'390-light-categories-personal');await dialog(p,'390-light-categories-modal','编辑分类');await back(p);await p.locator('uni-tabbar').getByText('我',{exact:true}).click();await click(p,'退出登录');await click(p,'退出');await shot(p,'390-dark-login');for(const entry of ['注册账号','忘记密码']){await click(p,entry);await shot(p,entry==='注册账号'?'390-light-auth-register':'390-dark-auth-reset');await back(p);}
+await p.locator('uni-tabbar').getByText('我',{exact:true}).click();await click(p,'分类管理');await click(p,'时迹分类');await shot(p,'390-light-categories-personal');await dialog(p,'390-light-categories-modal','编辑分类');await back(p);await p.locator('uni-tabbar').getByText('我',{exact:true}).click();await click(p,'退出登录');await click(p,'退出');await shot(p,'390-dark-login');for(const entry of ['注册账号','忘记密码']){await click(p,entry);await shot(p,entry==='注册账号'?'390-light-auth-register':'390-dark-auth-reset');await back(p);}
 });
 for(const width of [768,1440])test(`11 平板桌面 ${width}`,async({page:p})=>{test.setTimeout(90000);await p.setViewportSize({width,height:900});await setup(p,true);await p.route('**/api/menu/preferences?client=mobile',r=>r.fulfill({json:{code:0,data:{menus:[{id:'category',title:'个人分类',children:[]},{id:'categoryadmin',title:'管理分类',children:[]},{id:'dashboard',title:'时间看板',children:[]}],hiddenMenuIds:[]}}}));await p.locator('uni-tabbar').getByText('我',{exact:true}).click();await shot(p,`${width}-light-profile`);await click(p,'API Key');await shot(p,`${width}-light-preferences`);await dialog(p,`${width}-light-key-modal`,'新增');await back(p);await p.emulateMedia({colorScheme:'dark'});await openProfileEntry(p,'管理与配置');await click(p,'用户中心');await shot(p,`${width}-dark-admin`);await dialog(p,`${width}-dark-admin-modal`,'编辑');});

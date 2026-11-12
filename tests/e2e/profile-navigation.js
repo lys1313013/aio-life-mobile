@@ -1,3 +1,4 @@
+const { waitForMotion } = require('./support/motion');
 const { expect } = require('@playwright/test');
 
 // 隐藏菜单保留页面功能，页面审计直接访问这些路由。
@@ -13,11 +14,13 @@ const settingsProfileEntries = ['反馈', '关于', '数据导出', '退出登�
 
 function createProfileNavigation(click) {
   async function openProfileEntry(page, name) {
+    await waitForMotion(page);
     const url = retainedProfilePages[name];
     if (url) await page.goto('/#' + url);
     else {
       if (settingsProfileEntries.includes(name) && page.url().includes('/pages/profile/index')) await click(page, '设置');
       await click(page, name === '基本设置' ? '编辑资料' : name);
+      await waitForMotion(page);
     }
   }
 
@@ -30,8 +33,12 @@ function createProfileNavigation(click) {
     const previous = page.url();
     await page.getByRole('button', { name: '返回', exact: true }).first().click();
     await expect(page).not.toHaveURL(previous);
-    if (page.url().includes('/pages/profile/account-security') || page.url().includes('/pages/profile/preferences?section=general')) {
+    await waitForMotion(page);
+    if (page.url().includes('/pages/categories/directory') || page.url().includes('/pages/profile/account-security') || page.url().includes('/pages/profile/preferences?section=general')) {
+      const intermediate = page.url();
       await page.getByRole('button', { name: '返回', exact: true }).first().click();
+      await expect(page).not.toHaveURL(intermediate);
+      await waitForMotion(page);
     }
   }
 

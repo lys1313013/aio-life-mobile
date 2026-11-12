@@ -1,3 +1,4 @@
+const { waitForMotion } = require('./support/motion');
 const { test, expect } = require('./support/test');
 const { pullDown } = require('./gestures');
 test.use({ hasTouch: true, viewport: { width: 390, height: 900 } });
@@ -49,7 +50,7 @@ async function setup(page, count = 8, delay = 0) {
   await page.goto('/#/pages/admin/index?kind=user-dict');
   return state;
 }
-async function ready(page, count = 8) { await expect(page.locator('.user-dict-row')).toHaveCount(count); }
+async function ready(page, count = 8) { await expect(page.locator('.user-dict-row')).toHaveCount(count); await waitForMotion(page); }
 async function swipe(page, index, dx, dy = 0) {
   const row = page.locator('.user-dict-front').nth(index); await row.scrollIntoViewIfNeeded();
   const b = await row.boundingBox(), x = b.x + b.width * (dx < 0 ? .8 : .2), y = b.y + b.height / 2;

@@ -1,3 +1,4 @@
+const { waitForMotion } = require('./support/motion');
 const fs = require('node:fs');
 const path = require('node:path');
 const { test, expect } = require('./support/test');
@@ -64,6 +65,7 @@ async function touchSwipe(page, target, dx, dy = 0, cancel = false) {
     const pager = await page.locator('.category-pager').boundingBox();
     return Math.abs(active.x - pager.x);
   }).toBeLessThan(1);
+  await waitForMotion(page);
   await target.scrollIntoViewIfNeeded();
   const box = await target.boundingBox();
   const viewport = page.viewportSize();

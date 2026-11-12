@@ -160,7 +160,7 @@ for (const width of [390, 768, 1440]) for (const theme of ['light', 'dark']) {
     await page.screenshot({ path: info.outputPath('thought-edit.png') });
     await thought.getByRole('button', { name: '保存', exact: true }).click();
     await expect(thought).toHaveCount(0);
-    await expect(page.getByText('已编辑的模拟闪念', { exact: true })).toBeVisible();
+    await expect(page.locator('.thought-row').getByText('已编辑的模拟闪念', { exact: true })).toBeVisible();
     expect(state.writes[0]).toEqual({ path: '/api/thought/1', body: {
       content: '已编辑的模拟闪念', isPinned: 1, hiddenContent: false,
       events: [{ id: '9223372036854775807', content: '原有关联事件' }],

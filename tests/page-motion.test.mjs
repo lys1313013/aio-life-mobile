@@ -1,9 +1,25 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { readFile } from 'node:fs/promises'
+import { readFile, readdir } from 'node:fs/promises'
+import { parse } from '@vue/compiler-sfc'
+import { baseParse } from '@vue/compiler-dom'
 import { transform } from 'esbuild'
 
 const tabSource = await readFile('src/services/tab-bar.generated.json', 'utf8')
+
+test('弹窗过渡边界只包含一个业务组件，不能遗漏或吞掉相邻弹窗', async () => {
+  for (const file of (await readdir('src', { recursive: true })).filter(file => file.endsWith('.uvue'))) {
+    const { descriptor } = parse(await readFile('src/' + file, 'utf8'))
+    if (!descriptor.template) continue
+    function visit(node) {
+      if (node.type === 1 && node.tag === 'ModalMotion') {
+        assert.equal(node.children.filter(child => child.type === 1).length, 1, file + ':' + node.loc.start.line)
+      }
+      node.children?.forEach(visit)
+    }
+    visit(baseParse(descriptor.template.content))
+  }
+})
 const source = (await readFile('src/services/page-motion.ts', 'utf8'))
   .split('// #ifdef WEB\nlet installed')[0].replace(/^import .*\n/gm, '').replace(/export /g, '')
 const { code } = await transform(source, { loader: 'ts' })

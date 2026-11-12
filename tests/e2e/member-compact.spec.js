@@ -1,3 +1,4 @@
+const { waitForMotion } = require('./support/motion');
 const { test, expect } = require('./support/test');
 const { setup, id } = require('./qa-records-fixtures');
 
@@ -24,6 +25,7 @@ for (const width of [320, 390, 768, 1440]) {
         const panel = el.closest('.modal-panel');
         return Math.abs(panel.getBoundingClientRect().height - el.getBoundingClientRect().height);
       })).toBeLessThan(2);
+      await waitForMotion(page);
       const geometry = await dialog.evaluate(el => ({
         box: el.getBoundingClientRect().toJSON(),
         overflow: el.scrollWidth > el.clientWidth,

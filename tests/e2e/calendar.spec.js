@@ -1,3 +1,4 @@
+const { waitForMotion } = require('./support/motion');
 const { dismissModal } = require('./modal');
 const { test, expect } = require('./support/test');
 const { setup } = require('./qa-domains-fixtures');
@@ -19,6 +20,7 @@ for (const width of [390, 768, 1440]) for (const theme of ['light', 'dark']) {
     const calendar = page.getByRole('dialog', { name: '运动日期日历', exact: true });
     await expect(calendar.locator('.calendar-day')).toHaveCount(42);
     await expect(calendar.getByRole('button', { name: '2026-10-25', exact: true })).toHaveAttribute('aria-pressed', 'true');
+    await waitForMotion(page);
     const target = await calendar.getByRole('button', { name: '2026-10-26', exact: true }).boundingBox();
     expect(target.width).toBeGreaterThanOrEqual(44);
     expect(target.height).toBeGreaterThanOrEqual(44);

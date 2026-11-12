@@ -158,5 +158,8 @@ test('阅读统计失败可局部重试且未连接时隐藏', async ({ page, ap
   const hidden = await setup(page, apiMock, { fail: false });
   hidden.setConnected(false);
   await page.reload();
-  await expect(card(page)).toHaveCount(0);
+  await expect.poll(() => hidden.calls().length).toBeGreaterThan(0);
+  // 排序容器保留控制器以便连接状态恢复；断开时不占布局，也不渲染卡片。
+  await expect(card(page)).toBeHidden();
+  await expect(card(page).locator('.weread-stats-card')).toHaveCount(0);
 });

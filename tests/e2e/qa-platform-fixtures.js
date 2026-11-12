@@ -8,7 +8,7 @@ await page.route('**/*',async route=>{const req=route.request(),u=new URL(req.ur
 if(p==='/api/auth/login')data={accessToken:'platform-fixture'};
 if(p==='/api/auth/legal')data=legalFixture;
 if(p==='/api/user/info')data={id:'9223372036854775807',username:'fixture',nickname:'页面检查用户',email:'fixture@example.test',roles:['admin']};
-if(p==='/api/menu/all')data=[...admin.map(([id,path,title])=>({id,path,name:id,meta:{title}})),{id:'categoryadmin',path:'/time/category-admin',name:'categoryadmin',meta:{title:'管理分类'}}];
+if(p==='/api/menu/all')data=[...admin.map(([id,path,title])=>({id,path,name:id,meta:{title}})),{id:'categoryadmin',path:'/time/category-admin',name:'categoryadmin',meta:{title:'管理分类'}},{id:'category',path:'/time/my-categories',name:'category',meta:{title:'时迹分类'}},{id:'common-category',path:'/my-hub/exercise/category-config',name:'common-category',meta:{title:'通用分类'}}];
 if(p==='/api/quick-nav/candidates')data=[['category','/time/my-categories','个人分类'],['categoryadmin','/time/category-admin','管理分类'],['dashboard','/time/dashboard','时间看板']].map(([menuId,path,title])=>({menuId,path,title}));
 if(p==='/api/quick-nav/my')data=[];
 if(p==='/api/timeRecord/recommendNext')data={recommend:{categoryId:'1',startMinute:600,endMinute:629},records:[]};

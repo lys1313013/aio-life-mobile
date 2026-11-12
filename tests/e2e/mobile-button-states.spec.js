@@ -1,3 +1,4 @@
+const { waitForMotion } = require('./support/motion');
 const { test, expect } = require('./support/test');
 const { setup, id } = require('./qa-records-fixtures.js');
 
@@ -9,8 +10,10 @@ for (const width of [390, 480, 768, 1440]) for (const theme of ['light', 'dark']
     await page.addInitScript(value => localStorage.setItem('aio-life-mobile.theme.v1', value), theme);
     const state = await setup(page, baseURL);
     await page.goto('/#/pages/records/notes?kind=think');
-    await page.getByRole('button', { name: '编辑闪念', exact: true }).click();
+    await page.getByRole('button', { name: '编辑闪念', exact: true }).filter({ hasText: state.thoughts[0].content }).click();
     const dialog = page.getByRole('dialog', { name: '编辑闪念', exact: true });
+    await expect(dialog).toBeVisible();
+    await waitForMotion(page);
     const add = dialog.getByRole('button', { name: '新增关联事件' });
     const idle = await add.evaluate(node => {
       const style = getComputedStyle(node);

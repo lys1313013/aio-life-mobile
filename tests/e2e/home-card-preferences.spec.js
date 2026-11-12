@@ -1,3 +1,4 @@
+const { waitForMotion } = require('./support/motion');
 const { test, expect } = require('./support/test');
 const { homeCardFixture } = require('./home-card-fixture');
 const fs = require('node:fs/promises');
@@ -30,11 +31,13 @@ async function setup(page) {
   await page.route('**/api/home/cards/*', respond);
   await page.goto('/#/pages/home-settings/index');
   await expect(page.locator('.preference-row')).toHaveCount(16);
+  await waitForMotion(page);
   return state;
 }
 async function touchDrag(page, from, to) {
   await from.scrollIntoViewIfNeeded();
   const a = await from.boundingBox(), b = await to.boundingBox();
+  await waitForMotion(page);
   const cdp = await page.context().newCDPSession(page);
   await cdp.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints:1 });
   await cdp.send('Input.dispatchTouchEvent', {type:'touchStart',touchPoints:[{x:a.x+a.width/2,y:a.y+a.height/2}]});

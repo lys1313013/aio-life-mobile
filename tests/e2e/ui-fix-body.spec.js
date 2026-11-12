@@ -1,3 +1,4 @@
+const { waitForMotion } = require('./support/motion');
 const { test, expect } = require('./support/test');
 const { dashboardFixture } = require('./fixtures.js');
 
@@ -41,6 +42,7 @@ for (const width of [390, 768, 1440]) for (const theme of ['light', 'dark']) {
     await expect(save).toBeInViewport();
     await expect(cancel).toBeInViewport();
     await expect(dialog.getByRole('button', { name: '填写说明', exact: true })).toBeInViewport();
+    await waitForMotion(page);
     const before = await save.boundingBox();
     await page.screenshot({ path: testInfo.outputPath('body-editor-top.png') });
     await dialog.locator('[aria-label="鞋码"] input').scrollIntoViewIfNeeded();

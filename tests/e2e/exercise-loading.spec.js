@@ -1,3 +1,4 @@
+const { waitForMotion } = require('./support/motion');
 const { selectCalendarDate } = require('./calendar');
 const { test, expect } = require('./support/test');
 const { setup } = require('./qa-domains-fixtures');
@@ -6,6 +7,7 @@ const { pullDown } = require('./gestures');
 test.use({ hasTouch: true });
 
 async function swipeRecord(page, row, dx, dy = 0) {
+  await waitForMotion(page);
   await row.scrollIntoViewIfNeeded();
   const box = await row.boundingBox();
   const x = box.x + box.width * 0.65, y = box.y + Math.min(box.height / 2, 30);

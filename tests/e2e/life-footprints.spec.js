@@ -1,3 +1,4 @@
+const { waitForMotion } = require('./support/motion');
 const { selectCalendarDate } = require('./calendar');
 const { test, expect } = require('./support/test');
 const { dashboardFixture } = require('./fixtures.js');
@@ -248,6 +249,7 @@ test.describe('地图触屏与刷新保持视角', () => {
   test.use({ hasTouch: true });
   async function pull(page, locator, offsetY = 90) {
     const box = await locator.boundingBox();
+    await waitForMotion(page);
     const cdp = await page.context().newCDPSession(page);
     const x = box.x + box.width / 2, start = box.y + offsetY;
     await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y: start, id: 0 }] });
@@ -282,8 +284,8 @@ test.describe('地图触屏与刷新保持视角', () => {
     await map.hover();
     for (let i = 0; i < 8; i++) { await page.mouse.wheel(0, -100); await expect(canvas).toHaveAttribute('data-zoom', String(5 + i)); }
     const reads = state.reads;
-    // 从标题区域下拉仍可主动刷新，地图保持原有视角。
-    await pull(page, page.locator('.navigation-title'), 10);
+    // 导航现已固定在滚动区外；从列表标题下拉，地图保持原有视角。
+    await pull(page, page.locator('.period-heading').first(), 10);
     await expect.poll(() => state.reads).toBeGreaterThan(reads);
     await expect(page.locator('.footprint-loading')).toHaveCount(0);
     await expect(canvas).toHaveAttribute('data-map-instance', '1');

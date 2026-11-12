@@ -129,7 +129,8 @@ for (const width of [390, 768, 1440]) {
       expect(frames.duration).toBe(800);
       const collapsed = frames.clipPath.map(value => value.startsWith('circle(0px '));
       expect(collapsed).toEqual(selected === '深色' ? [false, true] : [true, false]);
-      for (const frame of frames.clipPath) expect(frame).toContain(`at ${width}px 0px)`);
+      // Chromium 会把纵向零坐标序列化为 0% 或 0px；两者均是右上角。
+      for (const frame of frames.clipPath) expect(frame).toMatch(new RegExp(`at ${width}px 0(?:px|%)\\)$`));
       await expect(darkModeSwitch).toBeEnabled();
       await expect(page.locator('html')).not.toHaveClass(/aio-theme-transition/);
       await expect(darkModeSwitch).toHaveAttribute('aria-checked', String(selected === '深色'));

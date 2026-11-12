@@ -1,3 +1,4 @@
+const { waitForMotion } = require('./support/motion');
 const { test, expect } = require('./support/test');
 
 test.use({ hasTouch: true });
@@ -44,6 +45,7 @@ test('切换类型取消旧卡号读取，旧响应不能覆盖新卡的加载�
   await expect(debit).toHaveAttribute('aria-pressed', 'true');
   await expect(debit).toHaveText('储蓄卡 1');
   await expect(credit).toHaveText('信用卡 1');
+  await waitForMotion(page);
   await expect(page.locator('.header-count, .face-type, .face-tail, .number')).toHaveCount(0);
   async function readNumber() {
     await page.locator('.card-face').click({ position: { x: 40, y: 24 } });
@@ -119,6 +121,7 @@ for (const input of ['mouse', 'touch']) for (const width of [390, 768, 1440]) fo
     await page.goto('/#/pages/finance/cards');
     await expect(page.locator('.card')).toHaveCount(2);
     await expect(page.locator('.card-face[aria-busy="true"]')).toHaveCount(0);
+    await waitForMotion(page);
     const cdp = input === 'touch' ? await page.context().newCDPSession(page) : null;
     async function press(x, y) {
       if (cdp) await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y, id: 1 }] });

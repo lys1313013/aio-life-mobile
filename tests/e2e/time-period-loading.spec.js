@@ -42,7 +42,9 @@ for (const width of [390, 768, 1440]) for (const theme of ['light', 'dark']) {
     });
     const timeline = page.locator('.timeline');
     const loader = timeline.getByRole('status', { name: '正在加载时迹', exact: true });
-    const geometry = () => timeline.evaluate(el => { const r = el.getBoundingClientRect(); return { top: r.top, height: r.height }; });
+    const geometry = () => timeline.evaluate(el => { const r = el.getBoundingClientRect(); // 下拉刷新会平移整个原生滚动内容；比较内容内部的位置与高度。
+      const content = el.closest('.uni-scroll-view-content');
+      return { top: r.top - content.getBoundingClientRect().top, height: r.height }; });
     const snapshot = async name => {
       await page.screenshot({ path: `artifacts/time-period-loading/${width}-${theme}-${name}.png` });
     };

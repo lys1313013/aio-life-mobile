@@ -1,3 +1,4 @@
+const { waitForMotion } = require('./support/motion');
 const { test, expect } = require('./support/test');
 const fs = require('node:fs/promises');
 test.use({ hasTouch: true, viewport: { width: 390, height: 900 } });
@@ -49,6 +50,7 @@ async function expectStackGeometry(page) {
   expect(last.y + last.height).toBeLessThanOrEqual(viewport.y + viewport.height + 1);
 }
 async function drag(page, cancel = false) {
+  await waitForMotion(page);
   const cdp = await page.context().newCDPSession(page);
   const items = page.locator('.card-sort-item');
   const a = await items.nth(0).boundingBox(), b = await items.nth(1).boundingBox();
@@ -71,6 +73,7 @@ for (const width of [390, 768, 1440]) for (const theme of ['light', 'dark']) tes
   const previous = await items.nth(1).boundingBox();
   const last = await items.nth(2).boundingBox();
   const face = await items.nth(2).locator('.card-face').boundingBox();
+  await waitForMotion(page);
   const cdp = await page.context().newCDPSession(page);
   const x = face.x + 60, y = face.y + face.height - 30;
   await touch(cdp, 'touchStart', x, y);
@@ -105,6 +108,7 @@ test('堆叠卡包滚动后向上排序，抓取位置不改变落点', async ({
   await expect.poll(() => scroller.evaluate(node => node.scrollTop)).toBeGreaterThan(100);
   const previous = await items.nth(6).boundingBox();
   const last = await items.nth(7).boundingBox();
+  await waitForMotion(page);
   const cdp = await page.context().newCDPSession(page);
   const x = last.x + 70, y = last.y + last.height - 100;
   await touch(cdp, 'touchStart', x, y);
@@ -133,6 +137,7 @@ for (const width of [390, 768, 1440]) for (const theme of ['light', 'dark']) tes
   await page.addStyleTag({ content: ':where(.ui-page-body, .card-browser-viewport, .card-browser, .page-state, .card-grid, .mobile-page-content) { overflow: hidden; }' });
   const last = await items.last().boundingBox();
   const viewport = await page.locator('.card-browser-viewport').boundingBox();
+  await waitForMotion(page);
   const cdp = await page.context().newCDPSession(page);
   const x = last.x + 60, y = last.y + 25;
   await touch(cdp, 'touchStart', x, y);
@@ -187,6 +192,7 @@ test('长按后靠近屏幕底部自动滚动，短滑仍可正常滚动', async
   const state = await setup(page, 'covers');
   await page.goto('/#/pages/admin/bank-card-covers');
   await expect(page.locator('.card-sort-item')).toHaveCount(8);
+  await waitForMotion(page);
   const cdp = await page.context().newCDPSession(page);
   const first = await page.locator('.cover-edit').first().boundingBox();
   const x = first.x + 60, y = first.y + 30;

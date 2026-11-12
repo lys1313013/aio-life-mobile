@@ -1,3 +1,4 @@
+const { waitForMotion } = require('./support/motion');
 const { test, expect } = require('./support/test');
 const { dashboardFixture } = require('./fixtures.js');
 async function setup(page) {
@@ -119,6 +120,7 @@ test('离开锁定页面取消等待，返回不保留二级密码',async({page}
  await page.goBack();
  await expect(dialog).toBeVisible();
  await expect(dialog.locator('[aria-label="二级密码"] input')).toHaveValue('');
+ await waitForMotion(page);
  await page.mouse.click(4,4);
  await expect(dialog).toHaveCount(0);
 });

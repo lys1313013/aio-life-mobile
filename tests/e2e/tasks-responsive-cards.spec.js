@@ -1,3 +1,4 @@
+const { waitForMotion } = require('./support/motion');
 const { test, expect } = require('./support/test');
 const { setup } = require('./qa-records-fixtures.js');
 const fs = require('fs');
@@ -42,6 +43,7 @@ for (const width of [390, 768, 1440]) for (const theme of ['light', 'dark']) {
     await expect(page.getByRole('dialog')).toBeVisible();
     const content = page.locator('textarea[aria-label="内容"]');
     await expect(content).toBeVisible();
+    await waitForMotion(page);
     const shortHeight = await content.evaluate(node => node.getBoundingClientRect().height);
     await content.fill('模拟长待办：整理项目资料、准备复盘会议并逐项核对后续安排。'.repeat(8));
     await expect.poll(() => content.evaluate(node => node.getBoundingClientRect().height)).toBeGreaterThan(shortHeight);

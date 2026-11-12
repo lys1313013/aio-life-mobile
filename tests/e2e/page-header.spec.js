@@ -1,3 +1,4 @@
+const { waitForMotion } = require('./support/motion');
 const { test, expect } = require('./support/test');
 const { setup } = require('./qa-platform-fixtures');
 
@@ -25,6 +26,7 @@ for (const width of [390, 768, 1280]) {
         await expect(page.locator(card)).toHaveCount(30);
         const header = page.locator('.page-navigation');
         const before = await header.boundingBox();
+        await waitForMotion(page);
         const firstCard = await page.locator(card).first().boundingBox();
         expect(before.y).toBe(0);
         expect(firstCard.y).toBeGreaterThanOrEqual(before.height);

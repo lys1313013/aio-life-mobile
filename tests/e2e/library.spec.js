@@ -1,3 +1,4 @@
+const { waitForMotion } = require('./support/motion');
 const { test, expect } = require('./support/test');
 const { setup, id } = require('./qa-records-fixtures.js');
 const fs = require('node:fs');
@@ -157,6 +158,7 @@ for (const kind of ['movie', 'read'])
     );
     await page.getByRole('button', { name: '搜索', exact: true }).click();
     await search;
+    await waitForMotion(page);
     await page.locator('uni-picker[aria-label="状态"]').click();
     await page.waitForTimeout(400);
     const indicator = await page

@@ -1,3 +1,4 @@
+const { waitForMotion } = require('./support/motion');
 const { dismissModal } = require('./modal');
 const {test,expect}=require('./support/test');const fs=require('node:fs');const {setup,admin}=require('./qa-platform-fixtures');
 const out='test-results/page-audit/platform';fs.mkdirSync(out,{recursive:true});fs.mkdirSync('/tmp/qa-platform-evidence',{recursive:true});
@@ -5,13 +6,19 @@ async function shot(page,name){await page.waitForTimeout(300);fs.mkdirSync(out,{
 async function click(page,name){
  if ((name === 'API Key' || settingsProfileEntries.includes(name)) && page.url().includes('/pages/profile/index')) return openProfileEntry(page, name);
  if (page.url().includes('/pages/mcp/api-keys')) name = ({ '新增': '创建 API Key', '删除': '删除 API Key', '保存': '创建' })[name] || name;
- if (['dict-data','dict-types'].some(kind => page.url().includes('kind=' + kind)) && ['编辑','删除'].includes(name) && await page.getByRole('dialog').count() === 0) {
+ if (['dict-data','dict-types'].some(kind => (page.url().includes('kind=' + kind) || page.url().includes('/pages/admin/' + kind))) && ['编辑','删除'].includes(name) && await page.getByRole('dialog').count() === 0) {
   await page.getByRole('button',{name:/更多操作$/}).first().click();
  }
  if (page.url().includes('/pages/profile/index') && ['修改密码','菜单锁'].includes(name)) {
   await page.getByRole('button',{name:'账号与安全',exact:true}).click();
  }
+ const directory = page.url().includes('/pages/admin/directory');
+ const previous = page.url();
  await page.getByRole('button',{name:name,exact:true}).last().click();
+ if (directory && admin.some(([, , title]) => title === name)) {
+  await expect(page).not.toHaveURL(previous);
+  await waitForMotion(page);
+ }
 }
 const { retainedProfilePages, createProfileNavigation, settingsProfileEntries } = require('./profile-navigation');
 const { openProfileEntry, back } = createProfileNavigation(click);
@@ -36,7 +43,7 @@ await click(page,'新增时迹');await page.getByRole('dialog').waitFor();await 
 await page.locator('uni-tabbar').getByText('时迹',{exact:true}).click();await shot(page,`${width}-${theme}-time-page`);await click(page,'筛选分类');await shot(page,`${width}-${theme}-time-filter`);await dismissModal(page);await click(page,'新增时迹');await shot(page,`${width}-${theme}-time-new`);await dismissModal(page);
 await page.locator('uni-tabbar').getByText('全部',{exact:true}).click();await shot(page,`${width}-${theme}-life`);await page.locator('uni-tabbar').getByText('首页',{exact:true}).click();await click(page,'管理快捷导航');await shot(page,`${width}-${theme}-life-edit`);await click(page,'取消编辑');
 await page.locator('uni-tabbar').getByText('全部',{exact:true}).click();
-for(const entry of ['个人分类','时间看板']){await click(page,entry);await page.waitForTimeout(200);await shot(page,`${width}-${theme}-${entry}`);if(entry!=='时间看板'){await click(page,'编辑分类');await shot(page,`${width}-${theme}-${entry}-edit`);await dismissModal(page);}await back(page);}
+for(const entry of ['个人分类','时间看板']){if(entry==='个人分类'){await page.locator('uni-tabbar').getByText('我',{exact:true}).click();await click(page,'分类管理');await click(page,'时迹分类');}else{await page.locator('uni-tabbar').getByText('全部',{exact:true}).click();await click(page,entry);}await page.waitForTimeout(200);await shot(page,`${width}-${theme}-${entry}`);if(entry!=='时间看板'){await click(page,'编辑分类');await shot(page,`${width}-${theme}-${entry}-edit`);await dismissModal(page);}await back(page);}
 });
 for(const width of [390,768,1440])for(const theme of ['light','dark'])test(`登录真实点击注册与重置密码页面 ${width} ${theme}`,async({page})=>{
 await page.setViewportSize({width,height:900});await page.emulateMedia({colorScheme:theme});await setup(page);await page.locator('uni-tabbar').getByText('我',{exact:true}).click();await click(page,'退出登录');await click(page,'退出');await shot(page,`${width}-${theme}-login`);
@@ -102,7 +109,7 @@ await openProfileEntry(page,'管理与配置');await click(page,'反馈管理');
 });
 test('390补漏：设置与管理深层picker逐个开关',async({page})=>{
 await page.setViewportSize({width:390,height:900});const errors=[];page.on('pageerror',e=>errors.push(e.message));await setup(page,true);await page.locator('uni-tabbar').getByText('我',{exact:true}).click();
-for(const [entry,action,label,key] of [['API Key','新增','有效期','key-expiry'],['系统设置',null,'主题','theme']]){await openProfileEntry(page,entry);if(action)await click(page,action);await nativePicker(page,page.locator(`[aria-label="${label}"]`),key);if(action)await dismissModal(page);await back(page);}
+for(const [entry,action,label,key] of [['API Key','新增','有效期','key-expiry'],['系统设置',null,'深色模式','theme']]){await openProfileEntry(page,entry);if(action)await click(page,action);await nativePicker(page,page.locator(`[aria-label="${label}"]`),key);if(action)await dismissModal(page);await back(page);}
 await openProfileEntry(page,'管理与配置');for(const [kind,title,fields] of [['users','用户中心',['角色']],['menus','菜单管理',['父菜单']],['dict-data','字典数据',['字典类型']],['user-dict','用户字典管理',['字典类型','状态','只读']]]){await click(page,title);await click(page,kind==='menus'?'编辑模拟菜单':kind==='user-dict'?'编辑模拟字典值，排序 0，启用':'编辑');for(const field of fields)await nativePicker(page,page.getByRole('dialog').locator(`[aria-label="${field}"]`),`admin-${kind}-${field}`);await dismissModal(page);await back(page);}
 for(const [title,fields] of [['字典数据',['字典类型筛选','已加载数据排序']],['用户字典管理',['字典类型筛选','状态筛选']],['反馈管理',['类型','状态']]]){await click(page,title);for(const field of fields){if(title==='字典数据' && field==='已加载数据排序')await click(page,'排序设置');const fieldNode=page.locator(`[aria-label="${field}"]`);if(await fieldNode.count())await nativePicker(page,fieldNode,`${title}-${field}`);}await back(page);}
 await page.waitForTimeout(400);expect(errors).toEqual([]);

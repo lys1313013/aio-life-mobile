@@ -1,3 +1,4 @@
+const { waitForMotion } = require('./support/motion');
 const { expect } = require('@playwright/test');
 
 // AdaptiveModal 的关闭手势是点击遮罩；不依赖可选的标题栏关闭按钮。
@@ -14,6 +15,7 @@ async function dismissModal(page) {
     await page.locator('.modal-mask').last().click({ position: { x: 2, y: 2 } });
   }
   await expect(sameDialogs).toHaveCount(count - 1);
+  await waitForMotion(page);
 }
 
 module.exports = { dismissModal };

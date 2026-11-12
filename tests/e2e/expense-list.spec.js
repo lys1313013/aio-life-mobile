@@ -1,3 +1,4 @@
+const { waitForMotion } = require('./support/motion');
 const { test, expect } = require('./support/test');
 const { setup } = require('./qa-domains-fixtures');
 
@@ -21,6 +22,7 @@ async function openExpense(page) {
   return state;
 }
 async function swipe(page, index, dx, dy = 0) {
+  await waitForMotion(page);
   const card = page.locator('.ledger-content').nth(index);
   await card.scrollIntoViewIfNeeded();
   const box = await card.boundingBox();

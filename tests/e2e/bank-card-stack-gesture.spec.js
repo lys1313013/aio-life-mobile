@@ -1,3 +1,4 @@
+const { waitForMotion } = require('./support/motion');
 const { test, expect } = require('./support/test');
 const { setup } = require('./qa-domains-fixtures');
 const path = require('node:path');
@@ -46,6 +47,7 @@ for (const width of [390, 768, 1440]) for (const theme of ['light', 'dark']) {
     await prepare(page, baseURL, width, theme);
     // 直接下拉现在会展开整组，留出可见的卡包外区域验证刷新。
     await page.setViewportSize({ width, height: 2400 });
+    await waitForMotion(page);
     const cdp = await page.context().newCDPSession(page);
     let cardRequests = 0;
     page.on('request', r => { if (new URL(r.url()).pathname === '/api/bank-cards') cardRequests++; });
@@ -95,6 +97,7 @@ for (const width of [390, 768, 1440]) for (const theme of ['light', 'dark']) {
     page.on('pageerror', e => errors.push(e.message));
     let cardRequests = 0;
     page.on('request', r => { if (new URL(r.url()).pathname === '/api/bank-cards') cardRequests++; });
+    await waitForMotion(page);
     const cdp = await page.context().newCDPSession(page);
     const face = await page.locator('.card-face').first().boundingBox();
     const x = face.x + 80, y = face.y + 28;
@@ -169,6 +172,7 @@ for (const width of [390, 768, 1440]) for (const theme of ['light', 'dark']) {
 
 test('卡包外正常滚动、触摸取消恢复、鼠标直接拖动', async ({ page, baseURL }) => {
   await prepare(page, baseURL, 768, 'light');
+  await waitForMotion(page);
   const cdp = await page.context().newCDPSession(page);
   const face = await page.locator('.card-face').first().boundingBox();
   const x = face.x + 80, y = face.y + 28;
@@ -200,6 +204,7 @@ test('卡包外正常滚动、触摸取消恢复、鼠标直接拖动', async ({
 
 test('回弹中可重新接住，触摸取消与切换视图不残留动画', async ({ page, baseURL }) => {
   await prepare(page, baseURL, 390, 'light');
+  await waitForMotion(page);
   const cdp = await page.context().newCDPSession(page);
   const face = await page.locator('.card-face').first().boundingBox();
   const x = face.x + 80, y = face.y + 28;

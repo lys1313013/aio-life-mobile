@@ -1,3 +1,4 @@
+const { waitForMotion } = require('./support/motion');
 const { test, expect } = require('./support/test');
 const { setup } = require('./qa-domains-fixtures');
 
@@ -23,6 +24,7 @@ for (const width of [390, 768, 1440]) {
       await expect(page.locator('.device-page-active').getByText('模拟手机', { exact: true })).toBeVisible();
       await expect(page.locator('.device-page-active .goods-card')).toHaveCount(labels.length);
       await expect(page.getByRole('button', { name: '相机', exact: true })).toHaveCount(0);
+      await waitForMotion(page);
       const pager = page.locator('.device-pager');
       const pagerBox = await pager.boundingBox();
       expect(pagerBox.height).toBeGreaterThan(400);

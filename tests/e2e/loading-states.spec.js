@@ -252,7 +252,7 @@ test('all asynchronous business pages expose loading placeholders', async ({ con
     });
     try {
       await page.goto('/#/pages/' + route);
-      const loadingSelector = route === 'mcp/index' ? '.tool-skeleton' : route === 'messages/index' ? '.conversation-skeleton' : route === 'records/video' ? '.video-skeleton-line' : route === 'member/index' ? '.member-grid .skeleton-title' : route === 'records/categories' ? '.category-placeholder' : route === 'home/index' ? '.home-list-skeleton' : route === 'finance/index' ? '.finance-overview-loading .loading-indicator' : route === 'finance/cards' ? '.card-loading' : route === 'relationship/index' ? '.topology .loading-indicator' : route === 'time/edit' ? '.editor-loading .loading-indicator' : route === 'admin/index' ? '.user-card-loading' : route === 'vault/index' ? '.vault-skeleton-title' : '.content-skeleton';
+      const loadingSelector = route === 'mcp/index' ? '.tool-skeleton' : route === 'messages/index' ? '.conversation-skeleton' : route === 'records/video' ? '.video-skeleton-line' : route === 'member/index' ? '.member-grid .skeleton-title' : route === 'categories/index' ? '.category-loading' : route === 'records/categories' ? '.category-placeholder' : route === 'home/index' ? '.home-list-skeleton' : route === 'finance/index' ? '.finance-overview-loading .loading-indicator' : route === 'finance/cards' ? '.card-loading' : route === 'relationship/index' ? '.topology .loading-indicator' : route === 'time/edit' ? '.editor-loading .loading-indicator' : route === 'admin/index' ? '.user-card-loading' : route === 'vault/index' ? '.vault-skeleton-title' : '.content-skeleton';
       await expect(page.locator(loadingSelector).first(), route).toBeVisible();
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), route).toBe(true);
       await page.screenshot({ path: info.outputPath(route.replace(/[/?=]/g, '-') + '.png') });
@@ -294,7 +294,8 @@ for (const width of [390, 768, 1440]) for (const theme of ['light', 'dark']) {
         await page.clock.setFixedTime(new Date(started.getTime() + ++refreshRound * 61 * 60 * 1000));
         await page.locator('uni-tabbar').getByText('时迹', { exact: true }).click();
         await expect(page).toHaveURL(/#\/pages\/time\/index$/);
-        await expect(page.getByRole('status', { name: '正在更新时迹', exact: true })).toBeVisible();
+        await expect(panel).toHaveAttribute('aria-busy', 'true');
+        await expect(page.getByRole('status', { name: '正在更新时迹', exact: true })).toHaveCount(0);
         expect(await panel.boundingBox()).toEqual(before);
         await expect(page.locator(view === '时间轴视图' ? '.timeline-event' : '.record-card')).toHaveCount(2);
         await page.screenshot({ path: info.outputPath(view === '时间轴视图' ? 'timeline-refresh.png' : 'cards-refresh.png') });

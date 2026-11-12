@@ -8,7 +8,7 @@ for (const width of [320, 390, 768, 1440]) {
       await page.emulateMedia({ colorScheme });
       await setup(page, true);
       await page.route('**/api/menu/preferences?client=mobile', route => route.fulfill({ json: {
-        code: 0, data: { menus: [{ id: 'category', title: '个人分类', children: [] }], hiddenMenuIds: [] },
+        code: 0, data: { menus: [{ id: 'category', title: '个人分类', children: [] }, { id: 'dashboard', title: '时间看板', children: [] }], hiddenMenuIds: [] },
       } }));
       await page.goto('/#/pages/time/index');
       const header = page.locator('.page-navigation');
@@ -34,7 +34,8 @@ for (const width of [320, 390, 768, 1440]) {
       await expect(page.getByText('未找到相关功能', { exact: true })).toBeVisible();
       await header.getByRole('button', { name: '清空搜索', exact: true }).click();
       await expect(search).toHaveValue('');
-      await expect(page.getByRole('button', { name: '个人分类', exact: true })).toBeVisible();
+      await expect(page.getByRole('button', { name: '个人分类', exact: true })).toHaveCount(0);
+      await expect(page.getByRole('button', { name: '时间看板', exact: true })).toBeVisible();
       await page.screenshot({ path: testInfo.outputPath('life.png') });
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     });

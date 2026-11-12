@@ -1,3 +1,4 @@
+const { waitForMotion } = require('./support/motion');
 const { test, expect } = require('./support/test');
 
 function gate() { let release; const promise = new Promise(resolve => { release = resolve; }); return { promise, release }; }
@@ -30,6 +31,7 @@ for (const width of [390, 768, 1440]) for (const colorScheme of ['light', 'dark'
     const summary = page.locator('.video-summary');
     const pager = page.locator('.video-pager');
     await expect(active.locator('.video-skeleton-body')).toHaveCount(6);
+    await waitForMotion(page);
     const initialCard = await active.locator('.video-card').first().boundingBox();
     const initialSummary = await summary.boundingBox();
     const initialPager = await pager.boundingBox();
@@ -86,6 +88,7 @@ for (const width of [390, 768, 1440]) for (const colorScheme of ['light', 'dark'
     pending = gate(); delayed = true;
     await active.getByRole('button', { name: '重试', exact: true }).click();
     await expect(active.locator('.video-skeleton-body')).toHaveCount(6);
+    await waitForMotion(page);
     await page.locator('.status-tab').nth(1).click();
     await expect(active.getByRole('button', { name: /^编辑视频/ })).toHaveCount(8);
     delayed = false; pending.release();

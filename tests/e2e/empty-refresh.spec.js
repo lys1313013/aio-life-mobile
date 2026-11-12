@@ -1,3 +1,4 @@
+const { waitForMotion } = require('./support/motion');
 const { test, expect } = require('./support/test');
 const { pullDown } = require('./gestures');
 
@@ -91,6 +92,7 @@ for (const width of [390, 768, 1440]) for (const theme of ['light', 'dark']) {
       await expect(page.getByRole('button', { name: '返回', exact: true })).toBeVisible();
       await expect(page.getByText('暂无记录', { exact: true })).toHaveCount(0);
       expect(businessCalls).toEqual([]);
+      await waitForMotion(page);
       const pending = page.locator('.ledger-pending');
       const layout = {
         toolbar: await pending.locator('.pending-toolbar').boundingBox(),

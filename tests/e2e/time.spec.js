@@ -1,3 +1,4 @@
+const { waitForMotion } = require('./support/motion');
 const { dismissModal } = require('./modal');
 const { test, expect } = require('./support/test');
 const { dashboardFixture } = require('./fixtures.js');
@@ -101,7 +102,8 @@ async function expectTabBarState(page, original, masked = true) {
     const rect = item.getBoundingClientRect();
     return item.contains(document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2));
   }))).toEqual(Array(4).fill(!masked));
-  for (const mask of await page.locator('.modal-mask, .time-end-mask').all()) {
+  await waitForMotion(page);
+  for (const mask of await page.locator('.modal-mask:not([data-modal-leaving]), .time-end-mask').all()) {
     const rect = await mask.boundingBox();
     expect(rect.y + rect.height).toBeGreaterThanOrEqual(box.y + box.height - 1);
   }
@@ -123,6 +125,7 @@ async function expectTimeDraft(picker, time) {
   await expect(picker.locator('.time-end-minute-scroll [aria-selected="true"]')).toHaveText(minute);
 }
 async function moveTimeWheel(page, columnIndex, delta, beforeRelease) {
+  await waitForMotion(page);
   const cdp = await page.context().newCDPSession(page);
   await cdp.send('Emulation.setTouchEmulationEnabled', { enabled: true });
   const column = columnIndex === 0
@@ -186,12 +189,20 @@ for (const width of [390, 768, 1440]) for (const colorScheme of ['light', 'dark'
   expect(Math.abs(pickerBox.y - triggerBox.y - triggerBox.height - spacing.detail)).toBeLessThan(1);
   await expect(picker.locator('.time-end-toolbar')).toHaveCSS('border-top-width', '0px');
   await expect(picker.locator('.time-end-wheel-mask')).toHaveCount(2);
+  await waitForMotion(page);
   // 真实鼠标滚轮停在同一分钟的半行内：目标值与原来相同，仍必须重新对齐。
   for (const offset of [0.3, -0.3, 0.3]) {
     const original = await scroll.evaluate(element => element.scrollTop);
     await scroll.hover();
+    // 回弹可能早于下一次轮询；先监听真实滚动事件，保留对非整格位移的证明。
+    await scroll.evaluate((element, original) => {
+      element.dataset.wheelMoved = 'false';
+      element.addEventListener('scroll', () => {
+        element.dataset.wheelMoved = String(element.scrollTop !== original);
+      }, { once: true });
+    }, original);
     await page.mouse.wheel(0, (spacing.controlMin - spacing.detail) * offset);
-    await expect.poll(() => scroll.evaluate(element => element.scrollTop)).not.toBe(original);
+    await expect(scroll).toHaveAttribute('data-wheel-moved', 'true');
     await expect.poll(centered).toBeLessThan(1);
     await expect(editor.locator('.compact-time-number').nth(1)).toHaveText('09:59');
   }
@@ -594,6 +605,7 @@ for (const width of [390, 768, 1440]) for (const colorScheme of ['light', 'dark'
     const sizes = await scroll.evaluate(el => ({ width: el.clientWidth, scroll: el.scrollWidth }));
     expect(sizes.scroll).toBeGreaterThan(sizes.width);
     const box = await scroll.boundingBox();
+    await waitForMotion(page);
     const cdp = await page.context().newCDPSession(page);
     await cdp.send('Emulation.setTouchEmulationEnabled', { enabled: true });
     await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: box.x + box.width - 20, y: box.y + 90 }] });
@@ -961,6 +973,7 @@ for (const width of [390, 768, 1440]) for (const colorScheme of ['light', 'dark'
     const tabs = strip.locator('.exercise-tab');
     await expect(tabs.last()).toContainText(names.at(-1));
     await expect(tabs.locator('.exercise-tab-heading .category-icon-image')).toHaveCount(names.length);
+    await waitForMotion(page);
     const firstIcon = tabs.first().locator('.category-icon-image img');
     await expect(firstIcon).toBeVisible();
     await expect(firstIcon).toHaveAttribute('src', /^data:image\//);
@@ -971,6 +984,7 @@ for (const width of [390, 768, 1440]) for (const colorScheme of ['light', 'dark'
     await expect(strip).toHaveCSS('border-bottom-width', '0px');
     await expect(tabs.first()).toHaveCSS('border-bottom-width', '0px');
     expect(await scroller.evaluate(el => el.scrollWidth > el.clientWidth)).toBe(true);
+    await waitForMotion(page);
     const cdp = await page.context().newCDPSession(page);
     await cdp.send('Emulation.setTouchEmulationEnabled', { enabled: true });
     async function swipe(forward) {
@@ -1065,6 +1079,7 @@ for (const width of [390, 768, 1440]) for (const colorScheme of ['light', 'dark'
     const add = dialog.getByRole('button', { name: '添加运动', exact: true });
     await expect(add).toHaveText('');
     const tiles = dialog.locator('.exercise-set-tile');
+    await waitForMotion(page);
     const dimensions = await tiles.evaluateAll(items => items.map(tile => tile.getBoundingClientRect().toJSON()));
     for (const box of dimensions) expect(box.height).toBeGreaterThanOrEqual(44);
     const setValue = tiles.first().locator('.exercise-set-value');
@@ -1099,6 +1114,7 @@ for (const width of [390, 768, 1440]) for (const colorScheme of ['light', 'dark'
     const exerciseIcon = editor.locator('.exercise-edit-icon .category-icon-image img');
     await expect(exerciseIcon).toBeVisible();
     await expect(exerciseIcon).toHaveAttribute('src', /^data:image\//);
+    await waitForMotion(page);
     const typeButton = editor.getByRole('button', { name: '修改运动类型' });
     const typeName = await typeButton.locator('.exercise-edit-type-name').boundingBox();
     const iconBox = await exerciseIcon.boundingBox();
@@ -1194,6 +1210,7 @@ async function completeRelatedStatus(page, type) {
     await expect(page.locator('.related-status-editable')).toHaveText(type === 1 ? '读完' : '看过');
     return;
   }
+  await waitForMotion(page);
   const cdp = await page.context().newCDPSession(page);
   await cdp.send('Emulation.setTouchEmulationEnabled', { enabled: true });
   await page.locator(`uni-picker[aria-label="修改${type === 1 ? '阅读' : '观影'}状态"]`).click();
@@ -1356,6 +1373,7 @@ for (const view of ['时间轴视图', '卡片视图']) for (const width of [390
     await page.emulateMedia({ colorScheme: theme });
     await setup(page);
     await page.getByRole('button', { name: view, exact: true }).click();
+    await waitForMotion(page);
     const cdp = await page.context().newCDPSession(page);
     await cdp.send('Emulation.setTouchEmulationEnabled', { enabled: true });
     async function swipe(target, dx, dy = 0) {
@@ -1462,6 +1480,7 @@ for (const view of ['时间轴视图', '卡片视图']) for (const period of ['�
     await page.getByRole('button', { name: view, exact: true }).click();
     await page.getByRole('button', { name: period + '视图', exact: true }).click();
     await expect(page.locator('.time-main-panel')).toHaveAttribute('aria-busy', 'false');
+    await waitForMotion(page);
     const cdp = await page.context().newCDPSession(page);
     await cdp.send('Emulation.setTouchEmulationEnabled', { enabled: true });
     await periodSwipe(page, cdp, 5, -70);
