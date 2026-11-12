@@ -96,14 +96,14 @@ const columns = computed(() =>
     const date = shiftDate(props.startDate, index)
     const entries = props.records
       .filter((record) => (record.date || props.startDate) === date)
-      .sort((a, b) => a.startTime - b.startTime)
+      .sort((a, b) => a.startMinute - b.startMinute)
       .map((record) => {
         const category = props.categories.find(
           (item) => item.id === record.categoryId,
         )
         const minutes = recordMinutes(record)
         const highlighted = (props.selected || []).length > 0 && matchesCategories(record.categoryId, props.selected || [], props.categories)
-        const future = date > dateLabel(now.value) || (date === dateLabel(now.value) && record.startTime > now.value.getHours() * 60 + now.value.getMinutes())
+        const future = date > dateLabel(now.value) || (date === dateLabel(now.value) && record.startMinute > now.value.getHours() * 60 + now.value.getMinutes())
         return {
           ...record,
           name: categoryPath(record.categoryId, props.categories),
@@ -118,7 +118,7 @@ const columns = computed(() =>
           showTitle: minutes * minuteHeight.value >= typography.roles['timeline-small'].lineHeight + spacing.hairline,
           showDetails: minutes * minuteHeight.value >= spacing.controlMin,
           style: {
-            top: record.startTime * minuteHeight.value + 'px',
+            top: record.startMinute * minuteHeight.value + 'px',
             height: minutes * minuteHeight.value + 'px',
             backgroundColor: category?.color || '#64748b',
             opacity: matchesCategories(
@@ -219,13 +219,13 @@ function edit(record: TimeRecord) {
                 ]),
               ]"
               :style="item.style"
-              :aria-label="'编辑记录 ' + item.title + '，' + clockLabel(item.startTime) + ' - ' + clockLabel(item.endTime) + '，' + durationLabel(item.minutes)"
+              :aria-label="'编辑记录 ' + item.title + '，' + clockLabel(item.startMinute) + ' - ' + clockLabel(item.endMinute) + '，' + durationLabel(item.minutes)"
               @click="edit(item)"
             >
               <view v-if="item.showTitle" class="event-info" :class="{ 'event-info-column': days > 1 }">
                 <CategoryIcon v-if="item.showDetails && item.icon" :icon="item.icon" color="#ffffff" :size="days > 1 ? 14 : 16" />
                 <text class="event-title" :class="{ 'event-title-small': item.height < 40 || days > 1 }">{{ item.title }}</text>
-                <text v-if="item.showDetails" class="event-time">{{ (days === 1 ? clockLabel(item.startTime) + ' - ' + clockLabel(item.endTime) + '  ' : '') + durationLabel(item.minutes) }}</text>
+                <text v-if="item.showDetails" class="event-time">{{ (days === 1 ? clockLabel(item.startMinute) + ' - ' + clockLabel(item.endMinute) + '  ' : '') + durationLabel(item.minutes) }}</text>
               </view>
             </button>
           </view>
@@ -266,7 +266,7 @@ function edit(record: TimeRecord) {
               item.title
             }}</text>
             <text class="sheet-meta" :class="themeClass('sheet-meta')"
-              >{{ clockLabel(item.startTime) }}–{{ clockLabel(item.endTime) }} ·
+              >{{ clockLabel(item.startMinute) }}–{{ clockLabel(item.endMinute) }} ·
               {{ durationLabel(item.minutes) }}</text
             >
             <text class="sheet-meta" :class="themeClass('sheet-meta')">{{

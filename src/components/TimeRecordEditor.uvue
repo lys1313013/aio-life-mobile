@@ -54,8 +54,8 @@ const form = ref<TimeRecord>({
   id: '',
   date: date.value,
   categoryId: '',
-  startTime: 0,
-  endTime: 59,
+  startMinute: 0,
+  endMinute: 59,
   title: '',
   description: '',
   exercises: [],
@@ -276,8 +276,8 @@ async function initialize(targetDate = date.value) {
         id: '',
         date: date.value,
         categoryId: form.value.categoryId || result.recommend.categoryId || '',
-        startTime: result.recommend.startTime,
-        endTime: result.recommend.endTime,
+        startMinute: result.recommend.startMinute,
+        endMinute: result.recommend.endMinute,
         title: form.value.title || '',
         description: form.value.description || '',
         exercises: form.value.exercises || [],
@@ -344,7 +344,7 @@ function changeDuration(event, unit: string) {
     unit === 'hours'
       ? value * 60 + (duration.value % 60)
       : Math.floor(duration.value / 60) * 60 + value
-  form.value.endTime = durationEnd(form.value, existing.value, minutes)
+  form.value.endMinute = durationEnd(form.value, existing.value, minutes)
   errorText.value = ''
 }
 function adjust(field: string, minutes: number) {
@@ -396,8 +396,8 @@ async function submit() {
       id: form.value.id,
       date: form.value.date,
       categoryId: form.value.categoryId,
-      startTime: form.value.startTime,
-      endTime: form.value.endTime,
+      startMinute: form.value.startMinute,
+      endMinute: form.value.endMinute,
       relateId: form.value.relateId,
       relateType: form.value.relateType,
       title: form.value.title?.trim() || '',
@@ -589,11 +589,11 @@ function closeSelection() {
           </button>
           <view class="compact-time-section">
             <view class="compact-time-range" :class="themeClass('compact-time-range')">
-              <button hover-class="none" role="button" class="compact-time-picker end-time-trigger time-anchor-startTime" aria-label="开始时间"
-                :disabled="saving || deleting" @click="openTimePicker('startTime')">
+              <button hover-class="none" role="button" class="compact-time-picker end-time-trigger time-anchor-startMinute" aria-label="开始时间"
+                :disabled="saving || deleting" @click="openTimePicker('startMinute')">
                 <view class="compact-time-field">
                   <text class="compact-time-label" :class="themeClass('compact-time-label')">开始</text>
-                  <text class="compact-time-number" :class="themeClass('compact-time-number')">{{ clockLabel(displayedTime.startTime) }}</text>
+                  <text class="compact-time-number" :class="themeClass('compact-time-number')">{{ clockLabel(displayedTime.startMinute) }}</text>
                 </view>
               </button>
               <view class="compact-time-summary">
@@ -603,11 +603,11 @@ function closeSelection() {
                   <view class="compact-time-arrow-head" />
                 </view>
               </view>
-              <button hover-class="none" role="button" class="compact-time-picker end-time-trigger time-anchor-endTime" aria-label="结束时间"
-                :disabled="saving || deleting" @click="openTimePicker('endTime')">
+              <button hover-class="none" role="button" class="compact-time-picker end-time-trigger time-anchor-endMinute" aria-label="结束时间"
+                :disabled="saving || deleting" @click="openTimePicker('endMinute')">
                 <view class="compact-time-field">
                   <text class="compact-time-label" :class="themeClass('compact-time-label')">结束</text>
-                  <text class="compact-time-number" :class="themeClass('compact-time-number')">{{ clockLabel(displayedTime.endTime) }}</text>
+                  <text class="compact-time-number" :class="themeClass('compact-time-number')">{{ clockLabel(displayedTime.endMinute) }}</text>
                 </view>
               </button>
             </view>
@@ -661,17 +661,17 @@ function closeSelection() {
         <view class="form-card">
           <view class="time-fields">
             <view
-              v-for="field in ['startTime', 'endTime']"
+              v-for="field in ['startMinute', 'endMinute']"
               :key="field"
               class="time-column"
             >
-              <view class="required-field-label"><text class="required-mark">*</text><text class="field-label">{{ field === 'startTime' ? '开始时间' : '结束时间' }}</text></view>
+              <view class="required-field-label"><text class="required-mark">*</text><text class="field-label">{{ field === 'startMinute' ? '开始时间' : '结束时间' }}</text></view>
               <view class="time-control" :class="themeClass('time-control')">
                 <button
                   role="button"
                   class="time-step-button ui-type-body"
                   hover-class="none"
-                  :aria-label="(field === 'startTime' ? '开始时间 ' : '结束时间 ') + '-1 分钟'"
+                  :aria-label="(field === 'startMinute' ? '开始时间 ' : '结束时间 ') + '-1 分钟'"
                   :disabled="saving || deleting"
                   @click="tapAdjust(field, -1)"
                   @longpress="startAdjust(field, -1)"
@@ -680,7 +680,7 @@ function closeSelection() {
                 ><AppIcon name="ant-design:minus-outlined" :size="18" /></button>
                 <button hover-class="none" role="button" class="time-picker end-time-trigger"
                   :class="'time-anchor-' + field"
-                  :aria-label="field === 'startTime' ? '开始时间' : '结束时间'"
+                  :aria-label="field === 'startMinute' ? '开始时间' : '结束时间'"
                   :disabled="saving || deleting" @click="openTimePicker(field)">
                   <view class="time-field"><text class="time-number" :class="themeClass('time-number')">{{ clockLabel(displayedTime[field]) }}</text></view>
                 </button>
@@ -688,7 +688,7 @@ function closeSelection() {
                   role="button"
                   class="time-step-button ui-type-body"
                   hover-class="none"
-                  :aria-label="(field === 'startTime' ? '开始时间 ' : '结束时间 ') + '+1 分钟'"
+                  :aria-label="(field === 'startMinute' ? '开始时间 ' : '结束时间 ') + '+1 分钟'"
                   :disabled="saving || deleting"
                   @click="tapAdjust(field, 1)"
                   @longpress="startAdjust(field, 1)"
@@ -704,7 +704,7 @@ function closeSelection() {
                   class="duration-step ui-type-body"
                   hover-class="none"
                   :aria-label="
-                    (field === 'startTime' ? '开始时间 ' : '结束时间 ') +
+                    (field === 'startMinute' ? '开始时间 ' : '结束时间 ') +
                     (delta > 0 ? '+' : '') +
                     delta +
                     ' 分钟'
@@ -936,7 +936,7 @@ function closeSelection() {
   <TimeEndPicker v-if="choosingTime" :value="form[choosingTime]"
     :anchor="timeAnchor"
     :min="pickerBounds.min" :max="pickerBounds.max"
-    :label="choosingTime === 'startTime' ? '开始时间' : '结束时间'"
+    :label="choosingTime === 'startMinute' ? '开始时间' : '结束时间'"
     @preview="timePreview = $event" @change="changeTime" @close="closeTimePicker" />
 </template>
 

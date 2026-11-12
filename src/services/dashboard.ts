@@ -83,8 +83,8 @@ export interface Category {
 export interface TimeRecord {
   id: string
   categoryId: string
-  startTime: number
-  endTime: number
+  startMinute: number
+  endMinute: number
   date?: string
   title?: string
   description?: string

@@ -64,7 +64,7 @@ export function categoryMatches(id, selected, categories) {
   return false
 }
 export function recordMinutes(record) {
-  return Math.max(0, record.endTime - record.startTime + 1)
+  return Math.max(0, record.endMinute - record.startMinute + 1)
 }
 export function validateRecord(record, existing) {
   if (!record.categoryId) return '请选择分类'
@@ -76,11 +76,11 @@ export function validateRecord(record, existing) {
   )
     return '请选择有效日期'
   if (
-    !Number.isInteger(record.startTime) ||
-    !Number.isInteger(record.endTime) ||
-    record.startTime < 0 ||
-    record.endTime > 1439 ||
-    record.endTime < record.startTime
+    !Number.isInteger(record.startMinute) ||
+    !Number.isInteger(record.endMinute) ||
+    record.startMinute < 0 ||
+    record.endMinute > 1439 ||
+    record.endMinute < record.startMinute
   )
     return '结束时间须晚于开始时间，且不能跨天'
   if (
@@ -88,8 +88,8 @@ export function validateRecord(record, existing) {
       (item) =>
         item.id !== record.id &&
         (!item.date || item.date === record.date) &&
-        item.startTime <= record.endTime &&
-        item.endTime >= record.startTime,
+        item.startMinute <= record.endMinute &&
+        item.endMinute >= record.startMinute,
     )
   )
     return '时间段与已有记录重叠'
@@ -133,41 +133,41 @@ export function adjustRecordTime(record, existing, field, delta) {
   const others = existing.filter(
     (r) => r.id !== record.id && (!r.date || r.date === record.date),
   )
-  if (field === 'startTime') {
-    const before = others.filter((r) => r.endTime <= record.startTime)
+  if (field === 'startMinute') {
+    const before = others.filter((r) => r.endMinute <= record.startMinute)
     const min = before.length
-      ? Math.max(...before.map((r) => r.endTime)) + 1
+      ? Math.max(...before.map((r) => r.endMinute)) + 1
       : 0
-    if (min > record.endTime) return record.startTime
-    return Math.max(min, Math.min(record.endTime, record.startTime + delta))
+    if (min > record.endMinute) return record.startMinute
+    return Math.max(min, Math.min(record.endMinute, record.startMinute + delta))
   }
-  const after = others.filter((r) => r.startTime >= record.endTime)
+  const after = others.filter((r) => r.startMinute >= record.endMinute)
   const max = after.length
-    ? Math.min(...after.map((r) => r.startTime)) - 1
+    ? Math.min(...after.map((r) => r.startMinute)) - 1
     : 1439
-  if (max < record.startTime) return record.endTime
-  return Math.max(record.startTime, Math.min(max, record.endTime + delta))
+  if (max < record.startMinute) return record.endMinute
+  return Math.max(record.startMinute, Math.min(max, record.endMinute + delta))
 }
 export function durationEnd(record, existing, minutes) {
   const after = existing.filter(
     (r) =>
       r.id !== record.id &&
       (!r.date || r.date === record.date) &&
-      r.startTime >= record.startTime,
+      r.startMinute >= record.startMinute,
   )
   const max = after.length
-    ? Math.min(...after.map((r) => r.startTime)) - 1
+    ? Math.min(...after.map((r) => r.startMinute)) - 1
     : 1439
-  if (max < record.startTime) return record.endTime
+  if (max < record.startMinute) return record.endMinute
   return Math.max(
-    record.startTime,
-    Math.min(max, record.startTime + Math.max(1, minutes) - 1),
+    record.startMinute,
+    Math.min(max, record.startMinute + Math.max(1, minutes) - 1),
   )
 }
 export function elapsedSinceRecord(records, nowMinutes) {
   if (!records.length) return null
-  const last = [...records].sort((a, b) => b.startTime - a.startTime)[0]
-  return Math.max(0, nowMinutes - last.endTime - 1)
+  const last = [...records].sort((a, b) => b.startMinute - a.startMinute)[0]
+  return Math.max(0, nowMinutes - last.endMinute - 1)
 }
 
 export function matchesCategories(id, selected, categories) {

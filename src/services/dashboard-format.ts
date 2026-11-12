@@ -17,12 +17,12 @@ export function timeSummary(categories, records) {
   const groups = []
   let total = 0
   const recent = [...records]
-    .sort((a, b) => b.startTime - a.startTime)
+    .sort((a, b) => b.startMinute - a.startMinute)
     .map((record) => {
       const category = categories.find((item) => item.id === record.categoryId)
       const parent = categories.find((item) => item.id === category?.parentId)
       const root = parent || category
-      const duration = Math.max(0, record.endTime - record.startTime + 1)
+      const duration = Math.max(0, record.endMinute - record.startMinute + 1)
       const key = root?.id || record.categoryId
       let group = groups.find((item) => item.id === key)
       if (!group) {
@@ -42,9 +42,9 @@ export function timeSummary(categories, records) {
         name:
           (parent ? parent.name + ' / ' : '') + (category?.name || '未分类'),
         shortName: category?.name || '未分类',
-        startLabel: clockLabel(record.startTime),
+        startLabel: clockLabel(record.startMinute),
         durationLabel: durationLabel(duration),
-        label: clockLabel(record.startTime) + '  ' + durationLabel(duration),
+        label: clockLabel(record.startMinute) + '  ' + durationLabel(duration),
       }
     })
   groups.sort((a, b) => b.minutes - a.minutes)
@@ -68,8 +68,8 @@ export function timeSummary(categories, records) {
     recent,
     timeline: recent.map((item) => ({
       id: item.id,
-      top: (item.startTime / 1440) * 100 + '%',
-      height: ((item.endTime - item.startTime + 1) / 1440) * 100 + '%',
+      top: (item.startMinute / 1440) * 100 + '%',
+      height: ((item.endMinute - item.startMinute + 1) / 1440) * 100 + '%',
       backgroundColor: item.color,
     })),
   }
