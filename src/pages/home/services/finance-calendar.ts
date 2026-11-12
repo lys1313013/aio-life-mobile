@@ -74,8 +74,9 @@ export function readCalendarDetailsRoute(options: Record<string, any>) {
   return { kind: kind as FinanceKind, scope: calendarScope(kind, granularity, date), key: bucket, initialKind: (kind === 'finance' ? initialKind === 'income' ? 'income' : 'expense' : kind) as LedgerKind }
 }
 export function detailQuery(kind: LedgerKind, bucket: CalendarBucket, page = 1, pageSize = 20) {
+  if (!bucket.startDate || !bucket.endDate) throw Error('财务日历范围缺少日期')
   const suffix = kind === 'expense' ? ' 00:00:00' : ''
-  return { page, pageSize, ...(bucket.startDate && bucket.endDate ? { startTime: bucket.startDate + suffix, endTimeBefore: bucket.endDate + suffix } : { undated: true }) }
+  return { page, pageSize, startTime: bucket.startDate + suffix, endTimeBefore: bucket.endDate + suffix }
 }
 export function detailState() { return { items: [], page: 0, hasMore: true, loading: false, loaded: false, error: '' } }
 // 明细共用触底分页；错误重试原页，离页与账号切换的响应不回填。
