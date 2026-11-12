@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import ModalMotion from "../../components/ModalMotion.uvue";
 import TabPage from '../../components/TabPage.uvue'
 import { appTextColor } from '../../services/app-layout.ts'
 
@@ -165,7 +166,10 @@ const time = ref(timeSummary([], []))
 const cardHeightLimit = computed(() => viewportWidth.value >= 1024 ? 280 : viewportWidth.value >= 640 ? 250 : 240)
 const multiColumnCardHeight = computed(() => viewportWidth.value >= 768 ? cardHeightLimit.value : undefined)
 const thoughtRowHeight = spacing.compactRowMin
-const commitRowHeight = spacing.controlMin
+const commitRowHeight = computed(() => Math.max(spacing.controlMin,
+  (viewportWidth.value >= 768 ? typography.roles.body.lineHeight + typography.roles.label.lineHeight
+    : typography.roles['caption-strong'].lineHeight + typography.roles.caption.lineHeight)
+  + spacing.detail * 3))
 const quickRowHeight = computed(() => quickIconSize.value + typography.roles.caption.lineHeight + spacing.detail + spacing.inline * 2
   + (links.value.some(link => !nativeDestination(link.path)) ? typography.roles['chart-label'].lineHeight + spacing.micro : 0))
 function sectionInset(_section: string) {
@@ -186,7 +190,7 @@ function sectionHeight(section: string) {
     return Math.min(limit, inset + body)
   }
   if (section === 'exercise') return Math.min(limit, inset + Math.max(1, states.exercise.loaded ? exercise.value.days.reduce((count, day) => count + day.items.length, 0) : 3) * 40)
-  if (section === 'commits') return Math.min(limit, inset + Math.max(1, states.commits.loaded ? commits.value.length : 2) * commitRowHeight)
+  if (section === 'commits') return Math.min(limit, inset + Math.max(1, states.commits.loaded ? commits.value.length : 2) * commitRowHeight.value)
   return limit
 }
 const timeDate = ref('')
@@ -271,7 +275,7 @@ function finishCardSwipe(key: string, event) {
   const inset = sectionInset(key)
   const rowsHeight = key === 'exercise'
     ? exercise.value.days.reduce((count, day) => count + day.items.length, 0) * 40
-    : commits.value.length * commitRowHeight
+    : commits.value.length * commitRowHeight.value
   // 内容不足一屏时没有 scrolltolower，仍支持在卡片上向上滑动加载。
   if (distance > 40 && rowsHeight <= sectionHeight(key) - inset) maybeLoadMore(key)
 }
@@ -1054,18 +1058,17 @@ function trendLines(points) {
               :locked="states.commits.locked" :refresh-disabled="interactionDisabled" @unlock="unlockSection('commits')"
               navigable :title-label="githubProfile ? '访问 GitHub 主页' : '查看 GitHub'" @navigate="openGithub"
               @refresh="loadSection('commits')"
-              ><template #loading><HomeListSkeleton label="正在加载最近提交" :rows="2" :row-height="commitRowHeight" single-line /></template><view v-if="commits.length === 0" class="empty-state ui-pad-card"
+              ><template #loading><HomeListSkeleton label="正在加载最近提交" :rows="2" :row-height="commitRowHeight" /></template><view v-if="commits.length === 0" class="empty-state ui-pad-card"
                 ><text class="empty-label" :class="themeClass('empty-label')">暂无最近提交</text></view
               ><scroll-view v-else scroll-y :show-scrollbar="false" class="list-scroll commits-scroll" :lower-threshold="40" @scrolltolower="maybeLoadMore('commits')" @touchstart="startCardSwipe('commits', $event)" @touchend="finishCardSwipe('commits', $event)"
                 ><view
                   v-for="(commit, index) in commits"
                   :key="commit.id || index"
                   class="commit-row home-card-drag-area" role="button" tabindex="0" :aria-label="'查看提交：' + commit.message" @click="viewCommit(commit)" @keydown.enter.self="viewCommit(commit)" @keydown.space.prevent.self="viewCommit(commit)"
-                  ><text :max-lines="1" class="repo-label" :class="themeClass('repo-label')">{{ commit.repo }}</text
+                  ><view class="commit-header"><text :max-lines="1" class="repo-label" :class="themeClass('repo-label')">{{ commit.repo }}</text
+                  ><text class="list-date commit-date">{{ shortDate(commit.date) }}</text></view
                   ><text :max-lines="1" class="commit-message" :class="themeClass('commit-message')">{{
                     commit.message
-                  }}</text><text class="list-date commit-date">{{
-                    shortDate(commit.date)
                   }}</text></view
                 ><view v-if="moreCommits || moreErrors.commits" class="pagination-status">
                   <view v-if="moreCommits" class="pagination-spinner" role="status" aria-label="正在加载更多提交" /><button hover-class="none" v-else role="button" class="pagination-retry ui-type-body" aria-label="加载失败，重试更多提交" @click="loadMore('commits')"><CategoryIcon icon="lucide:rotate-cw" :size="16" :color="isDark ? '#a9bfff' : '#5879ce'" /></button>
@@ -1080,7 +1083,7 @@ function trendLines(points) {
         <BusinessCards v-if="['section.goal', 'section.anniversary', 'section.reading', 'section.membership', 'section.movie'].includes(section.cardKey)" :height="multiColumnCardHeight" :max-height="cardHeightLimit" :ref="el => { businessCardRefs[section.cardKey] = el }" :only="section.cardKey.slice(8)" :refresh-disabled="interactionDisabled" embedded @visibility="businessVisibility[section.cardKey] = $event" :active="businessActive" :preparing="loading && !businessActive" @sorting="businessSorting = $event" />
         </HomeCardSortCell></view>
       </view></scroll-view
-    ><TimeRecordEditor v-if="timeEditor" :record-id="timeEditor.recordId" :initial-date="timeEditor.initialDate" @close="closeTimeEditor" /><RecordCreateModal v-if="recordCreateKind" :kind="recordCreateKind" :thought-id="recordCreateKind === 'think' ? thoughtEditId : ''" @close="recordCreateKind = null" @saved="handleRecordCreated" @deleted="handleThoughtDeleted" /><WatchedTaskEditModal v-if="watchedEditor" :task="watchedEditor" @close="watchedEditor = null" @saved="handleWatchedSaved" />
+    ><ModalMotion><TimeRecordEditor v-if="timeEditor" :record-id="timeEditor.recordId" :initial-date="timeEditor.initialDate" @close="closeTimeEditor" /><ModalMotion></ModalMotion><RecordCreateModal v-if="recordCreateKind" :kind="recordCreateKind" :thought-id="recordCreateKind === 'think' ? thoughtEditId : ''" @close="recordCreateKind = null" @saved="handleRecordCreated" @deleted="handleThoughtDeleted" /><ModalMotion></ModalMotion><WatchedTaskEditModal v-if="watchedEditor" :task="watchedEditor" @close="watchedEditor = null" @saved="handleWatchedSaved" /></ModalMotion>
   </view>
   </TabPage>
 </template>
@@ -1228,7 +1231,7 @@ function trendLines(points) {
 .stat-title-text {
   min-width: 0;
   color: #3f3f46;
-  @include type-style('label-strong');
+  @include type-style('card-title');
 
   white-space: nowrap;
   overflow: hidden;
@@ -1420,10 +1423,15 @@ align-items: flex-end;
 .commit-row {
   box-sizing: border-box;
   min-height: $space-controlMin;
+  flex-shrink: 0;
+  flex-direction: column;
+  gap: $space-detail;
+  padding: $space-detail $space-inline;
+}
+.commit-header {
   flex-direction: row;
   align-items: center;
   gap: $space-inline;
-  padding: $space-detail $space-inline;
 }
 .repo-label {
   color: #52525b;
@@ -1433,14 +1441,12 @@ align-items: flex-end;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  max-width: 28%;
-  flex-shrink: 0;
+  flex: 1;
 }
 .commit-message {
   color: #71717a;
   @include type-style('caption');
 
-  flex: 1;
   min-width: 0;
   white-space: nowrap;
   overflow: hidden;
@@ -1473,9 +1479,6 @@ align-items: flex-end;
   .overview-card {
 
     height: 82px;
-  }
-  .stat-title-text {
-    @include type-style('label-strong');
   }
 }
 @media (min-width: 768px) {

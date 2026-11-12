@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import ModalMotion from "../../components/ModalMotion.uvue";
 import { usePageRefresh } from '../../services/page-refresh.ts'
 import { useAppLayout } from '../../services/app-layout.ts'
 const { appGridItem } = useAppLayout()
@@ -35,6 +36,8 @@ import {
   saveExercise,
   deleteExercises,
 } from './services/exercise.ts';
+const modalMotion0 = ref<{ close: () => void } | null>(null);
+
 const rows = ref<any[]>([]),
   recordRows = ref<any[]>([]),
   types = ref<any[]>([]),
@@ -402,7 +405,7 @@ function toggleSelection() {
     <template #fixed>
       <FloatingActionButton v-if="!form" label="新增运动" :disabled="loading || !!error" @click="open()" />
       <!-- 录入层放在页面滚动容器外，避免微信原生输入和背景滚动相互影响。 -->
-      <AdaptiveModal v-if="form" :label="form.id ? '编辑运动记录' : '新增运动记录'" :busy="saving" @close="form = null"
+      <ModalMotion><AdaptiveModal ref="modalMotion0" v-if="form" :label="form.id ? '编辑运动记录' : '新增运动记录'" :busy="saving" @close="form = null"
         ><FormField :required="isRequired('exercise', 'exerciseTypeId')"
           label="运动类型">
           <button hover-class="none" role="button" class="exercise-type-control" :class="{ 'exercise-type-control-dark': isDark }"
@@ -427,12 +430,12 @@ function toggleSelection() {
             label="取消"
             variant="quiet"
             :disabled="saving"
-            @click="form = null" /><MobileButton
+            @click="modalMotion0?.close()" /><MobileButton
             :label="saved ? '重新读取' : '保存'"
             :loading="saving"
             @click="save" />
-        </FormActions></AdaptiveModal>
-      <AdaptiveModal v-if="form && choosingExercise" label="选择运动" :max-width="500"
+        </FormActions></AdaptiveModal></ModalMotion>
+      <ModalMotion><AdaptiveModal v-if="form && choosingExercise" label="选择运动" :max-width="500"
         :content-key="JSON.stringify(types)" @close="choosingExercise = false">
         <view class="exercise-type-grid">
           <button hover-class="none" v-for="item in types" :key="item.id" role="button" class="exercise-type-option"
@@ -444,7 +447,7 @@ function toggleSelection() {
           </button>
           <text v-if="!types.length" class="exercise-type-empty" :class="{ 'exercise-type-text-dark': isDark }">暂无运动类型</text>
         </view>
-      </AdaptiveModal>
+      </AdaptiveModal></ModalMotion>
     </template>
   </MobilePage>
 </template>

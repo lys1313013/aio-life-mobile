@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import ModalMotion from "../../components/ModalMotion.uvue";
 import PageState from "../../components/PageState.uvue";
 import { usePageRefresh } from '../../services/page-refresh.ts'
 import { buttonLabelClasses } from '../../services/button-label.ts'
@@ -43,6 +44,7 @@ const confirmId = ref('')
 const errorText = ref('')
 const modalError = ref('')
 const editing = ref(false)
+const editorModal = ref<{ close: () => void } | null>(null)
 const showHelp = ref(false)
 const verifying = ref(false)
 const verified = ref('')
@@ -340,8 +342,9 @@ function back() {
       :disabled="!loaded || loading || saving || !!deleting"
       @click="edit()"
     />
-    <AdaptiveModal
+    <ModalMotion><AdaptiveModal
       v-if="editing"
+      ref="editorModal"
       label="绑定账号"
       :busy="saving"
       :max-width="420"
@@ -428,10 +431,10 @@ function back() {
       </FormField>
       <text v-if="modalError" role="alert" class="error-text ui-mb-section" :class="themeClass('error-text')">{{ modalError }}</text>
       <FormActions>
-        <MobileButton label="取消" variant="quiet" :disabled="saving" @click="closeEditor()" />
+        <MobileButton label="取消" variant="quiet" :disabled="saving" @click="editorModal?.close()" />
         <MobileButton label="保存" :loading="saving" :disabled="verifying" @click="save" />
       </FormActions>
-    </AdaptiveModal>
+    </AdaptiveModal></ModalMotion>
   <SecondaryUnlock />
   </view>
 </template>

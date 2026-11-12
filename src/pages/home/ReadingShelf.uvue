@@ -6,16 +6,23 @@ import AppIcon from '../../components/AppIcon.uvue'
 import { isDark } from '../../services/theme.ts'
 import spacing from '../../styles/spacing.json'
 import typography from '../../styles/typography.json'
+import { businessCardMaxHeight } from './services/business-cards.ts'
 
-const props = defineProps<{ rows: any[]; loading: boolean; moreLoading: boolean; error: string }>()
+const props = defineProps<{ rows: any[]; loading: boolean; moreLoading: boolean; error: string; maxHeight?: number }>()
 const emit = defineEmits<{ edit: [item: any]; more: []; retry: [] }>()
 // 两排书架封面等高、按原图比例展示；2:3 仅用于加载及无封面占位。
-const coverWidth = 66
-const coverHeight = 99
+const coverHeight = computed(() => {
+  const count = Math.max(1, groups.value.length)
+  // 扣除标题、上下留白、边框及排间距，两排必须完整落在卡片内。
+  const available = (props.maxHeight || businessCardMaxHeight) - spacing.controlMin
+    - spacing.card - spacing.inline - spacing.hairline * 2 - spacing.section * (count - 1)
+  return Math.min(99, Math.floor(available / count))
+})
+const coverWidth = computed(() => coverHeight.value * 2 / 3)
 const coverRatios = ref<Record<string, number>>({})
 function coverKey(item) { return JSON.stringify([item.id, item.fileId || '', item.coverImgUrl || '']) }
 // 极窄封面完整显示，同时保留最小触控宽度。
-function bookWidth(item) { return Math.max(spacing.controlMin, coverHeight * (coverRatios.value[coverKey(item)] || 2 / 3)) }
+function bookWidth(item) { return Math.max(spacing.controlMin, coverHeight.value * (coverRatios.value[coverKey(item)] || 2 / 3)) }
 function setCoverRatio(item, ratio: number) { coverRatios.value[coverKey(item)] = ratio }
 const labelWidth = typography.roles.title.lineHeight
 const statuses = [
@@ -28,7 +35,7 @@ const activeStatus = ref('in_progress')
 function showStatus(group) { return (props.moreLoading || props.error) && group.status === activeStatus.value }
 function trackWidth(group) {
   const count = pending.value ? 3 : group.items.length
-  const booksWidth = pending.value ? count * coverWidth : group.items.reduce((width, item) => width + bookWidth(item), 0)
+  const booksWidth = pending.value ? count * coverWidth.value : group.items.reduce((width, item) => width + bookWidth(item), 0)
   return booksWidth + Math.max(0, count - 1) * spacing.section + (showStatus(group) ? spacing.controlMin + spacing.section : 0)
 }
 function loadMore(group) {

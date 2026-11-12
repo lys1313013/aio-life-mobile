@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import ModalMotion from "../../components/ModalMotion.uvue";
 import { usePageRefresh } from '../../services/page-refresh.ts'
 import FormActions from '../../components/FormActions.uvue';
 import { isRequired, missingRequired } from '../../services/form-required.ts';
@@ -25,6 +26,8 @@ import {
   deleteHonor,
   toggleHonorTop,
 } from './services/honor.ts';
+const modalMotion0 = ref<{ close: () => void } | null>(null);
+
 const attachmentBusy = ref(false);
 const rows = ref<any[]>([]),
   categories = ref<any[]>([]),
@@ -207,7 +210,7 @@ function categoryName(item) {
           </view>
         </view>
       </PageState
-      ><AdaptiveModal
+      ><ModalMotion><AdaptiveModal ref="modalMotion0"
         v-if="form"
         label="编辑荣誉"
         :busy="saving || attachmentBusy"
@@ -247,12 +250,12 @@ function categoryName(item) {
             label="取消"
             variant="quiet"
             :disabled="saving || attachmentBusy"
-            @click="form = null" /><MobileButton
+            @click="modalMotion0?.close()" /><MobileButton
             label="保存"
             :loading="saving"
             :disabled="attachmentBusy"
             @click="save" />
-        </FormActions></template></AdaptiveModal></view
+        </FormActions></template></AdaptiveModal></ModalMotion></view
   ><template #fixed><FloatingActionButton label="新增荣誉" :disabled="loading || !!error" @click="open()" /></template></MobilePage>
 </template>
 <style scoped lang="scss">

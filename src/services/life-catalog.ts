@@ -36,6 +36,7 @@ const nativePages = {
   "/finance-management/expense": "/pages/finance/expense",
   "/finance-management/import": "/pages/finance/import",
   "/finance-management/bank-cards": "/pages/finance/cards",
+  "/profile/category-management": "/pages/categories/directory",
   "/time/my-categories": "/pages/categories/index",
   "/time/category-admin": "/pages/categories/index?admin=1",
   "/mcp/tools": "/pages/mcp/index",
@@ -98,6 +99,7 @@ export function matchesNativeMenu(url, path) {
   const [target, required = ''] = destination.split('?');
   if (page !== target) return false;
   const values = query.split('&');
+  if (target === '/pages/categories/index' && values.includes('admin=1') !== required.split('&').includes('admin=1')) return false;
   return !required || required.split('&').every((value) => values.includes(value));
 }
 
@@ -150,7 +152,7 @@ export function buildCatalog(candidates, preferences) {
       const item = byId.get(node.id);
       if (!item || !item.path.startsWith("/") || item.path.startsWith("//") ||
           /[\\\s?#]/.test(item.path)) continue;
-      // 移动端例外：首页由底栏进入，关于统一放在“我的”。
+      // 首页由底栏进入；关于与个人分类统一从“我”进入。
       // 菜单路径可由管理端调整，不能只依赖初始数据中的首页路径。
       const destination = nativeDestination(item.path);
       if (["/pages/home/index", "/pages/about/index"].includes(destination) ||
@@ -175,6 +177,8 @@ export function catalogSections(catalog, query = "") {
   const roots = [];
   const groups = new Map();
   for (const item of catalog) {
+    // 个人分类从“我”进入；保留目录数据供已有快捷导航与菜单锁使用。
+    if (["/pages/records/categories", "/pages/categories/index"].includes(nativeDestination(item.path))) continue;
     if (!words.every((word) =>
       (item.title + " " + (item.parentTitle || "")).toLowerCase().includes(word))) continue;
     let siblings = roots;

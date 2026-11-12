@@ -3,7 +3,8 @@ import { sha256 } from '@noble/hashes/sha256'
 import { bytesToHex } from '@noble/hashes/utils'
 import { session } from './session.ts'
 
-const storageKey = 'aio-life-mobile.life-catalog.v2'
+// 目录使用当前展示端配置，旧缓存不能用于当前导航。
+const storageKey = 'aio-life-mobile.life-catalog.v5'
 // 目录先展示缓存，超过 60 分钟再后台校验；只保存登录指纹。
 const REFRESH_INTERVAL_MS = 60 * 60 * 1000
 let snapshot: any[] | null = null

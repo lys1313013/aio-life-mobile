@@ -36,7 +36,7 @@ if(p==='/api/cbti/personalities'||p==='/api/cbti/results'||p==='/api/mbti/result
 if(populated){
 const id='9223372036854775807';const row={id,dictId:id,dictCode:id,userId:'0',username:'fixture-row',nickname:'模拟记录',role:'user',email:'row@example.test',dictName:'模拟字典',dictType:'fixture',dictLabel:'模拟字典值',dictValue:'value',sortOrder:0,isEnabled:1,isReadonly:'N',name:'MockMenu',parentId:'0',path:'/mock',meta:{title:'模拟菜单',keepAlive:true},title:'模拟反馈',content:'模拟反馈内容',feedbackType:'BUG',priority:'NORMAL',functionName:'模拟日志',functionItem:'检查',createTime:'2026-10-01 10:00'};
 if(['/api/user-center/list','/api/sysDictType/query','/api/sysDictData/query','/api/userDictData/admin/query','/api/feedback/admin/list','/api/system/logs/operation','/api/system/logs/access'].includes(p))data={items:[row],total:1};
-if(p==='/api/menu/admin/tree')data=[{...row,webIsEnabled:1,mobileIsEnabled:1}];
+if(p==='/api/menu/admin/tree')data=[{...row,visibleClients:3}];
 if(p==='/api/system-config/list')data=[{configKey:'fixture.config',configType:'JSON',configValue:'{"enabled":true}',description:'模拟配置'}];
 if(p==='/api/userbinds/list')data=[{id,platform:'github',platformUsername:'fixture-github'}];
 if(p==='/api/api-key/list')data=[{id,remark:'模拟Key',hasApiKey:true,createTime:'2026-10-01'}];

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import ModalMotion from "../../components/ModalMotion.uvue";
 import { readPageTotal, mergePageItems, hasMorePageItems } from '../../services/pagination.ts';
 import { fetchDictionary } from '../../services/dictionary.ts';
 import { usePageRefresh } from '../../services/page-refresh.ts'
@@ -25,6 +26,8 @@ import {
   savePerformance,
   deletePerformance,
 } from './services/performance.ts';
+const modalMotion0 = ref<{ close: () => void } | null>(null);
+
 const showMore = ref(false);
 const rows = ref<any[]>([]),
   types = ref<any[]>([]),
@@ -186,7 +189,7 @@ async function remove(item) {
           </view>
         </view>
       </PageState
-      ><AdaptiveModal
+      ><ModalMotion><AdaptiveModal ref="modalMotion0"
         v-if="form"
         label="编辑活动"
         :busy="saving || attachmentBusy"
@@ -221,12 +224,12 @@ async function remove(item) {
             label="取消"
             variant="quiet"
             :disabled="saving || attachmentBusy"
-            @click="form = null" /><MobileButton
+            @click="modalMotion0?.close()" /><MobileButton
             label="保存"
             :loading="saving"
             :disabled="attachmentBusy"
             @click="save" />
-        </FormActions></AdaptiveModal></view
+        </FormActions></AdaptiveModal></ModalMotion></view
   ><template #fixed><FloatingActionButton label="新增活动" :disabled="loading || !!error" @click="open()" /></template></MobilePage>
 </template>
 <style scoped lang="scss">

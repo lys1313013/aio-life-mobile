@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import ModalMotion from "../../components/ModalMotion.uvue";
 import { usePageRefresh } from '../../services/page-refresh.ts'
 import FormActions from '../../components/FormActions.uvue';
 import { isRequired, missingRequired } from '../../services/form-required.ts';
@@ -17,6 +18,8 @@ import { createRecordScope } from '../../services/records/page-scope.ts';
 import { isDark } from '../../services/theme.ts';
 import { textTags } from '../../services/records/contracts.ts';
 import { fetchEvents, saveEvent, deleteEvent } from './services/events.ts';
+const modalMotion0 = ref<{ close: () => void } | null>(null);
+
 const rows = ref<any[]>([]),
   loading = ref(false),
   refreshing = ref(false),
@@ -176,7 +179,7 @@ function clear() {
             ><view v-if="item.tags" class="event-tags"><text v-for="tag in textTags(item.tags).split(/[,，]/).filter(Boolean)" :key="tag" class="event-tag" :class="{ 'secondary-text-dark': isDark }">{{ tag }}</text></view></view></view
           ></template
         > </PageState
-      ><AdaptiveModal v-if="form" label="编辑里程碑" :busy="saving" @close="form = null"
+      ><ModalMotion><AdaptiveModal ref="modalMotion0" v-if="form" label="编辑里程碑" :busy="saving" @close="form = null"
         ><FormField :required="isRequired('milestone', 'title')" label="标题" v-model="form.title" /><view class="ui-field-row">
           <FormField compact stretch
           label="开始日期" :required="isRequired('milestone', 'date')"
@@ -212,11 +215,11 @@ function clear() {
             label="取消"
             variant="quiet"
             :disabled="saving"
-            @click="form = null" /><MobileButton
+            @click="modalMotion0?.close()" /><MobileButton
             label="保存"
             :loading="saving"
             @click="save" />
-        </FormActions></template></AdaptiveModal></view
+        </FormActions></template></AdaptiveModal></ModalMotion></view
   ><template #fixed><FloatingActionButton label="新增里程碑" :disabled="loading || !!error" @click="open()" /></template></MobilePage>
 </template>
 <style scoped lang="scss">

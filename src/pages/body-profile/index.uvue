@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import ModalMotion from "../../components/ModalMotion.uvue";
 import type { BodyProfile, MeasurementKey } from './model.ts';
 import { computed, ref, watch } from 'vue';
 import { onHide, onShow, onUnload } from '@dcloudio/uni-app';
@@ -17,6 +18,8 @@ import { useAppLayout } from '../../services/app-layout.ts';
 import { getBodyProfile, saveBodyProfile } from './api.ts';
 import { bodyFigureSvg } from './figure.ts';
 import { calculateBmi, emptyProfile, measurements, measurementText, parseMeasurement, profilePayload, shoeText } from './model.ts';
+const modalMotion0 = ref<{ close: () => void } | null>(null);
+
 
 const { appGridItem } = useAppLayout();
 const profile = ref<BodyProfile>(emptyProfile());
@@ -158,16 +161,16 @@ function back() { uni.navigateBack({ fail: () => uni.switchTab({ url: '/pages/pr
       </view>
     </view>
     <template #fixed>
-      <AdaptiveModal v-if="form" label="编辑身体数据" :max-width="editing === 'all' ? 560 : 420" :busy="saving" :content-key="editing + formError" @close="close">
+      <ModalMotion><AdaptiveModal ref="modalMotion0" v-if="form" label="编辑身体数据" :max-width="editing === 'all' ? 560 : 420" :busy="saving" :content-key="editing + formError" @close="close">
         <FormField v-if="editing === 'all'" v-model="form.gender" label="性别" kind="selector" :options="genders" :disabled="saving" />
         <view class="editor-grid"><view v-for="field in editingFields" :key="field.key" class="editor-cell" :class="{ 'editor-cell-full': editing !== 'all' }"><FormField v-model="form[field.key]" :label="field.label + '（' + field.unit + '）'" input-type="digit" placeholder="未填写" :disabled="saving" /></view></view>
         <view v-if="limbContext" class="editor-grid"><view class="editor-cell"><FormField v-model="form.measurementSide" label="四肢围度测量侧别" kind="selector" :options="sides" :disabled="saving" /></view><view class="editor-cell"><FormField v-model="form.armState" label="上臂测量状态" kind="selector" :options="states" :disabled="saving" /></view></view>
         <view v-if="clothingEdit" class="editor-grid"><view v-if="editing === 'all' || editing === 'topSize'" class="editor-cell"><FormField v-model="form.topSize" label="上衣尺码" placeholder="例如 L" :disabled="saving" /></view><view v-if="editing === 'all' || editing === 'trousersSize'" class="editor-cell"><FormField v-model="form.trousersSize" label="裤子尺码" placeholder="例如 W30 / L32" :disabled="saving" /></view><view v-if="editing === 'all' || editing === 'shoeSize'" class="editor-cell"><FormField v-model="form.shoeSystem" label="鞋码类型" kind="selector" :options="shoeSystems" :disabled="saving" /></view><view v-if="editing === 'all' || editing === 'shoeSize'" class="editor-cell"><FormField v-model="form.shoeSize" label="鞋码" input-type="digit" placeholder="例如 42" :disabled="saving" /></view></view>
         <template #footer>
           <text v-if="formError" class="form-error" :class="themeClass('form-error')" role="alert">{{ formError }}</text>
-          <FormActions><template #secondary><MobileButton label="填写说明" icon="ant-design:question-circle-outlined" variant="ghost" :disabled="saving" @click="explainForm" /><MobileButton v-if="formError" label="关闭并重新读取" variant="ghost" :disabled="saving" @click="reload" /></template><MobileButton label="取消" variant="quiet" :disabled="saving" @click="close" /><MobileButton label="保存" :loading="saving" @click="save" /></FormActions>
+          <FormActions><template #secondary><MobileButton label="填写说明" icon="ant-design:question-circle-outlined" variant="ghost" :disabled="saving" @click="explainForm" /><MobileButton v-if="formError" label="关闭并重新读取" variant="ghost" :disabled="saving" @click="reload" /></template><MobileButton label="取消" variant="quiet" :disabled="saving" @click="modalMotion0?.close()" /><MobileButton label="保存" :loading="saving" @click="save" /></FormActions>
         </template>
-      </AdaptiveModal>
+      </AdaptiveModal></ModalMotion>
     </template>
   </MobilePage>
 </template>

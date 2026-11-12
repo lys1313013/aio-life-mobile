@@ -161,11 +161,21 @@ function back() {
         <PageState :loading="loading" :has-content="ready" :content-key="session.token" :error="loadError" @retry="load">
           <template #loading>
             <view class="settings-card ui-card settings-skeleton" :class="themeClass('settings-card')" role="status" aria-label="正在加载个人资料">
-              <view class="avatar-section ui-mb-section" aria-hidden="true"><view class="settings-avatar settings-placeholder" :class="themeClass('settings-placeholder')" /><view class="settings-skeleton-button settings-placeholder" :class="themeClass('settings-placeholder')" /></view>
-              <view class="settings-inline-row" v-for="n in 2" :key="n" aria-hidden="true"><view class="settings-skeleton-label settings-placeholder" :class="themeClass('settings-placeholder')" /><view class="settings-input settings-placeholder" :class="themeClass('settings-placeholder')" /></view>
-              <view class="settings-skeleton-label ui-mb-section ui-mt-section settings-placeholder" :class="themeClass('settings-placeholder')" aria-hidden="true" />
+              <view class="avatar-section ui-mb-section" aria-hidden="true">
+                <view class="settings-avatar settings-placeholder" :class="themeClass('settings-placeholder')" />
+                <view class="avatar-actions settings-skeleton-avatar-action"><text class="settings-label settings-skeleton-copy settings-placeholder" :class="themeClass('settings-placeholder')">更换头像</text></view>
+              </view>
+              <view class="settings-inline-row" aria-hidden="true">
+                <text class="settings-label settings-inline-label settings-skeleton-copy settings-placeholder" :class="themeClass('settings-placeholder')">昵称</text>
+                <view class="settings-input settings-placeholder" :class="themeClass('settings-placeholder')" />
+              </view>
+              <view class="settings-inline-row" aria-hidden="true">
+                <text class="settings-label settings-inline-label settings-skeleton-copy settings-placeholder" :class="themeClass('settings-placeholder')">邮箱</text>
+                <view class="settings-readonly ui-px-card"><text class="settings-skeleton-email settings-skeleton-copy settings-placeholder" :class="themeClass('settings-placeholder')">{{ email }}</text></view>
+              </view>
+              <view class="settings-skeleton-heading ui-mb-section ui-mt-section" aria-hidden="true"><text class="settings-label settings-skeleton-copy settings-placeholder" :class="themeClass('settings-placeholder')">签名</text></view>
               <view class="settings-textarea ui-pad-card settings-placeholder" :class="themeClass('settings-placeholder')" aria-hidden="true" />
-              <view class="settings-save ui-mt-section settings-placeholder" :class="themeClass('settings-placeholder')" aria-hidden="true" />
+              <view class="settings-skeleton-save ui-mt-section settings-placeholder" :class="themeClass('settings-placeholder')" aria-hidden="true" />
             </view>
           </template>
         <text v-if="errorText" class="settings-error ui-type-body" role="alert">{{ errorText }}</text>
@@ -242,6 +252,7 @@ function back() {
 </template>
 <style scoped lang="scss">
 @use '../../styles/skeleton';
+@use '../../styles/theme-tokens' as *;
 @use '../../styles/platform' as *;
 @use '../../styles/typography' as *;
 @use '../../styles/text-colors' as *;
@@ -249,6 +260,7 @@ function back() {
 @use '../../styles/spacing-tokens' as *;
 @include type-utilities('body');
 
+.settings-placeholder { @include skeleton.shape; }
 .settings-card {
 
   background-color: #ffffff;
@@ -323,7 +335,8 @@ function back() {
   color: #27272a;
   @include type-style('body');
 }
-.settings-save {
+.settings-save,
+.settings-skeleton-save {
   display: flex;
   flex-direction: row;
   align-items: center;
@@ -333,7 +346,8 @@ function back() {
   border: 0;
   border-radius: 12px;
   padding: 0;
-
+}
+.settings-save {
   // 保留保存中的对比度，避免框架禁用底色覆盖后出现白字配浅灰底。
   color: #ffffff !important;
   background-color: #4e7ee3 !important;
@@ -370,10 +384,12 @@ function back() {
 .app-button-label-dark { color: #eeeeef; }
 .text-action-label { @include type-style('body'); color: #5b8ff9; }
 .settings-save-label { color: #ffffff; @include type-style('body'); }
-.settings-placeholder { @include skeleton.shape; }
+.settings-placeholder { background-color: $theme-skeleton-light; }
 .settings-placeholder-dark { @include skeleton.dark; }
 .settings-skeleton { @include skeleton.pulse; }
-.settings-skeleton-label { width: 26px; height: type-line('label'); }
-.settings-skeleton-button { width: $space-modalActionMin; height: $space-controlMin; }
+.settings-skeleton-avatar-action { min-height: $space-controlMin; }
+.settings-skeleton-copy { color: transparent; }
+.settings-skeleton-email { align-self: flex-start; max-width: 100%; @include type-style('body'); }
+.settings-skeleton-heading { flex-direction: row; }
 @include skeleton.motion('.settings-skeleton');
 </style>

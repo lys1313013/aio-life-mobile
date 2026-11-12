@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import ModalMotion from "../../components/ModalMotion.uvue";
 import MobileSwitch from '../../components/MobileSwitch.uvue';
 import { usePageRefresh } from '../../services/page-refresh.ts'
 import { isRequired } from '../../services/form-required.ts';
@@ -35,7 +36,7 @@ import {
   queryAdmin,
   saveAdmin,
   deleteAdmin,
-  setMenuStatus,
+  setMenuVisibleClients,
   setMenuSort,
   sortUserDict,
   saveConfig,
@@ -46,6 +47,8 @@ import {
   adminOptions,
 } from './services/index.ts';
 import { exportLogs } from './services/export.ts';
+const modalMotion0 = ref<{ close: () => void } | null>(null);
+
 const kind = ref('users');
 const dictPanel = ref<any>(null), dictDragging = ref(false), dictWorking = ref(false), dictScrollTop = ref(0);
 const spec = computed(() => specs[kind.value]);
@@ -278,8 +281,7 @@ function edit(row = null, parentId = '0') {
     : {
         role: 'user',
         isEnabled: '1',
-        webIsEnabled: '1',
-        mobileIsEnabled: '1',
+        visibleClients: 3,
         isReadonly: 'N',
         sortOrder: '0',
         parentId,
@@ -410,8 +412,7 @@ function label(key) {
       path: '路由',
       component: '组件',
       roles: '角色',
-      webIsEnabled: 'Web 启用',
-      mobileIsEnabled: '移动端启用',
+      visibleClients: '展示端',
       isEnabled: '启用状态',
       description: '说明',
       configKey: '配置键',
@@ -579,7 +580,7 @@ async function download() {
       @refresh="load(false, true)"
       @reachbottom="loadMore"
     >
-      <MenuManager v-if="kind === 'menus'" :rows="rows" :loading="loading" :error="error" :busy-id="busyId" :remove="remove" @edit="edit" @create-child="(id) => edit(null, id)" @status="(row, mobile) => mutate(row, () => setMenuStatus(row, mobile))" @move="move" @retry="load()" />
+      <MenuManager v-if="kind === 'menus'" :rows="rows" :loading="loading" :error="error" :busy-id="busyId" :remove="remove" @edit="edit" @create-child="(id) => edit(null, id)" @visibility="(row, bit) => mutate(row, () => setMenuVisibleClients(row, bit))" @move="move" @retry="load()" />
       <UserPanel v-else-if="kind === 'users'" :rows="rows" :total="total" :loading="loading" :error="error" :more-error="moreError" :has-more="!pageEnded && rows.length < total" :busy="saving || !!busyId" :remove="remove" @search="searchUsers" @edit="edit" @retry="load()" @more="load(true)" />
       <UserDictPanel v-else-if="kind === 'user-dict'" ref="dictPanel" :rows="rows" :options="options" :total="total" :type="typeFilter" :loading="loading" :error="error" :more-error="moreError" :has-more="!pageEnded && rows.length < total" :busy="saving || opened || !!busyId" :busy-id="busyId" :remove="remove" :reorder="sortUserDict"
         @update:rows="rows = $event" @search="searchDictionary" @edit="edit" @retry="load()" @more="load(true)" @dragging="dictDragging = $event" @working="dictWorking = $event" @scroll-top="dictScrollTop = $event" />
@@ -774,14 +775,14 @@ async function download() {
           @click="edit()"
       /></template>
     </MobilePage>
-    <AdaptiveModal
+    <ModalMotion><AdaptiveModal ref="modalMotion0"
       v-if="opened"
       :label="spec.title"
       :busy="saving"
       :content-key="editorError + ':' + menuAdvanced"
       @close="opened = false"
       ><FormField
-        v-for="field in editorFields.filter(item => (kind !== 'menus' || !['webIsEnabled', 'mobileIsEnabled'].includes(item.key)) && (kind !== 'user-dict' || !['icon', 'color'].includes(item.key)))"
+        v-for="field in editorFields.filter(item => (kind !== 'menus' || item.key !== 'visibleClients') && (kind !== 'user-dict' || !['icon', 'color'].includes(item.key)))"
         :key="field.key"
         :label="field.label"
         :required="field.required"
@@ -789,25 +790,25 @@ async function download() {
         :input-type="field.kind === 'number' ? 'number' : 'text'"
         :model-value="fieldValue(field)"
         :options="fieldOptions(field).map((item) => item.label)"
-        :disabled="saving || (kind === 'menus' && protectedMenu(original || form) && ['path', 'webIsEnabled'].includes(field.key))"
+        :disabled="saving || (kind === 'menus' && protectedMenu(original || form) && ['path', 'visibleClients'].includes(field.key))"
         @update:model-value="(value) => setField(field, value)" /><UserDictAppearancePicker v-if="kind === 'user-dict'" v-model:icon="form.icon" v-model:color="form.color" :disabled="saving" /><text
         v-if="kind === 'menus' && menuAdvanced && options.length"
         class="admin-muted ui-mb-section" :class="themeClass('admin-muted')"
         >{{ '可用角色：' + options.join('、') }}</text
       ><view v-if="kind === 'menus'" class="ui-mb-section">
-        <view v-for="item in [{ key: 'webIsEnabled', label: 'Web 启用' }, { key: 'mobileIsEnabled', label: '移动端启用' }]" :key="item.key" class="admin-menu-switch ui-mb-inline">
+        <view v-for="item in [{ bit: 1, label: 'Web 菜单展示' }, { bit: 2, label: '手机端菜单展示' }]" :key="item.bit" class="admin-menu-switch ui-mb-inline">
           <text class="admin-switch-label" :class="themeClass('admin-ink')">{{ item.label }}</text>
-          <MobileSwitch :aria-label="item.label" :checked="Number(form[item.key]) === 1" :disabled="saving || protectedMenu(original || form)" @change="form[item.key] = $event.detail.value ? 1 : 0" />
+          <MobileSwitch :aria-label="item.label" :checked="(Number(form.visibleClients) & item.bit) !== 0" :disabled="saving || protectedMenu(original || form)" @change="form.visibleClients = $event.detail.value ? Number(form.visibleClients) | item.bit : Number(form.visibleClients) & ~item.bit" />
         </view>
       </view><text v-if="editorError" class="admin-error ui-mb-section ui-mt-section ui-type-body" role="alert">{{ editorError }}</text
       ><template #footer><FormActions>
         <template #secondary>
           <MobileButton v-if="kind === 'menus'" :label="menuAdvanced ? '收起高级设置' : '高级设置'" variant="quiet" :disabled="saving" @click="menuAdvanced = !menuAdvanced" />
         </template>
-        <MobileButton label="取消" variant="quiet" :disabled="saving" @click="opened = false" />
+        <MobileButton label="取消" variant="quiet" :disabled="saving" @click="modalMotion0?.close()" />
         <MobileButton label="保存" :loading="saving" @click="save" />
-      </FormActions></template></AdaptiveModal>
-    <AdaptiveModal
+      </FormActions></template></AdaptiveModal></ModalMotion>
+    <ModalMotion><AdaptiveModal
       v-if="detail"
       label="反馈详情"
       :busy="saving || uploading"
@@ -877,7 +878,7 @@ async function download() {
         <MobileButton label="关闭" variant="quiet" :disabled="saving || uploading" @click="closeDetail" />
         <MobileButton label="回复" :loading="saving" :disabled="uploading || detailLoading || !!detailError" @click="submitReply" />
       </FormActions></template>
-    </AdaptiveModal></view
+    </AdaptiveModal></ModalMotion></view
   >
 </template>
 <style scoped lang="scss">

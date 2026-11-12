@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import ModalMotion from "../../components/ModalMotion.uvue";
 import { readPageTotal, mergePageItems, hasMorePageItems } from '../../services/pagination.ts';
 import { usePageRefresh } from '../../services/page-refresh.ts'
 import LibraryRecordEditor from '../../components/record-editors/LibraryRecordEditor.uvue';
@@ -429,8 +430,8 @@ async function submitImport() {
         :has-more="hasMorePageItems(rows.length, total, pageEnded)"
         @load="load(false, true)"
       />
-      <LibraryRecordEditor v-if="form" :record="form" :kind="kind" @close="form = null" @saved="saved" @deleted="deleted" />
-      <AdaptiveModal
+      <ModalMotion><LibraryRecordEditor v-if="form" :record="form" :kind="kind" @close="form = null" @saved="saved" @deleted="deleted" /></ModalMotion>
+      <ModalMotion><AdaptiveModal
         v-if="importingOpen"
         label="豆瓣观影导入"
         :busy="importBusy"
@@ -505,7 +506,7 @@ async function submitImport() {
             :loading="importBusy"
             :disabled="!preview || !!issues.length || !!importResult"
             @click="submitImport" /></FormActions></template
-      ></AdaptiveModal> </view
+      ></AdaptiveModal></ModalMotion> </view
     ><template #fixed
       ><FloatingActionButton
         :label="'新增' + title"

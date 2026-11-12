@@ -1,16 +1,16 @@
 const { test, expect } = require('./support/test');
+const themes = require('../../src/theme.json');
 const ok = data => ({ json: { code: 0, data } });
 const gate = () => { let release; const promise = new Promise(resolve => { release = resolve; }); return { promise, release }; };
 for (const width of [390, 768, 1440]) for (const theme of ['light', 'dark']) {
-  test(`资料骨架与绑定刷新保留空态 ${width} ${theme}`, async ({ page, apiMock }, info) => {
+  test(`资料骨架与表单位置一致 ${width} ${theme}`, async ({ page, apiMock }, info) => {
     await page.setViewportSize({ width, height: 900 });
     await page.emulateMedia({ colorScheme: theme });
     await page.addInitScript(() => localStorage.setItem('aio-life-mobile.access-token.v1', 'profile-loading-fixture'));
-    let pending = gate(), delayed = true, fail = false;
+    const pending = gate(); let delayed = true;
     const errors = []; page.on('pageerror', error => errors.push(error.message));
     apiMock({
       'GET /api/user/info': async () => { if (delayed) await pending.promise; return ok({ id: '1', nickname: '模拟用户', introduction: '模拟签名', email: 'mock@example.com', roles: [] }); },
-      'GET /api/userbinds/list': async () => { if (delayed) await pending.promise; return fail ? { json: { code: 1, message: '模拟刷新失败' } } : ok([]); },
       'GET /api/auth/secondary-lock/menus': ok([]),
       'PUT /api/users': () => ({ json: { code: 1, message: '模拟保存失败' } }),
     });
@@ -19,13 +19,51 @@ for (const width of [390, 768, 1440]) for (const theme of ['light', 'dark']) {
       const card = page.locator('.settings-card');
       await expect(page.getByRole('status', { name: '正在加载个人资料' })).toBeVisible();
       const initial = await card.boundingBox();
+      const regions = ['.avatar-section', '.settings-inline-row', '.settings-textarea'];
+      const loadingRegions = await Promise.all(regions.map(selector => card.locator(selector).evaluateAll(nodes => nodes.map(node => {
+        const { x, y, width, height } = node.getBoundingClientRect();
+        return { x, y, width, height };
+      }))));
+      await expect(card.locator('.settings-avatar')).toHaveCSS('border-radius', '36px');
+      expect((await card.locator('.settings-skeleton-avatar-action .settings-placeholder').boundingBox()).height).toBeLessThan(44);
+      const savePlaceholder = await card.locator('.settings-skeleton-save').boundingBox();
+      const color = themes[theme].skeletonColor.match(/[a-f\d]{2}/gi).map(part => parseInt(part, 16));
+      await expect(card.locator('.settings-skeleton-save')).toHaveCSS('background-color', `rgb(${color.join(', ')})`);
       await page.screenshot({ path: info.outputPath('settings-loading.png') });
       delayed = false; pending.release();
       await expect(page.locator('[aria-label="昵称"] input')).toHaveValue('模拟用户');
-      expect(Math.abs((await card.boundingBox()).height - initial.height)).toBeLessThan(20);
+      expect(Math.abs((await card.boundingBox()).height - initial.height)).toBeLessThanOrEqual(1);
+      for (const [index, selector] of regions.entries()) {
+        const loaded = await card.locator(selector).evaluateAll(nodes => nodes.map(node => {
+          const { x, y, width, height } = node.getBoundingClientRect();
+          return { x, y, width, height };
+        }));
+        expect(loaded).toHaveLength(loadingRegions[index].length);
+        loaded.forEach((box, row) => {
+          for (const key of ['x', 'y', 'width', 'height']) expect(Math.abs(box[key] - loadingRegions[index][row][key]), `${selector} ${row} ${key}`).toBeLessThanOrEqual(1);
+        });
+      }
+      const loadedSave = await page.getByRole('button', { name: '保存', exact: true }).boundingBox();
+      for (const key of ['x', 'y', 'width', 'height']) expect(Math.abs(loadedSave[key] - savePlaceholder[key]), `保存 ${key}`).toBeLessThanOrEqual(1);
+      await page.screenshot({ path: info.outputPath('settings-loaded.png') });
       await page.getByRole('button', { name: '保存', exact: true }).click();
       await expect(page.getByRole('alert')).toHaveText('模拟保存失败');
       await expect(page.locator('[aria-label="昵称"] input')).toHaveValue('模拟用户');
+      expect(errors).toEqual([]);
+    } finally { pending.release(); }
+  });
+  test(`绑定刷新保留空态 ${width} ${theme}`, async ({ page, apiMock }, info) => {
+    await page.setViewportSize({ width, height: 900 });
+    await page.emulateMedia({ colorScheme: theme });
+    await page.addInitScript(() => localStorage.setItem('aio-life-mobile.access-token.v1', 'profile-loading-fixture'));
+    let pending = gate(), delayed = false, fail = false;
+    const errors = []; page.on('pageerror', error => errors.push(error.message));
+    apiMock({
+      'GET /api/user/info': ok({ id: '1', nickname: '模拟用户', introduction: '模拟签名', email: 'mock@example.com', roles: [] }),
+      'GET /api/userbinds/list': async () => { if (delayed) await pending.promise; return fail ? { json: { code: 1, message: '模拟刷新失败' } } : ok([]); },
+      'GET /api/auth/secondary-lock/menus': ok([]),
+    });
+    try {
       await page.goto('/#/pages/profile/bindings');
       const empty = page.locator('.state-card');
       await expect(empty).toContainText('还没有绑定账号');

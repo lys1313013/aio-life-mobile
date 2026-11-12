@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import ModalMotion from "../../components/ModalMotion.uvue";
 import { readPageTotal, mergePageItems, hasMorePageItems } from '../../services/pagination.ts';
 import { usePageRefresh } from '../../services/page-refresh.ts'
 import { useWindowResize } from '../../services/window-resize.ts'
@@ -22,6 +23,8 @@ import NoteEditor from './NoteEditor.uvue';
 import { createRecordScope } from '../../services/records/page-scope.ts';
 import { isDark } from '../../services/theme.ts';
 import { fetchNotes, saveNote, deleteNote, fetchNoteById, fetchMemoById } from './services/notes.ts';
+const modalMotion0 = ref<{ close: () => void } | null>(null);
+
 const kind = ref('think'),
   title = computed(() => (kind.value === 'think' ? '闪念' : '笔记'));
 const rows = ref<any[]>([]),
@@ -249,18 +252,18 @@ function displayDate(value) {
           </view>
         </view></view></view> </PageState
       ><LoadMore :error="moreError" :loading="loading" :has-more="hasMorePageItems(rows.length, total, pageEnded)" @load="load(false, true)" />
-      <NoteEditor v-if="form && kind === 'memo'" :form="form" :saving="saving" :created="created" :error="formError" :remove="async () => { await remove(form); form = null; }" @save="save" @close="form = null" />
-      <AdaptiveModal v-if="form && kind === 'think'" :label="form.id ? '编辑闪念' : '新增闪念'" :max-width="560" :busy="saving" :content-key="JSON.stringify([form.events.length, formError])" @close="form = null">
+      <ModalMotion><NoteEditor v-if="form && kind === 'memo'" :form="form" :saving="saving" :created="created" :error="formError" :remove="async () => { await remove(form); form = null; }" @save="save" @close="form = null" /></ModalMotion>
+      <ModalMotion><AdaptiveModal ref="modalMotion0" v-if="form && kind === 'think'" :label="form.id ? '编辑闪念' : '新增闪念'" :max-width="560" :busy="saving" :content-key="JSON.stringify([form.events.length, formError])" @close="form = null">
         <ThoughtForm :form="form" :editing="!!form.id" :disabled="saving || created" :error="formError">
           <template #secondary>
             <ConfirmAction v-if="form.id" label="删除闪念" :action="async () => { await remove(form); form = null; }">
               <template #default="{ open, busy: deleting }"><MobileButton label="删除闪念" icon="ant-design:delete-outlined" variant="ghost" :disabled="saving || created" :loading="deleting" @click="open" /></template>
             </ConfirmAction>
           </template>
-          <MobileButton label="取消" variant="quiet" :disabled="saving" @click="form = null" />
+          <MobileButton label="取消" variant="quiet" :disabled="saving" @click="modalMotion0?.close()" />
           <MobileButton :label="created && !saving ? '重新读取' : '保存'" :loading="saving" @click="save" />
         </ThoughtForm>
-      </AdaptiveModal> </view>
+      </AdaptiveModal></ModalMotion> </view>
     <template #fixed><FloatingActionButton :label="'新增' + title" @click="open()" /></template>
   </MobilePage>
 </template>

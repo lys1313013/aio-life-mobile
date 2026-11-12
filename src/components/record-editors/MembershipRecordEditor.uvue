@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import ModalMotion from "../ModalMotion.uvue";
 import { computed, ref, watch } from 'vue';
 import { session } from '../../services/session.ts';
 import FormSkeleton from '../FormSkeleton.uvue';
@@ -16,6 +17,8 @@ import { appTextColor } from '../../services/app-layout.ts';
 import { isDark } from '../../services/theme.ts';
 import { editableProviders, readMemberProviders, memberCategories as categories, memberCategoryLabels as categoryLabels } from '../../services/membership-provider.ts';
 import { memberPayload, addMonthsClamped } from '../../services/records/contracts.ts';
+const modalMotion0 = ref<{ close: () => void } | null>(null);
+
 const props = defineProps<{ record?: any; loading?: boolean; loadError?: string }>();
 const emit = defineEmits(['close', 'saved', 'deleted', 'retry']);
 const form = ref<any>(null), saving = ref(false), deleting = ref(false), formError = ref('');
@@ -140,7 +143,7 @@ watch(() => [props.record, props.loading, props.loadError], () => { if (props.lo
 
 </script>
 <template>
-<AdaptiveModal :loading="loading" :load-error="loadError" :loading-rows="3" @retry="emit('retry')"
+<ModalMotion><AdaptiveModal ref="modalMotion0" :loading="loading" :load-error="loadError" :loading-rows="3" @retry="emit('retry')"
         v-if="form || loading || loadError"
         :label="(form?.id || loading || loadError) ? '编辑订阅' : '新增订阅'"
         :busy="deleting || saving || choosingProvider"
@@ -218,16 +221,16 @@ watch(() => [props.record, props.loading, props.loadError], () => { if (props.lo
         <text v-if="formError" class="member-error ui-mt-section ui-type-body" role="alert">{{ formError }}</text>
         <FormActions>
           <template #secondary><ConfirmAction v-if="form.id && !saving" label="删除订阅" :action="() => remove(form)" /></template>
-          <MobileButton label="取消" variant="quiet" :disabled="deleting || saving" @click="emit('close')" />
+          <MobileButton label="取消" variant="quiet" :disabled="deleting || saving" @click="modalMotion0?.close()" />
           <MobileButton label="保存" :loading="saving" :disabled="deleting" @click="save" />
         </FormActions>
-      </AdaptiveModal>
-      <AdaptiveModal v-if="choosingProvider" label="选择会员平台" :max-width="480" :show-close="true" @close="choosingProvider = false">
+      </AdaptiveModal></ModalMotion>
+      <ModalMotion><AdaptiveModal v-if="choosingProvider" label="选择会员平台" :max-width="480" :show-close="true" @close="choosingProvider = false">
         <view class="provider-options">
           <button hover-class="none" class="provider-option" :class="{ 'provider-option-dark': isDark, 'provider-option-selected': !form.providerId }" role="button" aria-label="选择自定义平台" :aria-pressed="!form.providerId" @click="changeProvider('自定义平台')"><MembershipLogo :category="form.category" :size="28" /><text class="provider-option-name">自定义平台</text><AppIcon v-if="!form.providerId" name="ant-design:check-outlined" :size="18" /></button>
           <button hover-class="none" v-for="row in providerOptions" :key="row.id" class="provider-option" :class="{ 'provider-option-dark': isDark, 'provider-option-selected': form.providerId === row.id }" role="button" :aria-label="'选择平台：' + providerLabel(row)" :aria-pressed="form.providerId === row.id" :disabled="row.isEnabled === 0" @click="changeProvider(providerLabel(row))"><MembershipLogo :icon-key="row.iconKey" :category="row.category" :name="row.name" :size="28" /><text class="provider-option-name">{{ providerLabel(row) }}</text><AppIcon v-if="form.providerId === row.id" name="ant-design:check-outlined" :size="18" /></button>
         </view>
-      </AdaptiveModal>
+      </AdaptiveModal></ModalMotion>
 </template>
 <style scoped lang="scss">
 @use '../../styles/platform' as *;

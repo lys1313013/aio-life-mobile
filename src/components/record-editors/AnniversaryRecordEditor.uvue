@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import ModalMotion from "../ModalMotion.uvue";
 import MobileSwitch from '../../components/MobileSwitch.uvue';
 import { computed, ref, watch } from 'vue';
 import { session } from '../../services/session.ts';
@@ -13,6 +14,8 @@ import { createRecordScope } from '../../services/records/page-scope.ts';
 import { request } from '../../services/api.ts';
 import { buttonLabelClasses } from '../../services/button-label.ts';
 import { isDark } from '../../services/theme.ts';
+const modalMotion0 = ref<{ close: () => void } | null>(null);
+
 const props = defineProps<{ record?: any; loading?: boolean; loadError?: string; home?: boolean }>();
 const emit = defineEmits(['close', 'saved', 'deleted', 'retry']);
 const form = ref<any>(null), saving = ref(false), deleting = ref(false), formError = ref('');
@@ -95,7 +98,7 @@ async function remove(item) {
 
 </script>
 <template>
-<AdaptiveModal :loading="loading" :load-error="loadError" :loading-rows="3" @retry="emit('retry')" v-if="form || loading || loadError" label="编辑纪念日" :busy="deleting || saving" @close="emit('close')"
+<ModalMotion><AdaptiveModal ref="modalMotion0" :loading="loading" :load-error="loadError" :loading-rows="3" @retry="emit('retry')" v-if="form || loading || loadError" label="编辑纪念日" :busy="deleting || saving" @close="emit('close')"
           >
           <template #loading><FormSkeleton :rows="['field', 'field', 'controls', 'textarea', 'field']" :footer="true" /></template><FormField :required="isRequired('anniversary', 'title')" label="标题" v-model="form.title" />
           <FormField :required="isRequired('anniversary', 'targetDate')" label="日期" kind="date" v-model="form.targetDate" />
@@ -120,11 +123,11 @@ async function remove(item) {
               label="取消"
               variant="quiet"
               :disabled="deleting || saving"
-              @click="emit('close')" /><MobileButton
+              @click="modalMotion0?.close()" /><MobileButton
               label="保存"
               :loading="saving" :disabled="deleting"
               @click="save" />
-        </FormActions></template></AdaptiveModal>
+        </FormActions></template></AdaptiveModal></ModalMotion>
 </template>
 <style scoped lang="scss">
 @use '../../styles/platform' as *;

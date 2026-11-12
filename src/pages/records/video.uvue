@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import ModalMotion from "../../components/ModalMotion.uvue";
 import CategoryTabs from "../../components/CategoryTabs.uvue";
 import { openExternalLink } from '../../services/external-link.ts'
 import { readPageTotal, mergePageItems, hasMorePageItems } from '../../services/pagination.ts';
@@ -40,6 +41,8 @@ import {
   parseVideoLink,
   extractVideoId,
 } from './services/video.ts';
+const modalMotion0 = ref<{ close: () => void } | null>(null);
+
 const counts = ref<any>({}),
   statistics = ref<any>({}),
   refreshing = ref(false),
@@ -398,7 +401,7 @@ const statusCategories = computed(() => statusTabs.map(label => ({ label: label 
         >
 <template #loading><view class="video-grid"><view v-for="n in 6" :key="n" class="video-card" :class="{ 'video-card-dark': isDark }"><view class="video-poster"><ContentSkeleton variant="cover" /></view><view class="video-body video-skeleton-body" aria-hidden="true"><text class="video-title video-skeleton-line" :class="{ 'video-skeleton-line-dark': isDark }">占位标题</text><view class="video-meta ui-row"><text class="video-meta-text video-skeleton-line" :class="{ 'video-skeleton-line-dark': isDark }">占位作者</text><text class="episode">&#160;</text></view><view class="video-meta ui-row"><text class="video-meta-text video-skeleton-line" :class="{ 'video-skeleton-line-dark': isDark }">00:00:00 / 00:00:00</text><text class="episode">&#160;</text></view><view class="progress-track" :class="{ 'progress-track-dark': isDark }" /></view></view></view></template>
 <view class="video-grid"><view v-for="item in videoPage.filtered" :key="item.id" class="video-card" :class="{ 'video-card-dark': isDark }" role="button" tabindex="0" :aria-label="'编辑视频：' + item.title" @click="open(item)" @keydown.enter="open(item)" @keydown.space.prevent="open(item)"><view class="video-poster" :class="{ 'video-poster-dark': isDark }"><VideoCover :file-id="item.coverFileId" :state="item.coverState" :title="item.title" @retry="retryCover(item)" /><text class="video-status" :class="'video-status-' + item.status">{{ statusLabels[item.status] }}</text><text class="video-duration">{{ clockDuration(item.durationSeconds) }}</text></view><view class="video-body"><text :max-lines="2" class="video-title">{{ item.title }}</text><view class="video-meta ui-row"><text class="video-meta-text" :class="{ 'record-secondary-dark': isDark }">{{ item.ownerName || '' }}</text><text class="episode">{{ item.currentEpisode || 1 }}/{{ item.episodes || 1 }}</text></view><view class="video-meta ui-row"><text class="video-meta-text" :class="{ 'record-secondary-dark': isDark }">{{ clockDuration(item.watchedDurationSeconds) }} / {{ clockDuration(item.durationSeconds) }}</text><text class="episode">{{ videoProgress(item) }}%</text></view><view class="progress-track" :class="{ 'progress-track-dark': isDark }"><view class="progress-fill" :style="{ width: (videoProgress(item)) + '%' }" /></view></view></view></view></PageState
-      ></view></template></CategoryPager><AdaptiveModal
+      ></view></template></CategoryPager><ModalMotion><AdaptiveModal ref="modalMotion0"
         v-if="form"
         label="编辑学习视频"
         :busy="saving || parsing"
@@ -446,9 +449,9 @@ const statusCategories = computed(() => statusTabs.map(label => ({ label: label 
         <template #footer><FormActions>
           <template #secondary><ConfirmAction v-if="form.id" label="删除视频" :action="() => remove(form)" /><MobileButton v-if="canPlay(form.url)" label="播放视频" icon="ant-design:play-circle-outlined" variant="quiet" @click="play(form.url)" /></template>
           <MobileButton label="取消" variant="quiet" :disabled="saving || parsing"
-            @click="formRevision++; form = null;" />
+            @click="modalMotion0?.close()" />
           <MobileButton :label="saved ? '重新读取' : '保存'" :loading="saving" :disabled="parsing" @click="save" />
-        </FormActions></template></AdaptiveModal></view>
+        </FormActions></template></AdaptiveModal></ModalMotion></view>
     <template #fixed><FloatingActionButton label="新增视频" :disabled="loading || !!error" @click="open()" /></template>
   </MobilePage>
 </template>

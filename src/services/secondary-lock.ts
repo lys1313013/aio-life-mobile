@@ -1,5 +1,8 @@
 import { reactive, watch } from 'vue'
 import { session } from './session.ts'
+// #if defined(APP) || defined(WEB)
+import { configurePageMotion } from './page-motion.ts'
+// #endif
 
 export const secondaryLock = reactive({ menuPath: '', token: '', visible: false, checking: false })
 const pending: Array<{ path: string; token: string; resolve: () => void; reject: (reason: Error) => void }> = []
@@ -28,9 +31,20 @@ export function installUnlockLifecycle(needsCheck?: (url: string) => boolean, ch
   let resuming = false
   for (const name of ['navigateTo', 'redirectTo', 'reLaunch', 'switchTab', 'navigateBack']) {
     uni.addInterceptor(name, { invoke: (options) => {
-      if (resuming) { resuming = false; return }
+      if (resuming) {
+        resuming = false
+        // #if defined(APP) || defined(WEB)
+        configurePageMotion(name, options)
+        // #endif
+        return
+      }
       invalidateUnlocks()
-      if (!options?.url || !needsCheck?.(options.url) || !checkAccess) return
+      if (!options?.url || !needsCheck?.(options.url) || !checkAccess) {
+        // #if defined(APP) || defined(WEB)
+        configurePageMotion(name, options)
+        // #endif
+        return
+      }
       const revision = navigationRevision
       checkAccess(options.url).then(() => {
         if (revision !== navigationRevision) return

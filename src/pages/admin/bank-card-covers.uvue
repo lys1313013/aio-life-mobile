@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import ModalMotion from "../../components/ModalMotion.uvue";
 import { usePageRefresh } from '../../services/page-refresh.ts'
 import { computed, nextTick, ref, watch } from 'vue';
 import { onHide, onShow, onUnload } from '@dcloudio/uni-app';
@@ -20,6 +21,8 @@ import { themeClass } from '../../services/theme.ts';
 import { fetchUser } from '../../services/api.ts';
 import { restoreSession, session } from '../../services/session.ts';
 import { moveCoverOrder, listCoverTemplates, listCoverBanks, saveCoverTemplate, setCoverEnabled, deleteCoverTemplate, createCoverMutations } from './services/bank-card-covers.ts';
+const modalMotion0 = ref<{ close: () => void } | null>(null);
+
 function explainUsedCover() { uni.showModal({ title: '已使用的卡面', content: '已有银行卡使用，银行和类型不可修改。', showCancel: false }); }
 const rows = ref<any[]>([]), banks = ref<any[]>([]);
 const loading = ref(false), refreshing = ref(false), loaded = ref(false), error = ref('');
@@ -171,7 +174,7 @@ onUnload(() => { alive = false; order.reset(); generation++; editorGeneration++;
       </view>
     </MobilePage>
     <FloatingActionButton v-if="authorized" label="新增公共卡面" :disabled="!loaded || loading || !!error" @click="edit()" />
-    <AdaptiveModal v-if="opened" :label="original ? '编辑公共卡面' : '新增公共卡面'" :max-width="560" :busy="locked" @close="close">
+    <ModalMotion><AdaptiveModal ref="modalMotion0" v-if="opened" :label="original ? '编辑公共卡面' : '新增公共卡面'" :max-width="560" :busy="locked" @close="close">
       <view class="cover-form">
         <view class="cover-form-preview ui-mb-section"><BankCardCoverPreview :file-id="form.fileId" :public-url="form.fileId === original?.fileId ? original?.publicUrl : undefined" :name="form.name || '卡面预览'" /></view>
         <FormField label="卡面图片" required><BankCardCoverUpload :file-id="form.fileId" :disabled="saving" @change="form.fileId = $event" @busy="uploading = $event" /></FormField>
@@ -188,8 +191,8 @@ onUnload(() => { alive = false; order.reset(); generation++; editorGeneration++;
         </view>
         <text v-if="editorError" class="cover-error ui-mb-section" role="alert">{{ editorError }}</text>
       </view>
-      <template #footer><FormActions><MobileButton label="取消" variant="quiet" :disabled="locked" @click="close" /><MobileButton label="保存" :loading="saving" :disabled="uploading" @click="save" /></FormActions></template>
-    </AdaptiveModal>
+      <template #footer><FormActions><MobileButton label="取消" variant="quiet" :disabled="locked" @click="modalMotion0?.close()" /><MobileButton label="保存" :loading="saving" :disabled="uploading" @click="save" /></FormActions></template>
+    </AdaptiveModal></ModalMotion>
   </view>
 </template>
 <style scoped lang="scss">

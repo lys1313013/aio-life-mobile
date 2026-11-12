@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import ModalMotion from "../../components/ModalMotion.uvue";
 import CategoryTabs from "../../components/CategoryTabs.uvue";
 import CategoryPager from '../../components/CategoryPager.uvue';
 import { computed, onUnmounted, ref } from 'vue';
@@ -21,6 +22,8 @@ import { usePageRefresh } from '../../services/page-refresh.ts';
 import { createRecordScope } from '../../services/records/page-scope.ts';
 import { dateTime, taskPayload, reordered } from '../../services/records/contracts.ts';
 import { fetchColumns, fetchTasks, fetchDetails, saveTaskRecord, deleteTaskRecord, sortTaskRecords, starDetail } from './services/tasks.ts';
+const modalMotion0 = ref<{ close: () => void } | null>(null);
+
 
 const pager = ref(null);
 const loaded = ref(false);
@@ -273,14 +276,14 @@ async function move(type, item, offset) {
         <MobileButton v-if="!tasks.length && !loading && !error" :label="columns.length ? '新增清单' : '新增任务列'" variant="quiet" @click="open(columns.length ? 'task' : 'column')" />
       </PageState>
       </view></template></CategoryPager>
-      <AdaptiveModal v-if="managing && !form" label="管理任务列" show-close @close="managing = false">
+      <ModalMotion><AdaptiveModal v-if="managing && !form" label="管理任务列" show-close @close="managing = false">
         <view v-for="column in columns" :key="column.id" class="group-heading">
           <text class="group-title" :class="{ 'primary-text-dark': isDark }">{{ column.title }}</text>
           <MobileButton label="编辑任务列" icon="ant-design:edit-outlined" variant="ghost" :disabled="loading || writing" @click="open('column', column)" />
         </view>
         <MobileButton label="新增列" icon="ant-design:plus-outlined" variant="ghost" :disabled="loading || writing" @click="open('column')" />
-      </AdaptiveModal>
-      <AdaptiveModal v-if="form" label="编辑待办" :busy="writing" @close="form = null">
+      </AdaptiveModal></ModalMotion>
+      <ModalMotion><AdaptiveModal ref="modalMotion0" v-if="form" label="编辑待办" :busy="writing" @close="form = null">
         <template v-if="kind === 'column'"
           ><FormField :required="isRequired('column', 'title')" label="列名称" v-model="form.title" /><FormField
             label="背景"
@@ -347,10 +350,10 @@ async function move(type, item, offset) {
             label="取消"
             variant="quiet"
             :disabled="writing"
-            @click="form = null" /><MobileButton label="保存" :loading="saving" :disabled="writing || loading" @click="save"
+            @click="modalMotion0?.close()" /><MobileButton label="保存" :loading="saving" :disabled="writing || loading" @click="save"
         />
         </FormActions></template>
-      </AdaptiveModal> </view
+      </AdaptiveModal></ModalMotion> </view
   ></MobilePage>
 </template>
 <style scoped lang="scss">

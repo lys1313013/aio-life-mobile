@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import ModalMotion from "../../components/ModalMotion.uvue";
 import { usePageRefresh } from '../../services/page-refresh.ts'
 import { buttonLabelClasses } from '../../services/button-label.ts'
 import { computed, ref, watch } from 'vue';
@@ -241,10 +242,10 @@ function back() {
       </PageState>
     </MobilePage
     >
-    <AdaptiveModal v-if="mode === 'menus'" label="确认菜单锁" :busy="saving" :max-width="320" :show-close="false" dense @close="mode = ''; password = ''">
+    <ModalMotion><AdaptiveModal v-if="mode === 'menus'" label="确认菜单锁" :busy="saving" :max-width="320" :show-close="false" dense @close="mode = ''; password = ''">
       <NumericPasswordPad v-model="password" :busy="saving" :error="formError" recovery @update:modelValue="formError = ''" @submit="save" @recover="open('recovery')" />
-    </AdaptiveModal>
-    <SecondaryPasswordEditor v-if="mode === 'password' || mode === 'recovery'" :mode="mode === 'recovery' ? 'recovery' : hasPassword ? 'change' : 'create'" @saved="hasPassword = true" @close="mode = ''" />
+    </AdaptiveModal></ModalMotion>
+    <ModalMotion><SecondaryPasswordEditor v-if="mode === 'password' || mode === 'recovery'" :mode="mode === 'recovery' ? 'recovery' : hasPassword ? 'change' : 'create'" @saved="hasPassword = true" @close="mode = ''" /></ModalMotion>
   </view>
 </template>
 <style scoped lang="scss">

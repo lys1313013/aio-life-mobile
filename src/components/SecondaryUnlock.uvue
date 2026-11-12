@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import ModalMotion from "./ModalMotion.uvue";
 import { onUnmounted, ref, watch } from 'vue';
 import { onHide } from '@dcloudio/uni-app';
 import AdaptiveModal from './AdaptiveModal.uvue';
@@ -63,8 +64,8 @@ async function unlock() {
 }
 </script>
 <template>
-  <AdaptiveModal v-if="secondaryLock.visible && !recoveryOpen" label="解锁菜单" :busy="saving" :show-close="false" :max-width="320" dense @close="cancelUnlock">
+  <ModalMotion><AdaptiveModal v-if="secondaryLock.visible && !recoveryOpen" label="解锁菜单" :busy="saving" :show-close="false" :max-width="320" dense @close="cancelUnlock">
     <NumericPasswordPad v-model="password" :busy="saving" :error="error" recovery @update:modelValue="error = ''" @submit="unlock" @recover="password = ''; error = ''; recoveryOpen = true" />
-  </AdaptiveModal>
-  <SecondaryPasswordEditor v-if="secondaryLock.visible && recoveryOpen" mode="recovery" @close="recoveryOpen = false" />
+  </AdaptiveModal></ModalMotion>
+  <ModalMotion><SecondaryPasswordEditor v-if="secondaryLock.visible && recoveryOpen" mode="recovery" @close="recoveryOpen = false" /></ModalMotion>
 </template>

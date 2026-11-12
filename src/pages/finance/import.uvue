@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import ModalMotion from "../../components/ModalMotion.uvue";
 import { isRequired, missingRequired } from '../../services/form-required.ts';
 import { computed, ref } from 'vue';
 import MobilePage from '../../components/MobilePage.uvue';
@@ -14,6 +15,8 @@ import { parseCSV, parseMobileCSV } from './services/import-parser.ts';
 import { chooseBill, parseBillFile } from './services/import-files.ts';
 import { useDomainPage } from '../../services/domains/page-session.ts';
 import { themeClass } from '../../services/theme.ts';
+const modalMotion0 = ref<{ close: () => void } | null>(null);
+
 const text = ref(''),
   types = ref<any[]>([]),
   payments = ref<any[]>([]),
@@ -337,7 +340,7 @@ async function removeSelected() {
         </view>
       </PageState>
     </view>
-    <AdaptiveModal v-if="modal" label="导入记录" @close="modal = false">
+    <ModalMotion><AdaptiveModal ref="modalMotion0" v-if="modal" label="导入记录" @close="modal = false">
       <FormField label="记账金额" input-type="digit" v-model="draft.amt" :error="draftErrors.amt" />
       <FormField label="交易金额" input-type="digit" v-model="draft.transactionAmt" :error="draftErrors.transactionAmt" />
       <FormField :required="isRequired('importExpense', 'expTypeId')" label="类型" kind="selector" :options="types.map((item) => item.dictLabel)" v-model="draftType" :error="draftErrors.expTypeId" />
@@ -346,11 +349,11 @@ async function removeSelected() {
       <text v-if="draft.transactionId" class="transaction-detail secondary-text" :class="themeClass('secondary-text')">交易号 {{ draft.transactionId }}</text>
       <template #footer>
         <FormActions>
-          <MobileButton label="取消" variant="quiet" @click="modal = false" />
+          <MobileButton label="取消" variant="quiet" @click="modalMotion0?.close()" />
           <MobileButton label="保存预览" @click="saveRow" />
         </FormActions>
       </template>
-    </AdaptiveModal>
+    </AdaptiveModal></ModalMotion>
   </MobilePage>
 </template>
 <style scoped lang="scss">

@@ -5,6 +5,12 @@ import { installUnlockLifecycle, invalidateUnlocks } from './services/secondary-
 import { needsMenuCheck, checkMenuAccess, installMenuAccessWarmup } from './services/menu-access.ts'
 
 import { initializeTheme } from './services/theme.ts'
+// #ifdef WEB
+import { getCurrentInstance } from 'vue'
+import { installPageMotion } from './services/page-motion.ts'
+const pageRouter = getCurrentInstance()?.appContext.config.globalProperties.$router
+onLaunch(() => installPageMotion(pageRouter))
+// #endif
 // #ifdef MP-WEIXIN
 import { installMiniProgramUpdates } from './services/mini-program-updates.ts'
 // #endif
@@ -97,6 +103,9 @@ onHide(invalidateUnlocks)
   .icon-button-dark { background-color: #28372d; color: #abd4b9; }
 
 .tab-page { flex: 1; height: 100%; background-color: $theme-page-light; }
+/* #ifndef WEB */
+.tab-page { transition: background-color 800ms ease-in; }
+/* #endif */
 .tab-scroll { flex: 1; height: 0; }
 .tab-content { width: 100%; max-width: $space-contentMax; align-self: center; padding: $space-page; padding-bottom: calc($space-page + env(safe-area-inset-bottom)); }
 .state-card { background-color: $theme-surface-light; border-radius: 16px; padding: $space-section $space-card; align-items: center; }
@@ -109,6 +118,29 @@ onHide(invalidateUnlocks)
   .empty-title-dark { color: #d4d4d8; }
 
 /* #ifdef WEB */
+// 页面进退与主题切换分别管理快照，返回时旧页面位于上层向右退场。
+:global(.aio-page-motion::view-transition-old(root)),
+:global(.aio-page-motion::view-transition-new(root)) { animation: none; mix-blend-mode: normal; }
+:global(.aio-page-motion::view-transition-old(root)) { z-index: 1; }
+:global(.aio-page-motion::view-transition-new(root)) { z-index: 2; }
+:global(.aio-page-motion-back::view-transition-old(root)) { z-index: 2; }
+:global(.aio-page-motion-back::view-transition-new(root)) { z-index: 1; }
+// 关闭后立刻返回时，整页快照不再捕获尚在退场的旧弹窗。
+:global(.aio-page-motion .modal-mask[data-modal-leaving="true"]) { visibility: hidden; }
+// 往返沿同一条圆形路径：浅色展开新快照，深色收拢旧浅色快照。
+:global(.aio-theme-transition::view-transition-old(root)),
+:global(.aio-theme-transition::view-transition-new(root)) {
+  animation: none;
+  mix-blend-mode: normal;
+}
+:global(.aio-theme-transition::view-transition-old(root)) { z-index: 1; }
+:global(.aio-theme-transition::view-transition-new(root)) { z-index: 2; }
+:global(.aio-theme-transition-dark::view-transition-old(root)) { z-index: 2; }
+:global(.aio-theme-transition-dark::view-transition-new(root)) { z-index: 1; }
+// 快照捕获最终的开关状态，避免把滑块的初始帧冻结在新主题中。
+:global(.aio-theme-transition .mobile-switch-track),
+:global(.aio-theme-transition .mobile-switch-thumb) { transition: none !important; }
+:global(.aio-theme-transition .mobile-switch-disabled) { opacity: 1 !important; }
 page { min-height: 100%; }
 :global(.uni-tabbar) { background-color: var(--aio-tab-background, #ffffff) !important; }
 :global(.uni-tabbar-border) { background-color: var(--aio-tab-border, #ffffff) !important; }

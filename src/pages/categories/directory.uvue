@@ -1,0 +1,92 @@
+<script setup lang="ts">
+import { ref, watch } from 'vue';
+import { onShow, onHide } from '@dcloudio/uni-app';
+import AppIcon from '../../components/AppIcon.uvue';
+import MobilePage from '../../components/MobilePage.uvue';
+import PageHeader from '../../components/PageHeader.uvue';
+import PageState from '../../components/PageState.uvue';
+import { request } from '../../services/api.ts';
+import { openBusinessLink } from '../../services/navigation.ts';
+import { usePageRefresh } from '../../services/page-refresh.ts';
+import { restoreSession, session } from '../../services/session.ts';
+import { themeClass } from '../../services/theme.ts';
+
+const entries = [
+  { path: '/my-hub/exercise/category-config', title: '通用分类' },
+  { path: '/time/my-categories', title: '时迹分类' },
+];
+const items = ref<any[]>([]);
+const loading = ref(false), loaded = ref(false), refreshing = ref(false), error = ref('');
+let revision = 0, active = false;
+watch(() => session.token, () => { revision++; items.value = []; loaded.value = false; loading.value = false; refreshing.value = false; error.value = ''; }, { flush: 'sync' });
+function flatten(nodes) {
+  return nodes.flatMap(node => [node, ...flatten(node.children || [])]);
+}
+const refreshOnShow = usePageRefresh(() => load(), { loading: () => loading.value, error: () => error.value, keys: () => ['menu'] });
+onShow(() => {
+  active = true;
+  restoreSession();
+  if (!session.token) { uni.reLaunch({ url: '/pages/login/index' }); return; }
+  refreshOnShow();
+});
+onHide(() => { active = false; revision++; loading.value = false; refreshing.value = false; });
+async function load(refresh = false) {
+  if (loading.value) return;
+  const version = ++revision, token = session.token;
+  loading.value = true;
+  refreshing.value = refresh;
+  error.value = '';
+  try {
+    const menus: any = await request('/menu/all?client=mobile');
+    if (!Array.isArray(menus)) throw new Error('授权菜单数据异常');
+    if (!active || version !== revision || token !== session.token) return;
+    const nodes = flatten(menus);
+    items.value = entries.flatMap(entry => {
+      const menu = nodes.find(node => node.path === entry.path);
+      return menu ? [{ ...entry, icon: menu.meta?.icon || 'mdi:tag-multiple-outline' }] : [];
+    });
+    loaded.value = true;
+  } catch (reason) {
+    if (active && version === revision && token === session.token) error.value = reason.message || '加载失败';
+  } finally {
+    if (version === revision) { loading.value = false; refreshing.value = false; }
+  }
+}
+function back() {
+  uni.navigateBack({ fail: () => uni.switchTab({ url: '/pages/profile/index' }) });
+}
+</script>
+<template>
+  <view class="directory-page" :class="themeClass('directory-page')">
+    <PageHeader title="分类管理" back @back="back" />
+    <MobilePage :refreshing="refreshing" @refresh="load(true)">
+      <PageState :loading="loading" :has-content="loaded" :error="error" :empty="!items.length" empty-text="暂无可用分类" @retry="load()">
+        <template #loading><view class="directory-loading" role="status" aria-label="正在加载分类入口"><view v-for="index in 2" :key="index" class="directory-row directory-row-loading" :class="themeClass('directory-row')"><view class="directory-placeholder" :class="themeClass('directory-placeholder')" /></view></view></template>
+        <view class="ui-page-body">
+          <button v-for="entry in items" :key="entry.path" hover-class="none" role="button" class="directory-row" :class="themeClass('directory-row')" :aria-label="entry.title" @click="openBusinessLink(entry.path)">
+            <AppIcon :name="entry.icon" :size="20" />
+            <text class="directory-title" :class="themeClass('directory-title')">{{ entry.title }}</text>
+            <AppIcon name="ant-design:right-outlined" :size="16" />
+          </button>
+        </view>
+      </PageState>
+    </MobilePage>
+  </view>
+</template>
+<style scoped lang="scss">
+@use '../../styles/platform' as *;
+@use '../../styles/spacing.scss';
+@use '../../styles/spacing-tokens' as *;
+@use '../../styles/typography' as *;
+@use '../../styles/theme-tokens' as *;
+@use '../../styles/skeleton' as skeleton;
+@include skeleton.motion('.directory-loading');
+.directory-page { flex: 1; height: 100%; min-height: 0; }
+.directory-row { display: flex; flex-direction: row; align-items: center; gap: $space-inline; min-height: $space-controlMin + $space-inline * 2; box-sizing: border-box; width: 100%; padding: $space-inline $space-card; margin: 0 0 $space-inline; border-radius: 12px; background-color: $theme-surface-light; @include borderless-button; }
+.directory-row-dark { background-color: $theme-surface-dark; }
+.directory-title { flex: 1; text-align: left; color: #27272a; @include type-style('body-strong'); }
+.directory-title-dark { color: #eeeeef; }
+.directory-loading { @include skeleton.pulse; }
+.directory-placeholder { width: 55%; height: 16px; @include skeleton.shape; }
+.directory-placeholder-dark { @include skeleton.dark; }
+</style>

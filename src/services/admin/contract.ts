@@ -26,7 +26,7 @@ export function categoryPayload(form, original, admin = false) {
   if (missingRequired('category', form, 'name')) throw new Error('请输入分类名称')
   if (!/^#[\da-fA-F]{6}$/.test(form.color || '')) throw new Error('请输入六位颜色值，如 #427bea')
   const data = {}
-  for (const key of ['id', 'parentId', 'templateId', 'name', 'color', 'icon', 'description', 'isTrackTime', 'isEnabled', 'sortOrder', 'timeType']) if (form[key] !== undefined) data[key] = form[key]
+  for (const key of ['id', 'parentId', 'templateId', 'name', 'color', 'icon', 'description', 'isTrackTime', 'isEnabled', 'sortOrder']) if (form[key] !== undefined) data[key] = form[key]
   if (data.id != null) stringId(data.id)
   if (data.parentId != null) stringId(data.parentId)
   if (data.templateId != null) stringId(data.templateId)

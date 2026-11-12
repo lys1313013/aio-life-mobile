@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import ModalMotion from "../../components/ModalMotion.uvue";
 import { useWindowResize } from '../../services/window-resize.ts'
 useWindowResize(resizeGraph)
 import { isRequired, missingRequired } from '../../services/form-required.ts';
@@ -26,6 +27,9 @@ import {
 } from './services/relationship.ts';
 import { useDomainPage } from '../../services/domains/page-session.ts';
 import { isDark, themeClass } from '../../services/theme.ts';
+const modalMotion0 = ref<{ close: () => void } | null>(null);
+const modalMotion1 = ref<{ close: () => void } | null>(null);
+
 const graph = ref<any>({ nodes: [], edges: [] }),
   keyword = ref(''),
   category = ref('全部'),
@@ -399,7 +403,7 @@ function nodeName(id: string) {
         </view>
       </PageState>
       </view
-    ><AdaptiveModal
+    ><ModalMotion><AdaptiveModal
       v-if="person && !draft && !relation"
       :label="person.name"
       :busy="busy"
@@ -426,7 +430,7 @@ function nodeName(id: string) {
             @click="editRelation(item)" /><ConfirmAction
             label="删除关系"
             :action="() => removeRel(item)" /></view></view></AdaptiveModal
-    ><AdaptiveModal v-if="draft" label="人物" :busy="busy" :max-width="500" @close="draft = null">
+    ></ModalMotion><ModalMotion><AdaptiveModal ref="modalMotion0" v-if="draft" label="人物" :busy="busy" :max-width="500" @close="draft = null">
       <view class="ui-field-row">
         <FormField compact stretch appearance="soft" :required="isRequired('person', 'name')" label="姓名" placeholder="请输入姓名" v-model="draft.name" />
         <FormField compact stretch appearance="soft" label="分类" kind="selector" :options="['亲属', '社会', '情感', '其他']" v-model="draft.category" />
@@ -463,12 +467,12 @@ function nodeName(id: string) {
       <text v-if="formError" role="alert" class="error ui-py-section ui-type-body">{{ formError }}</text>
       <view class="editor-actions">
         <FormActions>
-          <MobileButton label="取消" variant="quiet" :disabled="busy" @click="draft = null" />
+          <MobileButton label="取消" variant="quiet" :disabled="busy" @click="modalMotion0?.close()" />
           <MobileButton label="保存" :loading="busy" @click="save" />
         </FormActions>
       </view>
-    </AdaptiveModal>
-    <AdaptiveModal v-if="relation" label="关系" :busy="busy" :max-width="500" @close="relation = null">
+    </AdaptiveModal></ModalMotion>
+    <ModalMotion><AdaptiveModal ref="modalMotion1" v-if="relation" label="关系" :busy="busy" :max-width="500" @close="relation = null">
       <FormField appearance="soft" :required="isRequired('relation', 'targetPersonId')" label="关联人物" kind="selector" :options="graph.nodes.filter((item) => item.id !== person.id).map((item) => targetLabel(item))" v-model="targetName" />
       <view class="ui-field-row">
         <FormField compact stretch appearance="soft" label="关系类型" kind="selector" :options="['父母', '母亲', '父亲', '子女', '配偶', '恋人', '兄弟姐妹', '朋友', '挚友', '同学', '同事', '老师', '学生', 'mentor', '前任', '暗恋', '其他']" v-model="relation.relationType" />
@@ -478,10 +482,10 @@ function nodeName(id: string) {
       <FormField appearance="soft" label="标签" placeholder="多个标签用逗号分隔" v-model="relation.tags" />
       <text v-if="formError" role="alert" class="error ui-py-section ui-type-body">{{ formError }}</text>
       <FormActions>
-        <MobileButton label="取消" variant="quiet" :disabled="busy" @click="relation = null" />
+        <MobileButton label="取消" variant="quiet" :disabled="busy" @click="modalMotion1?.close()" />
         <MobileButton label="保存关系" :loading="busy" @click="saveRel" />
       </FormActions>
-    </AdaptiveModal>
+    </AdaptiveModal></ModalMotion>
   </MobilePage>
 </template>
 <style scoped lang="scss">

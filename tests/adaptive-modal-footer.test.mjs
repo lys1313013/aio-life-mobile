@@ -37,7 +37,7 @@ async function harness({ platform = 'MP-WEIXIN', fill = false, footer = true } =
     computed, nextTick, reactive, ref, watch, spacing, modalAvailableHeight,
     useWindowResize: () => {}, getCurrentInstance: () => instance,
     onMounted: callback => mounted.push(callback), onUnmounted: callback => cleanups.push(callback),
-    onUpdated: () => {}, provide: () => {}, defineEmits: () => () => {},
+    onUpdated: () => {}, provide: () => {}, defineEmits: () => () => {}, defineExpose: () => {},
     defineProps: () => props, withDefaults: value => value,
     registerModal: () => () => {},
     window: { visualViewport: viewport },

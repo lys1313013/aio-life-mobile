@@ -130,7 +130,7 @@ test('异常ID、菜单树及菜单树请求失败均不缓存', async () => {
 
 test('管理端切换任一端状态和个人菜单写入使目录失效，读取不清缓存', () => {
   const c = setup()
-  c.invalidateMenuAccessAfterWrite('/menu/admin/7/mobile-status', 'PUT')
+  c.invalidateMenuAccessAfterWrite('/menu/admin/7/visible-clients', 'PUT')
   c.invalidateMenuAccessAfterWrite('/menu/admin/7/status', 'PUT')
   c.invalidateMenuAccessAfterWrite('/menu/preferences?client=mobile', 'PUT')
   c.invalidateMenuAccessAfterWrite('/menu/preferences?client=mobile', 'GET')

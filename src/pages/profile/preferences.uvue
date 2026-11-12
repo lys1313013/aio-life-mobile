@@ -13,12 +13,11 @@ import FormField from '../../components/FormField.uvue';
 import FormActions from '../../components/FormActions.uvue';
 import PageState from '../../components/PageState.uvue';
 import ConfirmAction from '../../components/ConfirmAction.uvue';
-import AdaptiveModal from '../../components/AdaptiveModal.uvue';
 import { logout, request } from '../../services/api.ts';
 import { session, restoreSession } from '../../services/session.ts';
 import { clearClientData } from '../../services/client-reset.ts';
-import type { ThemeMode } from '../../services/theme.ts';
-import { isDark, themeClass, setThemeMode, theme } from '../../services/theme.ts';
+import { isDark, themeClass, setThemeMode } from '../../services/theme.ts';
+import { animateThemeChange } from '../../services/theme-transition.ts';
 import {
   flattenMenuOptions,
   passwordPayload,
@@ -37,10 +36,8 @@ const supportLinks = [
   { title: '反馈', path: '/pages/records/feedback', icon: 'ant-design:comment-outlined' },
   { title: '数据导出', path: '/pages/data-export/index', icon: 'ant-design:download-outlined' },
 ];
-const themePickerOpen = ref(false);
 const leaving = ref(false);
 const confirmLogout = ref(false);
-const themeLabel = computed(() => ({ system: '跟随系统', light: '浅色', dark: '深色' })[theme.mode]);
 async function signOut() {
   if (leaving.value) return;
   leaving.value = true;
@@ -48,20 +45,19 @@ async function signOut() {
   catch (_) { uni.showToast({ title: '已退出本机，服务端会话退出未完成', icon: 'none' }); }
   finally { uni.reLaunch({ url: '/pages/login/index' }); leaving.value = false; }
 }
-const themeOptions: { label: string; value: ThemeMode }[] = [
-  { label: '跟随系统', value: 'system' },
-  { label: '浅色', value: 'light' },
-  { label: '深色', value: 'dark' },
-];
 function openPage(path: string) {
   uni.navigateTo({ url: path });
 }
-function changeTheme(mode: ThemeMode) {
+const themeChanging = ref(false);
+async function changeTheme(event: { detail: { value: boolean } }) {
+  if (!active || themeChanging.value) return;
+  themeChanging.value = true;
   try {
-    setThemeMode(mode);
-    themePickerOpen.value = false;
+    await animateThemeChange(() => setThemeMode(event.detail.value ? 'dark' : 'light'));
   } catch (error) {
-    uni.showToast({ title: error.message, icon: 'none' });
+    uni.showToast({ title: error.message || '切换失败，请重试', icon: 'none' });
+  } finally {
+    themeChanging.value = false;
   }
 }
 const title = computed(() => titles[mode.value] || '设置');
@@ -124,7 +120,6 @@ onShow(() => {
 onHide(() => {
   active = false;
   confirmLogout.value = false;
-  themePickerOpen.value = false;
   revision++;
   resetPasswordForm();
   loading.value = false;
@@ -225,10 +220,13 @@ function back() {
     </PageHeader>
     <MobilePage :refreshing="loading" @refresh="load">
       <view v-if="mode === 'general'" class="ui-page-body ui-gap-section">
+        <view class="preference-surface ui-px-card" :class="themeClass('preference-surface')">
+          <view class="settings-entry">
+            <text class="entry-label" :class="themeClass('entry-label')">深色模式</text>
+            <view class="theme-switch-control"><MobileSwitch :checked="isDark" :disabled="themeChanging" aria-label="深色模式" @change="changeTheme" /></view>
+          </view>
+        </view>
         <view class="preference-surface ui-pad-card" :class="themeClass('preference-surface')">
-          <button hover-class="none" role="button" class="settings-entry" aria-label="外观" @click="themePickerOpen = true">
-            <AppIcon name="lucide:moon" /><text class="entry-label" :class="themeClass('entry-label')">外观</text><text class="theme-value" :class="themeClass('theme-value')">{{ themeLabel }}</text><AppIcon name="ant-design:right-outlined" :size="16" />
-          </button>
           <button hover-class="none" v-for="entry in supportLinks" :key="entry.path" role="button" class="settings-entry" :aria-label="entry.title" @click="openPage(entry.path)">
             <AppIcon :name="entry.icon" /><text class="entry-label" :class="themeClass('entry-label')">{{ entry.title }}</text><AppIcon name="ant-design:right-outlined" :size="16" />
           </button>
@@ -305,18 +303,10 @@ function back() {
           class="preference-surface ui-card"
           :class="themeClass('preference-surface')"
         >
-          <FormField
-            label="主题"
-            kind="selector"
-            :options="['跟随系统', '浅色', '深色']"
-            :model-value="
-              ['跟随系统', '浅色', '深色'][['system', 'light', 'dark'].indexOf(theme.mode)]
-            "
-            @update:model-value="
-              (v) =>
-                setThemeMode(['system', 'light', 'dark'][['跟随系统', '浅色', '深色'].indexOf(v)])
-            "
-          />
+          <view class="preference-row ui-row">
+            <text class="preference-name" :class="themeClass('preference-name')">深色模式</text>
+            <view class="theme-switch-control"><MobileSwitch :checked="isDark" :disabled="themeChanging" aria-label="深色模式" @change="changeTheme" /></view>
+          </view>
           <view class="preference-row ui-row"
             ><text class="preference-name">清除缓存</text
             ><ConfirmAction
@@ -328,11 +318,6 @@ function back() {
         </view>
       </PageState>
     </MobilePage>
-    <AdaptiveModal v-if="themePickerOpen" label="外观" :max-width="360" :show-close="true" @close="themePickerOpen = false">
-      <button hover-class="none" v-for="option in themeOptions" :key="option.value" role="button" class="theme-option" :aria-label="option.label" :aria-pressed="theme.mode === option.value" @click="changeTheme(option.value)">
-        <text class="entry-label" :class="themeClass('entry-label')">{{ option.label }}</text><AppIcon v-if="theme.mode === option.value" name="ant-design:check-outlined" />
-      </button>
-    </AdaptiveModal>
   </view>
 </template>
 <style scoped lang="scss">
@@ -358,24 +343,14 @@ function back() {
 }
 .entry-label { flex: 1; text-align: left; @include type-style('body'); color: #27272a; }
 .entry-label-dark { color: #eeeeef; }
-.theme-value { @include type-style('caption'); color: #71717a; }
-.theme-value-dark { color: #9c9ca6; }
-.theme-option {
-  display: flex;
-  flex-direction: row;
-  align-items: center;
-  justify-content: space-between;
-  min-height: $space-controlMin;
-  width: 100%;
-  margin: 0;
-  padding: 0;
-  border: 0;
-  border-radius: 0;
-  background-color: transparent;
+.theme-switch-control { flex-shrink: 0; }
+/* #ifndef WEB */
+.entry-label, .preference-surface, .preference-name, .signout-button {
+  transition: background-color 800ms ease-in, color 800ms ease-in;
 }
+/* #endif */
 .signout-button,
-.settings-entry,
-.theme-option { @include borderless-button; }
+.settings-entry { @include borderless-button; }
 
 .preference-surface {
   background-color: #fff;

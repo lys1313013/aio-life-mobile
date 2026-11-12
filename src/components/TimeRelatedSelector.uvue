@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import ModalMotion from "./ModalMotion.uvue";
 import { readPageTotal, mergePageItems, hasMorePageItems } from '../services/pagination.ts'
 import MobileSwitch from './MobileSwitch.uvue';
 import { computed, onUnmounted, ref, watch } from 'vue'
@@ -159,7 +160,7 @@ onUnmounted(() => { active = false; detailSerial++; listSerial++; clearTimeout(s
         <AppIcon name="ant-design:reload-outlined" :size="18" />
       </button>
     </view>
-    <AdaptiveModal v-if="visible" label="选择关联记录" @reachbottom="loadMore" :show-close="false" :max-width="600" :content-key="contentKey" @close="close">
+    <ModalMotion><AdaptiveModal v-if="visible" label="选择关联记录" @reachbottom="loadMore" :show-close="false" :max-width="600" :content-key="contentKey" @close="close">
       <view class="related-toolbar">
         <input v-model="keyword" class="related-search" :class="themeClass('related-search')" :placeholder="type === 1 ? '搜索书名或作者' : '搜索影视名称或导演'" aria-label="搜索关联记录" confirm-type="search" @confirm="search" />
         <button hover-class="none" role="button" class="related-icon-button ui-type-body" aria-label="搜索关联记录" @click="search"><AppIcon name="ant-design:search-outlined" :size="20" /></button>
@@ -179,7 +180,7 @@ onUnmounted(() => { active = false; detailSerial++; listSerial++; clearTimeout(s
       <LoadingIndicator v-if="loading" label="正在加载关联记录" />
       <view v-if="error" class="related-error-row"><text class="related-error" role="alert">{{ error }}</text><button hover-class="none" role="button" class="related-icon-button ui-type-body" aria-label="重试关联列表" @click="load(failedMore)"><AppIcon name="ant-design:reload-outlined" /></button></view>
       <text v-else-if="!loading && !items.length" class="related-muted related-empty-text" :class="themeClass('related-muted')">{{ keyword ? '没有找到匹配的记录' : '暂无可选记录' }}</text>
-    </AdaptiveModal>
+    </AdaptiveModal></ModalMotion>
   </view>
 </template>
 

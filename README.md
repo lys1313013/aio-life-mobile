@@ -120,6 +120,8 @@ docs/                  # 专题说明与标日期的历史验证
 
 | 维护主题 | 入口 |
 | --- | --- |
+| 页面进退与弹窗开关 | [页面动效](docs/页面动效.md) |
+| 小米与 iPhone 桌面小组件 | [接入方案](docs/桌面小组件接入方案.md)，首版今日时迹，方案阶段 |
 | 业务与当前接口 | [功能与接口](docs/功能与接口.md)、[时迹专项](docs/时迹开发与验证.md) |
 | 图标、间距、排版、底栏生成 | [图标与样式维护](docs/图标与样式维护.md)；图标同步需相邻 Web 仓库，正常构建使用已提交的生成资源 |
 | 日期与弹窗公共组件 | [CalendarPicker](src/components/CalendarPicker.uvue)、[WeixinModalBackGuard](src/components/WeixinModalBackGuard.uvue)；复用公共日期算法及微信返回保护 |

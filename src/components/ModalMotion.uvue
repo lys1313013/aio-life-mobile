@@ -1,0 +1,22 @@
+<script setup lang="ts">
+// 过渡边界必须位于业务 v-if 外，父层卸载弹窗时才会保留完整退出过程。
+// #ifdef WEB
+import { nextTick } from 'vue'
+import { enterModal, leaveModal } from '../services/modal-motion.ts'
+async function enter(element: HTMLElement, done: () => void) {
+  await nextTick()
+  enterModal(element, done, !element.querySelector('.modal-panel-bare'))
+}
+function leave(element: HTMLElement, done: () => void) {
+  leaveModal(element, done, !element.querySelector('.modal-panel-bare'))
+}
+// #endif
+</script>
+<template>
+  <!-- #ifdef WEB -->
+  <Transition appear :css="false" @enter="enter" @leave="leave"><slot /></Transition>
+  <!-- #endif -->
+  <!-- #ifndef WEB -->
+  <slot />
+  <!-- #endif -->
+</template>

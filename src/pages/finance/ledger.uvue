@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import ModalMotion from "../../components/ModalMotion.uvue";
 import { readPageTotal, hasMorePageItems } from '../../services/pagination.ts';
 import { useAppLayout } from '../../services/app-layout.ts'
 const { appGridItem } = useAppLayout()
@@ -42,6 +43,7 @@ const loading = ref(false),
   modal = ref(false);
 const overviewRows = ref<any[]>([]),
   overviewYear = ref(String(new Date().getFullYear()));
+const showStatisticsDetails = ref(false);
 let statisticsSequence = 0;
 const statistics = ref<any[]>([]),
   statisticsLoaded = ref(false),
@@ -120,6 +122,7 @@ function filterStatistics(group: any, item: any) {
     group.year + '-' + String(endMonth).padStart(2, '0') + '-' + last;
   typeFilter.value = name(types.value, String(item.typeId));
   filters.value[expense.value ? 'expTypeId' : 'incTypeId'] = String(item.typeId);
+  showStatisticsDetails.value = false;
   load();
 }
 const total = ref<number | null>(null),
@@ -345,7 +348,7 @@ async function save() {
   try {
     await mutate(() => saveLedger(props.kind, draft.value), () => {
       if (continuous.value && !ledgerId(draft.value)) {
-        draft.value = { ...draft.value, amt: '', transactionAmt: '' };
+        draft.value = { ...draft.value, amt: '', transactionAmt: '', deviceId: null, newDevice: null, deviceName: null };
       } else modal.value = false;
     });
   } catch (e) {
@@ -381,7 +384,14 @@ async function removeSelected() {
     <view class="body ui-page-body" :class="themeClass('body')"
       >
       <view class="tools ledger-toolbar ui-toolbar"
-        ><text class="section-title">{{ expense ? '支出明细' : '收入明细' }}</text><view class="filter-trigger"><MobileButton :label="activeFilterCount ? '更多筛选，已启用 ' + activeFilterCount + ' 项条件' : '更多筛选'" icon="ant-design:filter-outlined" variant="quiet" @click="showFilters = !showFilters" /><text v-if="activeFilterCount" class="filter-count">{{ activeFilterCount }}</text></view><MobileButton
+        ><text class="section-title">{{ expense ? '支出明细' : '收入明细' }}</text><MobileButton
+          v-if="expense"
+          :label="showStatisticsDetails ? '收起统计明细' : '展开统计明细'"
+          :icon="showStatisticsDetails ? 'ant-design:up-outlined' : 'ant-design:bar-chart-outlined'"
+          :aria-expanded="showStatisticsDetails"
+          variant="quiet"
+          @click="showStatisticsDetails = !showStatisticsDetails"
+        /><view class="filter-trigger"><MobileButton :label="activeFilterCount ? '更多筛选，已启用 ' + activeFilterCount + ' 项条件' : '更多筛选'" icon="ant-design:filter-outlined" variant="quiet" @click="showFilters = !showFilters" /><text v-if="activeFilterCount" class="filter-count">{{ activeFilterCount }}</text></view><MobileButton
           v-if="expense"
           label="导入账单"
           icon="ant-design:import-outlined"
@@ -429,7 +439,7 @@ async function removeSelected() {
           :label="expense ? '支出类型分布' : '收入类型分布'"
           :items="distribution"
       /></view></PageState>
-        <FormField
+        <template v-if="!expense || showStatisticsDetails"><FormField
           label="统计周期"
           kind="selector"
           :options="['月度', '年度']"
@@ -461,7 +471,7 @@ async function removeSelected() {
                 label="查看对应记录"
                 icon="ant-design:export-outlined"
                 variant="ghost"
-                @click="filterStatistics(group, item)" /></view></view></view></PageState></view
+                @click="filterStatistics(group, item)" /></view></view></view></PageState></template></view
       ><view class="filters ui-field-row">
         <FormField :style="appGridItem(2, 'section', [[700, 3]], false)" v-if="!expense || showFilters" compact stretch hide-label label="年份" kind="selector"
           :options="['全部年份', ...overviewYears]" v-model="filterYear" :disabled="mutationBusy" @update:modelValue="!expense && load()" />
@@ -562,9 +572,9 @@ async function removeSelected() {
     </view>
     <template #fixed>
     <FloatingActionButton v-if="!modal" label="新增" :disabled="loading || !!error || mutationBusy" @click="edit()" />
-    <FinanceRecordModal v-if="modal" :kind="kind" :draft="draft" :types="types" :payments="payments"
+    <ModalMotion><FinanceRecordModal v-if="modal" :kind="kind" :draft="draft" :types="types" :payments="payments"
       :saving="saving" :form-error="formError" v-model:continuous="continuous" :remove="removeDraft"
-      @close="modal = false" @save="save" />
+      @close="modal = false" @save="save" /></ModalMotion>
     </template>
   </MobilePage>
 </template>

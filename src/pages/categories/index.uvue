@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import ModalMotion from "../../components/ModalMotion.uvue";
 import MobileSwitch from '../../components/MobileSwitch.uvue';
 import { usePageRefresh } from '../../services/page-refresh.ts'
 import { isRequired } from '../../services/form-required.ts';
@@ -28,9 +29,12 @@ import {
   deleteCategory,
   sortCategories,
 } from './services/categories.ts';
+const modalMotion0 = ref<{ close: () => void } | null>(null);
+
 const admin = ref(false);
 const rows = ref<any[]>([]);
 const loading = ref(false);
+const loaded = ref(false);
 const refreshing = ref(false);
 const error = ref('');
 const busyId = ref('');
@@ -81,7 +85,6 @@ const parents = computed(() => [
 const parentName = computed(
   () => parents.value.find((row) => row.id === form.value.parentId)?.name || parents.value[0].name,
 );
-const types = ['必须', '积极', '休闲'];
 onLoad((options) => {
   admin.value = options?.admin === '1';
 });
@@ -109,7 +112,10 @@ async function load(refresh = false) {
     if (admin.value && !session.user?.roles?.includes('admin'))
       throw Error('当前账号没有管理员权限');
     const result = await listCategories(admin.value);
-    if (active && task.isCurrent(generation) && token === session.token) rows.value = result;
+    if (active && task.isCurrent(generation) && token === session.token) {
+      rows.value = result;
+      loaded.value = true;
+    }
   } catch (reason) {
     if (active && task.isCurrent(generation)) error.value = reason.message || '加载失败';
   } finally {
@@ -140,7 +146,6 @@ function edit(row = null, parentId = '0') {
               .filter((row) => (row.parentId || '0') === parentId)
               .map((row) => row.sortOrder || 0),
           ) + 10,
-        timeType: 1,
       };
   editorError.value = '';
   showDescription.value = false;
@@ -224,18 +229,27 @@ function privateCategory(row) {
 <template>
   <view class="category-page"
     ><PageHeader
-      :title="admin ? '公共分类管理' : '我的分类'"
+      title="时迹分类"
       back
       @back="uni.navigateBack()" /><MobilePage :refreshing="refreshing" @refresh="load(true)">
       <FormField label="搜索分类" v-model="search" />
-      <PageState skeleton="list" :loading="loading" :error="error" :empty="!shown.length" :empty-text="searchQuery ? '未找到匹配分类' : '暂无分类'" @retry="load()">
+      <PageState :has-content="loaded" :loading="loading" :error="error" :empty="!shown.length" :empty-text="searchQuery ? '未找到匹配分类' : '暂无分类'" @retry="load()">
+        <template #loading>
+          <view class="category-loading" role="status" aria-label="正在加载分类" aria-live="polite">
+            <view v-for="skeletonRowIndex in 5" :key="skeletonRowIndex" class="category-card category-card-skeleton" :class="themeClass('category-card')" aria-hidden="true">
+              <view class="category-placeholder category-placeholder-icon" :class="themeClass('category-placeholder')" />
+              <view class="category-summary"><view class="category-placeholder category-placeholder-name" :class="themeClass('category-placeholder')" /></view>
+              <view class="category-actions"><view v-for="skeletonActionIndex in 2" :key="skeletonActionIndex" class="category-placeholder-action"><view class="category-placeholder category-placeholder-icon" :class="themeClass('category-placeholder')" /></view></view>
+            </view>
+          </view>
+        </template>
         <view v-if="searchQuery && !shown.length && !loading && !error" class="category-search-empty">
           <MobileButton label="清空搜索" variant="quiet" @click="search = ''" />
         </view>
         <view
           v-for="row in shown"
           :key="row.id"
-          class="category-card ui-card"
+          class="category-card"
           :class="themeClass('category-card')"
         >
           <view class="category-heading ui-row">
@@ -243,8 +257,7 @@ function privateCategory(row) {
             <AppIcon v-if="row.parentId && row.parentId !== '0'" name="lucide:corner-down-right" :size="16" />
             <view class="category-summary">
               <text class="category-name" :class="themeClass('category-name')">{{ row.name }}</text>
-              <view class="category-summary-meta">
-                <text class="category-type" :class="['category-type-' + (row.timeType || 1), themeClass('category-type-' + (row.timeType || 1))]">{{ types[(row.timeType || 1) - 1] }}</text>
+              <view v-if="row.isTrackTime === 1 || row.isEnabled === 0" class="category-summary-meta">
                 <text v-if="row.isTrackTime === 1" class="category-meta" :class="themeClass('category-meta')">参与统计</text>
                 <text v-if="row.isEnabled === 0" class="category-meta" :class="themeClass('category-meta')">已隐藏</text>
               </view>
@@ -253,7 +266,7 @@ function privateCategory(row) {
               v-if="hasChildren(row)"
               :label="collapsed.includes(row.id) ? '展开子分类' : '收起子分类'"
               :icon="collapsed.includes(row.id) ? 'ant-design:right-outlined' : 'ant-design:down-outlined'"
-              variant="quiet"
+              variant="ghost"
               @click="toggle(row)"
             />
           </view>
@@ -261,7 +274,7 @@ function privateCategory(row) {
             ><MobileButton
               label="编辑分类"
               icon="ant-design:edit-outlined"
-              variant="quiet"
+              variant="ghost"
               :disabled="!!busyId || loading"
               @click="edit(row)" />
             <MobileButton label="更多分类操作" :icon="expandedActions === row.id ? 'ant-design:up-outlined' : 'lucide:ellipsis'" variant="ghost" :aria-expanded="expandedActions === row.id" :disabled="!!busyId || loading" @click="expandedActions = expandedActions === row.id ? '' : row.id" />
@@ -292,7 +305,7 @@ function privateCategory(row) {
         ><FloatingActionButton :disabled="loading || !!busyId" @click="edit()"
       /></template>
     </MobilePage>
-    <AdaptiveModal
+    <ModalMotion><AdaptiveModal ref="modalMotion0"
       v-if="opened"
       label="编辑分类"
       :busy="saving"
@@ -342,15 +355,6 @@ function privateCategory(row) {
           </view>
         </FormField>
         <FormField v-if="showIconValue" appearance="soft" label="图标名称" v-model="form.icon" placeholder="如 lucide:book-open" :disabled="saving" />
-        <FormField
-          appearance="soft"
-          label="时间类型"
-          kind="selector"
-          :model-value="types[(form.timeType || 1) - 1]"
-          :options="types"
-          :disabled="saving"
-          @update:model-value="(value) => (form.timeType = types.indexOf(value) + 1)"
-        />
         <view class="category-toggle-row">
           <view class="category-toggle" :class="themeClass('category-toggle')">
             <text class="category-toggle-label" :class="themeClass('category-toggle-label')">卡片统计</text>
@@ -370,16 +374,16 @@ function privateCategory(row) {
         <FormField v-if="admin" appearance="soft" label="排序" :model-value="String(form.sortOrder || 0)" input-type="number" :disabled="saving" @update:model-value="(value) => (form.sortOrder = Number(value))" />
         <text v-if="editorError" class="category-error ui-mb-section ui-type-body" role="alert">{{ editorError }}</text>
       </view>
-      <FormActions>
+      <template #footer><FormActions>
         <template v-if="original" #secondary>
           <MobileButton label="上移分类" icon="ant-design:arrow-up-outlined" variant="quiet" :disabled="!!busyId || saving" @click="move(original, -1)" />
           <MobileButton label="下移分类" icon="ant-design:arrow-down-outlined" variant="quiet" :disabled="!!busyId || saving" @click="move(original, 1)" />
         </template>
-        <MobileButton label="取消" variant="quiet" :disabled="saving" @click="opened = false" />
+        <MobileButton label="取消" variant="quiet" :disabled="saving" @click="modalMotion0?.close()" />
         <MobileButton label="保存" :loading="saving" @click="save" />
-      </FormActions>
-    </AdaptiveModal>
-    <AdaptiveModal v-if="opened && iconPickerOpen" label="选择分类图标" show-close :max-width="520" :content-key="iconSearch" @close="iconPickerOpen = false">
+      </FormActions></template>
+    </AdaptiveModal></ModalMotion>
+    <ModalMotion><AdaptiveModal v-if="opened && iconPickerOpen" label="选择分类图标" show-close :max-width="520" :content-key="iconSearch" @close="iconPickerOpen = false">
       <FormField appearance="soft" label="搜索图标" :model-value="iconSearch" placeholder="输入图标名称，如 book" @update:model-value="(value) => (iconSearch = value)" />
       <view class="category-icon-grid">
         <button hover-class="none" role="button" v-for="icon in filteredIcons" :key="icon" class="category-icon-option" :class="[{ 'category-icon-selected': form.icon === icon }, themeClass('category-icon-option')]" :aria-label="'选择图标 ' + icon" :aria-pressed="form.icon === icon" @click="selectIcon(icon)">
@@ -387,7 +391,7 @@ function privateCategory(row) {
         </button>
       </view>
       <text v-if="!filteredIcons.length" class="category-empty" :class="themeClass('category-description-summary')">没有匹配的图标，可返回输入自定义图标名称</text>
-    </AdaptiveModal>
+    </AdaptiveModal></ModalMotion>
   </view>
 </template>
 <style scoped lang="scss">
@@ -395,7 +399,9 @@ function privateCategory(row) {
 @use '../../styles/typography' as *;
 @use '../../styles/spacing.scss';
 @use '../../styles/spacing-tokens' as *;
+@use '../../styles/skeleton' as skeleton;
 @include type-utilities('body');
+@include skeleton.motion('.category-loading');
 
 .category-page {
   flex: 1;
@@ -405,7 +411,9 @@ function privateCategory(row) {
 .category-card {
   background-color: #ffffff;
   color: #27272a;
-  border-radius: 8px;
+  border-radius: 12px;
+  padding: $space-inline $space-card;
+  margin-bottom: $space-inline;
   display: flex;
   flex-direction: row;
   align-items: center;
@@ -427,19 +435,12 @@ function privateCategory(row) {
 }
 .category-summary { flex: 1; min-width: 0; gap: $space-detail; }
 .category-summary-meta { flex-direction: row; flex-wrap: wrap; align-items: center; gap: $space-inline; }
-.category-type { @include type-style('caption'); padding: 0 $space-detail; border-radius: 4px; }
-// 与 Web TIME_TYPE_CONFIG 的蓝 / 绿 / 琥珀语义一致，浅底提高列表辨识度。
-.category-type-1 { color: #1d4ed8; background-color: #eff6ff; }
-.category-type-2 { color: #047857; background-color: #ecfdf5; }
-.category-type-3 { color: #92400e; background-color: #fffbeb; }
-.category-type-1-dark { color: #93c5fd; background-color: #1e3a5f; }
-.category-type-2-dark { color: #6ee7b7; background-color: #064e3b; }
-.category-type-3-dark { color: #fcd34d; background-color: #573b16; }
 .category-name {
   color: #27272a;
   min-width: 0;
   flex: 1;
-  @include type-style('title');
+  overflow-wrap: anywhere;
+  @include type-style('body-strong');
 }
 .category-name-dark { color: #eeeeef; }
 .category-meta {
@@ -450,9 +451,18 @@ function privateCategory(row) {
 .category-meta-dark { color: #a0a6b1; }
 .category-actions {
   flex-direction: row;
+  align-items: center;
   flex-shrink: 0;
+  gap: $space-detail;
   overflow: visible;
 }
+.category-loading { @include skeleton.pulse; }
+.category-card-skeleton { min-height: $space-controlMin + $space-inline * 2; box-sizing: border-box; }
+.category-placeholder { @include skeleton.shape; flex-shrink: 0; }
+.category-placeholder-dark { @include skeleton.dark; }
+.category-placeholder-icon { width: 24px; height: 24px; }
+.category-placeholder-name { width: 72%; height: 16px; }
+.category-placeholder-action { width: $space-controlMin; align-items: center; justify-content: center; }
 .category-extra-actions { width: 100%; flex-direction: row; justify-content: flex-end; gap: $space-inline; }
 .category-search-empty { align-items: center; padding-bottom: $space-section; }
 .category-error {

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import ModalMotion from "../../components/ModalMotion.uvue";
 import CategoryTabs from "../../components/CategoryTabs.uvue";
 import CategoryPager from '../../components/CategoryPager.uvue';
 import { readPageTotal, mergePageItems, hasMorePageItems } from '../../services/pagination.ts';
@@ -30,6 +31,8 @@ import { session } from '../../services/session.ts';
 import { useDomainPage } from '../../services/domains/page-session.ts';
 import spacing from '../../styles/spacing.json';
 import { themeClass } from '../../services/theme.ts';
+const modalMotion0 = ref<{ close: () => void } | null>(null);
+
 const pager = ref(null);
 const loaded = ref(false);
 const userInfo = ref<Record<string, any>>({});
@@ -434,7 +437,7 @@ async function adminRemove(row: any) {
           </view>
         </view>
       </view>
-      <AdaptiveModal v-if="modal" label="发送消息" :busy="sending" @close="modal = false">
+      <ModalMotion><AdaptiveModal ref="modalMotion0" v-if="modal" label="发送消息" :busy="sending" @close="modal = false">
         <FormField label="接收用户 ID" :required="isRequired('message', 'receiver')" v-model="draftReceiver" :disabled="sending" />
         <view v-if="draftReceiver.trim()" class="recipient-check ui-mb-section" aria-live="polite">
           <LoadingIndicator v-if="recipientLoading" label="正在核对接收用户" />
@@ -447,8 +450,8 @@ async function adminRemove(row: any) {
         <FormField v-if="mode === '管理'" label="标题" v-model="title" />
         <FormField label="内容" :required="isRequired('message', 'content')" kind="textarea" v-model="content" />
         <text v-if="error" class="chat-error ui-mb-section" role="alert">{{ error }}</text>
-        <template #footer><FormActions><MobileButton label="取消" variant="quiet" :disabled="sending" @click="modal = false" /><MobileButton label="发送" :loading="sending" :disabled="!verifiedRecipient || verifiedRecipient !== draftReceiver.trim()" @click="send" /></FormActions></template>
-      </AdaptiveModal>
+        <template #footer><FormActions><MobileButton label="取消" variant="quiet" :disabled="sending" @click="modalMotion0?.close()" /><MobileButton label="发送" :loading="sending" :disabled="!verifiedRecipient || verifiedRecipient !== draftReceiver.trim()" @click="send" /></FormActions></template>
+      </AdaptiveModal></ModalMotion>
     </template>
   </MobilePage>
 </template>

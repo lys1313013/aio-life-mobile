@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import ModalMotion from "./ModalMotion.uvue";
 import CalendarPicker from './CalendarPicker.uvue';
 import { buttonLabelClasses } from '../services/button-label.ts'
 import LoadingIndicator from './LoadingIndicator.uvue';
@@ -551,7 +552,10 @@ function closeSelection() {
 </script>
 
 <template>
-  <AdaptiveModal
+  <!-- #ifdef WEB -->
+  <view class="time-editor-motion-root">
+  <!-- #endif -->
+  <ModalMotion><AdaptiveModal
     :label="id ? '编辑时迹' : '记录时间'"
     :show-close="false"
     :dense="compact && !loading"
@@ -856,8 +860,8 @@ function closeSelection() {
           </button>
         </FormActions>
     </template>
-  </AdaptiveModal>
-  <AdaptiveModal
+  </AdaptiveModal></ModalMotion>
+  <ModalMotion><AdaptiveModal
     v-if="choosingCategory"
     :show-close="false"
     :content-key="selectionKey"
@@ -887,8 +891,8 @@ function closeSelection() {
         ></view
       >
     </view>
-  </AdaptiveModal>
-  <AdaptiveModal v-if="editingExerciseIndex !== null" :label="editingExerciseIndex < 0 ? '添加一组' : '编辑运动组'" :show-close="false" :dense="true"
+  </AdaptiveModal></ModalMotion>
+  <ModalMotion><AdaptiveModal v-if="editingExerciseIndex !== null" :label="editingExerciseIndex < 0 ? '添加一组' : '编辑运动组'" :show-close="false" :dense="true"
     :max-width="400" :content-key="JSON.stringify([exerciseTypeDraft, exerciseCountDraft, exerciseEditError])" @close="closeExerciseEditor">
     <view class="exercise-edit-panel">
       <text class="exercise-edit-order" :class="themeClass('exercise-edit-order')">第{{ editingExerciseNumber }}组</text>
@@ -913,8 +917,8 @@ function closeSelection() {
         <button hover-class="none" role="button" class="save-button exercise-edit-save" @click="saveExerciseSet"><text class="action-label">保存</text></button>
       </FormActions>
     </view>
-  </AdaptiveModal>
-  <AdaptiveModal v-if="choosingExercise" label="选择运动" :show-close="false"
+  </AdaptiveModal></ModalMotion>
+  <ModalMotion><AdaptiveModal v-if="choosingExercise" label="选择运动" :show-close="false"
     :max-width="500" :content-key="exerciseSelectionKey" @close="choosingExercise = false">
     <LoadingIndicator v-if="exerciseLoading" label="正在加载运动项目" />
     <view v-else-if="exerciseError" class="form-error">
@@ -931,13 +935,16 @@ function closeSelection() {
       </button>
       <text v-if="!exerciseTypes.length" class="muted-text">暂无运动类型</text>
     </view>
-  </AdaptiveModal>
+  </AdaptiveModal></ModalMotion>
 
   <TimeEndPicker v-if="choosingTime" :value="form[choosingTime]"
     :anchor="timeAnchor"
     :min="pickerBounds.min" :max="pickerBounds.max"
     :label="choosingTime === 'startMinute' ? '开始时间' : '结束时间'"
     @preview="timePreview = $event" @change="changeTime" @close="closeTimePicker" />
+  <!-- #ifdef WEB -->
+  </view>
+  <!-- #endif -->
 </template>
 
 <style scoped lang="scss">
@@ -947,6 +954,10 @@ function closeSelection() {
 @use '../styles/spacing-tokens' as *;
 @use '../styles/text-colors' as *;
 @include type-utilities('body');
+/* #ifdef WEB */
+// 多个弹层共用一个过渡根节点，不增加布局盒，也不改变 fixed 的定位参照。
+.time-editor-motion-root { display: contents; }
+/* #endif */
 
 .editor-content {
   width: 100%;

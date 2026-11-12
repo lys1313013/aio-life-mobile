@@ -6,7 +6,7 @@ const date = new Date();
 const day = offset => { const d = new Date(date); d.setDate(d.getDate() + offset); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; };
 const names = ['交通', '运动', '项目', '社交', '阅读', '工作', '休息'];
 const colors = ['#2f54eb', '#13c2c2', '#eb2f96', '#fa8c16', '#722ed1', '#1677ff', '#ffa500'];
-const categories = names.map((name, i) => ({ id: String(i + 1), name, color: colors[i], timeType: 1 }));
+const categories = names.map((name, i) => ({ id: String(i + 1), name, color: colors[i] }));
 function trendRecords() {
   return Array.from({ length: 10 }, (_, d) => {
     let start = 0;

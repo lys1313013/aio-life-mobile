@@ -6,7 +6,7 @@ const {nativeDestination}=await import(`data:text/javascript;base64,${Buffer.fro
 const pages=JSON.parse((await readFile(new URL('../src/pages.json',import.meta.url),'utf8')).replace(/^\s*\/\/.*$/gm, ''))
 const routes=[...pages.pages.map(p=>p.path),...(pages.subPackages||[]).flatMap(pack=>pack.pages.map(p=>pack.root+'/'+p.path))]
 const businessPaths=[
- '/','/workspace','/profile','/vben-admin/about',
+ '/','/workspace','/profile','/profile/category-management','/vben-admin/about',
  '/task/todo','/task/goal','/task-center/todo','/task-center/goal',
  '/time/time-tracker','/time/dashboard','/time/my-categories','/time/category-admin',
  '/record/exercise','/my-hub/exercise/category-config','/record/videoWatch','/record/movie','/record/read','/record/weread',

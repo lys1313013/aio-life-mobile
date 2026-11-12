@@ -98,3 +98,13 @@ test("常用项显示授权启用项，保存保留停用和目录外配置、�
   assert.equal(nativeDestination("/time/time-tracker"), "/pages/time/index");
   assert.equal(nativeDestination("/finance/expense"), "/pages/finance/expense");
 });
+
+test("个人分类只移出全部目录，保留快捷导航和管理员入口", () => {
+  const entries = [item("1508", "/my-hub/exercise/category-config", "通用分类"), item("1303", "/time/my-categories", "时迹分类"), item("1304", "/time/category-admin", "时迹分类")];
+  const prefs = { menus: [menu("personal", "分类管理", [menu("1508", "通用分类"), menu("1303", "时迹分类")]), menu("system", "系统管理", [menu("1304", "时迹分类")])], hiddenMenuIds: [] };
+  const catalog = buildCatalog(entries, prefs);
+  assert.equal(catalog.length, 3);
+  assert.deepEqual(catalogSections(catalog).map(section => section.title), ["系统管理"]);
+  assert.deepEqual(catalogSections(catalog, "分类")[0].items.map(row => row.menuId), ["1304"]);
+  assert.equal(visibleQuickLinks([{menuId:"1303",isEnabled:1,sortOrder:0}], catalog)[0].menuId, "1303");
+});

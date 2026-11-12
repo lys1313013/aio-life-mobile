@@ -77,7 +77,6 @@ export interface Category {
   parentId?: string
   color?: string
   isEnabled?: number
-  timeType?: number
   isTrackTime?: number
 }
 export interface TimeRecord {

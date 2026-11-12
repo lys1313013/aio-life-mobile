@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import ModalMotion from "../../components/ModalMotion.uvue";
 import MobileSwitch from '../../components/MobileSwitch.uvue';
 import { useAppLayout } from '../../services/app-layout.ts'
 const { appGridItem } = useAppLayout()
@@ -26,6 +27,9 @@ import {
   newSalt,
   randomPassword,
 } from './services/vault-crypto.ts';
+const modalMotion0 = ref<{ close: () => void } | null>(null);
+const modalMotion1 = ref<{ close: () => void } | null>(null);
+
 const rows = ref<any[]>([]),
   categories = ref<string[]>([]),
   query = ref(''),
@@ -411,7 +415,7 @@ function back() {
       </view>
       <template #fixed><FloatingActionButton label="新增密码" :loading="saving && !editingId" :disabled="!ready" @click="edit()" /></template>
     </MobilePage
-    ><AdaptiveModal
+    ><ModalMotion><AdaptiveModal ref="modalMotion0"
       v-if="unlocking"
       label="解锁密码库"
       :busy="saving"
@@ -425,8 +429,8 @@ function back() {
         v-model="confirm" /><text v-if="formError" class="error-text" role="alert">{{
         formError
       }}</text
-      ><FormActions><MobileButton label="取消" variant="quiet" :disabled="saving" @click="unlocking = false" /><MobileButton label="解锁" :loading="saving" @click="unlock" /></FormActions></AdaptiveModal
-    ><AdaptiveModal
+      ><FormActions><MobileButton label="取消" variant="quiet" :disabled="saving" @click="modalMotion0?.close()" /><MobileButton label="解锁" :loading="saving" @click="unlock" /></FormActions></AdaptiveModal
+    ></ModalMotion><ModalMotion><AdaptiveModal ref="modalMotion1"
       v-if="editing"
       label="密码记录"
       :busy="saving"
@@ -460,8 +464,8 @@ function back() {
           aria-label="收藏密码"
           @change="form.favorite = $event.detail.value" /></view
       ><text v-if="formError" class="error-text" role="alert">{{ formError }}</text
-      ><FormActions><template #secondary><ConfirmAction v-if="form.id" label="删除密码" :message="'删除' + form.title + '？'" :action="() => remove(form)" /></template><MobileButton label="取消" variant="quiet" :disabled="saving" @click="editing = false" /><MobileButton label="保存" :loading="saving" @click="save" /></FormActions></AdaptiveModal
-  ></view>
+      ><FormActions><template #secondary><ConfirmAction v-if="form.id" label="删除密码" :message="'删除' + form.title + '？'" :action="() => remove(form)" /></template><MobileButton label="取消" variant="quiet" :disabled="saving" @click="modalMotion1?.close()" /><MobileButton label="保存" :loading="saving" @click="save" /></FormActions></AdaptiveModal
+  ></ModalMotion></view>
 </template>
 <style scoped lang="scss">
 @use '../../styles/platform' as *;

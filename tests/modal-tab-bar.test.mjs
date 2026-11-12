@@ -25,13 +25,15 @@ async function harness() {
   const { modalAvailableHeight } = await import(`data:text/javascript;base64,${Buffer.from(ui).toString('base64')}`)
   const js = (await transform(script, { loader: 'ts' })).code
   const cleanups = [], mounted = [], keyboardListeners = new Set()
+  const events = []
+  const props = { label: '模拟长弹窗', busy: false }
   const windowInfo = { windowHeight: 700, safeAreaInsets: { top: 24, bottom: 0 } }
   const fixtures = {
     computed, nextTick, ref, watch, spacing, modalAvailableHeight,
     useWindowResize: () => {}, getCurrentInstance: () => ({}),
     onMounted: callback => mounted.push(callback), onUnmounted: callback => cleanups.push(callback),
-    onUpdated: () => {}, provide: () => {}, defineEmits: () => () => {},
-    defineProps: () => ({ label: '模拟长弹窗' }),
+    onUpdated: () => {}, provide: () => {}, defineEmits: () => event => events.push(event), defineExpose: () => {},
+    defineProps: () => props,
     withDefaults: (props, defaults) => ({ ...defaults, ...props }),
     registerModal: () => () => {},
     uni: {
@@ -44,14 +46,46 @@ async function harness() {
         boundingClientRect(callback) { callback({ height: 1200 }); return this }, exec() {} }),
     },
   }
-  const component = new Function(...Object.keys(fixtures), js + '\nreturn { height, windowHeight, keyboardHeight, resize }')(...Object.values(fixtures))
+  const component = new Function(...Object.keys(fixtures), js + '\nreturn { height, windowHeight, keyboardHeight, resize, requestClose: close, closing, props }')(...Object.values(fixtures))
   for (const callback of mounted) callback()
   await nextTick()
-  return { ...component, windowInfo, keyboardListeners,
+  return { ...component, windowInfo, keyboardListeners, events,
     keyboard: height => keyboardListeners.forEach(callback => callback({ height })),
     close: () => cleanups.forEach(callback => callback()),
   }
 }
+
+test('微信关闭入口在退场后只通知一次，离页卸载取消尚未结束的关闭', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] })
+  const h = await harness()
+  h.requestClose()
+  h.requestClose()
+  assert.equal(h.closing.value, true)
+  assert.deepEqual(h.events, [])
+  t.mock.timers.tick(240)
+  assert.deepEqual(h.events, ['close'])
+  h.close()
+  const leaving = await harness()
+  leaving.requestClose()
+  leaving.close()
+  t.mock.timers.tick(240)
+  assert.deepEqual(leaving.events, [])
+})
+
+test('写入期间及退场中开始写入均不能关闭微信弹窗', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] })
+  const h = await harness()
+  h.props.busy = true
+  h.requestClose()
+  assert.equal(h.closing.value, false)
+  h.props.busy = false
+  h.requestClose()
+  h.props.busy = true
+  t.mock.timers.tick(240)
+  assert.deepEqual(h.events, [])
+  assert.equal(h.closing.value, false)
+  h.close()
+})
 
 test('微信长弹窗使用完整视口，开关不改变窗口和底栏占位', async () => {
   const h = await harness()

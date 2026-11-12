@@ -18,7 +18,7 @@ const scenarios = [
     }, request: 'GET /api/message/list' },
   { name: '分类管理', route: 'records/categories', tabs: '.category-type-tab', rows: '.category-row', secondCount: 1,
     handlers: {
-      'GET /api/userDictType/dictTypeEnum': ok([{ value: 'exercise_type', label: '运动分类' }, { value: 'time_type', label: '时迹分类' }]),
+      'GET /api/userDictType/dictTypeEnum': ok([{ value: 'exercise_type', label: '运动分类' }, { value: 'movie_type', label: '观影分类' }]),
       'GET /api/userDictData/query': request => { const type = new URL(request.url()).searchParams.get('dictType'); return ok({ items: [{ id: type === 'exercise_type' ? '41' : '42', dictType: type, dictLabel: '模拟分类', dictValue: 'mock', isEnabled: 1, sortOrder: 0, color: '#3478f6' }], total: 1 }); },
     }, request: 'GET /api/userDictData/query' },
 ];

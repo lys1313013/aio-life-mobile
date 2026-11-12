@@ -8,6 +8,8 @@ async function openExpense(page, data) {
   await page.goto('/#/pages/finance/expense');
   await expect(page.getByText('支出走势', { exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: '统计', exact: true })).toHaveCount(0);
+  await expect(page.getByText('统计周期', { exact: true })).toHaveCount(0);
+  await expect(page.locator('.statistics-card')).toHaveCount(0);
 }
 const year = new Date().getFullYear();
 const months = [1, 2, 3].map((month) => ({ year, month, detail: [
@@ -71,6 +73,15 @@ for (const width of [390, 768, 1440]) for (const theme of ['light', 'dark']) {
     fs.mkdirSync('artifacts/expense-charts', { recursive: true });
     await page.screenshot({ path: `artifacts/expense-charts/${width}-${theme}.png`, fullPage: true });
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    const expand = page.getByRole('button', { name: '展开统计明细', exact: true });
+    await expect(expand).toHaveAttribute('aria-expanded', 'false');
+    await expand.click();
+    await expect(page.getByText('统计周期', { exact: true })).toBeVisible();
+    await expect(page.locator('.statistics-card')).toHaveCount(months.length);
+    await expect(page.getByRole('button', { name: '收起统计明细', exact: true })).toHaveAttribute('aria-expanded', 'true');
+    await page.getByRole('button', { name: '收起统计明细', exact: true }).click();
+    await expect(page.getByText('统计周期', { exact: true })).toHaveCount(0);
+    await expect(page.locator('.statistics-card')).toHaveCount(0);
     expect(errors).toEqual([]);
   });
 }

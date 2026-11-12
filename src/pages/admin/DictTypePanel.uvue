@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import ModalMotion from "../../components/ModalMotion.uvue";
 import { computed, onUnmounted, ref } from 'vue';
 import FormField from '../../components/FormField.uvue';
 import MobileButton from '../../components/MobileButton.uvue';
@@ -112,7 +113,7 @@ onUnmounted(() => clearTimeout(timer));
       </view>
     </PageState>
     <LoadMore :error="moreError" :loading="loading" :has-more="hasMore" @load="emit('more')" />
-    <AdaptiveModal v-if="selected" :label="showingDetails ? '字典类型详情' : '字典类型操作'" :busy="actionBusy" :content-key="selected.dictId + ':' + showingDetails" @close="selected = null">
+    <ModalMotion><AdaptiveModal v-if="selected" :label="showingDetails ? '字典类型详情' : '字典类型操作'" :busy="actionBusy" :content-key="selected.dictId + ':' + showingDetails" @close="selected = null">
       <text class="dict-detail-title" :class="themeClass('dict-detail-title')">{{ selected.dictName }}</text>
       <template v-if="showingDetails">
         <view v-for="item in details" :key="item[0]" class="dict-detail-row">
@@ -132,7 +133,7 @@ onUnmounted(() => clearTimeout(timer));
         <MobileButton label="编辑" icon="ant-design:edit-outlined" variant="ghost" :disabled="actionBusy" @click="editSelected" />
         <MobileButton label="关闭" icon="ant-design:close-outlined" variant="ghost" :disabled="actionBusy" @click="selected = null" />
       </FormActions>
-    </AdaptiveModal>
+    </AdaptiveModal></ModalMotion>
   </view>
 </template>
 <style scoped lang="scss">

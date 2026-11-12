@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import ModalMotion from "../../../components/ModalMotion.uvue";
 import { readPageTotal, mergePageItems, hasMorePageItems } from '../../../services/pagination.ts';
 import { computed, onMounted, onUnmounted, ref } from 'vue';
 import AdaptiveModal from '../../../components/AdaptiveModal.uvue';
@@ -11,11 +12,14 @@ import LoadMore from '../../../components/LoadMore.uvue';
 import { themeClass } from '../../../services/theme.ts';
 import { fetchDictionary } from '../services/finance.ts';
 import { getExpenseDevice, searchDevices, bindExpenseDevice, createExpenseDevice, unbindExpenseDevice } from '../services/expense-device.ts';
+const modalMotion0 = ref<{ close: () => void } | null>(null);
 
-const props = defineProps<{ expenseId: string }>();
-const emit = defineEmits(['close', 'updated']);
+
+const props = defineProps<{ expenseId?: string; expenseDraft?: Record<string, any>; selection?: any }>();
+const emit = defineEmits(['close', 'updated', 'staged']);
 const mode = ref('已有设备'), current = ref<any>(null), draft = ref<any>({});
 const selectedId = ref(''), keyword = ref(''), types = ref<any[]>([]);
+const selectedDevice = ref<any>(null);
 const loading = ref(false), ready = ref(false), saving = ref(false), error = ref(''), saveError = ref('');
 const choices = ref<any[]>([]), choicesBusy = ref(false), choicesError = ref(''), total = ref<number | null>(null), choicesEnded = ref(false);
 let alive = true, sequence = 0, page = 0, searchName = '', retryReset = true;
@@ -46,12 +50,17 @@ function retryChoices() { choicesError.value = ''; void loadChoices(retryReset);
 async function initialize() {
   loading.value = true; error.value = '';
   try {
-    const [context, dictionary] = await Promise.all([getExpenseDevice(props.expenseId), fetchDictionary('device_type')]);
+    const [context, dictionary] = await Promise.all([
+      props.expenseId ? getExpenseDevice(props.expenseId) : Promise.resolve(draftContext()),
+      fetchDictionary('device_type'),
+    ]);
     if (!alive) return;
     current.value = context.device;
     selectedId.value = context.device?.id || '';
+    selectedDevice.value = context.device;
+    mode.value = props.selection?.newDevice ? '新建设备' : '已有设备';
     draft.value = { ...context.defaults, purchasePrice: context.defaults.purchasePrice == null ? '' : String(context.defaults.purchasePrice),
-      name: context.defaults.name || '', spec: '', type: '', purchaseDate: context.defaults.purchaseDate || '',
+      name: context.defaults.name || '', spec: context.defaults.spec || '', type: context.defaults.type || '', purchaseDate: context.defaults.purchaseDate || '',
       purchasePlace: context.defaults.purchasePlace || '', remark: context.defaults.remark || '' };
     types.value = dictionary.dictDetailList || [];
     ready.value = true;
@@ -59,6 +68,23 @@ async function initialize() {
   } catch (e) { if (alive) error.value = e.message; }
   finally { if (alive) loading.value = false; }
 }
+function draftContext() {
+  const expense = props.expenseDraft || {};
+  const text = (value: any) => {
+    const trimmed = String(value ?? '').trim();
+    return trimmed && trimmed !== '/' ? trimmed.slice(0, 255) : '';
+  };
+  return {
+    device: props.selection?.deviceId ? { id: props.selection.deviceId, name: props.selection.deviceName } : null,
+    defaults: props.selection?.newDevice || {
+      name: text(expense.expDesc) || text(expense.remark),
+      purchasePrice: expense.amt === '' || expense.amt == null ? null : Number(expense.amt),
+      purchaseDate: expense.expTime?.slice(0, 10) || '',
+      purchasePlace: text(expense.counterparty), remark: text(expense.remark), status: '1',
+    },
+  };
+}
+function selectDevice(item: any) { selectedId.value = item.id; selectedDevice.value = item; }
 function publish(device: any) {
   emit('updated', { expenseId: props.expenseId, deviceId: device?.id || null, deviceName: device?.name || null });
   emit('close');
@@ -72,6 +98,13 @@ async function save() {
   if (mode.value === '新建设备' && price != null && (!Number.isFinite(price) || price < 0 || price > 99999999.99 || !/^\d+(\.\d{1,2})?$/.test(draft.value.purchasePrice))) {
     saveError.value = '请填写有效的购买价格，最多两位小数'; return;
   }
+  if (!props.expenseId) {
+    emit('staged', mode.value === '已有设备'
+      ? { deviceId: selectedId.value, newDevice: null, deviceName: selectedDevice.value.name }
+      : { deviceId: null, newDevice: { ...draft.value, name: draft.value.name.trim(), purchasePrice: price, purchaseDate: draft.value.purchaseDate || null }, deviceName: draft.value.name.trim() });
+    emit('close');
+    return;
+  }
   saving.value = true;
   try {
     const result = mode.value === '已有设备'
@@ -83,6 +116,7 @@ async function save() {
 }
 async function unbind() {
   if (saving.value) return;
+  if (!props.expenseId) { emit('staged', null); emit('close'); return; }
   saving.value = true;
   try {
     if (!await unbindExpenseDevice(props.expenseId)) throw new Error('解除关联失败，请重试');
@@ -92,12 +126,12 @@ async function unbind() {
 onMounted(initialize);
 </script>
 <template>
-  <AdaptiveModal label="关联设备" :busy="saving" :max-width="520" show-close @close="emit('close')"
+  <ModalMotion><AdaptiveModal ref="modalMotion0" label="关联设备" :busy="saving" :max-width="520" show-close @close="emit('close')"
     @reachbottom="mode === '已有设备' && loadChoices()">
     <PageState :loading="loading" :error="error" @retry="initialize">
       <view v-if="ready">
         <FormField label="关联方式" kind="selector" v-model="mode" :disabled="saving"
-          :options="current ? ['已有设备'] : ['已有设备', '新建设备']" />
+          :options="expenseId && current ? ['已有设备'] : ['已有设备', '新建设备']" />
         <template v-if="mode === '已有设备'">
           <text v-if="current" class="device-copy">当前：{{ current.name }}</text>
           <view class="ui-toolbar">
@@ -110,7 +144,7 @@ onMounted(initialize);
               <text class="device-meta" :class="themeClass('device-meta')">{{ [item.spec, item.purchaseDate].filter(Boolean).join(' · ') }}</text>
             </view>
             <MobileButton :label="'选择设备：' + item.name" :icon="selectedId === item.id ? 'ant-design:check-circle-outlined' : 'ant-design:border-outlined'"
-              :disabled="saving" variant="quiet" @click="selectedId = item.id" />
+              :disabled="saving" variant="quiet" @click="selectDevice(item)" />
           </view>
           <text v-if="!choicesBusy && !choicesError && !choices.length" class="device-meta" :class="themeClass('device-meta')">暂无设备</text>
           <LoadMore :loading="choicesBusy" :error="choicesError" :has-more="choicesBusy || !!choicesError || hasMorePageItems(choices.length, total, choicesEnded)" @load="retryChoices" />
@@ -133,10 +167,10 @@ onMounted(initialize);
           <template #default="{ open, busy }"><MobileButton label="解除设备关联" icon="ant-design:disconnect-outlined" danger :disabled="saving" :loading="busy" @click="open" /></template>
         </ConfirmAction>
       </template>
-      <MobileButton label="取消" variant="quiet" :disabled="saving" @click="emit('close')" />
+      <MobileButton label="取消" variant="quiet" :disabled="saving" @click="modalMotion0?.close()" />
       <MobileButton label="保存" :loading="saving" :disabled="!ready" @click="save" />
     </FormActions>
-  </AdaptiveModal>
+  </AdaptiveModal></ModalMotion>
 </template>
 <style scoped lang="scss">
 @use '../../../styles/spacing.scss';

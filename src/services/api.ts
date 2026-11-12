@@ -71,6 +71,7 @@ export function request<T>(path: string, method: 'GET' | 'POST' | 'PUT' | 'DELET
                 menuVisuals.afterWrite(path, method)
                 invalidateHomeAfterWrite(path, method)
                 invalidatePageAfterWrite(path, method)
+                if (path === '/expense' && method === 'POST' && payload?.newDevice) invalidatePageAfterWrite('/device', method)
               }
               resolve(result)
             } catch (error) {

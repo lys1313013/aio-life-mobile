@@ -1,6 +1,8 @@
 const { test, expect } = require('./support/test');
 const { dashboardFixture } = require('./fixtures.js');
 const { retainedProfilePages } = require('./profile-navigation');
+const themeColors = require('../../src/theme.json');
+const darkSwitchColor = `rgb(${themeColors.dark.switchActiveColor.slice(1).match(/.{2}/g).map(value => parseInt(value, 16)).join(', ')})`;
 
 async function setup(page) {
   const state = { unread: 3, failUnread: false, profile: { id: '9223372036854775807', accountUsername: 'fixture', nickname: '测试用户', email: 'fixture@example.com', introduction: '测试简介', avatarFileId: null }, binds: [], writes: [], failSave: false, failList: false, failDelete: false, expired: false, delay: 0 };
@@ -52,6 +54,28 @@ async function setup(page) {
   return state;
 }
 
+async function captureThemeMotion(page, snapshot, path) {
+  // 暂停真实快照动画查看中间帧，连续切换时比较同一路径的正放／倒放。
+  await page.waitForFunction(pseudoElement => {
+    const animation = document.getAnimations().find(item => item.effect?.pseudoElement === pseudoElement);
+    if (!animation) return false;
+    animation.pause();
+    animation.currentTime = Number(animation.effect.getTiming().duration) / 2;
+    return true;
+  }, snapshot);
+  try {
+    const frames = await page.evaluate(pseudoElement => {
+      const effect = document.getAnimations().find(item => item.effect?.pseudoElement === pseudoElement).effect;
+      return { clipPath: effect.getKeyframes().map(frame => frame.clipPath), duration: effect.getTiming().duration };
+    }, snapshot);
+    await expect(page.getByRole('switch', { name: '深色模式', exact: true })).toHaveCSS('opacity', '1');
+    await page.screenshot({ path, fullPage: true });
+    return frames;
+  } finally {
+    await page.evaluate(pseudoElement => document.getAnimations().find(item => item.effect?.pseudoElement === pseudoElement)?.play(), snapshot);
+  }
+}
+
 for (const width of [390, 768, 1440]) {
   for (const system of ['light', 'dark']) {
     test(`我的主题和布局 ${width} ${system}`, async ({ page }) => {
@@ -80,19 +104,48 @@ for (const width of [390, 768, 1440]) {
       for (const name of ['外观', '反馈', '关于', '退出登录']) {
         await expect(page.getByRole('button', { name, exact: true })).toHaveCount(0);
       }
+      await expect(page.getByRole('switch', { name: '深色模式', exact: true })).toHaveCount(0);
       await page.screenshot({ path: `test-results/profile-shortcuts-${width}-${system}.png`, fullPage: true });
       await page.getByRole('button', { name: '设置', exact: true }).click();
-      for (const name of ['外观', '反馈', '关于', '退出登录']) {
+      for (const name of ['反馈', '关于', '退出登录']) {
         await expect(page.getByRole('button', { name, exact: true })).toBeVisible();
+      }
+      const darkModeSwitch = page.getByRole('switch', { name: '深色模式', exact: true });
+      await expect(darkModeSwitch).toHaveAttribute('aria-checked', String(system === 'dark'));
+      // 未手动选择前跟随系统；开关始终显示当前实际主题。
+      await page.emulateMedia({ colorScheme: system === 'dark' ? 'light' : 'dark' });
+      await expect(darkModeSwitch).toHaveAttribute('aria-checked', String(system !== 'dark'));
+      await page.emulateMedia({ colorScheme: system });
+      await expect(darkModeSwitch).toHaveAttribute('aria-checked', String(system === 'dark'));
+      if (system === 'dark') {
+        await expect(darkModeSwitch.locator('.mobile-switch-track')).toHaveCSS('background-color', darkSwitchColor);
       }
       await page.screenshot({ path: `test-results/settings-center-${width}-${system}.png`, fullPage: true });
       const selected = system === 'dark' ? '浅色' : '深色';
       const bg = selected === '深色' ? 'rgb(17, 18, 21)' : 'rgb(240, 242, 245)';
-      await page.getByRole('button', { name: '外观', exact: true }).click();
-      await page.screenshot({ path: `test-results/profile-appearance-${width}-${system}.png`, fullPage: true });
-      await page.getByRole('button', { name: selected, exact: true }).click();
+      await darkModeSwitch.click();
+      const snapshot = selected === '深色' ? '::view-transition-old(root)' : '::view-transition-new(root)';
+      const frames = await captureThemeMotion(page, snapshot, `test-results/theme-transition-${width}-${system}.png`);
+      expect(frames.duration).toBe(800);
+      const collapsed = frames.clipPath.map(value => value.startsWith('circle(0px '));
+      expect(collapsed).toEqual(selected === '深色' ? [false, true] : [true, false]);
+      for (const frame of frames.clipPath) expect(frame).toContain(`at ${width}px 0px)`);
+      await expect(darkModeSwitch).toBeEnabled();
+      await expect(page.locator('html')).not.toHaveClass(/aio-theme-transition/);
+      await expect(darkModeSwitch).toHaveAttribute('aria-checked', String(selected === '深色'));
+      await expect(page.getByRole('dialog')).toHaveCount(0);
       await expect(page.locator('.tab-page').last()).toHaveCSS('background-color', bg);
       await expect(page.locator('.page-navigation').last()).toHaveCSS('background-color', bg);
+      // 不离开页面连续往返：第二次必须原路倒放，不能换圆心再做一次展开。
+      await darkModeSwitch.click();
+      const reverseSnapshot = selected === '深色' ? '::view-transition-new(root)' : '::view-transition-old(root)';
+      const reverseFrames = await captureThemeMotion(page, reverseSnapshot, `test-results/theme-transition-return-${width}-${system}.png`);
+      expect(reverseFrames.clipPath).toEqual([...frames.clipPath].reverse());
+      await expect(darkModeSwitch).toBeEnabled();
+      await expect(darkModeSwitch).toHaveAttribute('aria-checked', String(system === 'dark'));
+      await darkModeSwitch.click();
+      await expect(darkModeSwitch).toBeEnabled();
+      await expect(darkModeSwitch).toHaveAttribute('aria-checked', String(selected === '深色'));
       await page.getByRole('button', { name: '返回', exact: true }).last().click();
       await expect(page.locator('uni-tabbar .uni-tabbar')).toHaveCSS('background-color', selected === '深色' ? 'rgb(28, 30, 34)' : 'rgb(255, 255, 255)');
       const menu = await page.locator('.menu-row').first().boundingBox();
@@ -122,20 +175,23 @@ for (const width of [390, 768, 1440]) {
       await page.getByRole('button', { name: '返回', exact: true }).last().click();
       await page.reload();
       await page.getByRole('button', { name: '设置', exact: true }).click();
-      await page.getByRole('button', { name: '外观', exact: true }).click();
-      await expect(page.getByRole('button', { name: selected, exact: true })).toHaveAttribute('aria-pressed', 'true');
-      await page.getByRole('button', { name: selected, exact: true }).click();
+      await expect(darkModeSwitch).toHaveAttribute('aria-checked', String(selected === '深色'));
       await expect(page.locator('.tab-page').last()).toHaveCSS('background-color', bg);
       await page.getByRole('button', { name: '返回', exact: true }).last().click();
       await page.locator('uni-tabbar').getByText('时迹', { exact: true }).click();
       await expect(page.locator('.tab-page').last()).toHaveCSS('background-color', bg);
       await page.locator('uni-tabbar').getByText('我', { exact: true }).click();
       await page.getByRole('button', { name: '设置', exact: true }).click();
-      await page.getByRole('button', { name: '外观', exact: true }).click();
-      await page.getByRole('button', { name: '跟随系统', exact: true }).click();
+      await page.emulateMedia({ reducedMotion: 'reduce' });
+      await darkModeSwitch.click();
+      await expect(darkModeSwitch).toBeEnabled();
+      await expect(darkModeSwitch).toHaveAttribute('aria-checked', String(system === 'dark'));
+      await expect(page.locator('html')).not.toHaveClass(/aio-theme-transition/);
       await expect(page.locator('.tab-page').last()).toHaveCSS('background-color', system === 'dark' ? 'rgb(17, 18, 21)' : 'rgb(240, 242, 245)');
+      // 手动选择保存后，系统主题变化不覆盖用户选择。
       await page.emulateMedia({ colorScheme: system === 'dark' ? 'light' : 'dark' });
-      await expect(page.locator('.tab-page').last()).toHaveCSS('background-color', bg);
+      await expect(darkModeSwitch).toHaveAttribute('aria-checked', String(system === 'dark'));
+      await expect(page.locator('.tab-page').last()).toHaveCSS('background-color', system === 'dark' ? 'rgb(17, 18, 21)' : 'rgb(240, 242, 245)');
       expect(errors).toEqual([]);
     });
   }

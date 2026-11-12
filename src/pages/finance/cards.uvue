@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import ModalMotion from "../../components/ModalMotion.uvue";
 import ContentSkeleton from '../../components/ContentSkeleton.uvue';
 import { useWindowResize } from '../../services/window-resize.ts'
 useWindowResize(() => { measureStackFace(); measureCardLayers(); })
@@ -38,6 +39,8 @@ import {
 import { chooseAndUploadAttachment, authFileUrl } from '../../services/attachments.ts';
 import { useDomainPage } from '../../services/domains/page-session.ts';
 import { themeClass } from '../../services/theme.ts';
+const modalMotion0 = ref<{ close: () => void } | null>(null);
+
 function back() {
   // H5 直达或刷新后只有当前页，navigateBack 不会报错，也不会回到站内入口。
   if (getCurrentPages().length <= 1) {
@@ -1094,14 +1097,14 @@ async function removeTag(value: any) {
     <!-- #ifndef MP-WEIXIN -->
     <view v-if="menuCardId" class="menu-backdrop" @click="menuCardId = ''" />
     <!-- #endif -->
-    <AdaptiveModal v-if="numberCardId" label="银行卡卡号" @close="closeNumber">
+    <ModalMotion><AdaptiveModal v-if="numberCardId" label="银行卡卡号" @close="closeNumber">
       <text class="card-number-detail" :class="themeClass('card-number-detail')">{{ displayedCardNumber }}</text>
       <FormActions>
         <MobileButton label="关闭" variant="quiet" @click="closeNumber" />
         <MobileButton label="复制卡号" icon="ant-design:copy-outlined" variant="quiet" @click="copyDisplayedNumber" />
       </FormActions>
-    </AdaptiveModal>
-    <AdaptiveModal v-if="modal" label="银行卡" :max-width="480" :busy="saving || coverBusy" @close="modal = false">
+    </AdaptiveModal></ModalMotion>
+    <ModalMotion><AdaptiveModal ref="modalMotion0" v-if="modal" label="银行卡" :max-width="480" :busy="saving || coverBusy" @close="modal = false">
       <BankSelector :banks="banks" :bank-id="draft.bankId" :custom-bank-name="draft.customBankName"
         :bank-name="draft.bankName" :original-bank-id="originalBankId" :disabled="saving || coverBusy" @select="selectDraftBank" />
       <view class="ui-field-row">
@@ -1207,13 +1210,13 @@ async function removeTag(value: any) {
         <view class="ui-stack ui-gap-sm">
           <text v-if="formError" class="error ui-type-body" role="alert">{{ formError }}</text>
           <FormActions>
-            <MobileButton label="取消" :disabled="saving" variant="quiet" @click="modal = false" />
+            <MobileButton label="取消" :disabled="saving" variant="quiet" @click="modalMotion0?.close()" />
             <MobileButton label="保存" :loading="saving" @click="save" />
           </FormActions>
         </view>
       </template>
     </AdaptiveModal
-    ><AdaptiveModal v-if="tagModal" label="标签" :busy="saving" @close="tagModal = false"
+    ></ModalMotion><ModalMotion><AdaptiveModal v-if="tagModal" label="标签" :busy="saving" @close="tagModal = false"
       ><FormField :required="isRequired('cardTag', 'name')" label="名称" v-model="tagDraft.name" /><FormField
         label="颜色"
         v-model="tagDraft.color" /><FormField
@@ -1243,7 +1246,7 @@ async function removeTag(value: any) {
         <text v-if="!tags.length" class="secondary-text ui-type-body" :class="themeClass('secondary-text')">暂无标签</text>
       </view>
     </AdaptiveModal
-  ></MobilePage>
+  ></ModalMotion></MobilePage>
 </template>
 <style scoped lang="scss">
 @use '../../styles/platform' as *;

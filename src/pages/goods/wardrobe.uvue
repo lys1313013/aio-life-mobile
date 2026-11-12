@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import ModalMotion from "../../components/ModalMotion.uvue";
 import { usePageRefresh } from '../../services/page-refresh.ts'
 import { appTextColor, appButtonTextColor } from '../../services/app-layout.ts'
 
@@ -32,6 +33,8 @@ import { matchesItem, seasons } from './services/wardrobe/contract.ts';
 import { chooseAndUploadAttachment, authFileUrl } from '../../services/attachments.ts';
 import { session } from '../../services/session.ts';
 import { themeClass } from '../../services/theme.ts';
+const modalMotion0 = ref<{ close: () => void } | null>(null);
+
 const items = ref<any[]>([]),
   categories = ref<any[]>([]),
   stats = ref<any>({}),
@@ -421,7 +424,7 @@ function chooseCategory(value) {
     <template #fixed>
       <FloatingActionButton v-if="!modal" :label="section === '衣物' ? '新增衣物' : '新增衣柜分类'"
         @click="section === '衣物' ? openItem() : openCategory()" />
-      <AdaptiveModal v-if="modal" :label="modal === 'item' ? '衣物编辑' : '衣柜分类编辑'" :busy="busy || uploading" @close="close">
+      <ModalMotion><AdaptiveModal ref="modalMotion0" v-if="modal" :label="modal === 'item' ? '衣物编辑' : '衣柜分类编辑'" :busy="busy || uploading" @close="close">
         <template v-if="modal === 'item'">
           <view class="item-form-heading ui-gap-md">
             <view class="photo-field ui-gap-xs">
@@ -489,10 +492,10 @@ function chooseCategory(value) {
         </template>
         <text v-if="formError" class="error ui-section" role="alert">{{ formError }}</text>
         <FormActions>
-          <MobileButton label="取消" variant="quiet" :disabled="busy || uploading" @click="close" />
+          <MobileButton label="取消" variant="quiet" :disabled="busy || uploading" @click="modalMotion0?.close()" />
           <MobileButton label="保存衣柜内容" :loading="busy" :disabled="uploading" @click="save" />
         </FormActions>
-      </AdaptiveModal>
+      </AdaptiveModal></ModalMotion>
     </template>
   </MobilePage>
 </template>

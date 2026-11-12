@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import ModalMotion from "../../components/ModalMotion.uvue";
 import MobileSwitch from '../../components/MobileSwitch.uvue';
 import { usePageRefresh } from '../../services/page-refresh.ts'
 import { appButtonTextColor } from '../../services/app-layout.ts'
@@ -469,7 +470,7 @@ function preview(url) {
                   :action="() => remove(row)" /></view></view></PageState
         ></template> </PageState
     ></MobilePage>
-    <AdaptiveModal
+    <ModalMotion><AdaptiveModal
       v-if="selectedType"
       label="人格详情"
       :content-key="selectedType.code"
@@ -498,8 +499,8 @@ function preview(url) {
           dimension.levels[['L', 'M', 'H'][selectedType.vector?.[i] || 0]]
         }}</text></view
       ></AdaptiveModal
-    >
-    <AdaptiveModal
+    ></ModalMotion>
+    <ModalMotion><AdaptiveModal
       v-if="adminOpen"
       label="CBTI 人格管理"
       :busy="saving || !!uploading"
@@ -530,8 +531,8 @@ function preview(url) {
             @click="preview(row.imageUrl)" /><ConfirmAction
             label="删除人格"
             :action="() => removePersonality(row)" /></view></view
-    ></AdaptiveModal>
-    <AdaptiveModal
+    ></AdaptiveModal></ModalMotion>
+    <ModalMotion><AdaptiveModal
       v-if="editorOpen"
       label="编辑人格"
       :busy="saving"
@@ -574,7 +575,7 @@ function preview(url) {
           @update:model-value="(value) => vectorChange(i, value)" /></template
       ><text v-if="editorError" class="cbti-error ui-mb-section ui-mt-section ui-type-body" role="alert">{{ editorError }}</text
       ><MobileButton label="保存人格" :loading="saving" @click="save"
-    /></AdaptiveModal>
+    /></AdaptiveModal></ModalMotion>
   </view>
 </template>
 <style scoped lang="scss">

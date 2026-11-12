@@ -884,14 +884,13 @@ for (const width of [390, 768, 1440]) for (const colorScheme of ['light', 'dark'
   });
 }
 
-test('统计类型、周月分布精简、十期趋势失败恢复与分类口径', async ({ page }) => {
-  const cats = [{ id: 'a', name: '学习', isTrackTime: 1, timeType: 2 }, { id: '1', name: '阅读', parentId: 'a', timeType: 2 }, { id: '2', name: '运动', timeType: 1 }, { id: '3', name: '休息', timeType: 1 }, { id: '4', name: '吃饭', timeType: 1 }];
+test('分类统计、周月分布精简、十期趋势失败恢复与分类口径', async ({ page }) => {
+  const cats = [{ id: 'a', name: '学习', isTrackTime: 1 }, { id: '1', name: '阅读', parentId: 'a' }, { id: '2', name: '运动' }, { id: '3', name: '休息' }, { id: '4', name: '吃饭' }];
   await setup(page, { records: timelineRecords(), categories: cats });
   await expect(page.locator('.time-statistics')).toBeVisible();
   await expect(page.locator('.tracked-item').first()).toContainText('学习');
   await expect(page.locator('.stat-name').getByText('学习', { exact: true })).toBeVisible();
-  await expect(page.getByRole('figure', { name: '时间类型分布', exact: true })).toBeVisible();
-  await expect(page.getByRole('figure', { name: '时间类型分布', exact: true })).toContainText('积极');
+  await expect(page.getByRole('figure', { name: '时间类型分布', exact: true })).toHaveCount(0);
   for (const period of ['月', '周']) {
     await page.getByRole('button', { name: period + '视图', exact: true }).click();
     await expect(page.getByRole('figure', { name: '时间分布', exact: true })).toBeVisible();

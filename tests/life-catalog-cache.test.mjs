@@ -68,6 +68,25 @@ test('清除缓存同时移除内存及持久化目录', () => {
   assert.equal(c.storage.size, 0)
 })
 
+test('分类入口迁移后忽略未过期的旧导航缓存并重新请求', () => {
+  const c = setup()
+  c.session.token = 'account-a'
+  const oldCatalog = [{ ...catalog[0], title: '分类管理（管理员）', path: '/time/category-admin', parentTitle: '时间' }]
+  c.cacheLifeCatalog(oldCatalog, c.session.token)
+  const currentKey = [...c.storage.keys()][0]
+  const stored = c.storage.get(currentKey)
+  c.storage.delete(currentKey)
+  c.storage.set('aio-life-mobile.life-catalog.v4', stored)
+  const restart = setup(c.storage)
+  restart.session.token = c.session.token
+  assert.equal(restart.readCachedLifeCatalog(), null)
+  assert.equal(restart.lifeCatalogNeedsRefresh(), true)
+  const movedCatalog = [{ ...oldCatalog[0], title: '时迹分类', parentTitle: '系统管理' }]
+  restart.cacheLifeCatalog(movedCatalog, restart.session.token)
+  assert.deepEqual(restart.readCachedLifeCatalog(), movedCatalog)
+  assert.equal(restart.lifeCatalogNeedsRefresh(), false)
+})
+
 test('损坏缓存回退请求，存储异常仍能使用内存', () => {
   const c = setup()
   c.session.token = 'account-a'

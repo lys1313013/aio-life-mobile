@@ -30,9 +30,9 @@ test('管理分页拒绝字符串总数', () => {
 })
 test('公共分类覆盖使用模板ID且未改父级不发送，未知和用户字段不泄露',() => {
  const original={id:'3',templateId:id,parentId:null,userId:'7'}
- const form={...original,parentId:'0',name:' 分类 ',color:'#123456',icon:'lucide:book',isTrackTime:1,timeType:2,clientOnly:true}
+ const form={...original,parentId:'0',name:' 分类 ',color:'#123456',icon:'lucide:book',isTrackTime:1,clientOnly:true}
  const result=categoryPayload(form,original)
- assert.equal(result.id,id); assert.equal(result.templateId,id); assert.equal(result.name,'分类'); assert.equal(result.icon,'lucide:book'); assert.equal(result.timeType,2)
+ assert.equal(result.id,id); assert.equal(result.templateId,id); assert.equal(result.name,'分类'); assert.equal(result.icon,'lucide:book')
  assert.equal('parentId' in result,false); assert.equal('userId' in result,false); assert.equal('clientOnly' in result,false)
  assert.throws(()=>categoryPayload({...form,color:'red'},original),/颜色/)
 })
@@ -44,9 +44,9 @@ test('排序只在同级交换，公共模板映射保留；树顺序父在子�
 })
 test('菜单保留额外meta，核心管理强制启用且不许改路径',() => {
  const original={id,path:'/system/menu'}
- const result=adminPayload('menus',{title:'菜单',name:'Menu',path:'/system/menu',parentId:'0',webIsEnabled:'0',metaText:'{"keepAlive":true}'},original)
- assert.deepEqual(result.meta,{keepAlive:true,title:'菜单',icon:undefined}); assert.equal(result.webIsEnabled,1); assert.equal(result.id,id)
- assert.throws(()=>adminPayload('menus',{title:'菜单',name:'Menu',path:'/other',parentId:'0',webIsEnabled:'1',metaText:'{}'},original),/不可修改/)
+ const result=adminPayload('menus',{title:'菜单',name:'Menu',path:'/system/menu',parentId:'0',visibleClients:'0',metaText:'{"keepAlive":true}'},original)
+ assert.deepEqual(result.meta,{keepAlive:true,title:'菜单',icon:undefined}); assert.equal(result.visibleClients,3); assert.equal(result.id,id)
+ assert.throws(()=>adminPayload('menus',{title:'菜单',name:'Menu',path:'/other',parentId:'0',visibleClients:'1',metaText:'{}'},original),/不可修改/)
  assert.equal(protectedMenu(original),true)
  assert.deepEqual(flattenMenus([{id:'1',children:[{id:'2'}]}]).map(row=>row.depth),[0,1])
 })
@@ -78,14 +78,14 @@ test('管理员CRUD与个人/公共分类接口分离，不将长ID转number',as
 })
 
 test('菜单可保存主页负数排序，字典仍禁止负数', () => {
- const form={title:'主页',name:'Home',path:'/',parentId:'0',webIsEnabled:'1',sortOrder:'-1',metaText:'{}'}
+ const form={title:'主页',name:'Home',path:'/',parentId:'0',visibleClients:'1',sortOrder:'-1',metaText:'{}'}
  assert.equal(adminPayload('menus',form).sortOrder,-1)
  assert.throws(()=>adminPayload('dict-data',{dictId:'1',dictValue:'v',dictLabel:'名称',sortOrder:'-1'}),/非负/)
 })
 
 
 test('菜单图标颜色作为独立字段保存、清空并校验，不写入meta', () => {
- const form = {title:'菜单',name:'Menu',path:'/sample',parentId:'0',webIsEnabled:'1',metaText:'{"keepAlive":true}',iconColor:' #427bea '}
+ const form = {title:'菜单',name:'Menu',path:'/sample',parentId:'0',visibleClients:'1',metaText:'{"keepAlive":true}',iconColor:' #427bea '}
  const saved = adminPayload('menus', form)
  assert.equal(saved.iconColor, '#427bea')
  assert.equal(saved.meta.iconColor, undefined)
@@ -93,18 +93,27 @@ test('菜单图标颜色作为独立字段保存、清空并校验，不写入me
  assert.throws(() => adminPayload('menus', {...form,iconColor:'red'}), /六位颜色/)
 })
 
-test('菜单分端状态保留零值并通过独立接口切换，不改变另一端', async () => {
- const payload = adminPayload('menus', {title:'菜单',name:'Menu',path:'/sample',parentId:'0',webIsEnabled:'1',mobileIsEnabled:'0',metaText:'{}'})
- assert.equal(payload.webIsEnabled, 1); assert.equal(payload.mobileIsEnabled, 0)
- assert.throws(() => adminPayload('menus', {title:'菜单',name:'Menu',path:'/sample',parentId:'0',webIsEnabled:'1',mobileIsEnabled:'2',metaText:'{}'}), /只能/)
+test('菜单展示端通过统一接口切换当前位，不提交旧字段或改写本地状态', async () => {
  const calls=[]
  globalThis.__menuStatusMock=(...args)=>{calls.push(args); return Promise.resolve(true)}
  const serviceSource=await readFile(new URL('../src/pages/admin/services/index.ts',import.meta.url),'utf8')
  const service=await import(asModule(serviceSource.replace("import { request } from '../../../services/api.ts'","const request = globalThis.__menuStatusMock").replace("from './specs.ts'","from '"+asModule(specsSource)+"'").replace("from '../../../services/admin/contract.ts'","from '"+asModule(source)+"'")))
- const row={id,path:'/sample',webIsEnabled:1,mobileIsEnabled:0}
- await service.setMenuStatus(row,true)
- assert.deepEqual(calls.at(-1), ['/menu/admin/'+id+'/mobile-status','PUT',{isEnabled:1}])
- await service.setMenuStatus(row)
- assert.deepEqual(calls.at(-1), ['/menu/admin/'+id+'/status','PUT',{isEnabled:0}])
- assert.deepEqual(row,{id,path:'/sample',webIsEnabled:1,mobileIsEnabled:0})
+ const row={id,path:'/sample',visibleClients:1}
+ await service.setMenuVisibleClients(row,2)
+ assert.deepEqual(calls.at(-1), ['/menu/admin/'+id+'/visible-clients','PUT',{visibleClients:3}])
+ await service.setMenuVisibleClients(row,1)
+ assert.deepEqual(calls.at(-1), ['/menu/admin/'+id+'/visible-clients','PUT',{visibleClients:0}])
+ assert.deepEqual(row,{id,path:'/sample',visibleClients:1})
+ delete globalThis.__menuStatusMock
+})
+
+test('菜单展示端位掩码保存零值与组合值，拒绝未知位和非整数', () => {
+ const form = {title:'菜单',name:'Menu',path:'/sample',parentId:'0',metaText:'{}'}
+ for (const visibleClients of [0,1,2,3]) {
+  const payload = adminPayload('menus', {...form, visibleClients})
+  assert.equal(payload.visibleClients, visibleClients)
+  assert.equal("webIsEnabled" in payload, false)
+  assert.equal("mobileIsEnabled" in payload, false)
+ }
+ for (const visibleClients of [-1,4,5,1.5,4294967296]) assert.throws(() => adminPayload('menus', {...form, visibleClients}), /展示端/)
 })

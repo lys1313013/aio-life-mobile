@@ -30,12 +30,6 @@ const distribution = computed(() => distributionStats(props.records, props.categ
 const categoriesExpanded = ref(false)
 const visibleDistribution = computed(() => props.mode === 'day' || categoriesExpanded.value ? distribution.value : distribution.value.slice(0, 5))
 watch(() => [props.date, props.mode, props.selected.join(',')], () => { categoriesExpanded.value = false })
-const types = computed(() => [
-  { id: 1, name: '必须', color: '#3b82f6' },
-  { id: 2, name: '积极', color: '#10b981' },
-  { id: 3, name: '消极', color: '#f43f5e' },
-  { id: 0, name: '未设置', color: '#94a3b8' },
-].map(item => ({ ...item, minutes: filtered.value.filter(r => (props.categories.find(c => c.id === r.categoryId)?.timeType || 0) === item.id).reduce((sum, r) => sum + recordMinutes(r), 0) })).filter(item => item.minutes > 0))
 function ringSegments(rows) {
   const total = rows.reduce((sum, row) => sum + row.minutes, 0)
   if (total <= 0) return []
@@ -48,7 +42,6 @@ function ringSegments(rows) {
 }
 const panels = computed(() => [
   ...(props.mode === 'day' || !props.selected.length ? [{ id: 'category', title: '时间分布', rows: distribution.value }] : []),
-  ...(props.mode === 'day' && !props.selected.length ? [{ id: 'type', title: '时间类型分布', rows: types.value }] : []),
 ])
 const trendData = computed(() => periodStatistics(trend.value, props.categories, props.selected, trendPeriods(props.date, props.mode), props.mode !== 'day'))
 const trendLegend = computed(() => distributionStats(trend.value, props.categories, props.selected)

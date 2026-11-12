@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import ModalMotion from "../ModalMotion.uvue";
 import { onUnmounted, ref, watch } from 'vue';
 import AdaptiveModal from '../AdaptiveModal.uvue';
 import FormField from '../FormField.uvue';
@@ -13,6 +14,8 @@ import { isRequired, missingRequired } from '../../services/form-required.ts';
 import { createRecordScope } from '../../services/records/page-scope.ts';
 import { getDevice, saveDevice, deleteDevice, fetchDeviceEditorOptions } from '../../services/devices.ts';
 import { session } from '../../services/session.ts';
+const modalMotion0 = ref<{ close: () => void } | null>(null);
+
 const props = defineProps<{ record?: any; deviceId?: string; openingOrigin?: string; editorOptions?: { types: any[]; statuses: any[] } }>();
 const emit = defineEmits(['close', 'saved', 'deleted']);
 const form = ref<any>(null), types = ref<any[]>([]), statuses = ref<any[]>([]);
@@ -129,7 +132,7 @@ async function remove(item) {
 }
 </script>
 <template>
-      <AdaptiveModal
+      <ModalMotion><AdaptiveModal ref="modalMotion0"
         label="编辑设备"
         :max-width="520"
         :show-close="loading || !!loadError"
@@ -197,12 +200,12 @@ async function remove(item) {
             label="取消"
             variant="quiet"
             :disabled="saving || deleting || attachmentBusy"
-            @click="emit('close')"><text :style="appButtonTextColor(false)" class="device-editor-action">取消</text></MobileButton><MobileButton
+            @click="modalMotion0?.close()"><text :style="appButtonTextColor(false)" class="device-editor-action">取消</text></MobileButton><MobileButton
             label="保存"
             :loading="saving"
             :disabled="deleting || attachmentBusy || optionsLoading || !!optionsError"
             @click="save"><text :style="appButtonTextColor()" class="device-editor-action">保存</text></MobileButton>
-        </FormActions></template></AdaptiveModal>
+        </FormActions></template></AdaptiveModal></ModalMotion>
 </template>
 <style scoped lang="scss">
 @use '../../styles/typography' as *;

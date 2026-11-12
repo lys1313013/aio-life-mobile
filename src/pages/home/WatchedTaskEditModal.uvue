@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import ModalMotion from "../../components/ModalMotion.uvue";
 import { onUnmounted, ref } from 'vue';
 import AdaptiveModal from '../../components/AdaptiveModal.uvue';
 import FormActions from '../../components/FormActions.uvue';
@@ -8,6 +9,8 @@ import { request } from '../../services/api.ts';
 import { todayDate } from '../../services/dashboard.ts';
 import type { WatchedTask } from '../../services/dashboard.ts';
 import { session } from '../../services/session.ts';
+const modalMotion0 = ref<{ close: () => void } | null>(null);
+
 
 const props = defineProps<{ task: WatchedTask }>();
 const emit = defineEmits(['close', 'saved']);
@@ -67,7 +70,7 @@ async function save() {
 </script>
 
 <template>
-  <AdaptiveModal label="编辑待办" :busy="saving" :content-key="error" @close="emit('close')">
+  <ModalMotion><AdaptiveModal ref="modalMotion0" label="编辑待办" :busy="saving" :content-key="error" @close="emit('close')">
     <FormField label="内容" required v-model="form.content" :disabled="saving" />
     <FormField label="优先级" kind="selector" :options="priorityLabels" :model-value="priorityLabels[priorities.indexOf(form.priority)]" :disabled="saving" @update:model-value="form.priority = priorities[priorityLabels.indexOf($event)]" />
     <view v-for="field in dateFields" :key="field.key" class="ui-field-row">
@@ -79,10 +82,10 @@ async function save() {
       <template #secondary>
         <MobileButton :label="form.isStarred === 1 ? '取消关注' : '添加关注'" :icon="form.isStarred === 1 ? 'ant-design:star-filled' : 'ant-design:star-outlined'" variant="ghost" :disabled="saving" @click="form.isStarred = form.isStarred === 1 ? 0 : 1" />
       </template>
-      <MobileButton label="取消" variant="quiet" :disabled="saving" @click="emit('close')" />
+      <MobileButton label="取消" variant="quiet" :disabled="saving" @click="modalMotion0?.close()" />
       <MobileButton label="保存" :loading="saving" @click="save" />
     </FormActions>
-  </AdaptiveModal>
+  </AdaptiveModal></ModalMotion>
 </template>
 
 <style scoped lang="scss">

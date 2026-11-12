@@ -4,6 +4,23 @@ import test from 'node:test';
 const source = await readFile(new URL('../src/services/life-catalog.ts', import.meta.url), 'utf8');
 const { lockedMenuPaths, matchesNativeMenu } = await import(`data:text/javascript;base64,${Buffer.from(source).toString('base64')}`);
 
+test('个人分类分组和系统管理员时迹分类不互相继承菜单锁', () => {
+  const menus = [
+    { id: '2201', path: '/profile/category-management', meta: { menuId: '2201' }, children: [
+      { id: '1303', path: '/time/my-categories', meta: { menuId: '1303' } },
+    ] },
+    { id: '1900', path: '/system', meta: { menuId: '1900' }, children: [
+      { id: '1304', path: '/time/category-admin', meta: { menuId: '1304' } },
+    ] },
+  ];
+  assert.equal(matchesNativeMenu('/pages/categories/index?admin=1', '/time/my-categories'), false);
+  assert.equal(matchesNativeMenu('/pages/categories/index', '/time/category-admin'), false);
+  assert.deepEqual(lockedMenuPaths('/pages/categories/index?admin=1', menus, ['2201']), []);
+  assert.deepEqual(lockedMenuPaths('/pages/categories/index', menus, ['1900']), []);
+  assert.deepEqual(lockedMenuPaths('/pages/categories/index', menus, ['2201']), ['/time/my-categories']);
+  assert.deepEqual(lockedMenuPaths('/pages/categories/index?admin=1', menus, ['1900']), ['/time/category-admin']);
+});
+
 test('完整字符串 ID 与父菜单锁，兼容新旧 Web 路由', () => {
   const tree = [{ path: '/my-hub', meta: { menuId: '9223372036854775807' }, children: [
     { path: '/my-hub/memo', meta: { menuId: 'memo' } },

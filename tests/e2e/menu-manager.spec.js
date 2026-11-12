@@ -9,7 +9,7 @@ const item = (id, parentId, title, path, sort = 0, extra = {}) => ({
   name: "Route" + id,
   path,
   component: "BasicLayout",
-  webIsEnabled: 1,
+  visibleClients: 3,
   sortOrder: sort,
   roles: "",
   meta: {
@@ -44,7 +44,7 @@ async function setup(page, theme = "light") {
     writes: [],
     rows: [
       item(longId, "0", "主页", "/", -1),
-      item("2", "0", "仪表盘", "/dashboard", 0, { webIsEnabled: 0 }),
+      item("2", "0", "仪表盘", "/dashboard", 0, { visibleClients: 2 }),
       item("21", "2", "人生仪表盘", "/dashboard/life"),
       item("3", "0", "时间和任务", "/tasks", 0),
       item("31", "3", "时迹", "/tasks/time"),
@@ -95,8 +95,7 @@ async function setup(page, theme = "light") {
         data = { ...body, id: "99" };
         state.rows.push(data);
       } else if (row) {
-        if (path.endsWith("/status")) row.webIsEnabled = body.isEnabled;
-        else if (path.endsWith("/mobile-status")) row.mobileIsEnabled = body.isEnabled;
+        if (path.endsWith("/visible-clients")) row.visibleClients = body.visibleClients;
         else Object.assign(row, body);
         data = row;
       }
@@ -207,14 +206,14 @@ test("菜单搜索、编辑失败恢复、父级新增、保护菜单、排序�
   expect(state.writes.at(-1).body.meta.extra).toEqual({ retained: true });
   expect(state.writes.at(-1).body.sortOrder).toBe(-1);
   await page.getByRole("button", { name: "仪表盘更多操作" }).click();
-  const webEnabled = page.locator('[role="switch"][aria-label="仪表盘 Web 启用"]');
+  const webEnabled = page.locator('[role="switch"][aria-label="仪表盘 Web 展示"]');
   await webEnabled.click();
   await expect(webEnabled).toHaveAttribute('aria-checked', 'true');
-  expect(state.writes.at(-1).body.isEnabled).toBe(1);
+  expect(state.writes.at(-1).body.visibleClients).toBe(3);
   await dismissModal(page);
   await page.getByRole("button", { name: "系统管理更多操作" }).click();
-  await expect(page.locator('[role="switch"][aria-label="系统管理 Web 启用"]')).toHaveAttribute('aria-disabled', 'true');
-  await expect(page.locator('[role="switch"][aria-label="系统管理 移动端启用"]')).toHaveAttribute('aria-disabled', 'true');
+  await expect(page.locator('[role="switch"][aria-label="系统管理 Web 展示"]')).toHaveAttribute('aria-disabled', 'true');
+  await expect(page.locator('[role="switch"][aria-label="系统管理 手机端展示"]')).toHaveAttribute('aria-disabled', 'true');
   await expect(
     page.getByRole("button", { name: "删除菜单", exact: true }),
   ).toHaveCount(0);

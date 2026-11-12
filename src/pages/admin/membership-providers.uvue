@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import ModalMotion from "../../components/ModalMotion.uvue";
 import { usePageRefresh } from '../../services/page-refresh.ts'
 import { computed, ref, watch } from 'vue';
 import { onHide, onShow, onUnload } from '@dcloudio/uni-app';
@@ -17,6 +18,8 @@ import { fetchUser } from '../../services/api.ts';
 import { restoreSession, session } from '../../services/session.ts';
 import { memberCategories as categories, memberCategoryLabels as categoryLabels } from '../../services/membership-provider.ts';
 import { listMembershipProviders, listMembershipIcons, saveMembershipProvider, deleteMembershipProvider } from './services/membership-providers.ts';
+const modalMotion0 = ref<{ close: () => void } | null>(null);
+
 const rows = ref<any[]>([]), icons = ref<any[]>([]), keyword = ref(''), categoryFilter = ref('全部分类');
 const loading = ref(false), refreshing = ref(false), loaded = ref(false), error = ref('');
 const form = ref<any>(null), original = ref<any>(null), saving = ref(false), formError = ref('');
@@ -90,7 +93,7 @@ onUnload(deactivate);
       </view>
       <template #fixed><FloatingActionButton v-if="authorized && !form" label="新增会员平台" :disabled="!loaded || loading || !!error" @click="open()" /></template>
     </MobilePage>
-    <AdaptiveModal v-if="form" :label="original ? '编辑会员平台' : '新增会员平台'" :max-width="560" :busy="saving" @close="close">
+    <ModalMotion><AdaptiveModal ref="modalMotion0" v-if="form" :label="original ? '编辑会员平台' : '新增会员平台'" :max-width="560" :busy="saving" @close="close">
       <FormField appearance="soft" required label="平台名称" v-model="form.name" :disabled="saving" />
       <FormField appearance="soft" required label="分类" kind="selector" :model-value="categoryLabels[categories.indexOf(form.category)]" :options="categoryLabels" :disabled="saving" @update:model-value="form.category = categories[categoryLabels.indexOf($event)]" />
       <FormField appearance="soft" label="图标" compact>
@@ -107,8 +110,8 @@ onUnload(deactivate);
         <FormField appearance="soft" compact stretch label="状态" kind="selector" :model-value="form.isEnabled === 1 ? '启用' : '停用'" :options="['启用', '停用']" :disabled="saving" @update:model-value="form.isEnabled = $event === '启用' ? 1 : 0" />
       </view>
       <text v-if="formError" class="provider-error ui-mt-section" role="alert">{{ formError }}</text>
-      <template #footer><FormActions><template #secondary><ConfirmAction v-if="original" label="删除平台" :action="remove"><template #default="slot"><MobileButton label="删除平台" icon="ant-design:delete-outlined" variant="quiet" :disabled="saving" :loading="slot.busy" @click="slot.open" /></template></ConfirmAction></template><MobileButton label="取消" variant="quiet" :disabled="saving" @click="close" /><MobileButton label="保存" :loading="saving" @click="save" /></FormActions></template>
-    </AdaptiveModal>
+      <template #footer><FormActions><template #secondary><ConfirmAction v-if="original" label="删除平台" :action="remove"><template #default="slot"><MobileButton label="删除平台" icon="ant-design:delete-outlined" variant="quiet" :disabled="saving" :loading="slot.busy" @click="slot.open" /></template></ConfirmAction></template><MobileButton label="取消" variant="quiet" :disabled="saving" @click="modalMotion0?.close()" /><MobileButton label="保存" :loading="saving" @click="save" /></FormActions></template>
+    </AdaptiveModal></ModalMotion>
   </view>
 </template>
 <style scoped lang="scss">

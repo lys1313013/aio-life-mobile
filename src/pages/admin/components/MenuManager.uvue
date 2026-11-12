@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import ModalMotion from "../../../components/ModalMotion.uvue";
 import MobileSwitch from '../../../components/MobileSwitch.uvue';
 import { appTextColor } from '../../../services/app-layout.ts'
 
@@ -20,7 +21,7 @@ const props = defineProps<{
   busyId: string;
   remove: (row: any) => Promise<unknown>;
 }>();
-const emit = defineEmits(["edit", "create-child", "status", "move", "retry"]);
+const emit = defineEmits(["edit", "create-child", "visibility", "move", "retry"]);
 const keyword = ref("");
 const expanded = ref<string[]>([]);
 const sorting = ref(false);
@@ -208,7 +209,7 @@ async function removeSelected(row) {
                 rows.filter((child) => child.parentId === row.id).length
               }}</text
               ><AppIcon
-                v-if="row.webIsEnabled !== 1 && row.mobileIsEnabled !== 1"
+                v-if="row.visibleClients === 0"
                 name="ant-design:stop-outlined"
                 :size="14"
             /></view>
@@ -252,7 +253,7 @@ async function removeSelected(row) {
         </view>
       </view>
     </PageState>
-    <AdaptiveModal
+    <ModalMotion><AdaptiveModal
       v-if="selected"
       label="菜单详情"
       :busy="busy"
@@ -264,11 +265,11 @@ async function removeSelected(row) {
         ><text class="menu-detail-label">{{ item[0] }}</text
         ><text class="menu-detail-value">{{ item[1] }}</text></view
       >
-      <view v-for="item in [{ key: 'webIsEnabled', label: 'Web 启用' }, { key: 'mobileIsEnabled', label: '移动端启用' }]" :key="item.key" class="menu-detail-row">
+      <view v-for="item in [{ bit: 1, label: 'Web 展示' }, { bit: 2, label: '手机端展示' }]" :key="item.bit" class="menu-detail-row">
         <text class="menu-detail-label">{{ item.label }}</text>
         <view class="menu-status-control">
           <AppIcon v-if="busyId === selected.id" class="menu-status-spinner" name="ant-design:loading-outlined" :size="18" />
-          <MobileSwitch :aria-label="selected.title + ' ' + item.label" :checked="selected[item.key] === 1" :disabled="busy || protectedMenu(selected)" @change="emit('status', selected, item.key === 'mobileIsEnabled')" />
+          <MobileSwitch :aria-label="selected.title + ' ' + item.label" :checked="(selected.visibleClients & item.bit) !== 0" :disabled="busy || protectedMenu(selected)" @change="emit('visibility', selected, item.bit)" />
         </view>
       </view>
       <text v-if="error" class="menu-error" role="alert">{{ error }}</text>
@@ -308,7 +309,7 @@ async function removeSelected(row) {
           /></template>
         </ConfirmAction>
       </view>
-    </AdaptiveModal>
+    </AdaptiveModal></ModalMotion>
   </view>
 </template>
 <style scoped lang="scss">

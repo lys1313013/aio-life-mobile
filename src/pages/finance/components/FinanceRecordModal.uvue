@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { ref } from 'vue';
+import ModalMotion from "../../../components/ModalMotion.uvue";
 import MobileSwitch from '../../../components/MobileSwitch.uvue';
 import { computed } from 'vue'
 import AdaptiveModal from '../../../components/AdaptiveModal.uvue'
@@ -9,9 +11,17 @@ import ConfirmAction from '../../../components/ConfirmAction.uvue'
 import { isRequired } from '../../../services/form-required.ts'
 import { ledgerId } from '../services/finance-entry.ts'
 import { themeClass } from '../../../services/theme.ts'
+import ExpenseDeviceModal from './ExpenseDeviceModal.uvue'
+const modalMotion0 = ref<{ close: () => void } | null>(null);
+const deviceOpen = ref(false);
+
 const props = defineProps<{ kind: string; draft: Record<string, any>; types: any[]; payments: any[]; saving: boolean; formError: string; continuous?: boolean; remove?: () => Promise<void> }>()
 const emit = defineEmits(['close', 'save', 'update:continuous'])
 const expense = computed(() => props.kind === 'expense')
+function stageDevice(selection: any) {
+  Object.assign(props.draft, { deviceId: selection?.deviceId || null, newDevice: selection?.newDevice || null, deviceName: selection?.deviceName || null });
+}
+function updateDevice(change: any) { Object.assign(props.draft, { deviceId: change.deviceId, deviceName: change.deviceName }); }
 const field = (key, label, kind = 'text', inputType = 'text') => ({ key, label, kind, inputType })
 const fields = computed(() => expense.value ? [
   [field('transactionAmt', '交易金额', 'text', 'digit'), field('amt', '记账金额', 'text', 'digit')],
@@ -45,20 +55,28 @@ function update(key, value) {
 function required(key) { return isRequired(expense.value ? 'expense' : 'income', key === 'date' || key === 'time' ? 'expTime' : key) }
 </script>
 <template>
-  <AdaptiveModal :label="expense ? '编辑支出' : '编辑收入'" :busy="saving" @close="emit('close')">
+  <ModalMotion><AdaptiveModal ref="modalMotion0" :label="expense ? '编辑支出' : '编辑收入'" :busy="saving || deviceOpen" @close="emit('close')">
     <view v-for="(row, index) in fields" :key="index" class="entry-fields">
       <FormField v-for="item in row" :key="item.key" appearance="soft" compact stretch :label="item.label" :kind="item.kind" :input-type="item.inputType"
         :required="required(item.key)" :disabled="saving" :options="item.kind === 'selector' ? options(item.key).map(option => option.dictLabel) : []"
         :model-value="value(item.key)" @update:model-value="update(item.key, $event)" />
     </view>
+    <view v-if="expense" class="entry-device">
+      <text class="entry-label" :class="themeClass('entry-label')">关联设备</text>
+      <text v-if="draft.deviceName" class="entry-device-name">{{ draft.deviceName }}</text>
+      <MobileButton label="关联设备" icon="ant-design:link-outlined" variant="quiet" :disabled="saving || deviceOpen" @click="deviceOpen = true" />
+      <MobileButton v-if="!ledgerId(draft) && (draft.deviceId || draft.newDevice)" label="取消设备关联" icon="ant-design:close-outlined" variant="quiet" :disabled="saving || deviceOpen" @click="stageDevice(null)" />
+    </view>
     <view v-if="expense && !ledgerId(draft)" class="entry-continuous"><text class="entry-label" :class="themeClass('entry-label')">连续录入</text><MobileSwitch aria-label="连续录入" :disabled="saving" :checked="continuous" @change="emit('update:continuous', $event.detail.value)" /></view>
     <text v-if="formError" class="entry-error" role="alert">{{ formError }}</text>
     <FormActions>
       <template v-if="ledgerId(draft) && remove" #secondary><ConfirmAction :label="expense ? '删除支出' : '删除收入'" message="确认删除？" :action="remove" /></template>
-      <MobileButton label="取消" variant="quiet" :disabled="saving" @click="emit('close')" />
-      <MobileButton label="保存" :loading="saving" @click="emit('save')" />
+      <MobileButton label="取消" variant="quiet" :disabled="saving" @click="modalMotion0?.close()" />
+      <MobileButton label="保存" :loading="saving" :disabled="deviceOpen" @click="emit('save')" />
     </FormActions>
-  </AdaptiveModal>
+    <ExpenseDeviceModal v-if="deviceOpen" :expense-id="ledgerId(draft) || undefined" :expense-draft="draft"
+      :selection="draft.deviceId || draft.newDevice ? draft : null" @close="deviceOpen = false" @staged="stageDevice" @updated="updateDevice" />
+  </AdaptiveModal></ModalMotion>
 </template>
 <style scoped lang="scss">
 @use '../../../styles/typography' as *;
@@ -66,6 +84,8 @@ function required(key) { return isRequired(expense.value ? 'expense' : 'income',
 @use '../../../styles/text-colors' as *;
 .entry-fields, .entry-continuous { display: flex; flex-direction: row; gap: $space-inline; margin-bottom: $space-form; }
 .entry-continuous { align-items: center; }
+.entry-device { display: flex; flex-direction: row; align-items: center; gap: $space-inline; margin-bottom: $space-form; }
+.entry-device-name { @include type-style('body'); flex: 1; min-width: 0; overflow-wrap: anywhere; }
 .entry-label { @include type-style('body'); color: $text-secondary-light; }
 .entry-label-dark { color: $text-secondary-dark; }
 .entry-error { @include type-style('body'); color: #df6573; padding: $space-section 0; }

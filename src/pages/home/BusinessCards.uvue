@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import ModalMotion from "../../components/ModalMotion.uvue";
 import { computed, reactive, ref, watch, onUnmounted, provide } from 'vue'
 import { onHide } from '@dcloudio/uni-app'
 import AppIcon from '../../components/AppIcon.uvue'
@@ -306,7 +307,7 @@ function placeholderHeight(card) {
           <button hover-class="none" v-if="states[card.key].rows.length && states[card.key].error && !states[card.key].moreError" role="button" class="icon-action" :aria-label="'重试' + card.title + '：' + states[card.key].error" @click.stop="refreshCard(card)"><AppIcon name="lucide:rotate-cw" :size="18" color="#5879ce" /></button><DashboardAction :label="'新增' + card.title" @click="open(card, null, true)" />
         </HomeCardHeader>
         <view v-if="states[card.key].locked" class="card-placeholder" :style="{ minHeight: placeholderHeight(card) + 'px' }"><button hover-class="none" role="button" class="lock-action" :aria-label="'解锁' + card.title" :disabled="refreshDisabled" @click.stop="unlockCard(card)"><AppIcon name="ant-design:lock-outlined" :size="18" color="#8b8f99" /><text class="caption">点击解锁</text></button></view>
-        <ReadingShelf v-else-if="card.key === 'read' && (states[card.key].rows.length || cardLoading(card))" :rows="states[card.key].rows" :loading="cardLoading(card)" :more-loading="states[card.key].moreLoading" :error="states[card.key].moreError || states[card.key].error" @edit="open(card, $event)" @more="nextPage(card)" @retry="states[card.key].moreError ? load(card, true) : load(card)" />
+        <ReadingShelf v-else-if="card.key === 'read' && (states[card.key].rows.length || cardLoading(card))" :max-height="props.height ? Math.min(props.height, maxHeight(card)) : maxHeight(card)" :rows="states[card.key].rows" :loading="cardLoading(card)" :more-loading="states[card.key].moreLoading" :error="states[card.key].moreError || states[card.key].error" @edit="open(card, $event)" @more="nextPage(card)" @retry="states[card.key].moreError ? load(card, true) : load(card)" />
         <MovieList v-else-if="card.key === 'movie' && (states[card.key].rows.length || cardLoading(card))" :max-height="cardMaxHeight" :rows="states[card.key].rows" :loading="cardLoading(card)" :more-loading="states[card.key].moreLoading" :error="states[card.key].moreError" @edit="open(card, $event)" @more="nextPage(card)" @retry="load(card, true)" />
         <view v-else-if="!states[card.key].rows.length && cardLoading(card)"><BusinessCardSkeleton v-for="row in (card.key === 'goal' ? 3 : 1)" :key="row" :kind="card.key" :label="'正在加载' + card.title" /></view>
         <view v-else-if="!states[card.key].rows.length && states[card.key].error" class="card-placeholder" :style="{ minHeight: placeholderHeight(card) + 'px' }"><text class="error-text">{{ states[card.key].error }}</text><button hover-class="none" role="button" class="icon-action" :aria-label="'重试' + card.title" @click="refreshCard(card)"><AppIcon name="lucide:rotate-cw" :size="18" color="#5879ce" /></button></view>
@@ -320,10 +321,10 @@ function placeholderHeight(card) {
     </view>
   </view>
     <view class="business-dialogs" @touchstart.stop @mousedown.stop>
-    <GoalEditor v-if="states.goal && !states.goal.locked" ref="goalEditor" :save-record="saveGoal" :delete-record="deleteGoal" @saved="goalSaved" @deleted="goalDeleted" />
+    <ModalMotion><GoalEditor v-if="states.goal && !states.goal.locked" ref="goalEditor" :save-record="saveGoal" :delete-record="deleteGoal" @saved="goalSaved" @deleted="goalDeleted" /></ModalMotion>
     <template v-if="selection">
-      <LibraryRecordEditor :loading="selection.loading" :load-error="selection.error" @retry="loadDetail" v-if="selection.card.paged" :kind="selection.card.key" :record="selection.record" @close="closeDetail" @saved="detailChanged" @deleted="detailChanged" />
-      <AnniversaryRecordEditor :loading="selection.loading" :load-error="selection.error" @retry="loadDetail" v-if="selection.card.key === 'anniversary'" :record="selection.record" home @close="closeDetail" @saved="detailChanged" @deleted="detailChanged" />
+      <ModalMotion><LibraryRecordEditor :loading="selection.loading" :load-error="selection.error" @retry="loadDetail" v-if="selection.card.paged" :kind="selection.card.key" :record="selection.record" @close="closeDetail" @saved="detailChanged" @deleted="detailChanged" /></ModalMotion>
+      <ModalMotion><AnniversaryRecordEditor :loading="selection.loading" :load-error="selection.error" @retry="loadDetail" v-if="selection.card.key === 'anniversary'" :record="selection.record" home @close="closeDetail" @saved="detailChanged" @deleted="detailChanged" /></ModalMotion>
       <MembershipRecordEditor :loading="selection.loading" :load-error="selection.error" @retry="loadDetail" v-if="selection.card.key === 'member'" :record="selection.record" @close="closeDetail" @saved="detailChanged" @deleted="detailChanged" />
     </template>
     </view>
@@ -340,7 +341,7 @@ function placeholderHeight(card) {
 .heading-link, .icon-action, .lock-action { display: flex; flex-direction: row; align-items: center; justify-content: center; min-height: $space-controlMin; margin: 0; padding: 0; border: 0; background-color: transparent; }
 .business-updating { position: absolute; right: $space-card + $space-controlMin; }
 .heading-link { box-sizing: border-box; position: relative; z-index: 1; flex: none; justify-content: flex-start; gap: $space-inline; padding-top: $space-inline; }
-.heading-text { @include type-style('title'); color: #18181b; }
+.heading-text { @include type-style('card-title'); color: #18181b; }
 .icon-action { position: relative; z-index: 1; width: $space-controlMin; flex-shrink: 0; }
 .business-scroll { width: 100%; min-height: 0; }
 .business-list { display: flex; flex-direction: column; }

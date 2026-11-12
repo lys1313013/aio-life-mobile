@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import ModalMotion from "../../components/ModalMotion.uvue";
 import { computed, getCurrentInstance, nextTick, onMounted, onUnmounted, onUpdated, ref } from 'vue';
 import AdaptiveModal from '../../components/AdaptiveModal.uvue';
 import ConfirmAction from '../../components/ConfirmAction.uvue';
@@ -8,6 +9,8 @@ import { isDark } from '../../services/theme.ts';
 import { useWindowResize } from '../../services/window-resize.ts';
 import spacing from '../../styles/spacing.json';
 import typography from '../../styles/typography.json';
+const modalMotion0 = ref<{ close: () => void } | null>(null);
+
 
 const props = defineProps<{
   form: any;
@@ -70,7 +73,7 @@ onUpdated(syncWebLabels);
 </script>
 
 <template>
-  <AdaptiveModal label="编辑笔记" :fill="expanded" :max-width="expanded ? spacing.contentMax : 720" :vertical-inset="spacing.page" :busy="busy" @close="emit('close')">
+  <ModalMotion><AdaptiveModal ref="modalMotion0" label="编辑笔记" :fill="expanded" :max-width="expanded ? spacing.contentMax : 720" :vertical-inset="spacing.page" :busy="busy" @close="emit('close')">
     <view class="note-editor-heading">
     <input
       v-model="form.title"
@@ -114,11 +117,11 @@ onUpdated(syncWebLabels);
             <template #default="{ open, busy: deleting }"><MobileButton label="删除笔记" icon="ant-design:delete-outlined" variant="ghost" :disabled="saving" :loading="deleting" @click="open" /></template>
           </ConfirmAction>
         </template>
-        <MobileButton label="取消" variant="ghost" :compact="compactActions" :disabled="busy" @click="emit('close')" />
+        <MobileButton label="取消" variant="ghost" :compact="compactActions" :disabled="busy" @click="modalMotion0?.close()" />
         <MobileButton :label="created ? '重新读取' : '保存'" :compact="compactActions" :loading="saving" :disabled="removing" @click="emit('save')" />
       </FormActions>
     </template>
-  </AdaptiveModal>
+  </AdaptiveModal></ModalMotion>
 </template>
 
 <style scoped lang="scss">

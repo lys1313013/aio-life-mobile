@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import ModalMotion from "../ModalMotion.uvue";
 import { computed, ref, watch } from 'vue';
 import { session } from '../../services/session.ts';
 import FormSkeleton from '../FormSkeleton.uvue';
@@ -13,6 +14,8 @@ import { request } from '../../services/api.ts';
 import AttachmentField from '../AttachmentField.uvue';
 import LibraryCover from '../LibraryCover.uvue';
 import { statuses, dateTime } from '../../services/records/contracts.ts';
+const modalMotion0 = ref<{ close: () => void } | null>(null);
+
 const props = defineProps<{ kind: string; record?: any; loading?: boolean; loadError?: string }>();
 const kind = computed(() => props.kind);
 const title = computed(() => (kind.value === 'movie' ? '观影' : '阅读记录')),
@@ -164,7 +167,7 @@ async function remove(item) {
 
 </script>
 <template>
-<AdaptiveModal :loading="loading" :load-error="loadError" :loading-rows="5" @retry="emit('retry')"
+<ModalMotion><AdaptiveModal ref="modalMotion0" :loading="loading" :load-error="loadError" :loading-rows="5" @retry="emit('retry')"
         v-if="form || loading || loadError"
         :label="'编辑' + title"
         :busy="deleting || saving || parsing || attachmentBusy"
@@ -258,12 +261,12 @@ async function remove(item) {
             label="取消"
             variant="quiet"
             :disabled="deleting || saving || parsing || attachmentBusy"
-            @click="emit('close')" /><MobileButton
+            @click="modalMotion0?.close()" /><MobileButton
             :label="created ? '重新读取' : '保存'"
             :loading="saving"
             :disabled="deleting || parsing || attachmentBusy"
             @click="save" />
-        </FormActions></template></AdaptiveModal>
+        </FormActions></template></AdaptiveModal></ModalMotion>
 </template>
 <style scoped lang="scss">
 @use '../../styles/typography' as *;

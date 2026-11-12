@@ -36,6 +36,8 @@ const periodLabel = computed(() => displayGranularity.value === 'month' ? '本�
 const previousLabel = computed(() => displayGranularity.value === 'month' ? '上月' : displayGranularity.value === 'year' ? '上年' : '上周')
 const emptyText = computed(() => displayGranularity.value === 'month' ? '本月还没有阅读记录' : displayGranularity.value === 'year' ? '本年还没有阅读记录' : '本周还没有阅读记录')
 const totalText = computed(() => state.data ? formatWereadDuration(state.data.totalSeconds) : '—')
+// 与 Web 一样只强调数字，周期和单位使用次级排版；沿用同一份时长文案。
+const totalParts = computed(() => totalText.value.split(' ').map(text => ({ text, numeric: /^\d+$/.test(text) })))
 const averageText = computed(() => state.data ? formatWereadDuration(state.data.dailyAverageSeconds) : '—')
 const change = computed(() => state.data ? wereadStatsChange(state.data.totalSeconds, state.data.previousTotalSeconds) : null)
 const chartHeight = computed(() => props.height ? Math.max(72, Math.min(150, props.height - 150)) : 92)
@@ -162,7 +164,7 @@ defineExpose({ refresh, checkAccess })
       navigable title-label="查看微信读书" @navigate="openPage" @unlock="unlockCard" @refresh="manualRefresh"
     >
       <template #actions>
-        <view class="weread-stats-modes" role="group" aria-label="阅读统计粒度">
+        <view class="weread-stats-modes" :class="{ 'weread-stats-modes-dark': isDark }" role="group" aria-label="阅读统计粒度">
           <button hover-class="none" v-for="mode in modes" :key="mode.key" role="button" class="weread-stats-mode" :aria-label="'按' + mode.label + '统计'" :aria-pressed="granularity === mode.key" :disabled="refreshDisabled || state.locked || state.loading" @click.stop="selectMode(mode.key)">
             <view class="weread-stats-mode-surface" :class="{ 'weread-stats-mode-surface-active': granularity === mode.key, 'weread-stats-mode-surface-active-dark': isDark && granularity === mode.key }">
               <text class="weread-stats-mode-text" :class="{ 'weread-stats-mode-text-active': granularity === mode.key, 'weread-stats-mode-text-dark': isDark, 'weread-stats-mode-text-active-dark': isDark && granularity === mode.key }">{{ mode.label }}</text>
@@ -174,8 +176,10 @@ defineExpose({ refresh, checkAccess })
         <view class="weread-stats-pending" role="status" aria-label="正在加载阅读统计">
           <view class="weread-stats-pending-total" :class="{ 'weread-stats-skeleton-dark': isDark }" />
           <view class="weread-stats-pending-caption" :class="{ 'weread-stats-skeleton-dark': isDark }" />
-          <view class="weread-stats-pending-chart" :style="{ height: chartHeight + 'px' }">
-            <view v-for="n in skeletonBars" :key="n" class="weread-stats-pending-bar" :class="{ 'weread-stats-skeleton-dark': isDark }" :style="{ height: skeletonHeight(n) + 'px' }" />
+          <view class="weread-stats-pending-chart" :class="{ 'weread-stats-bars-dense': granularity === 'month' }" :style="{ height: chartHeight + 'px' }">
+            <view v-for="n in skeletonBars" :key="n" class="weread-stats-pending-bar-cell">
+              <view class="weread-stats-bar weread-stats-pending-bar" :class="{ 'weread-stats-bar-week': granularity === 'week', 'weread-stats-skeleton-dark': isDark }" :style="{ height: skeletonHeight(n) + 'px' }" />
+            </view>
           </view>
           <view class="weread-stats-pending-labels">
             <view v-for="n in skeletonBars" :key="n" class="weread-stats-pending-label-cell" />
@@ -184,8 +188,9 @@ defineExpose({ refresh, checkAccess })
       </template>
       <view v-if="state.data" class="weread-stats-body">
         <view class="weread-stats-summary">
-          <view class="weread-stats-summary-main">
-            <text class="weread-stats-total" :class="{ 'weread-stats-text-dark': isDark }">{{ periodLabel }} {{ totalText }}</text>
+          <view class="weread-stats-summary-main" role="group" :aria-label="periodLabel + ' ' + totalText">
+            <text class="weread-stats-period" :class="{ 'weread-stats-caption-dark': isDark }" aria-hidden="true">{{ periodLabel }} </text>
+            <text v-for="(part, index) in totalParts" :key="index" class="weread-stats-unit" :class="{ 'weread-stats-total': part.numeric, 'weread-stats-caption-dark': isDark && !part.numeric, 'weread-stats-text-dark': isDark && part.numeric }" aria-hidden="true">{{ part.text }}{{ index < totalParts.length - 1 ? ' ' : '' }}</text>
           </view>
           <view class="weread-stats-summary-caption">
             <text class="weread-stats-average" :class="{ 'weread-stats-caption-dark': isDark }">日均 {{ averageText }}</text>
@@ -219,32 +224,35 @@ defineExpose({ refresh, checkAccess })
 @use '../../styles/spacing-tokens' as *;
 
 .weread-stats-card { width: 100%; }
-.weread-stats-modes { position: relative; z-index: 1; display: flex; flex-direction: row; align-items: center; gap: $space-detail; }
-.weread-stats-mode { display: flex; align-items: center; justify-content: center; min-width: 40px; height: $space-controlMin; padding: 0 $space-detail; margin: 0; border: 0; border-radius: 6px; background-color: transparent; }
-.weread-stats-mode-surface { display: flex; align-items: center; justify-content: center; min-width: 28px; height: 24px; padding: 0 $space-detail; border-radius: 6px; }
-.weread-stats-mode-surface-active { background-color: #eef2ff; }
-.weread-stats-mode-surface-active-dark { background-color: #344566; }
+.weread-stats-modes { position: relative; z-index: 1; display: flex; flex-direction: row; align-items: center; border-radius: 10px; background-color: #f4f4f5; height: $space-compactRowMin; }
+.weread-stats-modes-dark { background-color: #27292f; }
+.weread-stats-mode { display: flex; align-items: center; justify-content: center; min-width: $space-controlMin; height: $space-controlMin; padding: 0 $space-micro; margin: 0; border: 0; border-radius: 8px; background-color: transparent; }
+.weread-stats-mode-surface { display: flex; align-items: center; justify-content: center; width: 100%; height: $space-compactRowMin - 2 * $space-micro; border-radius: 8px; }
+.weread-stats-mode-surface-active { background-color: #ffffff; }
+.weread-stats-mode-surface-active-dark { background-color: #3b3e46; }
 .weread-stats-mode-text { @include type-style('caption'); color: #71717a; }
-.weread-stats-mode-text-active { color: #3662da; }
+.weread-stats-mode-text-active { @include type-style('caption-strong'); color: #27272a; }
 .weread-stats-mode-text-dark { color: #a1a1aa; }
-.weread-stats-mode-text-active-dark { color: #a9bfff; }
+.weread-stats-mode-text-active-dark { color: #ececf0; }
 .weread-stats-body { display: flex; flex: 1; min-height: 0; flex-direction: column; }
-.weread-stats-summary { display: flex; flex-direction: column; gap: 0; }
-.weread-stats-summary-main { display: flex; flex-direction: row; align-items: baseline; justify-content: space-between; gap: $space-inline; }
-.weread-stats-total { @include type-style('metric-compact'); color: #27272a; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.weread-stats-summary { display: flex; flex-direction: column; gap: $space-micro; }
+.weread-stats-summary-main { display: flex; flex-direction: row; flex-wrap: wrap; align-items: baseline; min-height: type-line('metric-compact'); }
+.weread-stats-period { @include type-style('caption'); color: #71717a; margin-right: $space-detail; white-space: pre; }
+.weread-stats-unit { @include type-style('caption'); color: #71717a; white-space: pre; }
+.weread-stats-total { @include type-style('metric-compact'); color: #27272a; }
 .weread-stats-summary-caption { display: flex; flex-direction: row; flex-wrap: wrap; align-items: baseline; column-gap: calc(2 * $space-inline); row-gap: 0; }
 .weread-stats-average { @include type-style('caption'); color: #71717a; }
 .weread-stats-change { flex-shrink: 0; white-space: nowrap; }
 .weread-stats-change-text { @include type-style('caption'); color: #71717a; }
 .weread-stats-text-dark { color: #ececf0; }
 .weread-stats-caption-dark { color: #a1a1aa; }
-.weread-stats-chart { position: relative; width: 100%; margin-top: $space-detail; border-bottom: 1px solid rgba(128, 128, 128, 0.25); }
+.weread-stats-chart { position: relative; width: 100%; margin-top: $space-inline; border-bottom: 1px solid rgba(128, 128, 128, 0.15); }
 .weread-stats-bars { display: flex; flex-direction: row; align-items: flex-end; gap: $space-detail; height: 100%; }
 .weread-stats-bars-dense { gap: 1px; }
-.weread-stats-bar-hit { display: flex; flex: 1; min-width: 0; height: 100%; align-items: flex-end; justify-content: center; padding: 0; margin: 0; border: 0; background-color: transparent; }
-.weread-stats-bar { width: 100%; max-width: 24px; border-radius: 3px 3px 0 0; background-color: #34a6ff; }
-.weread-stats-bar-week { width: 80%; max-width: 36px; }
-.weread-stats-labels { display: flex; flex-direction: row; gap: $space-detail; }
+.weread-stats-bar-hit { display: flex; flex-direction: row; flex: 1; min-width: 0; height: 100%; align-items: flex-end; justify-content: center; padding: 0; margin: 0; border: 0; background-color: transparent; }
+.weread-stats-bar { width: 60%; max-width: 16px; border-radius: 4px 4px 0 0; background-color: #34a6ff; }
+.weread-stats-bar-week { width: 48%; max-width: 24px; }
+.weread-stats-labels { display: flex; flex-direction: row; gap: $space-detail; padding-top: $space-detail; }
 .weread-stats-labels-dense { gap: 1px; }
 .weread-stats-label-cell { display: flex; flex: 1; min-width: 0; align-items: center; justify-content: center; }
 .weread-stats-label { @include type-style('chart-label'); color: #71717a; }
@@ -256,12 +264,13 @@ defineExpose({ refresh, checkAccess })
 .weread-stats-empty-text { @include type-style('caption'); color: #71717a; }
 .weread-stats-pending { display: flex; flex-direction: column; padding: 0 $space-card $space-card; }
 .weread-stats-pending-total { width: 132px; height: 28px; border-radius: 4px; background-color: #e8ecf1; }
-.weread-stats-pending-caption { width: 84px; height: 18px; border-radius: 4px; background-color: #e8ecf1; }
-.weread-stats-pending-chart { display: flex; flex-direction: row; align-items: flex-end; gap: 1px; margin-top: $space-detail; }
-.weread-stats-pending-labels { display: flex; flex-direction: row; gap: 1px; height: 14px; }
+.weread-stats-pending-caption { width: 180px; height: type-line('caption'); margin-top: $space-micro; border-radius: 4px; background-color: #e8ecf1; }
+.weread-stats-pending-chart { display: flex; flex-direction: row; align-items: flex-end; gap: $space-detail; margin-top: $space-inline; border-bottom: 1px solid rgba(128, 128, 128, 0.15); }
+.weread-stats-pending-labels { display: flex; flex-direction: row; gap: $space-detail; height: type-line('chart-label'); padding-top: $space-detail; }
 .weread-stats-pending-label-cell { flex: 1; min-width: 0; display: flex; align-items: center; justify-content: center; }
 .weread-stats-pending-label-cell::before { content: ''; width: 60%; height: 8px; border-radius: 3px; background-color: #e8ecf1; }
-.weread-stats-pending-bar { flex: 1; min-width: 0; border-radius: 3px 3px 0 0; background-color: #e8ecf1; }
+.weread-stats-pending-bar-cell { flex: 1; min-width: 0; display: flex; align-items: center; justify-content: flex-end; height: 100%; }
+.weread-stats-pending-bar { background-color: #e8ecf1; }
 .weread-stats-skeleton-dark { background-color: #30343c; }
 .weread-stats-mode, .weread-stats-bar-hit { @include borderless-button; }
 </style>
