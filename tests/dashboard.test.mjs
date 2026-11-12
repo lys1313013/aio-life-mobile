@@ -4,7 +4,7 @@ import test from 'node:test';
 const source = await readFile(new URL('../src/services/dashboard-format.ts', import.meta.url), 'utf8');
 const { timeSummary, summaryDonutLabels, summaryDonutRotation, webLink } = await import(`data:text/javascript;base64,${Buffer.from(source).toString('base64')}`);
 test('时迹闭区间含末分钟，按父类聚合，保留字符串 ID 与最近记录顺序', () => {
-  const result = timeSummary([{ id: '9223372036854775807', name: '学习', color: '#00f' }, { id: '2', parentId: '9223372036854775807', name: '阅读' }], [{ id: 'a', categoryId: '2', startTime: 0, endTime: 59 }, { id: 'b', categoryId: '2', startTime: 90, endTime: 90 }]);
+  const result = timeSummary([{ id: '9223372036854775807', name: '学习', color: '#00f' }, { id: '2', parentId: '9223372036854775807', name: '阅读' }], [{ id: 'a', categoryId: '2', startMinute: 0, endMinute: 59 }, { id: 'b', categoryId: '2', startMinute: 90, endMinute: 90 }]);
   assert.equal(result.total, '1h1m');
   assert.deepEqual(result.groups.map(g => [g.id, g.minutes]), [['9223372036854775807', 61]]);
   assert.equal(result.recent[0].label, '01:30  1m');
@@ -35,7 +35,7 @@ test('圆环标注保留分类累计时长，集中扇区的标签不会重叠�
   assert.deepEqual(summaryDonutLabels([{ id: 'zero', minutes: 0 }]), []);
 });
 test('最近记录保留全部明细供滚动查看，重复分类仍分别保留', () => {
-  const records = Array.from({ length: 8 }, (_, i) => ({ id: String(i), categoryId: '1', startTime: i * 10, endTime: i * 10 + 9 }));
+  const records = Array.from({ length: 8 }, (_, i) => ({ id: String(i), categoryId: '1', startMinute: i * 10, endMinute: i * 10 + 9 }));
   const result = timeSummary([{ id: '1', name: '阅读', color: '#faad14' }], records);
   assert.equal(result.recent.length, 8);
   assert.deepEqual(result.recent.map(x => x.id), ['7', '6', '5', '4', '3', '2', '1', '0']);

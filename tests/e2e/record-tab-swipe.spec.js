@@ -10,7 +10,7 @@ for (const width of [390, 768, 1440]) for (const colorScheme of ['light', 'dark'
     await page.addInitScript(() => localStorage.setItem('aio-life-mobile.access-token.v1', 'video-pager-fixture'));
     let pending = gate(), delayed = true, fail = false;
     const requests = [];
-    const row = { id: '9223372036854775807', title: '模拟长标题课程：从设计原则到完整项目实践与复盘', status: 'in_progress', duration: 3600, watchedDuration: 1800, ownerName: '模拟讲师', coverState: 'NONE' };
+    const row = { id: '9223372036854775807', title: '模拟长标题课程：从设计原则到完整项目实践与复盘', status: 'in_progress', durationSeconds: 3600, watchedDurationSeconds: 1800, ownerName: '模拟讲师', coverState: 'NONE' };
     apiMock({
       'GET /api/user/info': ok({ id: '1', nickname: '模拟用户', roles: ['admin'] }),
       'GET /api/auth/secondary-lock/menus': ok([]),

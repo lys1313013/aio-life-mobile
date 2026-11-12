@@ -12,7 +12,7 @@ function trendRecords() {
     let start = 0;
     return categories.map((category, i) => {
       const duration = (i + 1) * 15 + d % 3 * 8;
-      const row = { id: `${d + 1}${i + 1}`, date: day(-d), categoryId: category.id, startTime: start, endTime: start + duration - 1, title: category.name };
+      const row = { id: `${d + 1}${i + 1}`, date: day(-d), categoryId: category.id, startMinute: start, endMinute: start + duration - 1, title: category.name };
       start += duration;
       return row;
     });

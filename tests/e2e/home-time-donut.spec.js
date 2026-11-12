@@ -29,8 +29,8 @@ async function setup(page, extra = {}) {
     '/home/cards': homeCardFixture().map(item => ({ ...item, isEnabled: Number(item.cardKey === 'section.time') })),
     '/timeTrackerCategory/list': groups.map((item, index) => ({ ...item, id: String(index) })),
     '/timeRecord/query': groups.map((item, index) => {
-      const startTime = minute; minute += item.minutes;
-      return { id: String(index), categoryId: String(index), startTime, endTime: minute - 1 };
+      const startMinute = minute; minute += item.minutes;
+      return { id: String(index), categoryId: String(index), startMinute, endMinute: minute - 1 };
     }),
     ...extra,
   };
@@ -100,7 +100,7 @@ for (const width of [390, 820, 1440]) for (const theme of ['light', 'dark']) {
     let fixtures;
     apiMock({
       'GET /api/timeRecord/recommendNext': { json: { code: 0, message: null, data: {
-        records: [], recommend: { categoryId: '0', startTime: 1200, endTime: 1259 },
+        records: [], recommend: { categoryId: '0', startMinute: 1200, endMinute: 1259 },
       } } },
       'GET /api/timeRecord/relateTypes': { json: { code: 0, message: null, data: [] } },
       'GET /api/userDictType/getByDictType': { json: { code: 0, message: null, data: { dictDetailList: [] } } },
@@ -119,7 +119,7 @@ for (const width of [390, 820, 1440]) for (const theme of ['light', 'dark']) {
     await editor.getByRole('button', { name: '保存', exact: true }).click();
     await expect(editor).toHaveCount(0);
     await expect(page.locator('.time-date-active .donut-total')).toHaveText('20h6m');
-    expect(saved).toMatchObject({ categoryId: '0', startTime: 1200, endTime: 1259 });
+    expect(saved).toMatchObject({ categoryId: '0', startMinute: 1200, endMinute: 1259 });
     // 新记录排在最前；验证修正引用后，内容区编辑与页头新增都可继续使用。
     await page.locator('.time-date-active').getByRole('button', { name: '编辑时迹 休息', exact: true }).first().click();
     await expect(page.getByRole('dialog', { name: '编辑时迹', exact: true }).locator('.compact-fields')).toBeVisible();
@@ -174,7 +174,7 @@ for (const width of [390, 820, 1440]) for (const theme of ['light', 'dark']) {
     await page.setViewportSize({ width, height: 900 });
     await page.emulateMedia({ colorScheme: theme });
     await setup(page, {
-      '/timeRecord/recommendNext': { records: [], recommend: { categoryId: '0', startTime: 1200, endTime: 1259 } },
+      '/timeRecord/recommendNext': { records: [], recommend: { categoryId: '0', startMinute: 1200, endMinute: 1259 } },
       '/timeRecord/relateTypes': [], '/userDictType/getByDictType': { dictDetailList: [] },
     });
     const image = page.locator(surfaceSelector);
@@ -300,7 +300,7 @@ test.describe('首页时迹日期横滑', () => {
         dates.push(date);
         return route.fulfill({ json: fail
           ? { code: 1, message: '模拟日期加载失败' }
-          : { code: 0, data: date === today ? [{ id: 'today-row', categoryId: '0', startTime: 0, endTime: 59 }] : [] } });
+          : { code: 0, data: date === today ? [{ id: 'today-row', categoryId: '0', startMinute: 0, endMinute: 59 }] : [] } });
       });
       const title = page.locator('[data-card-key="section.time"] .section-title');
       const dateCaption = page.locator('[data-card-key="section.time"] .section-caption');
@@ -321,7 +321,7 @@ test.describe('首页时迹日期横滑', () => {
       let recommendedDate = '';
       await page.route('**/api/timeRecord/recommendNext?*', route => {
         recommendedDate = new URL(route.request().url()).searchParams.get('date');
-        return route.fulfill({ json: { code: 0, data: { records: [], recommend: { categoryId: '0', startTime: 600, endTime: 659 } } } });
+        return route.fulfill({ json: { code: 0, data: { records: [], recommend: { categoryId: '0', startMinute: 600, endMinute: 659 } } } });
       });
       await page.route('**/api/timeRecord/relateTypes', route => route.fulfill({ json: { code: 0, data: [] } }));
       await page.route('**/api/userDictType/getByDictType?*', route => route.fulfill({ json: { code: 0, data: { dictDetailList: [] } } }));

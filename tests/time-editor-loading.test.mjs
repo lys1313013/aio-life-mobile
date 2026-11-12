@@ -9,7 +9,7 @@ const script = source.match(/<script setup lang="ts">([\s\S]*?)<\/script>/)[1]
   .replace(/^import[\s\S]*?from ['"][^'"]+['"];?[ \t]*\r?\n/gm, '')
 const js = (await transform(script, { loader: 'ts' })).code
 const day = '2026-10-26'
-const detail = { id: '9223372036854775807', date: day, categoryId: '1', startTime: 60, endTime: 119,
+const detail = { id: '9223372036854775807', date: day, categoryId: '1', startMinute: 60, endMinute: 119,
   relateId: '9223372036854775806', relateType: 1,
   exercises: [{ id: '9223372036854775805', exerciseTypeId: '2', exerciseCount: 12, description: '模拟运动' }] }
 function deferred() {
@@ -148,7 +148,7 @@ for (const outcome of ['full', 'error', 'available']) test(`切换日期 ${outco
   const loading = h.initialize('2026-10-27')
   h.pending[0].resolve([])
   if (outcome === 'error') h.pending[1].reject(new Error('模拟请求失败'))
-  else h.pending[1].resolve({ records: [], recommend: outcome === 'full' ? null : { startTime: 120, endTime: 179 } })
+  else h.pending[1].resolve({ records: [], recommend: outcome === 'full' ? null : { startMinute: 120, endMinute: 179 } })
   await loading
   assert.equal(h.ready.value, true)
   assert.equal(h.loading.value, false)
@@ -158,7 +158,7 @@ for (const outcome of ['full', 'error', 'available']) test(`切换日期 ${outco
   assert.equal(h.date.value, outcome === 'available' ? '2026-10-27' : day)
   assert.equal(h.form.value.date, h.date.value)
   assert.deepEqual(h.existing.value, outcome === 'available' ? [] : [detail])
-  assert.equal(h.form.value.startTime, outcome === 'available' ? 120 : detail.startTime)
+  assert.equal(h.form.value.startMinute, outcome === 'available' ? 120 : detail.startMinute)
   if (outcome === 'full') assert.equal(h.toasts[0].title, '该天已录入完毕')
   if (outcome === 'error') assert.equal(h.errorText.value, '模拟请求失败')
 })

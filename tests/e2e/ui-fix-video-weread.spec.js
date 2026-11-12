@@ -23,6 +23,6 @@ for (const width of [390, 768, 1440]) for (const colorScheme of ['light', 'dark'
     await page.screenshot({ path: `artifacts/ui-fixes-2026-10-25/video-${width}-${colorScheme}.png` });
     await dialog.getByRole('button', { name: '保存', exact: true }).click();
     await expect(dialog).toHaveCount(0);
-    expect(state.writes.find(write => write.path === '/api/b-video').body).toMatchObject({ duration: 4800, watchedDuration: 80 });
+    expect(state.writes.find(write => write.path === '/api/b-video').body).toMatchObject({ durationSeconds: 4800, watchedDurationSeconds: 80 });
   });
 }

@@ -12,7 +12,7 @@ for (const order of ['旧响应先返回', '旧响应后返回', '旧请求失�
     const old = gate(), fresh = gate();
     let allReads = 0, oldRequest;
     let row = { id: '9223372036854775807', title: '保存前标题', url: 'https://www.bilibili.com/video/BV1234567890',
-      duration: 100, watchedDuration: 20, episodes: 2, currentEpisode: 1, status: 'in_progress', coverState: 'NONE' };
+      durationSeconds: 100, watchedDurationSeconds: 20, episodes: 2, currentEpisode: 1, status: 'in_progress', coverState: 'NONE' };
     await page.addInitScript(() => localStorage.setItem('aio-life-mobile.access-token.v1', 'video-cache-fixture'));
     apiMock({
       'GET /api/user/info': ok({ id: '1', nickname: '模拟用户', roles: [] }),

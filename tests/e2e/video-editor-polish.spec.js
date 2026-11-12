@@ -68,10 +68,10 @@ test('视频更新集数保留折叠数据，保存失败可重试', async ({ pa
   const writes = state.writes.filter(write => write.path.startsWith('/api/b-video/'));
   expect(writes).toHaveLength(2);
   expect(writes[1].path).toBe('/api/b-video/' + original.id);
-  expect(writes[1].body).toMatchObject({ currentEpisode: 2, watchedDuration: 50,
+  expect(writes[1].body).toMatchObject({ currentEpisode: 2, watchedDurationSeconds: 50,
     cover: original.cover, ownerName: original.ownerName,
     description: original.description, pagesInfo: original.pagesInfo,
-    duration: original.duration, episodes: original.episodes,
+    durationSeconds: original.durationSeconds, episodes: original.episodes,
   });
 });
 
@@ -90,7 +90,7 @@ test('视频手动创建可修正折叠的总时长并提交', async ({ page }) 
   await page.getByRole('button', { name: '收起更多信息', exact: true }).click();
   await page.getByRole('button', { name: '保存', exact: true }).click();
   await expect(page.getByRole('dialog')).toHaveCount(0);
-  expect(state.writes.find(write => write.path === '/api/b-video').body).toMatchObject({ duration: 120, watchedDuration: 20, title: '模拟手动录入课程' });
+  expect(state.writes.find(write => write.path === '/api/b-video').body).toMatchObject({ durationSeconds: 120, watchedDurationSeconds: 20, title: '模拟手动录入课程' });
 });
 
 test('视频解析失败保留输入并允许重新解析', async ({ page }) => {

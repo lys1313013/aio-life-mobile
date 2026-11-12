@@ -10,7 +10,7 @@ const code = (await transform(responseSource + '\n' + source.replace(/^import .*
 const { getDateRecords } = await import('data:text/javascript;base64,' + Buffer.from(code).toString('base64'))
 
 test('单日超过原分页上限仍一次完整返回，保留长ID，不发送分页参数', async () => {
-  const rows = Array.from({ length: 151 }, (_, i) => ({ id: String(9223372036854775807n - BigInt(i)), startTime: i }))
+  const rows = Array.from({ length: 151 }, (_, i) => ({ id: String(9223372036854775807n - BigInt(i)), startMinute: i }))
   const calls = []
   globalThis.__timeDayRequest = async (...args) => { calls.push(args); return rows }
   try {

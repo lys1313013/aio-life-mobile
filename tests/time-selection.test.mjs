@@ -4,15 +4,15 @@ import test from 'node:test'
 
 const source = await readFile(new URL('../src/services/time-selection.ts', import.meta.url), 'utf8')
 const { timeSelectionBounds, resolveTimeWheelSelection } = await import(`data:text/javascript;base64,${Buffer.from(source).toString('base64')}`)
-const record = { id: '9223372036854775807', date: '2026-10-04', startTime: 600, endTime: 659 }
+const record = { id: '9223372036854775807', date: '2026-10-04', startMinute: 600, endMinute: 659 }
 
 test('禁选其他记录占用的分钟，排除自身和其他日期，不能跨过记录', () => {
-  const existing = [record, { startTime: 540, endTime: 599 }, { startTime: 680, endTime: 700 }, { date: '2026-10-03', startTime: 0, endTime: 1439 }]
-  assert.deepEqual(timeSelectionBounds(record, existing, 'startTime'), { min: 600, max: 659 })
-  assert.deepEqual(timeSelectionBounds(record, existing, 'endTime'), { min: 600, max: 679 })
-  assert.deepEqual(timeSelectionBounds({ ...record, startTime: 0, endTime: 0 }, [], 'startTime'), { min: 0, max: 0 })
-  assert.deepEqual(timeSelectionBounds({ ...record, startTime: 1439, endTime: 1439 }, [], 'endTime'), { min: 1439, max: 1439 })
-  const bounds = timeSelectionBounds(record, [{ startTime: 650, endTime: 700 }], 'startTime')
+  const existing = [record, { startMinute: 540, endMinute: 599 }, { startMinute: 680, endMinute: 700 }, { date: '2026-10-03', startMinute: 0, endMinute: 1439 }]
+  assert.deepEqual(timeSelectionBounds(record, existing, 'startMinute'), { min: 600, max: 659 })
+  assert.deepEqual(timeSelectionBounds(record, existing, 'endMinute'), { min: 600, max: 679 })
+  assert.deepEqual(timeSelectionBounds({ ...record, startMinute: 0, endMinute: 0 }, [], 'startMinute'), { min: 0, max: 0 })
+  assert.deepEqual(timeSelectionBounds({ ...record, startMinute: 1439, endMinute: 1439 }, [], 'endMinute'), { min: 1439, max: 1439 })
+  const bounds = timeSelectionBounds(record, [{ startMinute: 650, endMinute: 700 }], 'startMinute')
   assert.ok(bounds.min > bounds.max)
 })
 

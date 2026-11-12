@@ -17,34 +17,34 @@ test('分类筛选包含任意深度子分类，环不会死循环，保留大�
   assert.equal(categoryMatches('c', 'x', [{ id: 'c', parentId: 'c' }]), false);
 });
 test('闭区间边界、相邻记录、跨日、编辑自排除及运动校验', () => {
-  const record = { id: '1', date: '2026-09-30', categoryId: 'a', startTime: 60, endTime: 119 };
+  const record = { id: '1', date: '2026-09-30', categoryId: 'a', startMinute: 60, endMinute: 119 };
   assert.equal(recordMinutes(record), 60);
-  assert.equal(validateRecord(record, [{ id: '2', startTime: 0, endTime: 59 }]), '');
-  assert.match(validateRecord(record, [{ id: '2', startTime: 119, endTime: 120 }]), /重叠/);
+  assert.equal(validateRecord(record, [{ id: '2', startMinute: 0, endMinute: 59 }]), '');
+  assert.match(validateRecord(record, [{ id: '2', startMinute: 119, endMinute: 120 }]), /重叠/);
   assert.equal(validateRecord(record, [record]), '');
-  assert.match(validateRecord({ ...record, endTime: 1440 }, []), /不能跨天/);
+  assert.match(validateRecord({ ...record, endMinute: 1440 }, []), /不能跨天/);
   assert.match(validateRecord({ ...record, date: '2026-02-30' }, []), /有效日期/);
-  assert.equal(recordMinutes({ startTime: 0, endTime: 1439 }), 1440);
-  assert.equal(validateRecord({ ...record, startTime: 1439, endTime: 1439 }, []), '');
+  assert.equal(recordMinutes({ startMinute: 0, endMinute: 1439 }), 1440);
+  assert.equal(validateRecord({ ...record, startMinute: 1439, endMinute: 1439 }, []), '');
   assert.match(validateRecord({ ...record, exercises: [{ exerciseTypeId: '', exerciseCount: -1 }] }, []), /运动/);
 });
 
 test('Web 同口径快捷调时和小时分钟联动不跨相邻记录，23:10-23:33为24分钟', () => {
-  const record = { id: '1', date: '2026-09-30', categoryId: 'a', startTime: 600, endTime: 659 };
-  const existing = [{ id: '2', startTime: 540, endTime: 599 }, { id: '3', startTime: 680, endTime: 700 }];
-  assert.equal(adjustRecordTime(record, existing, 'startTime', -30), 600);
-  assert.equal(adjustRecordTime(record, existing, 'endTime', 30), 679);
-  assert.equal(adjustRecordTime(record, existing, 'endTime', -100), 600);
+  const record = { id: '1', date: '2026-09-30', categoryId: 'a', startMinute: 600, endMinute: 659 };
+  const existing = [{ id: '2', startMinute: 540, endMinute: 599 }, { id: '3', startMinute: 680, endMinute: 700 }];
+  assert.equal(adjustRecordTime(record, existing, 'startMinute', -30), 600);
+  assert.equal(adjustRecordTime(record, existing, 'endMinute', 30), 679);
+  assert.equal(adjustRecordTime(record, existing, 'endMinute', -100), 600);
   assert.equal(durationEnd(record, existing, 120), 679);
-  assert.equal(recordMinutes({ startTime: 1390, endTime: 1413 }), 24);
-  assert.equal(elapsedSinceRecord([{ startTime: 1390, endTime: 1413 }], 1433), 19);
+  assert.equal(recordMinutes({ startMinute: 1390, endMinute: 1413 }), 24);
+  assert.equal(elapsedSinceRecord([{ startMinute: 1390, endMinute: 1413 }], 1433), 19);
   assert.equal(elapsedSinceRecord([], 100), null);
 });
 
 
 test('多分类父子交叉选择去重，默认按根分类汇总，选中后保留明细', () => {
   const categories = [{ id: 'a', name: '学习' }, { id: 'b', parentId: 'a', name: '阅读' }, { id: 'c', name: '运动' }];
-  const records = [{ categoryId: 'a', startTime: 0, endTime: 29 }, { categoryId: 'b', startTime: 30, endTime: 59 }, { categoryId: 'c', startTime: 60, endTime: 69 }];
+  const records = [{ categoryId: 'a', startMinute: 0, endMinute: 29 }, { categoryId: 'b', startMinute: 30, endMinute: 59 }, { categoryId: 'c', startMinute: 60, endMinute: 69 }];
   assert.equal(matchesCategories('b', ['a', 'b'], categories), true);
   assert.equal(matchesCategories('c', ['a', 'b'], categories), false);
   assert.deepEqual(distributionStats(records, categories).map(r => [r.id, r.minutes]), [['a', 60], ['c', 10]]);
@@ -56,7 +56,7 @@ test('十期趋势跨年、闰月完整，按全部记录日数计算筛选日�
   assert.deepEqual(periods.at(-2), { start: '2024-02-01', end: '2024-02-29', days: 29 });
   assert.equal(trendPeriods('2026-01-01', 'week').at(-1).start, '2025-12-29');
   const categories = [{ id: 'a', name: '学习' }, { id: 'b', name: '运动' }];
-  const records = [{ date: '2024-02-01', categoryId: 'a', startTime: 0, endTime: 59 }, { date: '2024-02-02', categoryId: 'b', startTime: 0, endTime: 59 }];
+  const records = [{ date: '2024-02-01', categoryId: 'a', startMinute: 0, endMinute: 59 }, { date: '2024-02-02', categoryId: 'b', startMinute: 0, endMinute: 59 }];
   const result = periodStatistics(records, categories, ['a'], periods, true);
   assert.equal(result.at(-2).minutes, 30);
   assert.equal(result.at(-1).minutes, 0);

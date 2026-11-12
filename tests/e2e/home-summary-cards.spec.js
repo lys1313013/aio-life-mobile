@@ -118,7 +118,7 @@ test('视频卡片续看打开对应集数且标题进入视频列表', async ({
   await setup(page, { count: 1 });
   await context.route('https://www.bilibili.com/**', route => route.fulfill({ contentType: 'text/html', body: '<p>模拟视频页面</p>' }));
   const popup = context.waitForEvent('page'); await page.getByRole('button', { name: '继续观看视频0', exact: true }).click(); const video = await popup; await video.waitForLoadState(); expect(video.url()).toContain('BV1234567890?p=3'); await video.close();
-  await page.route('**/api/b-video/query?*', route => route.fulfill({ json: { code: 0, data: { items: [{ id: 'video-0', title: '完整视频标题', currentEpisode: 3, episodes: 10, status: 'in_progress', duration: 100, watchedDuration: 25 }], total: 1 } } }));
+  await page.route('**/api/b-video/query?*', route => route.fulfill({ json: { code: 0, data: { items: [{ id: 'video-0', title: '完整视频标题', currentEpisode: 3, episodes: 10, status: 'in_progress', durationSeconds: 100, watchedDurationSeconds: 25 }], total: 1 } } }));
   const card = page.locator('[aria-label="视频首页卡片"]');
   await expect(card.getByRole('button', { name: /^编辑/ })).toHaveCount(0);
   await card.getByRole('button', { name: '查看视频', exact: true }).click(); await expect(page).toHaveURL(/pages\/records\/video$/);

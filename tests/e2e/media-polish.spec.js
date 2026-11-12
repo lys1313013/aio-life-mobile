@@ -15,7 +15,7 @@ for (const width of [390, 768, 1280]) for (const colorScheme of ['light', 'dark'
     await page.route('**/fixture-cover.png', route => route.fulfill({ contentType: 'image/png', body: cover }));
     state.video = Array.from({ length: 8 }, (_, i) => ({
       ...state.video[0], id: String(i + 1), title: `模拟课程 ${i + 1}：从基础知识到完整项目实践`,
-      duration: 48800, watchedDuration: 23850, cover: i % 3 ? (baseURL + '/fixture-cover.png') : '',
+      durationSeconds: 48800, watchedDurationSeconds: 23850, cover: i % 3 ? (baseURL + '/fixture-cover.png') : '',
       ownerName: '模拟课程讲师', currentEpisode: 40, episodes: 68,
       status: i === 0 ? 'completed' : 'in_progress',
     }));

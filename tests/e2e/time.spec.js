@@ -6,7 +6,7 @@ const spacing = require('../../src/styles/spacing.json');
 const today = (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; })();
 async function setup(page, options = {}) {
   const state = { queries: 0, ranges: [], creates: [], updates: [], updateIds: [], deletes: 0, profiles: 0, relatedQueries: [], relatedUpdates: [], coverAuth: [], failRefresh: false, failSave: false, failDelete: false, detailFailure: false, full: false,
-    records: [{ id: '9223372036854775807', date: today, categoryId: '2', startTime: 540, endTime: 599, title: '晨间运动', description: '保留原有备注', exercises: [{ id: '9223372036854775001', exerciseTypeId: '9223372036854775806', exerciseCount: 20, description: '三组' }], relateId: '9223372036854775805', relateType: 1 }] };
+    records: [{ id: '9223372036854775807', date: today, categoryId: '2', startMinute: 540, endMinute: 599, title: '晨间运动', description: '保留原有备注', exercises: [{ id: '9223372036854775001', exerciseTypeId: '9223372036854775806', exerciseCount: 20, description: '三组' }], relateId: '9223372036854775805', relateType: 1 }] };
   Object.assign(state, options);
   await page.route(`${test.info().project.use.baseURL}/api/**`, async route => {
     const req = route.request(), url = new URL(req.url()), path = url.pathname, method = req.method();
@@ -23,7 +23,7 @@ async function setup(page, options = {}) {
       state.ranges.push([url.searchParams.get('startDate'), url.searchParams.get('endDate')]);
       data = state.records.filter(r => r.date >= url.searchParams.get('startDate') && r.date <= url.searchParams.get('endDate'));
     }
-    if (path === '/api/timeRecord/recommendNext') data = { records: state.records.filter(r => r.date === url.searchParams.get('date')), recommend: state.full ? null : { categoryId: '1', startTime: 600, endTime: 659, ...state.recommendation, date: today } };
+    if (path === '/api/timeRecord/recommendNext') data = { records: state.records.filter(r => r.date === url.searchParams.get('date')), recommend: state.full ? null : { categoryId: '1', startMinute: 600, endMinute: 659, ...state.recommendation, date: today } };
     if (path === '/api/timeRecord/relateTypes') data = [{ label: '阅读', value: 1 }, { label: '观影', value: 2 }];
     if (path === '/api/userDictType/getByDictType') data = { dictDetailList: state.exerciseTypes || [{ id: '9223372036854775806', dictLabel: '俯卧撑' }] };
     if (path === '/api/timeRecord' && method === 'POST') {
@@ -260,7 +260,7 @@ for (const width of [390, 768, 1440]) for (const colorScheme of ['light', 'dark'
   await expect(end).toHaveText('11:00');
   await editor.getByRole('button', { name: '保存', exact: true }).click();
   await expect(editor).toHaveCount(0);
-  expect(state.updates[0]).toMatchObject({ startTime: 540, endTime: 660 });
+  expect(state.updates[0]).toMatchObject({ startMinute: 540, endMinute: 660 });
 });
 
 for (const width of [390, 768, 1440]) for (const colorScheme of ['light', 'dark']) test(`时迹分钟滚轮跨小时并停在相邻记录边界，起止均支持禁选 ${width} ${colorScheme}`, async ({ page }) => {
@@ -268,9 +268,9 @@ for (const width of [390, 768, 1440]) for (const colorScheme of ['light', 'dark'
   await page.emulateMedia({ colorScheme });
   await page.clock.setFixedTime(new Date(`${today}T11:22:00`));
   const state = await setup(page, { records: [
-    { id: '101', date: today, categoryId: '1', startTime: 540, endTime: 558, title: '上一条' },
-    { id: '102', date: today, categoryId: '1', startTime: 560, endTime: 599, title: '晨间运动' },
-    { id: '103', date: today, categoryId: '1', startTime: 601, endTime: 659, title: '下一条' },
+    { id: '101', date: today, categoryId: '1', startMinute: 540, endMinute: 558, title: '上一条' },
+    { id: '102', date: today, categoryId: '1', startMinute: 560, endMinute: 599, title: '晨间运动' },
+    { id: '103', date: today, categoryId: '1', startMinute: 601, endMinute: 659, title: '下一条' },
   ] });
   await page.getByRole('button', { name: /^编辑记录 晨间运动(?:，|$)/ }).click();
   const editor = page.getByRole('dialog', { name: '编辑时迹', exact: true });
@@ -395,7 +395,7 @@ for (const width of [390, 768, 1440]) for (const colorScheme of ['light', 'dark'
     await expect(editor.locator('[aria-label="记录时长"]')).toHaveText('2小时23分');
     await editor.getByRole('button', { name: '保存', exact: true }).click();
     await expect(editor).toHaveCount(0);
-    expect(state.updates[0]).toMatchObject({ date: today, startTime: 541, endTime: 683 });
+    expect(state.updates[0]).toMatchObject({ date: today, startMinute: 541, endMinute: 683 });
   });
 }
 
@@ -416,7 +416,7 @@ test('时迹新增、失败保留、重复提交、编辑保留附属字段、�
   state.failSave = false;
   await page.getByRole('button', { name: '保存', exact: true }).click();
   await expect(page.getByRole('button', { name: '编辑记录 专注学习' })).toBeVisible();
-  expect(state.creates[1]).toMatchObject({ categoryId: '1', startTime: 600, endTime: 659, date: today });
+  expect(state.creates[1]).toMatchObject({ categoryId: '1', startMinute: 600, endMinute: 659, date: today });
   expect(state.creates[1]).not.toHaveProperty('id');
   await page.getByRole('button', { name: '编辑记录 晨间运动' }).click();
   await expect(page.locator('.exercise-tab').getByText('俯卧撑', { exact: true })).toBeVisible();
@@ -425,9 +425,9 @@ test('时迹新增、失败保留、重复提交、编辑保留附属字段、�
   await page.getByRole('button', { name: '保存', exact: true }).click();
   await expect(page.getByRole('button', { name: '编辑记录 晨间运动' })).toBeVisible();
   await expect(page.getByRole('dialog', { name: '编辑时迹', exact: true })).toHaveCount(0);
-  expect(state.updates[0]).toMatchObject({ endTime: 598, relateId: '9223372036854775805', relateType: 1, description: '保留原有备注', exercises: [{ id: '9223372036854775001', exerciseTypeId: '9223372036854775806', exerciseCount: 20, description: '三组' }] });
+  expect(state.updates[0]).toMatchObject({ endMinute: 598, relateId: '9223372036854775805', relateType: 1, description: '保留原有备注', exercises: [{ id: '9223372036854775001', exerciseTypeId: '9223372036854775806', exerciseCount: 20, description: '三组' }] });
   expect(state.updates[0]).not.toHaveProperty('id');
-  expect(state.updates[0]).not.toHaveProperty('duration');
+  expect(state.updates[0]).not.toHaveProperty('durationMinutes');
   await page.getByRole('button', { name: '编辑记录 专注学习' }).click();
   await page.getByRole('button', { name: '删除记录', exact: true }).click();
   await page.getByRole('dialog', { name: '删除记录', exact: true }).getByRole('button', { name: '取消', exact: true }).click();
@@ -472,7 +472,7 @@ test('日周月查询与重叠校验', async ({ page }) => {
   await page.getByRole('button', { name: '新增时迹' }).click();
   await expect(page.getByRole('button', { name: '保存', exact: true })).toBeVisible();
   // 编辑期间其他客户端占用了推荐时段，保存前重新查询并阻止覆盖。
-  state.records.push({ id: 'other', date: today, categoryId: '1', startTime: 610, endTime: 620 });
+  state.records.push({ id: 'other', date: today, categoryId: '1', startMinute: 610, endMinute: 620 });
   await page.getByRole('button', { name: '保存', exact: true }).click();
   await expect(page.getByText('时间段与已有记录重叠', { exact: true })).toBeVisible();
   expect(state.creates).toHaveLength(0);
@@ -553,13 +553,13 @@ test('首页待记录时长与加号、统一精简弹窗、遮罩关闭不保�
 });
 
 const timelineRecords = () => [
-  { id: '101', date: today, categoryId: '1', startTime: 0, endTime: 10, title: '睡前阅读' },
-  { id: '102', date: today, categoryId: '3', startTime: 11, endTime: 479, title: '休息' },
-  { id: '103', date: today, categoryId: '4', startTime: 480, endTime: 509, title: '早餐' },
-  { id: '104', date: today, categoryId: '1', startTime: 510, endTime: 539, title: '通勤' },
-  { id: '9223372036854775807', date: today, categoryId: '2', startTime: 540, endTime: 599, title: '晨间运动' },
-  { id: '105', date: today, categoryId: '1', startTime: 600, endTime: 719, title: '专注学习' },
-  { id: '106', date: today, categoryId: '2', startTime: 1439, endTime: 1439, title: '一分钟回顾' },
+  { id: '101', date: today, categoryId: '1', startMinute: 0, endMinute: 10, title: '睡前阅读' },
+  { id: '102', date: today, categoryId: '3', startMinute: 11, endMinute: 479, title: '休息' },
+  { id: '103', date: today, categoryId: '4', startMinute: 480, endMinute: 509, title: '早餐' },
+  { id: '104', date: today, categoryId: '1', startMinute: 510, endMinute: 539, title: '通勤' },
+  { id: '9223372036854775807', date: today, categoryId: '2', startMinute: 540, endMinute: 599, title: '晨间运动' },
+  { id: '105', date: today, categoryId: '1', startMinute: 600, endMinute: 719, title: '专注学习' },
+  { id: '106', date: today, categoryId: '2', startMinute: 1439, endMinute: 1439, title: '一分钟回顾' },
 ];
 for (const width of [390, 768, 1440]) for (const colorScheme of ['light', 'dark']) {
   test(`时间轴比例、边界及布局 ${width}px ${colorScheme}`, async ({ page }) => {
@@ -624,7 +624,7 @@ test('短记录通过日期列表编辑，跨日记录沿用所属日期，空�
   await page.getByRole('button', { name: '周视图' }).click();
   await expect(page.locator('.timeline-column')).toHaveCount(7);
   const otherDate = (() => { const date = new Date(today + 'T12:00:00'); const weekday = (date.getDay() + 6) % 7; date.setDate(date.getDate() + (weekday === 0 ? 1 : -weekday)); return `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`; })();
-  state.records.push({ id: '107', date: otherDate, categoryId: '1', startTime: 0, endTime: 59, title: '跨日记录' });
+  state.records.push({ id: '107', date: otherDate, categoryId: '1', startMinute: 0, endMinute: 59, title: '跨日记录' });
   await pullDown(page, '.tab-scroll');
   await page.getByRole('button', { name: /^编辑记录 跨日记录(?:，|$)/ }).click();
   await expect(page.locator('[aria-label="记录标题"] input')).toHaveValue('跨日记录');
@@ -750,13 +750,13 @@ for (const width of [390, 768, 1440]) for (const colorScheme of ['light', 'dark'
   }
   await dialog.getByRole('button', { name: '保存', exact: true }).click();
   await expect(dialog).toHaveCount(0);
-  expect(state.updates[0]).toMatchObject({ date: today, endTime: width === 390 ? 598 : 599, description: '保留原有备注', relateId: '9223372036854775805', exercises: [{ id: '9223372036854775001', exerciseTypeId: '9223372036854775806', exerciseCount: 20, description: '三组' }] });
+  expect(state.updates[0]).toMatchObject({ date: today, endMinute: width === 390 ? 598 : 599, description: '保留原有备注', relateId: '9223372036854775805', exercises: [{ id: '9223372036854775001', exerciseTypeId: '9223372036854775806', exerciseCount: 20, description: '三组' }] });
 });
 
 for (const colorScheme of ['light', 'dark']) test(`短视口长表单滚动与窗口恢复 ${colorScheme}`, async ({ page }) => {
   await page.setViewportSize({ width: 320, height: 560 });
   await page.emulateMedia({ colorScheme });
-  await setup(page, { records: [{ id: '9223372036854775807', date: today, categoryId: '2', startTime: 540, endTime: 599,
+  await setup(page, { records: [{ id: '9223372036854775807', date: today, categoryId: '2', startMinute: 540, endMinute: 599,
     title: '晨间运动', description: '模拟长备注：缩小窗口后保留内容，保存按钮在弹窗内部滚动可达。',
     exercises: Array.from({ length: 20 }, (_, index) => ({ id: String(100 + index), exerciseTypeId: '9223372036854775806', exerciseCount: 10 + index })) }] });
   const track = await page.locator('.day-track').boundingBox();
@@ -788,7 +788,7 @@ for (const width of [390, 768, 1440]) for (const colorScheme of ['light', 'dark'
   test(`时迹编辑保持时间轴高度与底部导航 ${width}px ${colorScheme}`, async ({ page }) => {
     await page.setViewportSize({ width, height: 900 });
     await page.emulateMedia({ colorScheme });
-    await setup(page, { records: timelineRecords(), categories: categoryPalette, recommendation: { startTime: 720, endTime: 779 } });
+    await setup(page, { records: timelineRecords(), categories: categoryPalette, recommendation: { startMinute: 720, endMinute: 779 } });
     const track = page.locator('.day-track');
     const tabbar = page.locator('uni-tabbar .uni-tabbar');
     const add = page.getByRole('button', { name: '新增时迹', exact: true });
@@ -953,7 +953,7 @@ for (const width of [390, 768, 1440]) for (const colorScheme of ['light', 'dark'
     await setup(page, {
       categories: categoryPalette,
       exerciseTypes,
-      records: [{ id: '9223372036854775807', date: today, categoryId: '2', startTime: 540, endTime: 599, title: '晨间运动', exercises: exerciseTypes.map((item, index) => ({ exerciseTypeId: item.id, exerciseCount: index + 1 })) }],
+      records: [{ id: '9223372036854775807', date: today, categoryId: '2', startMinute: 540, endMinute: 599, title: '晨间运动', exercises: exerciseTypes.map((item, index) => ({ exerciseTypeId: item.id, exerciseCount: index + 1 })) }],
     });
     await page.getByRole('button', { name: '编辑记录 晨间运动' }).click();
     const editor = page.locator('.modal-panel[aria-label="编辑时迹"]');
@@ -1051,7 +1051,7 @@ for (const width of [390, 768, 1440]) for (const colorScheme of ['light', 'dark'
     ];
     const state = await setup(page, {
       categories: categoryPalette,
-      records: [{ id: '9223372036854775807', date: today, categoryId: '2', startTime: 540, endTime: 599, title: '晨间运动', description: '', exercises }],
+      records: [{ id: '9223372036854775807', date: today, categoryId: '2', startMinute: 540, endMinute: 599, title: '晨间运动', description: '', exercises }],
       exerciseTypes: [{ id: '9223372036854775806', dictLabel: '俯卧撑' }, { id: '9223372036854775802', dictLabel: '健腹轮' }],
     });
     await page.getByRole('button', { name: '编辑记录 晨间运动' }).click();
@@ -1186,7 +1186,7 @@ function relatedFixture(type, count = 6) {
 async function setupRelated(page, type, options = {}) {
   const relatedRecords = options.relatedRecords || relatedFixture(type);
   return setup(page, { categories: categoryPalette, relatedRecords,
-    records: [{ id: '9223372036854775807', date: today, categoryId: type === 1 ? '9' : '13', startTime: 540, endTime: 599, title: '晨间运动', description: '保留备注', relateId: relatedRecords[0].id, relateType: type, exercises: [] }], ...options });
+    records: [{ id: '9223372036854775807', date: today, categoryId: type === 1 ? '9' : '13', startMinute: 540, endMinute: 599, title: '晨间运动', description: '保留备注', relateId: relatedRecords[0].id, relateType: type, exercises: [] }], ...options });
 }
 async function completeRelatedStatus(page, type) {
   if (page.viewportSize().width >= 500) {
@@ -1459,7 +1459,7 @@ for (const view of ['时间轴视图', '卡片视图']) for (const period of ['�
   test(`${period}视图真实横滑切换周期 ${view}`, async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
     await page.clock.install({ time: new Date('2026-03-31T12:00:00') });
-    const state = await setup(page, { records: [{ id: '1', date: '2026-03-31', categoryId: '2', startTime: 540, endTime: 599, title: '晨间运动' }] });
+    const state = await setup(page, { records: [{ id: '1', date: '2026-03-31', categoryId: '2', startMinute: 540, endMinute: 599, title: '晨间运动' }] });
     await page.getByRole('button', { name: view, exact: true }).click();
     await page.getByRole('button', { name: period + '视图', exact: true }).click();
     await expect(page.locator('.time-main-panel')).toHaveAttribute('aria-busy', 'false');
