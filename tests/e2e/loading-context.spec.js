@@ -75,9 +75,9 @@ for (const width of [390, 768, 1440]) for (const theme of ['light', 'dark']) {
     const holds = [null, gate(), gate()];
     const calls = [];
     const records = [
-      { id: '1', categoryId: '1', date: '2026-10-29', startTime: 540, endTime: 599 },
-      { id: '2', categoryId: '1', date: '2026-11-02', startTime: 540, endTime: 659 },
-      { id: '3', categoryId: '1', date: '2026-11-09', startTime: 540, endTime: 719 },
+      { id: '1', categoryId: '1', date: '2026-10-29', startMinute: 540, endMinute: 599 },
+      { id: '2', categoryId: '1', date: '2026-11-02', startMinute: 540, endMinute: 659 },
+      { id: '3', categoryId: '1', date: '2026-11-09', startMinute: 540, endMinute: 719 },
     ];
     apiMock({
       ...common(),

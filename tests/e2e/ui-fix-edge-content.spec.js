@@ -13,7 +13,7 @@ for (const width of [390, 1440]) for (const theme of ['light', 'dark']) {
     fs.mkdirSync(output, { recursive: true });
     const shot = name => page.screenshot({ path: `${output}/${name}-${width}-${theme}.png` });
     const today = new Date().toLocaleDateString('sv-SE');
-    const records = [1, 10, 20, 60, 120].map((minutes, index) => ({ id: String(900 + index), date: today, categoryId: '2', startTime: 480 + index * 150, endTime: 480 + index * 150 + minutes - 1, title: `模拟${minutes}分钟事件长标题用于检查裁切` }));
+    const records = [1, 10, 20, 60, 120].map((minutes, index) => ({ id: String(900 + index), date: today, categoryId: '2', startMinute: 480 + index * 150, endMinute: 480 + index * 150 + minutes - 1, title: `模拟${minutes}分钟事件长标题用于检查裁切` }));
     await page.route('**/api/timeRecord/query?*', route => route.fulfill({ json: { code: 0, data: records } }));
     await page.goto('/#/pages/time/index');
     const events = page.locator('.timeline-event');

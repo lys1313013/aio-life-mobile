@@ -11,11 +11,11 @@ if(p==='/api/user/info')data={id:'9223372036854775807',username:'fixture',nickna
 if(p==='/api/menu/all')data=[...admin.map(([id,path,title])=>({id,path,name:id,meta:{title}})),{id:'categoryadmin',path:'/time/category-admin',name:'categoryadmin',meta:{title:'管理分类'}}];
 if(p==='/api/quick-nav/candidates')data=[['category','/time/my-categories','个人分类'],['categoryadmin','/time/category-admin','管理分类'],['dashboard','/time/dashboard','时间看板']].map(([menuId,path,title])=>({menuId,path,title}));
 if(p==='/api/quick-nav/my')data=[];
-if(p==='/api/timeRecord/recommendNext')data={recommend:{categoryId:'1',startTime:600,endTime:629},records:[]};
+if(p==='/api/timeRecord/recommendNext')data={recommend:{categoryId:'1',startMinute:600,endMinute:629},records:[]};
 if(p==='/api/timeRecord/relateTypes')data=[];
 if(p==='/api/userDictType/getByDictType')data={dictDetailList:[]};
 if(p==='/api/api-key/generate')data={apiKey:'synthetic-generated-fixture'};
-if(p==='/api/timeRecord/9223372036854775807')data={id:'9223372036854775807',categoryId:'1',date:'2026-10-01',startTime:540,endTime:599};
+if(p==='/api/timeRecord/9223372036854775807')data={id:'9223372036854775807',categoryId:'1',date:'2026-10-01',startMinute:540,endMinute:599};
 if(p==='/api/menu/preferences')data={menus:[{id:'9223372036854775807',title:'模拟菜单',children:[]},...['category','categoryadmin','dashboard'].map((id,i)=>({id,title:['个人分类','管理分类','时间看板'][i],children:[]}))],hiddenMenuIds:[]};
 if(p==='/api/auth/secondary-password/status')data={hasPassword:true};
 if(p==='/api/auth/secondary-lock/menus')data=[];

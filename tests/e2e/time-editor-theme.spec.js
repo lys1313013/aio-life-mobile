@@ -45,15 +45,15 @@ for (const width of [390, 768, 1440]) for (const theme of ['light', 'dark']) {
     apiMock({
       'GET /api/auth/secondary-lock/menus': response([]),
       'GET /api/timeTrackerCategory/list': response(categories),
-      'GET /api/timeRecord/recommendNext': response({ records: [], recommend: { date: day, categoryId: '1', startTime: 600, endTime: 659 } }),
+      'GET /api/timeRecord/recommendNext': response({ records: [], recommend: { date: day, categoryId: '1', startMinute: 600, endMinute: 659 } }),
       'GET /api/timeRecord/relateTypes': response([{ label: '阅读', value: 1 }]),
       'GET /api/userDictType/getByDictType': response({ dictDetailList: [{ id: '9223372036854775806', dictLabel: '俯卧撑' }] }),
       'GET /api/read-record/page': response({ items: [{ id: '9223372036854775805', title: '模拟阅读', status: 'in_progress' }], total: 1 }),
       'GET /api/read-record/9223372036854775805': response({ id: '9223372036854775805', title: '模拟阅读', status: 'in_progress' }),
-      'GET /api/timeRecord/9223372036854775807': response({ id: '9223372036854775807', date: day, categoryId: '2', startTime: 600, endTime: 659, exercises: [{ exerciseTypeId: '9223372036854775806', exerciseCount: 12 }] }),
+      'GET /api/timeRecord/9223372036854775807': response({ id: '9223372036854775807', date: day, categoryId: '2', startMinute: 600, endMinute: 659, exercises: [{ exerciseTypeId: '9223372036854775806', exerciseCount: 12 }] }),
       'GET /api/timeRecord/query': response([
-        { id: '9223372036854775807', date: day, categoryId: '2', startTime: 600, endTime: 659 },
-        { id: '9223372036854775804', date: day, categoryId: '1', startTime: 660, endTime: 719 },
+        { id: '9223372036854775807', date: day, categoryId: '2', startMinute: 600, endMinute: 659 },
+        { id: '9223372036854775804', date: day, categoryId: '1', startMinute: 660, endMinute: 719 },
       ]),
     });
     await page.goto(`/#/pages/time/edit?date=${day}`);

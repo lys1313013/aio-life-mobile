@@ -83,7 +83,7 @@ for (const mode of ['light', 'dark']) {
     await page.setViewportSize({ width: 390, height: 844 });
     await prepare(page, baseURL, mode, mode === 'light' ? 'dark' : 'light');
     await page.route('**/api/timeRecord/recommendNext?*', route => route.fulfill({ json: {
-      code: 0, data: { records: [], recommend: { categoryId: '1', startTime: 600, endTime: 659 } },
+      code: 0, data: { records: [], recommend: { categoryId: '1', startMinute: 600, endMinute: 659 } },
     } }));
     await page.goto('/#/pages/time/index');
     await page.getByRole('button', { name: '新增时迹', exact: true }).click();
