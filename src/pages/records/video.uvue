@@ -158,16 +158,16 @@ function parseClockDuration(value: string) {
   return Number.isSafeInteger(seconds) ? seconds : NaN;
 }
 function syncDurationInputs() {
-  durationInput.value = clockDuration(form.value.duration);
-  watchedDurationInput.value = clockDuration(form.value.watchedDuration);
+  durationInput.value = clockDuration(form.value.durationSeconds);
+  watchedDurationInput.value = clockDuration(form.value.watchedDurationSeconds);
 }
 function canPlay(url) {
   return /^https:\/\/([\w-]+\.)?bilibili\.com\//.test(String(url || ''));
 }
 function videoProgress(item) {
   if (item.status === 'completed') return 100;
-  return Math.max(0, Math.min(100, Math.round(item.duration
-    ? Number(item.watchedDuration || 0) / Number(item.duration) * 100
+  return Math.max(0, Math.min(100, Math.round(item.durationSeconds
+    ? Number(item.watchedDurationSeconds || 0) / Number(item.durationSeconds) * 100
     : Number(item.progress || 0))));
 }
 async function refresh() {
@@ -254,8 +254,8 @@ function open(item = null) {
   form.value = item
     ? {
         ...item,
-        duration: String(item.duration || 0),
-        watchedDuration: String(item.watchedDuration || 0),
+        durationSeconds: String(item.durationSeconds || 0),
+        watchedDurationSeconds: String(item.watchedDurationSeconds || 0),
         episodes: String(item.episodes || 1),
         currentEpisode: String(item.currentEpisode || 1),
         date: (item.lastWatched || '').slice(0, 10),
@@ -265,8 +265,8 @@ function open(item = null) {
         title: '',
         url: '',
         cover: '',
-        duration: '0',
-        watchedDuration: '0',
+        durationSeconds: '0',
+        watchedDurationSeconds: '0',
         episodes: '1',
         currentEpisode: '1',
         status: 'not_started',
@@ -292,8 +292,8 @@ async function parse() {
       form.value = {
         ...form.value,
         ...result,
-        duration: String(result.duration),
-        watchedDuration: String(result.watchedDuration),
+        durationSeconds: String(result.durationSeconds),
+        watchedDurationSeconds: String(result.watchedDurationSeconds),
         episodes: String(result.episodes),
         currentEpisode: String(result.currentEpisode),
       };
@@ -314,12 +314,12 @@ function updateEpisode(value) {
   try {
     const pages = JSON.parse(form.value.pagesInfo || '[]');
     if (pages.length && Number.isInteger(episode)) {
-      form.value.watchedDuration = String(
+      form.value.watchedDurationSeconds = String(
         pages
           .slice(0, Math.max(0, episode - 1))
-          .reduce((sum, p) => sum + Number(p.duration || 0), 0),
+          .reduce((sum, p) => sum + Number(p.durationSeconds || 0), 0),
       );
-      watchedDurationInput.value = clockDuration(form.value.watchedDuration);
+      watchedDurationInput.value = clockDuration(form.value.watchedDurationSeconds);
     }
   } catch {}
 }
@@ -356,8 +356,8 @@ async function save() {
       const payload = {
         ...form.value,
         ...id,
-        duration,
-        watchedDuration: form.value.status === 'completed' ? duration : watchedDuration,
+        durationSeconds: duration,
+        watchedDurationSeconds: form.value.status === 'completed' ? duration : watchedDuration,
         episodes,
         currentEpisode,
         lastWatched: dateTime(form.value.date, form.value.time),
@@ -397,7 +397,7 @@ const statusCategories = computed(() => statusTabs.map(label => ({ label: label 
       <PageState skeleton="media" :loading="videoPage.loading || (!videoPage.loaded && !videoPage.error)" :has-content="videoPage.loaded" :error="videoPage.error" :empty="!videoPage.filtered.length" @retry="loadPage(index, true)"
         >
 <template #loading><view class="video-grid"><view v-for="n in 6" :key="n" class="video-card" :class="{ 'video-card-dark': isDark }"><view class="video-poster"><ContentSkeleton variant="cover" /></view><view class="video-body video-skeleton-body" aria-hidden="true"><text class="video-title video-skeleton-line" :class="{ 'video-skeleton-line-dark': isDark }">占位标题</text><view class="video-meta ui-row"><text class="video-meta-text video-skeleton-line" :class="{ 'video-skeleton-line-dark': isDark }">占位作者</text><text class="episode">&#160;</text></view><view class="video-meta ui-row"><text class="video-meta-text video-skeleton-line" :class="{ 'video-skeleton-line-dark': isDark }">00:00:00 / 00:00:00</text><text class="episode">&#160;</text></view><view class="progress-track" :class="{ 'progress-track-dark': isDark }" /></view></view></view></template>
-<view class="video-grid"><view v-for="item in videoPage.filtered" :key="item.id" class="video-card" :class="{ 'video-card-dark': isDark }" role="button" tabindex="0" :aria-label="'编辑视频：' + item.title" @click="open(item)" @keydown.enter="open(item)" @keydown.space.prevent="open(item)"><view class="video-poster" :class="{ 'video-poster-dark': isDark }"><VideoCover :file-id="item.coverFileId" :state="item.coverState" :title="item.title" @retry="retryCover(item)" /><text class="video-status" :class="'video-status-' + item.status">{{ statusLabels[item.status] }}</text><text class="video-duration">{{ clockDuration(item.duration) }}</text></view><view class="video-body"><text :max-lines="2" class="video-title">{{ item.title }}</text><view class="video-meta ui-row"><text class="video-meta-text" :class="{ 'record-secondary-dark': isDark }">{{ item.ownerName || '' }}</text><text class="episode">{{ item.currentEpisode || 1 }}/{{ item.episodes || 1 }}</text></view><view class="video-meta ui-row"><text class="video-meta-text" :class="{ 'record-secondary-dark': isDark }">{{ clockDuration(item.watchedDuration) }} / {{ clockDuration(item.duration) }}</text><text class="episode">{{ videoProgress(item) }}%</text></view><view class="progress-track" :class="{ 'progress-track-dark': isDark }"><view class="progress-fill" :style="{ width: (videoProgress(item)) + '%' }" /></view></view></view></view></PageState
+<view class="video-grid"><view v-for="item in videoPage.filtered" :key="item.id" class="video-card" :class="{ 'video-card-dark': isDark }" role="button" tabindex="0" :aria-label="'编辑视频：' + item.title" @click="open(item)" @keydown.enter="open(item)" @keydown.space.prevent="open(item)"><view class="video-poster" :class="{ 'video-poster-dark': isDark }"><VideoCover :file-id="item.coverFileId" :state="item.coverState" :title="item.title" @retry="retryCover(item)" /><text class="video-status" :class="'video-status-' + item.status">{{ statusLabels[item.status] }}</text><text class="video-duration">{{ clockDuration(item.durationSeconds) }}</text></view><view class="video-body"><text :max-lines="2" class="video-title">{{ item.title }}</text><view class="video-meta ui-row"><text class="video-meta-text" :class="{ 'record-secondary-dark': isDark }">{{ item.ownerName || '' }}</text><text class="episode">{{ item.currentEpisode || 1 }}/{{ item.episodes || 1 }}</text></view><view class="video-meta ui-row"><text class="video-meta-text" :class="{ 'record-secondary-dark': isDark }">{{ clockDuration(item.watchedDurationSeconds) }} / {{ clockDuration(item.durationSeconds) }}</text><text class="episode">{{ videoProgress(item) }}%</text></view><view class="progress-track" :class="{ 'progress-track-dark': isDark }"><view class="progress-fill" :style="{ width: (videoProgress(item)) + '%' }" /></view></view></view></view></PageState
       ></view></template></CategoryPager><AdaptiveModal
         v-if="form"
         label="编辑学习视频"
