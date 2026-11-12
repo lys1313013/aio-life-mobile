@@ -150,7 +150,11 @@ function edit(record: TimeRecord) {
 
 <template>
   <view class="timeline" :aria-busy="loading" :class="[themeClass('timeline'), { 'timeline-multiple': days > 1 }]">
-    <LoadingIndicator v-if="loading" floating label="正在加载时迹" />
+    <view v-if="loading" class="timeline-loading">
+      <view class="timeline-loading-mark" :class="themeClass('timeline-loading-mark')">
+        <LoadingIndicator ring label="正在加载时迹" />
+      </view>
+    </view>
     <view class="timeline-axis" :class="themeClass('timeline-axis')">
       <view class="axis-heading" :class="themeClass('axis-heading')" />
       <view class="axis-hours" :style="{ height: trackHeight + 'px' }">
@@ -285,10 +289,15 @@ function edit(record: TimeRecord) {
 @use '../styles/typography' as *;
 @use '../styles/spacing.scss';
 @use '../styles/spacing-tokens' as *;
+@use '../styles/theme-tokens' as *;
 @include type-utilities('body');
 
 
 .timeline { position: relative; flex-direction: row; background-color: #ffffff; border-radius: 6px; overflow: hidden; }
+// 仅覆盖时间轨道，不占布局空间；保留日期、刻度和已有记录。
+.timeline-loading { position: absolute; top: $space-controlMin; bottom: 0; left: 28px; right: 0; z-index: 2; align-items: center; justify-content: center; pointer-events: none; }
+.timeline-loading-mark { width: $space-controlMin; height: $space-controlMin; border-radius: 50%; background-color: $theme-surface-light; }
+.timeline-loading-mark-dark { background-color: $theme-surface-dark; }
 .timeline-axis { width: 28px; flex-shrink: 0; border-right: 1px solid #eef0f3; }
 .axis-heading { height: $space-controlMin; box-sizing: border-box; border-bottom: 1px solid #eef0f3; }
 .axis-hours { position: relative; }

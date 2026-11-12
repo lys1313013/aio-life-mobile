@@ -6,6 +6,7 @@ import TimeRecordCards from '../../../components/TimeRecordCards.uvue'
 import { matchesCategories, periodRange, shiftDate } from '../../../services/time-format.ts'
 import { useWindowResize } from '../../../services/window-resize.ts'
 import { themeClass } from '../../../services/theme.ts'
+import spacing from '../../../styles/spacing.json'
 import { createPeriodSwipe } from '../services/period-swipe.ts'
 import type { Category, TimeRecord } from '../../../services/dashboard.ts'
 
@@ -18,6 +19,8 @@ const emit = defineEmits(['change-period', 'edit'])
 const root = ref(null), timeline = ref(null)
 const instance = getCurrentInstance()
 const width = ref(0), offset = ref(0), phase = ref('idle'), previews = ref(false)
+// 页间留出区块间距，落位距离与预览页的位置使用同一跨度。
+const stride = computed(() => width.value + spacing.section)
 let targetStep = 0, timer: ReturnType<typeof setTimeout> | undefined, disposed = false
 const panes = computed(() => [0, ...(previews.value ? [-1, 1] : [])].map(step => {
   const date = shiftDate(props.date, step, props.mode)
@@ -42,7 +45,7 @@ const swipe = createPeriodSwipe({
   settle: step => {
     targetStep = step
     phase.value = 'settling'
-    offset.value = -step * width.value
+    offset.value = -step * stride.value
     // 原生端及减少动画模式不一定发送 transitionend，保留同一动画时长的完成兜底。
     timer = setTimeout(finish, 360)
   },
@@ -138,7 +141,7 @@ onUnmounted(() => {
     @touchstart="start" @touchmove="swipe.touchMove" @touchend="end" @touchcancel="cancel">
     <view class="day-swipe-surface time-period-surface" :style="surfaceStyle" @transitionend.self="finish">
       <view v-for="pane in panes" :key="pane.step" class="time-period-pane" :class="{ 'time-period-preview': pane.step !== 0 }"
-        :style="pane.step ? { left: pane.step * 100 + '%' } : {}" :aria-hidden="pane.step !== 0" :inert="pane.step !== 0 ? '' : null">
+        :style="pane.step ? { left: pane.step * stride + 'px' } : {}" :aria-hidden="pane.step !== 0" :inert="pane.step !== 0 ? '' : null">
         <view v-if="pane.error" class="period-preview-state" :style="{ minHeight: availableHeight / 4 + 'px' }"><text class="period-preview-text" :class="themeClass('period-preview-text')">该周期加载失败，切换后可重试</text></view>
         <TimeTimeline v-else-if="view === 'timeline'" :ref="value => setTimeline(value, pane.step)"
           :available-height="availableHeight" :loading="pane.loading" :records="pane.records" :selected="selected"

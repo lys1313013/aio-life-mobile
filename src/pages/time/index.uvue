@@ -4,7 +4,6 @@ import TabPage from '../../components/TabPage.uvue'
 import { currentPageAccess, usePageRefresh } from '../../services/page-refresh.ts'
 import { buttonLabelClasses } from '../../services/button-label.ts'
 import ContentSkeleton from '../../components/ContentSkeleton.uvue';
-import LoadingIndicator from '../../components/LoadingIndicator.uvue';
 import AppIcon from '../../components/AppIcon.uvue'
 import SecondaryUnlock from "../../components/SecondaryUnlock.uvue";
 import { isDark, themeClass } from '../../services/theme.ts'
@@ -296,8 +295,10 @@ async function pullRefresh() {
   }
 }
 function changePeriod() {
-  loadedQueryKey.value = ''
-  records.value = periodCache.read(date.value, mode.value) || []
+  const cached = periodCache.read(date.value, mode.value)
+  // 已展示的缓存（包括空态）即为就绪；比较数据补查期间不再覆盖 loading。
+  loadedQueryKey.value = cached !== undefined ? queryKey.value : ''
+  records.value = cached || []
   previous.value = periodCache.read(shiftDate(date.value, -1, mode.value), mode.value) || []
   neighbours.value = []
   load(true)
@@ -381,7 +382,6 @@ function closeEditor() {
         <view v-if="!errorText || recordsReady" class="time-body">
           <view class="time-layout ui-gap-md">
           <view class="time-main-panel" :aria-busy="loading">
-          <LoadingIndicator v-if="loading && !refreshing && recordsReady" floating label="正在更新时迹" />
           <TimePeriodPager
             :date="date" :mode="mode" :view="viewMode"
             :available-height="timelineHeight" :loading="loading && !recordsReady"

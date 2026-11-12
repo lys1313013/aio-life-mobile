@@ -1375,7 +1375,7 @@ for (const view of ['时间轴视图', '卡片视图']) for (const width of [390
       if (dy === 0 && await page.getByRole('button', { name: '日视图', exact: true }).getAttribute('aria-pressed') === 'true') {
         await expect.poll(async () => Math.abs((await surface.boundingBox()).x - surfaceX)).toBeGreaterThan(90);
         await expect(surface).toHaveCSS('opacity', '1');
-        const screenshot = await page.screenshot();
+        const screenshot = await page.screenshot({ path: `artifacts/time-period-swipe/${view}-${width}-${theme}-${dx < 0 ? 'next' : 'previous'}.png` });
         await test.info().attach('period-drag-' + (dx < 0 ? 'next' : 'previous'), { body: screenshot, contentType: 'image/png' });
         if (view === '时间轴视图') {
           const sample = await page.locator('.time-period-pager').evaluate((pager, dx) => {
@@ -1397,10 +1397,10 @@ for (const view of ['时间轴视图', '卡片视图']) for (const width of [390
         }
         const preview = page.locator('.time-period-preview').filter({ has: page.locator(view === '时间轴视图' ? '.timeline' : '.record-groups') });
         await expect(preview).toHaveCount(2);
-        // 相邻页紧贴当前页，手指尚未松开时目标内容已进入视口。
+        // 相邻页之间露出统一的区块间距，手指尚未松开时目标内容已进入视口。
         const boxes = await preview.evaluateAll(items => items.map(item => { const rect = item.getBoundingClientRect(); return { x: rect.x, width: rect.width }; }));
         const moving = await surface.boundingBox();
-        expect(boxes.some(box => Math.abs(box.x - (moving.x + (dx < 0 ? moving.width : -moving.width))) < 2)).toBe(true);
+        expect(boxes.some(box => Math.abs(box.x - (moving.x + (dx < 0 ? moving.width + spacing.section : -moving.width - spacing.section))) < 2)).toBe(true);
       }
       await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
       await expect(page.locator('.time-period-pager')).toHaveAttribute('data-phase', 'idle');
