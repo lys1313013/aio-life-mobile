@@ -52,11 +52,60 @@ for(const entry of ['注册账号','忘记密码']){await click(page,entry);awai
 for(const width of [390,768,1440])for(const theme of ['light','dark'])test(`人格测试真实点击外部问卷和管理 ${width} ${theme}`,async({page})=>{
 await page.setViewportSize({width,height:900});await page.emulateMedia({colorScheme:theme});await setup(page);await page.locator('uni-tabbar').getByText('我',{exact:true}).click();await openProfileEntry(page,'MBTI 测试');await click(page,'开始测试');await expect(page).toHaveURL(/personality\/external/);await shot(page,`${width}-${theme}-mbti-external`);await back(page);await shot(page,`${width}-${theme}-mbti-pending`);await back(page);await openProfileEntry(page,'CBTI 测试');await click(page,'人格管理');await shot(page,`${width}-${theme}-cbti-admin`);await click(page,'新增人格');await shot(page,`${width}-${theme}-cbti-admin-new`);await click(page,'保存人格');await shot(page,`${width}-${theme}-cbti-admin-invalid`);await dismissModal(page);await dismissModal(page);
 });
-for(const width of [390,768,1440])for(const theme of ['light','dark'])test(`有数据行编辑删除详情真实点击 ${width} ${theme}`,async({page})=>{
-await page.setViewportSize({width,height:900});await page.emulateMedia({colorScheme:theme});const state=await setup(page,true);await page.locator('uni-tabbar').getByText('我',{exact:true}).click();
-for(const [entry,edit,del] of [['账号绑定','编辑GitHub绑定','解除GitHub绑定'],['API Key',null,'删除'],['MBTI 测试','历史详情','删除测试记录']]){await openProfileEntry(page,entry);if(edit){await click(page,edit);await shot(page,`${width}-${theme}-${entry}-row-edit`);await dismissModal(page);}await click(page,del);await shot(page,`${width}-${theme}-${entry}-row-delete`);await click(page,'取消');await back(page);}
-await openProfileEntry(page,'管理与配置');for(const [kind,path,title] of admin){await click(page,title);if(['users','menus','user-dict','dict-types','dict-data'].includes(kind)){await click(page,kind==='menus'?'编辑模拟菜单':kind==='user-dict'?'编辑模拟字典值，排序 0，启用':'编辑');await shot(page,`${width}-${theme}-admin-${kind}-edit`);await dismissModal(page);if(kind==='menus')await click(page,'模拟菜单更多操作');if(kind==='user-dict')await page.locator('.user-dict-front').first().press('Delete');await click(page,kind==='menus'?'删除菜单':kind==='user-dict'?'删除模拟字典值':'删除');await shot(page,`${width}-${theme}-admin-${kind}-delete`);await click(page,'取消');if(['menus','dict-data','dict-types'].includes(kind))await dismissModal(page);}else if(kind==='feedback'){await click(page,'详情');await shot(page,`${width}-${theme}-admin-feedback-detail`);await dismissModal(page);}else if(kind==='config'){await page.locator('[aria-label="配置值"] textarea').fill('{invalid');await click(page,'保存配置');await shot(page,`${width}-${theme}-admin-config-invalid`);}else await shot(page,`${width}-${theme}-admin-${kind}-row`);await back(page);}
-});
+// 每个业务使用独立上下文和原有测试时限，避免累计导航与截图时间挤占后续业务验证。
+for (const width of [390, 768, 1440]) for (const theme of ['light', 'dark']) {
+  for (const [entry, edit, del] of [
+    ['账号绑定', '编辑GitHub绑定', '解除GitHub绑定'],
+    ['API Key', null, '删除'],
+    ['MBTI 测试', '历史详情', '删除测试记录'],
+  ]) test(`现有记录编辑删除详情 ${entry} ${width} ${theme}`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 900 });
+    await page.emulateMedia({ colorScheme: theme });
+    await setup(page, true);
+    await page.locator('uni-tabbar').getByText('我', { exact: true }).click();
+    await openProfileEntry(page, entry);
+    if (edit) {
+      await click(page, edit);
+      await shot(page, `${width}-${theme}-${entry}-row-edit`);
+      await dismissModal(page);
+    }
+    await click(page, del);
+    await shot(page, `${width}-${theme}-${entry}-row-delete`);
+    await click(page, '取消');
+    await back(page);
+  });
+
+  for (const [kind, , title] of admin) test(`管理现有记录编辑删除详情 ${title} ${width} ${theme}`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 900 });
+    await page.emulateMedia({ colorScheme: theme });
+    await setup(page, true);
+    await page.locator('uni-tabbar').getByText('我', { exact: true }).click();
+    await openProfileEntry(page, '管理与配置');
+    await click(page, title);
+    if (['users', 'menus', 'user-dict', 'dict-types', 'dict-data'].includes(kind)) {
+      await click(page, kind === 'menus' ? '编辑模拟菜单' : kind === 'user-dict' ? '编辑模拟字典值，排序 0，启用' : '编辑');
+      await shot(page, `${width}-${theme}-admin-${kind}-edit`);
+      await dismissModal(page);
+      if (kind === 'menus') await click(page, '模拟菜单更多操作');
+      if (kind === 'user-dict') await page.locator('.user-dict-front').first().press('Delete');
+      await click(page, kind === 'menus' ? '删除菜单' : kind === 'user-dict' ? '删除模拟字典值' : '删除');
+      await shot(page, `${width}-${theme}-admin-${kind}-delete`);
+      await click(page, '取消');
+      if (['menus', 'dict-data', 'dict-types'].includes(kind)) await dismissModal(page);
+    } else if (kind === 'feedback') {
+      await click(page, '详情');
+      await shot(page, `${width}-${theme}-admin-feedback-detail`);
+      await dismissModal(page);
+    } else if (kind === 'config') {
+      await page.locator('[aria-label="配置值"] textarea').fill('{invalid');
+      await click(page, '保存配置');
+      await shot(page, `${width}-${theme}-admin-config-invalid`);
+    } else {
+      await shot(page, `${width}-${theme}-admin-${kind}-row`);
+    }
+    await back(page);
+  });
+}
 for(const width of [390,768,1440])for(const theme of ['light','dark'])test(`补充选择器菜单锁海报和独立编辑 ${width} ${theme}`,async({page})=>{
 await page.setViewportSize({width,height:900});await page.emulateMedia({colorScheme:theme});await setup(page);await page.locator('uni-tabbar').getByText('我',{exact:true}).click();
 await click(page,'账号绑定');await click(page,'新增绑定');await page.locator('uni-picker').click();await shot(page,`${width}-${theme}-bindings-platform-picker`);if(await page.locator('.uni-picker-action-confirm:visible').count())await page.locator('.uni-picker-action-confirm:visible').click();else await page.locator('.uni-picker-select .uni-picker-item').getByText('GitHub',{exact:true}).click();await shot(page,`${width}-${theme}-bindings-picker-confirm`);await click(page,'取消');await back(page);
