@@ -50,12 +50,12 @@ const swipe = createPeriodSwipe({
     timer = setTimeout(finish, 360)
   },
 })
-async function finish() {
+function finish() {
   if (phase.value !== 'settling') return
   if (timer) clearTimeout(timer)
   phase.value = 'committing'
   if (targetStep) emit('change-period', targetStep)
-  await nextTick()
+  // 日期更新与轨道归零必须在同一轮渲染完成，不能先把新日期画在旧偏移处。
   if (!disposed) reset()
 }
 function reset() {
@@ -79,7 +79,7 @@ function end(event) { swipe.touchEnd(event); if (phase.value === 'idle') preview
 function cancel() { swipe.touchCancel(); if (phase.value === 'idle') previews.value = false }
 function ignoreClick() { return phase.value !== 'idle' || swipe.ignoreClick() }
 function edit(record) { if (!ignoreClick() && !props.disabled) emit('edit', record) }
-function setTimeline(value, step) { if (step === 0) timeline.value = value }
+function setTimeline(value, date) { if (date === props.date) timeline.value = value }
 async function measure() {
   await nextTick()
   if (disposed) return
@@ -140,10 +140,11 @@ onUnmounted(() => {
   <view ref="root" class="time-period-pager" :class="{ 'time-period-vertical': view === 'card' || mode === 'day' }" :data-phase="phase"
     @touchstart="start" @touchmove="swipe.touchMove" @touchend="end" @touchcancel="cancel">
     <view class="day-swipe-surface time-period-surface" :style="surfaceStyle" @transitionend.self="finish">
-      <view v-for="pane in panes" :key="pane.step" class="time-period-pane" :class="{ 'time-period-preview': pane.step !== 0 }"
+      <!-- 按实际周期复用页面，让已滑入的预览直接成为当前页，保留内容与滚动容器。 -->
+      <view v-for="pane in panes" :key="mode + ':' + pane.range.start" class="time-period-pane" :class="{ 'time-period-preview': pane.step !== 0 }"
         :style="pane.step ? { left: pane.step * stride + 'px' } : {}" :aria-hidden="pane.step !== 0" :inert="pane.step !== 0 ? '' : null">
         <view v-if="pane.error" class="period-preview-state" :style="{ minHeight: availableHeight / 4 + 'px' }"><text class="period-preview-text" :class="themeClass('period-preview-text')">该周期加载失败，切换后可重试</text></view>
-        <TimeTimeline v-else-if="view === 'timeline'" :ref="value => setTimeline(value, pane.step)"
+        <TimeTimeline v-else-if="view === 'timeline'" :ref="value => setTimeline(value, pane.date)"
           :available-height="availableHeight" :loading="pane.loading" :records="pane.records" :selected="selected"
           :categories="categories" :start-date="pane.range.start" :days="pane.range.days" :ignore-click="ignoreClick" @edit="edit" />
         <TimeRecordCards v-else :loading="pane.loading" :records="pane.filtered" :show-date="mode !== 'day'" :categories="categories" :ignore-click="ignoreClick" @edit="edit" />
