@@ -13,7 +13,7 @@ async function functionSource(path, name) {
 }
 for (const [path, api] of [
   ['pages/goods/devices.uvue', 'fetchDevicePage'],
-  ['pages/records/activity.uvue', 'fetchPerformancePage'],
+  ['pages/records/activity.uvue', 'fetchEventRecordPage'],
   ['pages/records/categories.uvue', 'fetchCategoryPage'],
   ['pages/records/video.uvue', 'fetchVideoPage'],
 ]) {

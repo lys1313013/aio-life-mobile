@@ -2,12 +2,12 @@ const {test,expect}=require('./support/test');
 const {setup}=require('./qa-records-fixtures');
 const fs=require('fs');
 const dir='artifacts/web-parity/records';fs.mkdirSync(dir,{recursive:true});
-const entries=[['activity','/record/performance','活动'],['honor','/record/honor','荣誉'],['anniversary','/record/anniversary','纪念日'],['milestones','/record/milestone','里程碑']].map(([menuId,path,title])=>({menuId,path,title}));
+const entries=[['activity','/record/event-records','活动'],['honor','/record/honor','荣誉'],['anniversary','/record/anniversary','纪念日'],['milestones','/record/milestone','里程碑']].map(([menuId,path,title])=>({menuId,path,title}));
 for(const width of [390,768,1440])for(const dark of [false,true])for(const entry of entries)test(`${entry.menuId} ${width} ${dark?'dark':'light'}`,async({page})=>{
   test.setTimeout(60000);await page.setViewportSize({width,height:844});await page.emulateMedia({colorScheme:dark?'dark':'light'});
   const state=await setup(page);
   for(const key of ['activity','honors','anniversaries','milestones'])state[key]=Array.from({length:4},(_,i)=>({...state[key][0],id:String(100+i)}));
-  state.activity[1].performanceName='跨越山海的音乐现场';state.activity[2].performer='';
+  state.activity[1].title='跨越山海的音乐现场';state.activity[2].participants='';
   state.honors[0].title='年度优秀项目成果奖';state.honors[0].description='记录阶段性成长与重要成果';
   state.anniversaries[1].color='from-gray-700 to-gray-900';state.anniversaries[1].targetDate='2025-01-01';
   state.milestones[1].date='2026-08-11';state.milestones[2].date='2025-09-01';

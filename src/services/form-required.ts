@@ -6,7 +6,7 @@ const fields = {
   honor: ['title', 'honorDate'],
   anniversary: ['title', 'targetDate'],
   milestone: ['title', 'date'],
-  activity: ['performanceName', 'performer', 'venue'],
+  activity: ['title', 'participants', 'venue'],
   video: ['title', 'url'],
   library: ['title'],
   exercise: ['exerciseTypeId', 'exerciseDate'],

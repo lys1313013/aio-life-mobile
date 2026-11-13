@@ -30,7 +30,7 @@ const records = [
   ['movie', '/record/movie', '观影', 'records/library?kind=movie'],
   ['read', '/record/read', '阅读', 'records/library?kind=read'],
   ['exercise', '/record/exercise', '运动', 'records/exercise'],
-  ['activity', '/record/performance', '活动', 'records/activity'],
+  ['activity', '/record/event-records', '活动', 'records/activity'],
   ['video', '/record/videoWatch', '视频', 'records/video'],
   ['weread', '/record/weread', '微信读书', 'records/weread'],
   ['devices', '/record/device', '设备', 'goods/devices'],

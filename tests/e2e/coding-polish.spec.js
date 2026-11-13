@@ -18,7 +18,7 @@ async function setup(page) {
     if (path === '/api/github/recent-commits') data = [1, 2].map(id => ({ id: String(id), repo: 'fixture/mobile-client', message: id === 1 ? 'feat: 完善跨端页面布局与长标题的响应式适配，保留所有业务字段和编辑入口' : 'fix: 调整卡片信息层级', date: '2026-10-01 18:30', actor: 'fixture', commitUrl: 'https://example.com/fixture' }));
     if (path.endsWith('/getByDictType')) data = { dictDetailList: [{ id: '81', dictLabel: '正握引体向上', label: '演唱会', value: '1' }, { id: '82', dictLabel: '俯卧撑', label: '音乐节', value: '2' }] };
     if (path === '/api/exerciseRecord/query') data = { items: exercise, total: exercise.length };
-    if (path === '/api/performance') data = {total: 3, items: [1, 2, 3].map(id => ({ id: String(id), performanceName: id === 1 ? '模拟活动：2026城市星空音乐节特别纪念场' : '模拟活动：夏夜演唱会', performer: '模拟歌手', performanceType: id === 1 ? '2' : '1', performanceDate: '2026-10-01', city: '北京', venue: '模拟城市音乐公园中央舞台', files: [] })) };
+    if (path === '/api/event-records') data = {total: 3, items: [1, 2, 3].map(id => ({ id: String(id), title: id === 1 ? '模拟活动：2026城市星空音乐节特别纪念场' : '模拟活动：夏夜演唱会', participants: '模拟歌手', eventType: id === 1 ? '2' : '1', eventDate: '2026-10-01', city: '北京', venue: '模拟城市音乐公园中央舞台', files: [] })) };
     await route.fulfill({ json: { code: 0, data: data ?? [] } });
   });
   await page.route(/\/api\/github\/(?:calendar|repos|repository\/[^?]+)(?:\?|$)/, async route => {

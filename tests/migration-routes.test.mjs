@@ -10,7 +10,7 @@ const businessPaths=[
  '/task/todo','/task/goal','/task-center/todo','/task-center/goal',
  '/time/time-tracker','/time/dashboard','/time/my-categories','/time/category-admin',
  '/record/exercise','/my-hub/exercise/category-config','/record/videoWatch','/record/movie','/record/read','/record/weread',
- '/record/think','/record/memo','/record/performance','/record/milestone','/record/anniversary','/my-hub/honor','/my-hub/feedback',
+ '/record/think','/record/memo','/record/event-records','/record/milestone','/record/anniversary','/my-hub/honor','/my-hub/feedback',
  '/relationship/graph','/record/password','/password-manager','/coding/github','/coding/leetcode','/coding/csdn',
  '/finance/dashboard','/finance/income','/finance/expense','/finance/import','/finance/bank-cards',
  '/finance-management/dashboard','/finance-management/income','/finance-management/expense','/finance-management/import','/finance-management/bank-cards',

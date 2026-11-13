@@ -22,10 +22,10 @@ import AttachmentField from '../../components/AttachmentField.uvue';
 import { isDark } from '../../services/theme.ts';
 import { createRecordScope } from '../../services/records/page-scope.ts';
 import {
-  fetchPerformancePage,
-  savePerformance,
-  deletePerformance,
-} from './services/performance.ts';
+  fetchEventRecordPage,
+  saveEventRecord,
+  deleteEventRecord,
+} from './services/event-record.ts';
 const modalMotion0 = ref<{ close: () => void } | null>(null);
 
 const showMore = ref(false);
@@ -47,19 +47,19 @@ const scope = createRecordScope((clear) => {
     types.value = [];
   }
 });
-const refreshOnShow = usePageRefresh(() => load(), { loading: () => loading.value, error: () => error.value, keys: () => ['performance', 'userDictData', 'userDictType'] })
+const refreshOnShow = usePageRefresh(() => load(), { loading: () => loading.value, error: () => error.value, keys: () => ['event_record', 'userDictData', 'userDictType'] })
 onShow(() => refreshOnShow());
 const filtered = computed(() =>
   rows.value
     .filter(
       (item) =>
-        (typeFilter.value === '全部类型' || typeName(item.performanceType) === typeFilter.value) &&
+        (typeFilter.value === '全部类型' || typeName(item.eventType) === typeFilter.value) &&
         (!keyword.value ||
-          [item.performanceName, item.performer, item.city, item.venue]
+          [item.title, item.participants, item.city, item.venue]
             .join(' ')
             .includes(keyword.value)),
     )
-    .sort((a, b) => String(b.performanceDate || '').localeCompare(String(a.performanceDate || ''))),
+    .sort((a, b) => String(b.eventDate || '').localeCompare(String(a.eventDate || ''))),
 );
 function typeName(value) {
   return (
@@ -71,11 +71,11 @@ async function load() {
   loading.value = true;
   error.value = '';
   try {
-    const dictionary = await scope.wait(fetchDictionary('performance_type'));
+    const dictionary = await scope.wait(fetchDictionary('event_type'));
     let page = 1;
     let data = [];
     while (true) {
-      const result = await scope.wait(fetchPerformancePage(page++));
+      const result = await scope.wait(fetchEventRecordPage(page++));
       if (current !== generation) return;
       const total = readPageTotal(result.total);
       data = mergePageItems(data, result.items);
@@ -103,10 +103,10 @@ function open(item = null) {
         files: [...(item.files || [])],
       }
     : {
-        performanceName: '',
-        performer: '',
-        performanceType: '',
-        performanceDate: '',
+        title: '',
+        participants: '',
+        eventType: '',
+        eventDate: '',
         city: '',
         venue: '',
         ticketPrice: '',
@@ -148,7 +148,7 @@ async function save() {
       rating,
       fileIds: form.value.files.map((file) => (typeof file === 'string' ? file : file.id)),
     };
-    const response = await scope.wait(savePerformance(payload));
+    const response = await scope.wait(saveEventRecord(payload));
     const saved = { ...payload, ...response, files: payload.files };
     rows.value = payload.id
       ? rows.value.map((row) => (row.id === payload.id ? saved : row))
@@ -161,7 +161,7 @@ async function save() {
   }
 }
 async function remove(item) {
-  const ok = await scope.wait(deletePerformance(item.id));
+  const ok = await scope.wait(deleteEventRecord(item.id));
   if (!ok) throw new Error('删除失败');
   rows.value = rows.value.filter((row) => row.id !== item.id);
 }
@@ -175,15 +175,15 @@ async function remove(item) {
 
         <view class="activity-grid">
           <view v-for="item in filtered" :key="item.id" class="activity-card" :class="{ 'card-dark': isDark }"
-            role="button" :aria-label="'编辑活动：' + item.performanceName" tabindex="0" @click="open(item)" @keydown.enter.self="open(item)" @keydown.space.self.prevent="open(item)">
+            role="button" :aria-label="'编辑活动：' + item.title" tabindex="0" @click="open(item)" @keydown.enter.self="open(item)" @keydown.space.self.prevent="open(item)">
             <view class="activity-cover">
               <RecordCover :file-id="item.files?.[0]?.id || ''" placeholder="🎵" mode="aspectFit" />
             </view>
             <view class="activity-meta">
-              <text :max-lines="2" class="activity-title" :class="{ 'activity-title-dark': isDark }">{{ item.performanceName }}</text>
-              <text class="activity-type" :class="String(item.performanceType) === '1' ? 'activity-concert' : 'activity-other'">{{ typeName(item.performanceType) }}</text>
-              <view v-if="item.performer" class="meta-row"><AppIcon name="lucide:user" :size="13" color="#8b8f99" /><text class="secondary" :class="{ 'record-secondary-dark': isDark }">{{ item.performer }}</text></view>
-              <view class="meta-row"><AppIcon name="ant-design:calendar-outlined" :size="13" color="#8b8f99" /><text class="secondary" :class="{ 'record-secondary-dark': isDark }">{{ (item.performanceDate || '—').slice(0, 10) }}</text></view>
+              <text :max-lines="2" class="activity-title" :class="{ 'activity-title-dark': isDark }">{{ item.title }}</text>
+              <text class="activity-type" :class="String(item.eventType) === '1' ? 'activity-concert' : 'activity-other'">{{ typeName(item.eventType) }}</text>
+              <view v-if="item.participants" class="meta-row"><AppIcon name="lucide:user" :size="13" color="#8b8f99" /><text class="secondary" :class="{ 'record-secondary-dark': isDark }">{{ item.participants }}</text></view>
+              <view class="meta-row"><AppIcon name="ant-design:calendar-outlined" :size="13" color="#8b8f99" /><text class="secondary" :class="{ 'record-secondary-dark': isDark }">{{ (item.eventDate || '—').slice(0, 10) }}</text></view>
               <view v-if="item.city || item.venue" class="meta-row"><AppIcon name="lucide:map-pin" :size="13" color="#8b8f99" /><text class="secondary" :class="{ 'record-secondary-dark': isDark }">{{ [item.city, item.venue].filter(Boolean).join(' · ') }}</text></view>
             </view>
           </view>
@@ -195,12 +195,12 @@ async function remove(item) {
         :busy="saving || attachmentBusy"
         @close="form = null"
         >
-        <FormField :required="isRequired('activity', 'performanceName')" label="活动名称" v-model="form.performanceName" />
+        <FormField :required="isRequired('activity', 'title')" label="活动名称" v-model="form.title" />
         <view class="ui-field-row">
-          <FormField compact stretch label="类型" kind="selector" :model-value="typeName(form.performanceType)" :options="['未分类', ...types.map((item) => item.label)]" @update:model-value="form.performanceType = types.find((item) => item.label === $event)?.value || ''" />
-          <FormField :required="isRequired('activity', 'performer')" compact stretch label="参与人" v-model="form.performer" />
+          <FormField compact stretch label="活动类型" kind="selector" :model-value="typeName(form.eventType)" :options="['未分类', ...types.map((item) => item.label)]" @update:model-value="form.eventType = types.find((item) => item.label === $event)?.value || ''" />
+          <FormField :required="isRequired('activity', 'participants')" compact stretch label="参与人" v-model="form.participants" />
         </view>
-        <view class="ui-field-row"><FormField compact stretch label="日期" kind="date" v-model="form.performanceDate" /><FormField compact stretch label="票价" input-type="digit" v-model="form.ticketPrice" /></view>
+        <view class="ui-field-row"><FormField compact stretch label="日期" kind="date" v-model="form.eventDate" /><FormField compact stretch label="票价" input-type="digit" v-model="form.ticketPrice" /></view>
         <view class="ui-field-row"><FormField compact stretch label="城市" v-model="form.city" /><FormField :required="isRequired('activity', 'venue')" compact stretch label="地点" v-model="form.venue" /></view>
         <MobileButton :label="showMore ? '收起更多信息' : '更多信息'" variant="quiet" @click="showMore = !showMore" />
         <view v-if="showMore" class="ui-mt-section">
@@ -212,7 +212,7 @@ async function remove(item) {
         <AttachmentField images-only
           :files="form.files"
           upload-path="/file/upload"
-          :form-data="{ bizType: 'performance' }"
+          :form-data="{ bizType: 'event_record' }"
           :disabled="saving"
           @update:files="form.files = $event"
           @busy-change="attachmentBusy = $event" /><text v-if="formError" class="error ui-section ui-type-body">{{
