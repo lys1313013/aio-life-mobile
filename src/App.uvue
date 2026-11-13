@@ -103,7 +103,7 @@ onHide(invalidateUnlocks)
   .icon-button-dark { background-color: #28372d; color: #abd4b9; }
 
 .tab-page { flex: 1; height: 100%; background-color: $theme-page-light; }
-/* #ifndef WEB */
+/* #ifdef APP */
 .tab-page { transition: background-color 800ms ease-in; }
 /* #endif */
 .tab-scroll { flex: 1; height: 0; }
@@ -116,6 +116,15 @@ onHide(invalidateUnlocks)
   .tab-page-dark { background-color: $theme-page-dark; }
   .state-card-dark { background-color: $theme-surface-dark; }
   .empty-title-dark { color: #d4d4d8; }
+
+/* #ifdef MP-WEIXIN */
+// 微信切换页面时会先绘制宿主 page；底色不能等业务组件挂载后才填充。
+// 宿主根选择器只用于初始化背景，业务节点仍由响应式主题类管理手动主题。
+:global(page) { background-color: $theme-page-light; }
+@media (prefers-color-scheme: dark) {
+  :global(page) { background-color: $theme-page-dark; }
+}
+/* #endif */
 
 /* #ifdef WEB */
 // 页面进退与主题切换分别管理快照，返回时旧页面位于上层向右退场。
