@@ -1,4 +1,5 @@
 const { test, expect } = require('./support/test');
+const { stableBox } = require('./support/geometry');
 const { setup, id } = require('./qa-records-fixtures');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -39,13 +40,13 @@ for (const width of [390, 768, 1440]) for (const theme of ['light', 'dark']) {
     const tile = editor.locator('.attachment-tile');
     await expect(tile.getByRole('status')).toBeVisible();
     await editor.evaluate(async element => { await Promise.all(element.getAnimations().map(animation => animation.finished)); });
-    const before = await tile.boundingBox();
-    const actionsBefore = await editor.locator('.form-actions').boundingBox();
+    const before = await stableBox(tile);
+    const actionsBefore = await stableBox(editor.locator('.form-actions'));
     release();
     await expect(tile.locator('.attachment-image img')).toHaveJSProperty('naturalWidth', 72);
     await expect(tile.getByRole('status')).toHaveCount(0);
-    const after = await tile.boundingBox();
-    const actionsAfter = await editor.locator('.form-actions').boundingBox();
+    const after = await stableBox(tile);
+    const actionsAfter = await stableBox(editor.locator('.form-actions'));
     expect(after.height).toBe(before.height);
     expect(Math.abs(actionsAfter.y - actionsBefore.y)).toBeLessThan(2);
     await editor.getByRole('button', { name: '保存', exact: true }).scrollIntoViewIfNeeded();

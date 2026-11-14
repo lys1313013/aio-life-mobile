@@ -1,4 +1,5 @@
 const { test, expect } = require('./support/test');
+const { stableBox } = require('./support/geometry');
 const { setup } = require('./qa-domains-fixtures');
 
 // H5 回归视口几何与滚动行为；微信 root-portal 还需编译及真机验证。
@@ -43,7 +44,7 @@ for (const kind of ['expense', 'income']) {
         const box = await dialog.boundingBox();
         return Math.abs(box.y + box.height / 2 - height / 2);
       }).toBeLessThan(2);
-      const before = await dialog.boundingBox();
+      const before = await stableBox(dialog);
       expect(before.y).toBeGreaterThanOrEqual(24);
       expect(before.y + before.height).toBeLessThanOrEqual(height - 24);
       await page.screenshot({ path: `artifacts/modal-position/${kind}-${width}-${theme}.png` });
@@ -51,7 +52,7 @@ for (const kind of ['expense', 'income']) {
       // 短视口的长表单内部可滚动，操作栏不会跑到屏幕外。
       const cancel = dialog.getByRole('button', { name: '取消', exact: true });
       await cancel.scrollIntoViewIfNeeded();
-      const after = await dialog.boundingBox();
+      const after = await stableBox(dialog);
       expect(Math.abs(after.y - before.y)).toBeLessThan(2);
       await expect(cancel).toBeInViewport();
       await cancel.click();

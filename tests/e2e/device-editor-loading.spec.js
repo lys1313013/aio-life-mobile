@@ -1,4 +1,5 @@
 const { test, expect } = require('./support/test');
+const { stableBox } = require('./support/geometry');
 const ok = data => ({ json: { code: 0, message: null, data } });
 const gate = () => { let release; const promise = new Promise(resolve => { release = resolve; }); return { promise, release }; };
 const id = '9223372036854775807';
@@ -43,7 +44,7 @@ for (const width of [390, 820, 1440]) for (const theme of ['light', 'dark']) {
       await expect(editor.getByRole('button', { name: '保存', exact: true })).toBeDisabled();
       // 等待真实开场动画结束后比较状态切换的布局，不关闭动画或固定 sleep。
       await editor.evaluate(async el => { await Promise.all(el.getAnimations().map(animation => animation.finished)); });
-      const before = await editor.boundingBox();
+      const before = await stableBox(editor);
       await page.screenshot({ path: info.outputPath('options-loading.png') });
       pending.release();
       await editor.getByRole('button', { name: '重试设备选项', exact: true }).click({ trial: true });
@@ -52,7 +53,7 @@ for (const width of [390, 820, 1440]) for (const theme of ['light', 'dark']) {
       await editor.getByRole('button', { name: '重试设备选项', exact: true }).click();
       await expect(editor.getByRole('button', { name: '保存', exact: true })).toBeEnabled();
       await expect(name).toHaveValue('字典加载期间输入的名称');
-      expect(Math.abs((await editor.boundingBox()).height - before.height)).toBeLessThan(2);
+      expect(Math.abs((await stableBox(editor)).height - before.height)).toBeLessThan(2);
       await page.screenshot({ path: info.outputPath('options-ready.png') });
       await editor.getByRole('button', { name: '取消', exact: true }).click();
       await expect(editor).toHaveCount(0);

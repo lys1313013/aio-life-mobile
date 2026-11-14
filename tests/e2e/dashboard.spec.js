@@ -1,4 +1,5 @@
 const { test, expect } = require('./support/test');
+const { stableBox } = require('./support/geometry');
 const { dashboardFixture } = require('./fixtures.js');
 async function setup(page, override) {
   await page.route(`${test.info().project.use.baseURL}/api/**`, async route => {
@@ -162,7 +163,7 @@ for (const width of [390, 768, 1440]) {
     await expect(scroll).toBeVisible();
     await scroll.evaluate(el => el.scrollIntoView({block:'center'}));
     const section = page.locator('.dashboard-section').filter({has:scroll});
-    const before = await section.boundingBox();
+    const before = await stableBox(section);
     await expect(page.getByRole('button',{name:'加载更多运动',exact:true})).toHaveCount(0);
     const row = scroll.locator('.exercise-item').first();
     const bounds = await row.evaluate(el => ['.exercise-date','.exercise-main','.exercise-delta','.trend'].map(selector => {const r=el.querySelector(selector).getBoundingClientRect();return {left:r.left,right:r.right,top:r.top,bottom:r.bottom};}));
@@ -174,7 +175,7 @@ for (const width of [390, 768, 1440]) {
     expect(next).toBe(1);
     finish();
     await expect(scroll.locator('.exercise-name').filter({hasText:'深蹲'})).toBeAttached();
-    const after = await section.boundingBox();
+    const after = await stableBox(section);
     expect(after.height).toBe(before.height);
     expect(Math.abs(after.y-before.y)).toBeLessThan(2);
     await swipeCardUp(page, '.exercise-scroll');

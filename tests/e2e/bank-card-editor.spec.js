@@ -1,4 +1,5 @@
 const { test, expect } = require('./support/test');
+const { stableBox } = require('./support/geometry');
 const banks = Array.from({ length: 3000 }, (_, n) => ({ id: String(90071992547409930n + BigInt(n)), name: `模拟银行${n}`, code: `BANK${n}`, isEnabled: 1 }));
 banks.push({ id: 'disabled', name: '模拟停用银行', code: 'OFF', isEnabled: 0 });
 banks.push({ id: 'long', name: '模拟某省某市农村商业银行股份有限公司', code: 'LONG', isEnabled: 1 });
@@ -58,7 +59,7 @@ for (const width of [320, 390, 768, 1440]) for (const theme of ['light', 'dark']
     await expect(dialog.locator('.draft-bank-name')).toHaveText(banks.at(-1).name);
     // 随表单内容自适应，并满足公共弹窗的视口安全边距。
     await expect.poll(async () => (await dialog.boundingBox()).height).toBeLessThan(viewportHeight - 48);
-    const bounds = await dialog.boundingBox();
+    const bounds = await stableBox(dialog);
     expect(bounds.y).toBeGreaterThanOrEqual(24);
     expect(bounds.y + bounds.height).toBeLessThanOrEqual(viewportHeight - 24);
     expect(Math.abs(bounds.y + bounds.height / 2 - viewportHeight / 2)).toBeLessThan(2);

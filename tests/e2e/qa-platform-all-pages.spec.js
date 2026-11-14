@@ -1,6 +1,8 @@
 const { waitForMotion } = require('./support/motion');
 const { dismissModal } = require('./modal');
 const {test,expect}=require('./support/test');const fs=require('node:fs');const {setup,admin}=require('./qa-platform-fixtures');
+// 整页巡检包含多次导航与截图，按实际工作量声明超时，避免 CI 略慢时撞上默认 30s。
+test.describe.configure({ timeout: 120000 });
 const out='test-results/page-audit/platform';fs.mkdirSync(out,{recursive:true});fs.mkdirSync('/tmp/qa-platform-evidence',{recursive:true});
 async function shot(page,name){await page.waitForTimeout(300);fs.mkdirSync(out,{recursive:true});await page.screenshot({path:`${out}/${name}.png`,fullPage:true});fs.copyFileSync(`${out}/${name}.png`,`/tmp/qa-platform-evidence/${name}.png`);const geom=await page.locator('.navigation-button,.icon-button,.dashboard-action,.life-action,.task-check,.delete-button,.category-option').evaluateAll(nodes=>nodes.map(n=>{const b=n.getBoundingClientRect(),child=n.querySelector('svg,img,.category-icon,.navigation-back-surface,.action-content,.delete-icon');const c=child?.getBoundingClientRect();return{class:n.className,label:n.getAttribute('aria-label'),width:b.width,height:b.height,display:getComputedStyle(n).display,dx:c?c.x+c.width/2-b.x-b.width/2:null,dy:c?c.y+c.height/2-b.y-b.height/2:null}}));fs.writeFileSync(`${out}/${name}-geometry.json`,JSON.stringify(geom,null,2));fs.writeFileSync(`/tmp/qa-platform-evidence/${name}-geometry.json`,JSON.stringify(geom,null,2));expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);const modal=page.getByRole('dialog').last();if(await modal.count()){const b=await modal.boundingBox();if(b&&b.height>650){await page.mouse.move(b.x+b.width/2,b.y+b.height/2);await page.mouse.wheel(0,1800);await page.waitForTimeout(100);await page.screenshot({path:`${out}/${name}-bottom.png`,fullPage:true});fs.copyFileSync(`${out}/${name}-bottom.png`,`/tmp/qa-platform-evidence/${name}-bottom.png`);}}}
 async function click(page,name){
@@ -22,20 +24,35 @@ async function click(page,name){
 }
 const { retainedProfilePages, createProfileNavigation, settingsProfileEntries } = require('./profile-navigation');
 const { openProfileEntry, back } = createProfileNavigation(click);
+async function profileEntries(page,width,theme,entries){
+for(const [entry,action] of entries){
+await openProfileEntry(page,entry);await page.waitForTimeout(250);await shot(page,`${width}-${theme}-${entry}-page`);if(action){await click(page,action);await page.waitForTimeout(150);await shot(page,`${width}-${theme}-${entry}-dialog`);const panel=page.getByRole('dialog');if(await panel.count()){const box=await panel.last().boundingBox();expect(box.x).toBeGreaterThanOrEqual(0);expect(box.y).toBeGreaterThanOrEqual(0);expect(box.y+box.height).toBeLessThanOrEqual(901);await dismissModal(page);}else if(await page.getByRole('button',{name:'取消',exact:true}).count())await click(page,'取消');}
+await back(page);
+}
+}
 
 for(const width of [390,768,1440])for(const theme of ['light','dark'])test(`我的菜单隐藏与设置页面弹窗 ${width} ${theme}`,async({page})=>{
 await page.setViewportSize({width,height:900});await page.emulateMedia({colorScheme:theme});const errors=[];page.on('pageerror',e=>errors.push(e.message));await setup(page);await shot(page,`${width}-${theme}-home`);await page.locator('uni-tabbar').getByText('我',{exact:true}).click();await shot(page,`${width}-${theme}-profile`);
 await expect(page.locator('.profile-menu').first()).toBeVisible();
 for (const name of Object.keys(retainedProfilePages)) await expect(page.getByRole('button', { name, exact: true })).toHaveCount(0);
-for(const [entry,action] of [['基本设置',null],['账号绑定','新增绑定'],['修改密码',null],['菜单显示','恢复默认菜单'],['菜单锁','修改二级密码'],['API Key','新增'],['消息通知','配置飞书'],['系统设置','清除缓存'],['MBTI 测试',null],['CBTI 测试','开始测试'],['关于',null]]){
-await openProfileEntry(page,entry);await page.waitForTimeout(250);await shot(page,`${width}-${theme}-${entry}-page`);if(action){await click(page,action);await page.waitForTimeout(150);await shot(page,`${width}-${theme}-${entry}-dialog`);const panel=page.getByRole('dialog');if(await panel.count()){const box=await panel.last().boundingBox();expect(box.x).toBeGreaterThanOrEqual(0);expect(box.y).toBeGreaterThanOrEqual(0);expect(box.y+box.height).toBeLessThanOrEqual(901);await dismissModal(page);}else if(await page.getByRole('button',{name:'取消',exact:true}).count())await click(page,'取消');}
-await back(page);
-}
+await profileEntries(page,width,theme,[['基本设置',null],['账号绑定','新增绑定'],['修改密码',null],['菜单显示','恢复默认菜单'],['菜单锁','修改二级密码']]);
 await click(page,'退出登录');await shot(page,`${width}-${theme}-logout-confirm`);await click(page,'取消');expect(errors).toEqual([]);
 });
-for(const width of [390,768,1440])for(const theme of ['light','dark'])test(`真实管理目录逐kind点击 ${width} ${theme}`,async({page})=>{
+for(const width of [390,768,1440])for(const theme of ['light','dark'])test(`我的其余入口弹窗 ${width} ${theme}`,async({page})=>{
+await page.setViewportSize({width,height:900});await page.emulateMedia({colorScheme:theme});const errors=[];page.on('pageerror',e=>errors.push(e.message));await setup(page);await page.locator('uni-tabbar').getByText('我',{exact:true}).click();
+await profileEntries(page,width,theme,[['API Key','新增'],['消息通知','配置飞书'],['系统设置','清除缓存'],['MBTI 测试',null],['CBTI 测试','开始测试'],['关于',null]]);
+expect(errors).toEqual([]);
+});
+async function adminKindClicks(page,width,theme,kinds){
+for(const [kind,path,title] of admin.filter(([kind])=>kinds.includes(kind))){await click(page,title);await page.waitForTimeout(200);await shot(page,`${width}-${theme}-admin-${kind}`);if(!['config','feedback','operation','access'].includes(kind)){await click(page,'新增');await shot(page,`${width}-${theme}-admin-${kind}-new`);const modal=page.getByRole('dialog');await expect(modal).toBeVisible();await modal.getByRole('button',{name:'保存',exact:true}).click();await expect(modal.getByRole('alert')).toBeVisible();await dismissModal(page);}await back(page);}
+}
+for(const width of [390,768,1440])for(const theme of ['light','dark'])test(`真实管理目录逐kind点击 用户与字典 ${width} ${theme}`,async({page})=>{
 await page.setViewportSize({width,height:900});await page.emulateMedia({colorScheme:theme});await setup(page);await page.locator('uni-tabbar').getByText('我',{exact:true}).click();await openProfileEntry(page,'管理与配置');await shot(page,`${width}-${theme}-admin-directory`);
-for(const [kind,path,title] of admin){await click(page,title);await page.waitForTimeout(200);await shot(page,`${width}-${theme}-admin-${kind}`);if(!['config','feedback','operation','access'].includes(kind)){await click(page,'新增');await shot(page,`${width}-${theme}-admin-${kind}-new`);const modal=page.getByRole('dialog');await expect(modal).toBeVisible();await modal.getByRole('button',{name:'保存',exact:true}).click();await expect(modal.getByRole('alert')).toBeVisible();await dismissModal(page);}await back(page);}
+await adminKindClicks(page,width,theme,['users','menus','user-dict','dict-types','dict-data']);
+});
+for(const width of [390,768,1440])for(const theme of ['light','dark'])test(`真实管理目录逐kind点击 反馈配置与日志 ${width} ${theme}`,async({page})=>{
+await page.setViewportSize({width,height:900});await page.emulateMedia({colorScheme:theme});await setup(page);await page.locator('uni-tabbar').getByText('我',{exact:true}).click();await openProfileEntry(page,'管理与配置');
+await adminKindClicks(page,width,theme,['feedback','config','operation','access']);
 });
 for(const width of [390,768,1440])for(const theme of ['light','dark'])test(`生活分类与时迹入口弹窗 ${width} ${theme}`,async({page})=>{
 await page.setViewportSize({width,height:900});await page.emulateMedia({colorScheme:theme});await setup(page);
@@ -156,10 +173,19 @@ test('390补漏：通知删除测试接收人与反馈状态回复控件',async(
 await page.setViewportSize({width:390,height:900});const errors=[];page.on('pageerror',e=>errors.push(e.message));const state=await setup(page,true);await page.route('**/api/notification/channels/feishu/recipients',route=>route.fulfill({json:{code:0,data:{items:[{name:'模拟接收人',openId:'fixture-recipient'}]}}}));await page.locator('uni-tabbar').getByText('我',{exact:true}).click();await click(page,'消息通知');await click(page,'删除飞书配置');await shot(page,'390-light-deep-notification-delete');await click(page,'取消');await click(page,'测试通知');await expect(page.getByText('测试已发送',{exact:true})).toBeVisible();await shot(page,'390-light-deep-notification-test-toast');await click(page,'配置飞书');await click(page,'选择接收人');await expect(page.getByRole('button',{name:'模拟接收人',exact:true})).toBeVisible();await shot(page,'390-light-deep-notification-recipients');await click(page,'模拟接收人');await expect(page.locator('[aria-label="接收人 Open ID"] input')).toHaveValue('fixture-recipient');await dismissModal(page);await back(page);
 await openProfileEntry(page,'管理与配置');await click(page,'反馈管理');await click(page,'详情');const detail=page.getByRole('dialog',{name:'反馈详情',exact:true});await nativePicker(page,detail.locator('[aria-label="状态"]'),'feedback-status');await detail.locator('[aria-label="回复"] textarea').fill('仅模拟回复');state.fail=true;await detail.getByRole('button',{name:'回复',exact:true}).click();await expect(detail.getByRole('alert')).toContainText('模拟保存失败');await shot(page,'390-light-deep-feedback-reply-fail');await expect(detail.locator('[aria-label="回复"] textarea')).toHaveValue('仅模拟回复');state.fail=false;await detail.getByRole('button',{name:'回复',exact:true}).click();await expect(detail.locator('[aria-label="回复"] textarea')).toHaveValue('');await shot(page,'390-light-deep-feedback-reply-success');await detail.getByRole('button',{name:'更新状态',exact:true}).click();await shot(page,'390-light-deep-feedback-status-update');await dismissModal(page);await page.waitForTimeout(400);expect(errors).toEqual([]);
 });
-test('390补漏：设置与管理深层picker逐个开关',async({page})=>{
+test('390补漏：资料与设置深层picker逐个开关',async({page})=>{
 await page.setViewportSize({width:390,height:900});const errors=[];page.on('pageerror',e=>errors.push(e.message));await setup(page,true);await page.locator('uni-tabbar').getByText('我',{exact:true}).click();
 for(const [entry,action,label,key] of [['API Key','新增','有效期','key-expiry'],['系统设置',null,'深色模式','theme']]){await openProfileEntry(page,entry);if(action)await click(page,action);await nativePicker(page,page.locator(`[aria-label="${label}"]`),key);if(action)await dismissModal(page);await back(page);}
+expect(errors).toEqual([]);
+});
+test('390补漏：管理深层picker逐个开关',async({page})=>{
+await page.setViewportSize({width:390,height:900});const errors=[];page.on('pageerror',e=>errors.push(e.message));await setup(page,true);await page.locator('uni-tabbar').getByText('我',{exact:true}).click();
 await openProfileEntry(page,'管理与配置');for(const [kind,title,fields] of [['users','用户中心',['角色']],['menus','菜单管理',['父菜单']],['dict-data','字典数据',['字典类型']],['user-dict','用户字典管理',['字典类型','状态','只读']]]){await click(page,title);await click(page,kind==='menus'?'编辑模拟菜单':kind==='user-dict'?'编辑模拟字典值，排序 0，启用':'编辑');for(const field of fields)await nativePicker(page,page.getByRole('dialog').locator(`[aria-label="${field}"]`),`admin-${kind}-${field}`);await dismissModal(page);await back(page);}
+expect(errors).toEqual([]);
+});
+test('390补漏：筛选深层picker逐个开关',async({page})=>{
+await page.setViewportSize({width:390,height:900});const errors=[];page.on('pageerror',e=>errors.push(e.message));await setup(page,true);await page.locator('uni-tabbar').getByText('我',{exact:true}).click();
+await openProfileEntry(page,'管理与配置');
 for(const [title,fields] of [['字典数据',['字典类型筛选','已加载数据排序']],['用户字典管理',['字典类型筛选','状态筛选']],['反馈管理',['类型','状态']]]){await click(page,title);for(const field of fields){if(title==='字典数据' && field==='已加载数据排序')await click(page,'排序设置');const fieldNode=page.locator(`[aria-label="${field}"]`);if(await fieldNode.count())await nativePicker(page,fieldNode,`${title}-${field}`);}await back(page);}
 await page.waitForTimeout(400);expect(errors).toEqual([]);
 });

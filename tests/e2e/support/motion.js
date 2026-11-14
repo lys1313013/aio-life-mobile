@@ -2,11 +2,12 @@ const { expect } = require('./test');
 
 // 坐标手势和几何测量不经过 locator 的稳定性等待，须等真实动效结束。
 async function waitForMotion(page) {
+  // 动画异常时给出明确失败，而不是耗尽整个测试预算后被误报为测试超时。
   await page.waitForFunction(() => !document.documentElement.classList.contains('aio-page-motion')
     && document.getAnimations().every(animation => {
       const timing = animation.effect?.getComputedTiming();
       return timing?.iterations === Infinity || (!animation.pending && animation.playState !== 'running');
-    }));
+    }), null, { timeout: 15000 });
 }
 
 async function capturePageMotion(page, direction, path) {

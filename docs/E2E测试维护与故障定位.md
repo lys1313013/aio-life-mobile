@@ -49,7 +49,7 @@ npm run test:e2e -- tests/e2e/auth-policy.spec.js --grep '390 light' --workers=1
 npm run test:e2e -- tests/e2e/auth-policy.spec.js --grep '390 light' --workers=2 --repeat-each=3
 ```
 
-本地执行仍构建当前 H5；不要设置 `AIO_E2E_PREBUILT=1` 偷用历史产物。保留 CI 的四分片完整覆盖、固定 Playwright 版本和 `retries: 0`。本地与 CI 都生成 HTML 与分组摘要，CI 上传到同一分片附件。诊断文件为忽略的运行产物，不提交。
+本地执行仍构建当前 H5；不要设置 `AIO_E2E_PREBUILT=1` 偷用历史产物。保留 CI 的六分片完整覆盖、固定 Playwright 版本和 `retries: 0`。本地与 CI 都生成 HTML 与分组摘要，CI 上传到同一分片附件。诊断文件为忽略的运行产物，不提交。
 
 预览与浏览器 fixture 的地址统一由 `tests/support/base-url.cjs` 读取 `E2E_BASE_URL`，默认使用本机 5180。端口被开发服务占用时可执行 `E2E_BASE_URL=http://127.0.0.1:5196 npm run test:commit`；不要停止其他任务的服务。测试导航优先用相对 URL，API mock、图片 fixture 和独立诊断脚本需要绝对地址时引用公共 `baseURL`，不得写死开发端口。
 
@@ -78,8 +78,8 @@ test('协议内容', async ({ page, apiMock }) => {
 - **等待业务状态**：用 `toBeVisible`、`toHaveText`、`toHaveCount`、`toHaveURL` 或带说明的 `expect.poll`；点击触发请求时先注册 `waitForResponse` 再点击，并继续断言 UI 更新。全站 `networkidle` 会受到无关预取/轮询影响，也无法证明 Vue 已完成业务更新。
 - **不要把负向断言变成瞬时通过**：验证“不重复请求”“旧响应不覆盖新数据”时，先确认触发事件已处理，或用 gate 明确释放旧响应并等待完成；不能用会立即成功的 `expect.poll(count).toBe(原值)` 假装观察了一段时间。涉及 debounce/TTL 时使用受控时钟，推进业务需要的时间；网络请求仍需单独等待。
 - **区分动作时长和就绪等待**：长按后等待 dragging 状态即可；手势速度/惯性、双击阈值和否定行为观察窗口可能确实需要时间，应注明对应机制并验证最终结果。不能全局关闭动画，也不能把所有 sleep 机械换成零。
-- **布局测量保持业务含义**：在相关内容加载完成后测量实际容器；比较 loading→内容、已有内容刷新以及下一块的位置。不要删除断言、扩大容差或永久留白掩盖跳动。需要坐标手势时先确认目标可见且位置稳定，不能靠 `.boundingBox()` 返回非空就假设动画完成。
-- **失败要指向一个流程**：无关业务分成独立 test；单个流程用 `test.step` 标出准备、操作、结果与返回。优先 `getByRole({name, exact:true})`，重复名称通过所属卡片/具体 dialog 限定；CSS 定位用于确有布局含义的节点。测试接口语义与用户行为，不把透明包装层、内部 class 数量作为业务契约。
+- **布局测量保持业务含义**：在相关内容加载完成后测量实际容器；比较 loading→内容、已有内容刷新以及下一块的位置。不要删除断言、扩大容差或永久留白掩盖跳动。需要坐标手势时先确认目标可见且位置稳定，不能靠 `.boundingBox()` 返回非空就假设动画完成。要比较“位置没有变化”时用 `tests/e2e/support/geometry.js` 的 `stableBox()` 等两次读数稳定后再测量；布局在字体度量、异步测高或 CI 环境下会产生分数像素，直接连续两次 `boundingBox()` 会把亚像素抖动误判成位移。
+- **失败要指向一个流程**：无关业务分成独立 test；单个流程用 `test.step` 标出准备、操作、结果与返回。优先 `getByRole({name, exact:true})`，重复名称通过所属卡片/具体 dialog 限定；CSS 定位用于确有布局含义的节点。测试接口语义与用户行为，不把透明包装层、内部 class 数量作为业务契约。整页巡检类用例（`qa-*-all-pages`）单个用例做了多次导航与截图，必须按工作量用 `test.describe.configure({ timeout })` 显式声明超时，并优先按入口拆成独立 test：贴着 Playwright 默认 30s 的巡检用例会在 CI 上直接超时，失败信息也无法指向具体流程。
 - **受控异步必须释放**：用 gate 暂停响应验证 loading；在 `finally`/afterEach 释放并清理路由，防止失败后悬挂。各用例的新 context 保持隔离，不能依赖前一个测试登录、缓存或后台定时器。
 
 ## 历史债务与自动约束
