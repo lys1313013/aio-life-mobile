@@ -1,4 +1,5 @@
 const { waitForMotion } = require('./support/motion');
+const { stableBox } = require('./support/geometry');
 const { selectCalendarDate } = require('./calendar');
 const { test, expect } = require('./support/test');
 const { dashboardFixture } = require('./fixtures.js');
@@ -248,14 +249,19 @@ test('未配置腾讯地图时不加载 SDK', async ({ page }) => {
 test.describe('地图触屏与刷新保持视角', () => {
   test.use({ hasTouch: true });
   async function pull(page, locator, offsetY = 90) {
-    const box = await locator.boundingBox();
     await waitForMotion(page);
+    // 动效结束后再取坐标，避免用等待前的位置把列表手势发到拦截触摸的地图上。
+    const box = await stableBox(locator);
     const cdp = await page.context().newCDPSession(page);
     const x = box.x + box.width / 2, start = box.y + offsetY;
-    await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y: start, id: 0 }] });
-    for (const offset of [30, 70, 120, 180]) await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x, y: start + offset, id: 0 }] });
-    await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
-    await cdp.detach();
+    try {
+      await expect.poll(() => locator.evaluate((element, point) => element.contains(document.elementFromPoint(point.x, point.y)), { x, y: start }), { message: '下拉手势起点应命中目标区域' }).toBe(true);
+      await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y: start, id: 0 }] });
+      for (const offset of [30, 70, 120, 180]) await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x, y: start + offset, id: 0 }] });
+      await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+    } finally {
+      await cdp.detach();
+    }
   }
   test('地图内拖动不触发页面刷新，连续缩放保持地图实例', async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 900 });
