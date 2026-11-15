@@ -1367,6 +1367,8 @@ test('关联卡片详情列表封面失败恢复与分页', async ({ page }) => 
   expect(state.updates).toHaveLength(0);
 });
 
+test.describe('日视图原生触屏', () => {
+test.use({ hasTouch: true });
 for (const view of ['时间轴视图', '卡片视图']) for (const width of [390, 768, 1440]) for (const theme of ['light', 'dark']) {
   test(`日视图真实横滑切日且不误开编辑 ${view} ${width} ${theme}`, async ({ page }) => {
     await page.setViewportSize({ width, height: 844 });
@@ -1375,7 +1377,6 @@ for (const view of ['时间轴视图', '卡片视图']) for (const width of [390
     await page.getByRole('button', { name: view, exact: true }).click();
     await waitForMotion(page);
     const cdp = await page.context().newCDPSession(page);
-    await cdp.send('Emulation.setTouchEmulationEnabled', { enabled: true });
     async function swipe(target, dx, dy = 0) {
       const surface = page.locator('.day-swipe-surface').first();
       await expect(page.locator('.time-period-pager')).toHaveAttribute('data-phase', 'idle');
@@ -1436,10 +1437,8 @@ for (const view of ['时间轴视图', '卡片视图']) for (const width of [390
     await swipe(record, 5, -70);
     await expect(page.locator('.date-value')).toHaveText(today);
     await expect(page.getByRole('dialog')).toHaveCount(0);
-    await record.scrollIntoViewIfNeeded();
-    const tapBox = await record.boundingBox();
-    await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: tapBox.x + tapBox.width / 2, y: tapBox.y + tapBox.height / 2 }] });
-    await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+    // 纵向滚动仍可能有惯性；原生 tap 等记录稳定且可命中后再发送触摸，不能复用瞬时坐标。
+    await record.tap();
     await expect(page.getByRole('dialog', { name: '编辑时迹', exact: true })).toBeVisible();
     await closeEditor(page);
     await page.getByRole('button', { name: '周视图', exact: true }).click();
@@ -1451,6 +1450,7 @@ for (const view of ['时间轴视图', '卡片视图']) for (const width of [390
     await cdp.detach();
   });
 }
+});
 
 // 真实触摸事件覆盖周期切换，以及月内滚动与翻月之间的边界。
 async function periodSwipe(page, cdp, dx, dy = 0) {
