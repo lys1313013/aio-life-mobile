@@ -37,6 +37,7 @@ const props = withDefaults(defineProps<{
   fill?: boolean
   dense?: boolean
   contentKey?: string
+  focusTarget?: string
 }>(), { showClose: false, bare: false, loading: false, loadError: '', loadingRows: 3, openingMotion: true })
 const motionReady = ref(false)
 const emit = defineEmits(['close', 'reachbottom', 'retry'])
@@ -63,6 +64,9 @@ onUnmounted(releaseModal)
 const instance = getCurrentInstance()
 const contentHeight = ref(props.bare ? spacing.controlMin : 160)
 const footerHeight = ref(0)
+const scrollTop = ref(0)
+let actualScrollTop = 0
+let focusRequest = 0
 const windowHeight = ref(uni.getWindowInfo().windowHeight)
 const keyboardHeight = ref(0)
 const viewportTop = ref(0)
@@ -81,6 +85,38 @@ const height = computed(() => props.fill
 let active = true
 let measuring = false
 let pending = false
+function onScroll(event) {
+  actualScrollTop = event.detail.scrollTop || 0
+}
+async function revealFocusedInput() {
+  const request = ++focusRequest
+  const selector = props.focusTarget
+  if (!selector || props.fill) return
+  await nextTick()
+  if (!active || request !== focusRequest || props.focusTarget !== selector) return
+  const query = uni.createSelectorQuery().in(instance?.proxy)
+  query.select('.modal-scroll').boundingClientRect()
+  query.select(selector).boundingClientRect()
+  query.select('.modal-scroll').scrollOffset()
+  query.exec((rects) => {
+    if (!active || request !== focusRequest || props.focusTarget !== selector) return
+    const viewport = rects?.[0], field = rects?.[1]
+    if (!viewport?.height || !field?.height) return
+    const top = viewport.top + spacing.inline
+    const bottom = viewport.bottom - spacing.inline
+    let delta = 0
+    if (field.top < top) delta = field.top - top
+    else if (field.bottom > bottom) delta = Math.min(field.bottom - bottom, field.top - top)
+    if (Math.abs(delta) < 1) return
+    // 坐标与滚动偏移同批测量，避免键盘展开时平台滚动早于 scroll 事件回执。
+    const currentTop = rects?.[2]?.scrollTop ?? actualScrollTop
+    // 先同步手势/平台滚动位置，确保相同目标值仍能触发 scroll-top 更新。
+    scrollTop.value = currentTop
+    nextTick(() => {
+      if (active && request === focusRequest && props.focusTarget === selector) scrollTop.value = Math.max(0, currentTop + delta)
+    })
+  })
+}
 // #ifdef WEB
 let contentObserver: ResizeObserver | null = null
 // #endif
@@ -174,6 +210,8 @@ onMounted(() => {
 onUpdated(measure)
 watch(() => props.contentKey, measure, { flush: 'post' })
 watch(() => props.fill, resize, { flush: 'post' })
+// 先等键盘避让后的正文高度落定，再只滚动弹窗内部，保留顶部安全区和 footer。
+watch(() => [props.focusTarget, height.value, contentHeight.value, windowHeight.value, viewportTop.value, keyboardHeight.value], revealFocusedInput, { flush: 'post' })
 onUnmounted(() => {
   active = false
   if (closeTimer !== null) clearTimeout(closeTimer)
@@ -221,6 +259,8 @@ onUnmounted(() => {
       </view>
       <template v-else>
       <scroll-view
+        :scroll-top="scrollTop"
+        @scroll="onScroll"
         @scrolltolower="emit('reachbottom')"
         direction="vertical"
         :scroll-y="true"

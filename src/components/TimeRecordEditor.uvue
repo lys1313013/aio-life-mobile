@@ -61,6 +61,8 @@ const form = ref<TimeRecord>({
   description: '',
   exercises: [],
 })
+const focusedField = ref('')
+const focusedExerciseField = ref('')
 const choosingCategory = ref(false)
 const choosingTime = ref('')
 const timePreview = ref<number | null>(null)
@@ -496,6 +498,7 @@ function openExerciseEditor(index: number, typeId = '') {
   editingExerciseIndex.value = index
 }
 function closeExerciseEditor() {
+  focusedExerciseField.value = ''
   editingExerciseIndex.value = null
   exerciseEditError.value = ''
 }
@@ -563,6 +566,7 @@ function closeSelection() {
     :vertical-inset="spacing.overlayBlock + spacing.modal"
     :busy="saving || deleting"
     :content-key="layoutKey"
+    :focus-target="focusedField"
     @close="goBack"
   >
     <view class="editor-content">
@@ -632,8 +636,10 @@ function closeSelection() {
           <view class="title-field"
             ><text class="field-label">标题</text
             ><input
+              :adjust-position="false"
               v-model="form.title"
               class="title-input"
+              @focus="focusedField = '.title-input'" @blur="focusedField = ''"
               :placeholder-class="'time-editor-placeholder ' + themeClass('time-editor-placeholder')"
               placeholder="标题"
               aria-label="记录标题"
@@ -729,19 +735,23 @@ function closeSelection() {
           <view class="duration-fields"
             ><text class="field-label">时长</text
             ><input
+              :adjust-position="false"
               type="number"
               :value="String(Math.floor(duration / 60))"
               :disabled="saving || deleting"
               class="duration-input"
               aria-label="时长小时"
+              id="time-editor-duration-hours" @focus="focusedField = '#time-editor-duration-hours'" @blur="focusedField = ''"
               @input="changeDuration($event, 'hours')"
             :class="themeClass('duration-input')" /><text class="duration-unit">时</text
             ><input
+              :adjust-position="false"
               type="number"
               :value="String(duration % 60)"
               :disabled="saving || deleting"
               class="duration-input"
               aria-label="时长分钟"
+              id="time-editor-duration-minutes" @focus="focusedField = '#time-editor-duration-minutes'" @blur="focusedField = ''"
               @input="changeDuration($event, 'minutes')"
             :class="themeClass('duration-input')" /><text class="duration-unit">分</text></view
           >
@@ -749,8 +759,10 @@ function closeSelection() {
         <view class="form-card"
           ><text class="field-label">描述</text
           ><textarea
+            :adjust-position="false" :fixed="true"
             v-model="form.description"
             class="description-input"
+            @focus="focusedField = '.description-input'" @blur="focusedField = ''"
             :placeholder-class="'time-editor-placeholder ' + themeClass('time-editor-placeholder')"
             placeholder="描述信息"
             aria-label="记录备注"
@@ -817,10 +829,12 @@ function closeSelection() {
           </view>
         </view>
         <view v-if="compact" class="compact-notes">
-          <input v-model="form.title" class="compact-title" :class="themeClass('compact-title')"
+          <input v-model="form.title" :adjust-position="false"
+            @focus="focusedField = '.compact-title'" @blur="focusedField = ''" class="compact-title" :class="themeClass('compact-title')"
             :placeholder-class="'time-editor-placeholder ' + themeClass('time-editor-placeholder')"
             placeholder="标题" aria-label="记录标题" :maxlength="50" :disabled="saving || deleting" />
-          <textarea v-model="form.description" class="compact-description" :class="themeClass('compact-description')"
+          <textarea v-model="form.description" :adjust-position="false" :fixed="true"
+            @focus="focusedField = '.compact-description'" @blur="focusedField = ''" class="compact-description" :class="themeClass('compact-description')"
             :placeholder-class="'time-editor-placeholder ' + themeClass('time-editor-placeholder')"
             placeholder="描述" aria-label="记录备注" :maxlength="200" :disabled="saving || deleting" :auto-height="true" />
         </view>
@@ -893,7 +907,7 @@ function closeSelection() {
     </view>
   </AdaptiveModal></ModalMotion>
   <ModalMotion><AdaptiveModal v-if="editingExerciseIndex !== null" :label="editingExerciseIndex < 0 ? '添加一组' : '编辑运动组'" :show-close="false" :dense="true"
-    :max-width="400" :content-key="JSON.stringify([exerciseTypeDraft, exerciseCountDraft, exerciseEditError])" @close="closeExerciseEditor">
+    :max-width="400" :focus-target="focusedExerciseField" :content-key="JSON.stringify([exerciseTypeDraft, exerciseCountDraft, exerciseEditError])" @close="closeExerciseEditor">
     <view class="exercise-edit-panel">
       <text class="exercise-edit-order" :class="themeClass('exercise-edit-order')">第{{ editingExerciseNumber }}组</text>
       <button hover-class="none" role="button" class="exercise-edit-field exercise-edit-type" :class="themeClass('exercise-edit-field')" aria-label="修改运动类型" @click="openExerciseSelection(false)">
@@ -903,11 +917,14 @@ function closeSelection() {
         <text class="exercise-edit-type-name" :class="themeClass('exercise-edit-type-name')">{{ exerciseName(exerciseTypeDraft) }}</text>
       </button>
       <FormField label="本组次数" hide-label compact>
-        <input :value="exerciseCountDraft" type="number" class="exercise-edit-field exercise-edit-count" :class="[themeClass('exercise-edit-field'), themeClass('exercise-edit-count')]"
+        <input :adjust-position="false"
+          @focus="focusedExerciseField = '.exercise-edit-count'" @blur="focusedExerciseField = ''" :value="exerciseCountDraft" type="number" class="exercise-edit-field exercise-edit-count" :class="[themeClass('exercise-edit-field'), themeClass('exercise-edit-count')]"
           aria-label="本组次数" placeholder="数量" :placeholder-class="'time-editor-placeholder ' + themeClass('time-editor-placeholder')"
           @input="exerciseCountDraft = String($event.detail.value)" />
       </FormField>
       <text v-if="exerciseEditError" class="error-text" role="alert" :class="themeClass('error-text')">{{ exerciseEditError }}</text>
+    </view>
+    <template #footer>
       <FormActions>
         <template #secondary>
           <button hover-class="none" v-if="editingExerciseIndex >= 0" role="button" class="exercise-edit-delete" aria-label="删除本组" @click="removeExerciseSet">
@@ -916,7 +933,7 @@ function closeSelection() {
         </template>
         <button hover-class="none" role="button" class="save-button exercise-edit-save" @click="saveExerciseSet"><text class="action-label">保存</text></button>
       </FormActions>
-    </view>
+    </template>
   </AdaptiveModal></ModalMotion>
   <ModalMotion><AdaptiveModal v-if="choosingExercise" label="选择运动" :show-close="false"
     :max-width="500" :content-key="exerciseSelectionKey" @close="choosingExercise = false">

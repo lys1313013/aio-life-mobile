@@ -24,8 +24,10 @@ async function harness({ platform = 'MP-WEIXIN', fill = false, footer = true } =
   const { modalAvailableHeight } = await import(`data:text/javascript;base64,${Buffer.from(ui).toString('base64')}`)
   const js = (await transform(script, { loader: 'ts' })).code
   const mounted = [], cleanups = [], listeners = new Map(), keyboardListeners = new Set()
-  const props = reactive({ fill, label: '模拟弹窗', showClose: false, bare: false })
-  const measurements = { '.modal-content': 240, '.modal-footer': 60 }
+  const props = reactive({ focusTarget: '', fill, label: '模拟弹窗', showClose: false, bare: false })
+  const measurements = { '.modal-content': 240, '.modal-footer': 60,
+    '.modal-scroll': { top: 64, bottom: 364, height: 300 },
+    '.focused-input': { top: 400, bottom: 444, height: 44 } }
   const instance = { slots: footer ? { footer: () => {} } : {}, proxy: { $el: { querySelector: () => null } } }
   const windowInfo = { windowHeight: 700, safeAreaInsets: { top: 24, bottom: 0 } }
   const viewport = {
@@ -47,13 +49,20 @@ async function harness({ platform = 'MP-WEIXIN', fill = false, footer = true } =
       onKeyboardHeightChange: callback => keyboardListeners.add(callback),
       offKeyboardHeightChange: callback => keyboardListeners.delete(callback),
       createSelectorQuery: () => ({
-        selector: '', in() { return this }, select(selector) { this.selector = selector; return this },
-        boundingClientRect(callback) { callback({ height: measurements[this.selector] }); return this },
-        exec() {},
+        selector: '', rects: [], in() { return this }, select(selector) { this.selector = selector; return this },
+        boundingClientRect(callback) {
+          const value = measurements[this.selector];
+          const rect = typeof value === 'number' ? { height: value } : value;
+          if (callback) callback(rect);
+          this.rects.push(rect);
+          return this;
+        },
+        scrollOffset() { this.rects.push(measurements.scrollOffset); return this },
+        exec(callback) { callback?.(this.rects) },
       }),
     },
   }
-  const component = new Function(...Object.keys(fixtures), js + '\nreturn { height, availableHeight, footerHeight, measure, resize, viewportTop, useViewportFrame }')(...Object.values(fixtures))
+  const component = new Function(...Object.keys(fixtures), js + '\nreturn { height, availableHeight, footerHeight, measure, resize, viewportTop, useViewportFrame, scrollTop, onScroll, revealFocusedInput }')(...Object.values(fixtures))
   for (const callback of mounted) callback()
   const flush = async () => { for (let i = 0; i < 5; i++) await nextTick() }
   await flush()
@@ -120,4 +129,56 @@ test('H5非fill模式随visualViewport避让键盘并移除监听', async () => 
   assert.equal(h.useViewportFrame.value, true)
   h.close()
   assert.equal(h.listeners.size, 0)
+})
+
+
+test('聚焦项在键盘缩小正文后只滚动弹窗，重新聚焦支持同值回拨', async () => {
+  const h = await harness()
+  h.props.focusTarget = '.focused-input'
+  await h.flush()
+  assert.equal(h.scrollTop.value, 88)
+  h.onScroll({ detail: { scrollTop: 20 } })
+  // 用户向上滚过后，再次聚焦同一项仍需要滚回原目标。
+  h.measurements['.focused-input'] = { top: 380, bottom: 424, height: 44 }
+  await h.revealFocusedInput()
+  await h.flush()
+  assert.equal(h.scrollTop.value, 88)
+  // 键盘进一步展开后，原本可见的输入项需要继续向上滚。
+  h.measurements['.modal-scroll'] = { top: 64, bottom: 264, height: 200 }
+  h.onScroll({ detail: { scrollTop: 88 } })
+  h.measurements['.focused-input'] = { top: 312, bottom: 356, height: 44 }
+  h.keyboard(280)
+  await h.flush()
+  assert.equal(h.scrollTop.value, 188)
+  h.close()
+})
+
+test('聚焦顶部字段可向上回滚，失焦和卸载后不再执行旧滚动', async () => {
+  const h = await harness()
+  h.onScroll({ detail: { scrollTop: 160 } })
+  h.measurements['.focused-input'] = { top: 20, bottom: 64, height: 44 }
+  h.props.focusTarget = '.focused-input'
+  await h.flush()
+  assert.equal(h.scrollTop.value, 108)
+  h.onScroll({ detail: { scrollTop: 108 } })
+  const pending = h.revealFocusedInput()
+  h.props.focusTarget = ''
+  await pending
+  await h.flush()
+  assert.equal(h.scrollTop.value, 108)
+  h.props.focusTarget = '.focused-input'
+  h.close()
+  await h.flush()
+  assert.equal(h.scrollTop.value, 108)
+})
+
+
+test('键盘期间平台滚动早于scroll回执时，使用同批测量的实际偏移', async () => {
+  const h = await harness()
+  h.onScroll({ detail: { scrollTop: 0 } })
+  h.measurements.scrollOffset = { scrollTop: 200 }
+  h.props.focusTarget = '.focused-input'
+  await h.flush()
+  assert.equal(h.scrollTop.value, 288)
+  h.close()
 })
