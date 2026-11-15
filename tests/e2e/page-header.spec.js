@@ -1,6 +1,16 @@
 const { waitForMotion } = require('./support/motion');
+const { stableBox } = require('./support/geometry');
 const { test, expect } = require('./support/test');
 const { setup } = require('./qa-platform-fixtures');
+
+async function scrollTopOfCard(card) {
+  return card.evaluate(element => {
+    for (let parent = element.parentElement; parent; parent = parent.parentElement) {
+      if (parent.scrollHeight > parent.clientHeight && /auto|scroll/.test(getComputedStyle(parent).overflowY)) return parent.scrollTop;
+    }
+    throw new Error('记录卡片缺少可滚动的祖先容器');
+  });
+}
 
 for (const width of [390, 768, 1280]) {
   for (const colorScheme of ['light', 'dark']) {
@@ -25,17 +35,22 @@ for (const width of [390, 768, 1280]) {
         await page.goto('/#' + route);
         await expect(page.locator(card)).toHaveCount(30);
         const header = page.locator('.page-navigation');
-        const before = await header.boundingBox();
         await waitForMotion(page);
-        const firstCard = await page.locator(card).first().boundingBox();
+        const first = page.locator(card).first();
+        // hover 等待内容实际可接收指针，避免将滚轮发送到转场快照或固定坐标处的其他区域。
+        await first.hover();
+        const before = await stableBox(header);
+        const firstCard = await stableBox(first);
         expect(before.y).toBe(0);
         expect(firstCard.y).toBeGreaterThanOrEqual(before.height);
-        const button = await page.getByRole('button', { name: '返回', exact: true }).boundingBox();
+        const button = await stableBox(page.getByRole('button', { name: '返回', exact: true }));
         expect(button.x).toBeCloseTo(12, 0);
-        await page.mouse.move(width / 2, 650);
+        const scrollTop = await scrollTopOfCard(first);
         await page.mouse.wheel(0, 600);
-        await expect.poll(async () => (await page.locator(card).first().boundingBox()).y).toBeLessThan(firstCard.y - 100);
-        expect(await header.boundingBox()).toEqual(before);
+        // wheel 返回不代表滚动已提交；先确认容器滚动，再通过实时 DOM 几何检查内容位移。
+        await expect.poll(() => scrollTopOfCard(first)).toBeGreaterThan(scrollTop + 100);
+        await expect.poll(() => first.evaluate(element => element.getBoundingClientRect().y)).toBeLessThan(firstCard.y - 100);
+        expect(await stableBox(header)).toEqual(before);
         await expect(page.getByRole('button', { name: '返回', exact: true })).toBeVisible();
         await page.screenshot({ path: testInfo.outputPath(`${route.includes('admin') ? 'admin' : 'goals'}.png`) });
       }
