@@ -8,6 +8,10 @@ export const theme = reactive({ mode: 'system' as ThemeMode, system: 'light' })
 export const isDark = computed(
   () => (theme.mode === 'system' ? theme.system : theme.mode) === 'dark'
 )
+// 微信 page-meta 与页面外壳共用当前主题，避免系统主题与手动主题不一致。
+export const pageBackgroundColor = computed(
+  () => (isDark.value ? colors.dark : colors.light).backgroundColor
+)
 // MobileSwitch 统一使用主题开启色。
 export const switchActiveColor = computed(
   () => (isDark.value ? colors.dark : colors.light).switchActiveColor

@@ -31,7 +31,7 @@ import {
   takeQuickNavEditorRequest,
 } from "../../services/navigation.ts";
 import { useRefreshTheme } from "../../services/refresh-theme.ts";
-import { isDark, themeClass } from "../../services/theme.ts";
+import { isDark, themeClass, pageBackgroundColor } from "../../services/theme.ts";
 
 const refreshTheme = useRefreshTheme();
 const catalog = ref<any[]>([]);
@@ -216,6 +216,10 @@ async function save() {
 </script>
 
 <template>
+  <!-- #ifdef MP-WEIXIN -->
+  <!-- page-meta 必须是页面首节点；同时设置窗口底色与 page 根节点，不能等导航栏挂载。 -->
+  <page-meta :background-color="pageBackgroundColor" :background-color-top="pageBackgroundColor" :background-color-bottom="pageBackgroundColor" :root-background-color="pageBackgroundColor" :page-style="'background-color: ' + pageBackgroundColor + ';'" />
+  <!-- #endif -->
   <TabPage page-path="pages/life/index">
   <view class="tab-page life-page" :class="themeClass('life-page')">
     <PageHeader title="全部">

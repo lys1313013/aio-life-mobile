@@ -20,7 +20,7 @@ import { mergeVisibleCardOrder } from './services/home-card-order.ts'
 import AppIcon from '../../components/AppIcon.uvue'
 import MobileButton from '../../components/MobileButton.uvue'
 import SecondaryUnlock from "../../components/SecondaryUnlock.uvue";
-import { isDark, themeClass } from '../../services/theme.ts'
+import { isDark, themeClass, pageBackgroundColor } from '../../services/theme.ts'
 import { useRefreshTheme } from '../../services/refresh-theme.ts'
 const refreshTheme = useRefreshTheme()
 import { nextTick, computed, reactive, ref, watch, onMounted, onBeforeUnmount } from 'vue'
@@ -811,6 +811,10 @@ function trendLines(points) {
 </script>
 
 <template>
+  <!-- #ifdef MP-WEIXIN -->
+  <!-- page-meta 必须是页面首节点；同时设置窗口底色与 page 根节点，不能等导航栏挂载。 -->
+  <page-meta :background-color="pageBackgroundColor" :background-color-top="pageBackgroundColor" :background-color-bottom="pageBackgroundColor" :root-background-color="pageBackgroundColor" :page-style="'background-color: ' + pageBackgroundColor + ';'" />
+  <!-- #endif -->
   <TabPage page-path="pages/home/index">
   <view class="dashboard-page" :class="themeClass('dashboard-page')">
     <!-- #ifndef WEB -->
@@ -1226,14 +1230,14 @@ function trendLines(points) {
   border-radius: 0;
 }
 .stat-title {
-  margin-left: 0;
+  margin-left: -$space-detail;
   flex-shrink: 1;
   justify-content: flex-start;
 }
 .stat-title-text {
   min-width: 0;
   color: #3f3f46;
-  @include type-style('card-title');
+  @include type-style('body-strong');
 
   white-space: nowrap;
   overflow: hidden;
@@ -1255,7 +1259,7 @@ flex-shrink: 0;
 
   color: #27272a;
 
-  @include type-style('metric-inline');
+  @include type-style('label-strong');
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
