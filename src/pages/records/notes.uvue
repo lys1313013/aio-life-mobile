@@ -19,10 +19,9 @@ import ConfirmAction from '../../components/ConfirmAction.uvue';
 import PageState from '../../components/PageState.uvue';
 import LoadMore from '../../components/LoadMore.uvue';
 import AdaptiveModal from '../../components/AdaptiveModal.uvue';
-import NoteEditor from './NoteEditor.uvue';
 import { createRecordScope } from '../../services/records/page-scope.ts';
 import { isDark } from '../../services/theme.ts';
-import { fetchNotes, saveNote, deleteNote, fetchNoteById, fetchMemoById } from './services/notes.ts';
+import { fetchNotes, saveNote, deleteNote, fetchNoteById } from './services/notes.ts';
 const modalMotion0 = ref<{ close: () => void } | null>(null);
 
 const kind = ref('think'),
@@ -68,8 +67,8 @@ let alive = true,
   generation = 0;
 onLoad((options) => {
   kind.value = options?.kind === 'memo' ? 'memo' : 'think';
-  requestedEdit = String(options?.id || options?.editId || '');
-  requestedCreate = options?.create === '1';
+  requestedEdit = kind.value === 'think' ? String(options?.id || options?.editId || '') : '';
+  requestedCreate = kind.value === 'think' && options?.create === '1';
 });
 const refreshOnShow = usePageRefresh(() => load(), { loading: () => loading.value, error: () => error.value, keys: () => ['memo', 'thought'] })
 onShow(() => refreshOnShow());
@@ -99,9 +98,7 @@ async function load(refresh = false, more = false) {
       total.value = nextTotal;
       page.value = nextPage;
       if (requestedEdit) {
-        const selected = kind.value === 'memo'
-          ? await scope.wait(fetchMemoById(requestedEdit))
-          : (await scope.wait(fetchNoteById(requestedEdit))).items[0];
+        const selected = (await scope.wait(fetchNoteById(requestedEdit))).items[0];
         if (!alive || current !== generation) return;
         if (!selected) throw new Error('记录不存在或已删除');
         open(selected);
@@ -122,6 +119,10 @@ async function load(refresh = false, more = false) {
   }
 }
 function open(item = null) {
+  if (kind.value === 'memo') {
+    uni.navigateTo({ url: '/pages/records/note-edit' + (item ? '?id=' + encodeURIComponent(item.id) : '') });
+    return;
+  }
   created.value = false;
   formError.value = '';
   form.value = item
@@ -244,6 +245,7 @@ function displayDate(value) {
             <view v-if="kind === 'memo' && item.hiddenContent" class="note-frost" :class="{ 'note-frost-dark': isDark }" />
           </view>
           <view class="note-footer ui-row">
+            <AppIcon v-if="kind === 'memo' && item.favorite" name="ant-design:star-filled" :size="14" :color="isDark ? '#f6c94c' : '#bd8700'" aria-label="已收藏" />
             <AppIcon v-if="kind === 'think' && item.isPinned === 1" name="ant-design:pushpin-filled" :size="13" color="#6989bc" aria-label="已展示到看板" /><text class="note-date" :class="{ 'secondary-text-dark': isDark }">{{ displayDate(item.updateTime || item.createTime) }}</text>
             <view v-if="kind === 'think' && (item.events || []).length" class="note-event-count"><AppIcon name="ant-design:link-outlined" :size="12" color="#8b8f99" /><text class="note-event-value ui-type-badge" :class="{ 'secondary-text-dark': isDark }">{{ item.events.length }}</text></view>
             <button hover-class="none" v-if="item.hiddenContent" class="note-visibility ui-type-body" role="button" aria-label="显示内容" :loading="revealing === item.id" :disabled="!!revealing" @click.stop="reveal(item)" @keydown.enter.stop @keydown.space.stop>
@@ -252,7 +254,6 @@ function displayDate(value) {
           </view>
         </view></view></view> </PageState
       ><LoadMore :error="moreError" :loading="loading" :has-more="hasMorePageItems(rows.length, total, pageEnded)" @load="load(false, true)" />
-      <ModalMotion><NoteEditor v-if="form && kind === 'memo'" :form="form" :saving="saving" :created="created" :error="formError" :remove="async () => { await remove(form); form = null; }" @save="save" @close="form = null" /></ModalMotion>
       <ModalMotion><AdaptiveModal ref="modalMotion0" v-if="form && kind === 'think'" :label="form.id ? '编辑闪念' : '新增闪念'" :max-width="560" :busy="saving" :content-key="JSON.stringify([form.events.length, formError])" @close="form = null">
         <ThoughtForm :form="form" :editing="!!form.id" :disabled="saving || created" :error="formError">
           <template #secondary>

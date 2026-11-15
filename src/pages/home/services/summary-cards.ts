@@ -37,6 +37,7 @@ export function summaryCaption(key, row) {
   return '第 ' + (row.currentEpisode || 1) + (row.episodes > 0 ? ' / ' + row.episodes : '') + ' 集 · ' + Math.round(progress) + '%'
 }
 export function summaryEntry(key, id = '') {
+  if (key === 'memo' && id) return '/pages/records/note-edit?id=' + encodeURIComponent(id)
   const route = summaryCards[key].route
   return route + (id ? (route.includes('?') ? '&' : '?') + 'id=' + encodeURIComponent(id) : '')
 }

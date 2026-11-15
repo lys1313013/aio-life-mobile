@@ -90,6 +90,7 @@ export function matchesNativeMenu(url, path) {
   const destination = nativeDestination(path);
   if (!destination) return false;
   const [page, query = ''] = url.split('?');
+  if (page === '/pages/records/note-edit') return matchesNativeMenu('/pages/records/notes?kind=memo', path);
   // 日历明细继承所属业务菜单；收支概览同时要求收入、支出权限。
   if (page === '/pages/finance/calendar-details') {
     const kind = query.split('&').find(value => value.startsWith('kind='))?.slice(5);

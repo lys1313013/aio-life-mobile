@@ -89,19 +89,19 @@ test('财务任一底层业务锁住时不请求摘要，关闭卡片完全无�
 });
 test('最近笔记点击读取完整大整数记录，保存后返回首页更新摘要', async ({ page }) => {
   const fixture = await setup(page, { count: 1 });
-  const id = '9223372036854775800'; let detail = { id, title: '笔记完整标题', content: '完整正文需要保留', hiddenContent: true }; let saved;
+  const id = '9223372036854775800'; let detail = { id, title: '笔记完整标题', content: '完整正文需要保留', hiddenContent: true, favorite: false }; let saved;
   await page.route('**/api/memo/query?*', route => route.fulfill({ json: { code: 0, data: { items: [detail], total: 1 } } }));
   await page.route('**/api/memo/' + id, route => {
     if (route.request().method() === 'PUT') { saved = route.request().postDataJSON(); detail = { ...detail, ...saved }; fixture.data.memo.items[0].title = saved.title; }
-    return route.fulfill({ json: { code: 0, data: detail } });
+    return route.fulfill({ json: { code: 0, data: route.request().method() === 'PUT' ? true : detail } });
   });
   await page.getByRole('button', { name: /^查看笔记0/ }).click();
-  await expect(page).toHaveURL(new RegExp('kind=memo.*id=' + id));
-  const editor = page.getByRole('dialog', { name: '编辑笔记' }); await expect(editor).toBeVisible();
+  await expect(page).toHaveURL(new RegExp('records/note-edit\\?id=' + id));
+  const editor = page.locator('.note-page'); await expect(editor).toBeVisible(); await expect(page.getByRole('dialog')).toHaveCount(0);
   await expect(editor.getByRole('textbox', { name: '内容', exact: true })).toHaveValue('完整正文需要保留');
   await editor.getByRole('textbox', { name: '标题', exact: true }).fill('修改后的笔记标题');
-  await editor.getByRole('button', { name: '保存', exact: true }).click(); await expect(editor).toHaveCount(0);
-  expect(fixture.calls).toContain('/home/sections/memo'); expect(saved.content).toBe('完整正文需要保留'); expect(saved.hiddenContent).toBe(true);
+  await editor.getByRole('button', { name: '保存', exact: true }).click(); await expect(page.getByText('已保存', { exact: true })).toBeVisible();
+  expect(fixture.calls).toContain('/home/sections/memo'); expect(saved.content).toBe('完整正文需要保留'); expect(saved).not.toHaveProperty('hiddenContent'); expect(detail.hiddenContent).toBe(true);
   await page.getByRole('button', { name: '返回', exact: true }).click();
   await expect(page.locator('[aria-label="最近笔记首页卡片"]')).toContainText('修改后的笔记标题');
 });

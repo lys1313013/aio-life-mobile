@@ -1,0 +1,263 @@
+<script setup lang="ts">
+import { computed, getCurrentInstance, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
+import { onBackPress, onLoad, onShow } from '@dcloudio/uni-app';
+import PageHeader from '../../components/PageHeader.uvue';
+import PageState from '../../components/PageState.uvue';
+import NoteSkeleton from './NoteSkeleton.uvue';
+import FormActions from '../../components/FormActions.uvue';
+import MobileButton from '../../components/MobileButton.uvue';
+import AppIcon from '../../components/AppIcon.uvue';
+import LoadingIndicator from '../../components/LoadingIndicator.uvue';
+import ConfirmAction from '../../components/ConfirmAction.uvue';
+import SecondaryUnlock from '../../components/SecondaryUnlock.uvue';
+// #ifdef MP-WEIXIN
+import WeixinModalBackGuard from '../../components/WeixinModalBackGuard.uvue';
+// #endif
+import { createRecordScope } from '../../services/records/page-scope.ts';
+import { session } from '../../services/session.ts';
+import { isDark } from '../../services/theme.ts';
+import { useWindowResize } from '../../services/window-resize.ts';
+import { fetchMemoById, saveNote, deleteNote } from './services/notes.ts';
+import spacing from '../../styles/spacing.json';
+
+const id = ref('');
+const form = ref({ title: '', content: '', favorite: false, hiddenContent: false, updateTime: '' });
+const savedText = ref('');
+const ready = ref(false), loading = ref(false), saving = ref(false), flagLoading = ref(''), removing = ref(false);
+const loadError = ref(''), error = ref(''), menuOpen = ref(false), exitOpen = ref(false);
+const menuLeft = ref(spacing.page), menuTop = ref(spacing.controlMin);
+const viewportWidth = ref(uni.getWindowInfo().windowWidth);
+const menuWidth = computed(() => Math.min(280, viewportWidth.value - spacing.page * 2));
+const exitWidth = computed(() => Math.min(360, viewportWidth.value - spacing.page * 2));
+const busy = computed(() => loading.value || saving.value || !!flagLoading.value || removing.value);
+const textSnapshot = () => JSON.stringify([form.value.title, form.value.content]);
+const dirty = computed(() => ready.value && textSnapshot() !== savedText.value);
+const count = computed(() => Array.from(form.value.content.replace(/\s/g, '')).length);
+const meta = computed(() => dirty.value ? '未保存' : form.value.updateTime.slice(0, 16));
+const instance = getCurrentInstance();
+const allowLeave = ref(false);
+let created = false;
+const scope = createRecordScope(clearData => {
+  menuOpen.value = false; exitOpen.value = false;
+  if (clearData) { ready.value = false; savedText.value = ''; form.value = { title: '', content: '', favorite: false, hiddenContent: false, updateTime: '' }; }
+});
+onLoad(options => { id.value = String(options?.id || ''); });
+onShow(() => {
+  if (!session.token) { uni.reLaunch({ url: '/pages/login/index' }); return; }
+  if (!ready.value && !loading.value) void load();
+});
+async function load() {
+  if (loading.value || ready.value) return;
+  loading.value = true; loadError.value = '';
+  try {
+    const data = id.value ? await scope.wait(fetchMemoById(id.value)) : { title: '', content: '', favorite: false, hiddenContent: false, updateTime: '' };
+    if (!data || (id.value && data.id !== id.value)) throw Error('笔记不存在或已删除');
+    form.value = { title: data.title || '', content: data.content || '', favorite: data.favorite === true, hiddenContent: data.hiddenContent === true, updateTime: data.updateTime || '' };
+    savedText.value = textSnapshot(); ready.value = true;
+    void syncLabels();
+  } catch (reason) {
+    if (reason.name !== 'PageInactiveError') loadError.value = reason.message || '读取失败，请重试';
+  } finally { loading.value = false; }
+}
+async function leave() {
+  allowLeave.value = true;
+  // 小程序先撤掉表单的原生返回拦截层，再退出编辑路由。
+  await nextTick();
+  if (getCurrentPages().length < 2) { uni.redirectTo({ url: '/pages/records/notes?kind=memo' }); return; }
+  uni.navigateBack({ fail: () => uni.redirectTo({ url: '/pages/records/notes?kind=memo' }) });
+}
+function back() {
+  if (saving.value || !!flagLoading.value || removing.value) return;
+  menuOpen.value = false;
+  if (dirty.value) { exitOpen.value = true; void positionPanel(); }
+  else leave();
+}
+function interceptBack() {
+  if (allowLeave.value) return false;
+  if (menuOpen.value) { menuOpen.value = false; return true; }
+  if (exitOpen.value) { exitOpen.value = false; return true; }
+  back(); return true;
+}
+onBackPress(interceptBack);
+async function save(exit = false) {
+  if (!ready.value || busy.value || created) return;
+  if (!form.value.title.trim() || !form.value.content.trim()) { error.value = '请输入标题和内容'; return; }
+  saving.value = true; error.value = '';
+  const payload = { title: form.value.title.trim(), content: form.value.content.trim() };
+  try {
+    const result = await scope.wait(saveNote('memo', id.value
+      ? { id: id.value, ...payload }
+      : { ...payload, favorite: form.value.favorite, hiddenContent: form.value.hiddenContent }));
+    if (result !== true) throw Error('保存失败，请重试');
+    form.value.title = payload.title; form.value.content = payload.content;
+    savedText.value = textSnapshot(); exitOpen.value = false;
+    // 新增接口返回布尔值；成功后返回列表，离开失败也不能再次发送 POST。
+    if (!id.value) { created = true; leave(); }
+    else {
+      if (exit) leave();
+      else uni.showToast({ title: '已保存', icon: 'none' });
+    }
+  } catch (reason) {
+    if (!id.value && reason.name === 'PageInactiveError') {
+      created = true;
+      error.value = '保存结果待确认，请返回笔记列表核对';
+    }
+    if (reason.name !== 'PageInactiveError') error.value = reason.message || '保存失败，请重试';
+  } finally { saving.value = false; }
+}
+async function changeFlag(key: 'favorite' | 'hiddenContent') {
+  if (!ready.value || busy.value || created) return;
+  error.value = '';
+  const value = !form.value[key];
+  if (!id.value) { form.value[key] = value; menuOpen.value = false; return; }
+  flagLoading.value = key;
+  try {
+    // 收藏和显隐只提交自身字段，不连带保存尚未提交的正文，也不改变内容时间。
+    const result = await scope.wait(saveNote('memo', { id: id.value, [key]: value }));
+    if (result !== true) throw Error('操作失败，请重试');
+    form.value[key] = value; menuOpen.value = false;
+  } catch (reason) {
+    if (reason.name !== 'PageInactiveError') error.value = reason.message || '操作失败，请重试';
+  } finally { flagLoading.value = ''; }
+}
+async function remove() {
+  if (!ready.value || !id.value || busy.value) return;
+  removing.value = true;
+  try {
+    const result = await scope.wait(deleteNote('memo', id.value));
+    if (result !== true) throw Error('删除失败，请重试');
+    savedText.value = textSnapshot(); leave();
+  } finally { removing.value = false; }
+}
+async function positionPanel() {
+  await nextTick();
+  uni.createSelectorQuery().in(instance?.proxy).select('.note-actions').boundingClientRect(rect => {
+    if (!rect || Array.isArray(rect)) return;
+    const info = uni.getWindowInfo();
+    const panelWidth = exitOpen.value ? exitWidth.value : menuWidth.value;
+    menuLeft.value = Math.max(spacing.page, Math.min(rect.right - panelWidth, info.windowWidth - panelWidth - spacing.page));
+    menuTop.value = rect.bottom + spacing.detail;
+  }).exec();
+}
+function more() { if (!busy.value) { menuOpen.value = !menuOpen.value; if (menuOpen.value) void positionPanel(); } }
+useWindowResize(() => { viewportWidth.value = uni.getWindowInfo().windowWidth; if (menuOpen.value || exitOpen.value) void positionPanel(); });
+async function syncLabels() {
+  // #ifdef WEB
+  await nextTick();
+  const root = instance?.proxy?.$el;
+  for (const [selector, label] of [['.note-title textarea', '标题'], ['.note-content textarea', '内容']]) root?.querySelector?.(selector)?.setAttribute('aria-label', label);
+  // #endif
+}
+watch(ready, syncLabels);
+watch(() => session.token, () => {
+  ready.value = false; savedText.value = ''; error.value = ''; loadError.value = '';
+  menuOpen.value = false; exitOpen.value = false;
+  form.value = { title: '', content: '', favorite: false, hiddenContent: false, updateTime: '' };
+}, { flush: 'sync' });
+// #ifdef WEB
+function beforeUnload(event) {
+  if (dirty.value && !allowLeave.value) { event.preventDefault(); event.returnValue = ''; }
+}
+function escape(event) { if (event.key === 'Escape') { menuOpen.value = false; exitOpen.value = false; } }
+// #endif
+onMounted(() => {
+  // #ifdef WEB
+  window.addEventListener('beforeunload', beforeUnload);
+  window.addEventListener('keydown', escape);
+  // #endif
+});
+onUnmounted(() => {
+  // #ifdef WEB
+  window.removeEventListener('beforeunload', beforeUnload);
+  window.removeEventListener('keydown', escape);
+  // #endif
+});
+</script>
+
+<template>
+  <view class="note-page" :class="{ 'note-page-dark': isDark }">
+    <PageHeader title="编辑笔记" paper back :content-min-width="0" :actions-min-width="spacing.controlMin * 3 + spacing.detail * 2" compact-actions @back="back">
+      <template #default><text class="note-navigation-label" :class="{ 'note-muted-dark': isDark }">编辑笔记</text></template>
+      <template #actions>
+        <view class="note-actions">
+          <button hover-class="none" class="note-action" :style="{ backgroundColor: 'transparent' }" role="button" :aria-label="form.favorite ? '取消收藏' : '收藏笔记'" :aria-pressed="form.favorite" :aria-busy="flagLoading === 'favorite'" :disabled="!ready || busy || created" @click="changeFlag('favorite')">
+            <AppIcon :name="form.favorite ? 'ant-design:star-filled' : 'ant-design:star-outlined'" :color="form.favorite ? (isDark ? '#f6c94c' : '#bd8700') : (isDark ? '#eeeeef' : '#52525b')" />
+            <view v-if="flagLoading === 'favorite'" class="note-flag-spinner" role="status" aria-label="正在保存收藏" />
+          </button>
+          <MobileButton label="保存" variant="ghost" :loading="saving" :disabled="!ready || busy || created" @click="save()"><text class="note-save-label" :class="{ 'note-save-dark': isDark }">保存</text></MobileButton>
+          <MobileButton label="更多操作" icon="ant-design:more-outlined" variant="ghost" :disabled="!ready || busy || created" :aria-expanded="menuOpen" @click="more" />
+        </view>
+      </template>
+    </PageHeader>
+    <scroll-view class="note-scroll" direction="vertical" :scroll-y="true" :scroll-with-animation="false" @scroll="menuOpen = false">
+      <view class="ui-page-inset">
+        <PageState :loading="loading || (!ready && !loadError)" :error="loadError" :has-content="ready" @retry="load">
+          <template #loading><NoteSkeleton /></template>
+          <view v-if="ready" class="note-document">
+            <textarea v-model="form.title" class="note-title" :class="{ 'note-input-dark': isDark }" aria-label="标题" placeholder="标题" :maxlength="100" auto-height :disabled="saving || removing || created" :cursor-spacing="spacing.controlMin" />
+            <view class="note-meta"><text class="note-meta-text">{{ meta }}</text><text v-if="meta" class="note-meta-text">·</text><text class="note-meta-text">{{ count }}字</text><AppIcon v-if="form.hiddenContent" name="ant-design:eye-invisible-outlined" :size="14" aria-label="列表正文已隐藏" color="#8b8f99" /></view>
+            <view v-if="error" class="note-error" role="alert"><text class="note-error-text">{{ error }}</text></view>
+            <MobileButton v-if="created" label="返回笔记列表" variant="ghost" @click="leave" />
+            <textarea v-model="form.content" class="note-content" :class="{ 'note-input-dark': isDark }" aria-label="内容" placeholder="记下你的想法…" :maxlength="-1" auto-height :disabled="saving || removing || created" :cursor-spacing="spacing.controlMin" />
+          </view>
+        </PageState>
+      </view>
+    </scroll-view>
+    <view v-if="menuOpen || exitOpen" class="note-menu-shade" @click="menuOpen = false; exitOpen = false" />
+    <view v-if="menuOpen" class="note-menu" :class="{ 'note-panel-dark': isDark }" :style="{ left: menuLeft + 'px', top: menuTop + 'px', width: menuWidth + 'px' }" role="group" aria-label="笔记更多操作">
+      <button hover-class="none" class="note-menu-item" role="button" :aria-label="form.hiddenContent ? '在列表中显示正文' : '在列表中隐藏正文'" :disabled="busy" @click="changeFlag('hiddenContent')"><LoadingIndicator v-if="flagLoading === 'hiddenContent'" ring compact label="正在保存显隐" /><AppIcon v-else :name="form.hiddenContent ? 'ant-design:eye-outlined' : 'ant-design:eye-invisible-outlined'" /><text class="note-menu-label" :class="{ 'note-text-dark': isDark }">{{ form.hiddenContent ? '在列表中显示正文' : '在列表中隐藏正文' }}</text></button>
+      <ConfirmAction v-if="id" label="删除笔记" message="删除这篇笔记？删除后无法恢复。" :action="remove" confirm-label="删除">
+        <template #default="{ open }"><button hover-class="none" class="note-menu-item" role="button" aria-label="删除笔记" :disabled="busy" @click="open"><AppIcon name="ant-design:delete-outlined" color="#e05260" /><text class="note-menu-label note-danger">删除笔记</text></button></template>
+      </ConfirmAction>
+    </view>
+    <view v-if="exitOpen" class="note-exit" :class="{ 'note-panel-dark': isDark }" :style="{ left: menuLeft + 'px', top: menuTop + 'px', width: exitWidth + 'px' }" role="dialog" aria-label="保存这次修改">
+      <text class="note-exit-title" :class="{ 'note-text-dark': isDark }">保存这次修改？</text>
+      <text v-if="error" class="note-error-text" role="alert">{{ error }}</text>
+      <FormActions><template #secondary><MobileButton label="不保存" variant="ghost" compact :disabled="busy" @click="leave" /></template><MobileButton label="继续编辑" variant="ghost" compact :disabled="busy" @click="exitOpen = false" /><MobileButton label="保存" compact :loading="saving" :disabled="!!flagLoading || removing" @click="save(true)" /></FormActions>
+    </view>
+    <SecondaryUnlock />
+    <!-- #ifdef MP-WEIXIN -->
+    <WeixinModalBackGuard v-if="!allowLeave && (dirty || menuOpen || exitOpen || saving || !!flagLoading || removing)" :busy="saving || !!flagLoading || removing" @close="interceptBack" />
+    <!-- #endif -->
+  </view>
+</template>
+
+<style scoped lang="scss">
+@use '../../styles/platform' as *;
+@use '../../styles/spacing.scss';
+@use '../../styles/spacing-tokens' as *;
+@use '../../styles/typography' as *;
+@use '../../styles/theme-tokens' as *;
+.note-page { height: 100%; min-height: 0; flex: 1; background-color: $theme-surface-light; color: #27272a; }
+.note-page-dark { background-color: $theme-page-dark; color: #eeeeef; }
+.note-scroll { flex: 1; height: 0; min-height: 0; }
+.note-document { width: 100%; padding-bottom: $space-controlMin; }
+.note-actions { flex-direction: row; align-items: center; gap: $space-detail; }
+.note-action { position: relative; display: flex; align-items: center; justify-content: center; width: $space-controlMin; height: $space-controlMin; margin: 0; padding: 0; background-color: transparent; @include borderless-button; }
+.note-flag-spinner { position: absolute; width: $space-controlMin - $space-inline * 2; height: $space-controlMin - $space-inline * 2; border: $space-micro solid transparent; border-top-color: $theme-accent-light; border-right-color: $theme-accent-light; border-radius: 50%; animation: note-flag-spin 0.8s linear infinite; }
+@keyframes note-flag-spin { to { transform: rotate(360deg); } }
+.note-navigation-label { @include type-style('label'); color: #73767e; }
+.note-save-label { @include type-style('body-strong'); color: $theme-accent-light; }
+.note-title { @include type-style('hero'); width: 100%; padding: 0; min-height: type-line('hero'); background-color: transparent; color: #27272a; }
+.note-content { @include type-style('prose'); width: 100%; padding: 0; min-height: $space-controlMin * 6; background-color: transparent; color: #27272a; }
+.note-input-dark { color: #eeeeef; }
+.note-meta { flex-direction: row; align-items: center; gap: $space-inline; margin-top: $space-inline; margin-bottom: $space-section * 2; }
+.note-meta-text { @include type-style('caption'); color: #8b8f99; }
+.note-error { margin-bottom: $space-section; }
+.note-error-text { @include type-style('label'); color: #e05260; }
+.note-menu-shade { position: fixed; left: 0; right: 0; top: 0; bottom: 0; z-index: 105; }
+.note-menu { position: fixed; z-index: 120; padding: $space-detail; border-radius: 12px; background-color: $theme-overlay-light; box-shadow: 0 6px 24px rgba(0, 0, 0, 0.18); }
+.note-menu-item { display: flex; flex-direction: row; align-items: center; justify-content: flex-start; width: 100%; min-height: $space-controlMin; padding: $space-inline $space-section; margin: 0; gap: $space-inline; background-color: transparent; @include borderless-button; }
+.note-menu-label { @include type-style('label'); color: #52525b; }
+.note-danger { color: #e05260; }
+.note-exit { position: fixed; z-index: 120; padding: $space-modal; border-radius: 12px; background-color: $theme-overlay-light; box-shadow: 0 6px 24px rgba(0, 0, 0, 0.18); }
+.note-exit-title { @include type-style('title'); margin-bottom: $space-section; color: #27272a; }
+.note-text-dark { color: #eeeeef; }
+.note-muted-dark { color: #969ba5; }
+.note-save-dark { color: $theme-accent-dark; }
+.note-panel-dark { background-color: $theme-overlay-dark; }
+/* #ifdef WEB */
+@media (prefers-reduced-motion: reduce) { .note-flag-spinner { animation: none; } }
+.note-action:focus-visible { outline: 2px solid $theme-accent-light; }
+/* #endif */
+</style>

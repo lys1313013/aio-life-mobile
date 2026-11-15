@@ -61,3 +61,8 @@ test('财务日历详情继承原业务菜单锁，概览同时覆盖收支底�
   assert.deepEqual(lockedMenuPaths('/pages/finance/calendar-details?kind=finance', tree, ['finance']), ['/finance-management/dashboard', '/finance-management/expense', '/finance-management/income'])
   assert.equal(matchesNativeMenu('/pages/finance/calendar-details?kind=invalid', '/finance-management/expense'), false)
 })
+
+test('笔记整页编辑继承笔记菜单锁，不能命中闪念权限', () => {
+  assert.equal(matchesNativeMenu('/pages/records/note-edit?id=9223372036854775807', '/record/memo'), true);
+  assert.equal(matchesNativeMenu('/pages/records/note-edit', '/record/think'), false);
+});

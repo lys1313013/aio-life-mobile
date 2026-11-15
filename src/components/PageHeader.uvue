@@ -15,6 +15,7 @@ const props = defineProps({
   contentMinWidth: { type: Number, default: 0 },
   actionsMinWidth: { type: Number, default: 0 },
   compactActions: { type: Boolean, default: false },
+  paper: { type: Boolean, default: false },
 })
 defineEmits(['back'])
 const statusBarHeight = ref(0)
@@ -47,7 +48,7 @@ onMounted(() => {
 <template>
   <!-- 保留导航高度，固定定位后不遮住首屏内容。 -->
   <view class="navigation-placeholder" :style="{ height: statusBarHeight + headerHeight + 'px' }">
-  <view class="page-navigation" :style="{ paddingTop: statusBarHeight + 'px' }" :class="themeClass('page-navigation')">
+  <view class="page-navigation" :style="{ paddingTop: statusBarHeight + 'px' }" :class="[themeClass('page-navigation'), { 'page-navigation-paper': paper }, themeClass({ 'page-navigation-paper': paper })]">
     <view class="navigation-row ui-header-inset" :style="{ height: navigationHeight + 'px', paddingRight: rightInset + 'px' }">
       <button
         v-if="back"
@@ -74,6 +75,7 @@ onMounted(() => {
 
 <style scoped lang="scss">
 @use '../styles/platform' as *;
+@use '../styles/theme-tokens' as *;
 @use '../styles/typography' as *;
 @use '../styles/spacing.scss';
 @use '../styles/spacing-tokens' as *;
@@ -164,6 +166,8 @@ onMounted(() => {
   .page-navigation-dark {
     background-color: #111215;
   }
+  .page-navigation-paper { background-color: $theme-surface-light; }
+  .page-navigation-paper-dark { background-color: $theme-page-dark; }
   .navigation-title-dark {
     color: #eeeeef;
   }

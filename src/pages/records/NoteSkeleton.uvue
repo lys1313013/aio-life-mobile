@@ -1,0 +1,32 @@
+<script setup lang="ts">
+import { isDark } from '../../services/theme.ts';
+</script>
+<template>
+  <view class="note-skeleton" role="status" aria-label="正在加载笔记">
+    <view aria-hidden="true">
+      <view class="note-skeleton-title"><view class="note-skeleton-shape note-skeleton-heading" :class="{ 'note-skeleton-dark': isDark }" /></view>
+      <view class="note-skeleton-meta"><view class="note-skeleton-shape note-skeleton-date" :class="{ 'note-skeleton-dark': isDark }" /><view class="note-skeleton-shape note-skeleton-count" :class="{ 'note-skeleton-dark': isDark }" /></view>
+      <view v-for="paragraph in 3" :key="paragraph" class="note-skeleton-paragraph">
+        <view v-for="line in 4" :key="line" class="note-skeleton-line"><view class="note-skeleton-shape note-skeleton-body" :class="{ 'note-skeleton-dark': isDark, 'note-skeleton-short': line === 4 }" /></view>
+      </view>
+    </view>
+  </view>
+</template>
+<style scoped lang="scss">
+@use '../../styles/skeleton';
+@use '../../styles/spacing-tokens' as *;
+@use '../../styles/typography' as *;
+.note-skeleton { @include skeleton.pulse; width: 100%; padding-bottom: $space-controlMin; }
+.note-skeleton-shape { @include skeleton.shape; }
+.note-skeleton-dark { @include skeleton.dark; }
+.note-skeleton-title { height: type-line('hero'); justify-content: center; }
+.note-skeleton-heading { width: 72%; height: type-line('heading'); }
+.note-skeleton-meta { height: type-line('caption'); flex-direction: row; align-items: center; gap: $space-inline; margin-top: $space-inline; margin-bottom: $space-section * 2; }
+.note-skeleton-date { width: 28%; height: type-line('badge'); }
+.note-skeleton-count { width: 10%; height: type-line('badge'); }
+.note-skeleton-paragraph { margin-bottom: type-line('prose'); }
+.note-skeleton-line { height: type-line('prose'); justify-content: center; }
+.note-skeleton-body { width: 100%; height: type-line('badge'); }
+.note-skeleton-short { width: 63%; }
+@include skeleton.motion('.note-skeleton');
+</style>

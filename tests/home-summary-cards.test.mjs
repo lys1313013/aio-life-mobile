@@ -39,7 +39,7 @@ test('财务跨月返回强制更新，金额为数字且零金额有效', async
   assert.throws(() => readSummary('finance', { month: summaryMonth(), income: '0', expense: 0, balance: 0, refreshInterval: 300 }))
 })
 test('摘要跳转精确保留长 ID 与笔记模式', () => {
-  assert.equal(summaryEntry('memo', '9223372036854775807'), '/pages/records/notes?kind=memo&id=9223372036854775807')
+  assert.equal(summaryEntry('memo', '9223372036854775807'), '/pages/records/note-edit?id=9223372036854775807')
   assert.equal(summaryEntry('device', '9223372036854775807'), '/pages/goods/devices?id=9223372036854775807')
 })
 test('摘要刷新权限撤销后立即清除数据，无效周期不阻止业务数据展示', async () => {

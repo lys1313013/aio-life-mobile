@@ -19,13 +19,13 @@ async function pageLoadFixture(page, functionEnd) {
 const { fixture, pagination: { readPageTotal, mergePageItems, hasMorePageItems } } = globalThis[${JSON.stringify(key)}];
 let requestedEdit = ${JSON.stringify(id)}, requestedCreate = false, alive = true, generation = 0;
 const rows = {value:[]}, page={value:1}, total={value:0}, keyword={value:''}, loading={value:false}, refreshing={value:false}, error={value:''}, moreError={value:''}, pageEnded={value:false};
-const kind={value:'memo'}, status={value:'全部状态'}, statusLabels={}, statuses=[], typeFilter={value:'全部类型'}, types={value:[]}, counts={value:{}}, statistics={value:{}};
+const kind={value:'think'}, status={value:'全部状态'}, statusLabels={}, statuses=[], typeFilter={value:'全部类型'}, types={value:[]}, counts={value:{}}, statistics={value:{}};
 const scope={wait: promise=>promise}, open=value=>fixture.selected=value, stopCoverPolling=()=>{}, pollCovers=()=>{}, loadPhoto=()=>{};
 const full = {id:${JSON.stringify(id)}, title:'模拟记录', content:'完整私密正文', hiddenContent:true, notes:'完整备注', pagesInfo:'[]', purchasePlace:'模拟渠道'};
 const fetchDictionary=async()=>({dictDetailList:[]}), fetchVideoCounts=async()=>({}), fetchVideoStatistics=async()=>({});
 const fetchNotes=async()=>({items:[],total:0});
 const fetchMemoById=async value=>{fixture.detailCalls.push(value); if(fixture.fail)throw Error('模拟读取失败'); return fixture.missing?null:full;};
-const fetchNoteById=async()=>({items:[]});
+const fetchNoteById=async value=>{fixture.detailCalls.push(value); if(fixture.fail)throw Error('模拟读取失败'); return {items:fixture.missing?[]:[full]};};
 const fetchVideoPage=async()=>{if(fixture.fail)throw Error('模拟读取失败'); return {items:fixture.missing?[]:[full],total:fixture.missing?0:1};};
 const fetchDevicePage=fetchVideoPage;
 ${page === 'records/video' ? `
