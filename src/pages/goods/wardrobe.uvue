@@ -153,7 +153,7 @@ const seasonLabels = computed(() => [...new Set([...seasons, ...Object.keys(stat
 const summary = computed(() => [
   { label: '总价值', value: '¥ ' + (stats.value.totalValue ?? 0) },
   { label: '衣物', value: String(stats.value.totalCount ?? 0) },
-  { label: '均价', value: '¥ ' + (stats.value.avgPrice ?? 0) },
+  { label: '购入均价', value: '¥ ' + (stats.value.avgPurchasePrice ?? 0) },
 ]);
 async function load() {
   const task = ++sequence,
@@ -191,7 +191,7 @@ function blank() {
     brand: '',
     season: [],
     purchaseDate: '',
-    price: '',
+    purchasePrice: '',
     fileId: '',
     size: '',
     remark: '',
@@ -207,7 +207,7 @@ function openItem(row = null) {
           typeof row.season === 'string'
             ? row.season.split(',').filter(Boolean)
             : row.season || [],
-        price: row.price == null ? '' : String(row.price),
+        purchasePrice: row.purchasePrice == null ? '' : String(row.purchasePrice),
       }
     : blank();
   formError.value = '';
@@ -254,7 +254,7 @@ async function upload() {
   formError.value = '';
   try {
     const file = await chooseAndUploadAttachment('/file/upload', {
-      bizType: 'wardrobe_item',
+      bizType: 'wardrobe_item_cover',
     });
     if (alive && visible && task === sequence && token === session.token) {
       form.value.fileId = file.id;
@@ -395,7 +395,7 @@ function chooseCategory(value) {
               </button>
               <text class="muted" :class="themeClass('secondary-text')">{{ [row.categoryName, row.color, row.brand, row.size, row.season].filter(Boolean).join(' · ') }}</text>
               <view class="item-footer ui-row">
-                <text class="item-price">{{ row.price == null ? '—' : '¥ ' + row.price }}</text>
+                <text class="item-price">{{ row.purchasePrice == null ? '—' : '¥ ' + row.purchasePrice }}</text>
                 <ConfirmAction :label="'删除衣物' + row.name" :action="() => removeItem(row)">
                   <template #default="{ open: confirm, busy: removing }">
                     <button hover-class="none" role="button" class="item-icon-button ui-type-body" :aria-label="'删除衣物' + row.name" :disabled="removing" @click="confirm">
@@ -408,10 +408,10 @@ function chooseCategory(value) {
           </view>
         </template>
         <template v-else>
-          <view v-for="row in categories" :key="row.id" class="category-row ui-row" :class="{ 'category-row-preset': row.categoryType === 0 }" :style="{ marginLeft: row.depth * 16 + 'px' }">
+          <view v-for="row in categories" :key="row.id" class="category-row ui-row" :class="{ 'category-row-preset': row.preset === true }" :style="{ marginLeft: row.depth * 16 + 'px' }">
             <AppIcon v-if="row.icon && iconCatalog.icons[row.icon]" :name="row.icon" :size="20" />
             <text class="category-name">{{ row.name }}</text>
-            <text v-if="row.categoryType === 0" class="muted" :class="themeClass('secondary-text')">预设</text>
+            <text v-if="row.preset === true" class="muted" :class="themeClass('secondary-text')">预设</text>
             <view v-else class="tools ui-row">
               <MobileButton :label="'编辑分类' + row.name" icon="ant-design:edit-outlined" variant="ghost" @click="openCategory(row)" />
               <ConfirmAction :label="'删除分类' + row.name" :action="() => removeCategory(row)" />
@@ -462,7 +462,7 @@ function chooseCategory(value) {
           </view>
           <view class="ui-field-row">
             <FormField appearance="soft" compact stretch label="尺码" placeholder="如：M、42" v-model="form.size" />
-            <FormField appearance="soft" compact stretch label="价格" placeholder="¥ 0.00" input-type="digit" v-model="form.price" />
+            <FormField appearance="soft" compact stretch label="购入价" placeholder="¥ 0.00" input-type="digit" v-model="form.purchasePrice" />
           </view>
           <view class="season-field ui-section">
             <text class="field-label" :class="themeClass('secondary-text')">适用季节</text>

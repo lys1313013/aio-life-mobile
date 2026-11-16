@@ -35,7 +35,7 @@ const clothes = [1, 2, 3].map((n) => ({
   brand: '模拟品牌',
   size: 'M',
   season: '春,秋',
-  price: 80,
+  purchasePrice: 80,
   fileId: 'photo-' + n,
 }));
 async function fixture(p) {
@@ -51,11 +51,11 @@ async function fixture(p) {
     },
     '/wardrobe/items': clothes,
     '/wardrobe/items/1': clothes[0],
-    '/wardrobe/categories': [{ id: '81', name: '上衣', parentId: '0', categoryType: 0 }],
+    '/wardrobe/categories': [{ id: '81', name: '上衣', parentId: '0', preset: true }],
     '/wardrobe/stats': {
       totalCount: 3,
       totalValue: 240,
-      avgPrice: 80,
+      avgPurchasePrice: 80,
       seasonCount: { 春: 3, 秋: 3 },
     },
   };

@@ -5,4 +5,4 @@ export async function itemDetail(value){const row=await request('/wardrobe/items
 export function saveItem(form,original){return request('/wardrobe/items'+(original?'/'+id(original.id):''),original?'PUT':'POST',itemPayload(form))}
 export function deleteItem(row){return request('/wardrobe/items/'+id(row.id),'DELETE')}
 export function saveCategory(form,original){return request('/wardrobe/categories'+(original?'/'+id(original.id):''),original?'PUT':'POST',categoryPayload(form,original))}
-export function deleteCategory(row){if(row.categoryType===0)throw Error('系统预设分类不可删除');return request('/wardrobe/categories/'+id(row.id),'DELETE')}
+export function deleteCategory(row){if(row.preset===true)throw Error('系统预设分类不可删除');return request('/wardrobe/categories/'+id(row.id),'DELETE')}

@@ -9,7 +9,7 @@ const clothes = Array.from({ length: 6 }, (_, index) => ({
   name: index === 0 ? '米白色棉麻通勤衬衫' : index === 1 ? '深蓝色轻量防风外套，适合春秋出行与日常通勤' : ['日常圆领短袖', '宽松针织开衫', '秋冬羊毛围巾', '基础直筒牛仔裤'][index - 2],
   categoryId: index === 4 ? '82' : '81', categoryName: index === 4 ? '配饰' : '上衣',
   color: index % 2 ? '深蓝' : '米白', brand: '模拟品牌', size: 'M',
-  season: index === 2 ? '夏' : index === 4 ? '冬' : '春,秋', price: 100 + index * 20,
+  season: index === 2 ? '夏' : index === 4 ? '冬' : '春,秋', purchasePrice: 100 + index * 20,
   fileId: index % 2 ? null : '9223372036854775806', purchaseDate: '2026-10-01',
   remark: '适合日常通勤，可与深色长裤搭配。轻柔清洗，避免高温烘干。',
 }));
@@ -30,12 +30,12 @@ async function fixture(page) {
     let data;
     if (path === '/api/wardrobe/items') data = state.rows;
     else if (path === '/api/wardrobe/categories') data = [
-      { id: '81', name: '上衣', parentId: '0', categoryType: 0 },
-      { id: '82', name: '配饰', parentId: '0', categoryType: 1 },
+      { id: '81', name: '上衣', parentId: '0', preset: true },
+      { id: '82', name: '配饰', parentId: '0', preset: false },
     ];
     else if (path === '/api/wardrobe/stats') {
-      const totalValue = state.rows.reduce((sum, row) => sum + row.price, 0);
-      data = { totalCount: state.rows.length, totalValue, avgPrice: state.rows.length ? totalValue / state.rows.length : 0,
+      const totalValue = state.rows.reduce((sum, row) => sum + row.purchasePrice, 0);
+      data = { totalCount: state.rows.length, totalValue, avgPurchasePrice: state.rows.length ? totalValue / state.rows.length : 0,
         seasonCount: Object.fromEntries(['春', '夏', '秋', '冬'].map(season => [season, state.rows.filter(row => row.season.includes(season)).length])) };
     } else data = state.rows.find(row => path.endsWith('/' + row.id));
     await route.fulfill({ json: { code: 0, data } });
