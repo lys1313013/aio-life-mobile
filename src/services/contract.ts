@@ -51,7 +51,7 @@ export function readUser(data) {
   if (data == null || typeof data.id !== 'string' || data.id.length === 0) {
     throw new Error('用户信息异常，请重试')
   }
-  if (data.avatarFileId != null && (typeof data.avatarFileId !== 'string' || !/^[1-9][0-9]{0,18}$/.test(data.avatarFileId))) {
+  if (data.avatarFileId != null && (typeof data.avatarFileId !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(data.avatarFileId))) {
     throw new Error('头像信息异常，请重试')
   }
   return {

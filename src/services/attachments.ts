@@ -52,7 +52,7 @@ export async function chooseAndUploadDocument(path: string, formData: Record<str
   try{current(token);return await uploadAttachment(path,file.path,formData)}finally{await releaseDocument(file)}
 }
 
-// 鉴权通过 header 传递，不拼入 URL、不持久化跨用户缓存。
+// id 为 attachment.file_key 的 UUIDv4；鉴权通过 header 传递，不拼入 URL、不持久化跨用户缓存。
 export function authFileUrl(id: string): Promise<string> {
   if (typeof id !== 'string' || !id) return Promise.reject(new Error('附件 ID 无效'))
   const token = session.token

@@ -129,3 +129,5 @@ docs/                  # 专题说明与标日期的历史验证
 | 平台历史结果与限制 | [历史验证记录](docs/历史验证记录.md)、[App 开发与验证](docs/App开发与验证.md)，历史结果不代表当前工作区已验证 |
 
 接口 ID 保留字符串，业务成功判断使用整数 `code === 0`，请求统一通过 `src/services/api.ts`。业务专属依赖归对应分包，公共资源与生成文件遵循开发规范。凭据、Token、证书、真实 AppID 和真实用户截图不进入 Git。
+
+附件接口中的 `id`、`fileId`、`avatarFileId`、`coverFileId`、`fileIds` 统一使用 `attachment.file_key` 的带连字符小写 UUIDv4。内部 bigint 主键不进入客户端；预览与下载仍须登录并校验业务权限，不提供数字附件标识兼容入口。

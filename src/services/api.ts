@@ -144,7 +144,7 @@ export function uploadAvatar(filePath: string): Promise<{ id: string; fileUrl: s
         try {
           const body = typeof response.data === 'string' ? JSON.parse(response.data) : response.data
           const data = readResponse(response.statusCode, body)
-          if (!data || typeof data.id !== 'string' || !/^[1-9][0-9]{0,18}$/.test(data.id) || typeof data.fileUrl !== 'string' || !data.fileUrl) throw new Error('头像上传结果异常，请重试')
+          if (!data || typeof data.id !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(data.id) || typeof data.fileUrl !== 'string' || !data.fileUrl) throw new Error('头像上传结果异常，请重试')
           resolve({ id: data.id, fileUrl: data.fileUrl })
         } catch (error) {
           if (response.statusCode === 401) {

@@ -55,14 +55,15 @@ test('实际登录账号优先于旧接口的昵称展示字段', () => {
 
 
 test('头像只读取文件 ID 和展示 URL，不再使用旧 avatar 地址', () => {
-  const fileId = '1234567890123456789';
+  const fileId = 'a1b2c3d4-1234-4abc-8def-1234567890ab';
   const user = readUser({ id: '42', avatarFileId: fileId, avatarUrl: 'https://example.test/api/file/preview/' + fileId, avatar: 'http://localhost/old.png' });
   assert.equal(user.avatarFileId, fileId);
   assert.equal(user.avatarUrl, 'https://example.test/api/file/preview/' + fileId);
   assert.equal(user.avatar, undefined);
   assert.equal(readUser({ id: '42', avatar: 'http://localhost/old.png' }).avatarUrl, '');
   assert.equal(readUser({ id: '42', avatarFileId: null }).avatarFileId, null);
-  assert.throws(() => readUser({ id: '42', avatarFileId: 123 }), /头像信息异常/);
+  for (const invalid of [123, '1234567890123456789', '019535d9-3df7-79fb-b466-fa907fa17f9e'])
+    assert.throws(() => readUser({ id: '42', avatarFileId: invalid }), /头像信息异常/);
 });
 
 test('403 保留权限错误类型，允许摘要卡清除已经撤销权限的数据', () => {

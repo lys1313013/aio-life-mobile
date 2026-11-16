@@ -275,7 +275,7 @@ test('头像通过统一上传接口保存，携带鉴权且不改写邮箱', as
     expect(route.request().headers().authorization).toBe('Bearer profile-fixture');
     expect(route.request().postDataBuffer().toString()).toContain('name="bizType"\r\n\r\navatar');
     uploaded = true;
-    await route.fulfill({ json: { code: 0, data: { id: '1234567890123456789', fileUrl: '/avatar-fixture.png' } } });
+    await route.fulfill({ json: { code: 0, data: { id: 'a1b2c3d4-1234-4abc-8def-1234567890ab', fileUrl: '/avatar-fixture.png' } } });
   });
   await page.locator('.profile-avatar').click();
   await expect(page.locator('[aria-label="昵称"] input')).toHaveValue('测试用户');
@@ -289,7 +289,7 @@ test('头像通过统一上传接口保存，携带鉴权且不改写邮箱', as
   await page.getByRole('button', { name: '保存', exact: true }).click();
   await expect(page).toHaveURL(/pages\/profile\/index/);
   expect(uploaded).toBe(true);
-  expect(state.writes.at(-1).data.avatarFileId).toBe('1234567890123456789');
+  expect(state.writes.at(-1).data.avatarFileId).toBe('a1b2c3d4-1234-4abc-8def-1234567890ab');
   expect(state.writes.at(-1).data.avatar).toBeUndefined();
   expect(state.writes.at(-1).data.avatarUrl).toBeUndefined();
   expect(state.writes.at(-1).data.email).toBeUndefined();
