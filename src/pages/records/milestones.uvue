@@ -85,11 +85,11 @@ async function load(refresh = false) {
 function open(item = null) {
   formError.value = '';
   form.value = item
-    ? { ...item, tags: textTags(item.tags) }
+    ? { ...item, endDate: item.endDate || '', tags: textTags(item.tags) }
     : {
         title: '',
         date: new Date().toLocaleDateString('sv-SE'),
-        end_date: '',
+        endDate: '',
         description: '',
         type: 'life',
         tags: '',
@@ -101,13 +101,14 @@ async function save() {
     formError.value = '请输入标题和日期';
     return;
   }
-  if (form.value.end_date && form.value.end_date < form.value.date) {
+  if (form.value.endDate && form.value.endDate < form.value.date) {
     formError.value = '结束日期不能早于开始日期';
     return;
   }
   const payload = {
     ...form.value,
     title: form.value.title.trim(),
+    endDate: form.value.endDate || null,
     tags: JSON.stringify(
       form.value.tags
         .split(/[,，]/)
@@ -174,7 +175,7 @@ function clear() {
               ><text class="event-title">{{ item.title }}</text><text class="type-badge" :class="'badge-' + item.type">{{ labels[types.indexOf(item.type)] || item.type }}</text
               ></view
             ><text class="event-secondary"
-              :class="{ 'secondary-text-dark': isDark }">{{ item.date }}{{ item.end_date ? ' → ' + item.end_date : '' }}</text
+              :class="{ 'secondary-text-dark': isDark }">{{ item.date }}{{ item.endDate ? ' → ' + item.endDate : '' }}</text
             ><text v-if="item.description" class="event-content">{{ item.description }}</text
             ><view v-if="item.tags" class="event-tags"><text v-for="tag in textTags(item.tags).split(/[,，]/).filter(Boolean)" :key="tag" class="event-tag" :class="{ 'secondary-text-dark': isDark }">{{ tag }}</text></view></view></view
           ></template
@@ -188,13 +189,13 @@ function clear() {
           <FormField compact stretch
           label="结束日期"
           kind="date"
-          v-model="form.end_date" />
+          v-model="form.endDate" />
         </view><MobileButton
-          v-if="form.end_date"
+          v-if="form.endDate"
           label="清空结束日期"
           icon="ant-design:close-outlined"
           variant="quiet"
-          @click="form.end_date = ''" /><view class="ui-field-row">
+          @click="form.endDate = ''" /><view class="ui-field-row">
           <FormField compact stretch
           label="类型"
           kind="selector"
