@@ -7,8 +7,8 @@ const key=pbkdf2Sync(master,Buffer.from(salt,'hex'),100000,16,'sha256').toString
 const options={mode:'GCM',iv:salt.slice(0,16),inputEncoding:'utf8',outputEncoding:'hex'};
 const encrypt=value=>SM4.encrypt(value,key,options);
 const decrypt=value=>SM4.decrypt(value,key,{...options,inputEncoding:'hex',outputEncoding:'utf8'});
-test('密码库兼容Web密文，编辑失败保留，提交密文，离页重新锁定',async({page})=>{
- let row={id:'9223372036854775807',title:'模拟密码',website:'https://example.test',category:'工作',username:encrypt('fixture-user'),password:encrypt('fixture-secret'),remark:encrypt('fixture-remark'),salt,favorite:false};
+test('密码库解锁、编辑失败保留、账号明文提交、离页重新锁定',async({page})=>{
+ let row={id:'9223372036854775807',title:'模拟密码',website:'https://example.test',category:'工作',username:'fixture-user',password:encrypt('fixture-secret'),remark:encrypt('fixture-remark'),salt,favorite:false};
  const writes=[];let fail=true,deleted=false;
  await page.addInitScript(() => {
   window.vaultClipboard=[];
@@ -44,7 +44,7 @@ test('密码库兼容Web密文，编辑失败保留，提交密文，离页重�
  await expect(form.locator('[aria-label="账号"] input')).toHaveValue('fixture-user');
  await expect(form.locator('[aria-label="备注"] textarea')).toHaveValue('fixture-remark');await form.locator('[aria-label="密码"] input').fill('changed-fixture');await form.getByRole('button',{name:'保存',exact:true}).click();
  await expect(form.getByRole('alert')).toContainText('保存失败');await expect(form.locator('[aria-label="密码"] input')).toHaveValue('changed-fixture');fail=false;await form.locator('[aria-label="收藏密码"]').click();await form.getByRole('button',{name:'保存',exact:true}).click();await expect(form).toHaveCount(0);
- expect(writes).toHaveLength(2);expect(decrypt(writes.at(-1).password)).toBe('changed-fixture');expect(writes.at(-1).salt).toBe(salt);expect(JSON.stringify(writes.at(-1))).not.toContain('fixture-user');
+ expect(writes).toHaveLength(2);expect(decrypt(writes.at(-1).password)).toBe('changed-fixture');expect(writes.at(-1).salt).toBe(salt);expect(writes.at(-1).username).toBe('fixture-user');
  await expect(card.getByRole('img',{name:'已收藏',exact:true})).toBeVisible();
  await page.goto('/#/pages/life/index');await page.goto('/#/pages/vault/index');await expect(page.getByRole('button',{name:'解锁',exact:true})).toBeVisible();await expect(page.getByText('fixture-user',{exact:true})).toHaveCount(0);
  await card.click();await unlock.locator('[aria-label="主密码"] input').fill(master);await unlock.getByRole('button',{name:'解锁',exact:true}).click();await expect(form).toBeVisible();

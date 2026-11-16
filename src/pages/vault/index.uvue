@@ -104,7 +104,7 @@ function lock() {
   editing.value = false;
   unlocking.value = false;
   form.value = {};
-  rows.value = rows.value.map(({ plainUsername, plainPassword, plainRemark, ...item }) => item);
+  rows.value = rows.value.map(({ plainPassword, plainRemark, ...item }) => item);
 }
 onShow(() => {
   active = true;
@@ -154,10 +154,6 @@ async function load() {
 async function plain(row, key) {
   return {
     ...row,
-    plainUsername:
-      row.username && /^[0-9a-f]{32,}$/i.test(row.username)
-        ? await decryptSecret(row.username, key, row.salt)
-        : row.username || '',
     plainPassword: await decryptSecret(row.password, key, row.salt),
     plainRemark: row.remark ? await decryptSecret(row.remark, key, row.salt) : '',
   };
@@ -222,7 +218,6 @@ async function edit(row = null) {
       if (!active || v !== version || token !== session.token) return;
       form.value = {
         ...full,
-        username: value.plainUsername,
         password: value.plainPassword,
         remark: value.plainRemark,
       };
@@ -260,7 +255,7 @@ async function save() {
       title: form.value.title.trim(),
       website: form.value.website,
       category: form.value.category,
-      username: await encryptSecret(form.value.username, key, salt),
+      username: form.value.username,
       password: await encryptSecret(form.value.password, key, salt),
       remark: form.value.remark ? await encryptSecret(form.value.remark, key, salt) : '',
       favorite: !!form.value.favorite,
