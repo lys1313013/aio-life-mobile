@@ -42,6 +42,10 @@ const averageText = computed(() => state.data ? formatWereadDuration(state.data.
 const change = computed(() => state.data ? wereadStatsChange(state.data.totalSeconds, state.data.previousTotalSeconds) : null)
 const chartHeight = computed(() => props.height ? Math.max(72, Math.min(150, props.height - 150)) : 92)
 const barHeights = computed(() => wereadBarHeights(buckets.value, chartHeight.value - 6))
+// 按周期重建柱体以重播入场动画；同周期后台刷新保留节点，不重复播放。
+const chartKey = computed(() => displayGranularity.value + ':' + (state.data?.periodStart || ''))
+// 月视图最多 31 柱，限制总错峰时间，避免切换后等待过久。
+const barAnimationStep = computed(() => Math.min(60, 420 / Math.max(1, buckets.value.length - 1)))
 const skeletonBars = computed(() => granularity.value === 'week' ? 7 : granularity.value === 'month' ? 31 : 12)
 const selectedBucket = computed(() => selectedIndex.value >= 0 ? buckets.value[selectedIndex.value] : null)
 const selectedText = computed(() => selectedBucket.value ? wereadBucketDate(selectedBucket.value, displayGranularity.value) + ' · ' + (selectedBucket.value.seconds > 0 ? formatWereadDuration(selectedBucket.value.seconds) : '未阅读') : '')
@@ -200,9 +204,9 @@ defineExpose({ refresh, checkAccess })
           </view>
         </view>
         <view class="weread-stats-chart" :style="{ height: chartHeight + 'px' }" :aria-label="chartLabel">
-          <view class="weread-stats-bars" :class="{ 'weread-stats-bars-dense': displayGranularity === 'month' }" role="group" :aria-label="chartLabel">
+          <view :key="chartKey" class="weread-stats-bars" :class="{ 'weread-stats-bars-dense': displayGranularity === 'month' }" role="group" :aria-label="chartLabel">
             <button hover-class="none" v-for="(bucket, index) in buckets" :key="bucket.key" role="button" class="weread-stats-bar-hit" :aria-label="bucketAria(bucket)" @click.stop="selectBar(index)">
-              <view v-if="bucket.seconds > 0" class="weread-stats-bar" :class="{ 'weread-stats-bar-week': displayGranularity === 'week' }" :style="{ height: barHeights[index] + 'px' }" />
+              <view v-if="bucket.seconds > 0" class="weread-stats-bar weread-stats-bar-animated" :class="{ 'weread-stats-bar-week': displayGranularity === 'week' }" :style="{ height: barHeights[index] + 'px', animationDelay: Math.round(index * barAnimationStep) + 'ms' }" />
             </button>
           </view>
           <view v-if="selectedBucket" class="weread-stats-tip" :class="{ 'weread-stats-tip-dark': isDark }"><text class="weread-stats-tip-text" :class="{ 'weread-stats-tip-text-dark': isDark }">{{ selectedText }}</text></view>
@@ -252,6 +256,13 @@ defineExpose({ refresh, checkAccess })
 .weread-stats-bar-hit { display: flex; flex-direction: row; flex: 1; min-width: 0; height: 100%; align-items: flex-end; justify-content: center; padding: 0; margin: 0; border: 0; background-color: transparent; }
 .weread-stats-bar { width: 60%; max-width: 16px; border-radius: 4px 4px 0 0; background-color: #34a6ff; }
 .weread-stats-bar-week { width: 48%; max-width: 24px; }
+.weread-stats-bar-animated { transform-origin: center bottom; animation: weread-bar-grow 480ms cubic-bezier(0.22, 1, 0.36, 1) both; }
+@keyframes weread-bar-grow { from { transform: scaleY(0); } to { transform: scaleY(1); } }
+/* #ifdef WEB */
+@media (prefers-reduced-motion: reduce) {
+  .weread-stats-bar-animated { animation: none; }
+}
+/* #endif */
 .weread-stats-labels { display: flex; flex-direction: row; gap: $space-detail; padding-top: $space-detail; }
 .weread-stats-labels-dense { gap: 1px; }
 .weread-stats-label-cell { display: flex; flex: 1; min-width: 0; align-items: center; justify-content: center; }
