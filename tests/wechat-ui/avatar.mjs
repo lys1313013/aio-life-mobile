@@ -28,7 +28,7 @@ const server = spawn(process.execPath, [path.join(root, 'node_modules/@dcloudio/
 let logs = '', browser;
 server.stdout.on('data', chunk => { logs += chunk; });
 server.stderr.on('data', chunk => { logs += chunk; });
-const id = '22222222222222222222222222222222';
+const id = '2222222222222222222';
 try {
   let ready = false;
   for (let i = 0; i < 160; i++) {

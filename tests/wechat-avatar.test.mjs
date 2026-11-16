@@ -14,7 +14,7 @@ const { readResponse } = await import(`data:text/javascript;base64,${Buffer.from
 const compile = source => transformSync(source, { loader: 'ts' }).code;
 const createUpload = new Function('uni', 'session', 'clearSession', 'readResponse', 'baseURL', compile('function uploadAvatar' + apiSource) + '\nreturn uploadAvatar;');
 const createPage = new Function('ref', 'computed', 'watch', 'onShow', 'onHide', 'onUnload', 'fetchUser', 'request', 'uploadAvatar', 'restoreSession', 'session', 'uni', compile('const usePageRefresh = load => load;\n' + pageSource) + '\nreturn { form, ready, uploading, saving, errorText, beginAvatarSelection, chooseAvatar, avatarError, save };');
-const oldId = '11111111111111111111111111111111', newId = '22222222222222222222222222222222';
+const oldId = '1111111111111111111', newId = '2222222222222222222';
 const tick = () => new Promise(resolve => setImmediate(resolve));
 async function fixture(t) {
   const scope = effectScope(); t.after(() => scope.stop());
