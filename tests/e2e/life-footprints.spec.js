@@ -250,14 +250,21 @@ test.describe('地图触屏与刷新保持视角', () => {
   test.use({ hasTouch: true });
   async function pull(page, locator, offsetY = 90) {
     await waitForMotion(page);
+    // 地图 hover 会为可见性自动滚动页面；原生下拉刷新必须从滚动区顶部开始。
+    const scroller = page.locator('.mobile-page-scroll > .uni-scroll-view > .uni-scroll-view');
+    await scroller.evaluate(element => { element.scrollTop = 0; });
+    await expect.poll(() => scroller.evaluate(element => element.scrollTop)).toBe(0);
     // 动效结束后再取坐标，避免用等待前的位置把列表手势发到拦截触摸的地图上。
     const box = await stableBox(locator);
     const cdp = await page.context().newCDPSession(page);
     const x = box.x + box.width / 2, start = box.y + offsetY;
+    // 列表标题靠近屏幕底部，完整手势须留在视口内并超过原生刷新阈值。
+    const distance = Math.min(180, page.viewportSize().height - start - 1);
     try {
+      expect(distance).toBeGreaterThanOrEqual(100);
       await expect.poll(() => locator.evaluate((element, point) => element.contains(document.elementFromPoint(point.x, point.y)), { x, y: start }), { message: '下拉手势起点应命中目标区域' }).toBe(true);
       await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y: start, id: 0 }] });
-      for (const offset of [30, 70, 120, 180]) await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x, y: start + offset, id: 0 }] });
+      for (const progress of [0.2, 0.4, 0.7, 1]) await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x, y: start + distance * progress, id: 0 }] });
       await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
     } finally {
       await cdp.detach();

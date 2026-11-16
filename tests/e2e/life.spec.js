@@ -1,4 +1,6 @@
 const { test, expect } = require('./support/test');
+const { waitForMotion } = require('./support/motion');
+const { stableBox } = require('./support/geometry');
 const { dashboardFixture } = require("./fixtures.js");
 const { pullDown } = require("./gestures.js");
 const entries = [
@@ -675,8 +677,9 @@ for (const width of [390, 768, 1440]) for (const colorScheme of ['light', 'dark'
     await expect(group).toHaveAttribute('aria-expanded', 'true');
     const add = picker.getByRole('button', { name: '添加时迹', exact: true });
     await expect(add).toBeVisible();
-    const first = await add.boundingBox();
-    const second = await picker.getByRole('button', { name: '添加待办', exact: true }).boundingBox();
+    await waitForMotion(page);
+    const first = await stableBox(add);
+    const second = await stableBox(picker.getByRole('button', { name: '添加待办', exact: true }));
     expect(first.width).toBeGreaterThanOrEqual(44);
     expect(first.height).toBeGreaterThanOrEqual(44);
     expect(second.y - first.y - first.height).toBeGreaterThanOrEqual(7);
