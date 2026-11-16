@@ -38,7 +38,7 @@ export function useUserDictOrder(options: {
     const top = rects[from].top + offset.value;
     let distance = Infinity;
     snapshot.forEach((row, index) => {
-      if (row.userId !== '0' || row.dictType !== snapshot[from].dictType) return;
+      if (!row.preset || row.dictType !== snapshot[from].dictType) return;
       const delta = Math.abs(top - rects[index].top);
       if (delta < distance) { distance = delta; to = index; }
     });
@@ -48,7 +48,7 @@ export function useUserDictOrder(options: {
     cancel();
     if (blocked() || event.touches?.length !== 1) return;
     snapshot = options.rows.value.slice(); from = snapshot.findIndex(row => row.id === id); to = from;
-    if (from < 0 || snapshot[from].userId !== '0' || snapshot.filter(row => row.dictType === snapshot[from].dictType && row.userId === '0').length < 2) return;
+    if (from < 0 || !snapshot[from].preset || snapshot.filter(row => row.dictType === snapshot[from].dictType && row.preset === true).length < 2) return;
     const point = event.touches[0], revision = version;
     startX = point.clientX; startY = lastY = point.clientY; startScroll = actualScroll;
     timer = setTimeout(() => {
@@ -117,7 +117,7 @@ export function useUserDictOrder(options: {
   }
   function keyboard(id: string, delta: number) {
     const rows = options.rows.value, index = rows.findIndex(row => row.id === id), row = rows[index], destination = rows[index + delta];
-    if (row?.userId === '0' && destination?.userId === '0' && row.dictType === destination.dictType) void save(row, destination, delta);
+    if (row?.preset === true && destination?.preset === true && row.dictType === destination.dictType) void save(row, destination, delta);
   }
   function style(id: string) {
     if (!dragging.value) return {};

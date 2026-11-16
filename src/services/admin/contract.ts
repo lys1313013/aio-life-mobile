@@ -30,7 +30,7 @@ export function categoryPayload(form, original, admin = false) {
   if (data.id != null) stringId(data.id)
   if (data.parentId != null) stringId(data.parentId)
   if (data.templateId != null) stringId(data.templateId)
-  if (!admin && original && (original.userId === '0' || original.templateId)) {
+  if (!admin && original && (original.preset === true || original.templateId)) {
     data.id = original.templateId || original.id
     data.templateId = original.templateId || original.id
     if ((data.parentId || '0') === (original.parentId || '0')) delete data.parentId
@@ -44,7 +44,7 @@ export function siblingSort(items, item, delta) {
   const target = index + delta
   if (index < 0 || target < 0 || target >= siblings.length) return []
   const displaced = siblings[target]; siblings[target] = siblings[index]; siblings[index] = displaced
-  return siblings.map((row, sortOrder) => ({ id: stringId(row.id), templateId: row.templateId || (row.userId === '0' ? row.id : null), sortOrder: sortOrder * 10 }))
+  return siblings.map((row, sortOrder) => ({ id: stringId(row.id), templateId: row.templateId || (row.preset === true ? row.id : null), sortOrder: sortOrder * 10 }))
 }
 export function protectedMenu(row) { return ['/system', '/system/menu'].includes(row.path) }
 export function flattenMenus(rows, depth = 0) {

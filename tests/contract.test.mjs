@@ -55,7 +55,7 @@ test('实际登录账号优先于旧接口的昵称展示字段', () => {
 
 
 test('头像只读取文件 ID 和展示 URL，不再使用旧 avatar 地址', () => {
-  const fileId = '0123456789abcdef0123456789abcdef';
+  const fileId = '1234567890123456789';
   const user = readUser({ id: '42', avatarFileId: fileId, avatarUrl: 'https://example.test/api/file/preview/' + fileId, avatar: 'http://localhost/old.png' });
   assert.equal(user.avatarFileId, fileId);
   assert.equal(user.avatarUrl, 'https://example.test/api/file/preview/' + fileId);

@@ -181,7 +181,7 @@ async function move(index, offset) {
   if (busyId.value || saving.value || loading.value) return;
   const item = rows.value[index],
     other = rows.value[index + offset];
-  if (!item || !other || item.isReadonly === 'Y' || other.isReadonly === 'Y') return;
+  if (!item || !other || item.isReadonly === 1 || other.isReadonly === 1) return;
   const movedId = item.id;
   busyId.value = movedId;
   formError.value = '';
@@ -189,7 +189,7 @@ async function move(index, offset) {
     const ordered = [...rows.value];
     [ordered[index], ordered[index + offset]] = [ordered[index + offset], ordered[index]];
     for (let i = 0; i < ordered.length; i++) {
-      if (ordered[i].isReadonly === 'Y') continue;
+      if (ordered[i].isReadonly === 1) continue;
       await scope.wait(saveCategory({ ...ordered[i], sortOrder: i * 10 }));
     }
     // 同步已保存的顺序，避免并发刷新使表单回填旧排序。
@@ -205,7 +205,7 @@ async function move(index, offset) {
 function cannotMove(offset: number) {
   const index = editingIndex.value;
   return loading.value || saving.value || !!busyId.value || index < 0 || !rows.value[index + offset]
-    || rows.value[index]?.isReadonly === 'Y' || rows.value[index + offset]?.isReadonly === 'Y';
+    || rows.value[index]?.isReadonly === 1 || rows.value[index + offset]?.isReadonly === 1;
 }
 </script>
 <template>
@@ -242,15 +242,15 @@ function cannotMove(offset: number) {
             <CategoryIcon :icon="item.icon" :color="item.color" />
             <view class="category-copy">
               <text class="category-name" :class="{ 'category-name-dark': isDark, 'category-name-disabled': item.isEnabled === 0, 'category-name-disabled-dark': item.isEnabled === 0 && isDark }">{{ item.dictLabel }}</text>
-              <text v-if="item.isReadonly === 'Y'" class="secondary" :class="{ 'record-secondary-dark': isDark }">只读分类</text>
+              <text v-if="item.isReadonly === 1" class="secondary" :class="{ 'record-secondary-dark': isDark }">只读分类</text>
             </view>
             <view class="category-actions">
               <MobileSwitch :checked="item.isEnabled === 1" :disabled="!!busyId || loading"
                 :loading="busyId === item.id" :aria-label="'启用分类：' + item.dictLabel"
                 @change="toggle(item, $event.detail.value)" />
               <MobileButton label="编辑分类" icon="ant-design:edit-outlined" variant="ghost"
-                :disabled="item.isReadonly === 'Y' || !!busyId || loading" @click="open(item)" />
-              <ConfirmAction label="删除分类" :message="item.userId === '0' ? '公共分类会在你的分类列表中停用' : '确认删除分类？'" :action="() => remove(item)">
+                :disabled="item.isReadonly === 1 || !!busyId || loading" @click="open(item)" />
+              <ConfirmAction label="删除分类" :message="item.preset === true ? '公共分类会在你的分类列表中停用' : '确认删除分类？'" :action="() => remove(item)">
                 <template #default="{ open: confirmRemove, busy }">
                   <MobileButton label="删除分类" icon="ant-design:delete-outlined" variant="ghost"
                     :loading="busy" :disabled="!!busyId || loading" @click="confirmRemove" />

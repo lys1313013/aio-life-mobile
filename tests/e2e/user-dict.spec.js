@@ -4,7 +4,7 @@ const { pullDown } = require('./gestures');
 test.use({ hasTouch: true, viewport: { width: 390, height: 900 } });
 const labels = ['手机', '电脑', '平板', '手表', '耳机', '相机', '键盘', '鼠标'];
 const icons = ['mdi:cellphone', 'mdi:laptop', 'mdi:tablet', 'mdi:watch', 'mdi:headphones', 'mdi:camera', 'mdi:keyboard', 'mdi:mouse'];
-function fixture(count = 8) { return Array.from({ length: count }, (_, i) => ({ id: String(9223372036854775000n + BigInt(i)), userId: '0', dictType: 'device_type', dictLabel: labels[i] || '模拟设备 ' + (i + 1), sortOrder: i, color: ['#397bee', '#8751e8', '#df9b23', '#2bb876'][i % 4], icon: icons[i % 8], isEnabled: i === 4 ? 0 : 1, isReadonly: i === 2 ? 'Y' : 'N' })); }
+function fixture(count = 8) { return Array.from({ length: count }, (_, i) => ({ id: String(9223372036854775000n + BigInt(i)), preset: true, dictType: 'device_type', dictLabel: labels[i] || '模拟设备 ' + (i + 1), sortOrder: i, color: ['#397bee', '#8751e8', '#df9b23', '#2bb876'][i % 4], icon: icons[i % 8], isEnabled: i === 4 ? 0 : 1, isReadonly: i === 2 ? 1 : 0 })); }
 async function setup(page, count = 8, delay = 0) {
   const state = { rows: fixture(count), queries: [], writes: [], sorts: [], deleted: [], failSort: false, failDelete: false, failMore: false, failWrite: false, delay, sortDelay: 0, emptyMore: false };
   await page.addInitScript(() => localStorage.setItem('aio-life-mobile.access-token.v1', 'user-dict-fixture'));
@@ -33,7 +33,7 @@ async function setup(page, count = 8, delay = 0) {
     }
     if (path === '/api/userDictData/admin' && method === 'POST') {
       const body = req.postDataJSON(); state.writes.push(body);
-      state.rows.push({ ...body, userId: '0', id: '9223372036854775999' }); return ok(true);
+      state.rows.push({ ...body, preset: true, id: '9223372036854775999' }); return ok(true);
     }
     if (/\/api\/userDictData\/admin\/\d+$/.test(path)) {
       const id = path.split('/').at(-1);

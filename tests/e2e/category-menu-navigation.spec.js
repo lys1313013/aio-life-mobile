@@ -26,7 +26,7 @@ async function setup(page, apiMock, admin = true, menuHandler) {
     'GET /api/userDictData/query': ok({ items: [{ id: '11', dictLabel: '模拟通用分类', dictType: 'exercise_type', isEnabled: 1, sortOrder: 0 }], total: 1 }),
     'GET /api/timeTrackerCategory/list': ok([{ id: '12', parentId: '0', name: '模拟个人时迹分类', userId: '9223372036854775807', isEnabled: 1 }]),
     'GET /api/timeTrackerCategory/hidden': ok([]),
-    'GET /api/timeTrackerCategory/admin/list': ok([{ id: '13', parentId: '0', name: '模拟公共时迹分类', userId: '0', isEnabled: 1 }]),
+    'GET /api/timeTrackerCategory/admin/list': ok([{ id: '13', parentId: '0', name: '模拟公共时迹分类', preset: true, isEnabled: 1 }]),
   });
 }
 for (const width of [390, 768, 1440]) for (const theme of ['light', 'dark']) {

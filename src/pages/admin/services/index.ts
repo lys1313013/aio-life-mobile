@@ -22,7 +22,7 @@ export async function saveAdmin(kind, form, original) {
 export function deleteAdmin(kind, row) {
   const spec = specs[kind]
   if (kind === 'menus' && protectedMenu(row)) throw Error('核心管理菜单不可删除')
-  if (kind === 'user-dict' && row.userId !== '0') throw Error('只能删除基础值')
+  if (kind === 'user-dict' && !row.preset) throw Error('只能删除基础值')
   return request(spec.base + '/' + stringId(row[spec.id]), 'DELETE')
 }
 export function setMenuVisibleClients(row, bit) {
@@ -31,7 +31,7 @@ export function setMenuVisibleClients(row, bit) {
 }
 export function setMenuSort(row, sortOrder) { return request('/menu/admin/' + stringId(row.id) + '/sort','PUT',{ sortOrder }) }
 export function sortUserDict(row, target, delta) {
-  if (row.dictType !== target.dictType || row.userId !== '0' || target.userId !== '0') throw Error('只能在同一字典类型下调整基础值顺序')
+  if (row.dictType !== target.dictType || !row.preset || !target.preset) throw Error('只能在同一字典类型下调整基础值顺序')
   return request('/userDictData/admin/reSort','POST',{ dictType: row.dictType, dragId: stringId(row.id), targetId: stringId(target.id), position: delta < 0 ? 'before' : 'after' })
 }
 export function saveConfig(row, value) { return request('/system-config/' + encodeURIComponent(row.configKey),'PUT',{ configValue: validateConfig(row, value) }) }

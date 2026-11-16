@@ -12,7 +12,7 @@ export function saveCategory(form, original, admin = false) {
 }
 export function changeCategory(row, changes, admin = false) {
   if (admin) return request('/timeTrackerCategory/admin/' + stringId(row.id), 'PUT', { ...row, ...changes })
-  return request('/timeTrackerCategory', 'PUT', { id: row.templateId || stringId(row.id), templateId: row.templateId || (row.userId === '0' ? row.id : undefined), ...changes })
+  return request('/timeTrackerCategory', 'PUT', { id: row.templateId || stringId(row.id), templateId: row.templateId || (row.preset === true ? row.id : undefined), ...changes })
 }
 export function deleteCategory(row, admin = false) { return request('/timeTrackerCategory' + (admin ? '/admin' : '') + '/' + stringId(row.id), 'DELETE') }
 export function sortCategories(rows) { return request('/timeTrackerCategory/reSort', 'POST', rows) }

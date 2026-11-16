@@ -29,7 +29,7 @@ test('管理分页拒绝字符串总数', () => {
  for (const total of ['21', '0', '1']) assert.throws(() => readPage({items:[],total}), /列表数据异常/)
 })
 test('公共分类覆盖使用模板ID且未改父级不发送，未知和用户字段不泄露',() => {
- const original={id:'3',templateId:id,parentId:null,userId:'7'}
+ const original={id:'3',templateId:id,parentId:null,preset:false}
  const form={...original,parentId:'0',name:' 分类 ',color:'#123456',icon:'lucide:book',isTrackTime:1,clientOnly:true}
  const result=categoryPayload(form,original)
  assert.equal(result.id,id); assert.equal(result.templateId,id); assert.equal(result.name,'分类'); assert.equal(result.icon,'lucide:book')
@@ -37,7 +37,7 @@ test('公共分类覆盖使用模板ID且未改父级不发送，未知和用户
  assert.throws(()=>categoryPayload({...form,color:'red'},original),/颜色/)
 })
 test('排序只在同级交换，公共模板映射保留；树顺序父在子前',() => {
- const rows=[{id:'1',parentId:'0',sortOrder:0,userId:'0'},{id:'2',parentId:'0',sortOrder:10,userId:'7'},{id:'3',parentId:'1',sortOrder:0,userId:'7'}]
+ const rows=[{id:'1',parentId:'0',sortOrder:0,preset:true},{id:'2',parentId:'0',sortOrder:10,preset:false},{id:'3',parentId:'1',sortOrder:0,preset:false}]
  assert.deepEqual(siblingSort(rows,rows[0],1),[{id:'2',templateId:null,sortOrder:0},{id:'1',templateId:'1',sortOrder:10}])
  assert.deepEqual(siblingSort(rows,rows[2],1),[])
  assert.deepEqual(orderCategories(rows).map(row=>row.id),['1','3','2'])
