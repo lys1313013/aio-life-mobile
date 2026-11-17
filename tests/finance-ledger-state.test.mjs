@@ -14,7 +14,7 @@ function gate() { let resolve; const promise = new Promise(r => { resolve = r; }
 async function fixture(kind = 'expense', count = 101, initialCreate = false) {
   const id = ++fixtureNumber;
   const calls = [], hooks = {};
-  const server = Array.from({ length: count }, (_, i) => ({ id: String(i + 1), bookkeepingAmount: 1, grossAmount: 1, transactionAmount: 1, expTime: '2026-10-03 12:00:00' }));
+  const server = Array.from({ length: count }, (_, i) => ({ id: String(i + 1), bookkeepingAmount: 1, grossAmount: 1, transactionAmount: 1, expenseTime: '2026-10-03 12:00:00' }));
   const controls = { listFailure: false, statsFailure: false, mutationFailure: false, pendingList: null, pendingMutation: null, pendingStatistics: null };
   const api = {
     ledgerId: row => row.id || '',

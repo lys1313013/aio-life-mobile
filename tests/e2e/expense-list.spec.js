@@ -6,8 +6,8 @@ test.use({ hasTouch: true, viewport: { width: 390, height: 844 } });
 async function openExpense(page) {
   await setup(page);
   const rows = [
-    { id: '9007199254741001', bookkeepingAmount: 12, transactionAmount: 12, expTypeId: '81', payTypeId: '82', expTime: '2026-09-02 00:00:00', remark: '模拟午餐', transactionId: 'hidden-order', transactionStatus: '支付成功' },
-    { id: '9007199254741002', bookkeepingAmount: 20, transactionAmount: 25, expTypeId: '81', payTypeId: '82', expTime: '2026-09-01 12:30:00', expDesc: '模拟食堂(99999999999999999999)', counterparty: '模拟餐饮公司' },
+    { id: '9007199254741001', bookkeepingAmount: 12, transactionAmount: 12, expenseTypeId: '81', payTypeId: '82', expenseTime: '2026-09-02 00:00:00', remark: '模拟午餐', transactionId: 'hidden-order', transactionStatus: '支付成功' },
+    { id: '9007199254741002', bookkeepingAmount: 20, transactionAmount: 25, expenseTypeId: '81', payTypeId: '82', expenseTime: '2026-09-01 12:30:00', expenseDesc: '模拟食堂(99999999999999999999)', counterparty: '模拟餐饮公司' },
   ];
   const state = { rows, deleted: [], fail: true };
   await page.route('**/api/expense/query*', route => route.fulfill({ json: { code: 0, data: { items: state.rows, total: state.rows.length } } }));

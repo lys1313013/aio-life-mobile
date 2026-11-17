@@ -10,7 +10,7 @@ export function ledgerPayload(kind: string, draft: Record<string, any>) {
   } else {
     data.transactionAmount = Number(draft.transactionAmount)
     if (!Number.isFinite(data.transactionAmount) || missingRequired(kind, draft, 'transactionAmount')) throw new Error('请输入交易金额')
-    if (missingRequired(kind, draft, 'expTypeId') || missingRequired(kind, draft, 'payTypeId') || missingRequired(kind, draft, 'expTime')) throw new Error('请选择支出类型、支付方式和日期')
+    if (missingRequired(kind, draft, 'expenseTypeId') || missingRequired(kind, draft, 'payTypeId') || missingRequired(kind, draft, 'expenseTime')) throw new Error('请选择支出类型、支付方式和日期')
   }
   return data
 }

@@ -74,10 +74,10 @@ const shown = computed(() =>
   ),
 );
 const parents = computed(() => [
-  { id: '0', name: '无（一级分类）' },
+  { id: '', name: '无（一级分类）' },
   ...rows.value.filter(
     (row) =>
-      (!row.parentId || row.parentId === '0') &&
+      !row.parentId &&
       row.id !== form.value.id &&
       !rows.value.some((child) => child.parentId === form.value.id),
   ),
@@ -85,6 +85,11 @@ const parents = computed(() => [
 const parentName = computed(
   () => parents.value.find((row) => row.id === form.value.parentId)?.name || parents.value[0].name,
 );
+function selectParent(value) {
+  const id = parents.value.find((row) => row.name === value)?.id || '';
+  form.value.parentId = id || null;
+  form.value.inheritParent = false;
+}
 onLoad((options) => {
   admin.value = options?.admin === '1';
 });
@@ -125,12 +130,12 @@ async function load(refresh = false) {
     }
   }
 }
-function edit(row = null, parentId = '0') {
+function edit(row = null, parentId = '') {
   if (loading.value || busyId.value) return;
   expandedActions.value = '';
   original.value = row;
   form.value = row
-    ? { ...row, parentId: row.parentId || '0' }
+    ? { ...row, parentId: row.parentId || '', inheritParent: !!row.inheritParent }
     : {
         parentId,
         name: '',
@@ -143,7 +148,7 @@ function edit(row = null, parentId = '0') {
           Math.max(
             -10,
             ...rows.value
-              .filter((row) => (row.parentId || '0') === parentId)
+              .filter((row) => (row.parentId || '') === parentId)
               .map((row) => row.sortOrder || 0),
           ) + 10,
       };
@@ -254,7 +259,7 @@ function privateCategory(row) {
         >
           <view class="category-heading ui-row">
             <CategoryIcon :icon="row.icon" :color="row.color" />
-            <AppIcon v-if="row.parentId && row.parentId !== '0'" name="lucide:corner-down-right" :size="16" />
+            <AppIcon v-if="row.parentId" name="lucide:corner-down-right" :size="16" />
             <view class="category-summary">
               <text class="category-name" :class="themeClass('category-name')">{{ row.name }}</text>
               <view v-if="row.isTrackTime === 1 || row.isEnabled === 0" class="category-summary-meta">
@@ -281,7 +286,7 @@ function privateCategory(row) {
           </view>
           <view v-if="expandedActions === row.id" class="category-extra-actions">
             <MobileButton
-              v-if="!row.parentId || row.parentId === '0'"
+              v-if="!row.parentId"
               label="新增子分类"
               icon="ant-design:plus-outlined"
               variant="quiet"
@@ -325,7 +330,7 @@ function privateCategory(row) {
           :model-value="parentName"
           :options="parents.map((row) => row.name)"
           :disabled="saving"
-          @update:model-value="(value) => (form.parentId = parents.find((row) => row.name === value)?.id || '0')"
+          @update:model-value="selectParent"
         />
         <FormField appearance="soft" :required="isRequired('category', 'color')" label="颜色">
           <template #labelAction>

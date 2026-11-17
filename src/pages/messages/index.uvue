@@ -5,7 +5,7 @@ import CategoryPager from '../../components/CategoryPager.uvue';
 import { readPageTotal, mergePageItems, hasMorePageItems } from '../../services/pagination.ts';
 import { isRequired, missingRequired } from '../../services/form-required.ts';
 import { computed, nextTick, onUnmounted, ref, watch } from 'vue';
-import { conversationMessages, groupConversations } from './services/conversations.ts';
+import { conversationMessages, groupConversations, isSystemMessage, SYSTEM_CONVERSATION_ID } from './services/conversations.ts';
 import LoadingIndicator from '../../components/LoadingIndicator.uvue';
 import MobilePage from '../../components/MobilePage.uvue';
 import PageHeader from '../../components/PageHeader.uvue';
@@ -105,6 +105,7 @@ const conversationPages = computed(() => ['全部', '未读'].map(label => ({ la
 const filterIndex = computed(() => filter.value === '未读' ? 1 : 0);
 const unreadCount = computed(() => conversations.value.reduce((count, item) => count + item.unread, 0));
 const chatMessages = computed(() => conversationMessages(messages.value, own.value, receiver.value));
+const systemConversation = computed(() => receiver.value === SYSTEM_CONVERSATION_ID);
 function messageTime(value: string) {
   return String(value || '').replace('T', ' ').slice(5, 16);
 }
@@ -116,6 +117,9 @@ function showTime(index: number) {
   return !Number.isFinite(before) || !Number.isFinite(current) || current - before >= 300000;
 }
 function isOwn(item: any) { return String(item.senderId) === own.value; }
+function senderConversation(item: any) {
+  return isSystemMessage(item) ? SYSTEM_CONVERSATION_ID : String(item.senderId || '');
+}
 function avatar(id: string) {
   return String(id) === own.value ? session.user?.avatarUrl || '' : userInfo.value[String(id)]?.avatarUrl || userInfo.value[String(id)]?.avatar || '';
 }
@@ -214,7 +218,11 @@ useDomainPage(
 );
 async function loadUserInfo(rows: any[], current: number) {
   const ids = Array.from(
-    new Set(rows.flatMap((item) => [String(item.senderId), String(item.receiverId)])),
+    new Set(
+      rows
+        .flatMap((item) => [String(item.senderId ?? ''), String(item.receiverId ?? '')])
+        .filter((id) => id && id !== 'undefined' && id !== 'null' && id !== SYSTEM_CONVERSATION_ID && id !== own.value),
+    ),
   );
   const info = await Promise.allSettled(ids.map((id) => fetchUserBasic(id)));
   if (!alive || stamp !== current) return;
@@ -225,6 +233,7 @@ async function loadUserInfo(rows: any[], current: number) {
   userInfo.value = map;
 }
 function username(id: string) {
+  if (String(id) === SYSTEM_CONVERSATION_ID) return '系统通知';
   return String(id) === own.value ? session.user?.name || '我' : userInfo.value[String(id)]?.nickname || id;
 }
 async function selectConversation(id: string) {
@@ -320,7 +329,7 @@ async function send() {
   }
 }
 async function sendChat() {
-  if (sending.value || !chatDraft.value.trim() || !receiver.value) return;
+  if (sending.value || !chatDraft.value.trim() || !receiver.value || receiver.value === SYSTEM_CONVERSATION_ID) return;
   const current = stamp, peer = receiver.value, draft = chatDraft.value;
   sending.value = true;
   chatError.value = '';
@@ -411,8 +420,8 @@ async function adminRemove(row: any) {
             <view v-for="(item, index) in chatMessages" :key="item.id" class="chat-entry">
               <text v-if="showTime(index)" class="chat-time" :class="themeClass('chat-time')">{{ messageTime(item.createTime) }}</text>
               <view class="bubble-row" :class="{ 'bubble-row-own': isOwn(item) }">
-                <image v-if="avatar(item.senderId)" :src="avatar(item.senderId)" mode="aspectFill" class="chat-avatar" />
-                <view v-else class="chat-avatar avatar-fallback" :class="themeClass('avatar-fallback')"><text class="avatar-letter" :class="themeClass('avatar-letter')">{{ username(item.senderId).slice(0, 1) }}</text></view>
+                <image v-if="avatar(senderConversation(item))" :src="avatar(senderConversation(item))" mode="aspectFill" class="chat-avatar" />
+                <view v-else class="chat-avatar avatar-fallback" :class="themeClass('avatar-fallback')"><text class="avatar-letter" :class="themeClass('avatar-letter')">{{ username(senderConversation(item)).slice(0, 1) }}</text></view>
                 <view class="bubble-column" :class="{ 'bubble-column-own': isOwn(item) }">
                   <view class="bubble" :class="[{ 'bubble-own': isOwn(item) }, themeClass(['bubble', { 'bubble-own': isOwn(item) }])]" role="button" aria-label="消息操作" @click="selectedMessage = selectedMessage === item.id ? '' : item.id" @longpress="selectedMessage = item.id">
                     <text v-if="item.title && item.title !== 'Chat Message' && item.title.trim() !== item.content?.trim()" class="bubble-title" :class="themeClass('bubble-title')">{{ item.title }}</text>
@@ -429,7 +438,7 @@ async function adminRemove(row: any) {
             <view id="chat-bottom" class="chat-bottom" />
           </view>
         </scroll-view>
-        <view class="composer" :class="themeClass('composer')">
+        <view v-if="!systemConversation" class="composer" :class="themeClass('composer')">
           <view v-if="chatError" class="chat-error-row"><text class="chat-error" role="alert">{{ chatError }}</text><MobileButton v-if="chatError === '已读状态更新失败，请重试'" label="重试已读" icon="ant-design:reload-outlined" variant="ghost" @click="readConversation" /></view>
           <view class="composer-row">
             <view class="chat-input-shell" :class="themeClass('chat-input-shell')"><textarea class="chat-input" :class="themeClass('chat-input')" v-model="chatDraft" aria-label="消息内容" placeholder="发消息…" :maxlength="500" :auto-height="true" :disabled="sending" :adjust-position="true" :cursor-spacing="spacing.modal" :show-confirm-bar="false" /></view>

@@ -230,7 +230,7 @@ function openCategory(row = null) {
     ? {
         ...row,
         sortOrder: String(row.sortOrder || 0),
-        parentId: row.parentId && row.parentId !== '0' ? row.parentId : '',
+        parentId: row.parentId || '',
       }
     : { name: '', icon: '', parentId: '', sortOrder: '0' };
   formError.value = '';
@@ -320,7 +320,7 @@ function chooseCategory(value) {
 </script>
 <template>
   <MobilePage :refreshing="loading" @refresh="load">
-    <PageHeader title="衣柜" back @back="uni.navigateBack()" />
+    <PageHeader title="衣橱" back @back="uni.navigateBack()" />
     <view class="wardrobe ui-page-body" :class="themeClass('wardrobe')">
       <view class="section-tabs ui-row ui-section">
         <MobileButton v-for="tab in ['衣物', '分类']" :key="tab" :label="tab" compact
@@ -419,9 +419,9 @@ function chooseCategory(value) {
       </view>
     </view>
     <template #fixed>
-      <FloatingActionButton v-if="!modal" :label="section === '衣物' ? '新增衣物' : '新增衣柜分类'"
+      <FloatingActionButton v-if="!modal" :label="section === '衣物' ? '新增衣物' : '新增衣橱分类'"
         @click="section === '衣物' ? openItem() : openCategory()" />
-      <ModalMotion><AdaptiveModal ref="modalMotion0" v-if="modal" :label="modal === 'item' ? '衣物编辑' : '衣柜分类编辑'" :busy="busy || uploading" @close="close">
+      <ModalMotion><AdaptiveModal ref="modalMotion0" v-if="modal" :label="modal === 'item' ? '衣物编辑' : '衣橱分类编辑'" :busy="busy || uploading" @close="close">
         <template v-if="modal === 'item'">
           <view class="item-form-heading ui-gap-md">
             <view class="photo-field ui-gap-xs">
@@ -490,7 +490,7 @@ function chooseCategory(value) {
         <text v-if="formError" class="error ui-section" role="alert">{{ formError }}</text>
         <FormActions>
           <MobileButton label="取消" variant="quiet" :disabled="busy || uploading" @click="modalMotion0?.close()" />
-          <MobileButton label="保存衣柜内容" :loading="busy" :disabled="uploading" @click="save" />
+          <MobileButton label="保存衣橱内容" :loading="busy" :disabled="uploading" @click="save" />
         </FormActions>
       </AdaptiveModal></ModalMotion>
     </template>

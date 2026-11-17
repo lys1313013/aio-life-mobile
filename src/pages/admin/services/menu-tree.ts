@@ -36,7 +36,7 @@ export function visibleMenus(rows, expanded, keyword = "") {
 // 同级移动按最终顺序生成唯一 sortOrder，兼容原有负数及重复 sortOrder。
 export function menuMoveChanges(rows, row, delta) {
   const peers = rows.filter(
-    (item) => (item.parentId || "0") === (row.parentId || "0"),
+    (item) => (item.parentId || "") === (row.parentId || ""),
   );
   const index = peers.findIndex((item) => item.id === row.id);
   const target = index + delta;

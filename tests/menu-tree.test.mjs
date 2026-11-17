@@ -9,7 +9,7 @@ const { visibleMenus, menuMoveChanges } = await import(
   `data:text/javascript;base64,${Buffer.from(source).toString("base64")}`
 );
 const rows = [
-  { id: "1", parentId: "0", title: "记录", sortOrder: -1 },
+  { id: "1", parentId: null, title: "记录", sortOrder: -1 },
   {
     id: "9223372036854775807",
     parentId: "1",
@@ -18,8 +18,8 @@ const rows = [
     path: "/read",
     sortOrder: 0,
   },
-  { id: "3", parentId: "0", title: "设置", sortOrder: 0 },
-  { id: "4", parentId: "0", title: "其他", sortOrder: 0 },
+  { id: "3", parentId: null, title: "设置", sortOrder: 0 },
+  { id: "4", parentId: null, title: "其他", sortOrder: 0 },
 ];
 test("折叠和搜索保留祖先、忽略空格和大小写，清空后恢复折叠", () => {
   assert.deepEqual(
@@ -39,7 +39,7 @@ test("同级排序修复重复值，保留负数，边界和唯一子节点不�
   const sorts = new Map(changes.map((change) => [change.row.id, change.sortOrder]));
   assert.deepEqual(
     rows
-      .filter((row) => row.parentId === "0")
+      .filter((row) => row.parentId == null)
       .sort((a, b) => (sorts.get(a.id) ?? a.sortOrder) - (sorts.get(b.id) ?? b.sortOrder))
       .map((row) => row.id),
     ["1", "4", "3"],

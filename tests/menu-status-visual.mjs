@@ -20,7 +20,7 @@ try {
  for (const platform of (process.env.MENU_VISUAL_PLATFORM ? [process.env.MENU_VISUAL_PLATFORM] : ['web','mobile'])) {
   const context=await browser.newContext({viewport:{width:1440,height:960}}),page=await context.newPage();
   const origin=platform==='web'?(process.env.WEB_BASE_URL || 'http://127.0.0.1:5666'):baseURL;
-  const state={fail:false,writes:[],row:{id,parentId:'0',name:'Sample',path:'/sample',component:'sample/index',sortOrder:0,visibleClients:1,roles:'admin',meta:{title:'模拟菜单',icon:'lucide:book'}}};
+  const state={fail:false,writes:[],row:{id,parentId:null,name:'Sample',path:'/sample',component:'sample/index',sortOrder:0,visibleClients:1,roles:'admin',meta:{title:'模拟菜单',icon:'lucide:book'}}};
   if(platform==='mobile')await page.addInitScript(()=>localStorage.setItem('aio-life-mobile.access-token.v1','menu-visible-clients-fixture'));
   for(const [path,data] of Object.entries(fixtures)){
    const handler=route=>route.fulfill({json:{code:0,data}});

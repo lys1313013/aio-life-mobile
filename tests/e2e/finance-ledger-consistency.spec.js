@@ -5,8 +5,8 @@ const { pullDown } = require('./gestures');
 async function ledger(page, kind, count) {
   await setup(page, test.info().project.use.baseURL);
   const state = { rows: Array.from({ length: count }, (_, i) => ({
-    id: String(i + 1), bookkeepingAmount: 1, grossAmount: 1, transactionAmount: 1, expTypeId: '81', incTypeId: '81', payTypeId: '82',
-    expTime: '2026-10-01 12:00:00', incDate: '2026-10-01', remark: `模拟账单${i + 1}`,
+    id: String(i + 1), bookkeepingAmount: 1, grossAmount: 1, transactionAmount: 1, expenseTypeId: '81', incomeTypeId: '81', payTypeId: '82',
+    expenseTime: '2026-10-01 12:00:00', incDate: '2026-10-01', remark: `模拟账单${i + 1}`,
   })), requests: [], failStats: false };
   await page.route(`**/api/${kind}/**`, async route => {
     const url = new URL(route.request().url());

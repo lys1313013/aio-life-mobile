@@ -13,8 +13,8 @@ const scenarios = [
 function rows(page, count) {
   return Array.from({ length: count }, (_, index) => ({
     id: String(page * 1000 + index), title: `模拟第${page}页记录${index}`, content: `模拟第${page}页内容${index}`, summary: '模拟多行摘要',
-    bookkeepingAmount: page * 100 + index, grossAmount: page * 100 + index, transactionAmount: page * 100 + index, expTypeId: '81', incTypeId: '81', payTypeId: '82',
-    expTime: '2026-10-01 12:00:00', incDate: '2026-10-01', remark: `模拟第${page}页记录${index}`,
+    bookkeepingAmount: page * 100 + index, grossAmount: page * 100 + index, transactionAmount: page * 100 + index, expenseTypeId: '81', incomeTypeId: '81', payTypeId: '82',
+    expenseTime: '2026-10-01 12:00:00', incDate: '2026-10-01', remark: `模拟第${page}页记录${index}`,
     createTime: '2026-10-01 12:00:00', updateTime: '2026-10-01 12:00:00', username: `fixture-${page}-${index}`, nickname: `模拟用户${page}-${index}`,
     status: 'PENDING', feedbackType: 'BUG', role: 'user', author: '模拟作者', type: 1,
   }));

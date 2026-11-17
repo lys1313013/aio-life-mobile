@@ -98,7 +98,7 @@ const visibleIndices = computed(() =>
     .sort((a, b) =>
       sort.value === '金额降序'
         ? Number(rows.value[b].bookkeepingAmount) - Number(rows.value[a].bookkeepingAmount)
-        : String(rows.value[b].expTime).localeCompare(String(rows.value[a].expTime)),
+        : String(rows.value[b].expenseTime).localeCompare(String(rows.value[a].expenseTime)),
     ),
 );
 const categoryTotals = computed(() =>
@@ -196,13 +196,13 @@ function toggle(index: number) {
     : [...selected.value, index];
 }
 function batch() {
-  const expTypeId = types.value.find((item) => item.dictLabel === type.value)?.id,
+  const expenseTypeId = types.value.find((item) => item.dictLabel === type.value)?.id,
     payTypeId = payments.value.find((item) => item.dictLabel === payment.value)?.id;
   rows.value = rows.value.map((row, index) =>
     selected.value.includes(index)
       ? {
           ...row,
-          ...(expTypeId ? { expTypeId } : {}),
+          ...(expenseTypeId ? { expenseTypeId } : {}),
           ...(payTypeId ? { payTypeId } : {}),
         }
       : row,
@@ -216,9 +216,9 @@ function edit(row: any, index: number) {
 }
 const draftType = computed({
   get: () =>
-    types.value.find((item) => item.id === draft.value.expTypeId)?.dictLabel || '',
+    types.value.find((item) => item.id === draft.value.expenseTypeId)?.dictLabel || '',
   set: (value) => {
-    draft.value.expTypeId =
+    draft.value.expenseTypeId =
       types.value.find((item) => item.dictLabel === value)?.id || '';
   },
 });
@@ -236,7 +236,7 @@ function saveRow() {
     errors.bookkeepingAmount = '请输入有效记账金额';
   if (draft.value.transactionAmount == null || String(draft.value.transactionAmount).trim() === '' || !Number.isFinite(Number(draft.value.transactionAmount)))
     errors.transactionAmount = '请输入有效交易金额';
-  if (missingRequired('importExpense', draft.value, 'expTypeId')) errors.expTypeId = '请选择类型';
+  if (missingRequired('importExpense', draft.value, 'expenseTypeId')) errors.expenseTypeId = '请选择类型';
   if (missingRequired('importExpense', draft.value, 'payTypeId')) errors.payTypeId = '请选择支付方式';
   draftErrors.value = errors;
   if (Object.keys(errors).length) return;
@@ -255,7 +255,7 @@ async function submit() {
     error.value = '预览包含重复交易号，请删除重复记录后导入';
     return;
   }
-  if (rows.value.some((row) => !row.expTypeId || !row.payTypeId || !row.expTime)) {
+  if (rows.value.some((row) => !row.expenseTypeId || !row.payTypeId || !row.expenseTime)) {
     error.value = '请补全每笔记录的类型、支付方式及日期';
     return;
   }
@@ -328,12 +328,12 @@ async function removeSelected() {
           <view v-for="index in visibleIndices" :key="rows[index].transactionId || index" class="record ui-card" :class="themeClass('record')">
             <view class="record-heading ui-row">
               <MobileButton :label="selected.includes(index) ? '取消选择' : '选择'" :icon="selected.includes(index) ? 'ant-design:check-square-outlined' : 'ant-design:border-outlined'" variant="ghost" :disabled="busy" @click="toggle(index)" />
-              <text class="record-date secondary-text" :class="themeClass('secondary-text')">{{ rows[index].expTime }}</text>
+              <text class="record-date secondary-text" :class="themeClass('secondary-text')">{{ rows[index].expenseTime }}</text>
               <text class="record-amount primary-text" :class="themeClass('primary-text')">¥{{ Number(rows[index].bookkeepingAmount).toFixed(2) }}</text>
               <MobileButton label="编辑" icon="ant-design:edit-outlined" variant="ghost" :disabled="busy" @click="edit(rows[index], index)" />
             </view>
-            <text class="record-description primary-text" :class="themeClass('primary-text')">{{ [rows[index].counterparty, rows[index].expDesc].filter(Boolean).join(' · ') }}</text>
-            <text class="record-mapping secondary-text" :class="themeClass('secondary-text')">{{ dictionaryLabel(types, rows[index].expTypeId, '类型待补全') }} · {{ dictionaryLabel(payments, rows[index].payTypeId, '支付方式待补全') }}</text>
+            <text class="record-description primary-text" :class="themeClass('primary-text')">{{ [rows[index].counterparty, rows[index].expenseDesc].filter(Boolean).join(' · ') }}</text>
+            <text class="record-mapping secondary-text" :class="themeClass('secondary-text')">{{ dictionaryLabel(types, rows[index].expenseTypeId, '类型待补全') }} · {{ dictionaryLabel(payments, rows[index].payTypeId, '支付方式待补全') }}</text>
             <text v-if="Number(rows[index].successfulRefund) > 0" class="secondary-text" :class="themeClass('secondary-text')">退款 ¥{{ Number(rows[index].successfulRefund).toFixed(2) }}</text>
           </view>
           <MobileButton label="确认导入" :loading="busy" @click="submit" />
@@ -343,7 +343,7 @@ async function removeSelected() {
     <ModalMotion><AdaptiveModal ref="modalMotion0" v-if="modal" label="导入记录" @close="modal = false">
       <FormField label="记账金额" input-type="digit" v-model="draft.bookkeepingAmount" :error="draftErrors.bookkeepingAmount" />
       <FormField label="交易金额" input-type="digit" v-model="draft.transactionAmount" :error="draftErrors.transactionAmount" />
-      <FormField :required="isRequired('importExpense', 'expTypeId')" label="类型" kind="selector" :options="types.map((item) => item.dictLabel)" v-model="draftType" :error="draftErrors.expTypeId" />
+      <FormField :required="isRequired('importExpense', 'expenseTypeId')" label="类型" kind="selector" :options="types.map((item) => item.dictLabel)" v-model="draftType" :error="draftErrors.expenseTypeId" />
       <FormField :required="isRequired('importExpense', 'payTypeId')" label="支付方式" kind="selector" :options="payments.map((item) => item.dictLabel)" v-model="draftPay" :error="draftErrors.payTypeId" />
       <FormField label="备注" kind="textarea" v-model="draft.remark" />
       <text v-if="draft.transactionId" class="transaction-detail secondary-text" :class="themeClass('secondary-text')">交易号 {{ draft.transactionId }}</text>

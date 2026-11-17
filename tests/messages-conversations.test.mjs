@@ -4,7 +4,7 @@ import { readFile } from 'node:fs/promises';
 import { transform } from 'esbuild';
 const source = await readFile(new URL('../src/pages/messages/services/conversations.ts', import.meta.url), 'utf8');
 const { code } = await transform(source, { loader: 'ts', format: 'esm' });
-const { groupConversations, conversationMessages } = await import('data:text/javascript;base64,' + Buffer.from(code).toString('base64'));
+const { groupConversations, conversationMessages, SYSTEM_CONVERSATION_ID } = await import('data:text/javascript;base64,' + Buffer.from(code).toString('base64'));
 const own = '9223372036854775807', peer = '9223372036854775806';
 const rows = [
   { id: '3', senderId: own, receiverId: peer, content: '最新回复', createTime: '2026-10-04 10:02:00', isRead: false },
@@ -25,4 +25,16 @@ test('会话按最新消息排序，末条预览不依赖接口顺序，未读�
 test('对话只包含当前用户与联系人的双向消息，按时间升序且保留大整数 ID', () => {
   assert.deepEqual(conversationMessages(rows, own, peer).map(item => item.id), ['1', '2', '3']);
   assert.equal(groupConversations(rows, own, {})[1].name, peer);
+});
+test('系统通知归入固定会话，不混入用户私信', () => {
+  const systemRows = [
+    ...rows,
+    { id: '9', receiverId: own, title: '系统通知', content: '系统消息', type: 0, createTime: '2026-10-04 09:00:00', isRead: false },
+  ];
+  const grouped = groupConversations(systemRows, own, { [peer]: { nickname: '模拟好友' } });
+  const system = grouped.find(item => item.id === SYSTEM_CONVERSATION_ID);
+  assert.equal(system.name, '系统通知');
+  assert.equal(system.unread, 1);
+  assert.deepEqual(conversationMessages(systemRows, own, SYSTEM_CONVERSATION_ID).map(item => item.id), ['9']);
+  assert.deepEqual(conversationMessages(systemRows, own, peer).map(item => item.id), ['1', '2', '3']);
 });

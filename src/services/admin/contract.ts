@@ -26,20 +26,20 @@ export function categoryPayload(form, original, admin = false) {
   if (missingRequired('category', form, 'name')) throw new Error('请输入分类名称')
   if (!/^#[\da-fA-F]{6}$/.test(form.color || '')) throw new Error('请输入六位颜色值，如 #427bea')
   const data = {}
-  for (const key of ['id', 'parentId', 'templateId', 'name', 'color', 'icon', 'description', 'isTrackTime', 'isEnabled', 'sortOrder']) if (form[key] !== undefined) data[key] = form[key]
+  for (const key of ['id', 'parentId', 'inheritParent', 'templateId', 'name', 'color', 'icon', 'description', 'isTrackTime', 'isEnabled', 'sortOrder']) if (form[key] !== undefined) data[key] = form[key]
   if (data.id != null) stringId(data.id)
-  if (data.parentId != null) stringId(data.parentId)
+  data.parentId = data.parentId ? stringId(data.parentId) : null
   if (data.templateId != null) stringId(data.templateId)
   if (!admin && original && (original.preset === true || original.templateId)) {
     data.id = original.templateId || original.id
     data.templateId = original.templateId || original.id
-    if ((data.parentId || '0') === (original.parentId || '0')) delete data.parentId
+    if (data.parentId === (original.parentId || null) && !!data.inheritParent === !!original.inheritParent) { delete data.parentId; delete data.inheritParent }
   }
   data.name = data.name.trim()
   return data
 }
 export function siblingSort(items, item, delta) {
-  const siblings = items.filter(row => (row.parentId || '0') === (item.parentId || '0') && row.isEnabled !== 0).sort((a,b) => (a.sortOrder || 0) - (b.sortOrder || 0))
+  const siblings = items.filter(row => (row.parentId || '') === (item.parentId || '') && row.isEnabled !== 0).sort((a,b) => (a.sortOrder || 0) - (b.sortOrder || 0))
   const index = siblings.findIndex(row => row.id === item.id)
   const target = index + delta
   if (index < 0 || target < 0 || target >= siblings.length) return []
@@ -65,7 +65,7 @@ export function orderCategories(rows) {
   const sorted = [...rows].sort((a,b) => (a.sortOrder || 0) - (b.sortOrder || 0))
   const result = [], seen = new Set()
   function visit(row) {if(seen.has(row.id)) return; seen.add(row.id); result.push(row); sorted.filter(child => child.parentId === row.id).forEach(visit)}
-  sorted.filter(row => !row.parentId || row.parentId === '0' || !rows.some(parent => parent.id === row.parentId)).forEach(visit)
+  sorted.filter(row => !row.parentId || !rows.some(parent => parent.id === row.parentId)).forEach(visit)
   sorted.forEach(visit)
   return result
 }

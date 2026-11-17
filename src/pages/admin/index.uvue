@@ -249,10 +249,10 @@ async function load(more = false, refresh = false) {
 }
 function fieldOptions(field) {
   if (field.options.length) return field.options;
-  if (field.key === 'dictId' || field.key === 'dictType') return options.value;
+  if (field.key === 'dictTypeId' || field.key === 'dictType') return options.value;
   if (field.key === 'parentId')
     return [
-      { label: '无（根菜单）', value: '0' },
+      { label: '无（根菜单）', value: '' },
       ...rows.value
         .filter((row) => row.id !== form.value.id && !descendant(row, form.value.id))
         .map((row) => ({ label: '　'.repeat(row.depth || 0) + row.title + ' · ' + row.path, value: row.id })),
@@ -262,7 +262,7 @@ function fieldOptions(field) {
 function fieldValue(field) {
   const value = form.value[field.key];
   return field.kind === 'selector'
-    ? fieldOptions(field).find((option) => option.value === String(value))?.label || ''
+    ? fieldOptions(field).find((option) => option.value === (value == null ? '' : String(value)))?.label || ''
     : String(value == null ? '' : value);
 }
 function setField(field, value) {
@@ -271,7 +271,7 @@ function setField(field, value) {
       ? fieldOptions(field).find((option) => option.label === value)?.value || ''
       : value;
 }
-function edit(row = null, parentId = '0') {
+function edit(row = null, parentId = '') {
   if (loading.value || busyId.value || dictWorking.value || dictDragging.value || !authorized.value) return;
   if (kind.value === 'user-dict' && row && !row.preset) return;
   original.value = row;
@@ -286,7 +286,7 @@ function edit(row = null, parentId = '0') {
         sortOrder: '0',
         parentId,
         dictType: typeFilter.value,
-        dictId: kind.value === 'dict-data' ? options.value.find(option => option.type === typeFilter.value)?.value || '' : undefined,
+        dictTypeId: kind.value === 'dict-data' ? options.value.find(option => option.type === typeFilter.value)?.value || '' : undefined,
         color: '#427bea',
       };
   if (kind.value === 'menus') {
@@ -379,7 +379,7 @@ async function move(row, delta) {
 function descendant(row, id) {
   let parent = row.parentId,
     seen = [];
-  while (parent && parent !== '0' && !seen.includes(parent)) {
+  while (parent && !seen.includes(parent)) {
     if (parent === id) return true;
     seen.push(parent);
     parent = rows.value.find((row) => row.id === parent)?.parentId;

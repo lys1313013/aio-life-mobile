@@ -10,7 +10,7 @@ const { minimalRequestPayload, pickQuery } = await import(payloadUrl)
 
 test('时迹更新保留明细字符串ID、零次数及清空描述，新增项无ID且剔除归属审计字段', () => {
   const exercises = [
-    { id: '9223372036854775001', exerciseTypeId: '9223372036854775002', exerciseCount: 0, description: null, userId: 'other', timeId: 'other-time', createTime: '2000-01-01' },
+    { id: '9223372036854775001', exerciseTypeId: '9223372036854775002', exerciseCount: 0, description: null, userId: 'other', timeRecordId: 'other-time', createTime: '2000-01-01' },
     { exerciseTypeId: '77', exerciseCount: 20 },
   ]
   const before = structuredClone(exercises)

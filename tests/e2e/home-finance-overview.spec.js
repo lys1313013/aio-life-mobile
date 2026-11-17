@@ -60,7 +60,7 @@ test('概览空态与失败重试保留卡片高度，底层二级锁不读取�
 test('概览零结余格子可点，明细可切收支，旧类型响应不回填', async ({ page }) => {
   await setup(page, { zeroBalance: true });
   let release; const delayedIncome = new Promise(resolve => { release = resolve; }); const queries = [];
-  await page.route('**/api/expense/query?*', route => { queries.push('expense'); return route.fulfill({ json: { code: 0, data: { items: Array.from({ length: 20 }, (_, index) => ({ id: 'expense-' + index, bookkeepingAmount: index ? 0 : 2345.67, expDesc: '实际支出明细' + index + ' 保留此前明细直到新类型加载成功', expTime: '2026-10-01 10:00:00' })), total: 20 } } }); });
+  await page.route('**/api/expense/query?*', route => { queries.push('expense'); return route.fulfill({ json: { code: 0, data: { items: Array.from({ length: 20 }, (_, index) => ({ id: 'expense-' + index, bookkeepingAmount: index ? 0 : 2345.67, expenseDesc: '实际支出明细' + index + ' 保留此前明细直到新类型加载成功', expenseTime: '2026-10-01 10:00:00' })), total: 20 } } }); });
   await page.route('**/api/income/query?*', async route => { queries.push('income'); await delayedIncome; return route.fulfill({ json: { code: 0, data: { items: [{ id: 'income-1', grossAmount: 2345.67, remark: '迟到收入明细', incDate: '2026-10-01' }], total: 1 } } }); });
   const card = page.locator('[aria-label="收支概览首页卡片"]');
   const dialog = page.getByRole('region', { name: '收支明细' });

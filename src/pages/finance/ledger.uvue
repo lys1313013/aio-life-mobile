@@ -138,7 +138,7 @@ function filterStatistics(group: any, item: any) {
   filters.value.endTime =
     group.year + '-' + String(endMonth).padStart(2, '0') + '-' + last;
   typeFilter.value = name(types.value, String(item.typeId));
-  filters.value[expense.value ? 'expTypeId' : 'incTypeId'] = String(item.typeId);
+  filters.value[expense.value ? 'expenseTypeId' : 'incomeTypeId'] = String(item.typeId);
   showStatisticsDetails.value = false;
   load();
 }
@@ -153,9 +153,9 @@ const filters = ref<Record<string, any>>({
   endTime: '',
   remark: '',
   counterparty: '',
-  expDesc: '',
-  incTypeId: '',
-  expTypeId: '',
+  expenseDesc: '',
+  incomeTypeId: '',
+  expenseTypeId: '',
   payTypeId: '',
 });
 const showFilters = ref(false);
@@ -171,7 +171,7 @@ function toggleSelection() {
   openedRow.value = '';
 }
 const activeFilterCount = computed(() =>
-  ['year', 'startTime', 'endTime', 'remark', 'counterparty', 'expDesc', 'payTypeId']
+  ['year', 'startTime', 'endTime', 'remark', 'counterparty', 'expenseDesc', 'payTypeId']
     .filter((key) => expense.value || key !== 'year')
     .filter((key) => String(filters.value[key] || '').trim()).length,
 );
@@ -195,7 +195,7 @@ const sorted = computed(() =>
       ? Number(recordAmount(b)) - Number(recordAmount(a))
       : sort.value === '金额升序'
         ? Number(recordAmount(a)) - Number(recordAmount(b))
-        : String(b.expTime || b.incDate).localeCompare(String(a.expTime || a.incDate)),
+        : String(b.expenseTime || b.incDate).localeCompare(String(a.expenseTime || a.incDate)),
   ),
 );
 const amount = computed(
@@ -326,7 +326,7 @@ async function mutate(action: () => Promise<any>, accepted: () => void) {
 }
 watch(typeFilter, (value) => {
   const id = types.value.find((item) => item.dictLabel === value)?.id || '';
-  filters.value[expense.value ? 'expTypeId' : 'incTypeId'] = id;
+  filters.value[expense.value ? 'expenseTypeId' : 'incomeTypeId'] = id;
 });
 watch(payFilter, (value) => {
   filters.value.payTypeId =
@@ -348,10 +348,10 @@ function edit(row: any = null) {
         grossAmount: '',
         transactionAmount: '',
         incDate: date,
-        expTime: date + ' 00:00:00',
+        expenseTime: date + ' 00:00:00',
         remark: '',
-        incTypeId: '',
-        expTypeId: '',
+        incomeTypeId: '',
+        expenseTypeId: '',
         payTypeId: '',
       };
   openedRow.value = '';
@@ -554,7 +554,7 @@ async function removeSelected() {
           hide-label
           label="交易描述"
           placeholder="交易描述"
-          v-model="filters.expDesc"
+          v-model="filters.expenseDesc"
         />
         <FormField :style="appGridItem(2, 'section', [[700, 3]], false)"
           compact
@@ -579,7 +579,7 @@ async function removeSelected() {
         @retry="initialize"
       >
         <LedgerRow v-for="(row, index) in sorted" :key="ledgerId(row)"
-          :kind="kind" :row="row" :category="name(types, row[expense ? 'expTypeId' : 'incTypeId'])"
+          :kind="kind" :row="row" :category="name(types, row[expense ? 'expenseTypeId' : 'incomeTypeId'])"
           :payment="expense ? name(payments, row.payTypeId) : ''"
           :first="index === 0" :last="index === sorted.length - 1"
           :opened="openedRow === ledgerId(row)" :selecting="expense && selecting" :selected="selected.includes(ledgerId(row))"

@@ -19,7 +19,7 @@ async function setup(page, apiMock) {
     'GET /api/quick-nav/my': ok([]),
     'GET /api/income/statisticsByMonth': ok([{ year: 2026, month: 11, detail: [{ typeId: 'salary', typeName: '工资', grossAmount: 8000 }] }]),
     'GET /api/expense/statisticsByMonth': ok([{ year: 2026, month: 11, detail: [{ typeId: 'food', typeName: '餐饮', bookkeepingAmount: 600 }] }]),
-    'GET /api/income/query': ok({ items: [{ id: '9223372036854775807', grossAmount: 8000, incDate: '2026-11-12', incTypeId: 'salary', remark: '模拟工资收入' }], total: 1 }),
+    'GET /api/income/query': ok({ items: [{ id: '9223372036854775807', grossAmount: 8000, incDate: '2026-11-12', incomeTypeId: 'salary', remark: '模拟工资收入' }], total: 1 }),
     'GET /api/userDictType/getByDictType': ok({ dictDetailList: [{ id: 'salary', dictLabel: '工资' }] }),
     'GET /api/goals': ok([{ id: 'goal-fixture', title: '模拟年度阅读目标', type: 1, status: 'in_progress', currentValue: 35, targetValue: 100, progressMode: 'manual', isPinned: 0, startDate: '2026-01-01', endDate: '2026-12-31' }]),
   });

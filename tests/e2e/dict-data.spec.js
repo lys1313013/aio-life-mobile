@@ -2,20 +2,20 @@ const { test, expect } = require('./support/test');
 const fs = require('node:fs');
 const out = 'artifacts/dict-data-a';
 fs.mkdirSync(out, { recursive: true });
-const row = (i, type = 'bank') => ({dictCode: String(9223372036854775000n + BigInt(i)), dictId:type === 'bank'?'91':'92', dictLabel: type === 'bank' ? '模拟银行 ' + i : '模拟设备状态 ' + i, dictValue:'CODE_' + i, dictType:type, dictName:type === 'bank'?'银行':'设备状态', sortOrder:i, isEnabled:i % 2 ? 1:0, remark:i === 1?'用于验证备注换行和信息密度的模拟说明。':'', updateTime:'2026-10-05 10:20:30'});
+const row = (i, type = 'bank') => ({id: String(9223372036854775000n + BigInt(i)), dictTypeId:type === 'bank'?'91':'92', dictLabel: type === 'bank' ? '模拟银行 ' + i : '模拟设备状态 ' + i, dictValue:'CODE_' + i, dictType:type, dictName:type === 'bank'?'银行':'设备状态', sortOrder:i, isEnabled:i % 2 ? 1:0, remark:i === 1?'用于验证备注换行和信息密度的模拟说明。':'', updateTime:'2026-10-05 10:20:30'});
 async function setup(page) {
   const state = { requests:[], failMore:false, delay:0, emptyMore:false, writes:[], changes:[], failWrite:false, deleted:[] };
   await page.addInitScript(() => localStorage.setItem('aio-life-mobile.access-token.v1',JSON.stringify({type:'string',data:'dict-data-fixture'})));
   await page.route('**/api/user/info',r=>r.fulfill({json:{code:0,data:{id:'9001',roles:['admin']}}}));
   await page.route('**/api/auth/secondary-lock/menus',r=>r.fulfill({json:{code:0,data:[]}}));
-  await page.route('**/api/sysDictType/query?*',r=>r.fulfill({json:{code:0,data:{items:[{dictId:'91',dictName:'银行',dictType:'bank'},{dictId:'92',dictName:'设备状态',dictType:'device_status'}],total: 2}}}));
+  await page.route('**/api/sysDictType/query?*',r=>r.fulfill({json:{code:0,data:{items:[{id:'91',dictName:'银行',dictType:'bank'},{id:'92',dictName:'设备状态',dictType:'device_status'}],total: 2}}}));
   await page.route('**/api/sysDictData/query?*',async r=>{
     const q=Object.fromEntries(new URL(r.request().url()).searchParams); state.requests.push(q);
     const delay=state.delay; if(delay) await new Promise(resolve=>setTimeout(resolve,delay));
     if(q.page==='2' && state.failMore) return r.fulfill({json:{code:1,message:'模拟分页失败'}});
     const type=q.dictType||'device_status';
     const items=q.dictLabel ? (q.dictLabel==='不存在'?[]:[row(1,type)]) : q.page==='1'?Array.from({length:20},(_,i)=>row(i+1,type)):state.emptyMore?[]:[row(20,type),row(21,type),row(22,type)];
-    await r.fulfill({json:{code:0,data:{items:items.filter(item=>!state.deleted.includes(item.dictCode)),total:q.dictLabel?items.length:22-state.deleted.length}}});
+    await r.fulfill({json:{code:0,data:{items:items.filter(item=>!state.deleted.includes(item.id)),total:q.dictLabel?items.length:22-state.deleted.length}}});
   });
   await page.route('**/api/sysDictData',r=>{state.writes.push(r.request().postDataJSON());return r.fulfill({json:{code:0,data:true}})});
   await page.route(/\/api\/sysDictData\/\d+$/, r=>{
@@ -92,7 +92,7 @@ test('类型即时筛选、搜索、旧请求隔离、重置、新增默认类�
   await modal.getByRole('textbox',{name:'展示值',exact:true}).fill('模拟新增');
   await modal.getByRole('button',{name:'保存',exact:true}).click();
   await expect.poll(()=>state.writes.length).toBe(1);
-  expect(state.writes[0].dictId).toBe('91');
+  expect(state.writes[0].dictTypeId).toBe('91');
 });
 test('实际触底、请求去重、失败重试、跨页去重和末页停止',async({page})=>{
   await page.setViewportSize({width:390,height:844});
@@ -154,7 +154,7 @@ test('单行详情保留完整信息，更多菜单编辑及删除失败恢复',
   await editor.getByRole('textbox',{name:'展示值',exact:true}).fill('模拟修改');
   await editor.getByRole('button',{name:'保存',exact:true}).click();
   await expect.poll(()=>state.changes.length).toBe(1);
-  expect(state.changes[0]).toMatchObject({method:'PUT',id:row(1).dictCode,body:{dictLabel:'模拟修改',dictId:'92'}});
+  expect(state.changes[0]).toMatchObject({method:'PUT',id:row(1).id,body:{dictLabel:'模拟修改',dictTypeId:'92'}});
   await expect(page.getByRole('dialog')).toHaveCount(0);
   await expect(page.getByRole('button',{name:'查询',exact:true})).toBeEnabled();
   await first.getByRole('button',{name:/更多操作$/}).click();
@@ -169,7 +169,7 @@ test('单行详情保留完整信息，更多菜单编辑及删除失败恢复',
   await confirm.getByRole('button',{name:'确认',exact:true}).click();
   await expect(page.getByRole('dialog')).toHaveCount(0);
   await expect(page.locator('.dict-title').first()).toHaveText('模拟设备状态 2');
-  expect(state.changes.filter(item=>item.method==='DELETE').map(item=>item.id)).toEqual([row(1).dictCode,row(1).dictCode]);
+  expect(state.changes.filter(item=>item.method==='DELETE').map(item=>item.id)).toEqual([row(1).id,row(1).id]);
 });
 
 for (const dark of [false,true]) test(`分页等待时名称保持可读 ${dark?'dark':'light'}`,async({page})=>{

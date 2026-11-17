@@ -74,7 +74,7 @@ export interface Category {
   icon?: string
   id: string
   name: string
-  parentId?: string
+  parentId?: null | string
   color?: string
   isEnabled?: number
   isTrackTime?: number

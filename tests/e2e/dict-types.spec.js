@@ -2,7 +2,7 @@ const { test, expect } = require('./support/test');
 const fs = require('node:fs');
 const out = 'artifacts/dict-types-c';
 fs.mkdirSync(out, { recursive: true });
-const row = i => ({dictId:String(9223372036854775000n+BigInt(i)),dictName:['设备状态','设备类型','支出类型','收入类型','银行','模拟很长的字典名称'][(i-1)%6],dictType:['device_status','device_type','expense_type','income_type','bank','fixture_very_long_dictionary_identifier'][(i-1)%6],remark:i===1?'用于验证备注换行和信息密度的模拟说明。':'',updateTime:i===2?null:'2026-10-05 10:20:30'});
+const row = i => ({id:String(9223372036854775000n+BigInt(i)),dictName:['设备状态','设备类型','支出类型','收入类型','银行','模拟很长的字典名称'][(i-1)%6],dictType:['device_status','device_type','expense_type','income_type','bank','fixture_very_long_dictionary_identifier'][(i-1)%6],remark:i===1?'用于验证备注换行和信息密度的模拟说明。':'',updateTime:i===2?null:'2026-10-05 10:20:30'});
 async function setup(page) {
   const state = { requests:[], failMore:false, delay:0, emptyMore:false, writes:[], changes:[], failWrite:false, deleted:[] };
   await page.addInitScript(() => localStorage.setItem('aio-life-mobile.access-token.v1',JSON.stringify({type:'string',data:'dict-types-fixture'})));
@@ -14,7 +14,7 @@ async function setup(page) {
     if(q.page==='2' && state.failMore) return r.fulfill({json:{code:1,message:'模拟分页失败'}});
 
     const items=q.dictName ? (q.dictName==='不存在'?[]:[{...row(1),dictName:q.dictName}]) : q.page==='1'?Array.from({length:20},(_,i)=>row(i+1)):state.emptyMore?[]:[row(20),row(21),row(22)];
-    await r.fulfill({json:{code:0,data:{items:items.filter(item=>!state.deleted.includes(item.dictId)),total:q.dictName?items.length:22-state.deleted.length}}});
+    await r.fulfill({json:{code:0,data:{items:items.filter(item=>!state.deleted.includes(item.id)),total:q.dictName?items.length:22-state.deleted.length}}});
   });
   await page.route('**/api/sysDictType',r=>{state.writes.push(r.request().postDataJSON());return r.fulfill({json:{code:0,data:true}})});
   await page.route(/\/api\/sysDictType\/\d+$/, r=>{
@@ -119,7 +119,7 @@ test('单行详情保留完整信息，更多菜单编辑及删除失败恢复',
   await editor.getByRole('textbox',{name:'字典名称',exact:true}).fill('模拟修改');
   await editor.getByRole('button',{name:'保存',exact:true}).click();
   await expect.poll(()=>state.changes.length).toBe(1);
-  expect(state.changes[0]).toMatchObject({method:'PUT',id:row(1).dictId,body:{dictName:'模拟修改',dictType:'device_status'}});
+  expect(state.changes[0]).toMatchObject({method:'PUT',id:row(1).id,body:{dictName:'模拟修改',dictType:'device_status'}});
   await expect(page.getByRole('dialog')).toHaveCount(0);
   await expect(page.getByRole('button',{name:'查询',exact:true})).toBeEnabled();
   await first.getByRole('button',{name:/更多操作$/}).click();
@@ -134,7 +134,7 @@ test('单行详情保留完整信息，更多菜单编辑及删除失败恢复',
   await confirm.getByRole('button',{name:'确认',exact:true}).click();
   await expect(page.getByRole('dialog')).toHaveCount(0);
   await expect(page.locator('.dict-row .dict-title').first()).toHaveText('设备类型');
-  expect(state.changes.filter(item=>item.method==='DELETE').map(item=>item.id)).toEqual([row(1).dictId,row(1).dictId]);
+  expect(state.changes.filter(item=>item.method==='DELETE').map(item=>item.id)).toEqual([row(1).id,row(1).id]);
 });
 
 for (const dark of [false,true]) test(`分页等待时名称保持可读 ${dark?'dark':'light'}`,async({page})=>{

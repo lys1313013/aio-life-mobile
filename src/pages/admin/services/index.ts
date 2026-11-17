@@ -16,7 +16,7 @@ export async function queryAdmin(kind, params) {
 export async function saveAdmin(kind, form, original) {
   const spec = specs[kind], data = adminPayload(kind, form, original)
   if (original) stringId(original[spec.id])
-  for (const key of ['dictId','parentId']) if (data[key]) stringId(data[key])
+  for (const key of ['dictTypeId','parentId']) if (data[key]) stringId(data[key])
   return request(spec.base + (original && !spec.updateRoot ? '/' + stringId(original[spec.id]) : ''), original ? 'PUT' : 'POST', data)
 }
 export function deleteAdmin(kind, row) {
@@ -45,8 +45,8 @@ export function batchCloseFeedback(ids) { if (!ids.length) throw Error('请选�
 export async function adminOptions(kind) {
   if (kind === 'dict-data') {
     const rows = []; let page = 1; let total = 1
-    while (rows.length < total) { const result = readPage(await request(queryPath('/sysDictType/query',{page: page++,pageSize:100})), 'dictId'); if (!result.items.length) break; rows.push(...result.items); total = result.total }
-    return rows.map(row => ({ label:row.dictName, value:row.dictId, type:row.dictType }))
+    while (rows.length < total) { const result = readPage(await request(queryPath('/sysDictType/query',{page: page++,pageSize:100})), 'id'); if (!result.items.length) break; rows.push(...result.items); total = result.total }
+    return rows.map(row => ({ label:row.dictName, value:row.id, type:row.dictType }))
   }
   if (kind === 'user-dict') return request('/userDictType/dictTypeEnum')
   if (kind === 'menus') return request('/menu/admin/role-options')

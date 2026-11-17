@@ -10,7 +10,7 @@ const { adminPayload } = await import(asModule(specsSource))
 const id = '9223372036854775807'
 test('管理员所有分页和路径保留长ID，数字ID拒绝；条件平铺编码',() => {
  assert.equal(stringId(id),id); assert.throws(()=>stringId(123),/ID/)
- assert.deepEqual(readPage({items:[{dictCode:id}],total:1},'dictCode'),{items:[{dictCode:id}],total:1})
+ assert.deepEqual(readPage({items:[{id:id}],total:1},'id'),{items:[{id:id}],total:1})
  assert.throws(()=>readPage({items:[{id:123}],total:1}),/ID/)
  assert.equal(queryPath('/query',{keyword:'a&b',page:1,empty:''}),'/query?keyword=a%26b&page=1')
 })
@@ -19,7 +19,7 @@ test('管理分页读取数字总数，零和末页有效且长ID保持原样', 
  assert.deepEqual(readPage(page), page)
  assert.equal(page.total, 21)
  assert.deepEqual(readPage({items:[],total:0}), {items:[],total:0})
- assert.deepEqual(readPage({items:[{dictCode:id}],total:1}, 'dictCode'), {items:[{dictCode:id}],total:1})
+ assert.deepEqual(readPage({items:[{id:id}],total:1}, 'id'), {items:[{id:id}],total:1})
  assert.equal(readPage({items:[],total:2147483648}).total, 2147483648)
  for (const total of [null, undefined, -1, 1.5, NaN, Infinity, 9007199254740992]) {
   assert.throws(() => readPage({items:[],total}), /列表数据异常/)
@@ -30,23 +30,23 @@ test('管理分页拒绝字符串总数', () => {
 })
 test('公共分类覆盖使用模板ID且未改父级不发送，未知和用户字段不泄露',() => {
  const original={id:'3',templateId:id,parentId:null,preset:false}
- const form={...original,parentId:'0',name:' 分类 ',color:'#123456',icon:'lucide:book',isTrackTime:1,clientOnly:true}
+ const form={...original,parentId:null,name:' 分类 ',color:'#123456',icon:'lucide:book',isTrackTime:1,clientOnly:true}
  const result=categoryPayload(form,original)
  assert.equal(result.id,id); assert.equal(result.templateId,id); assert.equal(result.name,'分类'); assert.equal(result.icon,'lucide:book')
  assert.equal('parentId' in result,false); assert.equal('userId' in result,false); assert.equal('clientOnly' in result,false)
  assert.throws(()=>categoryPayload({...form,color:'red'},original),/颜色/)
 })
 test('排序只在同级交换，公共模板映射保留；树顺序父在子前',() => {
- const rows=[{id:'1',parentId:'0',sortOrder:0,preset:true},{id:'2',parentId:'0',sortOrder:10,preset:false},{id:'3',parentId:'1',sortOrder:0,preset:false}]
+ const rows=[{id:'1',parentId:null,sortOrder:0,preset:true},{id:'2',parentId:null,sortOrder:10,preset:false},{id:'3',parentId:'1',sortOrder:0,preset:false}]
  assert.deepEqual(siblingSort(rows,rows[0],1),[{id:'2',templateId:null,sortOrder:0},{id:'1',templateId:'1',sortOrder:10}])
  assert.deepEqual(siblingSort(rows,rows[2],1),[])
  assert.deepEqual(orderCategories(rows).map(row=>row.id),['1','3','2'])
 })
 test('菜单保留额外meta，核心管理强制启用且不许改路径',() => {
  const original={id,path:'/system/menu'}
- const result=adminPayload('menus',{title:'菜单',name:'Menu',path:'/system/menu',parentId:'0',visibleClients:'0',metaText:'{"keepAlive":true}'},original)
+ const result=adminPayload('menus',{title:'菜单',name:'Menu',path:'/system/menu',parentId:'',visibleClients:'0',metaText:'{"keepAlive":true}'},original)
  assert.deepEqual(result.meta,{keepAlive:true,title:'菜单',icon:undefined}); assert.equal(result.visibleClients,3); assert.equal(result.id,id)
- assert.throws(()=>adminPayload('menus',{title:'菜单',name:'Menu',path:'/other',parentId:'0',visibleClients:'1',metaText:'{}'},original),/不可修改/)
+ assert.throws(()=>adminPayload('menus',{title:'菜单',name:'Menu',path:'/other',parentId:'',visibleClients:'1',metaText:'{}'},original),/不可修改/)
  assert.equal(protectedMenu(original),true)
  assert.deepEqual(flattenMenus([{id:'1',children:[{id:'2'}]}]).map(row=>row.depth),[0,1])
 })
@@ -64,7 +64,7 @@ test('管理员CRUD与个人/公共分类接口分离，不将长ID转number',as
  const service=await import(asModule(serviceSource.replace("import { request } from '../../../services/api.ts'","const request = globalThis.__adminMock").replace("from './specs.ts'","from '"+asModule(specsSource)+"'").replace("from '../../../services/admin/contract.ts'","from '"+asModule(source)+"'")))
  await service.saveAdmin('users',{username:'demo',nickname:'演示',role:'user'},{id})
  assert.equal(calls.at(-1)[0],'/user-center'); assert.equal(calls.at(-1)[1],'PUT'); assert.equal(calls.at(-1)[2].id,id)
- await service.deleteAdmin('dict-types',{dictId:id})
+ await service.deleteAdmin('dict-types',{id:id})
  assert.deepEqual(calls.at(-1),['/sysDictType/'+id,'DELETE'])
  await service.batchCloseFeedback([id])
  assert.deepEqual(calls.at(-1),['/feedback/admin/batch','POST',{idList:[id],action:'CLOSE'}])
@@ -78,14 +78,14 @@ test('管理员CRUD与个人/公共分类接口分离，不将长ID转number',as
 })
 
 test('菜单可保存主页负数排序，字典仍禁止负数', () => {
- const form={title:'主页',name:'Home',path:'/',parentId:'0',visibleClients:'1',sortOrder:'-1',metaText:'{}'}
+ const form={title:'主页',name:'Home',path:'/',parentId:'',visibleClients:'1',sortOrder:'-1',metaText:'{}'}
  assert.equal(adminPayload('menus',form).sortOrder,-1)
- assert.throws(()=>adminPayload('dict-data',{dictId:'1',dictValue:'v',dictLabel:'名称',sortOrder:'-1'}),/非负/)
+ assert.throws(()=>adminPayload('dict-data',{dictTypeId:'1',dictValue:'v',dictLabel:'名称',sortOrder:'-1'}),/非负/)
 })
 
 
 test('菜单图标颜色作为独立字段保存、清空并校验，不写入meta', () => {
- const form = {title:'菜单',name:'Menu',path:'/sample',parentId:'0',visibleClients:'1',metaText:'{"keepAlive":true}',iconColor:' #427bea '}
+ const form = {title:'菜单',name:'Menu',path:'/sample',parentId:'',visibleClients:'1',metaText:'{"keepAlive":true}',iconColor:' #427bea '}
  const saved = adminPayload('menus', form)
  assert.equal(saved.iconColor, '#427bea')
  assert.equal(saved.meta.iconColor, undefined)
@@ -108,7 +108,7 @@ test('菜单展示端通过统一接口切换当前位，不提交旧字段或�
 })
 
 test('菜单展示端位掩码保存零值与组合值，拒绝未知位和非整数', () => {
- const form = {title:'菜单',name:'Menu',path:'/sample',parentId:'0',metaText:'{}'}
+ const form = {title:'菜单',name:'Menu',path:'/sample',parentId:'',metaText:'{}'}
  for (const visibleClients of [0,1,2,3]) {
   const payload = adminPayload('menus', {...form, visibleClients})
   assert.equal(payload.visibleClients, visibleClients)

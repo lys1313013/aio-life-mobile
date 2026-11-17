@@ -12,8 +12,8 @@ for (const kind of ['expense', 'income']) {
       await setup(page);
       const rows = Array.from({ length: 30 }, (_, index) => ({
         id: String(1000 + index), bookkeepingAmount: 12, grossAmount: 12, transactionAmount: 12,
-        expTypeId: '81', incTypeId: '81', payTypeId: '82',
-        expTime: '2026-10-11 12:00:00', incDate: '2026-10-11', remark: '模拟账目',
+        expenseTypeId: '81', incomeTypeId: '81', payTypeId: '82',
+        expenseTime: '2026-10-11 12:00:00', incDate: '2026-10-11', remark: '模拟账目',
       }));
       await page.route(`**/api/${kind}/query*`, route => route.fulfill({ json: { code: 0, data: { items: rows, total: rows.length } } }));
       const errors = [];

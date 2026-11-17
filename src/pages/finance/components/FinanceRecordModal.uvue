@@ -25,34 +25,34 @@ function updateDevice(change: any) { Object.assign(props.draft, { deviceId: chan
 const field = (key, label, kind = 'text', inputType = 'text') => ({ key, label, kind, inputType })
 const fields = computed(() => expense.value ? [
   [field('transactionAmount', '交易金额', 'text', 'digit'), field('bookkeepingAmount', '记账金额', 'text', 'digit')],
-  [field('expTypeId', '类型', 'selector'), field('payTypeId', '支付方式', 'selector')],
+  [field('expenseTypeId', '类型', 'selector'), field('payTypeId', '支付方式', 'selector')],
   [field('date', '日期', 'date'), field('time', '时间', 'time')],
   [field('remark', '备注', 'textarea')],
 ] : [
-  [field('grossAmount', '金额', 'text', 'digit'), field('incTypeId', '类型', 'selector')],
+  [field('grossAmount', '金额', 'text', 'digit'), field('incomeTypeId', '类型', 'selector')],
   [field('incDate', '日期', 'date')],
   [field('remark', '备注', 'textarea')],
 ])
 function options(key) { return key === 'payTypeId' ? props.payments : props.types }
 function value(key) {
   const draft = props.draft
-  if (key === 'date') return String(draft.expTime || '').slice(0, 10)
-  if (key === 'time') return String(draft.expTime || '').slice(11, 16)
+  if (key === 'date') return String(draft.expenseTime || '').slice(0, 10)
+  if (key === 'time') return String(draft.expenseTime || '').slice(11, 16)
   if (key.endsWith('TypeId')) return options(key).find(item => item.id === draft[key])?.dictLabel || ''
   return String(draft[key] ?? '')
 }
 function update(key, value) {
   if (props.saving) return
   const draft = props.draft
-  if (key === 'date') draft.expTime = value + ' ' + String(draft.expTime || ' 00:00:00').slice(11, 19)
-  else if (key === 'time') draft.expTime = String(draft.expTime || '').slice(0, 10) + ' ' + value + ':00'
+  if (key === 'date') draft.expenseTime = value + ' ' + String(draft.expenseTime || ' 00:00:00').slice(11, 19)
+  else if (key === 'time') draft.expenseTime = String(draft.expenseTime || '').slice(0, 10) + ' ' + value + ':00'
   else if (key.endsWith('TypeId')) draft[key] = options(key).find(item => item.dictLabel === value)?.id || ''
   else {
     if (key === 'transactionAmount' && (draft.bookkeepingAmount === '' || String(draft.bookkeepingAmount) === String(draft.transactionAmount))) draft.bookkeepingAmount = value
     draft[key] = value
   }
 }
-function required(key) { return isRequired(expense.value ? 'expense' : 'income', key === 'date' || key === 'time' ? 'expTime' : key) }
+function required(key) { return isRequired(expense.value ? 'expense' : 'income', key === 'date' || key === 'time' ? 'expenseTime' : key) }
 </script>
 <template>
   <ModalMotion><AdaptiveModal ref="modalMotion0" :label="expense ? '编辑支出' : '编辑收入'" :busy="saving || deviceOpen" @close="emit('close')">

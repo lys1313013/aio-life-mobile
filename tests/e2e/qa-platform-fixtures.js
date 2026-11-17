@@ -25,7 +25,7 @@ if(p==='/api/timeTrackerCategory/admin/list')data=[{id:'9223372036854775807',nam
 if(p==='/api/notification/preferences')data=[{bizType:'fixture',description:'模拟通知',visible:true,channels:[{channel:'EMAIL',isEnabled:1}]}];
 if(p==='/api/menu/admin/tree')data=[];
 if(p==='/api/menu/admin/role-options')data=['admin','user'];
-if(p==='/api/sysDictType/query')data={items:[{dictId:'9223372036854775807',dictName:'模拟字典',dictType:'fixture'}],total:1};
+if(p==='/api/sysDictType/query')data={items:[{id:'9223372036854775807',dictName:'模拟字典',dictType:'fixture'}],total:1};
 if(['/api/user-center/list','/api/sysDictData/query','/api/userDictData/admin/query','/api/feedback/admin/list','/api/system/logs/operation','/api/system/logs/access'].includes(p))data={items:[],total:0};
 if(p==='/api/system-config/list')data=[];
 if(p==='/api/userDictType/dictTypeEnum')data=[{label:'模拟字典',value:'fixture'}];
@@ -34,7 +34,7 @@ if(p==='/api/cbti/questions')data={questions:[{id:1,text:'模拟问题',options:
 if(p==='/api/cbti/test')data={personality:{code:'QA',name:'模拟人格',motto:'模拟格言',description:'仅用于测试',strengths:['模拟优势'],weaknesses:['模拟弱点'],vector:Array(15).fill(1)},dimensions:Array.from({length:15},(_,i)=>({code:'D'+i,name:'维度'+i,percentage:60,level:'M',levelDesc:'中等',modelName:'模拟模型'})),similarity:88,matchDetails:[]};
 if(p==='/api/cbti/personalities'||p==='/api/cbti/results'||p==='/api/mbti/results')data=[];
 if(populated){
-const id='9223372036854775807';const row={id,dictId:id,dictCode:id,preset:true,username:'fixture-row',nickname:'模拟记录',role:'user',email:'row@example.test',dictName:'模拟字典',dictType:'fixture',dictLabel:'模拟字典值',dictValue:'value',sortOrder:0,isEnabled:1,isReadonly:'N',name:'MockMenu',parentId:'0',path:'/mock',meta:{title:'模拟菜单',keepAlive:true},title:'模拟反馈',content:'模拟反馈内容',feedbackType:'BUG',priority:'NORMAL',functionName:'模拟日志',functionItem:'检查',createTime:'2026-10-01 10:00'};
+const id='9223372036854775807';const row={id,dictTypeId:id,preset:true,username:'fixture-row',nickname:'模拟记录',role:'user',email:'row@example.test',dictName:'模拟字典',dictType:'fixture',dictLabel:'模拟字典值',dictValue:'value',sortOrder:0,isEnabled:1,isReadonly:'N',name:'MockMenu',parentId:'0',path:'/mock',meta:{title:'模拟菜单',keepAlive:true},title:'模拟反馈',content:'模拟反馈内容',feedbackType:'BUG',priority:'NORMAL',functionName:'模拟日志',functionItem:'检查',createTime:'2026-10-01 10:00'};
 if(['/api/user-center/list','/api/sysDictType/query','/api/sysDictData/query','/api/userDictData/admin/query','/api/feedback/admin/list','/api/system/logs/operation','/api/system/logs/access'].includes(p))data={items:[row],total:1};
 if(p==='/api/menu/admin/tree')data=[{...row,visibleClients:3}];
 if(p==='/api/system-config/list')data=[{configKey:'fixture.config',configType:'JSON',configValue:'{"enabled":true}',description:'模拟配置'}];
