@@ -120,10 +120,6 @@ async function remove(row) {
   if (active && token === session.token && version === revision)
     items.value = items.value.filter((item) => item.id !== row.id);
 }
-function mask(value) {
-  const key = String(value || "");
-  return key.length > 12 ? key.slice(0, 8) + "…" + key.slice(-4) : "••••••••";
-}
 function back() {
   uni.navigateBack({ fail: () => uni.switchTab({ url: "/pages/life/index" }) });
 }
@@ -163,7 +159,7 @@ function back() {
                 item.remark
               }}</text>
               <text class="key-detail" :class="themeClass('key-detail')">{{
-                mask(item.apiKey)
+                item.apiKey || "••••••••"
               }}</text>
               <text class="key-detail" :class="themeClass('key-detail')">{{
                 item.expiredAt ? item.expiredAt + " 到期" : "永不过期"

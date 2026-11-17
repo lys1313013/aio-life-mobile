@@ -13,7 +13,7 @@ for (const width of [390, 768, 1440]) for (const theme of ['light', 'dark']) {
     page.on('pageerror', error => errors.push(error.message));
     const id = '9007199254740993';
     const secret = 'ak-synthetic-new-key-123456789';
-    let rows = [{ id, remark: '模拟 MCP 客户端', apiKey: 'ak-synth***6789', expiredAt: null, createTime: '2026-11-10 10:00:00', isExpired: false }];
+    let rows = [{ id, remark: '模拟 MCP 客户端', apiKey: 'ak-synthetic***', expiredAt: null, createTime: '2026-11-10 10:00:00', isExpired: false }];
     let reads = 0, writes = 0, fail = true;
     apiMock({
       'GET /api/user/info': ok({ id: '1', nickname: '模拟用户', roles: [] }),
@@ -36,6 +36,7 @@ for (const width of [390, 768, 1440]) for (const theme of ['light', 'dark']) {
     });
     await page.goto('/#/pages/mcp/api-keys');
     await expect(page.getByText('模拟 MCP 客户端', { exact: true })).toBeVisible();
+    await expect(page.getByText('ak-synthetic***', { exact: true })).toBeVisible();
     await page.screenshot({ path: info.outputPath('list.png'), fullPage: true });
     await page.getByRole('button', { name: '修改备注', exact: true }).click();
     let dialog = page.getByRole('dialog', { name: '修改备注', exact: true });
