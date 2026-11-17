@@ -17,7 +17,9 @@ async function ledger(page, kind, count) {
     }
     if (/statisticsBy/.test(url.pathname)) {
       if (state.failStats) return route.fulfill({ json: { code: 1, message: '模拟统计失败，可单独重试' } });
-      return route.fulfill({ json: { code: 0, data: [{ year: new Date().getFullYear(), month: 10, detail: [{ typeName: '模拟分类', bookkeepingAmount: state.rows.reduce((n, x) => n + Number(x.bookkeepingAmount), 0), grossAmount: state.rows.reduce((n, x) => n + Number(x.bookkeepingAmount), 0)}] }] } });
+      const amountKey = kind === 'income' ? 'grossAmount' : 'bookkeepingAmount';
+      const total = state.rows.reduce((n, x) => n + Number(x[amountKey]), 0);
+      return route.fulfill({ json: { code: 0, data: [{ year: new Date().getFullYear(), month: 10, detail: [{ typeName: '模拟分类', bookkeepingAmount: total, grossAmount: total }] }] } });
     }
     if (route.request().method() === 'DELETE') {
       state.rows = state.rows.filter(x => x.id !== url.pathname.split('/').at(-1));

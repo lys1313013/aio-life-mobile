@@ -34,7 +34,7 @@ const clothes = [1, 2, 3].map((n) => ({
   color: '蓝',
   brand: '模拟品牌',
   size: 'M',
-  season: '春,秋',
+  season: ['春', '秋'],
   purchasePrice: 80,
   fileId: 'photo-' + n,
 }));
