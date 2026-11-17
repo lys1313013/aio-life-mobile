@@ -26,7 +26,7 @@ export function personalityPayload(form) {
   if(missingRequired('personality', form, 'code') || missingRequired('personality', form, 'name')) throw Error('请输入人格代码和名称')
   if(form.color && !/^#([\da-fA-F]{3}|[\da-fA-F]{6})$/.test(form.color)) throw Error('颜色必须为十六进制格式')
   const result={code:form.code.trim(),name:form.name.trim(),vector:vectorValue(form.vector),isSpecial:!!form.isSpecial}
-  for(const key of ['motto','color','description','techStack','spirit','imageObject']) if(form[key] != null) result[key]=form[key]
+  for(const key of ['motto','color','description','techStack','spirit']) if(form[key] != null) result[key]=form[key]
   for(const key of ['strengths','weaknesses']) result[key]=Array.isArray(form[key]) ? form[key] : String(form[key] || '').split('\n').map(line=>line.trim()).filter(Boolean)
   return result
 }

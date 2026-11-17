@@ -22,6 +22,7 @@ import FormActions from '../../components/FormActions.uvue'
 import CategoryIcon from '../../components/CategoryIcon.uvue'
 import TimePeriodPager from './components/TimePeriodPager.uvue'
 import { createPeriodCache } from './services/period-cache.ts'
+import { initialTimeViewportHeight, timeHeaderLayout } from './services/viewport-layout.ts'
 import TimeStatistics from '../../components/TimeStatistics.uvue'
 import TimeRecordEditor from '../../components/TimeRecordEditor.uvue'
 import { todayDate } from '../../services/dashboard.ts'
@@ -54,7 +55,11 @@ try {
 }
 const viewMode = ref(savedView)
 const pageInstance = getCurrentInstance()
-const timelineHeight = ref(0)
+let initialTimelineHeight = 0
+// #ifdef MP-WEIXIN
+initialTimelineHeight = initialTimeViewportHeight(uni.getWindowInfo(), uni.getMenuButtonBoundingClientRect())
+// #endif
+const timelineHeight = ref(initialTimelineHeight)
 async function measureTimelineHeight() {
   await nextTick()
   // 滚动容器已扣除导航、底栏和安全区；滚动后仍使用容器高度，避免时间轴越滚越长。
@@ -337,7 +342,7 @@ function closeEditor() {
   <!-- #endif -->
   <TabPage page-path="pages/time/index">
   <view class="tab-page" :class="themeClass('tab-page')">
-    <PageHeader title="时迹" compact-actions :content-min-width="4 * spacing.controlMin" :actions-min-width="6 * spacing.controlMin + 2 * spacing.inline">
+    <PageHeader title="时迹" compact-actions :content-min-width="timeHeaderLayout.contentMinWidth" :actions-min-width="timeHeaderLayout.actionsMinWidth">
       <template #default>
       <view class="date-switch" :class="themeClass('date-switch')">
         <button role="button" class="date-step" hover-class="none"  :aria-label="mode === 'day' ? '前一天' : '上一周期'" @click="moveDate(-1)"><AppIcon name="ant-design:left-outlined" :size="16" /></button>

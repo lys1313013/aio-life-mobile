@@ -38,8 +38,9 @@ const summary = computed(() => {
   return props.row.counterparty || props.category;
 });
 const date = computed(() => String((expense.value ? props.row.expTime : props.row.incDate) || '').slice(0, 10));
-const differentAmount = computed(() => expense.value && props.row.transactionAmt != null &&
-  Math.round(Number(props.row.transactionAmt) * 100) !== Math.round(Number(props.row.amt) * 100));
+const amount = computed(() => Number(expense.value ? props.row.bookkeepingAmount : props.row.grossAmount) || 0);
+const differentAmount = computed(() => expense.value && props.row.transactionAmount != null &&
+  Math.round(Number(props.row.transactionAmount) * 100) !== Math.round(Number(props.row.bookkeepingAmount) * 100));
 function start(event: any) {
   if (props.selecting || event.touches?.length !== 1) return;
   const point = event.touches[0];
@@ -99,18 +100,18 @@ function activate() {
             :icon="selected ? 'ant-design:check-square-outlined' : 'ant-design:border-outlined'" @click="emit('select')" />
         </view>
         <view class="ledger-body" role="button" tabindex="0"
-          :aria-label="(selecting ? '选择' : '编辑') + kindLabel + '：' + summary + '，¥' + Number(row.amt).toFixed(2)"
+          :aria-label="(selecting ? '选择' : '编辑') + kindLabel + '：' + summary + '，¥' + Number(amount).toFixed(2)"
           @click="activate" @keydown.enter.prevent="activate" @keydown.space.prevent="activate">
           <view class="ledger-heading">
             <text class="ledger-summary">{{ summary }}</text>
-            <text class="ledger-money" :class="{ 'ledger-money-income': !expense }">¥{{ Number(row.amt).toFixed(2) }}</text>
+            <text class="ledger-money" :class="{ 'ledger-money-income': !expense }">¥{{ Number(amount).toFixed(2) }}</text>
           </view>
           <view class="ledger-meta">
             <text v-if="expense || summary !== category" class="ledger-detail" :class="themeClass('ledger-detail')">{{ category }}{{ expense ? ' · ' + payment : '' }}</text>
             <text class="ledger-date" :class="themeClass('ledger-detail')">{{ date }}</text>
           </view>
           <text v-if="expense && row.deviceName" class="ledger-detail" :class="themeClass('ledger-detail')">{{ row.deviceName }}</text>
-          <text v-if="differentAmount" class="ledger-detail" :class="themeClass('ledger-detail')">交易金额 ¥{{ Number(row.transactionAmt).toFixed(2) }}</text>
+          <text v-if="differentAmount" class="ledger-detail" :class="themeClass('ledger-detail')">交易金额 ¥{{ Number(row.transactionAmount).toFixed(2) }}</text>
         </view>
       </view>
     </view>

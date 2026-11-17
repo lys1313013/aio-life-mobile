@@ -5,7 +5,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const routes = ['/finance-management/dashboard', '/finance-management/income', '/finance-management/expense'];
 const ok = data => ({ json: { code: 0, message: null, data } });
-const row = (year, month, amt, typeName) => ({ year, month, detail: [{ typeId: '9223372036854775807', typeName, amt }] });
+const row = (year, month, amount, typeName) => ({ year, month, detail: [{ typeId: '9223372036854775807', typeName, bookkeepingAmount: amount, grossAmount: amount }] });
 const income = [row(2025, 12, 1000, '工资'), row(2026, 1, 2000, '工资'), row(2026, 2, 3000, '年度奖金与其他收入的长分类名称')];
 const expense = [row(2025, 12, 400, '餐饮'), row(2026, 1, 500, '餐饮'), row(2026, 2, 300, '交通')];
 function gate() { let release; const promise = new Promise(resolve => { release = resolve; }); return { promise, release }; }

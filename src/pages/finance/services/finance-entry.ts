@@ -2,13 +2,14 @@ import { missingRequired } from '../../../services/form-required.ts';
 import { request } from '../../../services/api.ts'
 export function ledgerId(row: Record<string, any>): string { return typeof row.id === 'string' ? row.id : '' }
 export function ledgerPayload(kind: string, draft: Record<string, any>) {
-  const data = { ...draft, amt: Number(draft.amt) }
-  if (!Number.isFinite(data.amt) || missingRequired(kind, draft, 'amt')) throw new Error('请输入有效金额')
+  const amountKey = kind === 'income' ? 'grossAmount' : 'bookkeepingAmount'
+  const data = { ...draft, [amountKey]: Number(draft[amountKey]) }
+  if (!Number.isFinite(data[amountKey]) || missingRequired(kind, draft, amountKey)) throw new Error('请输入有效金额')
   if (kind === 'income') {
     if (missingRequired(kind, draft, 'incDate')) throw new Error('请选择收入日期')
   } else {
-    data.transactionAmt = Number(draft.transactionAmt)
-    if (!Number.isFinite(data.transactionAmt) || missingRequired(kind, draft, 'transactionAmt')) throw new Error('请输入交易金额')
+    data.transactionAmount = Number(draft.transactionAmount)
+    if (!Number.isFinite(data.transactionAmount) || missingRequired(kind, draft, 'transactionAmount')) throw new Error('请输入交易金额')
     if (missingRequired(kind, draft, 'expTypeId') || missingRequired(kind, draft, 'payTypeId') || missingRequired(kind, draft, 'expTime')) throw new Error('请选择支出类型、支付方式和日期')
   }
   return data

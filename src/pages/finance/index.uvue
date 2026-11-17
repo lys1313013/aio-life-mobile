@@ -39,8 +39,16 @@ async function load() {
       fetchFinanceStatistics("expense"),
     ]);
     if (alive && generation === stamp) {
-      income.value = data[0];
-      expense.value = data[1];
+      const normalize = (rows: any[], amountKey: string) =>
+        rows.map((row) => ({
+          ...row,
+          detail: (row.detail || []).map((item: any) => ({
+            ...item,
+            amount: Number(item[amountKey]) || 0,
+          })),
+        }));
+      income.value = normalize(data[0], "grossAmount");
+      expense.value = normalize(data[1], "bookkeepingAmount");
       loaded.value = true;
       if (!years.value.includes(year.value)) year.value = "全部";
     }
@@ -89,7 +97,7 @@ function sum(rows: any[]) {
       (total, row) =>
         total +
         (row.detail || []).reduce(
-          (n, item) => n + Math.round(Number(item.amt || 0) * 100),
+          (n, item) => n + Math.round(Number(item.amount || 0) * 100),
           0,
         ),
       0,
@@ -151,7 +159,7 @@ function categories(rows: any[]) {
   rows.forEach((row) =>
     (row.detail || []).forEach((item) => {
       const key = item.typeName || "未分类";
-      map[key] = (map[key] || 0) + Math.round(Number(item.amt || 0) * 100);
+      map[key] = (map[key] || 0) + Math.round(Number(item.amount || 0) * 100);
     }),
   );
   return Object.entries(map)

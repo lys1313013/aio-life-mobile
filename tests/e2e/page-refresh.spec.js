@@ -33,7 +33,7 @@ async function fixtures(page) {
     const current = Number(url.searchParams.get('page') || 1);
     return { items: books.slice((current - 1) * 30, current * 30), total: books.length };
   });
-  await route('/expense/query', { items: [{ id: '1', amt: 12, expDesc: '模拟支出', expTime: '2026-10-05 12:00:00', expTypeId: 'type', payTypeId: 'type' }], total: 1 });
+  await route('/expense/query', { items: [{ id: '1', bookkeepingAmount: 12, expDesc: '模拟支出', expTime: '2026-10-05 12:00:00', expTypeId: 'type', payTypeId: 'type' }], total: 1 });
   await route('/expense/statisticsByMonth', []);
   return { calls, timeQueries, errors };
 }

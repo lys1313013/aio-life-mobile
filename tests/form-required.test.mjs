@@ -12,11 +12,11 @@ async function load(path) {
 }
 
 test('必填只拒绝缺失和空白，金额 0、布尔 false 和密码原文不丢失', () => {
-  for (const amt of [0, '0', false]) {
-    assert.equal(missingRequired('income', { amt, incDate: '2026-10-03' }), false);
+  for (const grossAmount of [0, '0', false]) {
+    assert.equal(missingRequired('income', { grossAmount, incDate: '2026-10-03' }), false);
   }
-  for (const amt of [undefined, null, '', '  ']) {
-    assert.equal(missingRequired('income', { amt, incDate: '2026-10-03' }), true);
+  for (const grossAmount of [undefined, null, '', '  ']) {
+    assert.equal(missingRequired('income', { grossAmount, incDate: '2026-10-03' }), true);
   }
   assert.equal(missingRequired('password', { oldPassword: ' old ', password: ' ', confirm: ' ' }), false);
   assert.equal(isRequired('member', 'price'), false);

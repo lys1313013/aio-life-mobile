@@ -16,8 +16,8 @@ for (const width of [390, 768, 1440]) for (const theme of ['light', 'dark']) tes
         year: value,
         month,
         detail: [
-          { typeId: '81', typeName: '工资', amt: (value === year ? 1000 : 100) * month },
-          { typeId: '82', typeName: '奖金', amt: month * 10 },
+          { typeId: '81', typeName: '工资', grossAmount: (value === year ? 1000 : 100) * month},
+          { typeId: '82', typeName: '奖金', grossAmount: month * 10},
         ],
       }))),
     },

@@ -6,7 +6,7 @@ import AppIcon from './AppIcon.uvue'
 import LoadingIndicator from './LoadingIndicator.uvue'
 import { secondaryLock } from '../services/secondary-lock.ts'
 import spacing from '../styles/spacing.json'
-import { navigationLayout } from '../services/navigation-layout.ts'
+import { navigationContentLayout } from '../services/navigation-layout.ts'
 import { refreshNativeTheme, themeClass } from '../services/theme.ts'
 onMounted(refreshNativeTheme)
 const props = defineProps({
@@ -18,24 +18,20 @@ const props = defineProps({
   paper: { type: Boolean, default: false },
 })
 defineEmits(['back'])
-const statusBarHeight = ref(0)
-const navigationHeight = ref(48)
-const rightInset = ref(spacing.page)
-const availableWidth = ref(0)
-const wrapActions = computed(() => props.actionsMinWidth > 0 && availableWidth.value < props.contentMinWidth + spacing.inline + props.actionsMinWidth)
-const actionsHeight = computed(() => spacing.controlMin + (props.compactActions ? 0 : spacing.detail))
-const headerHeight = computed(() => navigationHeight.value + (wrapActions.value ? actionsHeight.value : 0))
+const windowInfo = ref(uni.getWindowInfo())
+const capsule = ref(null)
+const layout = computed(() => navigationContentLayout(windowInfo.value, capsule.value, spacing, props))
+const statusBarHeight = computed(() => layout.value.statusBarHeight)
+const navigationHeight = computed(() => layout.value.navigationHeight)
+const rightInset = computed(() => layout.value.rightInset)
+const wrapActions = computed(() => layout.value.wrapActions)
+const actionsHeight = computed(() => layout.value.actionsHeight)
+const headerHeight = computed(() => layout.value.headerHeight)
 function updateLayout() {
-  const windowInfo = uni.getWindowInfo()
-  let capsule = null
+  windowInfo.value = uni.getWindowInfo()
   // #ifdef MP-WEIXIN
-  capsule = uni.getMenuButtonBoundingClientRect()
+  capsule.value = uni.getMenuButtonBoundingClientRect()
   // #endif
-  const layout = navigationLayout(windowInfo, capsule, spacing)
-  statusBarHeight.value = layout.statusBarHeight
-  navigationHeight.value = layout.navigationHeight
-  rightInset.value = layout.rightInset
-  availableWidth.value = Math.min(windowInfo.windowWidth - spacing.page - layout.rightInset, spacing.contentMax - 2 * spacing.page) - (props.back ? spacing.controlMin + spacing.detail : 0)
 }
 updateLayout()
 onMounted(() => {

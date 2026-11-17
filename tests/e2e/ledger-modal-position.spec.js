@@ -11,7 +11,7 @@ for (const kind of ['expense', 'income']) {
       await page.emulateMedia({ colorScheme: theme });
       await setup(page);
       const rows = Array.from({ length: 30 }, (_, index) => ({
-        id: String(1000 + index), amt: 12, transactionAmt: 12,
+        id: String(1000 + index), bookkeepingAmount: 12, grossAmount: 12, transactionAmount: 12,
         expTypeId: '81', incTypeId: '81', payTypeId: '82',
         expTime: '2026-10-11 12:00:00', incDate: '2026-10-11', remark: '模拟账目',
       }));

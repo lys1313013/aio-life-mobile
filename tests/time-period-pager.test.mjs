@@ -8,6 +8,25 @@ async function loadModule(path) {
 }
 const { createPeriodSwipe } = await loadModule('src/pages/time/services/period-swipe.ts')
 const { createPeriodCache } = await loadModule('src/pages/time/services/period-cache.ts')
+const { initialTimeViewportHeight } = await loadModule('src/pages/time/services/viewport-layout.ts')
+
+test('微信首次时间轴按导航换行、胶囊和安全区占满正文，不从 44px 起跳', () => {
+  for (const [windowInfo, capsule, expected] of [
+    [{ windowWidth: 412, windowHeight: 923, statusBarHeight: 20 },
+      { top: 26, height: 32, width: 87, left: 318, right: 405 }, 761],
+    [{ windowWidth: 390, windowHeight: 844, statusBarHeight: 47, safeAreaInsets: { bottom: 34 } },
+      { top: 53, height: 32, width: 87, left: 296, right: 383 }, 621],
+    [{ windowWidth: 768, windowHeight: 1024, statusBarHeight: 24, safeAreaInsets: { bottom: 20 } },
+      { top: 32, height: 32, width: 87, left: 660, right: 747 }, 878],
+    [{ windowWidth: 1440, windowHeight: 900, statusBarHeight: 0 },
+      { top: 6, height: 32, width: 87, left: 1346, right: 1433 }, 802],
+  ]) assert.equal(initialTimeViewportHeight(windowInfo, capsule), expected)
+})
+
+test('胶囊尚未返回时仍预留导航，极矮窗口保留可用时间轴', () => {
+  assert.equal(initialTimeViewportHeight({ windowWidth: 390, windowHeight: 844, statusBarHeight: 20 }, {}), 678)
+  assert.equal(initialTimeViewportHeight({ windowWidth: 320, windowHeight: 120, statusBarHeight: 20 }, {}), 88)
+})
 const gesture = (x, y = 0, end = false) => ({ touches: end ? [] : [{ clientX: x, clientY: y }], changedTouches: [{ clientX: x, clientY: y }] })
 function swipeFixture() {
   const offsets = [], changes = []

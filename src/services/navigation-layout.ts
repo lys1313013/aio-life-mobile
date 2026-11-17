@@ -14,3 +14,15 @@ export function navigationLayout(windowInfo, capsule, spacing) {
     : spacing.page;
   return { statusBarHeight, navigationHeight, rightInset };
 }
+
+// 首次绘制与后续测量共用导航的换行规则，页面可在异步测量前预留正文高度。
+export function navigationContentLayout(windowInfo, capsule, spacing, options) {
+  const layout = navigationLayout(windowInfo, capsule, spacing);
+  const availableWidth = Math.min(windowInfo.windowWidth - spacing.page - layout.rightInset,
+    spacing.contentMax - 2 * spacing.page) - (options.back ? spacing.controlMin + spacing.detail : 0);
+  const wrapActions = options.actionsMinWidth > 0
+    && availableWidth < options.contentMinWidth + spacing.inline + options.actionsMinWidth;
+  const actionsHeight = spacing.controlMin + (options.compactActions ? 0 : spacing.detail);
+  return { ...layout, availableWidth, wrapActions, actionsHeight,
+    headerHeight: layout.navigationHeight + (wrapActions ? actionsHeight : 0) };
+}

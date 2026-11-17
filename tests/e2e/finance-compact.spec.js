@@ -41,8 +41,8 @@ for (const width of [390, 768, 1440]) {
         const state = await start(page, 'finance/' + kind);
         const records = [8.5, 1299, 12345678.9].map((amount, index) => ({
           id: '922337203685477580' + index,
-          amt: amount,
-          transactionAmt: amount,
+          bookkeepingAmount: amount, grossAmount: amount,
+          transactionAmount: amount,
           incTypeId: '81',
           expTypeId: '81',
           payTypeId: '82',

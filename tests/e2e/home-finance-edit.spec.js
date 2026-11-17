@@ -6,8 +6,8 @@ const { calendarFixture } = require('./fixtures-finance-calendar');
 const day = new Date(Date.now() + 8 * 3600000).toISOString().slice(0, 7) + '-01';
 async function setup(page, theme) {
   const state = { fail: false, writes: [], calls: [], rows: {
-    expense: { id: '9223372036854775806', amt: 26, transactionAmt: 99, expTypeId: 'type', payTypeId: 'pay', expTime: day + ' 12:34:56', expDesc: '模拟地铁出行', counterparty: '模拟交通公司', transactionId: 'fixture-order', merchantOrderNo: 'fixture-merchant', remark: '原始备注' },
-    income: { id: '9223372036854775807', amt: 8000, incTypeId: 'type', incDate: day, tax: 120, remark: '模拟工资收入' },
+    expense: { id: '9223372036854775806', bookkeepingAmount: 26, transactionAmount: 99, expTypeId: 'type', payTypeId: 'pay', expTime: day + ' 12:34:56', expDesc: '模拟地铁出行', counterparty: '模拟交通公司', transactionId: 'fixture-order', merchantOrderNo: 'fixture-merchant', remark: '原始备注' },
+    income: { id: '9223372036854775807', grossAmount: 8000, incTypeId: 'type', incDate: day, taxAmount: 120, remark: '模拟工资收入' },
   } };
   await page.addInitScript(theme => {
     localStorage.setItem('aio-life-mobile.access-token.v1', JSON.stringify({ type: 'string', data: 'fixture-home-edit' }));
@@ -39,8 +39,8 @@ async function setup(page, theme) {
     }
     if (pathname.endsWith('/calendar')) {
       const kind = pathname.split('/')[3]; data = calendarFixture(url, kind);
-      const income = state.rows.income?.incDate === day ? state.rows.income.amt : 0;
-      const expense = state.rows.expense?.expTime.startsWith(day) ? state.rows.expense.amt : 0;
+      const income = state.rows.income?.incDate === day ? state.rows.income.grossAmount : 0;
+      const expense = state.rows.expense?.expTime.startsWith(day) ? state.rows.expense.bookkeepingAmount : 0;
       const totals = { income, expense, balance: income - expense };
       data.amount = kind === 'finance' ? totals.balance : totals[kind];
       if (kind === 'finance') Object.assign(data, totals);
@@ -66,7 +66,7 @@ for (const width of [390, 820, 1440]) for (const theme of ['light', 'dark']) for
     await details.getByRole('button', { name: new RegExp('^编辑' + label + '：') }).click();
     const editor = page.getByRole('dialog', { name: '编辑' + label, exact: true });
     await expect(editor).toBeVisible();
-    await expect(editor.getByRole('spinbutton', { name: kind === 'expense' ? '记账金额' : '金额', exact: true })).toHaveValue(String(state.rows[kind].amt));
+    await expect(editor.getByRole('spinbutton', { name: kind === 'expense' ? '记账金额' : '金额', exact: true })).toHaveValue(String(kind === 'expense' ? state.rows[kind].bookkeepingAmount : state.rows[kind].grossAmount));
     const folder = path.resolve('artifacts/home-finance-edit'); fs.mkdirSync(folder, { recursive: true });
     await page.screenshot({ path: path.join(folder, kind + '-' + width + '-' + theme + '.png') });
     await editor.getByRole('spinbutton', { name: kind === 'expense' ? '记账金额' : '金额', exact: true }).fill('100');
@@ -82,8 +82,8 @@ for (const width of [390, 820, 1440]) for (const theme of ['light', 'dark']) for
     await expect(overview.locator('.calendar-metric-value').nth(kind === 'income' ? 0 : 1)).toHaveText('100.00');
     expect(state.writes).toHaveLength(1);
     expect(state.writes[0].body.id || state.writes[0].pathname.split('/').pop()).toBe(state.rows[kind].id);
-    if (kind === 'expense') { expect(state.writes[0].body.transactionId).toBe('fixture-order'); expect(state.writes[0].body.transactionAmt).toBe(99); }
-    else expect(state.writes[0].body.tax).toBe(120);
+    if (kind === 'expense') { expect(state.writes[0].body.transactionId).toBe('fixture-order'); expect(state.writes[0].body.transactionAmount).toBe(99); }
+    else expect(state.writes[0].body.taxAmount).toBe(120);
     expect(await page.locator('body').evaluate(el => el.scrollWidth > el.clientWidth + 1)).toBe(false);
   });
 }

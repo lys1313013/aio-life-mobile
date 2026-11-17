@@ -13,9 +13,9 @@ async function openExpense(page, data) {
 }
 const year = new Date().getFullYear();
 const months = [1, 2, 3].map((month) => ({ year, month, detail: [
-  { typeId: '81', typeName: '餐饮', amt: month * 100 },
-  { typeId: '82', typeName: '交通出行', amt: month * 50 },
-  { typeId: '83', typeName: '家庭日常采购与长期订阅服务', amt: month * 25 },
+  { typeId: '81', typeName: '餐饮', bookkeepingAmount: month * 100},
+  { typeId: '82', typeName: '交通出行', bookkeepingAmount: month * 50},
+  { typeId: '83', typeName: '家庭日常采购与长期订阅服务', bookkeepingAmount: month * 25},
 ] }));
 
 for (const width of [390, 768, 1440]) for (const theme of ['light', 'dark']) {
@@ -90,7 +90,7 @@ test('支出图表空数据和全零金额不会生成无效饼图', async ({ pa
   await expect(page.locator('.distribution')).toContainText('暂无数据');
   await expect(page.locator('.distribution-canvas')).toHaveCount(0);
   await page.unroute('**/api/expense/statisticsByMonth');
-  await page.route('**/api/expense/statisticsByMonth', (route) => route.fulfill({ json: { code: 0, data: [{ year, month: 1, detail: [{ typeName: '餐饮', amt: 0 }] }] } }));
+  await page.route('**/api/expense/statisticsByMonth', (route) => route.fulfill({ json: { code: 0, data: [{ year, month: 1, detail: [{ typeName: '餐饮', bookkeepingAmount: 0}] }] } }));
   await page.reload();
   await expect(page.locator('.distribution')).toContainText('暂无数据');
   await expect(page.getByRole('button', { name: '统计', exact: true })).toHaveCount(0);
@@ -100,9 +100,9 @@ test('支出图表空数据和全零金额不会生成无效饼图', async ({ pa
 test('全年月份、年份切换与饼图重绘', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 1000 });
   const fullYear = Array.from({ length: 12 }, (_, index) => ({ year, month: index + 1, detail: [
-    { typeName: '餐饮', amt: (index + 1) * 100 }, { typeName: '交通', amt: 50 },
+    { typeName: '餐饮', bookkeepingAmount: (index + 1) * 100}, { typeName: '交通', bookkeepingAmount: 50},
   ] }));
-  await openExpense(page, [...fullYear, { year: year - 1, month: 2, detail: [{ typeName: '日用', amt: 888 }] }]);
+  await openExpense(page, [...fullYear, { year: year - 1, month: 2, detail: [{ typeName: '日用', bookkeepingAmount: 888}] }]);
   await expect(page.getByRole('slider')).toHaveAttribute('aria-valuetext', '12月 支出1,250.00元');
   await expect(page.getByRole('tooltip')).toHaveCount(0);
   await expect(page.locator('.chart-x-label').first()).toHaveText('1月');
@@ -127,8 +127,8 @@ for (const width of [390, 768, 1440]) for (const theme of ['light', 'dark']) {
     await page.setViewportSize({ width, height: 1000 });
     await page.emulateMedia({ colorScheme: theme });
     const names = ['住房物业', '餐饮美食', '人情往来', '交通出行', '充值缴费', '教育培训', '日用百货', '文化休闲', '服饰装扮', '生活服务', '医疗健康', '数码电器', '酒店旅游'];
-    const detail = names.map((typeName, i) => ({ typeName, amt: (13 - i) * 100 }));
-    detail.push({ typeName: '零金额分类', amt: 0 });
+    const detail = names.map((typeName, i) => ({ typeName, bookkeepingAmount: (13 - i) * 100}));
+    detail.push({ typeName: '零金额分类', bookkeepingAmount: 0});
     await openExpense(page, [{ year, month: 1, detail }]);
     const chart = page.locator('.distribution');
     await expect(chart.locator('.distribution-row')).toHaveCount(5);
@@ -170,7 +170,7 @@ test.describe('触屏月份选择', () => {
   test('零金额和极短柱可以通过上方空白区域选中', async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 1000 });
     const detail = Array.from({ length: 12 }, (_, index) => ({ year, month: index + 1,
-      detail: [{ typeName: '餐饮', amt: index === 6 ? 0 : index === 7 ? 0.01 : 10000 }] }));
+      detail: [{ typeName: '餐饮', bookkeepingAmount: index === 6 ? 0 : index === 7 ? 0.01 : 10000}] }));
     await openExpense(page, detail);
     // 等待首屏请求和画布初始化完成，再测量坐标并触发触屏手势。
     await page.waitForLoadState('networkidle');

@@ -14,7 +14,7 @@ function gate() { let resolve; const promise = new Promise(r => { resolve = r; }
 async function fixture(kind = 'expense', count = 101, initialCreate = false) {
   const id = ++fixtureNumber;
   const calls = [], hooks = {};
-  const server = Array.from({ length: count }, (_, i) => ({ id: String(i + 1), amt: 1, expTime: '2026-10-03 12:00:00' }));
+  const server = Array.from({ length: count }, (_, i) => ({ id: String(i + 1), bookkeepingAmount: 1, grossAmount: 1, transactionAmount: 1, expTime: '2026-10-03 12:00:00' }));
   const controls = { listFailure: false, statsFailure: false, mutationFailure: false, pendingList: null, pendingMutation: null, pendingStatistics: null };
   const api = {
     ledgerId: row => row.id || '',
@@ -30,7 +30,7 @@ async function fixture(kind = 'expense', count = 101, initialCreate = false) {
     fetchFinanceStatistics: async (_kind, period) => {
       calls.push(['statistics', period]);
       if (controls.statsFailure) throw Error('模拟统计失败');
-      const snapshot = [{ year: 2026, month: period === 'Month' ? 10 : undefined, detail: [{ amt: server.reduce((n, x) => n + x.amt, 0) }] }];
+      const snapshot = [{ year: 2026, month: period === 'Month' ? 10 : undefined, detail: [{ bookkeepingAmount: server.reduce((n, x) => n + x.bookkeepingAmount, 0), grossAmount: server.reduce((n, x) => n + x.grossAmount, 0) }] }];
       const pending = controls.pendingStatistics; controls.pendingStatistics = null;
       if (pending) await pending.promise;
       return snapshot;
@@ -90,25 +90,25 @@ test('批量删除后分页完整；空页停止，重复触底不重入', async
 test('增改删及下拉刷新同时更新月度概览和年度统计', async () => {
   const { state: s, server } = await fixture('income', 1);
   await s.initialize(); s.statisticsPeriod.value = '年度';
-  s.draft.value = { amt: 200 }; await s.save();
-  assert.equal(s.overviewRows.value[0].detail[0].amt, 201);
-  assert.equal(s.statistics.value[0].detail[0].amt, 201);
-  s.draft.value = { id: 'new', amt: 300 }; await s.save();
-  assert.equal(s.overviewRows.value[0].detail[0].amt, 301);
-  await s.remove({ id: 'new' }); assert.equal(s.overviewRows.value[0].detail[0].amt, 1);
-  server.push({ id: 'external', amt: 40 }); await s.refresh();
-  assert.equal(s.overviewRows.value[0].detail[0].amt, 41);
-  assert.equal(s.statistics.value[0].detail[0].amt, 41); assert.equal(s.refreshing.value, false);
+  s.draft.value = { grossAmount: 200 }; await s.save();
+  assert.equal(s.overviewRows.value[0].detail[0].amount, 201);
+  assert.equal(s.statistics.value[0].detail[0].amount, 201);
+  s.draft.value = { id: 'new', grossAmount: 300 }; await s.save();
+  assert.equal(s.overviewRows.value[0].detail[0].amount, 301);
+  await s.remove({ id: 'new' }); assert.equal(s.overviewRows.value[0].detail[0].amount, 1);
+  server.push({ id: 'external', grossAmount: 40 }); await s.refresh();
+  assert.equal(s.overviewRows.value[0].detail[0].amount, 41);
+  assert.equal(s.statistics.value[0].detail[0].amount, 41); assert.equal(s.refreshing.value, false);
 });
 test('删除后重查失败保留已有内容，重试从第一页恢复且统计错误独立', async () => {
   const { state: s, server, controls } = await fixture(); await s.initialize();
   const original = [...s.rows.value]; controls.listFailure = true;
   await s.remove(original[0]);
   assert.deepEqual(s.rows.value, original); assert.equal(s.error.value, '模拟列表失败');
-  assert.equal(s.overviewRows.value[0].detail[0].amt, 100);
+  assert.equal(s.overviewRows.value[0].detail[0].amount, 100);
   controls.listFailure = false; controls.statsFailure = true;
   await s.refresh(); assert.equal(s.rows.value[0].id, '2'); assert.equal(s.error.value, '');
-  assert.equal(s.statisticsError.value, '模拟统计失败'); assert.equal(s.overviewRows.value[0].detail[0].amt, 100);
+  assert.equal(s.statisticsError.value, '模拟统计失败'); assert.equal(s.overviewRows.value[0].detail[0].amount, 100);
   controls.statsFailure = false; await s.loadStatistics(); await s.load(false);
   assert.deepEqual(s.rows.value.map(x => x.id), server.map(x => x.id)); assert.equal(s.statisticsError.value, '');
 });
@@ -130,7 +130,7 @@ test('写入使旧分页及旧统计失效，写入中的刷新不能重建旧�
   assert.equal(s.rows.value.length, 50);
   write.resolve(); await deletion;
   assert.equal(s.rows.value[0].id, '2'); assert.equal(s.page.value, 1);
-  assert.equal(s.overviewRows.value[0].detail[0].amt, 100);
+  assert.equal(s.overviewRows.value[0].detail[0].amount, 100);
 });
 test('旧分页晚于写入后重查返回也不能覆盖；离页响应忽略', async () => {
   const { state: s, controls, hooks } = await fixture(); await s.initialize();
@@ -142,7 +142,7 @@ test('旧分页晚于写入后重查返回也不能覆盖；离页响应忽略',
 });
 test('写入失败保留列表和表单，批量删除 false 不伪装成功', async () => {
   const { state: s, controls, server } = await fixture(); await s.initialize(); controls.mutationFailure = true;
-  s.modal.value = true; s.draft.value = { amt: 5 }; await s.save();
+  s.modal.value = true; s.draft.value = { bookkeepingAmount: 5 }; await s.save();
   assert.equal(s.modal.value, true); assert.equal(s.formError.value, '模拟写入失败');
   assert.equal(s.rows.value.length, 50); s.selected.value = ['1'];
   await assert.rejects(s.removeSelected(), /记录未更新/); assert.equal(server.length, 101); assert.deepEqual(s.selected.value, ['1']);
@@ -156,7 +156,7 @@ test('首页记一笔等待真实账单加载，失败可重试且只自动打�
   controls.listFailure = false;
   await s.initialize();
   assert.equal(s.modal.value, true);
-  assert.equal(s.draft.value.amt, '');
+  assert.equal(s.draft.value.bookkeepingAmount, '');
   assert.equal(s.draft.value.id, undefined);
   s.modal.value = false;
   await s.initialize();

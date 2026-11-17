@@ -32,6 +32,8 @@ import {
 const props = defineProps<{ kind: string; initialCreate?: boolean }>();
 let entryConsumed = false;
 const expense = computed(() => props.kind === 'expense');
+const recordAmount = (row: any) =>
+  Number(expense.value ? row.bookkeepingAmount : row.grossAmount) || 0;
 const rows = ref<any[]>([]),
   types = ref<any[]>([]),
   payments = ref<any[]>([]);
@@ -63,10 +65,25 @@ async function loadStatistics() {
       ...(period === '年度' ? [fetchFinanceStatistics(props.kind, 'Year')] : []),
     ]);
     if (alive && current === statisticsSequence) {
-      statistics.value = (annual || monthly).slice().sort(
+      const normalize = (rows: any[]) =>
+        rows.map((row) => ({
+          ...row,
+          detail: (row.detail || []).map((item: any) => ({
+            ...item,
+            amount:
+              Number(
+                expense.value
+                  ? item.bookkeepingAmount
+                  : item.grossAmount,
+              ) || 0,
+          })),
+        }));
+      const monthlyRows = normalize(monthly);
+      const annualRows = annual ? normalize(annual) : null;
+      statistics.value = (annualRows || monthlyRows).slice().sort(
         (a, b) => b.year - a.year || (b.month || 0) - (a.month || 0),
       );
-      overviewRows.value = monthly;
+      overviewRows.value = monthlyRows;
       statisticsLoaded.value = true;
     }
   } catch (e) {
@@ -94,7 +111,7 @@ const yearRows = computed(() =>
 function statisticsTotal(rows) {
   return rows.reduce(
     (sum, row) =>
-      sum + (row.detail || []).reduce((n, item) => n + Number(item.amt || 0), 0),
+      sum + (row.detail || []).reduce((n, item) => n + Number(item.amount || 0), 0),
     0,
   );
 }
@@ -107,7 +124,7 @@ const distribution = computed(() => {
   yearRows.value.forEach((row) =>
     (row.detail || []).forEach((item) => {
       const name = item.typeName || '未分类';
-      map[name] = (map[name] || 0) + Number(item.amt || 0);
+      map[name] = (map[name] || 0) + Number(item.amount || 0);
     }),
   );
   return Object.entries(map).map(([name, value]) => ({ name, value }));
@@ -175,15 +192,15 @@ onUnmounted(() => {
 const sorted = computed(() =>
   [...rows.value].sort((a, b) =>
     sort.value === '金额降序'
-      ? Number(b.amt) - Number(a.amt)
+      ? Number(recordAmount(b)) - Number(recordAmount(a))
       : sort.value === '金额升序'
-        ? Number(a.amt) - Number(b.amt)
+        ? Number(recordAmount(a)) - Number(recordAmount(b))
         : String(b.expTime || b.incDate).localeCompare(String(a.expTime || a.incDate)),
   ),
 );
 const amount = computed(
   () =>
-    rows.value.reduce((sum, row) => sum + Math.round(Number(row.amt || 0) * 100), 0) /
+    rows.value.reduce((sum, row) => sum + Math.round(recordAmount(row) * 100), 0) /
     100,
 );
 function name(options: any[], id: string) {
@@ -327,8 +344,9 @@ function edit(row: any = null) {
   draft.value = row
     ? { ...row, id: ledgerId(row) }
     : {
-        amt: '',
-        transactionAmt: '',
+        bookkeepingAmount: '',
+        grossAmount: '',
+        transactionAmount: '',
         incDate: date,
         expTime: date + ' 00:00:00',
         remark: '',
@@ -348,7 +366,7 @@ async function save() {
   try {
     await mutate(() => saveLedger(props.kind, draft.value), () => {
       if (continuous.value && !ledgerId(draft.value)) {
-        draft.value = { ...draft.value, amt: '', transactionAmt: '', deviceId: null, newDevice: null, deviceName: null };
+        draft.value = { ...draft.value, bookkeepingAmount: '', grossAmount: '', transactionAmount: '', deviceId: null, newDevice: null, deviceName: null };
       } else modal.value = false;
     });
   } catch (e) {
@@ -465,7 +483,7 @@ async function removeSelected() {
               ><text class="statistics-category"
                 >{{ item.typeName || '未分类' }}</text
               ><text class="statistics-amount">¥{{
-                  Number(item.amt).toFixed(2)
+                  Number(item.amount).toFixed(2)
                 }}</text
               ><view class="statistics-action"><MobileButton
                 label="查看对应记录"

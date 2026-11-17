@@ -5,7 +5,7 @@ const { pullDown } = require('./gestures');
 async function ledger(page, kind, count) {
   await setup(page, test.info().project.use.baseURL);
   const state = { rows: Array.from({ length: count }, (_, i) => ({
-    id: String(i + 1), amt: 1, transactionAmt: 1, expTypeId: '81', incTypeId: '81', payTypeId: '82',
+    id: String(i + 1), bookkeepingAmount: 1, grossAmount: 1, transactionAmount: 1, expTypeId: '81', incTypeId: '81', payTypeId: '82',
     expTime: '2026-10-01 12:00:00', incDate: '2026-10-01', remark: `模拟账单${i + 1}`,
   })), requests: [], failStats: false };
   await page.route(`**/api/${kind}/**`, async route => {
@@ -17,7 +17,7 @@ async function ledger(page, kind, count) {
     }
     if (/statisticsBy/.test(url.pathname)) {
       if (state.failStats) return route.fulfill({ json: { code: 1, message: '模拟统计失败，可单独重试' } });
-      return route.fulfill({ json: { code: 0, data: [{ year: new Date().getFullYear(), month: 10, detail: [{ typeName: '模拟分类', amt: state.rows.reduce((n, x) => n + Number(x.amt), 0) }] }] } });
+      return route.fulfill({ json: { code: 0, data: [{ year: new Date().getFullYear(), month: 10, detail: [{ typeName: '模拟分类', bookkeepingAmount: state.rows.reduce((n, x) => n + Number(x.bookkeepingAmount), 0), grossAmount: state.rows.reduce((n, x) => n + Number(x.bookkeepingAmount), 0)}] }] } });
     }
     if (route.request().method() === 'DELETE') {
       state.rows = state.rows.filter(x => x.id !== url.pathname.split('/').at(-1));
@@ -64,7 +64,7 @@ test('保存及下拉刷新同步统计，统计失败保留内容且可以独�
   await dialog.getByRole('button', { name: '保存', exact: true }).click();
   await expect(dialog).toHaveCount(0);
   await expect(page.locator('.summary-total .metric-number')).toHaveText('200.00');
-  state.rows.push({ ...state.rows[0], id: 'external', amt: 40, remark: '模拟外部新增' });
+  state.rows.push({ ...state.rows[0], id: 'external', bookkeepingAmount: 40, grossAmount: 40, remark: '模拟外部新增' });
   state.failStats = true;
   await pullDown(page, '.mobile-page-scroll');
   await expect(page.locator('.income-row')).toHaveCount(2);

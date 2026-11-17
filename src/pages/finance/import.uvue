@@ -97,7 +97,7 @@ const visibleIndices = computed(() =>
     )
     .sort((a, b) =>
       sort.value === '金额降序'
-        ? Number(rows.value[b].amt) - Number(rows.value[a].amt)
+        ? Number(rows.value[b].bookkeepingAmount) - Number(rows.value[a].bookkeepingAmount)
         : String(rows.value[b].expTime).localeCompare(String(rows.value[a].expTime)),
     ),
 );
@@ -107,14 +107,14 @@ const categoryTotals = computed(() =>
     count: rows.value.filter(
       (row) => (row.transactionType || row.type || '未分类') === name,
     ).length,
-    amt:
+    bookkeepingAmount:
       rows.value
         .filter((row) => (row.transactionType || row.type || '未分类') === name)
-        .reduce((n, row) => n + Math.round(Number(row.amt) * 100), 0) / 100,
+        .reduce((n, row) => n + Math.round(Number(row.bookkeepingAmount) * 100), 0) / 100,
   })),
 );
 const total = computed(
-  () => rows.value.reduce((sum, row) => sum + Math.round(Number(row.amt) * 100), 0) / 100,
+  () => rows.value.reduce((sum, row) => sum + Math.round(Number(row.bookkeepingAmount) * 100), 0) / 100,
 );
 function setPreview(transactions: any[]) {
   rows.value = transactions;
@@ -232,18 +232,18 @@ const draftPay = computed({
 });
 function saveRow() {
   const errors: Record<string, string> = {};
-  if (draft.value.amt == null || String(draft.value.amt).trim() === '' || !Number.isFinite(Number(draft.value.amt)))
-    errors.amt = '请输入有效记账金额';
-  if (draft.value.transactionAmt == null || String(draft.value.transactionAmt).trim() === '' || !Number.isFinite(Number(draft.value.transactionAmt)))
-    errors.transactionAmt = '请输入有效交易金额';
+  if (draft.value.bookkeepingAmount == null || String(draft.value.bookkeepingAmount).trim() === '' || !Number.isFinite(Number(draft.value.bookkeepingAmount)))
+    errors.bookkeepingAmount = '请输入有效记账金额';
+  if (draft.value.transactionAmount == null || String(draft.value.transactionAmount).trim() === '' || !Number.isFinite(Number(draft.value.transactionAmount)))
+    errors.transactionAmount = '请输入有效交易金额';
   if (missingRequired('importExpense', draft.value, 'expTypeId')) errors.expTypeId = '请选择类型';
   if (missingRequired('importExpense', draft.value, 'payTypeId')) errors.payTypeId = '请选择支付方式';
   draftErrors.value = errors;
   if (Object.keys(errors).length) return;
   rows.value[editIndex.value] = {
     ...draft.value,
-    amt: Number(draft.value.amt),
-    transactionAmt: Number(draft.value.transactionAmt),
+    bookkeepingAmount: Number(draft.value.bookkeepingAmount),
+    transactionAmount: Number(draft.value.transactionAmount),
   };
   modal.value = false;
 }
@@ -310,7 +310,7 @@ async function removeSelected() {
           </view>
           <text v-if="!filtersOpen && categoryFilter !== '全部'" class="filter-summary secondary-text ui-mb-section" :class="themeClass('secondary-text')">{{ categoryFilter }} · {{ visibleIndices.length }} 笔</text>
           <view v-if="totalsOpen" class="category-totals ui-section ui-gap-sm">
-            <text v-for="group in categoryTotals" :key="group.name" class="secondary-text" :class="themeClass('secondary-text')">{{ group.name }} · {{ group.count }} 笔 · ¥{{ group.amt.toFixed(2) }}</text>
+            <text v-for="group in categoryTotals" :key="group.name" class="secondary-text" :class="themeClass('secondary-text')">{{ group.name }} · {{ group.count }} 笔 · ¥{{ group.bookkeepingAmount.toFixed(2) }}</text>
           </view>
           <view class="selection-actions ui-toolbar">
             <MobileButton :label="allVisibleSelected ? '取消全选' : '全选'" :icon="allVisibleSelected ? 'ant-design:check-square-outlined' : 'ant-design:border-outlined'" variant="ghost" :disabled="busy" @click="toggleVisible" />
@@ -329,7 +329,7 @@ async function removeSelected() {
             <view class="record-heading ui-row">
               <MobileButton :label="selected.includes(index) ? '取消选择' : '选择'" :icon="selected.includes(index) ? 'ant-design:check-square-outlined' : 'ant-design:border-outlined'" variant="ghost" :disabled="busy" @click="toggle(index)" />
               <text class="record-date secondary-text" :class="themeClass('secondary-text')">{{ rows[index].expTime }}</text>
-              <text class="record-amount primary-text" :class="themeClass('primary-text')">¥{{ Number(rows[index].amt).toFixed(2) }}</text>
+              <text class="record-amount primary-text" :class="themeClass('primary-text')">¥{{ Number(rows[index].bookkeepingAmount).toFixed(2) }}</text>
               <MobileButton label="编辑" icon="ant-design:edit-outlined" variant="ghost" :disabled="busy" @click="edit(rows[index], index)" />
             </view>
             <text class="record-description primary-text" :class="themeClass('primary-text')">{{ [rows[index].counterparty, rows[index].expDesc].filter(Boolean).join(' · ') }}</text>
@@ -341,8 +341,8 @@ async function removeSelected() {
       </PageState>
     </view>
     <ModalMotion><AdaptiveModal ref="modalMotion0" v-if="modal" label="导入记录" @close="modal = false">
-      <FormField label="记账金额" input-type="digit" v-model="draft.amt" :error="draftErrors.amt" />
-      <FormField label="交易金额" input-type="digit" v-model="draft.transactionAmt" :error="draftErrors.transactionAmt" />
+      <FormField label="记账金额" input-type="digit" v-model="draft.bookkeepingAmount" :error="draftErrors.bookkeepingAmount" />
+      <FormField label="交易金额" input-type="digit" v-model="draft.transactionAmount" :error="draftErrors.transactionAmount" />
       <FormField :required="isRequired('importExpense', 'expTypeId')" label="类型" kind="selector" :options="types.map((item) => item.dictLabel)" v-model="draftType" :error="draftErrors.expTypeId" />
       <FormField :required="isRequired('importExpense', 'payTypeId')" label="支付方式" kind="selector" :options="payments.map((item) => item.dictLabel)" v-model="draftPay" :error="draftErrors.payTypeId" />
       <FormField label="备注" kind="textarea" v-model="draft.remark" />

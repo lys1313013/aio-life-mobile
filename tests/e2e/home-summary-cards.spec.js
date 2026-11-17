@@ -230,7 +230,7 @@ for (const width of [390, 820, 1440]) for (const theme of ['light', 'dark']) for
   await page.route('**/api/userDictType/getByDictType?*', route => route.fulfill({ json: { code: 0, data: { dictDetailList: [{ id: '1', dictLabel: '模拟分类' }] } } }));
   await page.route('**/api/' + kind + '/query?*', route => {
     const params = new URL(route.request().url()).searchParams, number = Number(params.get('page')); calls.push(Object.fromEntries(params));
-    return route.fulfill({ json: number === 2 && fail ? { code: 1, message: '模拟明细失败' } : { code: 0, data: { items: Array.from({ length: number === 1 ? 20 : 1 }, (_, index) => ({ id: String((number - 1) * 20 + index + 1), amt: 128.8, remark: '明细' + ((number - 1) * 20 + index + 1) + '：很长的收支描述需要正常换行而且不能撑宽页面', incDate: '2026-10-01', expTime: '2026-10-01 10:00:00', incTypeId: '1', expTypeId: '1' })), total: 21 } } });
+    return route.fulfill({ json: number === 2 && fail ? { code: 1, message: '模拟明细失败' } : { code: 0, data: { items: Array.from({ length: number === 1 ? 20 : 1 }, (_, index) => ({ id: String((number - 1) * 20 + index + 1), bookkeepingAmount: 128.8, grossAmount: 128.8, remark: '明细' + ((number - 1) * 20 + index + 1) + '：很长的收支描述需要正常换行而且不能撑宽页面', incDate: '2026-10-01', expTime: '2026-10-01 10:00:00', incTypeId: '1', expTypeId: '1' })), total: 21 } } });
   });
   await card.locator('.calendar-cell').first().scrollIntoViewIfNeeded();
   const before = await card.boundingBox(); await card.locator('.calendar-cell').first().click();
