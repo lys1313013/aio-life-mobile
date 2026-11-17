@@ -18,7 +18,6 @@ import {
   goalTypes,
   statuses,
   statusLabels,
-  textTags,
 } from '../../services/records/contracts.ts';
 const goals = ref<any[]>([]),
   loading = ref(false),
@@ -83,7 +82,7 @@ async function load(refresh = false) {
 }
 const refreshOnShow = usePageRefresh(() => load(), { loading: () => loading.value, error: () => error.value, keys: () => ['goals'] })
 onShow(() => refreshOnShow());
-function goalTags(value) { return textTags(value).split(/[,，]/).map((tag) => tag.trim()).filter(Boolean); }
+function goalTags(value) { return Array.isArray(value) ? value : []; }
 function goalDates(item) {
   const start = item.startDate ? String(item.startDate).slice(0, 10) : '';
   const end = item.endDate ? String(item.endDate).slice(0, 10) : '';
@@ -103,7 +102,7 @@ function saved(row) {
   const search = keyword.value.trim().toLocaleLowerCase();
   const matches = (type < 0 || row.type === type + 1)
     && (status < 0 || goalDisplayStatus(row) === statuses[status])
-    && (!search || [row.title, row.description, row.tags].some(value => String(value || '').toLocaleLowerCase().includes(search)));
+    && (!search || [row.title, row.description, goalTags(row.tags).join(' ')].some(value => String(value || '').toLocaleLowerCase().includes(search)));
   if (!matches) { if (index >= 0) goals.value.splice(index, 1); return; }
   if (index >= 0) goals.value[index] = row;
   else goals.value.unshift(row);

@@ -9,7 +9,7 @@ const id = '9223372036854775807';
 async function setup(page) {
   const currentYear = new Date().getFullYear();
   const goals = [
-    { id, title: '模拟跨年长期目标', type: 8, status: 'in_progress', startDate: '2026-10-25 09:00:00', endDate: '2031-10-25 18:00:00', currentValue: 2, targetValue: 10, description: '模拟目标描述', content: '模拟行动计划', tags: '阅读,学习', parentId: '9223372036854775806', isPinned: 0 },
+    { id, title: '模拟跨年长期目标', type: 8, status: 'in_progress', startDate: '2026-10-25 09:00:00', endDate: '2031-10-25 18:00:00', currentValue: 2, targetValue: 10, description: '模拟目标描述', content: '模拟行动计划', tags: ['阅读', '学习'], parentId: '9223372036854775806', isPinned: 0 },
     { id: '9223372036854775805', title: '模拟同年短期目标', type: 3, status: 'in_progress', startDate: currentYear + '-10-01 00:00:00', endDate: currentYear + '-10-31 23:59:00', currentValue: 0, targetValue: 1, isPinned: 0 },
   ];
   const writes = [];
@@ -66,7 +66,7 @@ for (const width of [390, 768, 1440]) for (const theme of ['light', 'dark']) {
     await save.click();
     await expect(dialog).toHaveCount(0);
     expect(writes.at(-1)).toMatchObject({ id, parentId: '9223372036854775806', description: '模拟目标描述', content: '模拟行动计划' });
-    expect(JSON.parse(writes.at(-1).tags)).toEqual(['阅读', '学习']);
+    expect(writes.at(-1).tags).toEqual(['阅读', '学习']);
 
     await page.getByRole('button', { name: '编辑目标：模拟跨年长期目标已更新', exact: true }).click();
     await dialog.getByRole('button', { name: '补充资料', exact: true }).click();

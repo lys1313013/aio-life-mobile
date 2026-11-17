@@ -203,10 +203,7 @@ function openItem(row = null) {
     ? {
         ...blank(),
         ...row,
-        season:
-          typeof row.season === 'string'
-            ? row.season.split(',').filter(Boolean)
-            : row.season || [],
+        season: [...(row.season || [])],
         purchasePrice: row.purchasePrice == null ? '' : String(row.purchasePrice),
       }
     : blank();
@@ -393,7 +390,7 @@ function chooseCategory(value) {
                 :aria-label="'编辑衣物' + row.name" :disabled="detailBusy === row.id" :aria-busy="detailBusy === row.id" @click="edit(row)">
                 <text class="item-title">{{ row.name }}</text>
               </button>
-              <text class="muted" :class="themeClass('secondary-text')">{{ [row.categoryName, row.color, row.brand, row.size, row.season].filter(Boolean).join(' · ') }}</text>
+              <text class="muted" :class="themeClass('secondary-text')">{{ [row.categoryName, row.color, row.brand, row.size, (row.season || []).join(',')].filter(Boolean).join(' · ') }}</text>
               <view class="item-footer ui-row">
                 <text class="item-price">{{ row.purchasePrice == null ? '—' : '¥ ' + row.purchasePrice }}</text>
                 <ConfirmAction :label="'删除衣物' + row.name" :action="() => removeItem(row)">

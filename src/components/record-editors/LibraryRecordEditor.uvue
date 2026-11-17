@@ -13,7 +13,7 @@ import { createRecordScope } from '../../services/records/page-scope.ts';
 import { request } from '../../services/api.ts';
 import AttachmentField from '../AttachmentField.uvue';
 import LibraryCover from '../LibraryCover.uvue';
-import { statuses, dateTime } from '../../services/records/contracts.ts';
+import { statuses } from '../../services/records/contracts.ts';
 const modalMotion0 = ref<{ close: () => void } | null>(null);
 
 const props = defineProps<{ kind: string; record?: any; loading?: boolean; loadError?: string }>();
@@ -65,15 +65,15 @@ form.value = {
       files: [],
       totalProgress: 0,
       currentProgress: 0,
-      startTime: null,
-      finishTime: null,
+      startDate: null,
+      finishDate: null,
       rating: null,
       remark: '',
     };
 }
 watch(() => [props.record, props.loading, props.loadError], () => { if (!props.loading && !props.loadError) initialize(); }, { immediate: true });
 function setDate(key, date) {
-  form.value[key] = dateTime(date, form.value[key]?.slice(11, 16) || '00:00');
+  form.value[key] = date || null;
 }
 async function parse() {
   if (saving.value || deleting.value || parsing.value || !form.value.url?.trim()) return;
@@ -121,9 +121,9 @@ async function save() {
     payload[key] = value;
   }
   if (
-    payload.startTime &&
-    payload.finishTime &&
-    payload.finishTime < payload.startTime
+    payload.startDate &&
+    payload.finishDate &&
+    payload.finishDate < payload.startDate
   ) {
     formError.value = '完成日期不能早于开始日期';
     return;
@@ -225,14 +225,14 @@ async function remove(item) {
           <FormField compact stretch
           label="开始日期"
           kind="date"
-          :model-value="form.startTime?.slice(0, 10) || ''"
-          @update:model-value="setDate('startTime', $event)" />
+          :model-value="form.startDate || ''"
+          @update:model-value="setDate('startDate', $event)" />
           <FormField compact stretch
-          v-if="form.status === 'completed' || form.finishTime"
+          v-if="form.status === 'completed' || form.finishDate"
           label="完成日期"
           kind="date"
-          :model-value="form.finishTime?.slice(0, 10) || ''"
-          @update:model-value="setDate('finishTime', $event)" />
+          :model-value="form.finishDate || ''"
+          @update:model-value="setDate('finishDate', $event)" />
         </view><FormField
           :label="kind === 'movie' ? '短评/备注' : '书评'"
           kind="textarea" textarea-size="compact"

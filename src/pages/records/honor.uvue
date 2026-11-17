@@ -18,7 +18,7 @@ import AppIcon from '../../components/AppIcon.uvue';
 import AttachmentField from '../../components/AttachmentField.uvue';
 import { createRecordScope } from '../../services/records/page-scope.ts';
 import { isDark } from '../../services/theme.ts';
-import { textTags, recordId } from '../../services/records/contracts.ts';
+import { tagsText, tagsList, recordId } from '../../services/records/contracts.ts';
 import {
   fetchHonors,
   fetchHonorCategories,
@@ -48,7 +48,7 @@ const filtered = computed(() =>
     .filter(
       (item) =>
         (!keyword.value ||
-          [item.title, item.description, item.issuer, textTags(item.tags)].some((text) =>
+          [item.title, item.description, item.issuer, tagsText(item.tags)].some((text) =>
             (text || '').toLowerCase().includes(keyword.value.toLowerCase()),
           )) &&
         (categoryFilter.value === '全部分类' ||
@@ -100,7 +100,7 @@ async function load(refresh = false) {
 function open(item = null) {
   formError.value = '';
   form.value = item
-    ? { ...item, tags: textTags(item.tags), files: (item.files || []).map((file) => ({ ...file })) }
+    ? { ...item, tags: tagsText(item.tags), files: (item.files || []).map((file) => ({ ...file })) }
     : {
         title: '',
         honorDate: new Date().toLocaleDateString('sv-SE'),
@@ -125,12 +125,7 @@ async function save() {
     ...form.value,
     title: form.value.title.trim(),
     fileIds: form.value.files.map((file) => recordId(file.id)),
-    tags: JSON.stringify(
-      form.value.tags
-        .split(/[,，]/)
-        .map((t) => t.trim())
-        .filter(Boolean),
-    ),
+    tags: tagsList(form.value.tags),
   };
   saving.value = true;
   formError.value = '';
@@ -205,7 +200,7 @@ function categoryName(item) {
             <text class="honor-title">{{ item.title }}</text>
             <text v-if="item.issuer" class="honor-secondary" :class="{ 'secondary-text-dark': isDark }">{{ item.issuer }}</text>
             <text :max-lines="3" v-if="item.description" class="honor-content" :class="[{ 'honor-content-dark': isDark }, { 'secondary-text-dark': isDark }]">{{ item.description }}</text>
-            <view v-if="item.tags" class="honor-tags"><text v-for="tag in textTags(item.tags).split(/[,，]/).filter(Boolean)" :key="tag" class="honor-tag" :class="{ 'secondary-text-dark': isDark }">{{ tag }}</text></view>
+            <view v-if="item.tags && item.tags.length" class="honor-tags"><text v-for="tag in item.tags" :key="tag" class="honor-tag" :class="{ 'secondary-text-dark': isDark }">{{ tag }}</text></view>
             <view class="honor-date ui-row"><AppIcon name="ant-design:calendar-outlined" :size="13" color="#8b8f99" /><text class="honor-secondary" :class="{ 'secondary-text-dark': isDark }">{{ item.honorDate?.slice(0, 10) }}</text><view class="footer-spacer" /><AppIcon v-if="item.isPublic !== 1" name="ant-design:lock-outlined" :size="13" color="#b77927" aria-label="私密" /></view>
           </view>
         </view>

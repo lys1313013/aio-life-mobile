@@ -44,8 +44,8 @@ export interface RelatedRecord {
   fileId?: string
   coverImgUrl?: string
   status?: string
-  startTime?: string | null
-  finishTime?: string | null
+  startDate?: string | null
+  finishDate?: string | null
 }
 export const getRelatedRecord = (type: number, id: string) =>
   request<RelatedRecord | null>((type === 1 ? '/read-record/' : '/movie/') + encodeURIComponent(id))
@@ -54,9 +54,9 @@ export async function updateRelatedStatus(type: number, id: string, status: stri
   const record = await getRelatedRecord(type, id)
   if (!record || record.id !== id) throw new Error('关联记录暂时无法读取')
   if (record.status === status) return
-  // 后端会为进行中/已完成补齐日期；带回已有日期，避免覆盖原来的开始、完成时间。
+  // 后端会为进行中/已完成补齐日期；带回已有日期，避免覆盖原来的开始、完成日期。
   await request(type === 1 ? '/read-record' : '/movie', 'PUT', {
-    id, status, startTime: record.startTime, finishTime: record.finishTime,
+    id, status, startDate: record.startDate, finishDate: record.finishDate,
   })
 }
 export function getRelated(

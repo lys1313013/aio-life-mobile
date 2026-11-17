@@ -2,7 +2,7 @@ const { test, expect } = require('./support/test')
 const { dashboardFixture } = require('./fixtures.js')
 const id = '9223372036854775807'
 async function setup(page) {
-  const state = { goals: [{ id, title: '模拟月目标', type: 3, status: 'in_progress', currentValue: 2, targetValue: 10, description: '模拟描述', content: '每日记录', parentId: '9223372036854775806', tags: '["阅读"]' }], columns: [{ id: '8', title: '模拟计划', bgColor: '' }], tasks: [{ id, columnId: '8', content: '模拟待办', detail: '模拟说明', unCompletedCount: 1 }], details: [{ id: '7', taskId: id, content: '模拟明细', priority: 20, isCompleted: 0, isStarred: 0 }], writes: [], failSave: false }
+  const state = { goals: [{ id, title: '模拟月目标', type: 3, status: 'in_progress', currentValue: 2, targetValue: 10, description: '模拟描述', content: '每日记录', parentId: '9223372036854775806', tags: ['阅读'] }], columns: [{ id: '8', title: '模拟计划', bgColor: '' }], tasks: [{ id, columnId: '8', content: '模拟待办', detail: '模拟说明', unCompletedCount: 1 }], details: [{ id: '7', taskId: id, content: '模拟明细', priority: 20, isCompleted: 0, isStarred: 0 }], writes: [], failSave: false }
   await page.route('**/api/**', async route => {
     const request = route.request(), path = new URL(request.url()).pathname, method = request.method()
     let data = dashboardFixture(path)

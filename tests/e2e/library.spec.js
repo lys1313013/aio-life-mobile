@@ -19,7 +19,7 @@ async function library(page, kind) {
     fileId: i < 6 ? 'cover-' + i : '',
     url: '',
     coverImgUrl: '',
-    finishTime: i % 4 === 2 ? '2026-10-01 12:00:00' : null,
+    finishDate: i % 4 === 2 ? '2026-10-01' : null,
     doubanSubjectId: '9223372036854775806',
     remark: '模拟备注',
   }));

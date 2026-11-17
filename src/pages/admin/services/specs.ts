@@ -11,8 +11,8 @@ export const specs = {
   menus: { title:'菜单管理', query:'/menu/admin/tree', base:'/menu/admin', id:'id', tree:true, search:'name', fields:[field('title','菜单名称',true),field('name','路由名称',true),field('parentId','父菜单',true,'selector'),field('path','路由',true),field('component','前端组件'),field('redirect','重定向'),field('icon','菜单图标'),field('iconColor','图标颜色（#RRGGBB，留空默认）'),field('roles','角色（逗号分隔）'),field('sortOrder','排序',false,'number'),field('visibleClients','展示端',false,'number'),field('metaText','其他菜单属性',false,'textarea')], display:['title','name','path','component','roles','sortOrder','visibleClients'] },
   config: { title:'系统配置', query:'/system-config/list', base:'/system-config', id:'configKey', array:true, search:'keyPrefix', fields:[], display:['description','configKey','configType','configValue','updateTime'] },
   feedback: { title:'反馈管理', query:'/feedback/admin/list', base:'/feedback/admin', id:'id', search:'keyword', readOnly:true, fields:[], display:['title','userName','feedbackType','status','priority','commentCount','createTime'] },
-  operation: { title:'操作日志', query:'/system/logs/operation', id:'id', search:'username', readOnly:true, fields:[], display:['functionName','functionItem','username','nickname','success','ipAddress','browser','createTime'] },
-  access: { title:'访问日志', query:'/system/logs/access', id:'id', search:'username', readOnly:true, fields:[], display:['functionName','functionItem','username','nickname','accessType','ipAddress','browser','createTime'] },
+  operation: { title:'操作日志', query:'/system/logs/operation', id:'id', search:'username', readOnly:true, fields:[], display:['functionName','functionItem','username','nickname','success','clientIp','browser','createTime'] },
+  access: { title:'访问日志', query:'/system/logs/access', id:'id', search:'username', readOnly:true, fields:[], display:['functionName','functionItem','username','nickname','accessType','clientIp','browser','createTime'] },
 }
 export function adminPayload(kind, form, original = null) {
   const spec = specs[kind]

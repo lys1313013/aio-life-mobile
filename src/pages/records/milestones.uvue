@@ -16,7 +16,7 @@ import PageState from '../../components/PageState.uvue';
 import AdaptiveModal from '../../components/AdaptiveModal.uvue';
 import { createRecordScope } from '../../services/records/page-scope.ts';
 import { isDark } from '../../services/theme.ts';
-import { textTags } from '../../services/records/contracts.ts';
+import { tagsText, tagsList } from '../../services/records/contracts.ts';
 import { fetchEvents, saveEvent, deleteEvent } from './services/events.ts';
 const modalMotion0 = ref<{ close: () => void } | null>(null);
 
@@ -36,7 +36,7 @@ const typeFilter = ref('全部类型'),
   start = ref(''),
   end = ref('');
 const allTags = computed(() => [
-  ...new Set(rows.value.flatMap((item) => textTags(item.tags).split(/[,，]/).filter(Boolean))),
+  ...new Set(rows.value.flatMap((item) => item.tags || [])),
 ]);
 const filtered = computed(() =>
   rows.value
@@ -45,7 +45,7 @@ const filtered = computed(() =>
         (typeFilter.value === '全部类型' ||
           item.type === types[labels.indexOf(typeFilter.value)]) &&
         (tagFilter.value === '全部标签' ||
-          textTags(item.tags).split(/[,，]/).includes(tagFilter.value)) &&
+          (item.tags || []).includes(tagFilter.value)) &&
         (!start.value || item.date >= start.value) &&
         (!end.value || item.date <= end.value),
     )
@@ -85,7 +85,7 @@ async function load(refresh = false) {
 function open(item = null) {
   formError.value = '';
   form.value = item
-    ? { ...item, endDate: item.endDate || '', tags: textTags(item.tags) }
+    ? { ...item, endDate: item.endDate || '', tags: tagsText(item.tags) }
     : {
         title: '',
         date: new Date().toLocaleDateString('sv-SE'),
@@ -109,12 +109,7 @@ async function save() {
     ...form.value,
     title: form.value.title.trim(),
     endDate: form.value.endDate || null,
-    tags: JSON.stringify(
-      form.value.tags
-        .split(/[,，]/)
-        .map((t) => t.trim())
-        .filter(Boolean),
-    ),
+    tags: tagsList(form.value.tags),
   };
   saving.value = true;
   formError.value = '';
@@ -177,7 +172,7 @@ function clear() {
             ><text class="event-secondary"
               :class="{ 'secondary-text-dark': isDark }">{{ item.date }}{{ item.endDate ? ' → ' + item.endDate : '' }}</text
             ><text v-if="item.description" class="event-content">{{ item.description }}</text
-            ><view v-if="item.tags" class="event-tags"><text v-for="tag in textTags(item.tags).split(/[,，]/).filter(Boolean)" :key="tag" class="event-tag" :class="{ 'secondary-text-dark': isDark }">{{ tag }}</text></view></view></view
+            ><view v-if="item.tags && item.tags.length" class="event-tags"><text v-for="tag in item.tags" :key="tag" class="event-tag" :class="{ 'secondary-text-dark': isDark }">{{ tag }}</text></view></view></view
           ></template
         > </PageState
       ><ModalMotion><AdaptiveModal ref="modalMotion0" v-if="form" label="编辑里程碑" :busy="saving" @close="form = null"

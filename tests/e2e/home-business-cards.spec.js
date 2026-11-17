@@ -15,7 +15,7 @@ async function setup(page, { locked = false, failMore = false, readAccess = true
     '/quick-nav/candidates': ['/task-center/goal', '/my-hub/anniversary', '/my-hub/read-record', '/membership', '/my-hub/movie'].map(path => ({ path })),
     '/dashboard/tasks': [], '/quick-nav/my': [], '/thought/dashboard': [], '/taskDetails/watched': [],
     '/exerciseRecord/dashboardSummary': { days: [] }, '/timeTrackerCategory/list': [], '/timeRecord/query': [],
-    '/goals': [{ id: '9223372036854775801', title: '固定目标', type: 1, content: '保留行动计划', tags: '["运动"]', status: 'on_hold', isPinned: 1, targetValue: 12, currentValue: 3 }],
+    '/goals': [{ id: '9223372036854775801', title: '固定目标', type: 1, content: '保留行动计划', tags: ['运动'], status: 'on_hold', isPinned: 1, targetValue: 12, currentValue: 3 }],
     '/anniversaryRecords': [], '/membership/list': [], '/movie/page': { items: [], total: 0 },
   };
   if (!readAccess) fixtures['/quick-nav/candidates'] = fixtures['/quick-nav/candidates'].filter(item => item.path !== '/my-hub/read-record');
@@ -243,7 +243,7 @@ test('首页目标直接弹窗编辑、新增和取消固定，保存失败保�
   await expect(card).toContainText('更新目标');
   expect(written.id).toBe('9223372036854775801');
   expect(written.content).toBe('保留行动计划');
-  expect(written.tags).toBe('["运动"]');
+  expect(written.tags).toEqual(['运动']);
   await card.getByRole('button', { name: '编辑更新目标', exact: true }).click();
   await dialog.locator('[role="switch"][aria-label="添加到首页"]').click();
   await dialog.getByRole('button', { name: '保存', exact: true }).click();

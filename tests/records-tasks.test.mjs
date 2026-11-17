@@ -8,7 +8,7 @@ const { recordId, goalPayload, taskPayload, reordered, goalDateRange } = await i
 const id = '9223372036854775807'
 test('目标保留长 ID、父子关联、行动计划和标签，校验数值与日期', () => {
   const payload = goalPayload({ id, parentId: '9223372036854775806', title: ' 模拟读书 ', type: 3, status: 'in_progress', currentValue: '2', targetValue: '10', tags: '阅读，学习', content: '每日记录', startDate: '2026-10-01 00:00:00', endDate: '2026-10-31 23:59:59' })
-  assert.equal(payload.id, id); assert.equal(payload.parentId, '9223372036854775806'); assert.equal(payload.content, '每日记录'); assert.equal(payload.tags, '["阅读","学习"]'); assert.equal(payload.currentValue, 2)
+  assert.equal(payload.id, id); assert.equal(payload.parentId, '9223372036854775806'); assert.equal(payload.content, '每日记录'); assert.deepEqual(payload.tags, ['阅读', '学习']); assert.equal(payload.currentValue, 2)
   assert.throws(() => recordId(9223372036854775807), /ID/)
   assert.throws(() => goalPayload({ ...payload, targetValue: '-1' }), /非负数/)
   assert.throws(() => goalPayload({ ...payload, endDate: '2026-09-01 00:00:00' }), /结束时间/)

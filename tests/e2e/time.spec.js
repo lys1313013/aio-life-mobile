@@ -1232,7 +1232,7 @@ async function completeRelatedStatus(page, type) {
 for (const type of [1, 2]) {
   test(`时迹保存关联完成状态 ${type}，取消不写入，保留日期及其他字段`, async ({ page }) => {
     const state = await setupRelated(page, type);
-    const original = { ...state.relatedRecords[0], startTime: '2026-01-01 10:00:00', finishTime: '2026-02-01 10:00:00', rating: 4, remark: '保留书评影评' };
+    const original = { ...state.relatedRecords[0], startDate: '2026-01-01', finishDate: '2026-02-01', rating: 4, remark: '保留书评影评' };
     state.relatedRecords[0] = original;
     await page.getByRole('button', { name: '编辑记录 晨间运动' }).click();
     await completeRelatedStatus(page, type);
@@ -1245,7 +1245,7 @@ for (const type of [1, 2]) {
     await page.getByRole('button', { name: '保存', exact: true }).click();
     await expect(page.locator('.modal-panel[aria-label="编辑时迹"]')).toHaveCount(0);
     expect(state.relatedUpdates).toEqual([{ path: type === 1 ? '/api/read-record' : '/api/movie', payload: {
-      id: original.id, status: 'completed', startTime: original.startTime, finishTime: original.finishTime,
+      id: original.id, status: 'completed', startDate: original.startDate, finishDate: original.finishDate,
     } }]);
     expect(state.relatedRecords[0]).toMatchObject({ rating: 4, remark: '保留书评影评' });
   });

@@ -28,7 +28,7 @@ for (const width of [390, 1440]) for (const theme of ['light', 'dark']) {
       expect(await event.evaluate(n => getComputedStyle(n).overflow)).toBe('hidden');
     }
     await shot('time-short-events');
-    state.milestones = [1, 2, 3].map((n) => ({ id: String(100 + n), title: `模拟同月里程碑${n}`, date: `2026-10-${String(n * 5).padStart(2, '0')}`, type: 'life', description: n === 2 ? '模拟较长描述，检查节点与不同高度内容的起始位置保持对齐。'.repeat(4) : '模拟简短描述', tags: '["模拟标签"]' }));
+    state.milestones = [1, 2, 3].map((n) => ({ id: String(100 + n), title: `模拟同月里程碑${n}`, date: `2026-10-${String(n * 5).padStart(2, '0')}`, type: 'life', description: n === 2 ? '模拟较长描述，检查节点与不同高度内容的起始位置保持对齐。'.repeat(4) : '模拟简短描述', tags: ['模拟标签'] }));
     await page.goto('/#/pages/records/milestones');
     await expect(page.locator('.timeline-entry')).toHaveCount(3);
     await expect(page.locator('.month-title')).toHaveCount(1);

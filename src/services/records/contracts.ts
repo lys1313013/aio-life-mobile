@@ -7,16 +7,18 @@ export function recordId(value) {
   if (typeof value !== 'string' || !value.trim()) throw new Error('记录 ID 异常，请重新加载')
   return value
 }
-export function textTags(value) {
-  if (!value) return ''
-  try { const tags = JSON.parse(value); return Array.isArray(tags) ? tags.join('，') : value } catch (_) { return value }
+export function tagsText(tags) {
+  return Array.isArray(tags) ? tags.join('，') : ''
+}
+export function tagsList(text) {
+  return String(text || '').split(/[,，]/).map(t => t.trim()).filter(Boolean)
 }
 export function dateTime(date, time = '00:00') { return date ? date.slice(0, 10) + ' ' + time.slice(0, 5) + ':00' : null }
 export function goalPayload(form, preview = false) {
   if (!preview && missingRequired('goal', form, 'title')) throw new Error('请输入目标标题')
   if (!Number.isInteger(Number(form.type)) || form.type < 1 || form.type > 10) throw new Error('请选择目标类型')
   if (!statuses.includes(form.status)) throw new Error('请选择目标状态')
-  const payload = { ...form, title: form.title.trim(), type: Number(form.type), tags: JSON.stringify(textTags(form.tags).split(/[,，]/).map(t => t.trim()).filter(Boolean)) }
+  const payload = { ...form, title: form.title.trim(), type: Number(form.type), tags: tagsList(form.tags) }
   if (form.id) payload.id = recordId(form.id)
   for (const key of ['targetValue', 'currentValue']) {
     if (form[key] === '' || form[key] == null) payload[key] = null
