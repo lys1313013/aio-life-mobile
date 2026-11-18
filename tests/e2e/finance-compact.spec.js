@@ -46,7 +46,7 @@ for (const width of [390, 768, 1440]) {
           incomeTypeId: '81',
           expenseTypeId: '81',
           payTypeId: '82',
-          incDate: `${index === 2 ? 2025 : 2026}-10-0${3 - index}`,
+          incomeDate: `${index === 2 ? 2025 : 2026}-10-0${3 - index}`,
           expenseTime: `2026-10-0${3 - index} 12:30:00`,
           remark: [
             '模拟早餐',
@@ -59,7 +59,7 @@ for (const width of [390, 768, 1440]) {
         }));
         await page.route(`**/api/${kind}/query**`, (route) => {
           const year = new URL(route.request().url()).searchParams.get('year');
-          const items = kind === 'income' && year ? records.filter(row => row.incDate.startsWith(year + '-')) : records;
+          const items = kind === 'income' && year ? records.filter(row => row.incomeDate.startsWith(year + '-')) : records;
           return route.fulfill({ json: { code: 0, message: null, data: { items, total: items.length } } });
         });
         await page.getByRole('button', { name: '筛选', exact: true }).click();

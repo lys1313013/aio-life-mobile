@@ -15,7 +15,7 @@ async function start(page,routeName,options={}){
  if(p==='/api/user/info')data={id:'1',nickname:'模拟用户',roles:['admin']};
  if(p==='/api/password/list')data=state.vaultRow?(options.vaultCount?Array.from({length:options.vaultCount},(_,i)=>({...state.vaultRow,id:String(9220+i),title:['模拟邮件账号','模拟代码托管与长标题账号','模拟学习平台'][i]})):[state.vaultRow]):[];if(state.vaultRow&&p==='/api/password/'+state.vaultRow.id){data=state.vaultRow;if(m==='PUT'){state.calls.push({path:p,body:route.request().postDataJSON()});if(state.fail)return route.fulfill({json:{code:1,message:'模拟保存失败'}});state.vaultRow={...state.vaultRow,...route.request().postDataJSON()};data=state.vaultRow;}}
  if(p==='/api/password/categories')data=['工作'];
- if(p==='/api/income/query')data={items:[{id:'9223372036854775807',grossAmount:100,incomeTypeId:'81',incDate:'2026-10-01',remark:'模拟收入',taxAmount:8}],total:1};
+ if(p==='/api/income/query')data={items:[{id:'9223372036854775807',grossAmount:100,incomeTypeId:'81',incomeDate:'2026-10-01',remark:'模拟收入',taxAmount:8}],total:1};
  if(p==='/api/expense/query')data={items:[{id:'9223372036854775807',bookkeepingAmount:70,transactionAmount:99,expenseTypeId:'81',payTypeId:'82',expenseTime:'2026-10-01T12:00:00',remark:'模拟支出',transactionNo:'preserve-fixture'}],total:1};
  if(p==='/api/bank-cards/tags')data=[{id:'tag-big-9223372036854775807',name:'模拟标签',color:'#336699',status:'normal'}];
  if(p==='/api/user/2/basic')data={id:'2',nickname:'模拟对方'};

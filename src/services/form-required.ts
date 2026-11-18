@@ -22,7 +22,7 @@ const fields = {
   detail: ['content', 'priority'],
   person: ['name'],
   relation: ['targetPersonId'],
-  income: ['grossAmount', 'incDate'],
+  income: ['grossAmount', 'incomeDate'],
   expense: ['bookkeepingAmount', 'transactionAmount', 'expenseTypeId', 'payTypeId', 'expenseTime'],
   importExpense: ['expenseTypeId', 'payTypeId'],
   cardTag: ['name'],

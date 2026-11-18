@@ -7,7 +7,7 @@ const day = new Date(Date.now() + 8 * 3600000).toISOString().slice(0, 7) + '-01'
 async function setup(page, theme) {
   const state = { fail: false, writes: [], calls: [], rows: {
     expense: { id: '9223372036854775806', bookkeepingAmount: 26, transactionAmount: 99, expenseTypeId: 'type', payTypeId: 'pay', expenseTime: day + ' 12:34:56', expenseDesc: '模拟地铁出行', counterparty: '模拟交通公司', transactionId: 'fixture-order', merchantOrderNo: 'fixture-merchant', remark: '原始备注' },
-    income: { id: '9223372036854775807', grossAmount: 8000, incomeTypeId: 'type', incDate: day, taxAmount: 120, remark: '模拟工资收入' },
+    income: { id: '9223372036854775807', grossAmount: 8000, incomeTypeId: 'type', incomeDate: day, taxAmount: 120, remark: '模拟工资收入' },
   } };
   await page.addInitScript(theme => {
     localStorage.setItem('aio-life-mobile.access-token.v1', JSON.stringify({ type: 'string', data: 'fixture-home-edit' }));
@@ -32,14 +32,14 @@ async function setup(page, theme) {
       data = true;
     }
     if (pathname.endsWith('/query')) {
-      const row = state.rows[pathname.split('/')[1]], date = row?.expenseTime || row?.incDate;
+      const row = state.rows[pathname.split('/')[1]], date = row?.expenseTime || row?.incomeDate;
       const start = url.searchParams.get('startTime'), end = url.searchParams.get('endTimeBefore');
       const items = row && (!start || date >= start) && (!end || date < end) ? [{ ...row }] : [];
       data = { items, total: items.length };
     }
     if (pathname.endsWith('/calendar')) {
       const kind = pathname.split('/')[3]; data = calendarFixture(url, kind);
-      const income = state.rows.income?.incDate === day ? state.rows.income.grossAmount : 0;
+      const income = state.rows.income?.incomeDate === day ? state.rows.income.grossAmount : 0;
       const expense = state.rows.expense?.expenseTime.startsWith(day) ? state.rows.expense.bookkeepingAmount : 0;
       const totals = { income, expense, balance: income - expense };
       data.amount = kind === 'finance' ? totals.balance : totals[kind];

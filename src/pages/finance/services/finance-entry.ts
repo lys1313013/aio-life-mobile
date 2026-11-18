@@ -6,7 +6,7 @@ export function ledgerPayload(kind: string, draft: Record<string, any>) {
   const data = { ...draft, [amountKey]: Number(draft[amountKey]) }
   if (!Number.isFinite(data[amountKey]) || missingRequired(kind, draft, amountKey)) throw new Error('请输入有效金额')
   if (kind === 'income') {
-    if (missingRequired(kind, draft, 'incDate')) throw new Error('请选择收入日期')
+    if (missingRequired(kind, draft, 'incomeDate')) throw new Error('请选择收入日期')
   } else {
     data.transactionAmount = Number(draft.transactionAmount)
     if (!Number.isFinite(data.transactionAmount) || missingRequired(kind, draft, 'transactionAmount')) throw new Error('请输入交易金额')
