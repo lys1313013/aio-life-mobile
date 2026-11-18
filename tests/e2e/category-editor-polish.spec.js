@@ -5,7 +5,7 @@ const iconNames = Object.keys(require('../../src/services/icons/catalog.generate
 const iconCount = iconNames.length;
 const id = '9223372036854775807';
 const original = {
-  id, parentId: '0', userId: '9223372036854775806', name: '阅读与长篇写作',
+  id, parentId: null, userId: '9223372036854775806', name: '阅读与长篇写作',
   color: '#13579B', icon: 'custom:reading-symbol', description: '保留原有的分类说明。',
   isTrackTime: 1, isEnabled: 1, sortOrder: 20,
 };
@@ -94,7 +94,7 @@ test('category editor preserves values, supports visual/custom choices, resets p
   const dialog = editor(page);
   await dialog.getByRole('button', { name: '保存', exact: true }).click();
   await expect(dialog).toHaveCount(0);
-  expect(state.writes[0]).toEqual({ id, parentId: '0', name: original.name, color: original.color, icon: original.icon, description: original.description, isTrackTime: 1, isEnabled: 1, sortOrder: 20 });
+  expect(state.writes[0]).toEqual({ id, parentId: null, inheritParent: false, name: original.name, color: original.color, icon: original.icon, description: original.description, isTrackTime: 1, isEnabled: 1, sortOrder: 20 });
   await page.getByRole('button', { name: '编辑分类', exact: true }).click();
   await dialog.getByRole('button', { name: '选择分类图标', exact: true }).click();
   const fullPicker = page.getByRole('dialog', { name: '选择分类图标', exact: true });

@@ -35,6 +35,6 @@ for(const title of ['设备','衣柜','会员'])for(const [width,theme]of [[390,
    await expect(page.getByRole('dialog')).toHaveCount(0);
    await page.waitForTimeout(180);
  }
- if(title==='衣柜'){await page.getByRole('button',{name:'分类',exact:true}).click();await shot('categories');for(const label of ['新增衣柜分类','编辑分类模拟衣柜分类','删除分类模拟衣柜分类']){await page.getByRole('button',{name:label,exact:true}).click();const dialog=page.getByRole('dialog').last();await expect(dialog).toBeVisible();await shot(label);const cancel=dialog.getByRole('button',{name:'取消',exact:true});if(await cancel.count())await cancel.click();else await dismissModal(page);await page.waitForTimeout(180)}}
+ if(title==='衣柜'){await page.getByRole('button',{name:'分类',exact:true}).click();await shot('categories');for(const label of ['新增衣橱分类','编辑分类模拟衣柜分类','删除分类模拟衣柜分类']){await page.getByRole('button',{name:label,exact:true}).click();const dialog=page.getByRole('dialog').last();await expect(dialog).toBeVisible();await shot(label);const cancel=dialog.getByRole('button',{name:'取消',exact:true});if(await cancel.count())await cancel.click();else await dismissModal(page);await page.waitForTimeout(180)}}
  expect(errors).toEqual([]);fs.writeFileSync(prefix+'.json',JSON.stringify({geometry,evidence,errors,scope:'H5 mocked API real life navigation clicks'},null,2));
 });

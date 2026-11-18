@@ -5,8 +5,8 @@ const { pullDown } = require('./gestures');
 function gate() { let release; const promise = new Promise(resolve => { release = resolve; }); return { promise, release }; }
 
 const categoryRows = [
-  { id: '9223372036854775701', parentId: '0', userId: '9223372036854775807', name: '模拟一级分类', color: '#3b82f6', icon: 'lucide:book-open', isTrackTime: 0, isEnabled: 1, sortOrder: 10 },
-  { id: '9223372036854775702', parentId: '0', userId: '9223372036854775807', name: '模拟分类与较长的名称，用于检查多行换行及右侧操作按钮对齐', color: '#10b981', icon: 'lucide:book-open', isTrackTime: 1, isEnabled: 1, sortOrder: 20 },
+  { id: '9223372036854775701', parentId: null, userId: '9223372036854775807', name: '模拟一级分类', color: '#3b82f6', icon: 'lucide:book-open', isTrackTime: 0, isEnabled: 1, sortOrder: 10 },
+  { id: '9223372036854775702', parentId: null, userId: '9223372036854775807', name: '模拟分类与较长的名称，用于检查多行换行及右侧操作按钮对齐', color: '#10b981', icon: 'lucide:book-open', isTrackTime: 1, isEnabled: 1, sortOrder: 20 },
   { id: '9223372036854775703', parentId: '9223372036854775701', userId: '9223372036854775807', name: '模拟子分类', color: '#f59e0b', icon: 'lucide:book-open', isTrackTime: 0, isEnabled: 1, sortOrder: 30 },
 ];
 async function openCategories(page, apiMock, admin = false, { handlers = {}, waitForRows = true } = {}) {

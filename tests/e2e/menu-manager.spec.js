@@ -43,13 +43,13 @@ async function setup(page, theme = "light") {
     treeFail: false,
     writes: [],
     rows: [
-      item(longId, "0", "主页", "/", -1),
-      item("2", "0", "仪表盘", "/dashboard", 0, { visibleClients: 2 }),
+      item(longId, null, "主页", "/", -1),
+      item("2", null, "仪表盘", "/dashboard", 0, { visibleClients: 2 }),
       item("21", "2", "人生仪表盘", "/dashboard/life"),
-      item("3", "0", "时间和任务", "/tasks", 0),
+      item("3", null, "时间和任务", "/tasks", 0),
       item("31", "3", "时迹", "/tasks/time"),
       item("32", "3", "待办", "/tasks/todo", 1),
-      item("4", "0", "记录", "/record", 2),
+      item("4", null, "记录", "/record", 2),
       item(
         "41",
         "4",
@@ -57,11 +57,11 @@ async function setup(page, theme = "light") {
         "/record/library/very-long-path-for-overflow-check",
       ),
       item("42", "4", "观影", "/record/video", 1),
-      item("5", "0", "财务", "/finance", 3),
+      item("5", null, "财务", "/finance", 3),
       item("51", "5", "账本", "/finance/ledger"),
-      item("6", "0", "系统管理", "/system", 4),
+      item("6", null, "系统管理", "/system", 4),
       item("61", "6", "菜单管理", "/system/menu"),
-      item("7", "0", "关于", "/about", 5),
+      item("7", null, "关于", "/about", 5),
     ],
   };
   await page.route(`${test.info().project.use.baseURL}/api/**`, async (route) => {
@@ -80,7 +80,7 @@ async function setup(page, theme = "light") {
           .filter((row) => row.parentId === parent)
           .sort((a, b) => a.sortOrder - b.sortOrder)
           .map((row) => ({ ...row, children: tree(row.id) }));
-      data = tree("0");
+      data = tree(null);
     } else if (method !== "GET") {
       const body = req.postDataJSON();
       state.writes.push({ path, method, body });
@@ -293,5 +293,5 @@ test("菜单加载失败可重试，根菜单新增保留入口 H5模拟", async
   await expect(
     page.getByRole("button", { name: "编辑新增根菜单", exact: true }),
   ).toBeVisible();
-  expect(state.writes.at(-1).body.parentId).toBe("0");
+  expect(state.writes.at(-1).body.parentId).toBeNull();
 });

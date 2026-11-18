@@ -75,11 +75,11 @@ for (const width of [390, 768, 1440]) for (const theme of ['light', 'dark']) {
     await shot(page, `${width}-${theme}-edit`);
     await dialog.locator('[aria-label="名称"] input').fill('优化后衬衫');
     state.saveFail = true;
-    await dialog.getByRole('button', { name: '保存衣柜内容', exact: true }).click();
+    await dialog.getByRole('button', { name: '保存衣橱内容', exact: true }).click();
     await expect(dialog.getByRole('alert')).toHaveText('模拟保存失败');
     await expect(dialog.locator('[aria-label="名称"] input')).toHaveValue('优化后衬衫');
     state.saveFail = false;
-    await dialog.getByRole('button', { name: '保存衣柜内容', exact: true }).click();
+    await dialog.getByRole('button', { name: '保存衣橱内容', exact: true }).click();
     await expect(dialog).toHaveCount(0);
     expect(state.writes.at(-1)).toMatchObject({ method: 'PUT', path: '/api/wardrobe/items/' + firstId,
       body: { name: '优化后衬衫', categoryId: '81', season: ['春', '秋'], fileId: '9223372036854775806', remark: clothes[0].remark } });
@@ -89,7 +89,7 @@ for (const width of [390, 768, 1440]) for (const theme of ['light', 'dark']) {
     await dialog.getByRole('button', { name: '取消', exact: true }).click();
     await page.getByRole('button', { name: '分类', exact: true }).click();
     await page.getByRole('button', { name: '编辑分类配饰', exact: true }).click();
-    await expect(page.getByRole('dialog', { name: '衣柜分类编辑' })).toBeVisible();
+    await expect(page.getByRole('dialog', { name: '衣橱分类编辑' })).toBeVisible();
     await page.getByRole('dialog').getByRole('button', { name: '取消', exact: true }).click();
     expect(errors).toEqual([]);
   });
