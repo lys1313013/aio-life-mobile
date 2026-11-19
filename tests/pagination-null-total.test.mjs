@@ -44,7 +44,7 @@ async function fixture(kind, file, fetch) {
     entryLoading: ref(false), failedMore: ref(false), keyword: ref(''), all: ref(false),
     kind: ref('movie'), props: { type: 1, kind: 'income' }, mode: ref('管理'), adminUser: ref(''),
     scope: { wait: value => value }, typeLabels: ref([]), statusLabels: kind === 'feedback' ? [] : ref([]), statuses: [],
-    typeFilter: ref(''), statusFilter: ref(''), status: ref(''),
+    rankingIndex: ref(0), rankingOptions: ref([]), typeFilter: ref(''), statusFilter: ref(''), status: ref(''),
     mutationBusy: ref(false), filters: ref({}), expense: ref(false), selected: ref([]), openedRow: ref(''),
     ledgerId: row => row.id,
     fetchNotes: (_kind, next) => fetch(next), fetchFeedbacks: next => fetch(next),

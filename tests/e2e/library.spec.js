@@ -16,6 +16,7 @@ async function library(page, kind) {
     author: '模拟作者',
     currentProgress: 0,
     totalProgress: 113,
+    rankings: i === 0 ? [{ rankingListId: '12', name: kind === 'movie' ? '豆瓣电影Top250' : '豆瓣读书Top250', rank: 34 }] : [],
     fileId: i < 6 ? 'cover-' + i : '',
     url: '',
     coverImgUrl: '',
@@ -39,6 +40,8 @@ async function library(page, kind) {
     if (state.coverFail) return route.fulfill({ status: 500, body: '' });
     return route.fulfill({ contentType: 'image/png', body: cover });
   });
+  await page.route('**/api/creative-works/rankings?**', route =>
+    route.fulfill({ json: { code: 0, data: [{ id: '12', name: kind === 'movie' ? '豆瓣电影Top250' : '豆瓣读书Top250' }] } }));
   await page.goto('/#/pages/records/library?kind=' + kind);
   await page.reload();
   await expect(page.locator('.library-card')).toHaveCount(9);
@@ -86,6 +89,10 @@ for (const kind of ['movie', 'read'])
               };
             }),
           );
+        const badge = page.locator('.library-ranking').first();
+        await expect(badge).toContainText('No.34');
+        const badgeBox = await badge.boundingBox();
+        expect(badgeBox.y).toBeGreaterThanOrEqual(boxes[0].y + boxes[0].height - 1);
         const columns = width >= 1200 ? 7 : width >= 768 ? 5 : 3;
         expect(boxes.filter((b) => b.y === boxes[0].y)).toHaveLength(columns);
         expect(boxes.every((b) => b.x >= 0 && b.right <= width)).toBe(true);

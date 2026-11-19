@@ -75,6 +75,23 @@ watch(() => [props.record, props.loading, props.loadError], () => { if (!props.l
 function setDate(key, date) {
   form.value[key] = date || null;
 }
+const retryingCover = ref(false);
+async function retryCover() {
+  const id = form.value?.retryCoverWorkId;
+  if (!id || retryingCover.value) return;
+  retryingCover.value = true;
+  try {
+    await scope.wait(request('/creative-works/' + id + '/cover/retry', 'POST'));
+    if (form.value?.retryCoverWorkId === id) {
+      form.value.coverImgUrl = '/creative-works/' + id + '/cover';
+      form.value.retryCoverWorkId = null;
+    }
+  } catch (e) {
+    if (e.name !== 'PageInactiveError') formError.value = e.message;
+  } finally {
+    retryingCover.value = false;
+  }
+}
 async function parse() {
   if (saving.value || deleting.value || parsing.value || !form.value.url?.trim()) return;
   parsing.value = true;
@@ -84,15 +101,17 @@ async function parse() {
     const result = await scope.wait(
       parseDouban(kind.value, form.value.url.trim()),
     );
-    if (form.value?.id === id)
+    if (form.value?.id === id) {
+      const fileId = form.value.fileId || result.fileId || '';
       Object.assign(form.value, result, {
         id,
         coverImgUrl: result.coverImgUrl || '',
-        fileId: result.fileId || '',
-        files: result.fileId
-          ? [{ id: result.fileId, fileName: (result.title || form.value.title) + ' 封面' }]
+        fileId,
+        files: fileId
+          ? [{ id: fileId, fileName: (result.title || form.value.title) + ' 封面' }]
           : [],
       });
+    }
   } catch (e) {
     if (e.name === 'PageInactiveError') return;
     formError.value = e.message;
@@ -112,6 +131,7 @@ async function save() {
     fileId: form.value.files.at(-1)?.id || '',
   };
   delete payload.files;
+  delete payload.coverImgUrl;
   for (const key of ['totalProgress', 'currentProgress']) {
     const value = Number(payload[key] || 0);
     if (!Number.isInteger(value) || value < 0) {
@@ -236,7 +256,7 @@ async function remove(item) {
         </view><FormField
           :label="kind === 'movie' ? '短评/备注' : '书评'"
           kind="textarea" textarea-size="compact"
-          v-model="form.remark" /><view v-if="!form.fileId && form.coverImgUrl" class="library-external-cover"><LibraryCover file-id="" :url="form.coverImgUrl" :title="form.title" :kind="kind" /></view><AttachmentField
+          v-model="form.remark" /><view v-if="!form.fileId && form.coverImgUrl" class="library-external-cover"><LibraryCover file-id="" :url="form.coverImgUrl" :title="form.title" :kind="kind" /></view><MobileButton v-if="form.retryCoverWorkId && !form.fileId" label="重试封面" variant="quiet" :loading="retryingCover" @click="retryCover" /><AttachmentField
           :files="form.files"
           images-only :max-count="1"
           upload-path="/file/upload"

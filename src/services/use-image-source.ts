@@ -18,7 +18,8 @@ export function useImageSource(input: () => { fileId?: string; url?: string }, r
     loading.value = !!(fileId || url) && (!fileId || !!session.token);
     if (!loading.value) return;
     try {
-      const resolved = fileId ? await authFileUrl(fileId) : url!;
+      const shared = url && /^\/creative-works\/\d+\/cover$/.test(url);
+      const resolved = fileId || shared ? await authFileUrl(fileId || url!) : url!;
       if (revision !== generation) { release(resolved); return; }
       source.value = resolved;
     } catch { if (revision === generation) { loading.value = false; failed.value = true; } }

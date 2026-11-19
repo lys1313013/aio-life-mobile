@@ -58,7 +58,7 @@ export function authFileUrl(id: string): Promise<string> {
   const token = session.token
   return new Promise((resolve, reject) => {
     uni.downloadFile({
-      url: apiUrl('/file/preview/' + encodeURIComponent(id)),
+      url: apiUrl(/^\/creative-works\/\d+\/cover$/.test(id) ? id : '/file/preview/' + encodeURIComponent(id)),
       header: { Authorization: 'Bearer ' + token },
       success(response) {
         try {
