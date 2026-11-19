@@ -524,13 +524,9 @@ function saveExerciseSet() {
   closeExerciseEditor()
 }
 function removeExerciseSet() {
-  if (editingExerciseIndex.value === null || editingExerciseIndex.value < 0) return
-  removeExerciseSetAt(editingExerciseIndex.value)
+  if (editingExerciseIndex.value === null || editingExerciseIndex.value < 0 || saving.value || deleting.value) return
+  form.value.exercises?.splice(editingExerciseIndex.value, 1)
   closeExerciseEditor()
-}
-function removeExerciseSetAt(index: number) {
-  if (saving.value || deleting.value) return
-  form.value.exercises?.splice(index, 1)
 }
 function selectRelated(item) {
   relatedStatus.value = ''
@@ -802,7 +798,7 @@ function closeSelection() {
                   <CategoryIcon :icon="exerciseType(group.typeId)?.icon || 'lucide:dumbbell'" :color="exerciseType(group.typeId)?.color || '#4e7ee3'" :size="16" />
                   <text class="exercise-tab-name" :class="[{ 'exercise-tab-name-active': activeExerciseGroup?.typeId === group.typeId }, themeClass('exercise-tab-name')]">{{ exerciseName(group.typeId) }}</text>
                 </view>
-                <text class="exercise-tab-summary" :class="[{ 'exercise-tab-summary-active': activeExerciseGroup?.typeId === group.typeId }, themeClass('exercise-tab-summary')]">{{ group.indices.length }}组 · {{ group.total }}次</text>
+                <text class="exercise-tab-summary" :class="[{ 'exercise-tab-summary-active': activeExerciseGroup?.typeId === group.typeId }, themeClass('exercise-tab-summary')]">{{ group.indices.length }}组 · {{ group.total }}</text>
               </button>
             </view>
           </scroll-view>
@@ -815,16 +811,11 @@ function closeSelection() {
                 <text class="exercise-set-order" :class="themeClass('exercise-set-order')">第{{ groupIndex + 1 }}组</text>
                 <text class="exercise-set-value" :class="themeClass('exercise-set-value')">{{ form.exercises?.[exerciseIndex]?.exerciseCount ?? '未填写' }}</text>
               </button>
-              <button hover-class="none" role="button" class="exercise-set-remove"
-                :aria-label="'删除' + exerciseName(activeExerciseGroup.typeId) + '第' + (groupIndex + 1) + '组'"
-                :disabled="saving || deleting" @click.stop="removeExerciseSetAt(exerciseIndex)">
-                <AppIcon name="ant-design:close-outlined" :size="12" color="#8b8f99" />
-              </button>
             </view>
-            <button hover-class="none" role="button" class="exercise-set-tile exercise-set-add" :class="themeClass('exercise-set-tile exercise-set-add')"
+            <button hover-class="none" role="button" class="exercise-set-tile exercise-set-add" :class="themeClass('exercise-set-tile')"
               :aria-label="'为' + exerciseName(activeExerciseGroup.typeId) + '加一组'"
               :disabled="saving || deleting" @click="openExerciseEditor(-1, activeExerciseGroup.typeId)">
-              <AppIcon name="ant-design:plus-outlined" :size="20" color="#4e7ee3" />
+              <AppIcon name="ant-design:plus-outlined" :size="18" color="#4e7ee3" />
             </button>
           </view>
         </view>
@@ -965,11 +956,13 @@ function closeSelection() {
 </template>
 
 <style scoped lang="scss">
+@use 'sass:color';
 @use '../styles/platform' as *;
 @use '../styles/typography' as *;
 @use '../styles/spacing.scss';
 @use '../styles/spacing-tokens' as *;
 @use '../styles/text-colors' as *;
+@use '../styles/theme-tokens' as *;
 @include type-utilities('body');
 /* #ifdef WEB */
 // 多个弹层共用一个过渡根节点，不增加布局盒，也不改变 fixed 的定位参照。
@@ -1471,7 +1464,6 @@ function closeSelection() {
 .exercise-add,
 .exercise-tab,
 .exercise-set-edit,
-.exercise-set-remove,
 .exercise-edit-type,
 .exercise-edit-delete,
 .small-action,
@@ -1583,64 +1575,54 @@ function closeSelection() {
 .exercise-set-grid {
   flex-direction: row;
   flex-wrap: wrap;
-  justify-content: space-between;
+  gap: $space-inline;
   margin-top: $space-section;
   max-width: 440px;
 }
 .exercise-set-tile {
-  position: relative;
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
-  justify-content: center;
   box-sizing: border-box;
-  width: 31%;
-  min-height: $space-controlMin + $space-section * 2;
-  margin: 0 0 $space-inline;
+  width: calc((100% - 2 * $space-inline) / 3);
+  min-width: 0;
+  min-height: $space-controlMin + $space-section + $space-inline;
+  margin: 0;
   padding: 0;
-  border: $space-hairline solid #e5e7eb;
+  border: 0;
   border-radius: 10px;
-  background-color: #f7f8fa;
-  text-align: left;
+  // “加一组”按钮禁用时也使用组卡片底色。
+  background-color: $theme-page-light !important;
 }
-.exercise-set-tile-dark { border-color: #32353c; background-color: #23262b; }
-// “加一组”也是 button，保存期间不能被平台 disabled 灰底覆盖。
-.exercise-set-add { background-color: #f7f8fa !important; }
-.exercise-set-add-dark { background-color: #23262b !important; }
+.exercise-set-tile-dark { background-color: color.mix($theme-skeleton-dark, $theme-overlay-dark, 65%) !important; }
+.exercise-set-add {
+  align-items: center;
+  justify-content: center;
+}
 .exercise-set-edit {
   display: flex;
   flex-direction: column;
-  align-items: center;
+  align-items: flex-start;
   justify-content: center;
   box-sizing: border-box;
   width: 100%;
-  min-height: $space-controlMin + $space-section * 2;
+  flex: 1;
+  gap: $space-micro;
   margin: 0;
-  padding: $space-inline;
+  padding: $space-inline $space-card;
   border: 0;
   background-color: transparent;
 }
-.exercise-set-remove {
-  position: absolute;
-  top: 0;
-  right: 0;
-  display: flex;
-  flex-direction: row;
-  align-items: flex-start;
-  justify-content: flex-end;
-  box-sizing: border-box;
-  width: $space-controlMin;
-  height: $space-controlMin;
-  padding: $space-detail;
-  margin: 0;
-  border: 0;
-  background-color: transparent;
+.exercise-set-order { @include type-style('caption'); color: $text-secondary-light; }
+.exercise-set-order-dark { color: $text-secondary-dark; }
+.exercise-set-value {
+  @include type-style('metric-small');
+  width: 100%;
+  text-align: center;
+  color: #27272a;
+  font-variant-numeric: tabular-nums;
+  word-break: break-all;
 }
-.exercise-set-order { @include type-style('caption'); position: relative; top: -$space-detail; align-self: flex-start; color: #71717a; }
-.exercise-set-order-dark { color: #a1a1aa; }
-.exercise-set-value { @include type-style('metric-small'); width: 100%; text-align: center; color: #27272a; }
 .exercise-set-value-dark { color: #eeeeef; }
-.exercise-set-add { align-items: center; }
 // AdaptiveModal 已提供四周内边距，表单只负责字段间距，避免底部重复留白。
 .exercise-edit-panel { gap: $space-section; }
 .exercise-edit-order { @include type-style('label'); color: #71717a; }
@@ -1700,7 +1682,6 @@ function closeSelection() {
 .exercise-tab,
 .exercise-set-tile,
 .exercise-set-edit,
-.exercise-set-remove,
 .exercise-edit-type,
 .exercise-edit-delete,
 .compact-category,

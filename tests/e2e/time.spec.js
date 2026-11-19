@@ -1072,9 +1072,9 @@ for (const width of [390, 768, 1440]) for (const colorScheme of ['light', 'dark'
     const tabs = dialog.locator('.exercise-tab');
     await expect(tabs).toHaveCount(2);
     await expect(tabs.nth(0)).toContainText('俯卧撑');
-    await expect(tabs.nth(0)).toContainText('2组 · 32次');
+    await expect(tabs.nth(0).locator('.exercise-tab-summary')).toHaveText('2组 · 32');
     await expect(tabs.nth(1)).toContainText('健腹轮');
-    await expect(tabs.nth(1)).toContainText('1组 · 10次');
+    await expect(tabs.nth(1).locator('.exercise-tab-summary')).toHaveText('1组 · 10');
     await expect(dialog.locator('.exercise-set-tile')).toHaveCount(3);
     const add = dialog.getByRole('button', { name: '添加运动', exact: true });
     await expect(add).toHaveText('');
@@ -1088,13 +1088,13 @@ for (const width of [390, 768, 1440]) for (const colorScheme of ['light', 'dark'
     await expect(setValue).toHaveCSS('text-align', 'center');
     const valueBox = await setValue.boundingBox();
     expect(Math.abs(valueBox.x + valueBox.width / 2 - (dimensions[0].x + dimensions[0].width / 2))).toBeLessThan(2);
-    const removeBox = await tiles.first().getByRole('button', { name: '删除俯卧撑第1组' }).boundingBox();
-    expect(removeBox.width).toBeGreaterThanOrEqual(44);
-    expect(removeBox.height).toBeGreaterThanOrEqual(44);
-    expect(Math.abs(removeBox.x + removeBox.width - (dimensions[0].x + dimensions[0].width))).toBeLessThan(2);
-    const removeIconBox = await tiles.first().locator('.exercise-set-remove .category-icon-image').boundingBox();
-    expect(removeIconBox.y - dimensions[0].y).toBeLessThan(8);
-    expect(dimensions[0].x + dimensions[0].width - removeIconBox.x - removeIconBox.width).toBeLessThan(8);
+    await expect(tiles.first()).toHaveCSS('border-top-width', '0px');
+    const addSetTile = dialog.getByRole('button', { name: '为俯卧撑加一组' });
+    const setBackground = await tiles.first().evaluate(tile => getComputedStyle(tile).backgroundColor);
+    await expect(addSetTile).toHaveCSS('background-color', setBackground);
+    await expect(addSetTile).toHaveCSS('align-items', 'center');
+    await expect(addSetTile).toHaveCSS('justify-content', 'center');
+    await expect(dialog.locator('.exercise-set-grid').getByRole('button', { name: /^删除/ })).toHaveCount(0);
     const timeBox = await dialog.locator('.compact-time-section').boundingBox();
     const exerciseBox = await tiles.first().boundingBox();
     const notesBox = await dialog.locator('.compact-notes').boundingBox();
@@ -1157,8 +1157,8 @@ for (const width of [390, 768, 1440]) for (const colorScheme of ['light', 'dark'
     await exercisePicker.getByRole('button', { name: '健腹轮', exact: true }).click();
     await editor.locator('[aria-label="本组次数"] input').fill('25');
     await editor.getByRole('button', { name: '保存', exact: true }).click();
-    await expect(tabs.filter({ hasText: '俯卧撑' })).toContainText('1组 · 12次');
-    await expect(tabs.filter({ hasText: '健腹轮' })).toContainText('2组 · 35次');
+    await expect(tabs.filter({ hasText: '俯卧撑' })).toContainText('1组 · 12');
+    await expect(tabs.filter({ hasText: '健腹轮' })).toContainText('2组 · 35');
 
     await dialog.getByRole('button', { name: '为健腹轮加一组' }).click();
     const addEditor = page.locator('.modal-panel[aria-label="添加一组"]');
@@ -1167,16 +1167,17 @@ for (const width of [390, 768, 1440]) for (const colorScheme of ['light', 'dark'
     await expect(addEditor.locator('[aria-label="本组次数"] input')).toHaveValue('10');
     await addEditor.locator('[aria-label="本组次数"] input').fill('12');
     await addEditor.getByRole('button', { name: '保存', exact: true }).click();
-    await expect(tabs.filter({ hasText: '健腹轮' })).toContainText('3组 · 47次');
+    await expect(tabs.filter({ hasText: '健腹轮' })).toContainText('3组 · 47');
     await dialog.getByRole('button', { name: '健腹轮第3组，12次，编辑' }).click();
     await page.locator('.modal-panel[aria-label="编辑运动组"]').getByRole('button', { name: '删除本组' }).click();
-    await expect(tabs.filter({ hasText: '健腹轮' })).toContainText('2组 · 35次');
+    await expect(tabs.filter({ hasText: '健腹轮' })).toContainText('2组 · 35');
 
     await dialog.getByRole('button', { name: '为健腹轮加一组' }).click();
     await addEditor.getByRole('button', { name: '保存', exact: true }).click();
-    await expect(tabs.filter({ hasText: '健腹轮' })).toContainText('3组 · 45次');
-    await dialog.getByRole('button', { name: '删除健腹轮第3组' }).click();
-    await expect(tabs.filter({ hasText: '健腹轮' })).toContainText('2组 · 35次');
+    await expect(tabs.filter({ hasText: '健腹轮' })).toContainText('3组 · 45');
+    await dialog.getByRole('button', { name: '健腹轮第3组，10次，编辑' }).click();
+    await editor.getByRole('button', { name: '删除本组' }).click();
+    await expect(tabs.filter({ hasText: '健腹轮' })).toContainText('2组 · 35');
     await expect(page.locator('.modal-panel[aria-label="编辑运动组"]')).toHaveCount(0);
     await expect(dialog.locator('.exercise-set-tile')).toHaveCount(3);
 
