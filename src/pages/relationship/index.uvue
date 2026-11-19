@@ -43,16 +43,26 @@ const graph = ref<any>({ nodes: [], edges: [] }),
   draft = ref<any>(null),
   relation = ref<any>(null),
   showContactFields = ref(false),
+  showSchoolFields = ref(false),
   showMoreFields = ref(false);
-const contactFieldCount = computed(() => ['birthday', 'phone', 'email', 'school'].filter(key => String(draft.value?.[key] ?? '').trim()).length);
+const contactFieldCount = computed(() => ['birthday', 'phone', 'email'].filter(key => String(draft.value?.[key] ?? '').trim()).length);
 const moreFieldCount = computed(() => ['avatar', 'tags', 'socialLinks', 'notes'].filter(key => String(draft.value?.[key] ?? '').trim()).length);
+const schoolFields = [
+  { key: 'primarySchool', label: '小学' },
+  { key: 'juniorHighSchool', label: '初中学校' },
+  { key: 'highSchool', label: '高中学校' },
+  { key: 'undergraduateSchool', label: '本科学校' },
+  { key: 'mastersSchool', label: '硕士学校' },
+  { key: 'doctoralSchool', label: '博士学校' },
+];
+const schoolFieldCount = computed(() => schoolFields.filter(field => String(draft.value?.[field.key] ?? '').trim()).length);
 const personDetailLabels = [
   { key: 'description', label: '简介' },
   { key: 'tags', label: '标签' },
   { key: 'birthday', label: '生日' },
   { key: 'phone', label: '电话' },
   { key: 'email', label: '邮箱' },
-  { key: 'school', label: '学校' },
+  ...schoolFields,
   { key: 'socialLinks', label: '社交链接' },
   { key: 'notes', label: '备注' },
 ];
@@ -213,6 +223,7 @@ async function detail(id: string) {
 }
 function edit(value: any = null) {
   showContactFields.value = false;
+  showSchoolFields.value = false;
   showMoreFields.value = false;
   draft.value = value
     ? { ...value }
@@ -224,7 +235,12 @@ function edit(value: any = null) {
         birthday: '',
         phone: '',
         email: '',
-        school: '',
+        primarySchool: '',
+        juniorHighSchool: '',
+        highSchool: '',
+        undergraduateSchool: '',
+        mastersSchool: '',
+        doctoralSchool: '',
         socialLinks: '',
         notes: '',
         avatar: '',
@@ -448,7 +464,16 @@ function nodeName(id: string) {
             <FormField compact stretch appearance="soft" label="电话" placeholder="电话号码" v-model="draft.phone" />
           </view>
           <FormField appearance="soft" label="邮箱" v-model="draft.email" />
-          <FormField appearance="soft" label="学校" v-model="draft.school" />
+        </view>
+      </view>
+      <view class="editor-section">
+        <button hover-class="none" role="button" aria-label="教育经历" :aria-expanded="showSchoolFields" class="editor-section-toggle" :class="themeClass('editor-section-toggle')" @click="showSchoolFields = !showSchoolFields">
+          <text class="editor-section-title" :class="themeClass('editor-section-title')">教育经历</text>
+          <text v-if="schoolFieldCount" class="editor-section-summary" :class="themeClass('editor-section-summary')">已填写 {{ schoolFieldCount }} 项</text>
+          <AppIcon :name="showSchoolFields ? 'ant-design:up-outlined' : 'ant-design:down-outlined'" :size="14" />
+        </button>
+        <view v-if="showSchoolFields" class="editor-section-fields">
+          <FormField v-for="field in schoolFields" :key="field.key" appearance="soft" :label="field.label" v-model="draft[field.key]" />
         </view>
       </view>
       <view class="editor-section">

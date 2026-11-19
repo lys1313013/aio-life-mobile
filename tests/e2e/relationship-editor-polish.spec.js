@@ -4,7 +4,9 @@ const { setup } = require('./qa-domains-fixtures');
 const person = {
   id: '9223372036854775801', name: '模拟小林', category: '社会',
   description: '一起学习和跑步的朋友', birthday: '1994-03-12', phone: '13800000000',
-  email: 'example@example.com', school: '模拟大学', avatar: 'https://example.com/avatar.png',
+  email: 'example@example.com', undergraduateSchool: '模拟大学', avatar: 'https://example.com/avatar.png',
+  primarySchool: '模拟小学', juniorHighSchool: '模拟初中', highSchool: '模拟高中',
+  mastersSchool: '模拟硕士学校', doctoralSchool: null,
   tags: '同学,跑步', socialLinks: 'https://example.com/profile', notes: '每月约一次晨跑',
   relationships: [],
 };
@@ -32,12 +34,18 @@ test('person editor keeps folded fields in save payload and retains edits after 
   await page.setViewportSize({ width: 390, height: 844 });
   const state = await start(page);
   const dialog = page.getByRole('dialog', { name: '人物', exact: true });
+  const education = dialog.getByRole('button', { name: '教育经历', exact: true });
   await expect(dialog.getByRole('button', { name: '联系信息', exact: true })).toHaveAttribute('aria-expanded', 'false');
+  await expect(education).toHaveAttribute('aria-expanded', 'false');
   await expect(dialog.getByRole('button', { name: '更多资料', exact: true })).toHaveAttribute('aria-expanded', 'false');
   await expect(dialog.getByRole('button', { name: '保存', exact: true })).toBeInViewport();
   await dialog.getByRole('button', { name: '联系信息', exact: true }).click();
   await dialog.getByRole('textbox', { name: '电话', exact: true }).fill('13900000000');
   await dialog.getByRole('button', { name: '联系信息', exact: true }).click();
+  await education.click();
+  await expect(dialog.getByRole('textbox', { name: '本科学校', exact: true })).toHaveValue('模拟大学');
+  await dialog.getByRole('textbox', { name: '博士学校', exact: true }).fill('模拟博士学校');
+  await education.click();
   await dialog.getByRole('button', { name: '更多资料', exact: true }).click();
   await dialog.getByRole('textbox', { name: '备注', exact: true }).fill('更新后的晨跑安排');
   await dialog.getByRole('button', { name: '更多资料', exact: true }).click();
@@ -46,7 +54,9 @@ test('person editor keeps folded fields in save payload and retains edits after 
   await expect(dialog.getByRole('alert')).toHaveText('模拟保存失败');
   const { id, relationships, ...editableFields } = person;
   expect(state.paths[0]).toBe(`/api/relationships/persons/${id}`);
-  expect(state.requests[0]).toEqual({ ...editableFields, phone: '13900000000', notes: '更新后的晨跑安排' });
+  expect(state.requests[0]).toEqual({
+    ...editableFields, phone: '13900000000', notes: '更新后的晨跑安排', doctoralSchool: '模拟博士学校',
+  });
   await dialog.getByRole('button', { name: '更多资料', exact: true }).click();
   await expect(dialog.getByRole('textbox', { name: '备注', exact: true })).toHaveValue('更新后的晨跑安排');
   await dialog.getByRole('button', { name: '更多资料', exact: true }).click();
@@ -84,6 +94,9 @@ for (const width of [390, 768, 1440]) for (const theme of ['light', 'dark']) {
     const screenshot = state => page.screenshot({ path: `artifacts/ui-polish-20261022/relationship-${width}-${theme}-${state}.png` });
     await screenshot('collapsed');
     await dialog.getByRole('button', { name: '联系信息', exact: true }).click();
+    await dialog.getByRole('button', { name: '教育经历', exact: true }).click();
+    await dialog.getByRole('textbox', { name: '本科学校', exact: true }).scrollIntoViewIfNeeded();
+    await screenshot('education');
     await dialog.getByRole('button', { name: '更多资料', exact: true }).click();
     await dialog.getByRole('textbox', { name: '姓名', exact: true }).scrollIntoViewIfNeeded();
     await screenshot('expanded');

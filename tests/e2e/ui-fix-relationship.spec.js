@@ -4,7 +4,7 @@ const { setup } = require('./qa-domains-fixtures');
 const person = {
   id: '9223372036854775801', name: '模拟人物甲', category: '社会',
   description: '一起学习的朋友', tags: '学习,运动', birthday: '1994-03-12',
-  phone: '13800000000', email: 'example@example.com', school: '模拟大学',
+  phone: '13800000000', email: 'example@example.com', undergraduateSchool: '模拟大学',
   socialLinks: 'https://example.com/profile', notes: '用于界面验证的模拟备注',
   relationships: [{
     id: '9223372036854775803', target: { id: '9223372036854775802', name: '模拟人物乙' },
@@ -47,7 +47,7 @@ for (const width of [390, 768, 1440]) for (const theme of ['light', 'dark']) {
     releaseDetail();
     const dialog = page.getByRole('dialog', { name: person.name, exact: true });
     await expect(dialog).toBeVisible();
-    for (const label of ['简介', '标签', '生日', '电话', '邮箱', '学校', '社交链接', '备注']) {
+    for (const label of ['简介', '标签', '生日', '电话', '邮箱', '本科学校', '社交链接', '备注']) {
       await expect(dialog.locator('.detail-label').filter({ hasText: label })).toHaveCount(1);
     }
     await expect(dialog.locator('.edge-title')).toHaveText('模拟人物乙 · 朋友 · 双向');
