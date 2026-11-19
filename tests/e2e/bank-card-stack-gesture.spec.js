@@ -1,6 +1,7 @@
 const { waitForMotion } = require('./support/motion');
 const { test, expect } = require('./support/test');
 const { setup } = require('./qa-domains-fixtures');
+const { stableBox } = require('./support/geometry');
 const path = require('node:path');
 const out = path.resolve('artifacts/bank-card-stack');
 
@@ -51,7 +52,7 @@ for (const width of [390, 768, 1440]) for (const theme of ['light', 'dark']) {
     const cdp = await page.context().newCDPSession(page);
     let cardRequests = 0;
     page.on('request', r => { if (new URL(r.url()).pathname === '/api/bank-cards') cardRequests++; });
-    const face = await page.locator('.card-face').first().boundingBox();
+    const face = await stableBox(page.locator('.card-face').first());
     const x = face.x + 80, y = face.y + 28;
     const initial = await gap(page);
     for (const ending of ['touchEnd', 'touchCancel']) {
@@ -71,11 +72,32 @@ for (const width of [390, 768, 1440]) for (const theme of ['light', 'dark']) {
       const last = await page.locator('.card').last().boundingBox();
       const outsideY = last.y + last.height + 40;
       expect(outsideY + 170).toBeLessThan(2400);
-      await touch(cdp, 'touchStart', width / 2, outsideY);
-      for (const dy of [20, 60, 110, 170]) await touch(cdp, 'touchMove', width / 2, outsideY + dy);
-      await touch(cdp, 'touchEnd');
-      await expect.poll(() => cardRequests).toBe(before + 1);
-      await expect.poll(async () => (await page.locator('.card-face').first().boundingBox()).y).toBeCloseTo(face.y, 0);
+      const stack = page.locator('.card-stack');
+      const beforeRefresh = await stableBox(stack);
+      let releaseRefresh;
+      const refreshResponse = new Promise(resolve => { releaseRefresh = resolve; });
+      await page.route('**/api/bank-cards', async route => {
+        await refreshResponse;
+        await route.fallback();
+      }, { times: 1 });
+      try {
+        await touch(cdp, 'touchStart', width / 2, outsideY);
+        for (const dy of [20, 60, 110, 170]) await touch(cdp, 'touchMove', width / 2, outsideY + dy);
+        await touch(cdp, 'touchEnd');
+        await expect.poll(() => cardRequests).toBe(before + 1);
+        await expect(page.getByRole('status', { name: '正在更新内容', exact: true })).toBeVisible();
+        await expect(page.locator('.card-stack .card')).toHaveCount(7);
+        const refreshingStack = await stableBox(stack);
+        // 下拉指示器会平移整个滚动内容，卡片自身的高度和相对位置应保持不变。
+        expect(refreshingStack.height).toBeCloseTo(beforeRefresh.height, 0);
+        expect((await stableBox(page.locator('.card-face').first())).y - refreshingStack.y)
+          .toBeCloseTo(face.y - beforeRefresh.y, 0);
+        await page.screenshot({ path: test.info().outputPath(`refresh-${ending}.png`) });
+      } finally {
+        releaseRefresh();
+      }
+      await expect(page.getByRole('status', { name: '正在更新内容', exact: true })).toHaveCount(0);
+      await expect.poll(async () => (await page.locator('.card-face').first().boundingBox())?.y).toBeCloseTo(face.y, 0);
     }
     // 拖动后的下一次真实轻点先展开；微小手抖不应被判为拖动。
     await touch(cdp, 'touchStart', x, y);

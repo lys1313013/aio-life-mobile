@@ -46,13 +46,15 @@ test('微信读书下拉同步与失败重试保留数据', async ({ page }) => 
 });
 
 for (const kind of ['movie', 'read']) {
-  test(`${kind} 豆瓣封面回填替换旧附件并使用新 fileId 保存`, async ({ page }) => {
+  for (const customCover of [true, false]) test(`${kind} 豆瓣解析${customCover ? '保留个人附件' : '使用共享封面'}且不提交预览 URL`, async ({ page }) => {
     const state = await setup(page);
     await page.route('**/api/file/preview/*', route => route.fulfill({ contentType: 'image/png', body: coverImage }));
     const base = kind === 'movie' ? '/movie' : '/read-record';
-    state.movies[0].fileId = 'old-cover-id';
+    const doubanUrl = `https://${kind === 'movie' ? 'movie' : 'book'}.douban.com/subject/123/`;
+    state.movies[0].fileId = customCover ? 'old-cover-id' : '';
+    await page.route('**/api/creative-works/123/cover', route => route.fulfill({ contentType: 'image/png', body: coverImage }));
     await page.route(`**/api${base}/parse-douban?**`, route => route.fulfill({
-      json: { code: 0, data: { title: '新豆瓣条目', fileId: 'parsed-cover-id', coverImgUrl: 'https://img1.doubanio.com/cover.jpg' } },
+      json: { code: 0, data: { title: '新豆瓣条目', url: doubanUrl, fileId: null, coverImgUrl: '/creative-works/123/cover' } },
     }));
     await page.goto(`/#/pages/records/library?kind=${kind}`);
     await page.locator('[role="button"][aria-label="编辑记录"]').click();
@@ -60,13 +62,20 @@ for (const kind of ['movie', 'read']) {
     const dialog = page.locator('[role="dialog"]');
     await expect(dialog.locator('[aria-label="封面链接"]')).toHaveCount(0);
     await expect(dialog.locator('[role="button"][aria-label="添加文件"]')).toHaveCount(0);
-    await dialog.locator('[aria-label="豆瓣链接"] input').fill('https://movie.douban.com/subject/123/');
+    await dialog.locator('[aria-label="豆瓣链接"] input').fill(doubanUrl);
     await dialog.locator('[role="button"][aria-label="解析豆瓣链接"]').click();
-    await expect(dialog.locator('.attachment-image[aria-label="新豆瓣条目 封面"] img')).toHaveJSProperty('naturalWidth', 72);
-    await expect(dialog.locator('.attachment-tile')).toHaveCount(1);
+    const cover = customCover
+      ? dialog.locator('.attachment-image[aria-label="新豆瓣条目 封面"] img')
+      : dialog.locator('.library-external-cover .library-cover-image img');
+    await expect(cover).toHaveJSProperty('naturalWidth', 72);
+    await expect(dialog.locator('.attachment-tile')).toHaveCount(customCover ? 1 : 0);
     await dialog.locator('[role="button"][aria-label="保存"]').click();
     await expect(dialog).toHaveCount(0);
-    expect(state.writes.filter(write => write.path === `/api${base}`).at(-1).body.fileId).toBe('parsed-cover-id');
+    const body = state.writes.filter(write => write.path === `/api${base}`).at(-1).body;
+    expect(body.fileId).toBe(customCover ? 'old-cover-id' : '');
+    expect(body.title).toBe('新豆瓣条目');
+    expect(body.url).toBe(doubanUrl);
+    expect(body).not.toHaveProperty('coverImgUrl');
   });
 
   test(`${kind} 自定义封面上传保存 fileId，移除后不重新抓取URL`, async ({ page }) => {
@@ -100,13 +109,13 @@ for (const kind of ['movie', 'read']) {
     expect(uploaded).toBe(true);
     let body = state.writes.filter(write => write.path === `/api${base}`).at(-1).body;
     expect(body.fileId).toBe('uploaded-cover-id');
-    expect(body.coverImgUrl).toBe('');
+    expect(body).not.toHaveProperty('coverImgUrl');
     await page.locator('[role="button"][aria-label="编辑记录"]').click();
     await dialog.locator('[role="button"][aria-label="移除附件"]').click();
     await dialog.locator('[role="button"][aria-label="保存"]').click();
     await expect(dialog).toHaveCount(0);
     body = state.writes.filter(write => write.path === `/api${base}`).at(-1).body;
     expect(body.fileId).toBe('');
-    expect(body.coverImgUrl).toBe('');
+    expect(body).not.toHaveProperty('coverImgUrl');
   });
 }

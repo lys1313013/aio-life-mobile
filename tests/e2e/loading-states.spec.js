@@ -148,6 +148,11 @@ test('GitHub pagination failure retains commits and retries the failed page', as
   await expect.poll(() => requests).toEqual([1, 2]);
   await expect(page.getByText('模拟分页失败', { exact: true })).toBeVisible();
   await expect(page.locator('.repo-label')).toHaveCount(20);
+  // 失败后继续滚动不能自动重试，必须保留显式重试入口。
+  await page.mouse.wheel(0, -300);
+  await scrollCommitsToBottom(page);
+  await expect(page.getByRole('button', { name: '重试加载', exact: true })).toBeVisible();
+  expect(requests).toEqual([1, 2]);
   fail = false;
   await page.getByRole('button', { name: '重试加载', exact: true }).click();
   await expect(page.locator('.repo-label')).toHaveCount(21);

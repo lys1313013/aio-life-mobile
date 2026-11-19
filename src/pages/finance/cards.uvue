@@ -68,6 +68,7 @@ const coverUrls = ref<Record<string, string>>({}),
 const coverBusy = ref(false),
   coverPreview = ref('');
 const loading = ref(false),
+  loaded = ref(false),
   refreshing = ref(false),
   saving = ref(false),
   error = ref(''),
@@ -209,6 +210,7 @@ async function load() {
       }
       banks.value = data[1];
       tags.value = data[2];
+      loaded.value = true;
       for (const id of Object.keys(coverFileIds.value)) {
         if (!cards.value.some(card => String(card.id) === id && String(coverFile(card) || '') === coverFileIds.value[id])) clearCardCover(id);
       }
@@ -272,6 +274,7 @@ useDomainPage(
     order.reset();
     stamp++;
     if (clear) cards.value = [];
+    if (clear) loaded.value = false;
     finishStackDrag();
     stopStackRebound();
     stopCardSwitch();
@@ -990,6 +993,7 @@ async function removeTag(value: any) {
       <PageState skeleton="list"
         :style="orderDragging ? { overflow: 'visible' } : {}"
         :loading="loading"
+        :has-content="loaded"
         :error="error"
         :empty="!cardsByType[layerType].length"
         :empty-text="layerType === 'credit' ? '暂无信用卡' : '暂无储蓄卡'"
