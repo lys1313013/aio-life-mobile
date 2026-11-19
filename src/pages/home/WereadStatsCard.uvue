@@ -22,10 +22,12 @@ const owner = computed(() => String(session.user?.id || ''))
 const granularity = ref<WereadStatsGranularity>(readWereadStatsGranularity(owner.value, storage))
 const selectedIndex = ref(-1)
 const denied = ref(false)
+const barAnimationDelays = ref<Partial<Record<string, number>>>({})
 const state = reactive({ data: null as WereadStatsData | null, loading: false, error: '', locked: false, unlockRoute: '' })
 const modes = wereadStatsModes
 const scheduler = createHomeRefreshScheduler()
 let generation = 0, pending: Promise<void> | null = null, updatedAt = 0
+let hasShownBars = false
 const fetch = path => request(path, 'GET', null, true, null, true)
 const available = computed(() => !!menuVisualState.cards['section.weread-stats']?.menuId)
 const visual = computed(() => menuVisuals.visual('section.weread-stats'))
@@ -42,10 +44,6 @@ const averageText = computed(() => state.data ? formatWereadDuration(state.data.
 const change = computed(() => state.data ? wereadStatsChange(state.data.totalSeconds, state.data.previousTotalSeconds) : null)
 const chartHeight = computed(() => props.height ? Math.max(72, Math.min(150, props.height - 150)) : 92)
 const barHeights = computed(() => wereadBarHeights(buckets.value, chartHeight.value - 6))
-// 按周期重建柱体以重播入场动画；同周期后台刷新保留节点，不重复播放。
-const chartKey = computed(() => displayGranularity.value + ':' + (state.data?.periodStart || ''))
-// 月视图最多 31 柱，限制总错峰时间，避免切换后等待过久。
-const barAnimationStep = computed(() => Math.min(60, 420 / Math.max(1, buckets.value.length - 1)))
 const skeletonBars = computed(() => granularity.value === 'week' ? 7 : granularity.value === 'month' ? 31 : 12)
 const selectedBucket = computed(() => selectedIndex.value >= 0 ? buckets.value[selectedIndex.value] : null)
 const selectedText = computed(() => selectedBucket.value ? wereadBucketDate(selectedBucket.value, displayGranularity.value) + ' · ' + (selectedBucket.value.seconds > 0 ? formatWereadDuration(selectedBucket.value.seconds) : '未阅读') : '')
@@ -68,6 +66,26 @@ function checkAccess() {
   if (state.data) invalidate(true)
   scheduler.clear()
 }
+function prepareBarAnimation(data: WereadStatsData) {
+  if (state.data?.granularity !== data.granularity) {
+    hasShownBars = false
+    barAnimationDelays.value = {}
+  }
+
+  const bars = data.connected ? data.buckets.filter(bucket => bucket.seconds > 0) : []
+  if (hasShownBars) {
+    // 同粒度刷新保留仍在显示的柱子动画，避免刷新结果让柱子直接跳到最终高度。
+    const delays = barAnimationDelays.value
+    barAnimationDelays.value = Object.fromEntries(bars
+      .filter(bucket => delays[bucket.key] != null)
+      .map(bucket => [bucket.key, delays[bucket.key]]))
+  } else if (bars.length > 0) {
+    hasShownBars = true
+    // 让相邻柱子的入场明显重叠，同时限制密集月视图的尾部延迟。
+    const delayStep = Math.min(44, 220 / Math.max(1, bars.length - 1))
+    barAnimationDelays.value = Object.fromEntries(bars.map((bucket, index) => [bucket.key, Math.round(index * delayStep)]))
+  }
+}
 async function refresh(force = true) {
   if (!props.active || !session.token || !available.value) return
   if (pending && !force) return pending
@@ -86,6 +104,7 @@ async function refresh(force = true) {
       if (!valid()) return
       const data = readWereadStats(raw, granularity.value)
       if (!valid()) return
+      prepareBarAnimation(data)
       state.data = data; updatedAt = Date.now(); selectedIndex.value = -1
     } catch (error) {
       if (!valid()) return
@@ -143,13 +162,14 @@ watch(granularity, (value) => {
 })
 watch(() => session.token, () => {
   scheduler.clear(); invalidate(true)
+  hasShownBars = false; barAnimationDelays.value = {}
   state.data = null; state.error = ''; state.locked = false; state.unlockRoute = ''; denied.value = false; selectedIndex.value = -1; updatedAt = 0
   granularity.value = readWereadStatsGranularity(owner.value, storage)
   if (props.active) { void refresh(false); scheduler.resume() }
 }, { flush: 'sync' })
 watch(() => props.active, (active) => {
   if (active) { checkAccess(); scheduler.resume(); void refresh(false) }
-  else { scheduler.pause(); invalidate() }
+  else { scheduler.pause(); invalidate(); barAnimationDelays.value = {} }
 }, { immediate: true })
 watch(() => props.preparing, (preparing) => { if (preparing) checkAccess() })
 watch(available, (value) => {
@@ -204,9 +224,10 @@ defineExpose({ refresh, checkAccess })
           </view>
         </view>
         <view class="weread-stats-chart" :style="{ height: chartHeight + 'px' }" :aria-label="chartLabel">
-          <view :key="chartKey" class="weread-stats-bars" :class="{ 'weread-stats-bars-dense': displayGranularity === 'month' }" role="group" :aria-label="chartLabel">
-            <button hover-class="none" v-for="(bucket, index) in buckets" :key="bucket.key" role="button" class="weread-stats-bar-hit" :aria-label="bucketAria(bucket)" @click.stop="selectBar(index)">
-              <view v-if="bucket.seconds > 0" class="weread-stats-bar weread-stats-bar-animated" :class="{ 'weread-stats-bar-week': displayGranularity === 'week' }" :style="{ height: barHeights[index] + 'px', animationDelay: Math.round(index * barAnimationStep) + 'ms' }" />
+          <view class="weread-stats-bars" :class="{ 'weread-stats-bars-dense': displayGranularity === 'month' }" role="group" :aria-label="chartLabel">
+            <!-- 周和月可能包含同一天，用粒度区分柱子节点。 -->
+            <button hover-class="none" v-for="(bucket, index) in buckets" :key="displayGranularity + ':' + bucket.key" role="button" class="weread-stats-bar-hit" :aria-label="bucketAria(bucket)" @click.stop="selectBar(index)">
+              <view v-if="bucket.seconds > 0" class="weread-stats-bar" :class="{ 'weread-stats-bar-week': displayGranularity === 'week', 'weread-stats-bar-animated': barAnimationDelays[bucket.key] != null }" :style="{ height: barHeights[index] + 'px', animationDelay: (barAnimationDelays[bucket.key] ?? 0) + 'ms' }" />
             </button>
           </view>
           <view v-if="selectedBucket" class="weread-stats-tip" :class="{ 'weread-stats-tip-dark': isDark }"><text class="weread-stats-tip-text" :class="{ 'weread-stats-tip-text-dark': isDark }">{{ selectedText }}</text></view>
@@ -256,7 +277,7 @@ defineExpose({ refresh, checkAccess })
 .weread-stats-bar-hit { display: flex; flex-direction: row; flex: 1; min-width: 0; height: 100%; align-items: flex-end; justify-content: center; padding: 0; margin: 0; border: 0; background-color: transparent; }
 .weread-stats-bar { width: 60%; max-width: 16px; border-radius: 4px 4px 0 0; background-color: #34a6ff; }
 .weread-stats-bar-week { width: 48%; max-width: 24px; }
-.weread-stats-bar-animated { transform-origin: center bottom; animation: weread-bar-grow 480ms cubic-bezier(0.22, 1, 0.36, 1) both; }
+.weread-stats-bar-animated { transform-origin: center bottom; animation: weread-bar-grow 320ms cubic-bezier(0.22, 0.45, 0.30, 1) backwards; }
 @keyframes weread-bar-grow { from { transform: scaleY(0); } to { transform: scaleY(1); } }
 /* #ifdef WEB */
 @media (prefers-reduced-motion: reduce) {

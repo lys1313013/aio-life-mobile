@@ -147,6 +147,80 @@ for (const width of [390, 820, 1440]) {
   }
 }
 
+test('阅读统计首次有数据和切换粒度时柱子依次入场', async ({ page, apiMock }) => {
+  await page.emulateMedia({ reducedMotion: 'no-preference' });
+  const fixture = await setup(page, apiMock);
+  fixture.state.empty = true;
+  await page.goto('/#/pages/home/index');
+  const target = card(page);
+  await expect(target).toContainText('本周还没有阅读记录');
+  const pausedMotion = await page.addStyleTag({ content: '.weread-stats-bar-animated { animation-play-state: paused !important; }' });
+
+  fixture.state.empty = false;
+  const refresh = target.getByRole('button', { name: '刷新阅读统计' });
+  await refresh.click();
+  const animated = target.locator('.weread-stats-bar-animated');
+  await expect(animated).toHaveCount(6);
+  await expect(animated.nth(0)).toHaveCSS('animation-duration', '0.32s');
+  await expect(animated.nth(0)).toHaveCSS('animation-delay', '0s');
+  await expect(animated.nth(1)).toHaveCSS('animation-delay', '0.044s');
+  await expect(animated.nth(2)).toHaveCSS('animation-delay', '0.088s');
+
+  const weekDate = target.getByRole('button', { name: '11月7日，10 分钟', exact: true });
+  const weekBar = await weekDate.elementHandle();
+  const growingBar = weekDate.locator('.weread-stats-bar');
+  await expect(growingBar).toHaveCSS('animation-play-state', 'paused');
+  const halfwayHeight = await growingBar.evaluate(element => {
+    const [animation] = element.getAnimations();
+    const { delay, duration } = animation.effect.getTiming();
+    animation.currentTime = delay + duration / 2;
+    return element.getBoundingClientRect().height;
+  });
+  expect(halfwayHeight).toBeGreaterThan(0);
+  expect(halfwayHeight).toBeLessThan(await growingBar.evaluate(element => element.offsetHeight));
+  const refreshed = page.waitForResponse(response => new URL(response.url()).pathname === '/api/home/sections/weread-stats');
+  await refresh.click();
+  await refreshed;
+  await expect(refresh).toBeEnabled();
+  expect(await growingBar.evaluate(element => element.getBoundingClientRect().height)).toBeCloseTo(halfwayHeight);
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await expect(growingBar).toHaveCSS('animation-name', 'none');
+  await pausedMotion.evaluate(style => style.remove());
+  await page.emulateMedia({ reducedMotion: 'no-preference' });
+
+  const lastDateName = '11月28日，20 分钟';
+  const lastBarHeights = await target.evaluateHandle((card, name) => {
+    const heights = [];
+    for (const type of ['animationstart', 'animationend']) {
+      const measure = event => {
+        const bar = event.target;
+        if (!bar.classList.contains('weread-stats-bar') || bar.parentElement.getAttribute('aria-label') !== name) return;
+        heights.push(bar.getBoundingClientRect().height);
+        card.removeEventListener(type, measure);
+      };
+      card.addEventListener(type, measure);
+    }
+    return heights;
+  }, lastDateName);
+  await target.getByRole('button', { name: '按月统计' }).click();
+  await expect(target).toContainText('本月');
+  await expect(target.locator('.weread-stats-bar-hit')).toHaveCount(30);
+  await expect(animated).toHaveCount(10);
+  expect(await weekBar.evaluate(node => node.isConnected)).toBe(false);
+  const sharedDate = target.getByRole('button', { name: '11月7日，20 分钟', exact: true });
+  const lastDate = target.getByRole('button', { name: lastDateName, exact: true });
+  await expect(sharedDate.locator('.weread-stats-bar')).toHaveCSS('animation-delay', '0.049s');
+  await expect(lastDate.locator('.weread-stats-bar')).toHaveCSS('animation-delay', '0.22s');
+  await expect(target.getByRole('button', { name: '11月8日，未阅读', exact: true }).locator('.weread-stats-bar')).toHaveCount(0);
+  await expect.poll(() => lastBarHeights.jsonValue()).toHaveLength(2);
+  const [startHeight, endHeight] = await lastBarHeights.jsonValue();
+  expect(startHeight).toBeLessThan(endHeight);
+
+  await target.getByRole('button', { name: '按年统计' }).click();
+  await expect(target).toContainText('本年');
+  await expect(animated).toHaveCount(3);
+});
+
 test('阅读统计失败可局部重试且未连接时隐藏', async ({ page, apiMock }) => {
   const fixture = await setup(page, apiMock, { fail: true });
   await page.goto('/#/pages/home/index');
