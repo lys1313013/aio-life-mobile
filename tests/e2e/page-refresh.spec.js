@@ -28,6 +28,7 @@ async function fixtures(page) {
   await route('/menu/visuals', { menus: [], cards: {} });
   await route('/userDictType/getByDictType', { dictDetailList: [{ id: 'type', dictLabel: '模拟分类' }] });
   await route('/goals', [{ id: '1', title: '模拟目标', type: 1, status: 'in_progress', isPinned: 0 }]);
+  await route('/creative-works/rankings', []);
   const books = Array.from({ length: 35 }, (_, i) => ({ id: String(i + 1), title: '模拟阅读 ' + (i + 1), status: 'in_progress', type: 1 }));
   await route('/read-record/page', url => {
     const current = Number(url.searchParams.get('page') || 1);

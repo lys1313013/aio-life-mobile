@@ -275,7 +275,11 @@ test('收支日历范围独立持久化，切换 loading 保留高度，月年�
   await page.reload(); await expect(income.getByRole('button', { name: '收入：月', exact: true })).toHaveAttribute('aria-pressed', 'true'); await expect(income.locator('.calendar-total')).toHaveText('12,345.67');
   await income.getByRole('button', { name: '收入：年', exact: true }).click(); await expect(income.getByRole('button', { name: '收入：年', exact: true })).toHaveAttribute('aria-pressed', 'true');
   await expect(income.locator('.calendar-date-controls')).toHaveCount(0);
-  expect((await income.locator('.calendar-year-row').first().boundingBox()).height).toBe(40);
+  const yearRow = income.locator('.calendar-grid-year .calendar-row').first();
+  const yearAmount = yearRow.getByText('99,999,999.99', { exact: true });
+  await expect(yearAmount).toBeVisible();
+  expect((await yearRow.boundingBox()).height).toBe(40);
+  expect(await yearAmount.evaluate(node => node.scrollWidth <= node.clientWidth + 1)).toBe(true);
   await income.screenshot({ path: info.outputPath('income-year-large.png') });
 });
 
