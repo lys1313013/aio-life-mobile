@@ -39,6 +39,7 @@ for (const width of [320, 390, 768, 1440]) for (const theme of ['light', 'dark']
     await expect(card.getByRole('status', { name: '正在加载收支概览' })).toBeVisible(); const pending = await card.boundingBox();
     const rows = card.locator('.calendar-row');
     expect((await rows.first().boundingBox()).height).toBe(40);
+    await expect(card.locator('.calendar-cell').first()).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
     await expect(card).toHaveAttribute('aria-busy', 'false'); expect((await card.boundingBox()).height).toBe(pending.height);
     expect((await rows.first().boundingBox()).height).toBe(40);
     await expect(card.getByRole('button', { name: '查看结余', exact: true })).toHaveAttribute('aria-pressed', 'true');

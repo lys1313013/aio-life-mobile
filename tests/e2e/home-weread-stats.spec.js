@@ -65,9 +65,10 @@ function handlers(state) {
     ...Object.fromEntries(Object.entries(data).map(([path, value]) => ['GET ' + path, { json: { code: 0, message: null, data: value } }])),
     'GET /api/home/sections/weread-stats': async request => {
       state.calls.push(new URL(request.url()).search);
+      const granularity = new URL(request.url()).searchParams.get('granularity');
+      if (granularity === 'month' && state.monthGate) await state.monthGate;
       if (state.delay) await new Promise(resolve => setTimeout(resolve, state.delay));
       if (state.fail) return { json: { code: 1, message: '模拟阅读统计失败' } };
-      const granularity = new URL(request.url()).searchParams.get('granularity');
       const result = granularity === 'year' ? yearFixture() : granularity === 'month' ? monthFixture() : weekFixture({ connected: state.connected });
       if (state.empty) { result.buckets = result.buckets.map(bucket => ({ ...bucket, seconds: 0 })); result.totalSeconds = 0; result.dailyAverageSeconds = 0; }
       return { json: { code: 0, message: null, data: result } };
@@ -90,11 +91,14 @@ for (const width of [390, 820, 1440]) {
   for (const theme of ['light', 'dark']) {
     test(`阅读统计卡片加载、切换与高度稳定 ${width} ${theme}`, async ({ page, apiMock }, info) => {
       await page.setViewportSize({ width, height: 1000 });
-      await page.emulateMedia({ colorScheme: theme });
+      // 用相反的系统配色检查应用主题，避免系统深色掩盖默认的禁用背景。
+      await page.emulateMedia({ colorScheme: theme === 'dark' ? 'light' : 'dark' });
+      await page.addInitScript(mode => localStorage.setItem('aio-life-mobile.theme.v1', mode), theme);
       const fixture = await setup(page, apiMock, { delay: 600 });
       await page.goto('/#/pages/home/index');
       const target = card(page);
       await expect(target).toBeVisible();
+      await expect(page.locator('html')).toHaveCSS('color-scheme', theme);
       const cardBody = target.locator('.dashboard-section');
       const loadingBox = await cardBody.boundingBox();
       await page.screenshot({ path: info.outputPath('stats-loading.png'), fullPage: true });
@@ -120,8 +124,25 @@ for (const width of [390, 820, 1440]) {
       await expect(target).toContainText('11月3日');
       await page.screenshot({ path: info.outputPath('stats-light.png'), fullPage: true });
 
-      await target.getByRole('button', { name: '按月统计' }).click();
+      const modes = target.getByRole('group', { name: '阅读统计粒度' });
+      const month = modes.getByRole('button', { name: '按月统计' });
+      let releaseMonth;
+      fixture.state.monthGate = new Promise(resolve => { releaseMonth = resolve; });
+      try {
+        const trackColor = await modes.evaluate(el => getComputedStyle(el).backgroundColor);
+        await month.click();
+        await expect(month).toHaveAttribute('aria-pressed', 'true');
+        for (const button of await modes.getByRole('button').all()) {
+          await expect(button).toBeDisabled();
+          await expect(button).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+        }
+        await expect(modes).toHaveCSS('background-color', trackColor);
+        await target.screenshot({ path: info.outputPath('stats-month-loading.png') });
+      } finally {
+        releaseMonth();
+      }
       await expect(target).toContainText('本月');
+      await expect(month).toBeEnabled();
       await expect(target.locator('.weread-stats-bar-hit')).toHaveCount(30);
       expect(fixture.calls().some(call => call.includes('granularity=month'))).toBe(true);
       await expect(target).toContainText('比上月');

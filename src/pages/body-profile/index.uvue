@@ -29,8 +29,7 @@ const form = ref<Record<string, string> | null>(null);
 let snapshot = emptyProfile(), generation = 0, active = false;
 const dimensions = measurements.filter((field) => 'side' in field);
 const primary = measurements.slice(0, 2);
-// 行内背景覆盖原生 button 的禁用底色，加载和读取失败时仍沿用页面主题。
-const primaryStyle = computed(() => ({ ...appGridItem(2, 'inline', [[480, 4]]), backgroundColor: 'transparent' }));
+const primaryStyle = computed(() => appGridItem(2, 'inline', [[480, 4]]));
 const editingFields = computed(() => measurements.filter((field) => editing.value === 'all' || field.key === editing.value));
 const bmi = computed(() => calculateBmi(profile.value.heightCm, profile.value.weightKg));
 const figure = computed(() => iconSource(bodyFigureSvg(profile.value.gender, isDark.value), 470));
@@ -176,6 +175,7 @@ function back() { uni.navigateBack({ fail: () => uni.switchTab({ url: '/pages/pr
 </template>
 
 <style scoped lang="scss">
+@use '../../styles/platform' as *;
 @use '../../styles/spacing.scss';
 @use '../../styles/spacing-tokens' as *;
 @use '../../styles/typography' as *;
@@ -188,7 +188,7 @@ function back() { uni.navigateBack({ fail: () => uni.switchTab({ url: '/pages/pr
 .body-title-dark { color: #eeeeef; }
 .body-content { position: relative; }
 .body-primary { display: flex; flex-direction: row; flex-wrap: wrap; gap: $space-inline; }
-.primary-item { width: calc((100% - $space-inline * 3) / 4); min-height: 68px; margin: 0; padding: 0; display: flex; flex-direction: column; align-items: flex-start; background: transparent; border: 0; text-align: left; }
+.primary-item { width: calc((100% - $space-inline * 3) / 4); min-height: 68px; margin: 0; padding: 0; display: flex; flex-direction: column; align-items: flex-start; @include button-background(transparent); border: 0; text-align: left; }
 .metric-label { @include type-style('caption'); color: $text-secondary-light; }
 .metric-label-dark { color: $text-secondary-dark; }
 .metric-row { display: flex; flex-direction: row; align-items: baseline; gap: $space-detail; }

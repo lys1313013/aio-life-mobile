@@ -25,7 +25,8 @@ const scenarios = [
 for (const width of [390, 768, 1440]) for (const theme of ['light', 'dark']) for (const scenario of scenarios) {
   test(`统一分类分页 ${scenario.name} ${width} ${theme}`, async ({ page, apiMock }, info) => {
     await page.setViewportSize({ width, height: 900 });
-    await page.emulateMedia({ colorScheme: theme, reducedMotion: 'reduce' });
+    await page.emulateMedia({ colorScheme: theme === 'dark' ? 'light' : 'dark', reducedMotion: 'reduce' });
+    await page.addInitScript(mode => localStorage.setItem('aio-life-mobile.theme.v1', mode), theme);
     await page.addInitScript(() => localStorage.setItem('aio-life-mobile.access-token.v1', 'category-pager-fixture'));
     const errors = []; page.on('pageerror', error => errors.push(error.message));
     let pending = gate(), delayed = true, fail = false, reads = 0;
@@ -93,13 +94,21 @@ for (const width of [390, 768, 1440]) for (const theme of ['light', 'dark']) for
       await expect(active.getByRole('alert')).toHaveCount(0);
       await expect(active.locator('.page-state').first()).toHaveAttribute('aria-busy', 'false');
     } finally { pending.release(); await touch.detach(); }
+    const tabs = page.locator(scenario.tabs);
+    const tabBackgrounds = await tabs.evaluateAll(nodes => nodes.map(node => getComputedStyle(node).backgroundColor));
     if (scenario.name === '待办') {
       await active.locator('[aria-label="添加待办到模拟工作清单"] input').fill('保留输入草稿');
       await expect(active.locator('[aria-label="添加待办到模拟工作清单"] input')).toHaveValue('保留输入草稿');
       await active.getByRole('button', { name: '编辑清单：模拟工作清单', exact: true }).click();
     } else if (scenario.name === 'MCP') await active.locator('.tool-row').click();
     else if (scenario.name === '分类管理') await active.getByRole('button', { name: '编辑分类', exact: true }).click();
-    if (scenario.name !== '消息') await expect(page.getByRole('dialog')).toBeVisible();
+    if (scenario.name !== '消息') {
+      await expect(page.getByRole('dialog')).toBeVisible();
+      for (const [index, background] of tabBackgrounds.entries()) {
+        await expect(tabs.nth(index)).toBeDisabled();
+        await expect(tabs.nth(index)).toHaveCSS('background-color', background);
+      }
+    }
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     expect(await page.locator('.category-pager-scroll .uni-scroll-view-scrollbar-hidden').evaluateAll(nodes => nodes.every(node => getComputedStyle(node).scrollbarWidth === 'none'))).toBe(true);
     await page.screenshot({ path: info.outputPath('loaded.png') });

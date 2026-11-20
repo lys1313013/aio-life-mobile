@@ -36,6 +36,10 @@ const query = () => calendarScope(props.kind, mode.value, cursor.value)
 const display = computed(() => state.data || calendarPlaceholder(query()))
 const titleDate = computed(() => { const date = display.value.date || ''; return display.value.granularity === 'month' ? date + '年' : date.slice(0, 4) + '年' + Number(date.slice(5)) + '月' })
 const initial = computed(() => !state.data)
+const slotSurface = computed(() => {
+  if (!initial.value && display.value.granularity !== 'week') return ''
+  return isDark.value ? 'calendar-slot-muted-dark' : 'calendar-slot-muted'
+})
 const rows = computed(() => {
   const data = display.value, columns = data.granularity === 'day' ? 7 : 3
   const blank = data.granularity === 'day' ? (new Date(data.date + '-01T00:00:00Z').getUTCDay() + 6) % 7 : 0
@@ -84,8 +88,11 @@ function unlockCard() {
   return unlockHomeCard([...(props.page ? [] : ['/pages/home/index']), ...config.access], () => refresh(), () => props.active && !props.refreshDisabled && state.available)
 }
 function navigate() { if (props.active && !props.refreshDisabled) uni.navigateTo({ url: config.route }) }
+function isEmptyFuture(bucket: CalendarBucket) {
+  return bucket.future && !bucket.amount && !bucket.income && !bucket.expense
+}
 function openDetail(bucket: CalendarBucket) {
-  if (!props.active || initial.value || state.loading || state.locked || props.refreshDisabled || (bucket.future && !bucket.amount && !bucket.income && !bucket.expense)) return
+  if (!props.active || initial.value || state.loading || state.locked || props.refreshDisabled || isEmptyFuture(bucket)) return
   uni.navigateTo({ url: calendarDetailsUrl(props.kind, display.value, bucket, metric.value === 'income' ? 'income' : 'expense') })
 }
 function heat(bucket: CalendarBucket) {
@@ -122,8 +129,14 @@ defineExpose({ refresh, checkAccess, loading: computed(() => state.loading), err
           <scroll-view direction="vertical" :scroll-y="display.granularity === 'year'" class="calendar-scroll">
             <view class="calendar-grid" :class="{ 'calendar-grid-year': display.granularity === 'year' }">
               <view v-for="(row, rowIndex) in rows" :key="rowIndex" class="calendar-row" :class="{ 'calendar-row-last': rowIndex === rows.length - 1, 'calendar-row-compact': display.granularity === 'week' || display.granularity === 'year' }">
-                <view v-for="(bucket, index) in row" :key="bucket ? bucket.key : 'blank-' + index" class="calendar-slot" :class="{ 'calendar-slot-last': index === row.length - 1 }">
-                  <button hover-class="none" role="button" v-if="bucket" class="calendar-cell" :class="{ 'calendar-cell-week': display.granularity === 'week', 'calendar-cell-week-dark': display.granularity === 'week' && isDark, 'calendar-cell-future': bucket.future && !bucket.amount && !bucket.income && !bucket.expense, 'calendar-cell-pending': initial, 'calendar-cell-pending-dark': initial && isDark }" :style="heat(bucket)" :disabled="initial || state.loading || (bucket.future && !bucket.amount && !bucket.income && !bucket.expense)" :aria-label="(display.granularity === 'week' ? calendarWeekLabel(bucket) : calendarPeriod(bucket)) + '，' + calendarMoney(amount(bucket)) + '，查看' + config.title + '明细'" @click.stop="openDetail(bucket)">
+                <view
+                  v-for="(bucket, index) in row"
+                  :key="bucket ? bucket.key : 'blank-' + index"
+                  class="calendar-slot"
+                  :class="[bucket ? slotSurface : '', { 'calendar-slot-last': index === row.length - 1, 'calendar-slot-future': bucket && isEmptyFuture(bucket) }]"
+                  :style="bucket ? heat(bucket) : undefined"
+                >
+                  <button hover-class="none" role="button" v-if="bucket" class="calendar-cell" :class="{ 'calendar-cell-week': display.granularity === 'week' }" :disabled="initial || state.loading || isEmptyFuture(bucket)" :aria-label="(display.granularity === 'week' ? calendarWeekLabel(bucket) : calendarPeriod(bucket)) + '，' + calendarMoney(amount(bucket)) + '，查看' + config.title + '明细'" @click.stop="openDetail(bucket)">
                     <text class="calendar-cell-label" :class="{ 'calendar-muted-dark': isDark, 'calendar-cell-label-day': display.granularity === 'day', 'calendar-cell-label-compact': kind === 'finance' && !page }">{{ display.granularity === 'week' ? calendarWeekLabel(bucket) : bucket.label }}</text>
                     <text class="calendar-amount" :class="{ 'calendar-text-dark': isDark, 'calendar-amount-day': display.granularity === 'day' || (kind === 'finance' && !page), 'calendar-amount-long': display.granularity === 'day' ? calendarMoney(amount(bucket), true).length > 6 : calendarMoney(amount(bucket)).length > 12 }">{{ initial ? ' ' : amount(bucket) ? calendarMoney(amount(bucket), display.granularity === 'day') : '—' }}</text>
                   </button>
@@ -146,7 +159,7 @@ defineExpose({ refresh, checkAccess, loading: computed(() => state.loading), err
 /* 底槽与选中块按 Web 比例内缩，透明按钮保留 44px 触控区；整体下移与标题对齐。 */
 .calendar-tabs { z-index: 1; height: $space-controlMin - $space-inline; flex-shrink: 0; flex-direction: row; align-items: center; gap: $space-micro; padding: 0 $space-tight; transform: translateY($space-detail); background-color: #f4f4f5; border-radius: 10px; }
 .calendar-tabs-dark { background-color: #292b30; }
-.calendar-tab { width: $space-controlMin; height: $space-controlMin; min-width: 0; padding: 0; margin: 0; border: 0; display: flex; align-items: center; justify-content: center; border-radius: 8px; background-color: transparent !important; }
+.calendar-tab { width: $space-controlMin; height: $space-controlMin; min-width: 0; padding: 0; margin: 0; border: 0; display: flex; align-items: center; justify-content: center; border-radius: 8px; @include button-background(transparent); }
 .calendar-tab-surface { width: 100%; height: $space-controlMin - $space-inline - $space-tight * 2; align-items: center; justify-content: center; border-radius: 8px; background-color: transparent; }
 .calendar-tab-selected { background-color: #ffffff; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08); }
 .calendar-tab-selected-dark { background-color: #1c1e22; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2); }
@@ -157,7 +170,7 @@ defineExpose({ refresh, checkAccess, loading: computed(() => state.loading), err
 .calendar-content { flex: 1; min-height: 0; }
 .calendar-toolbar { height: $space-controlMin; flex-shrink: 0; flex-direction: row; align-items: center; justify-content: space-between; }
 .calendar-date-controls { flex-direction: row; align-items: center; }
-.calendar-arrow { display: flex; width: $space-controlMin; height: $space-controlMin; margin: 0; padding: 0; border: 0; align-items: center; justify-content: center; background-color: transparent !important; }
+.calendar-arrow { display: flex; width: $space-controlMin; height: $space-controlMin; margin: 0; padding: 0; border: 0; align-items: center; justify-content: center; @include button-background(transparent); }
 .calendar-date-picker { height: $space-controlMin; justify-content: center; }
 .calendar-date { @include type-style('caption'); color: #27272a; }
 .calendar-total { @include type-style('label'); color: #27272a; margin-left: auto; }
@@ -178,19 +191,19 @@ defineExpose({ refresh, checkAccess, loading: computed(() => state.loading), err
 .calendar-row-last { margin-bottom: 0; }
 .calendar-slot { flex: 1; min-width: 0; margin-right: $space-micro; }
 .calendar-slot-last { margin-right: 0; }
-/* 日历属于紧凑图表，格子随卡片内容区均分；导航与粒度操作保留标准触控区。 */
-.calendar-cell { display: flex; flex-direction: column; flex: 1; min-width: 0; width: 100%; height: 100%; padding: 0; margin: 0; border: 0; border-radius: 6px; align-items: center; justify-content: center; background-color: transparent; }
-.calendar-cell-week { gap: $space-micro; background-color: #f4f4f5; }
-.calendar-cell-week-dark { background-color: #292b30; }
+.calendar-slot-muted { background-color: #f4f4f5; }
+.calendar-slot-muted-dark { background-color: #292b30; }
+.calendar-slot-future { opacity: 0.4; }
+.calendar-slot, .calendar-cell { border-radius: 6px; }
+/* 格子底色由外层绘制，避免内置按钮的禁用背景盖住它。 */
+.calendar-cell { display: flex; flex-direction: column; flex: 1; min-width: 0; width: 100%; height: 100%; padding: 0; margin: 0; border: 0; align-items: center; justify-content: center; @include button-background(transparent); }
+.calendar-cell-week { gap: $space-micro; }
 .calendar-cell-label { @include type-style('caption'); color: #71717a; }
 .calendar-cell-label-compact { @include type-style('chart-label'); }
 .calendar-cell-label-day { @include type-style('chart-detail'); }
 .calendar-amount { @include type-style('caption'); color: #27272a; }
 .calendar-amount-day { @include type-style('chart-label'); }
 .calendar-amount-long { @include type-style('chart-detail'); }
-.calendar-cell-future { opacity: 0.4; }
-.calendar-cell-pending { background-color: #f4f4f5; }
-.calendar-cell-pending-dark { background-color: #292b30; }
 .calendar-text-dark { color: #ececf0; }
 .calendar-muted-dark { color: #a1a1aa; }
 .calendar-loading, .calendar-error { position: absolute; top: 0; right: 0; bottom: 0; left: 0; z-index: 2; align-items: center; justify-content: center; background-color: rgba(255, 255, 255, 0.65); }

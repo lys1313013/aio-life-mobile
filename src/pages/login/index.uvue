@@ -285,7 +285,7 @@ async function setPassword() {
               </button>
               <button hover-class="none" role="button" class="text-button auth-link" :class="themeClass('auth-link')" :disabled="busy" @click="openAuth('reset')"><text :class="buttonLabelClasses(['text-button auth-link', themeClass('auth-link')])">忘记密码</text></button>
             </view>
-            <button hover-class="none" class="ui-type-body" role="button" :class="['primary-button', busy ? 'primary-disabled' : '']" :loading="busy" :disabled="busy" :aria-disabled="busy" @click="submit"><text :class="buttonLabelClasses(['ui-type-body', ['primary-button', busy ? 'primary-disabled' : '']])">{{ busy ? '正在登录' : (mode === 'bind' ? '登录并绑定微信' : '登录') }}</text></button>
+            <button hover-class="none" class="ui-type-body primary-button" role="button" :class="{ 'primary-disabled': busy }" :loading="busy" :disabled="busy" :aria-disabled="busy" @click="submit"><text :class="buttonLabelClasses(['ui-type-body', ['primary-button', busy ? 'primary-disabled' : '']])">{{ busy ? '正在登录' : (mode === 'bind' ? '登录并绑定微信' : '登录') }}</text></button>
             <view class="register-row">
               <text class="register-note muted" :class="themeClass('muted')">还没有账号？</text>
               <button hover-class="none" role="button" class="text-button auth-link" :class="themeClass('auth-link')" :disabled="busy" @click="openAuth('register')"><text :class="buttonLabelClasses(['text-button auth-link', themeClass('auth-link')])">注册账号</text></button>
@@ -311,6 +311,7 @@ async function setPassword() {
 </template>
 
 <style scoped lang="scss">
+@use '../../styles/platform' as *;
 @use '../../styles/typography' as *;
 @use '../../styles/spacing.scss';
 @use '../../styles/spacing-tokens' as *;
@@ -344,8 +345,8 @@ min-height: 100vh;
 .field-input-dark { background-color: #18191d; border-color: #36383f; color: #eeeeef; }
 .password-field { position: relative; }
 .password-input { padding-right: ($space-controlMin + $space-detail); }
-.password-toggle { display: flex; flex-direction: row; position: absolute; right: $space-micro; top: $space-micro; width: $space-controlMin; height: $space-controlMin; padding: 0; margin: 0; border: 0; border-radius: 8px; background-color: transparent; align-items: center; justify-content: center; }
-.primary-button { display: flex; flex-direction: row; height: 48px; border-radius: 8px; background-color: #427bea; @include type-style('body'); line-height: type-leading('tallControl'); }
+.password-toggle { display: flex; flex-direction: row; position: absolute; right: $space-micro; top: $space-micro; width: $space-controlMin; height: $space-controlMin; padding: 0; margin: 0; border: 0; border-radius: 8px; @include button-background(transparent); align-items: center; justify-content: center; }
+.primary-button { display: flex; flex-direction: row; height: 48px; border-radius: 8px; @include button-background(#427bea); @include type-style('body'); line-height: type-leading('tallControl'); }
 .recovery-row { display: flex; flex-direction: row; align-items: center; flex-wrap: wrap; gap: $space-inline; justify-content: flex-end; margin-bottom: $space-inline; }
 .remember-label { @include type-style('body'); }
 .register-row { display: flex; flex-direction: row; align-items: center; justify-content: center; gap: $space-detail; margin-top: $space-inline; }
@@ -354,15 +355,13 @@ min-height: 100vh;
 .auth-link-dark { color: #80aaff; }
 .form-message { padding-top: $space-inline; }
 .login-footer { padding: $space-modal $space-page; padding-bottom: calc($space-overlayBlock + env(safe-area-inset-bottom)); text-align: center; @include type-style('caption');  }
-.text-button { display: flex; flex-direction: row; align-items: center; justify-content: center; min-height: $space-controlMin; margin: 0; padding: 0; border: 0; border-radius: 8px; background-color: transparent; @include type-style('body');  }
+.text-button { display: flex; flex-direction: row; align-items: center; justify-content: center; min-height: $space-controlMin; margin: 0; padding: 0; border: 0; border-radius: 8px; @include button-background(transparent); @include type-style('body');  }
 .remember-control { gap: $space-inline; margin-right: auto; }
 .wechat-note { @include type-style('caption');  text-align: center; }
 .account-note { @include type-style('label');  }
-// 保留登录中的按钮外观，覆盖框架默认禁用底色；禁用行为仍由 disabled 控制。
-.text-button, .password-toggle { background-color: transparent !important; }
 .auth-link { color: #356bd4 !important; }
 .auth-link-dark { color: #80aaff !important; }
-.primary-button { background-color: #427bea !important; color: #ffffff !important; }
+.primary-button { color: #ffffff !important; }
 /* #ifdef WEB || MP-WEIXIN */
 .text-button::after, .password-toggle::after { border: 0; }
 .field-input:focus-within { border-color: #427bea; }

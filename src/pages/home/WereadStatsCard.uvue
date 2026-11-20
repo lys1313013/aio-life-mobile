@@ -25,6 +25,7 @@ const denied = ref(false)
 const barAnimationDelays = ref<Partial<Record<string, number>>>({})
 const state = reactive({ data: null as WereadStatsData | null, loading: false, error: '', locked: false, unlockRoute: '' })
 const modes = wereadStatsModes
+const modesDisabled = computed(() => props.refreshDisabled || state.locked || state.loading)
 const scheduler = createHomeRefreshScheduler()
 let generation = 0, pending: Promise<void> | null = null, updatedAt = 0
 let hasShownBars = false
@@ -127,7 +128,7 @@ async function refresh(force = true) {
   return task
 }
 function selectMode(mode: WereadStatsGranularity) {
-  if (!props.active || props.refreshDisabled || state.locked || state.loading) return
+  if (!props.active || modesDisabled.value) return
   if (mode === granularity.value) { if (state.error) void refresh(true); return }
   granularity.value = mode
 }
@@ -189,7 +190,7 @@ defineExpose({ refresh, checkAccess })
     >
       <template #actions>
         <view class="weread-stats-modes" :class="{ 'weread-stats-modes-dark': isDark }" role="group" aria-label="阅读统计粒度">
-          <button hover-class="none" v-for="mode in modes" :key="mode.key" role="button" class="weread-stats-mode" :aria-label="'按' + mode.label + '统计'" :aria-pressed="granularity === mode.key" :disabled="refreshDisabled || state.locked || state.loading" @click.stop="selectMode(mode.key)">
+          <button hover-class="none" v-for="mode in modes" :key="mode.key" role="button" class="weread-stats-mode" :aria-label="'按' + mode.label + '统计'" :aria-pressed="granularity === mode.key" :aria-disabled="modesDisabled" :disabled="modesDisabled" @click.stop="selectMode(mode.key)">
             <view class="weread-stats-mode-surface" :class="{ 'weread-stats-mode-surface-active': granularity === mode.key, 'weread-stats-mode-surface-active-dark': isDark && granularity === mode.key }">
               <text class="weread-stats-mode-text" :class="{ 'weread-stats-mode-text-active': granularity === mode.key, 'weread-stats-mode-text-dark': isDark, 'weread-stats-mode-text-active-dark': isDark && granularity === mode.key }">{{ mode.label }}</text>
             </view>
@@ -251,7 +252,7 @@ defineExpose({ refresh, checkAccess })
 .weread-stats-card { width: 100%; }
 .weread-stats-modes { position: relative; z-index: 1; display: flex; flex-direction: row; align-items: center; border-radius: 10px; background-color: #f4f4f5; height: $space-compactRowMin; }
 .weread-stats-modes-dark { background-color: #27292f; }
-.weread-stats-mode { display: flex; align-items: center; justify-content: center; min-width: $space-controlMin; height: $space-controlMin; padding: 0 $space-micro; margin: 0; border: 0; border-radius: 8px; background-color: transparent; }
+.weread-stats-mode { display: flex; align-items: center; justify-content: center; min-width: $space-controlMin; height: $space-controlMin; padding: 0 $space-micro; margin: 0; border: 0; border-radius: 8px; @include button-background(transparent); }
 .weread-stats-mode-surface { display: flex; align-items: center; justify-content: center; width: 100%; height: $space-compactRowMin - 2 * $space-micro; border-radius: 8px; }
 .weread-stats-mode-surface-active { background-color: #ffffff; }
 .weread-stats-mode-surface-active-dark { background-color: #3b3e46; }
