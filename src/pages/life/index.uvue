@@ -36,7 +36,8 @@ import { isDark, themeClass, pageBackgroundColor } from "../../services/theme.ts
 const refreshTheme = useRefreshTheme();
 const catalog = ref<any[]>([]);
 const query = ref("");
-const searchSecondaryColor = computed(() => isDark.value ? '#a0a6b1' : '#626e82');
+const searchOpen = ref(false);
+const secondaryColor = computed(() => isDark.value ? '#a0a6b1' : '#626e82');
 const catalogLoading = ref(false);
 const quickLoading = ref(false);
 const catalogError = ref("");
@@ -68,6 +69,14 @@ const choices = computed(() =>
   ),
 );
 
+function closeSearch() {
+  searchOpen.value = false;
+  query.value = "";
+}
+function toggleSearch() {
+  if (searchOpen.value) closeSearch();
+  else searchOpen.value = true;
+}
 function current(version, token) {
   return active && epoch === version && session.token === token;
 }
@@ -146,7 +155,7 @@ onShow(() => {
     catalog.value = [];
     catalogLoaded.value = false;
     catalogError.value = "";
-    query.value = "";
+    closeSearch();
     account = session.token;
   }
   catalogLoading.value = false;
@@ -168,6 +177,7 @@ onShow(() => {
 onHide(() => {
   active = false;
   epoch++;
+  closeSearch();
   editing.value = false;
   folders.value = [];
   refreshing.value = false;
@@ -223,26 +233,48 @@ async function save() {
   <TabPage page-path="pages/life/index">
   <view class="tab-page life-page" :class="themeClass('life-page')">
     <PageHeader title="全部">
-      <view class="life-search life-header-search ui-row ui-px-card" :class="themeClass('life-header-search')">
-        <LifeMenuIcon icon="lucide:search" :color="searchSecondaryColor" />
-        <input
-          v-model="query"
-          class="life-input life-header-input"
-          :class="themeClass('life-ink')"
-          aria-label="搜索功能"
-          placeholder="搜索功能"
-          :placeholder-style="'color: ' + searchSecondaryColor"
-          confirm-type="search"
-        />
-        <button hover-class="none" v-if="catalogError && catalogLoaded" role="button" class="life-action" aria-label="重试功能目录" @click="loadPart('catalog')"><AppIcon name="lucide:rotate-cw" :color="searchSecondaryColor" /></button>
-        <button hover-class="none"
+      <view class="life-header-tools">
+        <view v-if="searchOpen" class="life-header-search" :class="themeClass('life-header-search')">
+          <input
+            v-model="query"
+            class="life-input life-header-input"
+            :class="themeClass('life-ink')"
+            aria-label="搜索功能"
+            placeholder="搜索功能"
+            :placeholder-style="'color: ' + secondaryColor"
+            :focus="searchOpen"
+            confirm-type="search"
+          />
+          <button
+            v-if="query"
+            hover-class="none"
+            role="button"
+            class="life-action"
+            aria-label="清空搜索"
+            @click="query = ''"
+          >
+            <AppIcon name="ant-design:close-outlined" :size="14" :color="secondaryColor" />
+          </button>
+        </view>
+        <button
+          v-if="catalogError && catalogLoaded"
+          hover-class="none"
           role="button"
-          v-if="query"
           class="life-action"
-          aria-label="清空搜索"
-          @click="query = ''"
+          aria-label="重试功能目录"
+          @click="loadPart('catalog')"
         >
-          <AppIcon name="ant-design:close-outlined" :color="searchSecondaryColor" />
+          <AppIcon name="lucide:rotate-cw" :color="secondaryColor" />
+        </button>
+        <button
+          hover-class="none"
+          role="button"
+          class="life-action"
+          :aria-label="searchOpen ? '收起搜索' : '展开搜索'"
+          :aria-expanded="searchOpen"
+          @click="toggleSearch"
+        >
+          <AppIcon :name="searchOpen ? 'lucide:x' : 'lucide:search'" :color="secondaryColor" />
         </button>
       </view>
     </PageHeader>
@@ -255,7 +287,7 @@ async function save() {
       :refresher-default-style="refreshTheme"
       @refresherrefresh="refresh"
     >
-      <view class="life-content ui-page-inset ui-tab-page-inset">
+      <view class="life-content ui-page-inset">
         <LoadingIndicator v-if="catalogLoading && catalogLoaded && !refreshing" floating label="正在更新功能目录" />
         <view v-if="catalogLoading && !catalogLoaded && !refreshing" class="life-state ui-px-sm ui-py-card"
           ><ContentSkeleton variant="grid" label="正在加载功能目录" /></view
@@ -278,19 +310,16 @@ async function save() {
         <view
           v-for="section in sections"
           :key="section.menuId"
-          class="life-section ui-mt-section"
+          class="life-section life-surface"
+          :class="themeClass('life-surface')"
         >
-          <view v-if="section.title" class="life-section-heading ui-row ui-mb-xs"
-            ><text class="life-title" :class="themeClass('life-ink')">{{
-              section.title
-            }}</text></view
-          >
+          <text v-if="section.title" class="life-section-title ui-mb-xs" :style="{ color: secondaryColor }">{{ section.title }}</text>
           <view class="life-grid">
             <button hover-class="none"
               role="button"
               v-for="item in section.items"
               :key="item.menuId"
-              class="life-tile ui-type-body"
+              class="life-tile life-directory-tile ui-type-body"
               style="background-color: transparent"
               :disabled="!available"
               :aria-disabled="!available"
@@ -452,7 +481,7 @@ async function save() {
 </button>
           </view>
           <view
-            class="life-search life-edit-search ui-row ui-mb-section ui-mt-section ui-px-card ui-py-xs"
+            class="life-edit-search ui-row ui-mb-section ui-mt-section ui-px-card ui-py-xs"
             :class="themeClass('life-page')"
             ><LifeMenuIcon icon="lucide:search" color="#8b8f99" /><input
               v-model="editQuery"
@@ -495,34 +524,51 @@ async function save() {
 
 <style scoped lang="scss">
 @use '../../styles/platform' as *;
+@use '../../styles/theme-tokens' as *;
 @use '../../styles/typography' as *;
 @use '../../styles/spacing.scss';
 @use '../../styles/spacing-tokens' as *;
 @include type-utilities('body');
 
-.life-content { position: relative; }
+.life-content {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: $space-section;
+  padding-left: $space-inline;
+  padding-right: $space-inline;
+  padding-bottom: calc($space-inline + env(safe-area-inset-bottom));
+  /* #ifdef WEB || MP-WEIXIN */
+  padding-bottom: $space-inline;
+  /* #endif */
+}
 
 .life-page {
-  background-color: #f0f2f5;
+  background-color: $theme-page-light;
 }
-.life-search {
+.life-header-tools {
+  display: flex;
+  width: 100%;
   flex-direction: row;
+  justify-content: flex-end;
   align-items: center;
-  background-color: #ffffff;
-  border-radius: 14px;
-
-  min-height: 48px;
 }
 .life-header-search {
-  background-color: transparent;
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  flex-direction: row;
+  align-items: center;
+  background-color: $theme-surface-light;
   border: $space-hairline solid #d8dde4;
-  width: 100%;
+  border-radius: 14px;
   max-width: 360px;
-  min-height: $space-controlMin;
   height: $space-controlMin;
   box-sizing: border-box;
+  padding-left: $space-card;
 }
 .life-header-search-dark {
+  background-color: $theme-surface-dark;
   border-color: #363940;
 }
 .life-header-input {
@@ -536,9 +582,12 @@ async function save() {
   @include type-style('body');
   color: #27272a;
 }
-.life-section-heading {
-  align-items: center;
-  min-height: 32px;
+.life-section {
+  border-radius: 14px;
+  padding: $space-card $space-inline $space-inline;
+}
+.life-section-title {
+  @include type-style('caption');
 }
 .life-heading {
   flex-direction: row;
@@ -554,8 +603,8 @@ async function save() {
 }
 .life-action {
   display: flex;
-  width: 44px;
-  height: 44px;
+  width: $space-controlMin;
+  height: $space-controlMin;
   flex-shrink: 0;
   margin: 0;
   padding: 0;
@@ -584,6 +633,9 @@ async function save() {
   border-radius: 12px;
   align-items: center;
   justify-content: flex-start;
+}
+.life-directory-tile {
+  min-height: $space-controlMin;
 }
 .life-label {
   @include type-style('label');
@@ -620,8 +672,10 @@ async function save() {
   color: #5b8ff9;
   @include type-style('body');
 }
+.life-surface {
+  background-color: $theme-surface-light;
+}
 .life-modal {
-  background-color: #ffffff;
   border-radius: 12px;
 }
 .life-save {
@@ -652,17 +706,19 @@ async function save() {
   @include type-style('caption');
 }
 .life-edit-search {
-
-  background-color: #f0f2f5;
+  align-items: center;
+  border-radius: 14px;
+  min-height: 48px;
+  background-color: $theme-page-light;
 }
 @media (min-width: 640px) {
   .life-tile { width: 16.6667%; }
 }
 .life-page-dark {
-  background-color: #111215;
+  background-color: $theme-page-dark;
 }
 .life-surface-dark {
-  background-color: #1c1e22;
+  background-color: $theme-surface-dark;
 }
 .life-ink-dark {
   color: #eeeeef;
@@ -672,6 +728,12 @@ async function save() {
 .life-retry,
 .life-save { @include borderless-button; }
 
+/* #ifdef WEB */
+.life-action:focus-visible {
+  outline: 2px solid $theme-accent-light;
+  outline-offset: -2px;
+}
+/* #endif */
 
 /* 按钮文字独立声明样式，兼容 App 不继承容器排版。 */
 .app-button-label { @include type-style('body'); color: #27272a; }

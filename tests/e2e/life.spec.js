@@ -128,7 +128,10 @@ for (const width of [390, 768, 1440]) {
       await expect(page.locator("uni-tabbar .uni-tabbar__item")).toHaveCount(4);
       await expect(page.getByText("常用", { exact: true })).toHaveCount(0);
       await expect(page.getByRole("button", { name: "编辑常用功能", exact: true })).toHaveCount(0);
-      const tiles = page.locator(".life-section").first().locator(".life-tile");
+      const section = page.locator(".life-section").first();
+      await expect(section).toHaveCSS("background-color", colorScheme === "dark" ? "rgb(28, 30, 34)" : "rgb(255, 255, 255)");
+      await expect(section.locator(".life-section-title")).toHaveCSS("font-weight", "400");
+      const tiles = section.locator(".life-tile");
       const tileBox = await tiles.first().boundingBox();
       expect(tileBox.width).toBeLessThanOrEqual(172);
       const iconBox = await tiles
@@ -171,7 +174,7 @@ test("配置的菜单树支持嵌套返回、搜索直达与原生业务路由",
   await setup(page);
   await expect(page.locator(".life-tile").filter({ hasText: "主页" })).toHaveCount(0);
   await expect(page.locator(".life-tile").filter({ hasText: "关于" })).toHaveCount(0);
-  await expect(page.locator(".life-section > .life-section-heading .life-title")).toHaveText(["日常安排", "我的记录", "资产", "开发记录"]);
+  await expect(page.locator(".life-section-title")).toHaveText(["日常安排", "我的记录", "资产", "开发记录"]);
   await expect(page.getByText("时间与任务", { exact: true })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "银行卡", exact: true })).toHaveCount(0);
   await page.getByRole("button", { name: "我的账本功能组" }).click();
@@ -185,6 +188,7 @@ test("配置的菜单树支持嵌套返回、搜索直达与原生业务路由",
   await expect(page.getByRole("dialog", { name: "我的账本", exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "银行卡", exact: true })).toHaveCount(1);
   await page.getByRole("button", { name: "关闭功能组" }).click();
+  await page.getByRole("button", { name: "展开搜索", exact: true }).click();
   await page.locator('[aria-label="搜索功能"] input').fill("支出");
   await expect(
     page.getByRole("button", { name: "支出" }),
@@ -192,6 +196,7 @@ test("配置的菜单树支持嵌套返回、搜索直达与原生业务路由",
   await page.getByRole("button", { name: "支出", exact: true }).click();
   await expect(page).toHaveURL(/pages\/finance\/expense/);
   await page.goto('/#/pages/life/index');
+  await page.getByRole("button", { name: "展开搜索", exact: true }).click();
   await page.locator('[aria-label="搜索功能"] input').fill("不存在");
   await expect(page.getByText("未找到相关功能")).toBeVisible();
   await page.getByRole("button", { name: "清空搜索" }).click();
