@@ -37,7 +37,10 @@ for (const width of [320, 390, 768, 1440]) for (const theme of ['light', 'dark']
     await page.setViewportSize({ width, height: 900 }); const fixture = await setup(page, { theme, delay: 400 });
     const card = page.locator('[aria-label="收支概览首页卡片"]');
     await expect(card.getByRole('status', { name: '正在加载收支概览' })).toBeVisible(); const pending = await card.boundingBox();
+    const rows = card.locator('.calendar-row');
+    expect((await rows.first().boundingBox()).height).toBe(40);
     await expect(card).toHaveAttribute('aria-busy', 'false'); expect((await card.boundingBox()).height).toBe(pending.height);
+    expect((await rows.first().boundingBox()).height).toBe(40);
     await expect(card.getByRole('button', { name: '查看结余', exact: true })).toHaveAttribute('aria-pressed', 'true');
     await expect(card).toContainText('12,345.67'); await expect(card).toContainText('2,345.67'); await expect(card).toContainText('10,000.00');
     await card.getByRole('button', { name: '查看收入', exact: true }).click(); await expect(card.locator('.calendar-amount').first()).toHaveText('12,345.67');
@@ -45,7 +48,7 @@ for (const width of [320, 390, 768, 1440]) for (const theme of ['light', 'dark']
     const folder = path.resolve('artifacts/home-finance-overview'); fs.mkdirSync(folder, { recursive: true }); await page.screenshot({ path: path.join(folder, `calendar-${width}-${theme}.png`), fullPage: true });
     expect(await card.evaluate(el => el.scrollWidth > el.clientWidth + 1)).toBe(false);
     await card.getByRole('button', { name: '收支概览：年', exact: true }).click(); await expect(card).toHaveAttribute('aria-busy', 'false'); await expect(card.locator('.calendar-date-controls')).toHaveCount(0);
-    expect((await card.locator('.calendar-year-row').first().boundingBox()).height).toBe(40);
+    expect((await rows.first().boundingBox()).height).toBe(40);
     expect(fixture.calls.some(value => value.includes('statisticsByMonth'))).toBe(false);
   });
 }

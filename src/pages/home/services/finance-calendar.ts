@@ -62,6 +62,14 @@ export function calendarPeriod(bucket: CalendarBucket) {
   const last = dateISO(end)
   return bucket.startDate === last ? last : bucket.startDate + ' — ' + last
 }
+export function calendarWeekLabel(bucket: CalendarBucket) {
+  if (!bucket.startDate) return bucket.label
+  const monday = new Date(bucket.startDate + 'T00:00:00Z')
+  monday.setUTCDate(monday.getUTCDate() - ((monday.getUTCDay() + 6) % 7))
+  const sunday = new Date(monday)
+  sunday.setUTCDate(sunday.getUTCDate() + 6)
+  return dateISO(monday).slice(5).replace('-', '.') + ' ～ ' + dateISO(sunday).slice(5).replace('-', '.')
+}
 // 路由只携带时段标识；金额和记录由详情页重新查询，不写入 URL 或持久缓存。
 export function calendarDetailsUrl(kind: FinanceKind, calendar: FinanceCalendar, bucket: CalendarBucket, initialKind: LedgerKind) {
   const params = { kind, granularity: calendar.granularity, date: calendar.date || '', bucket: bucket.key, initialKind }

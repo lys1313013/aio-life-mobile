@@ -6,7 +6,7 @@ async function source(name) {
   const code = (await transform(await readFile(new URL('../src/pages/home/services/' + name + '.ts', import.meta.url), 'utf8'), { loader: 'ts', format: 'esm' })).code
   return import('data:text/javascript;base64,' + Buffer.from(code).toString('base64'))
 }
-const { modesFor, readCalendarMode, saveCalendarMode, calendarScope, calendarPlaceholder, calendarMoney, moveCalendarDate, readCalendar, detailQuery, detailState, createDetailsController, calendarDetailsUrl, readCalendarDetailsRoute } = await source('finance-calendar')
+const { modesFor, readCalendarMode, saveCalendarMode, calendarScope, calendarPlaceholder, calendarMoney, calendarWeekLabel, moveCalendarDate, readCalendar, detailQuery, detailState, createDetailsController, calendarDetailsUrl, readCalendarDetailsRoute } = await source('finance-calendar')
 const { summaryState, createSummaryController } = await source('summary-cards')
 const gate = () => { let resolve; const promise = new Promise(done => { resolve = done }); return { resolve, promise } }
 const tick = () => new Promise(resolve => setImmediate(resolve))
@@ -25,6 +25,10 @@ test('日历覆盖闰月、六行月和跨年切换，千位金额完整显示',
   const weeks = calendarPlaceholder(calendarScope('income', 'week', '2026-08')).buckets
   assert.equal(weeks.length, 6); assert.equal(weeks[0].startDate, '2026-08-01'); assert.equal(weeks[0].endDate, '2026-08-03')
   assert.equal(weeks[5].endDate, '2026-09-01')
+  assert.equal(calendarWeekLabel(weeks[0]), '07.27 ～ 08.02')
+  assert.equal(calendarWeekLabel(weeks[5]), '08.31 ～ 09.06')
+  const january = calendarPlaceholder(calendarScope('expense', 'week', '2026-01')).buckets
+  assert.equal(calendarWeekLabel(january[0]), '12.29 ～ 01.04')
   assert.equal(moveCalendarDate('2026-01', 'week', -1), '2025-12-01')
   assert.equal(moveCalendarDate('2026', 'month', -1), '2025-01-01')
   assert.equal(calendarScope('income', 'year', '2026-01').date, null)
