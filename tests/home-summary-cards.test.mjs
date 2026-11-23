@@ -19,7 +19,10 @@ test('笔记只保留摘要和字符串 ID，重复数据去重，正文永不�
 test('刷新去重、返回复用缓存、写入后失效刷新', async () => {
   const f = fixture(); const pending = gate(); f.set(pending.promise)
   const first = f.controller.refresh(); const second = f.controller.refresh(); await new Promise(resolve => setImmediate(resolve)); assert.equal(f.calls(), 1)
-  pending.resolve(row('first')); await Promise.all([first, second]); await f.controller.refresh(false); assert.equal(f.calls(), 1)
+  pending.resolve(row('first')); await Promise.all([first, second])
+  const resumed = f.controller.refresh(false)
+  assert.equal(f.state.loading, false)
+  await resumed; assert.equal(f.calls(), 1)
   f.write(); f.set(row('updated')); await f.controller.refresh(false); assert.equal(f.calls(), 2); assert.equal(f.state.data.items[0].id, 'updated')
 })
 test('失败保留已有内容与空态；锁与无权限清除敏感内容且不请求摘要', async () => {

@@ -35,10 +35,12 @@ test('日历覆盖闰月、六行月和跨年切换，千位金额完整显示',
   assert.equal(calendarMoney(1234.56, true), '1234.56')
   assert.equal(calendarMoney(2563, true), '2563')
 })
-test('明细请求使用半开区间，收入日期与支出日期时间契约分开', () => {
+test('明细请求使用半开区间，默认日期降序省略排序参数', () => {
   const bucket = { startDate: '2026-08-31', endDate: '2026-09-01' }
   assert.deepEqual(detailQuery('income', bucket, 2), { page: 2, pageSize: 20, startTime: '2026-08-31', endTimeBefore: '2026-09-01' })
-  assert.equal(detailQuery('expense', bucket).endTimeBefore, '2026-09-01 00:00:00')
+  assert.deepEqual(detailQuery('income', bucket, 2, 'DATE_ASC'), { page: 2, pageSize: 20, startTime: '2026-08-31', endTimeBefore: '2026-09-01', sort: 'DATE_ASC' })
+  assert.deepEqual(detailQuery('expense', bucket, 2, 'DATE_DESC'), { page: 2, pageSize: 20, startTime: '2026-08-31 00:00:00', endTimeBefore: '2026-09-01 00:00:00' })
+  assert.deepEqual(detailQuery('expense', bucket, 2, 'AMOUNT_ASC'), { page: 2, pageSize: 20, startTime: '2026-08-31 00:00:00', endTimeBefore: '2026-09-01 00:00:00', sort: 'AMOUNT_ASC' })
   assert.throws(() => detailQuery('income', { startDate: null, endDate: null }), /财务日历范围缺少日期/)
 })
 test('共用摘要控制器隔离日历范围慢响应并在失败时保留旧范围', async () => {

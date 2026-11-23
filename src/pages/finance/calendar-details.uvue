@@ -5,6 +5,8 @@ import { onLoad, onBackPress } from '@dcloudio/uni-app'
 import { useDomainPage } from '../../services/domains/page-session.ts'
 import MobilePage from '../../components/MobilePage.uvue'
 import PageHeader from '../../components/PageHeader.uvue'
+import AppIcon from '../../components/AppIcon.uvue'
+import MobileButton from '../../components/MobileButton.uvue'
 import LoadMore from '../../components/LoadMore.uvue'
 import LoadingIndicator from '../../components/LoadingIndicator.uvue'
 import FinanceRecordModal from './components/FinanceRecordModal.uvue'
@@ -13,7 +15,7 @@ import { isDark } from '../../services/theme.ts'
 import { request } from '../../services/api.ts'
 import { session } from '../../services/session.ts'
 import { calendarMoney, calendarPeriod, createDetailsController, detailQuery, detailState, readCalendar, readCalendarDetailsRoute } from '../home/services/finance-calendar.ts'
-import type { CalendarBucket, LedgerKind } from '../home/services/finance-calendar.ts'
+import type { CalendarBucket, LedgerKind, LedgerSort } from '../home/services/finance-calendar.ts'
 const selection = ref<ReturnType<typeof readCalendarDetailsRoute> | null>(null)
 const routeError = ref(''), bucket = ref<CalendarBucket | null>(null), refreshing = ref(false)
 const kind = computed(() => selection.value?.kind || 'expense')
@@ -47,7 +49,7 @@ async function mutate(action: () => Promise<any>, rethrow = false) {
     await action()
     if (!valid()) return
     draft.value = null
-    controller.reset(true)
+    resetDetails(true)
     await controller.load()
   } catch (error) {
     if (valid()) formError.value = error.message || '保存失败，请重试'
@@ -58,6 +60,14 @@ function save() { return mutate(() => saveLedger(editingKind.value, draft.value!
 function remove() { return mutate(() => deleteLedger(editingKind.value, draft.value!.id), true) }
 const detailKind = ref<LedgerKind>('expense')
 const displayedKind = ref<LedgerKind>(detailKind.value)
+const sortOptions: { key: LedgerSort; label: string }[] = [
+  { key: 'DATE_DESC', label: '日期降序' },
+  { key: 'DATE_ASC', label: '日期升序' },
+  { key: 'AMOUNT_ASC', label: '金额升序' },
+  { key: 'AMOUNT_DESC', label: '金额降序' },
+]
+const sortIndex = ref(0)
+const sortLabels = sortOptions.map(option => option.label)
 function rowAmount(row) {
   return displayedKind.value === 'income' ? row.grossAmount : row.bookkeepingAmount
 }
@@ -66,20 +76,26 @@ const detailTitle = computed(() => displayedKind.value === 'income' ? '收入' :
 const total = computed(() => !bucket.value ? null : kind.value === 'finance' ? bucket.value[displayedKind.value] || 0 : bucket.value.amount)
 const state = reactive(detailState()), categories = ref<any[]>([]), payments = ref<any[]>([])
 let active = false, owner = '', lifecycle = 0
+let reloadCalendar = true
 const dictionaries = new Map()
 function current() { return active && !!selection.value && !!owner && session.token === owner }
+function resetDetails(retain: boolean, refreshCalendar = true) {
+  reloadCalendar = reloadCalendar || refreshCalendar
+  controller.reset(retain)
+}
 const controller = createDetailsController(state, async page => {
   const requestedKind = detailKind.value, selected = selection.value!
+  const sort = sortOptions[sortIndex.value].key
   const version = lifecycle
   let selectedBucket = bucket.value
-  if (page === 1) {
+  if (page === 1 && reloadCalendar) {
     const calendar = readCalendar(await request(selected.scope.path), selected.scope)
     if (!current() || version !== lifecycle) throw Error('页面已变化')
     selectedBucket = calendar.buckets.find(item => item.key === selected.key) || (bucket.value ? { ...bucket.value, amount: 0, income: 0, expense: 0, balance: 0 } : null)
   }
   if (!selectedBucket) throw Error('所选时段已不存在，请返回重新选择')
   const [result, dicts] = await Promise.all([
-    request<any>('/' + requestedKind + '/query', 'GET', detailQuery(requestedKind, selectedBucket, page)),
+    request<any>('/' + requestedKind + '/query', 'GET', detailQuery(requestedKind, selectedBucket, page, sort)),
     dictionaries.get(requestedKind) || Promise.all((requestedKind === 'expense' ? ['exp_type', 'pay_type'] : ['income_type']).map(dictType => request<any>('/userDictType/getByDictType', 'GET', { dictType }))),
   ])
   return { ...result, detailKind: requestedKind, dictionaries: dicts, bucket: selectedBucket }
@@ -89,12 +105,13 @@ const controller = createDetailsController(state, async page => {
   categories.value = result.dictionaries[0]?.dictDetailList || []
   payments.value = result.dictionaries[1]?.dictDetailList || []
   bucket.value = result.bucket
+  reloadCalendar = false
 })
 async function refresh() {
   if (!current() || state.loading || saving.value || draft.value) return
   refreshing.value = true
   const version = lifecycle
-  controller.reset(true)
+  resetDetails(true)
   try { await controller.load() } finally { if (version === lifecycle) refreshing.value = false }
 }
 function loadMore() { if (!draft.value && !saving.value) void controller.load() }
@@ -102,13 +119,14 @@ const { initializing } = useDomainPage(needsRefresh => {
   active = true; owner = session.token
   if (!selection.value || state.loading) return
   if (needsRefresh || !state.loaded) {
-    controller.reset(state.loaded)
+    resetDetails(state.loaded)
     return controller.load()
   }
+  if (state.page === 0 && !state.error) return controller.load()
 }, clear => {
   active = false; lifecycle++; controller.invalidate(); refreshing.value = false
   draft.value = null; saving.value = false
-  if (clear) { controller.reset(); bucket.value = null; categories.value = []; payments.value = []; dictionaries.clear() }
+  if (clear) { resetDetails(false); sortIndex.value = 0; bucket.value = null; categories.value = []; payments.value = []; dictionaries.clear() }
 }, { loading: () => state.loading, error: () => state.error, keys: () => [kind.value === 'finance' ? 'income' : kind.value, 'expense', 'userDictData', 'userDictType'] })
 function description(row) { return displayedKind.value === 'income' ? row.remark || dictionary(categories.value, row.incomeTypeId) || '收入' : row.expenseDesc || row.counterparty || row.remark || '未填写描述' }
 function dictionary(rows, id) { const row = rows.find(item => item.id === id); return row?.dictLabel || row?.label || '' }
@@ -122,7 +140,15 @@ function captions(row) {
 function switchKind(kind: LedgerKind) {
   if (draft.value || saving.value) return
   if (kind === detailKind.value) { if (state.error) void controller.load(); return }
-  controller.reset(true); detailKind.value = kind; void controller.load()
+  resetDetails(true); detailKind.value = kind; void controller.load()
+}
+function switchSort(event: { detail: { value: number | string } }) {
+  if (!current() || draft.value || saving.value || refreshing.value) return
+  const index = Number(event.detail.value)
+  if (!sortOptions[index] || index === sortIndex.value) return
+  sortIndex.value = index
+  resetDetails(true, false)
+  void controller.load()
 }
 </script>
 <template>
@@ -133,7 +159,25 @@ function switchKind(kind: LedgerKind) {
       <template v-else>
         <view v-if="kind === 'finance'" class="details-tabs" role="group" aria-label="明细类型"><button hover-class="none" v-for="item in [{ key: 'income', label: '收入' }, { key: 'expense', label: '支出' }]" :key="item.key" role="button" class="details-tab" :class="{ 'details-tab-active': displayedKind === item.key, 'details-tab-active-dark': isDark && displayedKind === item.key }" :aria-label="item.label + '明细'" :aria-pressed="displayedKind === item.key" :aria-busy="state.loading && detailKind === item.key" @click="switchKind(item.key)"><text class="details-tab-label" :class="{ 'details-text-dark': isDark }">{{ item.label }}</text></button></view>
         <view class="details-summary" :class="{ 'details-summary-dark': isDark }">
-          <text class="details-period" :class="{ 'details-muted-dark': isDark }">{{ bucket ? calendarPeriod(bucket) : '正在加载所选时段' }}</text>
+          <view class="details-summary-heading">
+            <text class="details-period" :class="{ 'details-muted-dark': isDark }">{{ bucket ? calendarPeriod(bucket) : '正在加载所选时段' }}</text>
+            <picker
+              class="details-sort"
+              mode="selector"
+              aria-label="明细排序"
+              :range="sortLabels"
+              :value="sortIndex"
+              :disabled="!bucket || refreshing || saving"
+              @change="switchSort"
+            >
+              <view class="details-sort-target">
+                <view class="details-sort-chip" :class="{ 'details-sort-chip-dark': isDark }">
+                  <text class="details-sort-label" :class="{ 'details-muted-dark': isDark }">{{ sortLabels[sortIndex] }}</text>
+                  <AppIcon name="ant-design:down-outlined" :size="10" />
+                </view>
+              </view>
+            </picker>
+          </view>
           <view class="details-summary-main">
             <text class="details-caption" :class="{ 'details-muted-dark': isDark }">{{ detailTitle }}合计</text>
             <view class="details-total-group" :aria-label="detailTitle + '合计，' + (total == null ? '—' : calendarMoney(total)) + '元'">
@@ -153,7 +197,15 @@ function switchKind(kind: LedgerKind) {
             <text v-if="row.transactionAmount != null && row.transactionAmount !== rowAmount(row)" class="details-caption" :class="{ 'details-muted-dark': isDark }">交易金额：{{ calendarMoney(row.transactionAmount) }}</text>
             </button>
           </view>
-          <view v-if="state.loaded && state.page === 0 && (state.loading || state.error)" class="details-switching" :class="{ 'details-switching-dark': isDark }"><LoadingIndicator v-if="state.loading" ring :label="'正在加载' + (detailKind === 'income' ? '收入' : '支出') + '明细'" /><template v-else><text class="details-error" role="alert">{{ state.error }}</text><button hover-class="none" role="button" class="details-tab" aria-label="重试切换明细" @click="controller.load()"><text class="details-tab-label" :class="{ 'details-text-dark': isDark }">重试</text></button></template></view>
+          <view v-if="state.loaded && state.page === 0 && (state.loading || state.error)" class="details-switching" :class="{ 'details-switching-dark': isDark }">
+            <view v-if="state.loading" class="details-pending">
+              <LoadingIndicator ring :label="'正在加载' + (detailKind === 'income' ? '收入' : '支出') + '明细'" />
+            </view>
+            <view v-else class="details-switching-error">
+              <text class="details-error" role="alert">{{ state.error }}</text>
+              <MobileButton label="重试加载明细" icon="ant-design:reload-outlined" variant="ghost" @click="controller.load()" />
+            </view>
+          </view>
           <LoadMore :loading="state.loaded && state.page > 0 && state.loading" :has-more="state.hasMore" :error="state.loaded && state.page === 0 ? '' : state.error" @load="controller.load()" />
         </view>
       </template>
@@ -177,6 +229,14 @@ function switchKind(kind: LedgerKind) {
 .details-main { width: 100%; flex-direction: row; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: $space-inline; }
 .details-summary { margin-top: $space-inline; padding: $space-card; gap: $space-detail; border-radius: 14px; background-color: $theme-surface-light; }
 .details-summary-dark { background-color: $theme-surface-dark; }
+.details-summary-heading { flex-direction: row; align-items: center; gap: $space-inline; }
+.details-period { flex: 1; min-width: 0; }
+.details-sort { flex-shrink: 0; margin: (-$space-inline) 0; }
+// 点击区伸进卡片内边距，让排序与日期保持紧凑对齐。
+.details-sort-target { min-height: $space-controlMin; justify-content: center; }
+.details-sort-chip { flex-direction: row; align-items: center; gap: $space-detail; padding: $space-detail $space-inline; border-radius: 999px; background-color: $theme-page-light; }
+.details-sort-chip-dark { background-color: #292b30; }
+.details-sort-label { @include type-style('caption-strong'); color: $text-secondary-light; }
 .details-summary-main { flex-direction: row; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: $space-inline; }
 .details-total-group { flex-direction: row; align-items: baseline; gap: $space-detail; max-width: 100%; }
 .details-currency { @include type-style('label'); color: $text-secondary-light; }
@@ -185,9 +245,10 @@ function switchKind(kind: LedgerKind) {
 .details-amount-income { color: #2f9e75; }
 .details-period, .details-caption { @include type-style('caption'); color: $text-secondary-light; overflow-wrap: anywhere; }
 .details-list { position: relative; margin-top: $space-section; }
-.details-switching { position: absolute; top: 0; right: 0; bottom: 0; left: 0; background-color: rgba(255, 255, 255, 0.65); align-items: center; justify-content: center; z-index: 2; }
+.details-switching { position: absolute; top: 0; right: 0; bottom: 0; left: 0; background-color: rgba(255, 255, 255, 0.65); align-items: center; padding: 0 $space-card; z-index: 2; }
 .details-switching-dark { background-color: rgba(28, 30, 34, 0.65); }
-.details-error { @include type-style('caption'); color: #bc4949; }
+.details-switching-error { flex-direction: row; align-items: center; gap: $space-inline; }
+.details-error { @include type-style('caption'); color: #bc4949; flex-shrink: 1; }
 .details-pending { min-height: $space-controlMin; padding: $space-inline 0; align-items: center; justify-content: center; }
 .details-row { position: relative; gap: 0; background-color: $theme-surface-light; }
 .details-row-dark { background-color: $theme-surface-dark; }

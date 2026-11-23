@@ -1,6 +1,8 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { test, expect } = require('./support/test');
+const { stableBox } = require('./support/geometry');
+const { waitForMotion } = require('./support/motion');
 const keys = ['memo', 'finance', 'video', 'device', 'income', 'expense'];
 const titles = ['最近笔记', '收支概览', '视频', '我的设备', '收入', '支出'];
 const routes = ['/my-hub/memo', '/finance-management/dashboard', '/finance-management/income', '/finance-management/expense', '/my-hub/videoWatch', '/my-hub/device'];
@@ -220,18 +222,40 @@ test('首页设备详情失败可重试，关闭慢请求不重开弹窗', async
   await expect(page).toHaveURL(/pages\/home\/index/);
 });
 
-for (const width of [390, 820, 1440]) for (const theme of ['light', 'dark']) for (const kind of ['income', 'expense']) test(`${kind} 日历明细页触底分页、失败重试及返回原卡片 ${width} ${theme}`, async ({ page }, info) => {
+for (const width of [390, 820, 1440]) for (const theme of ['light', 'dark']) for (const kind of ['income', 'expense']) test(`${kind} 日历明细排序、触底分页、失败重试及返回原卡片 ${width} ${theme}`, async ({ page }, info) => {
   await page.setViewportSize({ width, height: 700 });
   await page.addInitScript(theme => localStorage.setItem('aio-life-mobile.theme.v1', JSON.stringify({ type: 'string', data: theme })), theme);
   await setup(page); const title = kind === 'income' ? '收入' : '支出';
   const card = page.locator('[aria-label="' + title + '首页卡片"]');
   await expect(card).toHaveAttribute('aria-busy', 'false');
-  const calls = []; let fail = true;
+  const calls = [];
+  let failFirstSort = true, failNextPage = true;
   await page.route('**/api/userDictType/getByDictType?*', route => route.fulfill({ json: { code: 0, data: { dictDetailList: [{ id: '1', dictLabel: '模拟分类' }] } } }));
   await page.route('**/api/' + kind + '/query?*', route => {
-    const params = new URL(route.request().url()).searchParams, number = Number(params.get('page')); calls.push(Object.fromEntries(params));
-    return route.fulfill({ json: number === 2 && fail ? { code: 1, message: '模拟明细失败' } : { code: 0, data: { items: Array.from({ length: number === 1 ? 20 : 1 }, (_, index) => ({ id: String((number - 1) * 20 + index + 1), bookkeepingAmount: 128.8, grossAmount: 128.8, remark: '明细' + ((number - 1) * 20 + index + 1) + '：很长的收支描述需要正常换行而且不能撑宽页面', incomeDate: '2026-10-01', expenseTime: '2026-10-01 10:00:00', incomeTypeId: '1', expenseTypeId: '1' })), total: 21 } } });
+    const params = Object.fromEntries(new URL(route.request().url()).searchParams);
+    calls.push(params);
+    if ((params.sort === 'AMOUNT_DESC' && failFirstSort) || (params.page === '2' && failNextPage)) {
+      return route.fulfill({ json: { code: 1, message: '模拟明细失败' } });
+    }
+    const rows = Array.from({ length: 21 }, (_, index) => {
+      const amount = index === 0 ? 11 : index === 10 ? 1 : index + 1;
+      const day = new Date(params.startTime.slice(0, 10) + 'T00:00:00Z');
+      day.setUTCDate(day.getUTCDate() + 20 - index);
+      const date = day.toISOString().slice(0, 10);
+      return {
+        id: String(21 - index), bookkeepingAmount: amount, grossAmount: amount,
+        remark: `明细${index + 1}：很长的收支描述需要正常换行而且不能撑宽页面`,
+        incomeDate: date, expenseTime: date + ' 10:00:00', incomeTypeId: '1', expenseTypeId: '1',
+      };
+    });
+    if (params.sort === 'DATE_ASC') rows.reverse();
+    if (params.sort === 'AMOUNT_ASC') rows.sort((a, b) => a.bookkeepingAmount - b.bookkeepingAmount);
+    if (params.sort === 'AMOUNT_DESC') rows.sort((a, b) => b.bookkeepingAmount - a.bookkeepingAmount);
+    const start = (Number(params.page) - 1) * Number(params.pageSize);
+    return route.fulfill({ json: { code: 0, message: null, data: { items: rows.slice(start, start + Number(params.pageSize)), total: rows.length } } });
   });
+  await card.getByRole('button', { name: title + '：月', exact: true }).click();
+  await expect(card).toHaveAttribute('aria-busy', 'false');
   await card.locator('.calendar-cell').first().scrollIntoViewIfNeeded();
   const before = await card.boundingBox(); await card.locator('.calendar-cell').first().click();
   const dialog = page.getByRole('region', { name: title + '明细' }); await expect(dialog).toBeVisible();
@@ -241,13 +265,76 @@ for (const width of [390, 820, 1440]) for (const theme of ['light', 'dark']) for
   const back = dialog.getByRole('button', { name: '返回', exact: true });
   await expect(back).toBeInViewport();
   expect(await dialog.evaluate(el => el.scrollWidth > el.clientWidth + 1)).toBe(false);
+  const picker = dialog.locator('uni-picker[aria-label="明细排序"]');
+  const amounts = dialog.locator('.details-amount');
+  const total = await dialog.locator('.details-total').innerText();
+  await expect(picker).toContainText('日期降序');
+  await expect(amounts.first()).toHaveText('¥11.00');
+  await waitForMotion(page);
+  const target = await picker.boundingBox();
+  const chip = await picker.locator('.details-sort-chip').boundingBox();
+  expect(target.height).toBeGreaterThanOrEqual(44);
+  expect(chip.height).toBeLessThan(target.height);
   await page.screenshot({ path: info.outputPath('calendar-details-long-list.png') });
   expect(calls[0].endTimeBefore).toBeTruthy(); expect(calls[0].startTime.includes(' ')).toBe(kind === 'expense');
+  async function chooseOrder(label) {
+    const options = ['日期降序', '日期升序', '金额升序', '金额降序'];
+    const previous = (await picker.innerText()).trim();
+    expect(options).toContain(previous);
+    await picker.click();
+    const dropdown = page.locator('.uni-picker-select:visible');
+    const indicator = page.locator('.uni-picker-view-indicator:visible');
+    await dropdown.or(indicator).first().waitFor();
+    if (await dropdown.count()) {
+      await dropdown.getByText(label, { exact: true }).click();
+    } else {
+      const wheel = page.locator('.uni-picker-content:visible .uni-picker-view-group');
+      const { height } = await stableBox(indicator);
+      await wheel.hover();
+      const from = options.indexOf(previous), to = options.indexOf(label), step = Math.sign(to - from);
+      for (let index = from; index !== to;) {
+        index += step;
+        await page.mouse.wheel(0, height * step);
+        await expect.poll(() => wheel.getByText(options[index], { exact: true }).evaluate(element => {
+          const selected = element.closest('uni-picker-view-column').querySelector('.uni-picker-view-indicator').getBoundingClientRect();
+          const item = element.getBoundingClientRect();
+          return Math.abs(item.y + item.height / 2 - selected.y - selected.height / 2);
+        })).toBeLessThan(1);
+      }
+      await page.locator('.uni-picker-action-confirm:visible').click();
+    }
+    await expect(picker).toContainText(label);
+    await expect(dropdown.or(indicator)).toHaveCount(0);
+  }
+  const originalList = await stableBox(dialog.locator('.details-list'));
+  await chooseOrder('金额降序');
+  await expect(dialog).toContainText('模拟明细失败');
+  await expect(amounts.first()).toHaveText('¥11.00');
+  expect(await dialog.locator('.details-list').boundingBox()).toEqual(originalList);
+  failFirstSort = false;
+  const retrySort = dialog.getByRole('button', { name: '重试加载明细', exact: true });
+  await expect(retrySort).toBeInViewport();
+  await retrySort.click();
+  await expect(amounts.first()).toHaveText('¥21.00');
+  await chooseOrder('金额升序');
+  await expect(amounts.first()).toHaveText('¥1.00');
   await dialog.locator('.details-row').first().hover();
   await page.mouse.wheel(0, 10000);
-  await expect(dialog).toContainText('模拟明细失败'); fail = false;
+  await expect(dialog).toContainText('模拟明细失败'); failNextPage = false;
   await dialog.getByRole('button', { name: '重试加载', exact: true }).click(); await expect(dialog).toContainText('明细21');
-  expect(calls.map(row => row.page)).toEqual(['1', '2', '2']);
+  await expect(amounts).toHaveText(Array.from({ length: 21 }, (_, index) => `¥${index + 1}.00`));
+  await expect(dialog.locator('.details-total')).toHaveText(total);
+  await chooseOrder('日期升序');
+  await expect(amounts).toHaveCount(20);
+  await expect(amounts.first()).toHaveText('¥21.00');
+  await chooseOrder('日期降序');
+  await expect(amounts).toHaveCount(20);
+  await expect(amounts.first()).toHaveText('¥11.00');
+  expect(calls.map(row => [row.page, row.sort])).toEqual([
+    ['1', undefined], ['1', 'AMOUNT_DESC'], ['1', 'AMOUNT_DESC'],
+    ['1', 'AMOUNT_ASC'], ['2', 'AMOUNT_ASC'], ['2', 'AMOUNT_ASC'], ['1', 'DATE_ASC'], ['1', undefined],
+  ]);
+  expect(calls.every(row => row.startTime === calls[0].startTime && row.endTimeBefore === calls[0].endTimeBefore)).toBe(true);
   await expect(back).toBeInViewport();
   await dialog.getByRole('button', { name: '返回', exact: true }).click(); await expect(dialog).toHaveCount(0);
   await expect(page).toHaveURL(/pages\/home\/index/);

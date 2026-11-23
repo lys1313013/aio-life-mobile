@@ -147,8 +147,7 @@ for (const width of [390, 768, 1440]) for (const theme of ['light', 'dark']) {
     await expect(page.locator('.task-row')).toHaveCount(1);
     await expect(page.locator('.dashboard-section').getByRole('status', { name: /^正在加载/ })).toHaveCount(0);
     await expect(page.locator('.overview-card .card-progress')).toHaveCount(0);
-    // The last card can render before loadHome records its refresh timestamp.
-    // Let the initial request batch settle before advancing the clock below.
+    // 等初次加载的卡片全部完成，再模拟离开首页后的时效检查。
     await page.waitForLoadState('networkidle');
     const before = await heights(page);
     const values = await page.locator('.stat-value').allTextContents();

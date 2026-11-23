@@ -215,7 +215,7 @@ let minuteTimer: ReturnType<typeof setInterval> | null = null
 function tickTime() {
   const now = new Date()
   nowMinutes.value = now.getHours() * 60 + now.getMinutes()
-  if (refreshedAt) discardExpiredHomeContent()
+  if (dependenciesLoadedAt) discardExpiredHomeContent()
   if (active && !selectedTimeDate.value && timeDate.value && timeDate.value !== todayDate()) void loadSection('time', true)
 }
 const timeElapsed = computed(() => {
@@ -283,8 +283,8 @@ function maybeLoadMore(key: string) {
   if (!moreErrors[key]) loadMore(key)
 }
 let refreshTask: Promise<void> | null = null
-const HOME_REFRESH_INTERVAL_MS = 60 * 60 * 1000
-let refreshedAt = 0
+const HOME_DEPENDENCIES_TTL_MS = 60 * 60 * 1000
+let dependenciesLoadedAt = 0
 let preferencesRevision = -1
 let profileRevision = -1
 let overviewRevision = -1
@@ -304,7 +304,7 @@ watch(() => session.token, () => {
   githubProfile.value = ''
   homeGeneration++; refreshTask = null; cards.value = []; githubBound.value = false
   businessActive.value = false; overview.loading = false; overview.loaded = false
-  refreshedAt = 0; timeDate.value = ''; selectedTimeDate.value = ''; timeSwipe.cancel(); loading.value = false
+  dependenciesLoadedAt = 0; timeDate.value = ''; selectedTimeDate.value = ''; timeSwipe.cancel(); loading.value = false
   preferencesRevision = profileRevision = overviewRevision = -1
   for (const key of Object.keys(cardRevisions)) delete cardRevisions[key]
   for (const key of Object.keys(states)) { states[key].loading = false; states[key].error = ''; states[key].loaded = false; states[key].locked = false; states[key].revision = -1 }
@@ -402,12 +402,12 @@ function showHome() {
   timeChartActive.value = true
   restoreSession()
   if (!session.token) { goLogin(); return }
-  if (refreshedAt) discardExpiredHomeContent()
+  if (dependenciesLoadedAt) discardExpiredHomeContent()
   tickTime()
   if (minuteTimer) clearInterval(minuteTimer)
   minuteTimer = setInterval(tickTime, 60000)
   const recordChange = takeRecordChange()
-  if (!refreshedAt || Date.now() - refreshedAt >= HOME_REFRESH_INTERVAL_MS || !homeCardPreferences.ready
+  if (!dependenciesLoadedAt || Date.now() - dependenciesLoadedAt >= HOME_DEPENDENCIES_TTL_MS || !homeCardPreferences.ready
     || homeCardPreferences.error || preferencesRevision !== homeDataRevision('preferences') || errorText.value) {
     void refresh()
     return
@@ -460,7 +460,7 @@ onBeforeUnmount(() => document.removeEventListener('visibilitychange', browserVi
 
 watch(() => homeCardPreferences.items.map(item => item.cardKey + ':' + item.isEnabled).sort().join('|'), () => {
   // Saving may finish after navigating back from preferences. Reload newly enabled cards then.
-  if (active && refreshedAt && homeCardPreferences.ready && !loading.value) void refresh()
+  if (active && dependenciesLoadedAt && homeCardPreferences.ready && !loading.value) void refresh()
 })
 
 function refresh() {
@@ -483,6 +483,8 @@ async function loadHome() {
     if (!homeCardPreferences.ready || homeCardPreferences.error) throw new Error(homeCardPreferences.error || '首页设置加载失败')
     if (!isCurrent(token) || generation !== homeGeneration) return
     profileRevision = profileVersion; preferencesRevision = preferenceVersion
+    // 公共数据就绪后即可进入明细，慢卡片的请求由各自的状态在返回时续载。
+    dependenciesLoadedAt = Date.now()
     businessActive.value = true
     await nextTick()
     await Promise.all([
@@ -494,7 +496,6 @@ async function loadHome() {
       loadSection('watched'),
       loadSection('exercise'),
     ])
-    if (isCurrent(token) && generation === homeGeneration) refreshedAt = Date.now()
   } catch (error) {
     if (active && generation === homeGeneration) errorText.value = handleError(error)
   } finally {

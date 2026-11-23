@@ -59,7 +59,13 @@ export function createSummaryController(key, state, options) {
     const current = ++version, revision = options.revision(), period = scope?.key || state.period
     const bucket = scope ? summaryDay() : financial ? summaryPeriodKey(period) : key === 'device' ? summaryDay() : ''
     const valid = () => version === current && options.active() && (options.query ? options.query().key === period : state.period === period)
-    state.loading = true; state.error = ''
+    const cached = snapshots.get(period)
+    const seconds = cached?.data?.refreshInterval
+    const interval = typeof seconds === 'number' && seconds > 0 ? seconds * 1000 : 300000
+    const freshUntil = !force && !state.error && cached && cached.bucket === bucket && cached.revision === revision
+      ? cached.at + interval : 0
+    state.loading = Date.now() >= freshUntil || state.data !== cached?.data
+    state.error = ''
     const task = (async () => {
       try {
         const access = await options.access()
@@ -67,12 +73,12 @@ export function createSummaryController(key, state, options) {
         state.available = access.available
         state.locked = !!access.locked; state.unlockRoute = access.unlockRoute || ''
         if (!state.available || state.locked) { clearData(); return }
-        const cached = snapshots.get(period)
-        const interval = typeof cached?.data?.refreshInterval === 'number' && cached.data.refreshInterval > 0 ? cached.data.refreshInterval * 1000 : 300000
-        if (!force && cached && cached.bucket === bucket && cached.revision === revision && Date.now() - cached.at < interval) {
+        if (options.revision() !== revision) return
+        if (cached && Date.now() < freshUntil) {
           state.data = cached.data; state.at = cached.at; state.revision = revision
           return
         }
+        state.loading = true
         const raw = await options.fetch(scope?.path || '/home/sections/' + key + (financial ? '?period=' + period : ''))
         const data = scope ? options.read(raw, scope) : readSummary(key, raw)
         if (!valid() || options.revision() !== revision) return
@@ -83,7 +89,8 @@ export function createSummaryController(key, state, options) {
         state.available = latest.available; state.locked = !!latest.locked; state.unlockRoute = latest.unlockRoute || ''
         if (!state.available || state.locked) { clearData(); return }
         state.data = data; state.at = Date.now(); state.revision = revision; state.day = summaryDay()
-        snapshots.set(period, { data, at: state.at, revision, bucket: financial && period === 'month' ? data.month || bucket : bucket })
+        // 保留当前展示对象，复查权限时可区分同一卡面与待切换的缓存范围。
+        snapshots.set(period, { data: state.data, at: state.at, revision, bucket: financial && period === 'month' ? data.month || bucket : bucket })
       } catch (error) {
         if (!valid()) return
         if (error.name === 'ForbiddenError') { clearData(); state.available = false }

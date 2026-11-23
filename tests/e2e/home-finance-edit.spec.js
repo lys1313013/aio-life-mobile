@@ -51,6 +51,52 @@ async function setup(page, theme) {
   await page.goto('/#/pages/home/index');
   return state;
 }
+test('首页有其他请求未完成时查看支出明细，返回只续载未完成区域', async ({ page, apiMock }) => {
+  const requests = { cards: 0, profile: 0, overview: 0, expense: 0 };
+  const ok = data => ({ json: { code: 0, message: null, data } });
+  let releaseOverview;
+  const slowOverview = new Promise(resolve => { releaseOverview = resolve; });
+  await page.addInitScript(() => {
+    localStorage.setItem('aio-life-mobile.access-token.v1', JSON.stringify({ type: 'string', data: 'fixture-home-return' }));
+  });
+  apiMock({
+    'GET /api/user/info': () => { requests.profile++; return ok({ id: '134', nickname: '模拟用户' }); },
+    'GET /api/home/cards': () => {
+      requests.cards++;
+      return ok([{ cardKey: 'section.expense', title: '支出', group: 'section', isEnabled: 1, sortOrder: 0 }]);
+    },
+    'GET /api/menu/visuals': ok({ menus: [], cards: {} }),
+    'GET /api/auth/secondary-lock/menus': ok([]),
+    'GET /api/quick-nav/candidates': ok([{ path: '/finance-management/expense' }]),
+    'GET /api/dashboard/tasks': async () => {
+      if (++requests.overview === 1) await slowOverview;
+      return ok([]);
+    },
+    'GET /api/home/sections/expense/calendar': request => {
+      requests.expense++;
+      return ok(calendarFixture(new URL(request.url()), 'expense'));
+    },
+    'GET /api/expense/query': ok({ items: [{ id: '1', expenseDesc: '模拟支出明细', expenseTime: day + ' 12:00:00', bookkeepingAmount: 2345.67 }], total: 1 }),
+    'GET /api/userDictType/getByDictType': ok({ dictDetailList: [] }),
+  });
+  try {
+    await page.goto('/#/pages/home/index');
+    const card = page.locator('[aria-label="支出首页卡片"]');
+    await expect(card.locator('.calendar-total')).toHaveText('2,345.67');
+    await expect.poll(() => requests.overview).toBe(1);
+    await card.locator('.calendar-cell').first().click();
+    const details = page.getByRole('region', { name: '支出明细', exact: true });
+    await expect(details.getByRole('button', { name: '编辑支出：模拟支出明细', exact: true })).toBeVisible();
+    const before = { ...requests };
+    await details.getByRole('button', { name: '返回', exact: true }).click();
+    await expect(page).toHaveURL(/pages\/home\/index/);
+    await expect.poll(() => requests.overview).toBe(2);
+    await expect(card.locator('.calendar-total')).toHaveText('2,345.67');
+    expect(requests).toEqual({ ...before, overview: 2 });
+  } finally {
+    releaseOverview();
+  }
+});
 for (const width of [390, 820, 1440]) for (const theme of ['light', 'dark']) for (const kind of ['expense', 'income']) {
   test(`首页${kind}详情页复用编辑弹窗并同步明细与合计 ${width} ${theme}`, async ({ page }) => {
     await page.setViewportSize({ width, height: 960 });
@@ -75,11 +121,15 @@ for (const width of [390, 820, 1440]) for (const theme of ['light', 'dark']) for
     await expect(editor).toHaveCount(0);
     await expect(details).toContainText('修改后的模拟备注');
     await expect(details.locator('.details-total')).toHaveText('100.00');
+    const callsBeforeReturn = state.calls.length;
     await details.getByRole('button', { name: '返回', exact: true }).click();
     await expect(page).toHaveURL(/pages\/home\/index/);
     await expect(card.locator('.calendar-total')).toHaveText('100.00');
     const overview = page.locator('[aria-label="收支概览首页卡片"]');
     await expect(overview.locator('.calendar-metric-value').nth(kind === 'income' ? 0 : 1)).toHaveText('100.00');
+    expect(state.calls.slice(callsBeforeReturn).filter(path => path === '/home/cards' || path.startsWith('/home/sections/')).sort()).toEqual([
+      '/home/sections/' + kind + '/calendar', '/home/sections/finance/calendar',
+    ].sort());
     expect(state.writes).toHaveLength(1);
     expect(state.writes[0].body.id || state.writes[0].pathname.split('/').pop()).toBe(state.rows[kind].id);
     if (kind === 'expense') { expect(state.writes[0].body.transactionId).toBe('fixture-order'); expect(state.writes[0].body.transactionAmount).toBe(99); }
