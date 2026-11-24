@@ -1,0 +1,130 @@
+<script setup lang="ts">
+import { computed, onUnmounted, ref } from 'vue';
+import AdaptiveModal from '../../../components/AdaptiveModal.uvue';
+import AppIcon from '../../../components/AppIcon.uvue';
+import ConfirmAction from '../../../components/ConfirmAction.uvue';
+import FormActions from '../../../components/FormActions.uvue';
+import FormField from '../../../components/FormField.uvue';
+import MobileButton from '../../../components/MobileButton.uvue';
+import { isRequired, missingRequired } from '../../../services/form-required.ts';
+import { themeClass } from '../../../services/theme.ts';
+import { deletePerson, savePerson } from '../services/relationship.ts';
+import { schoolFields } from '../services/person-fields.ts';
+
+const props = defineProps<{ person?: Record<string, any> }>();
+const emit = defineEmits(['close', 'saved', 'removed']);
+const modal = ref<{ close: () => void } | null>(null);
+const draft = ref(props.person ? { ...props.person } : {
+  name: '', category: '其他', description: '', tags: '', birthday: '', phone: '', email: '',
+  primarySchool: '', juniorHighSchool: '', highSchool: '', undergraduateSchool: '',
+  mastersSchool: '', doctoralSchool: '', socialLinks: '', notes: '', avatar: '',
+});
+const busy = ref(false), formError = ref('');
+const showContactFields = ref(false), showSchoolFields = ref(false), showMoreFields = ref(false);
+const contactFieldCount = computed(() => ['birthday', 'phone', 'email'].filter(key => String(draft.value[key] ?? '').trim()).length);
+const moreFieldCount = computed(() => ['avatar', 'tags', 'socialLinks', 'notes'].filter(key => String(draft.value[key] ?? '').trim()).length);
+const schoolFieldCount = computed(() => schoolFields.filter(field => String(draft.value[field.key] ?? '').trim()).length);
+let active = true;
+onUnmounted(() => { active = false; });
+
+async function save() {
+  if (busy.value) return;
+  if (missingRequired('person', draft.value)) {
+    formError.value = '请输入姓名';
+    return;
+  }
+  busy.value = true;
+  formError.value = '';
+  try {
+    await savePerson(draft.value);
+    if (active) emit('saved');
+  } catch (error) {
+    if (active) formError.value = error.message;
+  } finally {
+    busy.value = false;
+  }
+}
+
+async function remove() {
+  busy.value = true;
+  try {
+    await deletePerson(String(draft.value.id));
+  } finally {
+    busy.value = false;
+  }
+}
+</script>
+<template>
+  <AdaptiveModal ref="modal" label="人物" :busy="busy" :max-width="500" @close="emit('close')">
+      <view class="ui-field-row">
+        <FormField compact stretch appearance="soft" :required="isRequired('person', 'name')" label="姓名" placeholder="请输入姓名" v-model="draft.name" />
+        <FormField compact stretch appearance="soft" label="分类" kind="selector" :options="['亲属', '社会', '情感', '其他']" v-model="draft.category" />
+      </view>
+      <FormField appearance="soft" label="介绍" kind="textarea" textarea-size="compact" placeholder="简短描述这个人" v-model="draft.description" />
+      <view class="editor-section">
+        <button hover-class="none" role="button" aria-label="联系信息" :aria-expanded="showContactFields" class="editor-section-toggle" :class="themeClass('editor-section-toggle')" @click="showContactFields = !showContactFields">
+          <text class="editor-section-title" :class="themeClass('editor-section-title')">联系信息</text>
+          <text v-if="contactFieldCount" class="editor-section-summary" :class="themeClass('editor-section-summary')">已填写 {{ contactFieldCount }} 项</text>
+          <AppIcon :name="showContactFields ? 'ant-design:up-outlined' : 'ant-design:down-outlined'" :size="14" />
+        </button>
+        <view v-if="showContactFields" class="editor-section-fields">
+          <view class="ui-field-row">
+            <FormField compact stretch appearance="soft" label="生日" kind="date" v-model="draft.birthday" />
+            <FormField compact stretch appearance="soft" label="电话" placeholder="电话号码" v-model="draft.phone" />
+          </view>
+          <FormField appearance="soft" label="邮箱" v-model="draft.email" />
+        </view>
+      </view>
+      <view class="editor-section">
+        <button hover-class="none" role="button" aria-label="教育经历" :aria-expanded="showSchoolFields" class="editor-section-toggle" :class="themeClass('editor-section-toggle')" @click="showSchoolFields = !showSchoolFields">
+          <text class="editor-section-title" :class="themeClass('editor-section-title')">教育经历</text>
+          <text v-if="schoolFieldCount" class="editor-section-summary" :class="themeClass('editor-section-summary')">已填写 {{ schoolFieldCount }} 项</text>
+          <AppIcon :name="showSchoolFields ? 'ant-design:up-outlined' : 'ant-design:down-outlined'" :size="14" />
+        </button>
+        <view v-if="showSchoolFields" class="editor-section-fields">
+          <FormField v-for="field in schoolFields" :key="field.key" appearance="soft" :label="field.label" v-model="draft[field.key]" />
+        </view>
+      </view>
+      <view class="editor-section">
+        <button hover-class="none" role="button" aria-label="更多资料" :aria-expanded="showMoreFields" class="editor-section-toggle" :class="themeClass('editor-section-toggle')" @click="showMoreFields = !showMoreFields">
+          <text class="editor-section-title" :class="themeClass('editor-section-title')">更多资料</text>
+          <text v-if="moreFieldCount" class="editor-section-summary" :class="themeClass('editor-section-summary')">已填写 {{ moreFieldCount }} 项</text>
+          <AppIcon :name="showMoreFields ? 'ant-design:up-outlined' : 'ant-design:down-outlined'" :size="14" />
+        </button>
+        <view v-if="showMoreFields" class="editor-section-fields">
+          <FormField appearance="soft" label="头像URL" placeholder="https://" v-model="draft.avatar" />
+          <FormField appearance="soft" label="标签" placeholder="多个标签用逗号分隔" v-model="draft.tags" />
+          <FormField appearance="soft" label="社交链接" kind="textarea" textarea-size="compact" v-model="draft.socialLinks" />
+          <FormField appearance="soft" label="备注" kind="textarea" textarea-size="compact" v-model="draft.notes" />
+        </view>
+      </view>
+      <text v-if="formError" role="alert" class="error ui-py-section ui-type-body">{{ formError }}</text>
+      <view class="editor-actions">
+        <FormActions>
+          <template #secondary>
+            <ConfirmAction v-if="draft.id" label="删除人物和关联关系" :action="remove" :trigger-disabled="busy" @success="emit('removed')" />
+          </template>
+          <MobileButton label="取消" variant="quiet" :disabled="busy" @click="modal?.close()" />
+          <MobileButton label="保存" :loading="busy" @click="save" />
+        </FormActions>
+      </view>
+    </AdaptiveModal>
+</template>
+<style scoped lang="scss">
+@use '../../../styles/platform' as *;
+@use '../../../styles/typography' as *;
+@use '../../../styles/text-colors' as *;
+@use '../../../styles/spacing.scss';
+@use '../../../styles/spacing-tokens' as *;
+@include type-utilities('body');
+.editor-section-toggle { width: 100%; min-height: $space-controlMin; margin: 0; padding: 0; display: flex; flex-direction: row; align-items: center; gap: $space-inline; background-color: transparent; color: #52525b; text-align: left; }
+.editor-section-toggle-dark { color: #d4d4d8; }
+.editor-section-title { flex: 1; @include type-style('label'); color: $text-secondary-light; }
+.editor-section-title-dark { color: $text-secondary-dark; }
+.editor-section-summary { @include type-style('caption'); color: $text-secondary-light; }
+.editor-section-summary-dark { color: $text-secondary-dark; }
+.editor-section-fields { padding-top: $space-inline; }
+.editor-actions { padding-top: $space-inline; }
+.editor-section-toggle { @include borderless-button; }
+.error { color: #dc5454; }
+</style>

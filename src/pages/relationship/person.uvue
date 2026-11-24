@@ -1,0 +1,344 @@
+<script setup lang="ts">
+import { onLoad } from '@dcloudio/uni-app';
+import { computed, ref } from 'vue';
+import AdaptiveModal from '../../components/AdaptiveModal.uvue';
+import AppIcon from '../../components/AppIcon.uvue';
+import ConfirmAction from '../../components/ConfirmAction.uvue';
+import ContentSkeleton from '../../components/ContentSkeleton.uvue';
+import FormActions from '../../components/FormActions.uvue';
+import FormField from '../../components/FormField.uvue';
+import MobileButton from '../../components/MobileButton.uvue';
+import MobilePage from '../../components/MobilePage.uvue';
+import ModalMotion from '../../components/ModalMotion.uvue';
+import PageHeader from '../../components/PageHeader.uvue';
+import PageState from '../../components/PageState.uvue';
+import { useDomainPage } from '../../services/domains/page-session.ts';
+import { isRequired, missingRequired } from '../../services/form-required.ts';
+import { isDark, themeClass } from '../../services/theme.ts';
+import PersonEditor from './components/PersonEditor.uvue';
+import { schoolFields } from './services/person-fields.ts';
+import { categoryColor } from './services/relationship-layout.ts';
+import { deleteRelationship, fetchGraph, fetchPerson, saveRelationship } from './services/relationship.ts';
+
+const id = ref('');
+const person = ref<any>(null);
+const loading = ref(false), refreshing = ref(false), error = ref('');
+const editingPerson = ref(false);
+const relation = ref<any>(null);
+const relationModal = ref<{ close: () => void } | null>(null);
+const people = ref<any[] | null>(null);
+const optionsLoading = ref(false), optionsError = ref('');
+const busy = ref(false), formError = ref('');
+let active = false, generation = 0, detailRequest = 0, optionsRequest = 0;
+
+onLoad(query => { id.value = String(query?.id || ''); });
+
+const labels = [
+  { key: 'birthday', label: '生日' },
+  { key: 'phone', label: '电话' },
+  { key: 'email', label: '邮箱' },
+  ...schoolFields,
+  { key: 'tags', label: '标签' },
+  { key: 'socialLinks', label: '社交链接' },
+  { key: 'notes', label: '备注' },
+];
+const fields = computed(() => labels
+  .map(field => ({ ...field, value: String(person.value?.[field.key] ?? '').trim() }))
+  .filter(field => field.value));
+const otherPeople = computed(() => (people.value ?? []).filter(item => item.id !== id.value));
+const personColor = computed(() => categoryColor(person.value?.category, isDark.value));
+const secondaryInk = computed(() => isDark.value ? '#a0a6b1' : '#626e82');
+const relationTypes = ['父母', '母亲', '父亲', '子女', '配偶', '恋人', '兄弟姐妹', '朋友', '挚友', '同学', '同事', '老师', '学生', 'mentor', '前任', '暗恋', '其他'];
+
+function back() {
+  uni.navigateBack({ fail: () => uni.redirectTo({ url: '/pages/relationship/index' }) });
+}
+
+async function load(refresh = false) {
+  if (refresh && loading.value) return;
+  const request = ++detailRequest;
+  if (!id.value) {
+    error.value = '缺少人物编号';
+    return;
+  }
+  loading.value = true;
+  refreshing.value = refresh;
+  error.value = '';
+  try {
+    const data = await fetchPerson(id.value);
+    if (active && request === detailRequest) person.value = data;
+  } catch (reason) {
+    if (active && request === detailRequest) error.value = reason.message;
+  } finally {
+    if (active && request === detailRequest) {
+      loading.value = false;
+      refreshing.value = false;
+    }
+  }
+}
+useDomainPage(refresh => {
+  active = true;
+  if (refresh) return load();
+}, clear => {
+  active = false;
+  generation++;
+  detailRequest++;
+  optionsRequest++;
+  loading.value = false;
+  refreshing.value = false;
+  optionsLoading.value = false;
+  editingPerson.value = false;
+  relation.value = null;
+  if (clear) {
+    person.value = null;
+    people.value = null;
+    error.value = '';
+  }
+}, { loading: () => loading.value, error: () => error.value, keys: () => ['relationships'], context: () => id.value });
+
+function refresh() {
+  people.value = null;
+  void load(true);
+}
+function personSaved() {
+  editingPerson.value = false;
+  void load();
+}
+
+async function loadPeople() {
+  if (optionsLoading.value) return;
+  const request = ++optionsRequest;
+  optionsLoading.value = true;
+  optionsError.value = '';
+  try {
+    const data = await fetchGraph();
+    if (active && request === optionsRequest) people.value = data.nodes;
+  } catch (reason) {
+    if (active && request === optionsRequest) optionsError.value = reason.message;
+  } finally {
+    if (active && request === optionsRequest) optionsLoading.value = false;
+  }
+}
+function editRelation(item: any = null) {
+  relation.value = item
+    ? { ...item, sourcePersonId: id.value, targetPersonId: item.target.id }
+    : { sourcePersonId: id.value, targetPersonId: '', relationType: '朋友', direction: '双向', description: '', tags: '' };
+  formError.value = '';
+  if (people.value === null) void loadPeople();
+}
+function targetLabel(item: any) {
+  return otherPeople.value.filter(value => value.name === item.name).length > 1 ? item.name + ' · ' + item.id : item.name;
+}
+const targetName = computed({
+  get: () => {
+    const item = otherPeople.value.find(value => value.id === relation.value?.targetPersonId);
+    return item ? targetLabel(item) : '';
+  },
+  set: value => {
+    if (relation.value) relation.value.targetPersonId = otherPeople.value.find(item => targetLabel(item) === value)?.id || '';
+  },
+});
+
+async function saveRel() {
+  if (busy.value) return;
+  if (missingRequired('relation', relation.value) || relation.value.targetPersonId === id.value) {
+    formError.value = '请选择其他人物';
+    return;
+  }
+  const version = generation;
+  busy.value = true;
+  formError.value = '';
+  try {
+    await saveRelationship(relation.value);
+    if (active && version === generation) {
+      relation.value = null;
+      await load();
+    }
+  } catch (reason) {
+    if (active && version === generation) formError.value = reason.message;
+  } finally {
+    busy.value = false;
+  }
+}
+async function removeRel() {
+  const item = person.value.relationships.find(value => value.id === relation.value.id);
+  if (!item) throw new Error('这条关系已不存在');
+  busy.value = true;
+  try {
+    await deleteRelationship(item.id);
+  } finally {
+    busy.value = false;
+  }
+}
+function relationRemoved() {
+  const removedId = relation.value.id;
+  relation.value = null;
+  person.value.relationships = person.value.relationships.filter(item => item.id !== removedId);
+  void load();
+}
+</script>
+
+<template>
+  <MobilePage :refreshing="refreshing" @refresh="refresh">
+    <PageHeader title="人物详情" back @back="back" />
+    <view class="ui-page-body">
+      <PageState skeleton="form" :loading="loading" :has-content="!!person" :error="error" @retry="load()">
+        <template #loading>
+          <view class="profile-card" :class="themeClass('profile-card')">
+            <ContentSkeleton variant="profile-row" label="正在加载人物详情" />
+          </view>
+        </template>
+        <view v-if="person" class="profile-body">
+          <button class="profile-card profile-button" :class="themeClass('profile-card')" hover-class="none"
+            role="button" aria-label="编辑人物" @click="editingPerson = true">
+            <view class="profile-identity">
+              <view class="profile-avatar" :class="themeClass('profile-avatar')" aria-hidden="true">
+                <text class="avatar-letter" :style="{ color: personColor }">{{ person.name.slice(0, 1) }}</text>
+              </view>
+              <view class="profile-summary">
+                <text class="profile-name profile-ink" :class="themeClass('profile-ink')">{{ person.name }}</text>
+                <view v-if="person.category" class="profile-category">
+                  <view class="category-dot" :style="{ backgroundColor: personColor }" aria-hidden="true" />
+                  <text class="profile-caption" :class="themeClass('profile-caption')">{{ person.category }}</text>
+                </view>
+              </view>
+              <AppIcon name="ant-design:right-outlined" :size="16" :color="secondaryInk" />
+            </view>
+            <text v-if="person.description" class="profile-description profile-ink" :class="themeClass('profile-ink')">{{ person.description }}</text>
+            <view v-if="fields.length" class="profile-fields">
+              <view v-for="field in fields" :key="field.key" class="profile-field">
+                <text class="profile-label" :class="themeClass('profile-label')">{{ field.label }}</text>
+                <text class="profile-value profile-ink" :class="themeClass('profile-ink')">{{ field.value }}</text>
+              </view>
+            </view>
+          </button>
+
+          <view class="profile-relations">
+            <view class="relations-heading">
+              <view class="relations-heading-text">
+                <text class="relations-title profile-ink" :class="themeClass('profile-ink')">关系</text>
+                <text class="profile-caption" :class="themeClass('profile-caption')">{{ person.relationships.length }}</text>
+              </view>
+              <MobileButton label="新增关系" icon="ant-design:plus-outlined" variant="ghost" @click="editRelation()" />
+            </view>
+            <view v-if="person.relationships.length" class="relation-list">
+              <button v-for="item in person.relationships" :key="item.id" class="profile-card relation-button"
+                :class="themeClass('profile-card')" hover-class="none" role="button" :aria-label="'编辑关系：' + item.target.name"
+                @click="editRelation(item)">
+                <view class="relation-copy">
+                  <text class="relation-name profile-ink" :class="themeClass('profile-ink')">{{ item.target.name }}</text>
+                  <text class="profile-caption" :class="themeClass('profile-caption')">{{ item.relationType }}{{ item.direction ? ' · ' + item.direction : '' }}</text>
+                  <text v-if="item.description" class="relation-description profile-ink" :class="themeClass('profile-ink')">{{ item.description }}</text>
+                  <text v-if="item.tags" class="profile-caption" :class="themeClass('profile-caption')">{{ item.tags }}</text>
+                </view>
+                <AppIcon name="ant-design:right-outlined" :size="16" :color="secondaryInk" />
+              </button>
+            </view>
+            <view v-else class="profile-card relation-empty" :class="themeClass('profile-card')">
+              <text class="profile-caption" :class="themeClass('profile-caption')">暂无关系</text>
+            </view>
+          </view>
+        </view>
+      </PageState>
+    </view>
+
+    <template #fixed>
+      <ModalMotion>
+        <PersonEditor v-if="editingPerson && person" :person="person" @close="editingPerson = false" @saved="personSaved" @removed="back" />
+      </ModalMotion>
+      <ModalMotion>
+        <AdaptiveModal v-if="relation" ref="relationModal" label="关系" :busy="busy" :loading="optionsLoading"
+          :load-error="optionsError" :max-width="500" @close="relation = null" @retry="loadPeople">
+          <FormField appearance="soft" :required="isRequired('relation', 'targetPersonId')" label="关联人物" kind="selector"
+            :options="otherPeople.map(item => targetLabel(item))" v-model="targetName" />
+          <view class="ui-field-row">
+            <FormField compact stretch appearance="soft" label="关系类型" kind="selector" :options="relationTypes" v-model="relation.relationType" />
+            <FormField compact stretch appearance="soft" label="方向" kind="selector" :options="['单向', '双向']" v-model="relation.direction" />
+          </view>
+          <FormField appearance="soft" label="说明" kind="textarea" textarea-size="compact" v-model="relation.description" />
+          <FormField appearance="soft" label="标签" placeholder="多个标签用逗号分隔" v-model="relation.tags" />
+          <text v-if="formError" role="alert" class="error ui-py-section ui-type-body">{{ formError }}</text>
+          <FormActions>
+            <template #secondary>
+              <ConfirmAction v-if="relation.id" label="删除关系" :action="removeRel" :trigger-disabled="busy" @success="relationRemoved" />
+            </template>
+            <MobileButton label="取消" variant="quiet" :disabled="busy" @click="relationModal?.close()" />
+            <MobileButton label="保存关系" :loading="busy" @click="saveRel" />
+          </FormActions>
+        </AdaptiveModal>
+      </ModalMotion>
+    </template>
+  </MobilePage>
+</template>
+
+<style scoped lang="scss">
+@use 'sass:map';
+@use '../../styles/platform' as *;
+@use '../../styles/spacing.scss';
+@use '../../styles/spacing-tokens' as *;
+@use '../../styles/text-colors' as *;
+@use '../../styles/theme-tokens' as *;
+@use '../../styles/typography' as *;
+@include type-utilities('body');
+
+.profile-body { display: flex; flex-direction: column; }
+.profile-card {
+  box-sizing: border-box;
+  width: 100%;
+  margin: 0;
+  padding: $space-card;
+  border-radius: 16px;
+  @include button-background($theme-surface-light);
+}
+.profile-card-dark { @include button-background($theme-surface-dark); }
+.profile-button, .relation-button {
+  display: flex;
+  text-align: left;
+  @include borderless-button;
+}
+.profile-button { flex-direction: column; }
+.profile-identity { display: flex; flex-direction: row; align-items: center; }
+.profile-avatar {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: $space-controlMin + $space-section;
+  height: $space-controlMin + $space-section;
+  border-radius: 50%;
+  background-color: $theme-page-light;
+}
+.profile-avatar-dark { background-color: $theme-page-dark; }
+.avatar-letter { @include type-style('avatar'); }
+.profile-summary { display: flex; flex-direction: column; flex: 1; min-width: 0; margin: 0 $space-card; }
+.profile-name { @include type-style('heading'); @include wrap-long-text; }
+.profile-category { display: flex; flex-direction: row; align-items: center; margin-top: $space-detail; }
+.category-dot { width: $space-inline; height: $space-inline; margin-right: $space-detail; border-radius: 50%; }
+.profile-description { @include type-style('prose'); @include wrap-long-text; margin-top: $space-card; }
+.profile-fields { display: flex; flex-direction: column; margin-top: $space-detail; }
+.profile-field { display: flex; flex-direction: row; align-items: flex-start; margin-top: $space-inline; }
+.profile-label {
+  width: map.get(type-role('body'), size) * 4;
+  flex-shrink: 0;
+  margin-right: $space-inline;
+  @include type-style('body');
+  color: $text-secondary-light;
+}
+.profile-label-dark { color: $text-secondary-dark; }
+.profile-value { flex: 1; min-width: 0; @include type-style('body'); @include wrap-long-text; }
+.profile-ink { color: #263248; }
+.profile-ink-dark { color: #e7e9ee; }
+.profile-caption { @include type-style('label'); @include wrap-long-text; color: $text-secondary-light; }
+.profile-caption-dark { color: $text-secondary-dark; }
+
+.profile-relations { margin-top: $space-section; }
+.relations-heading, .relations-heading-text { display: flex; flex-direction: row; align-items: center; }
+.relations-heading { justify-content: space-between; }
+.relations-title { @include type-style('title'); margin-right: $space-inline; }
+.relation-button { flex-direction: row; align-items: center; min-height: $space-controlMin; margin-bottom: $space-inline; }
+.relation-copy { display: flex; flex-direction: column; flex: 1; min-width: 0; margin-right: $space-card; }
+.relation-name { @include type-style('body-strong'); @include wrap-long-text; }
+.relation-description { @include type-style('body'); @include wrap-long-text; margin-top: $space-detail; }
+.relation-empty { align-items: center; }
+.error { color: #dc5454; }
+</style>
