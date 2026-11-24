@@ -22,7 +22,7 @@ for (const file of readdirSync(svgDirectory).filter(file => file.endsWith('.svg'
   const inherited = attributes.filter(attr => !['width', 'height', 'viewBox', 'version'].includes(attr[1])).map(attr => attr[0]).join(' ')
   icons[`svg:${file.slice(0, -4)}`] = { body: `<g ${inherited}>${match[2].trim()}</g>`, left, top, width, height }
 }
-const config = readFileSync(resolve(web, 'apps/web-antd/src/views/my-hub/exercise/category-config/config.ts'), 'utf8')
+const config = readFileSync(resolve(web, 'apps/web-antd/src/constants/dict-category.ts'), 'utf8')
 const exercisePresets = [...new Set([...config.matchAll(/\{ icon: '([^']+)' \}/g)].map(match => match[1]))]
 const availableCollections = requireWeb('@iconify/json/collections.json')
 const names = new Set(exercisePresets)

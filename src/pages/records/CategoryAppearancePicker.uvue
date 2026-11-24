@@ -20,7 +20,7 @@ const options = computed(() => {
 <template>
   <FormField label="图标" compact>
     <view class="appearance-current"><CategoryIcon :icon="icon" :color="color" :size="28" /><text class="appearance-caption" :class="{ 'appearance-caption-dark': isDark }">{{ icon || '使用颜色标记' }}</text></view>
-    <FormField label="搜索图标" hide-label compact><input class="appearance-search" :class="{ 'appearance-search-dark': isDark }" aria-label="搜索图标" placeholder="搜索图标名称，如 run、book" :value="search" :disabled="disabled" @input="search = $event.detail.value" /></FormField>
+    <FormField v-model="search" label="搜索图标" hide-label compact placeholder="搜索图标名称，如 run、book" :disabled="disabled" />
     <scroll-view scroll-y class="appearance-scroll">
       <view class="appearance-grid">
         <button hover-class="none" role="button" v-for="key in options" :key="key" class="appearance-option" :class="{ 'appearance-selected': icon === key }" :aria-label="'选择图标 ' + key" :aria-pressed="icon === key" :disabled="disabled" :aria-disabled="disabled" @click="emit('update:icon', key)"><CategoryIcon :icon="key" :color="color" :size="26" /></button>
@@ -43,8 +43,6 @@ const options = computed(() => {
 .appearance-current { flex-direction: row; align-items: center; gap: $space-inline; min-height: $space-controlMin; }
 .appearance-caption { @include type-style('caption'); color: #64748b; overflow-wrap: anywhere; }
 .appearance-caption-dark { color: #b4bdca; }
-.appearance-search { @include type-style('body'); min-height: $space-controlMin; color: #27272a; }
-.appearance-search-dark { color: #eeeeef; }
 // 有界图标目录避免长表单被全部选项撑开。
 .appearance-scroll { height: calc(#{$space-controlMin} * 3 + #{$space-detail} * 2); }
 .appearance-grid { flex-direction: row; flex-wrap: wrap; gap: $space-detail; }
