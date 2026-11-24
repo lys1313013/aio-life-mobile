@@ -74,9 +74,16 @@ onUnmounted(() => {
 </template>
 <style scoped lang="scss">
 @use '../styles/spacing-tokens' as *;
-.category-pager { width: calc(100% + #{$space-section}); min-width: 0; }
+.category-pager { width: 100%; min-width: 0; }
 .category-pager-scroll { height: 100%; }
-.category-pager-page { box-sizing: border-box; padding-right: $space-section; padding-bottom: calc(56px + #{$space-page} + #{$space-inline} + env(safe-area-inset-bottom)); }
+.category-pager-page { box-sizing: border-box; }
+/* #ifdef APP */
+.category-pager-page { padding-bottom: 56px + $space-page + $space-inline; padding-bottom: calc(56px + #{$space-page} + #{$space-inline} + var(--uni-safe-area-inset-bottom, 0px)); }
+/* #endif */
+/* #ifndef APP */
+.category-pager { width: calc(100% + #{$space-section}); }
+.category-pager-page { padding-right: $space-section; padding-bottom: calc(56px + #{$space-page} + #{$space-inline} + env(safe-area-inset-bottom)); }
+/* #endif */
 /* #ifdef WEB */
 .category-pager { cursor: grab; user-select: none; }
 .category-pager:active { cursor: grabbing; }

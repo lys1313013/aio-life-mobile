@@ -53,6 +53,13 @@ for (const width of [320, 390, 768, 1440]) for (const theme of ['light', 'dark']
     await page.setViewportSize({ width, height: viewportHeight });
     await page.emulateMedia({ colorScheme: theme });
     const dialog = await prepare(page, baseURL);
+    const surface = theme === 'dark' ? 'rgb(28, 30, 34)' : 'rgb(255, 255, 255)';
+    const border = theme === 'dark' ? 'rgb(54, 57, 64)' : 'rgb(216, 221, 228)';
+    // 公共字段和自绘银行搜索框都由外层控件绘制底色与边框。
+    for (const field of [dialog.locator('.form-field-input').first(), dialog.locator('.bank-input-row')]) {
+      await expect(field).toHaveCSS('background-color', surface);
+      await expect(field).toHaveCSS('border-top', `1px solid ${border}`);
+    }
     const input = dialog.getByRole('searchbox', { name: '银行', exact: true });
     await input.fill('LONG');
     await dialog.getByRole('button', { name: '选择' + banks.at(-1).name, exact: true }).click();

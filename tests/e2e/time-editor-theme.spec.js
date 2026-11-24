@@ -1,4 +1,5 @@
 const { test, expect } = require('./support/test');
+const { waitForMotion } = require('./support/motion');
 
 const day = '2026-10-15';
 const categories = [
@@ -91,6 +92,7 @@ for (const width of [390, 768, 1440]) for (const theme of ['light', 'dark']) {
     await expect(editSet).toBeVisible();
     await press(page, editSet.getByRole('button', { name: '保存', exact: true }));
     await expect(editSet).toHaveCount(0);
+    await waitForMotion(page);
     await page.screenshot({ path: `${prefix}-editor.png` });
     await press(page, editor.getByRole('button', { name: '选择分类', exact: true }));
     await press(page, category.getByRole('button', { name: '阅读', exact: true }));

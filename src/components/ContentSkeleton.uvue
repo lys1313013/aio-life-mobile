@@ -1,12 +1,17 @@
 <script setup lang="ts">
+import { computed, inject } from 'vue';
+import FormSkeleton from './FormSkeleton.uvue';
 import { useAppLayout } from '../services/app-layout.ts'
 const { appGridItem } = useAppLayout()
 
 import { themeClass } from '../services/theme.ts';
-withDefaults(defineProps<{ variant?: string; rows?: number; label?: string; compact?: boolean; metrics?: number }>(), { variant: 'list', rows: 3, label: '正在加载内容', metrics: 4 });
+const props = withDefaults(defineProps<{ variant?: string; rows?: number; label?: string; compact?: boolean; metrics?: number }>(), { variant: 'list', rows: 3, label: '正在加载内容', metrics: 4 });
+const insideModal = inject('mobile-modal', false);
+const fieldRows = computed(() => Array.from({ length: props.rows }, () => 'field'));
 </script>
 <template>
-  <view class="content-skeleton" :class="[themeClass('content-skeleton'), { 'skeleton-cover-root': variant === 'cover' }]" role="status" :aria-label="label" aria-live="polite">
+  <FormSkeleton v-if="insideModal && variant === 'form'" :rows="fieldRows" :label="label" :actions="false" />
+  <view v-else class="content-skeleton" :class="[themeClass('content-skeleton'), { 'skeleton-cover-root': variant === 'cover' }]" role="status" :aria-label="label" aria-live="polite">
     <view class="skeleton-content" :class="{ 'skeleton-cover-content': variant === 'cover' }" aria-hidden="true">
       <view v-if="variant === 'cover'" class="skeleton-cover" :class="themeClass('skeleton-cover')"><view class="skeleton-cover-shimmer" :class="themeClass('skeleton-cover-shimmer')" /></view>
       <view v-if="variant === 'caption'" class="skeleton-shape skeleton-short" :class="themeClass('skeleton-shape')" />

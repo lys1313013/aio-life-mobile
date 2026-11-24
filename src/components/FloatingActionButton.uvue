@@ -12,6 +12,7 @@ const props = withDefaults(
     loading?: boolean
     bottom?: number
     right?: number
+    fullWidth?: boolean
   }>(),
   { label: '新增', disabled: false, loading: false, bottom: spacing.page + spacing.inline, right: spacing.page + spacing.inline },
 )
@@ -20,7 +21,7 @@ const tabInset = tabBarInset()
 const viewportWidth = ref(uni.getWindowInfo().windowWidth)
 useWindowResize(() => { viewportWidth.value = uni.getWindowInfo().windowWidth })
 // 与 MobilePage 的 ui-page-inset 共用 contentMax，保留原有页内偏移。
-const contentRight = computed(() => Math.max(0, (viewportWidth.value - spacing.contentMax) / 2) + props.right)
+const contentRight = computed(() => (props.fullWidth ? 0 : Math.max(0, (viewportWidth.value - spacing.contentMax) / 2)) + props.right)
 function activate() {
   if (!props.disabled && !props.loading) emit('click')
 }

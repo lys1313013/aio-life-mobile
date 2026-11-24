@@ -23,22 +23,25 @@ const props = withDefaults(
     options?: string[];
     error?: string;
     disabled?: boolean;
+    focus?: boolean;
     placeholder?: string;
     password?: boolean;
     revealable?: boolean;
     inputType?: string;
-    appearance?: 'soft';
+    appearance?: 'soft' | 'search';
     textareaSize?: 'regular' | 'compact';
   }>(),
   { modelValue: '', kind: 'text', options: () => [], hideLabel: false },
 );
+const softAppearance = computed(() => !insideModal && props.appearance === 'soft');
 const inputClasses = computed(() => [
   themeClass('form-field-input'),
   {
-    'form-field-input-soft': props.appearance === 'soft',
+    'form-field-input-soft': softAppearance.value,
+    'form-field-input-search': !insideModal && props.appearance === 'search',
     'form-field-textarea-compact': props.kind === 'textarea' && (props.textareaSize === 'compact' || (props.appearance === 'soft' && props.textareaSize !== 'regular')),
   },
-  themeClass({ 'form-field-input-soft': props.appearance === 'soft' }),
+  themeClass({ 'form-field-input-soft': softAppearance.value }),
 ]);
 const instance = getCurrentInstance();
 const passwordVisible = ref(false);
@@ -65,7 +68,7 @@ function change(event) {
   <view class="form-field" :class="[themeClass('form-field'), { 'form-field-compact': compact, 'form-field-stretch': stretch }]">
     <view v-if="!hideLabel" class="form-field-heading">
       <RequiredMark v-if="required" />
-      <text :style="appearance === 'soft' ? {} : appTextColor()" class="form-field-label" :class="[{ 'form-field-label-soft': appearance === 'soft' }, themeClass({ 'form-field-label-soft': appearance === 'soft' })]">{{ label }}</text>
+      <text :style="softAppearance ? {} : appTextColor()" class="form-field-label" :class="[{ 'form-field-label-soft': softAppearance }, themeClass({ 'form-field-label-soft': softAppearance })]">{{ label }}</text>
       <view v-if="$slots.labelAction" class="form-field-label-action"><slot name="labelAction" /></view>
     </view>
     <slot>
@@ -142,6 +145,7 @@ function change(event) {
         :password="password || kind === 'password'"
         :placeholder="placeholder"
         :disabled="disabled"
+        :focus="focus"
         :aria-label="label"
         :aria-required="!!required"
         :adjust-position="!insideModal"
@@ -153,6 +157,7 @@ function change(event) {
   </view>
 </template>
 <style scoped lang="scss">
+@use '../styles/form-control' as form-control;
 @use '../styles/platform' as *;
 @use '../styles/typography' as *;
 @use '../styles/text-colors' as *;
@@ -185,16 +190,13 @@ function change(event) {
   padding: 0 $space-card;
   min-height: $space-controlMin;
 
-  border-radius: 10px;
-  background-color: #ffffff;
-  border: 1px solid #d8dde4;
+  @include form-control.surface;
   justify-content: center;
   @include type-style('body');
   color: #27272a;
 }
 .form-field-input-dark {
-  background-color: #1c1e22;
-  border-color: #363940;
+  @include form-control.dark;
   color: #eeeeef;
 }
 .form-field-picker {
@@ -273,6 +275,10 @@ color: inherit;
 .form-field-input-soft-dark {
   background-color: #272a30;
   color: #dce0e7;
+}
+.form-field-input-search {
+  border-radius: 12px;
+  background-color: transparent;
 }
 .form-field-placeholder { color: $text-secondary-light; }
 .form-field-placeholder-dark { color: $text-secondary-dark; }

@@ -36,10 +36,23 @@ test('App 网格随窗口变化、整行摘要在平板恢复等宽，账本保�
   const layout = m.useAppLayout();
   assert.equal(layout.appGridItem(2, 'section', [[700, 3]], true).width, 'calc((100% - 0px) / 1)');
   assert.equal(layout.appGridItem(2, 'section').width, `calc((100% - ${spacing.section}px) / 2)`);
+  const gutter = `${spacing.section}px`;
+  const columns = [[600, 3], [1000, 4]];
+  assert.deepEqual(
+    Array.from({ length: 5 }, (_, index) => {
+      const { marginRight, marginBottom } = layout.appGridCell(index, 5, 2, 'section', columns);
+      return [marginRight, marginBottom];
+    }),
+    [[gutter, gutter], ['0px', gutter], [gutter, gutter], ['0px', gutter], [gutter, '0px']],
+  );
   m.windowInfo.windowWidth = 768; m.resize();
   assert.equal(layout.appGridItem(2, 'section', [[700, 3]], true).width, `calc((100% - ${spacing.section * 2}px) / 3)`);
   assert.equal(layout.appLedgerCell(true).width, '72px');
   assert.equal(layout.appLedgerCell(false).width, `calc((100% - ${72 + spacing.detail * 3}px) / 3)`);
+  assert.equal(layout.appGridCell(2, 5, 2, 'section', columns).marginRight, '0px');
+  assert.equal(layout.appGridCell(3, 5, 2, 'section', columns).marginBottom, '0px');
+  m.windowInfo.windowWidth = 1440; m.resize();
+  assert.equal(layout.appGridCell(3, 5, 2, 'section', columns).width, `calc((100% - ${spacing.section * 3}px) / 4)`);
   assert.deepEqual(layout.appViewport(.6), { height: '480px' });
   m.isDark.value = true;
   assert.equal(m.appButtonTextColor().color, '#ffffff');
