@@ -122,7 +122,7 @@ for (const kind of ['全零', '单点', '负结余']) {
     const balance = income - expense;
     apiMock({
       'GET /api/user/info': { json: { code: 0, data: { id: '1', nickname: '日历模拟用户' } } },
-      'GET /api/home/cards': { json: { code: 0, data: [{ cardKey: 'section.finance', title: '收支概览', group: 'section', isEnabled: true, sortOrder: 0 }] } },
+      'GET /api/home/cards': { json: { code: 0, data: [{ cardKey: 'section.finance', title: '收支', group: 'section', isEnabled: 1, sortOrder: 0 }] } },
       'GET /api/dashboard/tasks': { json: { code: 0, data: [] } },
       'GET /api/menu/all': { json: { code: 0, data: access.map((path, index) => ({ path, meta: { menuId: 'finance-' + index } })) } },
       'GET /api/quick-nav/candidates': { json: { code: 0, data: access.map(path => ({ path })) } },
@@ -139,7 +139,7 @@ for (const kind of ['全零', '单点', '负结余']) {
       },
     });
     await page.goto('/#/pages/home/index');
-    const card = page.locator('[aria-label="收支概览首页卡片"]');
+    const card = page.locator('[aria-label="收支首页卡片"]');
     await expect(card).toHaveAttribute('aria-busy', 'false');
     await expect(card.getByRole('button', { name: '查看收入', exact: true })).toContainText(income.toFixed(2));
     await expect(card.getByRole('button', { name: '查看支出', exact: true })).toContainText(expense.toFixed(2));

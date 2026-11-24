@@ -95,10 +95,12 @@ function openDetail(bucket: CalendarBucket) {
   if (!props.active || initial.value || state.loading || state.locked || props.refreshDisabled || isEmptyFuture(bucket)) return
   uni.navigateTo({ url: calendarDetailsUrl(props.kind, display.value, bucket, metric.value === 'income' ? 'income' : 'expense') })
 }
-function heat(bucket: CalendarBucket) {
-  if (!amount(bucket) || initial.value) return {}
+function heat(bucket: CalendarBucket | null) {
+  // 月历对齐星期时会补空格。Vapor 的动态样式需要对象，undefined 会中断渲染。
+  const value = bucket && !initial.value ? amount(bucket) : 0
+  if (!value) return {}
   const hex = visual.value.iconColor || '#d27858', match = /^#([\da-f]{2})([\da-f]{2})([\da-f]{2})$/i.exec(hex)
-  return match ? { backgroundColor: 'rgba(' + match.slice(1).map(part => parseInt(part, 16)).join(',') + ',' + (0.08 + Math.abs(amount(bucket)) / maximum.value * 0.24) + ')' } : {}
+  return match ? { backgroundColor: 'rgba(' + match.slice(1).map(part => parseInt(part, 16)).join(',') + ',' + (0.08 + Math.abs(value) / maximum.value * 0.24) + ')' } : {}
 }
 watch(() => props.active, active => { if (active) { checkAccess(); void refresh(false) } else { scheduler.pause(); controller.invalidate() } }, { immediate: true })
 watch(() => props.preparing, value => { if (value) checkAccess() })
@@ -134,7 +136,7 @@ defineExpose({ refresh, checkAccess, loading: computed(() => state.loading), err
                   :key="bucket ? bucket.key : 'blank-' + index"
                   class="calendar-slot"
                   :class="[bucket ? slotSurface : '', { 'calendar-slot-last': index === row.length - 1, 'calendar-slot-future': bucket && isEmptyFuture(bucket) }]"
-                  :style="bucket ? heat(bucket) : undefined"
+                  :style="heat(bucket)"
                 >
                   <button hover-class="none" role="button" v-if="bucket" class="calendar-cell" :class="{ 'calendar-cell-week': display.granularity === 'week' }" :disabled="initial || state.loading || isEmptyFuture(bucket)" :aria-label="(display.granularity === 'week' ? calendarWeekLabel(bucket) : calendarPeriod(bucket)) + '，' + calendarMoney(amount(bucket)) + '，查看' + config.title + '明细'" @click.stop="openDetail(bucket)">
                     <text class="calendar-cell-label" :class="{ 'calendar-muted-dark': isDark, 'calendar-cell-label-day': display.granularity === 'day', 'calendar-cell-label-compact': kind === 'finance' && !page }">{{ display.granularity === 'week' ? calendarWeekLabel(bucket) : bucket.label }}</text>

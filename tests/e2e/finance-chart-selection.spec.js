@@ -69,11 +69,11 @@ test('首页概览日历切换指标时保留年份筛选', async ({ page }) => 
     }
     return route.fulfill({ json: { code: 0, data } });
   });
-  await page.route('**/api/home/cards', route => route.fulfill({ json: { code: 0, message: null, data: [{ cardKey: 'section.finance', title: '收支概览', group: 'section', isEnabled: true, sortOrder: 0 }] } }));
+  await page.route('**/api/home/cards', route => route.fulfill({ json: { code: 0, message: null, data: [{ cardKey: 'section.finance', title: '收支', group: 'section', isEnabled: 1, sortOrder: 0 }] } }));
   await page.goto('/#/pages/home/index');
-  const card = page.locator('[aria-label="收支概览首页卡片"]');
+  const card = page.locator('[aria-label="收支首页卡片"]');
   await expect(card).toHaveAttribute('aria-busy', 'false');
-  await card.getByRole('button', { name: '收支概览：月', exact: true }).click();
+  await card.getByRole('button', { name: '收支：月', exact: true }).click();
   await expect(card).toHaveAttribute('aria-busy', 'false');
   await expect(card.locator('.calendar-date')).toHaveText(year + '年');
   await expect(card.locator('.calendar-cell')).toHaveCount(12);

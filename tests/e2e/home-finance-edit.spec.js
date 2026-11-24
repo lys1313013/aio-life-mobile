@@ -19,7 +19,7 @@ async function setup(page, theme) {
     let data = [];
     const routes = ['/finance-management/dashboard', '/finance-management/income', '/finance-management/expense'];
     if (pathname === '/user/info') data = { id: 'fixture-user', nickname: '模拟用户' };
-    if (pathname === '/home/cards') data = ['finance', 'income', 'expense'].map((kind, sortOrder) => ({ cardKey: 'section.' + kind, title: kind, group: 'section', isEnabled: 1, sortOrder }));
+    if (pathname === '/home/cards') data = [['finance', '收支'], ['income', '收入'], ['expense', '支出']].map(([kind, title], sortOrder) => ({ cardKey: 'section.' + kind, title, group: 'section', isEnabled: 1, sortOrder }));
     if (pathname === '/menu/all') data = routes.map((path, i) => ({ path, meta: { menuId: 'menu-' + i } }));
     if (pathname === '/quick-nav/candidates') data = routes.map(path => ({ path }));
     if (pathname === '/menu/visuals') data = { menus: [], cards: {} };
@@ -125,7 +125,7 @@ for (const width of [390, 820, 1440]) for (const theme of ['light', 'dark']) for
     await details.getByRole('button', { name: '返回', exact: true }).click();
     await expect(page).toHaveURL(/pages\/home\/index/);
     await expect(card.locator('.calendar-total')).toHaveText('100.00');
-    const overview = page.locator('[aria-label="收支概览首页卡片"]');
+    const overview = page.locator('[aria-label="收支首页卡片"]');
     await expect(overview.locator('.calendar-metric-value').nth(kind === 'income' ? 0 : 1)).toHaveText('100.00');
     expect(state.calls.slice(callsBeforeReturn).filter(path => path === '/home/cards' || path.startsWith('/home/sections/')).sort()).toEqual([
       '/home/sections/' + kind + '/calendar', '/home/sections/finance/calendar',
@@ -161,7 +161,7 @@ test('保存失败保留表单和明细，取消不写入；移出日期范围�
 });
 test('概览内编辑当前收入与支出，删除失败保留表单且重试后同步空态', async ({ page }) => {
   const state = await setup(page, 'light');
-  const card = page.locator('[aria-label="收支概览首页卡片"]');
+  const card = page.locator('[aria-label="收支首页卡片"]');
   await card.locator('.calendar-cell').first().click();
   const details = page.getByRole('region', { name: '收支明细', exact: true });
   await details.getByRole('button', { name: '收入明细', exact: true }).click();
@@ -216,6 +216,6 @@ for (const kind of ['expense', 'income']) test(`首页${kind}删除须确认，�
   await details.getByRole('button', { name: '返回', exact: true }).click();
   await expect(page).toHaveURL(/pages\/home\/index/);
   await expect(card.locator('.calendar-total')).toHaveText('0.00');
-  const overview = page.locator('[aria-label="收支概览首页卡片"]');
+  const overview = page.locator('[aria-label="收支首页卡片"]');
   await expect(overview.locator('.calendar-metric-value').nth(kind === 'income' ? 0 : 1)).toHaveText('0.00');
 });

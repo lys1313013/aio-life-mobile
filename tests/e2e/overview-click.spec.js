@@ -10,7 +10,13 @@ async function setup(page) {
   });
   await page.route((baseURL + '/api/**'), async route => {
     const path = new URL(route.request().url()).pathname;
-    let data = dashboardFixture(path) ?? [];
+    const duoTask = { type: 'DUOLINGO', title: '多邻国', totalTitle: '连续打卡' };
+    let data = path === '/api/dashboard/card/DUOLINGO'
+      ? { ...duoTask, value: 'example', totalValue: '12 天', refreshInterval: 600 }
+      : dashboardFixture(path) ?? [];
+    if (path === '/api/menu/visuals') data = { menus: [], cards: { 'overview.duolingo': { icon: 'simple-icons:duolingo', iconColor: '#58cc02' } } };
+    if (path === '/api/dashboard/tasks') data = [...data, duoTask];
+    if (path === '/api/home/cards') data = [...data, { cardKey: 'overview.duolingo', title: '多邻国', group: 'overview', icon: 'simple-icons:duolingo', isEnabled: 1, sortOrder: 5 }];
     if (path === '/api/auth/login') data = { accessToken: 'overview-fixture' };
     if (path === '/api/user/info') data = { id: '1', nickname: '模拟用户' };
     if (path.startsWith('/api/dashboard/card/')) {
@@ -20,6 +26,7 @@ async function setup(page) {
       if (state.fail) return route.fulfill({ json: { code: 1, message: '模拟刷新失败' } });
       const destinations = {
         GITHUB: ['https://github.com/example', 'https://github.com/example?tab=repositories'],
+        DUOLINGO: ['https://www.duolingo.com/profile/example', 'https://www.duolingo.com/profile/example'],
         SHANBAY: ['https://web.shanbay.com/web/users/example/checkin', 'https://web.shanbay.com/web/users/example/checkin'],
         EXERCISE: ['/record/exercise', 'action:open-exercise-modal'],
       };
@@ -42,7 +49,7 @@ for (const width of [390, 768, 1440]) for (const theme of ['light', 'dark']) {
     await page.emulateMedia({ colorScheme: theme });
     const state = await setup(page);
     const homeUrl = page.url();
-    for (const [title, type] of [['GitHub', 'GITHUB'], ['扇贝单词', 'SHANBAY']]) {
+    for (const [title, type] of [['GitHub', 'GITHUB'], ['扇贝单词', 'SHANBAY'], ['多邻国', 'DUOLINGO']]) {
       const card = page.getByRole('button', { name: '刷新' + title, exact: true });
       const before = { ...state.calls };
       await card.locator('.stat-value').click();
@@ -56,9 +63,10 @@ for (const width of [390, 768, 1440]) for (const theme of ['light', 'dark']) {
     await page.getByRole('button', { name: 'GitHub图标', exact: true }).click();
     await page.getByRole('button', { name: 'GitHub标题', exact: true }).click();
     await page.getByRole('button', { name: '扇贝单词标题', exact: true }).click();
+    await page.getByRole('button', { name: '多邻国标题', exact: true }).click();
     expect(await page.evaluate(() => window.openedLinks)).toEqual([
       'https://github.com/example', 'https://github.com/example?tab=repositories',
-      'https://web.shanbay.com/web/users/example/checkin',
+      'https://web.shanbay.com/web/users/example/checkin', 'https://www.duolingo.com/profile/example',
     ]);
     expect(state.calls).toEqual(beforeLinks);
     // 没有链接的标题也只刷新，不能凭卡片类型跳转。

@@ -28,6 +28,7 @@ const fetchMemoById=async value=>{fixture.detailCalls.push(value); if(fixture.fa
 const fetchNoteById=async value=>{fixture.detailCalls.push(value); if(fixture.fail)throw Error('模拟读取失败'); return {items:fixture.missing?[]:[full]};};
 const fetchVideoPage=async()=>{if(fixture.fail)throw Error('模拟读取失败'); return {items:fixture.missing?[]:[full],total:fixture.missing?0:1};};
 const fetchDevicePage=fetchVideoPage;
+${page === 'goods/devices' ? 'const loaded = { value: false };' : ''}
 ${page === 'records/video' ? `
 const target = { label: '全部状态', loaded: false, stale: false, revision: 0 };
 for (const [key, value] of Object.entries({rows, loading, error})) Object.defineProperty(target, key, {get:()=>value.value, set:next=>{value.value=next;}});

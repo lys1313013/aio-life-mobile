@@ -20,6 +20,12 @@ export const platforms = [
     hint: '填写扇贝个人主页 /user/ 后的用户 ID。'
   },
   {
+    value: 'duolingo',
+    label: '多邻国',
+    mark: '多',
+    hint: '填写多邻国国际站公开主页 /profile/ 后的用户名。'
+  },
+  {
     value: 'douban',
     label: '豆瓣',
     mark: '豆',

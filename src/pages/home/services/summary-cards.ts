@@ -1,7 +1,7 @@
 // 设备条目复用共享编辑器在首页弹出，其余业务保留各自入口。
 export const summaryCards = {
   memo: { title: '最近笔记', route: '/pages/records/notes?kind=memo', access: ['/pages/records/notes?kind=memo'], empty: '还没有笔记' },
-  finance: { title: '收支概览', route: '/pages/finance/index', access: ['/pages/finance/index', '/pages/finance/income', '/pages/finance/expense'], empty: '' },
+  finance: { title: '收支', route: '/pages/finance/index', access: ['/pages/finance/index', '/pages/finance/income', '/pages/finance/expense'], empty: '' },
   income: { title: '收入', route: '/pages/finance/income', access: ['/pages/finance/income'], empty: '' },
   expense: { title: '支出', route: '/pages/finance/expense', access: ['/pages/finance/expense'], empty: '' },
   video: { title: '视频', route: '/pages/records/video', access: ['/pages/records/video'], empty: '暂无正在观看的视频' },

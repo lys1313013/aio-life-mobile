@@ -102,7 +102,7 @@ export const getThoughts = () => homeRequest<Thought[]>('/thought/dashboard')
 export const getWatched = () => homeRequest<WatchedTask[]>('/taskDetails/watched')
 export const getExercises = (lastDate = '') =>
   homeRequest<ExercisePage>(
-    '/exerciseRecord/dashboardSummary?limit=7' +
+    '/exerciseRecord/dashboardSummary?pageSize=7' +
       (lastDate ? '&lastDate=' + encodeURIComponent(lastDate) : ''),
   )
 export const getCommits = (page = 1) =>

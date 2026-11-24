@@ -1,5 +1,6 @@
 const { test, expect } = require('./support/test');
 const { homeCardFixture } = require('./home-card-fixture');
+const { waitForMotion } = require('./support/motion');
 const id = '9223372036854775807';
 const entries = [
   { key: 'read', label: '阅读', base: '/read-record', title: '模拟长书名：阅读明细与进度', type: 1, status: 'in_progress', currentProgress: 32, totalProgress: 180, author: '模拟作者', remark: '详情中保留的书评', url: '' },
@@ -68,13 +69,17 @@ for (const width of [390, 820, 1440]) for (const theme of ['light', 'dark']) {
     const state = await setup(page);
     for (const entry of entries) {
       let release; state.waitDetail = new Promise(resolve => { release = resolve; });
-      let pendingBox;
+      let pendingBox, pendingSave;
       try {
         await page.locator(`[aria-label="${entry.label}首页卡片"]`).getByRole('button', { name: '编辑' + (entry.title || entry.name), exact: true }).click();
         await expect(page.getByRole('status', { name: '正在加载记录详情', exact: true })).toBeVisible();
         await expect.poll(async () => (await page.getByRole('dialog').boundingBox()).height).toBeGreaterThan(300);
+        await waitForMotion(page);
         pendingBox = await page.getByRole('dialog').boundingBox();
-        expect(await page.locator('.form-skeleton-input').first().evaluate(el => getComputedStyle(el).backgroundColor)).not.toBe('rgba(0, 0, 0, 0)');
+        const field = page.getByRole('dialog').locator('.form-skeleton-input').first();
+        await expect(field).toHaveCSS('border-top-style', 'solid');
+        await expect(field).toHaveCSS('background-color', theme === 'dark' ? 'rgb(28, 30, 34)' : 'rgb(255, 255, 255)');
+        if (entry.key === 'anniversary') pendingSave = await page.locator('.form-skeleton-button').last().boundingBox();
         await page.screenshot({ path: info.outputPath(entry.key + '-loading.png') });
       } finally { release(); state.waitDetail = null; }
       const dialog = page.getByRole('dialog');
@@ -82,6 +87,10 @@ for (const width of [390, 820, 1440]) for (const theme of ['light', 'dark']) {
       await expect.poll(async () => Math.abs((await dialog.boundingBox()).height - pendingBox.height)).toBeLessThan(55);
       await expect.poll(async () => dialog.evaluate(el => el.getBoundingClientRect().height)).toBeGreaterThan(300);
       await expect.poll(async () => dialog.evaluate(el => Math.abs(el.getBoundingClientRect().top + el.getBoundingClientRect().height / 2 - window.innerHeight / 2))).toBeLessThan(2);
+      if (pendingSave) {
+        const save = dialog.getByRole('button', { name: '保存', exact: true });
+        await expect.poll(async () => Math.abs((await save.boundingBox()).y - pendingSave.y)).toBeLessThan(2);
+      }
       expect(await dialog.evaluate(el => el.scrollWidth > el.clientWidth)).toBe(false);
       await page.screenshot({ path: info.outputPath(entry.key + '.png') });
       await dialog.getByRole('button', { name: '取消', exact: true }).click();

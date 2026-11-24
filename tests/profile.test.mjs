@@ -12,9 +12,10 @@ test('绑定保留长 ID，拒绝数字 ID，丢弃凭证和服务端元数据',
 });
 test('编辑留空保留凭证，不能把旧平台凭证传到新平台', () => {
   assert.deepEqual(bindingPayload({ id: '99', platform: 'github', platformUsername: ' demo ', accessToken: ' ' }), { id: '99', platform: 'github', platformUsername: 'demo' });
+  assert.deepEqual(bindingPayload({ platform: 'duolingo', platformUsername: ' learner ', accessToken: 'stale-fixture' }), { platform: 'duolingo', platformUsername: 'learner' });
   assert.deepEqual(bindingPayload({ platform: 'csdn', platformUsername: 'demo', accessToken: 'stale-fixture' }), { platform: 'csdn', platformUsername: 'demo' });
 });
-test('六个平台均有契约校验，微信读书新建必需 Key，编辑可保留', () => {
+test('绑定平台均有契约校验，微信读书新建必需 Key，编辑可保留', () => {
   for (const platform of platforms.filter(p => p.value !== 'weread')) assert.throws(() => bindingPayload({ platform: platform.value, platformUsername: ' ', accessToken: '' }), /请输入账号/);
   assert.throws(() => bindingPayload({ platform: 'weread', platformUsername: '', accessToken: '' }), /API Key/);
   assert.deepEqual(bindingPayload({ id: '9', platform: 'weread', platformUsername: '', accessToken: '' }), { id: '9', platform: 'weread', platformUsername: '' });

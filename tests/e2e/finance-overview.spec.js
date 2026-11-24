@@ -53,7 +53,7 @@ for (const width of [320, 390, 768, 1440]) for (const theme of ['light', 'dark']
       await expect(page.getByRole('figure', { name: '支出构成', exact: true })).toContainText('餐饮');
       await expect(page.getByRole('figure', { name: '每年结余占比', exact: true })).toContainText('2025');
       await expect(page.getByRole('region', { name: '年度明细', exact: true })).toContainText('4,200.00');
-      await expect(page.locator('[aria-label="收支概览首页卡片"]')).toHaveCount(0);
+      await expect(page.locator('[aria-label="收支首页卡片"]')).toHaveCount(0);
       const folder = path.resolve('artifacts/finance-overview'); fs.mkdirSync(folder, { recursive: true });
       await page.screenshot({ path: path.join(folder, `statistics-${width}-${theme}.png`), fullPage: true });
       await picker(page, '年份', '2026');

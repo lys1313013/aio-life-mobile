@@ -4,7 +4,7 @@ const { test, expect } = require('./support/test');
 const { stableBox } = require('./support/geometry');
 const { waitForMotion } = require('./support/motion');
 const keys = ['memo', 'finance', 'video', 'device', 'income', 'expense'];
-const titles = ['最近笔记', '收支概览', '视频', '我的设备', '收入', '支出'];
+const titles = ['最近笔记', '收支', '视频', '我的设备', '收入', '支出'];
 const routes = ['/my-hub/memo', '/finance-management/dashboard', '/finance-management/income', '/finance-management/expense', '/my-hub/videoWatch', '/my-hub/device'];
 const { calendarFixture } = require('./fixtures-finance-calendar');
 async function setup(page, { count = 3, delay = 0, locked = false, fail = false, enabled = true } = {}) {
@@ -18,7 +18,7 @@ async function setup(page, { count = 3, delay = 0, locked = false, fail = false,
     device: { items: Array.from({ length: count }, (_, i) => ({ id: 'device-' + i, name: '设备' + i, fileId: 'device-photo-' + i, usageDays: 200, dailyCost: 12.3 })), refreshInterval: 600 },
   };
   const fixtures = {
-    '/home/cards': keys.map((key, sortOrder) => ({ cardKey: 'section.' + key, title: titles[sortOrder], group: 'section', isEnabled: enabled, sortOrder })),
+    '/home/cards': keys.map((key, sortOrder) => ({ cardKey: 'section.' + key, title: titles[sortOrder], group: 'section', isEnabled: enabled ? 1 : 0, sortOrder })),
     '/menu/visuals': { menus: [], cards: {} }, '/user/info': { id: 'fixture-user', nickname: '测试用户' }, '/dashboard/tasks': [],
     '/auth/secondary-lock/menus': locked ? ['finance-expense'] : [],
     '/menu/all': routes.map((path, i) => ({ path, meta: { menuId: i === 3 ? 'finance-expense' : 'menu-' + i } })),
@@ -59,7 +59,7 @@ for (const width of [390, 820, 1440]) for (const theme of ['light', 'dark']) {
     const deviceBefore = await page.locator('[aria-label="我的设备首页卡片"]').boundingBox();
     await page.screenshot({ path: info.outputPath('summary-loading.png'), fullPage: true });
     await expect(memo).toContainText('正文已隐藏');
-    await expect(page.locator('[aria-label="收支概览首页卡片"]')).toContainText('10,000.00');
+    await expect(page.locator('[aria-label="收支首页卡片"]')).toContainText('10,000.00');
     await expect(page.locator('[aria-label="我的设备首页卡片"]')).toContainText('使用 200 天');
     expect(await page.locator('body').innerText()).not.toContain('不允许泄漏的笔记正文');
     const loadedBox = await memo.boundingBox(); expect(Math.abs(loadingBox.height - loadedBox.height)).toBeLessThanOrEqual(5);
@@ -85,7 +85,7 @@ test('空态仍可新增，刷新保留高度；失败可局部恢复', async ({
 });
 test('财务任一底层业务锁住时不请求摘要，关闭卡片完全无业务请求', async ({ page }) => {
   const locked = await setup(page, { locked: true });
-  await expect(page.locator('[aria-label="收支概览首页卡片"]').getByRole('button', { name: '解锁收支概览', exact: true })).toBeVisible(); expect(locked.calls).not.toContain('/home/sections/finance/calendar');
+  await expect(page.locator('[aria-label="收支首页卡片"]').getByRole('button', { name: '解锁收支', exact: true })).toBeVisible(); expect(locked.calls).not.toContain('/home/sections/finance/calendar');
   await page.unrouteAll({ behavior: 'wait' }); await page.goto('about:blank'); const disabled = await setup(page, { enabled: false });
   await expect(page.locator('.summary-card')).toHaveCount(0); expect(disabled.calls.filter(path => path.startsWith('/home/sections/'))).toEqual([]);
 });
@@ -127,17 +127,17 @@ test('视频卡片续看打开对应集数且标题进入视频列表', async ({
   await expect(page.getByText('完整视频标题', { exact: true })).toBeVisible();
 });
 test('三财务卡范围切换独立，慢请求与失败保留对应标签和金额', async ({ page }) => {
-  await setup(page); const finance = page.locator('[aria-label="收支概览首页卡片"]');
+  await setup(page); const finance = page.locator('[aria-label="收支首页卡片"]');
   await expect(finance).toHaveAttribute('aria-busy', 'false'); let release; let failed = false;
   await page.route('**/api/home/sections/finance/calendar?*', async route => {
     const url = new URL(route.request().url());
     if (url.searchParams.get('granularity') === 'month' && !failed) await new Promise(resolve => { release = resolve; });
     return route.fulfill({ json: failed ? { code: 1, message: '模拟概览失败' } : { code: 0, data: calendarFixture(url, 'finance') } });
   });
-  await finance.getByRole('button', { name: '收支概览：月', exact: true }).click(); await expect(finance.getByRole('status')).toBeVisible();
-  await expect(finance.getByRole('button', { name: '收支概览：周', exact: true })).toHaveAttribute('aria-pressed', 'true');
-  await finance.getByRole('button', { name: '收支概览：年', exact: true }).click(); await expect(finance.getByRole('button', { name: '收支概览：年', exact: true })).toHaveAttribute('aria-pressed', 'true'); release();
-  failed = true; await finance.getByRole('button', { name: '收支概览：月', exact: true }).click(); await expect(finance).toContainText('模拟概览失败'); await expect(finance.getByRole('button', { name: '收支概览：年', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await finance.getByRole('button', { name: '收支：月', exact: true }).click(); await expect(finance.getByRole('status')).toBeVisible();
+  await expect(finance.getByRole('button', { name: '收支：周', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await finance.getByRole('button', { name: '收支：年', exact: true }).click(); await expect(finance.getByRole('button', { name: '收支：年', exact: true })).toHaveAttribute('aria-pressed', 'true'); release();
+  failed = true; await finance.getByRole('button', { name: '收支：月', exact: true }).click(); await expect(finance).toContainText('模拟概览失败'); await expect(finance.getByRole('button', { name: '收支：年', exact: true })).toHaveAttribute('aria-pressed', 'true');
   await expect(finance).toContainText('10,000.00');
   await expect(page.getByRole('button', { name: '收入：周', exact: true })).toHaveAttribute('aria-pressed', 'true');
   await expect(page.getByRole('button', { name: '支出：日', exact: true })).toHaveAttribute('aria-pressed', 'true');
@@ -375,8 +375,8 @@ for (const width of [390, 820, 1440]) for (const theme of ['light', 'dark']) {
     await page.setViewportSize({ width, height: 900 });
     await page.addInitScript(theme => localStorage.setItem('aio-life-mobile.theme.v1', JSON.stringify({ type: 'string', data: theme })), theme);
     const fixture = await setup(page, { locked: true });
-    const card = page.locator('[aria-label="收支概览首页卡片"]');
-    const unlock = card.getByRole('button', { name: '解锁收支概览', exact: true });
+    const card = page.locator('[aria-label="收支首页卡片"]');
+    const unlock = card.getByRole('button', { name: '解锁收支', exact: true });
     await expect(unlock).toBeVisible();
     await expect(unlock.locator('img')).toBeVisible();
     const box = await unlock.boundingBox(), area = await card.locator('.dashboard-section').boundingBox();
@@ -407,7 +407,7 @@ for (const width of [390, 820, 1440]) for (const theme of ['light', 'dark']) {
     await expect(card).toContainText('10,000.00');
     await expect(unlock).toHaveCount(0);
     await expect(page).toHaveURL(/pages\/home\/index/);
-    await card.getByRole('button', { name: '查看收支概览', exact: true }).click();
+    await card.getByRole('button', { name: '查看收支', exact: true }).click();
     await expect(page).toHaveURL(/pages\/finance\/index/);
   });
 }

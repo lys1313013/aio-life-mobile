@@ -12,7 +12,7 @@ async function setup(page, { theme = 'light', delay = 0, empty = false, fail = f
   await page.route('**/api/**', async route => {
     const url = new URL(route.request().url()), pathname = url.pathname.replace('/api', ''); calls.push(pathname);
     let data;
-    if (pathname === '/home/cards') data = [{ cardKey: 'section.finance', title: '收支概览', group: 'section', isEnabled: true, sortOrder: 0 }];
+    if (pathname === '/home/cards') data = [{ cardKey: 'section.finance', title: '收支', group: 'section', isEnabled: 1, sortOrder: 0 }];
     if (pathname === '/dashboard/tasks') data = [];
     if (pathname === '/user/info') data = { id: 'finance-fixture', nickname: '模拟用户' };
     if (pathname === '/menu/all') data = routes.map((path, index) => ({ path, meta: { menuId: index === 2 ? 'expense-lock' : 'finance-' + index } }));
@@ -33,10 +33,10 @@ async function setup(page, { theme = 'light', delay = 0, empty = false, fail = f
   await page.goto('/#/pages/home/index'); return { calls, state };
 }
 for (const width of [320, 390, 768, 1440]) for (const theme of ['light', 'dark']) {
-  test(`首页收支概览日历 ${width} ${theme}`, async ({ page }) => {
+  test(`首页收支日历 ${width} ${theme}`, async ({ page }) => {
     await page.setViewportSize({ width, height: 900 }); const fixture = await setup(page, { theme, delay: 400 });
-    const card = page.locator('[aria-label="收支概览首页卡片"]');
-    await expect(card.getByRole('status', { name: '正在加载收支概览' })).toBeVisible(); const pending = await card.boundingBox();
+    const card = page.locator('[aria-label="收支首页卡片"]');
+    await expect(card.getByRole('status', { name: '正在加载收支' })).toBeVisible(); const pending = await card.boundingBox();
     const rows = card.locator('.calendar-row');
     expect((await rows.first().boundingBox()).height).toBe(40);
     await expect(card.locator('.calendar-cell').first()).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
@@ -45,28 +45,28 @@ for (const width of [320, 390, 768, 1440]) for (const theme of ['light', 'dark']
     await expect(card.getByRole('button', { name: '查看结余', exact: true })).toHaveAttribute('aria-pressed', 'true');
     await expect(card).toContainText('12,345.67'); await expect(card).toContainText('2,345.67'); await expect(card).toContainText('10,000.00');
     await card.getByRole('button', { name: '查看收入', exact: true }).click(); await expect(card.locator('.calendar-amount').first()).toHaveText('12,345.67');
-    await card.getByRole('button', { name: '收支概览：月', exact: true }).click(); await expect(card).toHaveAttribute('aria-busy', 'false'); await expect(card.locator('.calendar-cell')).toHaveCount(12);
+    await card.getByRole('button', { name: '收支：月', exact: true }).click(); await expect(card).toHaveAttribute('aria-busy', 'false'); await expect(card.locator('.calendar-cell')).toHaveCount(12);
     const folder = path.resolve('artifacts/home-finance-overview'); fs.mkdirSync(folder, { recursive: true }); await page.screenshot({ path: path.join(folder, `calendar-${width}-${theme}.png`), fullPage: true });
     expect(await card.evaluate(el => el.scrollWidth > el.clientWidth + 1)).toBe(false);
-    await card.getByRole('button', { name: '收支概览：年', exact: true }).click(); await expect(card).toHaveAttribute('aria-busy', 'false'); await expect(card.locator('.calendar-date-controls')).toHaveCount(0);
+    await card.getByRole('button', { name: '收支：年', exact: true }).click(); await expect(card).toHaveAttribute('aria-busy', 'false'); await expect(card.locator('.calendar-date-controls')).toHaveCount(0);
     expect((await rows.first().boundingBox()).height).toBe(40);
     expect(fixture.calls.some(value => value.includes('statisticsByMonth'))).toBe(false);
   });
 }
 test('概览空态与失败重试保留卡片高度，底层二级锁不读取统计', async ({ page }) => {
-  const fixture = await setup(page, { empty: true, fail: true }); const card = page.locator('[aria-label="收支概览首页卡片"]');
+  const fixture = await setup(page, { empty: true, fail: true }); const card = page.locator('[aria-label="收支首页卡片"]');
   await expect(card).toContainText('模拟概览失败'); const before = await card.boundingBox(); fixture.state.fail = false;
   await card.getByRole('button', { name: '重试', exact: true }).click(); await expect(card).toHaveAttribute('aria-busy', 'false');
   expect((await card.boundingBox()).height).toBe(before.height); await expect(card.getByRole('button', { name: '查看结余' })).toContainText('0.00');
   await page.unrouteAll({ behavior: 'wait' }); await page.goto('about:blank'); const locked = await setup(page, { locked: true });
-  await expect(card.getByRole('button', { name: '解锁收支概览', exact: true })).toBeVisible(); expect(locked.calls).not.toContain('/home/sections/finance/calendar');
+  await expect(card.getByRole('button', { name: '解锁收支', exact: true })).toBeVisible(); expect(locked.calls).not.toContain('/home/sections/finance/calendar');
 });
 test('概览零结余格子可点，明细可切收支，旧类型响应不回填', async ({ page }) => {
   await setup(page, { zeroBalance: true });
   let release; const delayedIncome = new Promise(resolve => { release = resolve; }); const queries = [];
   await page.route('**/api/expense/query?*', route => { queries.push('expense'); return route.fulfill({ json: { code: 0, data: { items: Array.from({ length: 20 }, (_, index) => ({ id: 'expense-' + index, bookkeepingAmount: index ? 0 : 2345.67, expenseDesc: '实际支出明细' + index + ' 保留此前明细直到新类型加载成功', expenseTime: '2026-10-01 10:00:00' })), total: 20 } } }); });
   await page.route('**/api/income/query?*', async route => { queries.push('income'); await delayedIncome; return route.fulfill({ json: { code: 0, data: { items: [{ id: 'income-1', grossAmount: 2345.67, remark: '迟到收入明细', incomeDate: '2026-10-01' }], total: 1 } } }); });
-  const card = page.locator('[aria-label="收支概览首页卡片"]');
+  const card = page.locator('[aria-label="收支首页卡片"]');
   const dialog = page.getByRole('region', { name: '收支明细' });
   try {
     await expect(card).toHaveAttribute('aria-busy', 'false');
