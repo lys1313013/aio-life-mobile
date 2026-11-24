@@ -24,7 +24,9 @@ test -f .env.local || cp .env.example .env.local
 npm run dev
 ```
 
-访问 `http://127.0.0.1:5180`。先启动后端并完成其数据库与账号配置，再使用 AIO Life 账号登录；默认通过开发代理连接 `http://127.0.0.1:45678/api`，仓库不提供测试账号、密码或 Token。
+H5 开发和预览服务默认监听 `0.0.0.0:5180`。本机打开 `http://127.0.0.1:5180`，同一局域网内的手机打开 `http://<电脑局域网 IP>:5180`。
+
+先启动后端并完成其数据库与账号配置，再使用 AIO Life 账号登录；默认通过开发代理连接 `http://127.0.0.1:45678/api`，仓库不提供测试账号、密码或 Token。
 
 ### 接口配置
 
@@ -81,6 +83,8 @@ npm run prepare:app
 ```
 
 用 HBuilderX 打开生成的 `artifacts/android/AIO-Life-App`。这是当前源码的准备工程，修改业务源码后需重新生成；不要把生成目录当作源代码目录维护。DCloud AppID、地图 SDK Key、签名和证书按 [App 开发与验证](docs/App开发与验证.md)配置，保留在本地环境或忽略工程中。该命令不会生成签名 APK / IPA，也不会上传或发布。
+
+Android 真机测试包使用 `npm run build:android`。它从当前源码生成 arm64 调试 APK，并检查 SDK 原生模块、项目 UTS 插件、C++ 符号和签名，全部通过后才导出到 `artifacts/android/AIO-Life-local-debug-arm64.apk`。本地 SDK 配置和云端 APK 检查命令见 [App 开发与验证](docs/App开发与验证.md#android-本地测试包)。
 
 ## 构建与验证
 

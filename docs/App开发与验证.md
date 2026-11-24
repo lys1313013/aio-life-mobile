@@ -26,8 +26,23 @@
 
 HBuilderX 5.32 本机 GUI 导入工程时出现界面无响应；本次通过 `QT_QPA_PLATFORM=offscreen` 启动已安装的 HBuilderX，再使用其 CLI 完成编译。日志及本地验证报告保存在忽略目录 `artifacts/uni-5.32-upgrade/app/`。
 
+## Android 本地测试包
 
-APK 下载后执行 `node scripts/check-android-runtime.mjs <apk路径>` 检查实际原生库的 C++ 导入符号，再做签名校验、覆盖安装和冷启动检查。2026-10-04 小米 14 已验证登录、首页统计及快捷导航图标、首页时迹图表与记录、记录编辑弹窗打开；全部功能页图标也已恢复。最新 APK 的设备状态记录在忽略目录 `artifacts/android/build-report.json`。Android 启动图标使用 `src/app-resources/icons/android` 中的现有品牌图标，并在 manifest 中显式配置各密度。
+启动 HBuilderX 5.32 Alpha。将 `AIO_ANDROID_VAPOR_SDK` 指向已解压的 DCloud Android Vapor 5.32 离线 SDK 根目录（含 `SDK/libs`、`plugins` 和 `xvnativeproject`）。Android SDK 需要 API 36 和 Build Tools 36.0.0，可通过 `ANDROID_HOME` 指定安装目录。将 `JAVA_HOME` 指向 JDK 25，然后执行：
+
+```bash
+npm run build:android
+```
+
+脚本重新准备 App 工程并编译 Vapor 资源。调试包默认连接线上 API，可通过仓库根目录的 `.env.local` 配置 `VITE_API_BASE_URL`。Gradle 默认使用 SDK 自带的 wrapper。已安装 Gradle 9.2.1 时，可以用 `AIO_ANDROID_GRADLE` 指定其可执行文件。`npm run build:android -- --offline` 让 Gradle 仅使用已有缓存。默认使用 Android 调试签名，覆盖已有测试包时可用 `AIO_ANDROID_DEBUG_KEYSTORE` 指定该测试包使用的本地调试密钥库。
+
+打包根据编译后的 Android 组件和 `uni.*` API、manifest 声明及宿主基础能力选择 SDK 模块。动态选择的能力应在 Android manifest 显式声明。打包会检查 SDK 的注册入口，随后检查最终 APK 的 DEX 中是否定义了相关类，覆盖表单、WebSocket、Vapor Canvas 等 SDK 模块和项目 UTS 插件。C++ 符号与 APK 签名也通过后，才导出 `artifacts/android/AIO-Life-local-debug-arm64.apk`。各阶段日志位于 `artifacts/android/`。
+
+Vapor 的动态样式绑定在收到 `undefined` 或 `null` 时会中断渲染。条件样式在无样式分支使用空对象 `{}`。Android APK 检查会拦截打包资源中可静态识别的这类参数。
+
+HBuilderX 云打包走独立入口。下载 Android APK 后，使用匹配的 `AIO_ANDROID_VAPOR_SDK` 执行 `npm run check:android-apk -- <APK 路径>` 检查 SDK 模块及 C++ 符号，再做签名校验、覆盖安装、冷启动及登录页输入和按钮的真机检查。
+
+2026-10-04 小米 14 已验证登录、首页统计及快捷导航图标、首页时迹图表与记录、记录编辑弹窗打开；全部功能页图标也已恢复。该次 APK 的设备状态记录在忽略目录 `artifacts/android/build-report.json`。Android 启动图标使用 `src/app-resources/icons/android` 中的现有品牌图标，并在 manifest 中显式配置各密度。
 
 同日通过独立标准调试基座定位时迹独立页空白：接口已返回记录，但当前 Vapor 原生运行中，条件 `template` 内的正文没有挂载；改为显式 `view` 容器后，已在小米 14 深色主题下看到日时间轴与真实记录，临时诊断代码已移除。手机、平板、桌面深浅色共 6 项 H5 时迹布局回归通过。云端打包当日免费额度已用完，现存 `modal-fixed` APK **不包含这次时迹容器修复**；标准调试基座验证不能代替新版 APK 验收。卡片视图、周/月切换和其余业务仍需原生逐项验证，详细边界见 `artifacts/android/time-render-fix-report.json`。
 
@@ -38,6 +53,8 @@ APK 下载后执行 `node scripts/check-android-runtime.mjs <apk路径>` 检查�
 原生接口也要按 App 签名处理：`onKeyboardHeightChange` 返回监听编号，销毁弹窗时用该编号调用 `offKeyboardHeightChange`；微信仍传原回调函数。当前 Android Vapor 的 SVG 图像解码器出现过 `unimplemented`，分类图标通过本地 UTS 插件栅格化为透明 PNG 并缓存，其他平台保留 SVG。生产时迹查询仍可能返回旧版完整 `{items,total}`，客户端兼容完整数据，但拒绝把不完整分页当作全天记录进行统计。
 
 App 的 CommonJS 依赖（ZIP、SM4）在构建时转换为 ESM，动态 GBK 解码依赖内联到 Vapor 的 IIFE，保留原导入和密码库能力。App 网格、视口高度和按钮文字使用原生适配；Web/微信保留原样式。编译仍报告 `gap`、部分媒体查询、`aspect-ratio` 等原生 CSS 兼容警告，安装包目前用于设备验证，不能据此声称所有页面和功能已完成 App 验收。
+
+Android Vapor 5.32 会忽略 Flex 的 `gap`。新增或迁移布局时，纵向区块和横向控件用 `spacing.json` 生成的 `ui-mt-*` / `ui-ml-*` 等间距类标记后续项，或在子元素的 SCSS 用同一组变量。可换行的等宽卡片使用 `useAppLayout().appGridCell` 计算 App 的列宽、列距和行距，展示态和骨架使用同一算法。`MobilePage` 或自有滚动内容层负责页面边距，嵌套分页器的 App 内容不重复占用右侧边距。标题和数值的主题前景色直接设在 `text` 上。
 
 Web 与小程序按官方机制仍使用 VDOM 运行；它们构建成功只能证明这两个目标的编译，不能代替 App Vapor 真机验证。
 
