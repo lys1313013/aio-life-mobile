@@ -91,15 +91,18 @@ for (const kind of ['movie', 'read'])
           );
         const badge = page.locator('.library-ranking').first();
         await expect(badge).toContainText('No.34');
+        await expect(badge.getByText('豆瓣 Top250', { exact: true })).toBeVisible();
+        const card = await page.locator('.library-card').first().boundingBox();
+        expect(boxes[0].width / card.width).toBeCloseTo(0.88, 2);
         const badgeBox = await badge.boundingBox();
         expect(badgeBox.y).toBeGreaterThanOrEqual(boxes[0].y + boxes[0].height - 1);
-        const columns = width >= 1200 ? 7 : width >= 768 ? 5 : 3;
+        const columns = width >= 1200 ? 7 : width >= 768 ? 5 : width >= 640 ? 4 : 3;
         expect(boxes.filter((b) => b.y === boxes[0].y)).toHaveLength(columns);
         expect(boxes.every((b) => b.x >= 0 && b.right <= width)).toBe(true);
         expect(Math.abs(boxes[0].height / boxes[0].width - 4 / 3)).toBeLessThan(
           0.03,
         );
-        const search = await page.locator('.library-search-row').boundingBox();
+        const search = await page.getByRole('button', { name: '展开搜索', exact: true }).boundingBox();
         expect(search.x + search.width).toBeLessThanOrEqual(width);
         await page.screenshot({ path: info.outputPath('library.png') });
         await page
@@ -157,13 +160,15 @@ for (const kind of ['movie', 'read'])
     await expect(page.locator('.library-card')).toHaveCount(8);
     expect(state.writes.at(-1).method).toBe('DELETE');
     const base = kind === 'movie' ? '/movie/page' : '/read-record/page';
-    await page.locator('.library-search-input input').fill('模拟搜索');
+    await page.getByRole('button', { name: '展开搜索', exact: true }).click();
+    const searchInput = page.locator(kind === 'movie' ? '[aria-label="搜索观影"] input' : '[aria-label="搜索阅读记录"] input');
+    await searchInput.fill('模拟搜索');
     const search = page.waitForRequest(
       (r) =>
         r.url().includes(base) &&
         new URL(r.url()).searchParams.get('title') === '模拟搜索',
     );
-    await page.getByRole('button', { name: '搜索', exact: true }).click();
+    await searchInput.press('Enter');
     await search;
     await waitForMotion(page);
     await page.locator('uni-picker[aria-label="状态"]').click();

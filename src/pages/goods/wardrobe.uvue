@@ -9,7 +9,7 @@ import ContentSkeleton from '../../components/ContentSkeleton.uvue';
 import { computed, ref, onUnmounted, watch } from 'vue';
 import { onShow, onHide } from '@dcloudio/uni-app';
 import MobilePage from '../../components/MobilePage.uvue';
-import PageHeader from '../../components/PageHeader.uvue';
+import PageSearch from '../../components/PageSearch.uvue';
 import PageState from '../../components/PageState.uvue';
 import MobileButton from '../../components/MobileButton.uvue';
 import FloatingActionButton from '../../components/FloatingActionButton.uvue';
@@ -33,6 +33,7 @@ import { matchesItem, seasons } from './services/wardrobe/contract.ts';
 import { chooseAndUploadAttachment, authFileUrl } from '../../services/attachments.ts';
 import { session } from '../../services/session.ts';
 import { themeClass } from '../../services/theme.ts';
+const searchOpen = ref(false);
 const modalMotion0 = ref<{ close: () => void } | null>(null);
 
 const items = ref<any[]>([]),
@@ -320,8 +321,9 @@ function chooseCategory(value) {
 </script>
 <template>
   <MobilePage :refreshing="loading" @refresh="load">
-    <PageHeader title="衣橱" back @back="uni.navigateBack()" />
-    <view class="wardrobe ui-page-body" :class="themeClass('wardrobe')">
+    <PageSearch v-model="keyword" v-model:open="searchOpen" title="衣橱" label="搜索衣物" back
+      :enabled="section === '衣物'" @back="uni.navigateBack()" />
+    <view class="wardrobe ui-page-body" @click="searchOpen = false" :class="themeClass('wardrobe')">
       <view class="section-tabs ui-row ui-section">
         <MobileButton v-for="tab in ['衣物', '分类']" :key="tab" :label="tab" compact
           :variant="section === tab ? 'quiet' : 'ghost'" @click="section = tab" />
@@ -335,7 +337,6 @@ function chooseCategory(value) {
       </view>
       <view v-if="section === '衣物'" class="wardrobe-filters">
         <view class="ui-field-row">
-          <FormField appearance="soft" compact stretch label="搜索衣物" hide-label v-model="keyword" placeholder="名称、颜色、品牌" />
           <FormField appearance="soft" compact stretch label="筛选分类" hide-label kind="selector"
             :model-value="filterName" :options="categoryNames"
             @update:model-value="(value) => (category = categories[categoryNames.indexOf(value) - 1]?.id || '')" />

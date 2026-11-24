@@ -6,7 +6,7 @@ import { isRequired } from '../../services/form-required.ts';
 import AppIcon from '../../components/AppIcon.uvue'
 import { computed, ref } from 'vue';
 import { onLoad, onShow, onUnload } from '@dcloudio/uni-app';
-import PageHeader from '../../components/PageHeader.uvue';
+import PageSearch from '../../components/PageSearch.uvue';
 import MobilePage from '../../components/MobilePage.uvue';
 import MobileButton from '../../components/MobileButton.uvue';
 import FloatingActionButton from '../../components/FloatingActionButton.uvue';
@@ -41,6 +41,7 @@ const busyId = ref('');
 const saving = ref(false);
 const opened = ref(false);
 const editorError = ref('');
+const searchOpen = ref(false);
 const search = ref('');
 const expandedActions = ref('');
 const searchQuery = computed(() => search.value.trim().toLowerCase());
@@ -232,12 +233,10 @@ function privateCategory(row) {
 }
 </script>
 <template>
-  <view class="category-page"
-    ><PageHeader
-      title="时迹分类"
-      back
-      @back="uni.navigateBack()" /><MobilePage :refreshing="refreshing" @refresh="load(true)">
-      <FormField label="搜索分类" v-model="search" />
+  <view class="category-page" @click="searchOpen = false">
+    <PageSearch v-model="search" v-model:open="searchOpen" title="时迹分类" label="搜索分类" back
+      @back="uni.navigateBack()" />
+    <MobilePage :refreshing="refreshing" @refresh="load(true)">
       <PageState :has-content="loaded" :loading="loading" :error="error" :empty="!shown.length" :empty-text="searchQuery ? '未找到匹配分类' : '暂无分类'" @retry="load()">
         <template #loading>
           <view class="category-loading" role="status" aria-label="正在加载分类" aria-live="polite">
@@ -400,6 +399,7 @@ function privateCategory(row) {
   </view>
 </template>
 <style scoped lang="scss">
+@use '../../styles/form-control' as form-control;
 @use '../../styles/platform' as *;
 @use '../../styles/typography' as *;
 @use '../../styles/spacing.scss';
@@ -529,8 +529,8 @@ function privateCategory(row) {
 .category-color-option-dark { @include button-background(transparent); }
 .category-color-selected { border-color: #8995a6; }
 .category-color-swatch { width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; }
-.category-icon-control { display: flex; flex-direction: row; align-items: center; border-radius: 10px; background-color: #f2f4f7; padding-right: $space-detail; }
-.category-icon-control-dark { background-color: #272a30; }
+.category-icon-control { display: flex; flex-direction: row; align-items: center; @include form-control.surface; padding-right: $space-detail; }
+.category-icon-control-dark { @include form-control.dark; }
 .category-icon-trigger { display: flex; flex-direction: row; align-items: center; gap: $space-inline; flex: 1; min-width: 0; min-height: $space-controlMin; margin: 0; padding: 0 $space-card; border: 0; @include button-background(transparent); }
 .category-control-text { @include type-style('body'); color: #27272a; flex: 1; text-align: left; }
 .category-control-text-dark { color: #dce0e7; }

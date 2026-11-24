@@ -65,7 +65,8 @@ for (const width of [390, 768, 1440]) for (const theme of ['light', 'dark']) {
     await page.getByRole('button', { name: '筛选夏季衣物', exact: true }).click();
     await expect(page.locator('.item-title')).toHaveCount(1);
     await expect(page.locator('.item-title')).toHaveText('日常圆领短袖');
-    await page.locator('[aria-label="搜索衣物"] input').fill('不匹配');
+    await page.getByRole('button', { name: '展开搜索', exact: true }).click();
+    await page.getByRole('searchbox', { name: '搜索衣物', exact: true }).fill('不匹配');
     await expect(page.getByText('没有符合筛选条件的衣物')).toBeVisible();
     await page.getByRole('button', { name: '清除筛选', exact: true }).click();
     await expect(page.locator('.item-title')).toHaveCount(6);

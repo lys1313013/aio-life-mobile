@@ -53,7 +53,17 @@ for (const width of [390, 768, 1280]) for (const colorScheme of ['light', 'dark'
     await expect(page.locator('.book-progress').first()).toHaveText('100%');
     await expect(page.locator('.book-status').first()).toHaveText('已读完');
     await page.screenshot({ path: info.outputPath('weread-shelf.png') });
-    await page.getByRole('button', { name: /^书籍详情：/ }).nth(1).press('Enter');
+    const openSearch = page.getByRole('button', { name: '展开搜索', exact: true });
+    await openSearch.click();
+    const shelfSearch = page.getByRole('searchbox', { name: '搜索书名或作者', exact: true });
+    await shelfSearch.fill('书籍 2');
+    await expect(page.locator('.weread-book-card')).toHaveCount(1);
+    await page.getByRole('button', { name: '阅读笔记', exact: true }).click();
+    await openSearch.click();
+    await expect(page.getByRole('searchbox', { name: '搜索笔记', exact: true })).toHaveValue('');
+    await page.getByRole('button', { name: '我的书架', exact: true }).click();
+    await expect(page.locator('.weread-book-card')).toHaveCount(1);
+    await page.getByRole('button', { name: /^书籍详情：/ }).click();
     await expect(page.getByRole('dialog')).toBeVisible();
     await expect(page.locator('.detail-cover')).toBeVisible();
     await page.screenshot({ path: info.outputPath('weread-detail.png') });

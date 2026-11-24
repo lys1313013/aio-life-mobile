@@ -40,7 +40,8 @@ for (const width of [320, 390, 768, 1440]) {
       await expect(page.getByRole('button', { name: '时间看板', exact: true })).toBeVisible();
       await page.screenshot({ path: testInfo.outputPath('life.png') });
       await openSearch.click();
-      await expect(closeSearch).toHaveAttribute('aria-expanded', 'true');
+      await expect(closeSearch).toHaveCount(0);
+      await expect(openSearch).toHaveCount(0);
       await expect(search).toBeFocused();
       await search.fill('不存在的模拟功能');
       await expect(page.getByText('未找到相关功能', { exact: true })).toBeVisible();
@@ -51,7 +52,11 @@ for (const width of [320, 390, 768, 1440]) {
       await page.screenshot({ path: testInfo.outputPath('life-search.png') });
       await search.fill('不存在的模拟功能');
       await expect(page.getByText('未找到相关功能', { exact: true })).toBeVisible();
-      await closeSearch.click();
+      await search.press('Tab');
+      await expect(search).toHaveValue('不存在的模拟功能');
+      await header.getByRole('button', { name: '清空搜索', exact: true }).click();
+      await search.focus();
+      await search.press('Tab');
       await expect(search).toHaveCount(0);
       await expect(openSearch).toHaveAttribute('aria-expanded', 'false');
       await expect(page.getByRole('button', { name: '时间看板', exact: true })).toBeVisible();

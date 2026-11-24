@@ -5,7 +5,7 @@ import CategoryPager from '../../components/CategoryPager.uvue';
 import { computed, onUnmounted, ref } from 'vue';
 import { onLoad, onShow } from '@dcloudio/uni-app';
 import MobilePage from '../../components/MobilePage.uvue';
-import PageHeader from '../../components/PageHeader.uvue';
+import PageSearch from '../../components/PageSearch.uvue';
 import MobileButton from '../../components/MobileButton.uvue';
 import FormField from '../../components/FormField.uvue';
 import FormActions from '../../components/FormActions.uvue';
@@ -29,6 +29,7 @@ const pager = ref(null);
 const loaded = ref(false);
 const columns = ref<any[]>([]), tasks = ref<any[]>([]), groups = ref<any>({});
 const { appGridItem } = useAppLayout();
+const searchOpen = ref(false);
 const selected = ref('all'), keyword = ref(''), loading = ref(false), refreshing = ref(false), error = ref('');
 const form = ref<any>(null), kind = ref('task'), saving = ref(false), formError = ref(''), busy = ref(''), managing = ref(false);
 const priorityLabels = ['高', '中', '低'], priorityValues = [1, 10, 20];
@@ -238,10 +239,10 @@ async function move(type, item, offset) {
 </script>
 <template>
   <MobilePage :scroll-locked="true" :refresh-disabled="true">
-    <view class="todo-page ui-page-body" :class="{ 'todo-page-dark': isDark }">
-      <PageHeader title="待办" :back="true" @back="uni.navigateBack()" />
+    <view class="todo-page ui-page-body" @click="searchOpen = false" :class="{ 'todo-page-dark': isDark }">
+      <PageSearch v-model="keyword" v-model:open="searchOpen" title="待办" label="搜索任务" back
+        @layout="pager?.measure()" @back="uni.navigateBack()" />
       <view class="ui-toolbar">
-        <FormField compact stretch hide-label placeholder="搜索待办或清单" label="搜索任务" v-model="keyword" />
         <MobileButton label="新增清单" icon="ant-design:plus-outlined" :disabled="!columns.length || loading || writing" @click="open('task')" />
         <MobileButton label="管理任务列" icon="ant-design:more-outlined" variant="ghost" @click="managing = true" />
       </view>

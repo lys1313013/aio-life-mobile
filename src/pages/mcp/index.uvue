@@ -4,7 +4,8 @@ import CategoryTabs from "../../components/CategoryTabs.uvue";
 import CategoryPager from '../../components/CategoryPager.uvue';
 import { computed, onUnmounted, ref, watch } from "vue";
 import MobilePage from "../../components/MobilePage.uvue";
-import PageHeader from "../../components/PageHeader.uvue";
+import PageSearch from '../../components/PageSearch.uvue';
+import spacing from '../../styles/spacing.json';
 import MobileButton from "../../components/MobileButton.uvue";
 import AppIcon from "../../components/AppIcon.uvue";
 import PageState from "../../components/PageState.uvue";
@@ -40,6 +41,7 @@ const clientConfig = JSON.stringify(
 );
 const tools = ref<any[]>([]);
 const keyword = ref("");
+const searchOpen = ref(false);
 const activeGroup = ref("all");
 const loading = ref(false);
 const refreshing = ref(false);
@@ -175,18 +177,12 @@ function manageKeys() {
 
 <template>
   <MobilePage :scroll-locked="true" :refresh-disabled="true">
-    <PageHeader title="MCP 工具" back @back="uni.navigateBack()">
-      <text class="navigation-title" :class="themeClass('navigation-title')"
-        >MCP 工具</text
-      >
-      <MobileButton
-        label="连接配置"
-        icon="ant-design:setting-outlined"
-        variant="ghost"
-        @click="guideOpen = true"
-      />
-    </PageHeader>
-    <view class="body ui-page-body" :class="themeClass('body')">
+    <PageSearch title="MCP 工具" v-model="keyword" v-model:open="searchOpen" label="搜索工具" @layout="pager?.measure()" back :actions-min-width="spacing.controlMin" @back="uni.navigateBack()">
+      <template #actions>
+        <MobileButton label="连接配置" icon="ant-design:setting-outlined" variant="ghost" @click="guideOpen = true" />
+      </template>
+    </PageSearch>
+    <view class="body ui-page-body" :class="themeClass('body')" @click="searchOpen = false">
       <view class="connection ui-card" :class="themeClass('surface')">
         <view class="connection-icon" :class="themeClass('connection-icon')"
           ><AppIcon
@@ -216,20 +212,6 @@ function manageKeys() {
           @click="copy(serviceAddress)"
         />
       </view>
-      <view class="tool-toolbar ui-toolbar"
-        ><FormField
-          v-model="keyword"
-          compact
-          stretch
-          hide-label
-          label="搜索工具"
-          placeholder="搜索名称或描述" /><MobileButton
-          v-if="keyword"
-          label="清除搜索"
-          icon="ant-design:close-outlined"
-          variant="ghost"
-          @click="keyword = ''"
-      /></view>
       <CategoryTabs class="group-scroll" :items="groups" :current="groupIndex" label="工具分类" id-prefix="mcp-group" item-class="group-tab" :disabled="!!current || guideOpen || busy" @change="activeGroup = groups[$event].value" />
       <CategoryPager ref="pager" :items="toolPages" :current="groupIndex" :disabled="!!current || guideOpen || busy" :refreshing="refreshing" tabs-selector=".group-scroll" @change="activeGroup = toolPages[$event].value" @refresh="refreshing = true; load()"><template #default="{ item: toolPage, active }"><view :class="{ 'mcp-page-active': active }">
       <view class="list-caption"
@@ -498,14 +480,6 @@ function manageKeys() {
 .body-dark {
   color: #e7e9ee;
 }
-.navigation-title {
-  flex: 1;
-  @include type-style("title");
-  color: #242428;
-}
-.navigation-title-dark {
-  color: #eeeeef;
-}
 .connection {
   display: flex;
   flex-direction: row;
@@ -556,9 +530,6 @@ function manageKeys() {
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
-}
-.tool-toolbar {
-  margin-bottom: $space-inline;
 }
 .group-scroll {
   width: 100%;

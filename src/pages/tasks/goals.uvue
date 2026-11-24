@@ -6,7 +6,7 @@ import { onMounted, onUnmounted, ref } from 'vue';
 import { onLoad, onShow } from '@dcloudio/uni-app';
 import GoalEditor from '../../components/GoalEditor.uvue';
 import MobilePage from '../../components/MobilePage.uvue';
-import PageHeader from '../../components/PageHeader.uvue';
+import PageSearch from '../../components/PageSearch.uvue';
 import MobileButton from '../../components/MobileButton.uvue';
 import FormField from '../../components/FormField.uvue';
 import PageState from '../../components/PageState.uvue';
@@ -19,11 +19,13 @@ import {
   statuses,
   statusLabels,
 } from '../../services/records/contracts.ts';
+const searchOpen = ref(false);
 const goals = ref<any[]>([]),
   loading = ref(false),
   refreshing = ref(false),
   error = ref(''),
   keyword = ref(''),
+  appliedKeyword = ref(''),
   typeFilter = ref('全部类型'),
   statusFilter = ref('全部状态');
 const pinningId = ref('');
@@ -56,7 +58,7 @@ async function load(refresh = false) {
     const status = statusLabels.indexOf(statusFilter.value);
     const data = await scope.wait(
       fetchGoals({
-        keyword: keyword.value.trim(),
+        keyword: appliedKeyword.value,
         ...(type >= 0 ? { type: type + 1 } : {}),
         ...(status >= 0 ? { status: statuses[status] } : {}),
       }),
@@ -91,7 +93,11 @@ function goalDates(item) {
   const showYear = item.type >= 6 || !start || !end || start.slice(0, 4) !== end.slice(0, 4) || start.slice(0, 4) !== year;
   return (start ? (showYear ? start : start.slice(5)) : '—') + ' ~ ' + (end ? (showYear ? end : end.slice(5)) : '—');
 }
-function resetFilters() { keyword.value = ''; typeFilter.value = '全部类型'; statusFilter.value = '全部状态'; load(); }
+function submitSearch() {
+  appliedKeyword.value = keyword.value.trim();
+  load();
+}
+function resetFilters() { appliedKeyword.value = ''; keyword.value = ''; typeFilter.value = '全部类型'; statusFilter.value = '全部状态'; load(); }
 function open(item = null, pinned = false) {
   if (!pinningId.value) editor.value?.open(item, pinned);
 }
@@ -99,7 +105,7 @@ function saved(row) {
   generation++; loading.value = false; refreshing.value = false;
   const index = goals.value.findIndex(item => item.id === row.id);
   const type = goalTypes.indexOf(typeFilter.value), status = statusLabels.indexOf(statusFilter.value);
-  const search = keyword.value.trim().toLocaleLowerCase();
+  const search = appliedKeyword.value.toLocaleLowerCase();
   const matches = (type < 0 || row.type === type + 1)
     && (status < 0 || goalDisplayStatus(row) === statuses[status])
     && (!search || [row.title, row.description, goalTags(row.tags).join(' ')].some(value => String(value || '').toLocaleLowerCase().includes(search)));
@@ -125,15 +131,9 @@ async function togglePinned(item) {
 </script>
 <template>
   <MobilePage :refreshing="refreshing" @refresh="load(true)">
-    <view class="records-page ui-page-body" :class="{ 'records-page-dark': isDark }">
-      <PageHeader title="目标" :back="true" @back="uni.navigateBack()" />
-      <view class="ui-toolbar"
-        ><FormField compact stretch hide-label placeholder="搜索目标、描述、标签" label="搜索" v-model="keyword" /><MobileButton
-          label="搜索目标"
-          icon="ant-design:search-outlined"
-          :loading="loading"
-          @click="load()" /><MobileButton v-if="keyword || typeFilter !== '全部类型' || statusFilter !== '全部状态'" label="重置筛选" icon="ant-design:close-outlined" variant="quiet" :disabled="loading" @click="resetFilters()"
-      /></view>
+    <view class="records-page ui-page-body" @click="searchOpen = false" :class="{ 'records-page-dark': isDark }">
+      <PageSearch v-model="keyword" v-model:open="searchOpen" title="目标" label="搜索目标" back
+        manual :active="!!appliedKeyword" :loading="loading" @search="submitSearch" @dismiss="keyword = appliedKeyword" @back="uni.navigateBack()" />
       <view class="filters ui-field-row"
         ><FormField compact stretch
           hide-label label="类型"
@@ -145,8 +145,9 @@ async function togglePinned(item) {
           kind="selector"
           v-model="statusFilter"
           :options="['全部状态', ...statusLabels]"
-          @update:model-value="load()"
-      /></view>
+          @update:model-value="load()" />
+        <MobileButton v-if="appliedKeyword || typeFilter !== '全部类型' || statusFilter !== '全部状态'" label="重置筛选" icon="ant-design:close-outlined" variant="quiet" :disabled="loading" @click="resetFilters()" />
+      </view>
       <PageState skeleton="list" :loading="loading" :error="error" :empty="!goals.length" @retry="load()">
 <template #loading><view class="goal-grid" ><view v-for="n in 6" :key="n" class="record-card ui-card" :class="{ 'record-card-dark': isDark }"><ContentSkeleton variant="goal-tile" /></view></view></template>
 
@@ -183,10 +184,6 @@ async function togglePinned(item) {
 }
 .records-page-dark {
   color: #eeeeef;
-}
-.toolbar {
-  flex-direction: row;
-  align-items: center;
 }
 .filters {
   flex-direction: row;

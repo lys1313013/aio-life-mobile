@@ -129,8 +129,8 @@ async function remove(item) {
 defineExpose({ open });
 </script>
 <template>
-      <ModalMotion><AdaptiveModal ref="modalMotion0" v-if="form" label="编辑目标" :show-close="false" :busy="saving || previewing" @close="form = null">
-        <view class="goal-title-row ui-field-row"><FormField :required="isRequired('goal', 'title')" appearance="soft" compact stretch label="标题" v-model="form.title" /><MobileButton label="关闭" icon="ant-design:close-outlined" variant="quiet" :disabled="saving" @click="form = null" /></view>
+      <ModalMotion><AdaptiveModal ref="modalMotion0" v-if="form" label="编辑目标" :show-close="false" :content-key="String(detailsOpen)" :busy="saving || previewing" @close="form = null">
+        <FormField :required="isRequired('goal', 'title')" appearance="soft" label="标题" v-model="form.title" />
         <view class="filters ui-field-row">
           <FormField :required="isRequired('goal', 'type')" appearance="soft" compact stretch label="类型" kind="selector" :model-value="goalTypes[form.type - 1]" :options="goalTypes" @update:model-value="setType($event)" />
           <FormField :required="isRequired('goal', 'status')" appearance="soft" compact stretch label="状态" kind="selector" :model-value="statusLabels[statuses.indexOf(form.status)]" :options="statusLabels" @update:model-value="form.status = statuses[statusLabels.indexOf($event)]" />
@@ -179,19 +179,25 @@ defineExpose({ open });
             :model-value="form.endDate?.slice(11, 16) || ''"
             @update:model-value="setTime('endDate', $event)"
         /></view>
-        <button hover-class="none" class="goal-more-toggle" :class="themeClass('goal-more-toggle')" role="button" aria-label="补充资料" :aria-expanded="detailsOpen" :disabled="saving" @click="detailsOpen = !detailsOpen">
-          <text class="goal-more-label" :class="themeClass('goal-more-label')">补充资料</text>
-          <text v-if="detailSummary && !detailsOpen" class="goal-more-summary" :class="themeClass('goal-more-summary')">{{ detailSummary }}</text>
-          <AppIcon :name="detailsOpen ? 'ant-design:up-outlined' : 'ant-design:down-outlined'" :size="16" />
-        </button>
-        <view v-if="detailsOpen">
-        <FormField appearance="soft" label="描述" kind="textarea" v-model="form.description" /><FormField appearance="soft"
-          label="行动计划"
-          kind="textarea"
-          v-model="form.content"
-        /><FormField appearance="soft" label="标签" placeholder="多个标签用逗号分隔" v-model="form.tags" />
+        <view class="goal-options" :class="themeClass('goal-options')">
+          <button hover-class="none" class="goal-option-row goal-more-toggle" role="button"
+            aria-label="补充资料" :aria-expanded="detailsOpen" :disabled="saving" @click="detailsOpen = !detailsOpen">
+            <text class="goal-option-label" :class="themeClass('goal-option-label')">补充资料</text>
+            <text v-if="detailSummary && !detailsOpen" class="goal-more-summary" :class="themeClass('goal-more-summary')">{{ detailSummary }}</text>
+            <view class="goal-option-chevron">
+              <AppIcon :name="detailsOpen ? 'ant-design:down-outlined' : 'ant-design:right-outlined'" :size="14" />
+            </view>
+          </button>
+          <view v-if="detailsOpen" class="ui-mt-sm">
+            <FormField appearance="soft" label="描述" kind="textarea" v-model="form.description" />
+            <FormField appearance="soft" label="行动计划" kind="textarea" v-model="form.content" />
+            <FormField appearance="soft" label="标签" placeholder="多个标签用逗号分隔" v-model="form.tags" />
+          </view>
+          <view class="goal-option-row goal-pin-row" :class="themeClass('goal-pin-row')">
+            <text class="goal-option-label" :class="themeClass('goal-option-label')">添加到首页</text>
+            <MobileSwitch :checked="form.isPinned === 1" :disabled="saving" aria-label="添加到首页" @change="form.isPinned = $event.detail.value ? 1 : 0" />
+          </view>
         </view>
-        <FormField appearance="soft" label="添加到首页"><MobileSwitch :checked="form.isPinned === 1" :disabled="saving" aria-label="添加到首页" @change="form.isPinned = $event.detail.value ? 1 : 0" /></FormField>
         <template #footer>
         <view class="goal-footer">
         <text v-if="formError" role="alert" class="record-error ui-type-body">{{ formError }}</text>
@@ -214,15 +220,27 @@ defineExpose({ open });
 @use '../styles/spacing.scss';
 @use '../styles/spacing-tokens' as *;
 @use '../styles/text-colors' as *;
+@use '../styles/theme-tokens' as *;
 @include type-utilities('body');
 .filters { flex-direction: row; flex-wrap: wrap; }
-.goal-title-row { align-items: flex-end; }
 .goal-footer { gap: $space-inline; }
-.goal-more-toggle { display: flex; flex-direction: row; align-items: center; justify-content: space-between; gap: $space-inline; min-height: $space-controlMin; width: 100%; padding: 0; margin: 0; @include button-background(transparent); color: #27272a; }
-.goal-more-toggle-dark { color: #eeeeef; }
-.goal-more-label { @include type-style('label'); color: #27272a; }
-.goal-more-label-dark { color: #eeeeef; }
-.goal-more-summary { flex: 1; min-width: 0; text-align: right; @include type-style('caption'); color: $text-secondary-light; }
+.goal-options { padding: 0 $space-card; border-radius: 12px; background-color: $theme-page-light; }
+.goal-options-dark { background-color: $theme-page-dark; }
+.goal-option-row { display: flex; flex-direction: row; align-items: center; gap: $space-inline; min-height: $space-controlMin; }
+.goal-more-toggle {
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  @include button-background(transparent);
+  @include borderless-button;
+}
+.goal-option-label { flex: 1; text-align: left; @include type-style('body-strong'); color: #27272a; }
+.goal-option-label-dark { color: #eeeeef; }
+.goal-option-chevron { display: flex; align-items: center; justify-content: center; width: $space-controlMin; }
+.goal-pin-row { border-top: $space-hairline solid $theme-skeleton-light; }
+.goal-pin-row-dark { border-top-color: $theme-skeleton-dark; }
+.goal-more-summary { @include type-style('caption'); color: $text-secondary-light; }
 .goal-more-summary-dark { color: $text-secondary-dark; }
 .goal-query-result { white-space: pre-wrap; word-break: break-all; margin-top: $space-inline; }
 .record-error { color: #e05252; }

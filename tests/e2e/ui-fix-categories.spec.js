@@ -38,13 +38,15 @@ for (const admin of [false, true]) {
     await expect(firstCard.getByRole('button', { name: '删除分类', exact: true })).toBeVisible();
     await firstCard.getByRole('button', { name: '收起子分类', exact: true }).click();
     await expect(page.locator('.category-card')).toHaveCount(2);
-    await page.getByRole('textbox', { name: '搜索分类', exact: true }).fill('模拟子分类');
+    await page.getByRole('button', { name: '展开搜索', exact: true }).click();
+    await page.getByRole('searchbox', { name: '搜索分类', exact: true }).fill('模拟子分类');
     await expect(page.locator('.category-card')).toHaveCount(1);
-    await page.getByRole('textbox', { name: '搜索分类', exact: true }).fill('没有这个分类的模拟搜索');
+    await page.getByRole('searchbox', { name: '搜索分类', exact: true }).fill('没有这个分类的模拟搜索');
     await expect(page.getByText('未找到匹配分类', { exact: true })).toBeVisible();
     await page.getByRole('button', { name: '清空搜索', exact: true }).click();
-    await expect(page.getByRole('textbox', { name: '搜索分类', exact: true })).toHaveValue('');
     await expect(page.locator('.category-card')).toHaveCount(2);
+    await page.getByRole('button', { name: '展开搜索', exact: true }).click();
+    await expect(page.getByRole('searchbox', { name: '搜索分类', exact: true })).toHaveValue('');
     await firstCard.getByRole('button', { name: '编辑分类', exact: true }).click();
     await expect(page.getByRole('dialog', { name: '编辑分类', exact: true }).getByRole('switch', { name: '卡片统计', exact: true })).toBeVisible();
   });

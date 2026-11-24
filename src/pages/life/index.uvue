@@ -73,10 +73,6 @@ function closeSearch() {
   searchOpen.value = false;
   query.value = "";
 }
-function toggleSearch() {
-  if (searchOpen.value) closeSearch();
-  else searchOpen.value = true;
-}
 function current(version, token) {
   return active && epoch === version && session.token === token;
 }
@@ -234,8 +230,32 @@ async function save() {
   <view class="tab-page life-page" :class="themeClass('life-page')">
     <PageHeader title="全部">
       <view class="life-header-tools">
-        <view v-if="searchOpen" class="life-header-search" :class="themeClass('life-header-search')">
+        <button
+          v-if="catalogError && catalogLoaded"
+          hover-class="none"
+          role="button"
+          class="life-action"
+          aria-label="重试功能目录"
+          @click="loadPart('catalog')"
+        >
+          <AppIcon name="lucide:rotate-cw" :color="secondaryColor" />
+        </button>
+        <view class="life-header-search" :class="{ 'life-header-search-open': searchOpen }">
+          <view class="life-search-outline" :class="[themeClass('life-search-outline'), { 'life-search-outline-visible': searchOpen }]" />
+          <view class="life-search-icon" aria-hidden="true">
+            <AppIcon name="lucide:search" :color="secondaryColor" />
+          </view>
+          <button
+            v-if="!searchOpen"
+            hover-class="none"
+            role="button"
+            class="life-action life-search-trigger"
+            aria-label="展开搜索"
+            aria-expanded="false"
+            @click="searchOpen = true"
+          />
           <input
+            v-if="searchOpen"
             v-model="query"
             class="life-input life-header-input"
             :class="themeClass('life-ink')"
@@ -244,6 +264,7 @@ async function save() {
             :placeholder-style="'color: ' + secondaryColor"
             :focus="searchOpen"
             confirm-type="search"
+            @blur="!query.trim() && closeSearch()"
           />
           <button
             v-if="query"
@@ -256,31 +277,12 @@ async function save() {
             <AppIcon name="ant-design:close-outlined" :size="14" :color="secondaryColor" />
           </button>
         </view>
-        <button
-          v-if="catalogError && catalogLoaded"
-          hover-class="none"
-          role="button"
-          class="life-action"
-          aria-label="重试功能目录"
-          @click="loadPart('catalog')"
-        >
-          <AppIcon name="lucide:rotate-cw" :color="secondaryColor" />
-        </button>
-        <button
-          hover-class="none"
-          role="button"
-          class="life-action"
-          :aria-label="searchOpen ? '收起搜索' : '展开搜索'"
-          :aria-expanded="searchOpen"
-          @click="toggleSearch"
-        >
-          <AppIcon :name="searchOpen ? 'lucide:x' : 'lucide:search'" :color="secondaryColor" />
-        </button>
       </view>
     </PageHeader>
     <scroll-view
       scroll-y
       class="tab-scroll"
+      :show-scrollbar="false"
       :refresher-enabled="!editing && !saving"
       :refresher-triggered="refreshing"
       refresher-background="transparent"
@@ -308,12 +310,12 @@ async function save() {
           }}</text></view
         >
         <view
-          v-for="section in sections"
+          v-for="(section, index) in sections"
           :key="section.menuId"
           class="life-section life-surface"
-          :class="themeClass('life-surface')"
+          :class="[themeClass('life-surface'), { 'ui-mt-section': index > 0 }]"
         >
-          <text v-if="section.title" class="life-section-title ui-mb-xs" :style="{ color: secondaryColor }">{{ section.title }}</text>
+          <text v-if="section.title" class="life-section-title ui-mb-xs ui-px-card" :style="{ color: secondaryColor }">{{ section.title }}</text>
           <view class="life-grid">
             <button hover-class="none"
               role="button"
@@ -482,7 +484,7 @@ async function save() {
           </view>
           <view
             class="life-edit-search ui-row ui-mb-section ui-mt-section ui-px-card ui-py-xs"
-            :class="themeClass('life-page')"
+            :class="themeClass('life-edit-search')"
             ><LifeMenuIcon icon="lucide:search" color="#8b8f99" /><input
               v-model="editQuery"
               class="life-input"
@@ -523,6 +525,7 @@ async function save() {
 </template>
 
 <style scoped lang="scss">
+@use '../../styles/form-control' as form-control;
 @use '../../styles/platform' as *;
 @use '../../styles/theme-tokens' as *;
 @use '../../styles/typography' as *;
@@ -534,12 +537,8 @@ async function save() {
   position: relative;
   display: flex;
   flex-direction: column;
-  gap: $space-section;
-  padding-left: $space-inline;
-  padding-right: $space-inline;
-  padding-bottom: calc($space-inline + env(safe-area-inset-bottom));
   /* #ifdef WEB || MP-WEIXIN */
-  padding-bottom: $space-inline;
+  padding-bottom: $space-page;
   /* #endif */
 }
 
@@ -549,28 +548,62 @@ async function save() {
 .life-header-tools {
   display: flex;
   width: 100%;
+  max-width: 360px;
+  margin-left: auto;
   flex-direction: row;
   justify-content: flex-end;
   align-items: center;
 }
 .life-header-search {
+  position: relative;
   display: flex;
-  flex: 1;
+  width: $space-controlMin;
   min-width: 0;
+  height: $space-controlMin;
   flex-direction: row;
   align-items: center;
-  background-color: $theme-surface-light;
+  overflow: hidden;
+  background-color: transparent;
+  transition: width 240ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+.life-header-search-open {
+  width: 100%;
+}
+.life-search-outline {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  bottom: 0;
   border: $space-hairline solid #d8dde4;
   border-radius: 14px;
-  max-width: 360px;
-  height: $space-controlMin;
-  box-sizing: border-box;
-  padding-left: $space-card;
+  opacity: 0;
+  transition: opacity 180ms ease-out;
 }
-.life-header-search-dark {
-  background-color: $theme-surface-dark;
+.life-search-outline-dark {
   border-color: #363940;
 }
+.life-search-outline-visible {
+  opacity: 1;
+}
+.life-search-icon {
+  display: flex;
+  width: $space-controlMin;
+  height: $space-controlMin;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+}
+.life-search-trigger {
+  position: absolute;
+  left: 0;
+  top: 0;
+}
+/* #ifdef WEB || MP-WEIXIN */
+@media (prefers-reduced-motion: reduce) {
+  .life-header-search, .life-search-outline { transition: none; }
+}
+/* #endif */
 .life-header-input {
   background-color: transparent;
 }
@@ -584,7 +617,8 @@ async function save() {
 }
 .life-section {
   border-radius: 14px;
-  padding: $space-card $space-inline $space-inline;
+  // 目录按钮铺满卡片宽度，标题单独保留卡片的横向缩进。
+  padding: $space-card 0;
 }
 .life-section-title {
   @include type-style('caption');
@@ -707,10 +741,10 @@ async function save() {
 }
 .life-edit-search {
   align-items: center;
-  border-radius: 14px;
   min-height: 48px;
-  background-color: $theme-page-light;
+  @include form-control.surface;
 }
+.life-edit-search-dark { @include form-control.dark; }
 @media (min-width: 640px) {
   .life-tile { width: 16.6667%; }
 }

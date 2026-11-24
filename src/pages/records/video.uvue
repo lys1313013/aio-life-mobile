@@ -4,7 +4,7 @@ import CategoryTabs from "../../components/CategoryTabs.uvue";
 import { openExternalLink } from '../../services/external-link.ts'
 import { readPageTotal, mergePageItems, hasMorePageItems } from '../../services/pagination.ts';
 import { usePageRefresh } from '../../services/page-refresh.ts'
-import { appTextColor } from '../../services/app-layout.ts'
+import { appTextColor, useAppLayout } from '../../services/app-layout.ts'
 
 import VideoCover from './components/VideoCover.uvue';
 import FormActions from '../../components/FormActions.uvue';
@@ -14,7 +14,7 @@ import AppIcon from '../../components/AppIcon.uvue';
 import { computed, ref, onUnmounted } from 'vue';
 import { onLoad, onShow, onHide } from '@dcloudio/uni-app';
 import MobilePage from '../../components/MobilePage.uvue';
-import PageHeader from '../../components/PageHeader.uvue';
+import PageSearch from '../../components/PageSearch.uvue';
 import MobileButton from '../../components/MobileButton.uvue';
 import FormField from '../../components/FormField.uvue';
 import PageState from '../../components/PageState.uvue';
@@ -53,6 +53,11 @@ const counts = ref<any>({}),
   parsing = ref(false),
   formError = ref(''),
   saved = ref(false);
+const searchOpen = ref(false);
+function closeSearch() {
+  keyword.value = '';
+  searchOpen.value = false;
+}
 const showMore = ref(false);
 const durationInput = ref('00:00:00');
 const watchedDurationInput = ref('00:00:00');
@@ -100,6 +105,7 @@ const scope = createRecordScope((clear) => {
   formRevision++;
   form.value = null;
   if (clear) {
+    closeSearch();
     requestedEdit = '';
     requestedCreate = false;
     pages.value = statusTabs.map(label => ({ label, rows: [], loading: false, loaded: false, stale: false, error: '', revision: 0 }));
@@ -387,20 +393,24 @@ function play(url) {
   if (!canPlay(url)) return;
   openExternalLink(url);
 }
+const { appGridCell } = useAppLayout();
+const videoGridBreakpoints = [[600, 3], [1000, 4]];
+function videoCell(index: number, length: number) {
+  return appGridCell(index, length, 2, 'section', videoGridBreakpoints);
+}
 const statusCategories = computed(() => statusTabs.map(label => ({ label: label === '全部状态' ? '全部' : label, count: summaryLoaded.value ? (label === '全部状态' ? Object.values(counts.value).reduce((sum, count) => sum + Number(count), 0) : counts.value[statuses.find(code => statusLabels[code] === label)] || 0) : null })));
 
 </script>
 <template>
-  <MobilePage :scroll-locked="true" :refresh-disabled="true"
-    ><view class="video-page ui-page-body" :class="{ 'video-page-dark': isDark }"
-      ><PageHeader title="视频观看" :back="true" @back="uni.navigateBack()" /><view class="ui-toolbar"
-        ><FormField compact stretch hide-label label="搜索视频" placeholder="搜索视频、UP主或笔记" v-model="keyword" /></view
-      ><view class="video-summary ui-row ui-section" :class="{ 'summary-pending': !summaryLoaded, 'summary-pending-dark': !summaryLoaded && isDark }" :aria-busy="summaryLoading"><view class="summary-panel ui-card" :class="{ 'summary-panel-dark': isDark }"><text class="secondary" :class="{ 'record-secondary-dark': isDark }">学习总数</text><text class="summary-number" :aria-hidden="!summaryLoaded" :class="{ 'summary-value-pending': !summaryLoaded, 'summary-value-pending-dark': !summaryLoaded && isDark }">{{ Object.values(counts).reduce((sum, count) => sum + Number(count), 0) }}</text><text class="secondary" :class="{ 'record-secondary-dark': isDark, 'summary-value-pending': !summaryLoaded, 'summary-value-pending-dark': !summaryLoaded && isDark }">{{ counts.completed || 0 }} 已完成 · {{ counts.in_progress || 0 }} 进行中 · {{ counts.not_started || 0 }} 未开始</text></view><view class="summary-panel ui-card" :class="{ 'summary-panel-dark': isDark }"><text class="secondary" :class="{ 'record-secondary-dark': isDark }">已学时长</text><text class="summary-number summary-duration" :aria-hidden="!summaryLoaded" :class="{ 'summary-value-pending': !summaryLoaded, 'summary-value-pending-dark': !summaryLoaded && isDark }">{{ formatSeconds(statistics.studiedSeconds) }}</text><text class="secondary" :class="{ 'record-secondary-dark': isDark, 'summary-value-pending': !summaryLoaded, 'summary-value-pending-dark': !summaryLoaded && isDark }">剩余预估 {{ formatSeconds(statistics.unstudiedSeconds) }}</text></view><LoadingIndicator v-if="summaryLoading" label="正在加载视频统计" floating /><MobileButton v-if="summaryError && !summaryLoading" class="summary-retry" label="重试视频统计" variant="quiet" @click="loadSummary" /></view><CategoryTabs class="status-scroll ui-section" :items="statusCategories" :current="statusIndex" variant="underline" label="视频状态" id-prefix="video-status" item-class="status-tab" label-class="status-label" count-class="status-count" :disabled="!!form" @change="selectStatus(statusTabs[$event])" />
+  <MobilePage :scroll-locked="true" :refresh-disabled="true">
+    <view class="video-page ui-page-body" :class="{ 'video-page-dark': isDark }">
+      <PageSearch v-model="keyword" v-model:open="searchOpen" title="视频观看" label="搜索视频" back @layout="pager?.measure()" @back="uni.navigateBack()" />
+      <view class="video-summary ui-section" :class="{ 'summary-pending': !summaryLoaded, 'summary-pending-dark': !summaryLoaded && isDark }" :aria-busy="summaryLoading"><view class="summary-panel ui-pad-card" :class="{ 'summary-panel-dark': isDark }"><text class="secondary" :class="{ 'record-secondary-dark': isDark }">学习总数</text><text class="summary-number video-primary" :aria-hidden="!summaryLoaded" :class="{ 'video-primary-dark': isDark, 'summary-value-pending': !summaryLoaded, 'summary-value-pending-dark': !summaryLoaded && isDark }">{{ Object.values(counts).reduce((sum, count) => sum + Number(count), 0) }}</text><text class="secondary" :class="{ 'record-secondary-dark': isDark, 'summary-value-pending': !summaryLoaded, 'summary-value-pending-dark': !summaryLoaded && isDark }">{{ counts.completed || 0 }} 已完成 · {{ counts.in_progress || 0 }} 进行中 · {{ counts.not_started || 0 }} 未开始</text></view><view class="summary-panel summary-panel-next ui-pad-card" :class="{ 'summary-panel-dark': isDark }"><text class="secondary" :class="{ 'record-secondary-dark': isDark }">已学时长</text><text class="summary-number summary-duration video-primary" :aria-hidden="!summaryLoaded" :class="{ 'video-primary-dark': isDark, 'summary-value-pending': !summaryLoaded, 'summary-value-pending-dark': !summaryLoaded && isDark }">{{ formatSeconds(statistics.studiedSeconds) }}</text><text class="secondary" :class="{ 'record-secondary-dark': isDark, 'summary-value-pending': !summaryLoaded, 'summary-value-pending-dark': !summaryLoaded && isDark }">剩余预估 {{ formatSeconds(statistics.unstudiedSeconds) }}</text></view><LoadingIndicator v-if="summaryLoading" label="正在加载视频统计" floating /><MobileButton v-if="summaryError && !summaryLoading" class="summary-retry" label="重试视频统计" variant="quiet" @click="loadSummary" /></view><CategoryTabs class="status-scroll ui-section" :items="statusCategories" :current="statusIndex" variant="underline" label="视频状态" id-prefix="video-status" item-class="status-tab" label-class="status-label" count-class="status-count" :disabled="!!form" @change="selectStatus(statusTabs[$event])" />
       <CategoryPager ref="pager" class="video-pager" :items="visiblePages" :current="statusIndex" :disabled="!!form" :refreshing="refreshing" :layout-key="[summaryLoaded, counts, statistics, summaryError]" tabs-selector=".status-scroll" @change="pageChanged" @refresh="refresh"><template #default="{ item: videoPage, index, active }"><view class="video-page-content" :class="{ 'video-page-active': active }">
       <PageState skeleton="media" :loading="videoPage.loading || (!videoPage.loaded && !videoPage.error)" :has-content="videoPage.loaded" :error="videoPage.error" :empty="!videoPage.filtered.length" @retry="loadPage(index, true)"
         >
-<template #loading><view class="video-grid"><view v-for="n in 6" :key="n" class="video-card" :class="{ 'video-card-dark': isDark }"><view class="video-poster"><ContentSkeleton variant="cover" /></view><view class="video-body video-skeleton-body" aria-hidden="true"><text class="video-title video-skeleton-line" :class="{ 'video-skeleton-line-dark': isDark }">占位标题</text><view class="video-meta ui-row"><text class="video-meta-text video-skeleton-line" :class="{ 'video-skeleton-line-dark': isDark }">占位作者</text><text class="episode">&#160;</text></view><view class="video-meta ui-row"><text class="video-meta-text video-skeleton-line" :class="{ 'video-skeleton-line-dark': isDark }">00:00:00 / 00:00:00</text><text class="episode">&#160;</text></view><view class="progress-track" :class="{ 'progress-track-dark': isDark }" /></view></view></view></template>
-<view class="video-grid"><view v-for="item in videoPage.filtered" :key="item.id" class="video-card" :class="{ 'video-card-dark': isDark }" role="button" tabindex="0" :aria-label="'编辑视频：' + item.title" @click="open(item)" @keydown.enter="open(item)" @keydown.space.prevent="open(item)"><view class="video-poster" :class="{ 'video-poster-dark': isDark }"><VideoCover :file-id="item.coverFileId" :state="item.coverState" :title="item.title" @retry="retryCover(item)" /><text class="video-status" :class="'video-status-' + item.status">{{ statusLabels[item.status] }}</text><text class="video-duration">{{ clockDuration(item.durationSeconds) }}</text></view><view class="video-body"><text :max-lines="2" class="video-title">{{ item.title }}</text><view class="video-meta ui-row"><text class="video-meta-text" :class="{ 'record-secondary-dark': isDark }">{{ item.ownerName || '' }}</text><text class="episode">{{ item.currentEpisode || 1 }}/{{ item.episodes || 1 }}</text></view><view class="video-meta ui-row"><text class="video-meta-text" :class="{ 'record-secondary-dark': isDark }">{{ clockDuration(item.watchedDurationSeconds) }} / {{ clockDuration(item.durationSeconds) }}</text><text class="episode">{{ videoProgress(item) }}%</text></view><view class="progress-track" :class="{ 'progress-track-dark': isDark }"><view class="progress-fill" :style="{ width: (videoProgress(item)) + '%' }" /></view></view></view></view></PageState
+<template #loading><view class="video-grid"><view v-for="n in 6" :key="n" class="video-card" :style="videoCell(n - 1, 6)" :class="{ 'video-card-dark': isDark }"><view class="video-poster"><ContentSkeleton variant="cover" /></view><view class="video-body video-skeleton-body" aria-hidden="true"><text class="video-title video-skeleton-line" :class="{ 'video-skeleton-line-dark': isDark }">占位标题</text><view class="video-meta"><text class="video-meta-text video-skeleton-line" :class="{ 'video-skeleton-line-dark': isDark }">占位作者</text><text class="episode">&#160;</text></view><view class="video-meta"><text class="video-meta-text video-skeleton-line" :class="{ 'video-skeleton-line-dark': isDark }">00:00:00 / 00:00:00</text><text class="episode">&#160;</text></view><view class="progress-track" :class="{ 'progress-track-dark': isDark }" /></view></view></view></template>
+<view class="video-grid"><view v-for="(item, itemIndex) in videoPage.filtered" :key="item.id" class="video-card" :style="videoCell(itemIndex, videoPage.filtered.length)" :class="{ 'video-card-dark': isDark }" role="button" tabindex="0" :aria-label="'编辑视频：' + item.title" @click="open(item)" @keydown.enter="open(item)" @keydown.space.prevent="open(item)"><view class="video-poster" :class="{ 'video-poster-dark': isDark }"><VideoCover :file-id="item.coverFileId" :state="item.coverState" :title="item.title" @retry="retryCover(item)" /><text class="video-status" :class="'video-status-' + item.status">{{ statusLabels[item.status] }}</text><text class="video-duration">{{ clockDuration(item.durationSeconds) }}</text></view><view class="video-body"><text :max-lines="2" class="video-title video-primary" :class="{ 'video-primary-dark': isDark }">{{ item.title }}</text><view class="video-meta"><text class="video-meta-text" :class="{ 'record-secondary-dark': isDark }">{{ item.ownerName || '' }}</text><text class="episode">{{ item.currentEpisode || 1 }}/{{ item.episodes || 1 }}</text></view><view class="video-meta"><text class="video-meta-text" :class="{ 'record-secondary-dark': isDark }">{{ clockDuration(item.watchedDurationSeconds) }} / {{ clockDuration(item.durationSeconds) }}</text><text class="episode">{{ videoProgress(item) }}%</text></view><view class="progress-track" :class="{ 'progress-track-dark': isDark }"><view class="progress-fill" :style="{ width: (videoProgress(item)) + '%' }" /></view></view></view></view></PageState
       ></view></template></CategoryPager><ModalMotion><AdaptiveModal ref="modalMotion0"
         v-if="form"
         label="编辑学习视频"
@@ -462,6 +472,7 @@ const statusCategories = computed(() => statusTabs.map(label => ({ label: label 
 @use '../../styles/spacing.scss';
 
 @use '../../styles/spacing-tokens' as *;
+
 .video-link-row { align-items: flex-end; }
 .video-field-context { @include type-style('caption'); color: $text-secondary-light; }
 .video-more-toggle {
@@ -524,33 +535,40 @@ const statusCategories = computed(() => statusTabs.map(label => ({ label: label 
 @use '../../styles/spacing-tokens' as *;
 @include type-utilities('label', 'body');
 
-.video-summary { position: relative; align-items: stretch; flex-wrap: wrap; }
-.summary-panel { flex: 1; min-width: 140px; margin: 0; gap: $space-inline; background-color: #fff; border-radius: 12px; }
+.video-summary { position: relative; display: flex; flex-direction: row; align-items: stretch; }
+.summary-panel { flex: 1; min-width: 0; background-color: #fff; border-radius: 12px; }
+.summary-panel-next { margin-left: $space-inline; }
 .summary-panel-dark { background-color: #1c1e22; }
-.summary-number { @include type-style('metric');  }
+.summary-number { @include type-style('metric'); margin-top: $space-inline; margin-bottom: $space-inline; }
+.video-primary { color: #27272a; }
+.video-primary-dark { color: #eeeeef; }
 .status-scroll { width: 100%; }
 
-.video-grid { display: flex; flex-direction: row; flex-wrap: wrap; gap: $space-section; }
-.video-card { box-sizing: border-box; width: calc((100% - #{$space-section}) / 2); background-color: #fff; border-radius: 8px; overflow: hidden; }
+.video-grid { display: flex; flex-direction: row; flex-wrap: wrap; }
+.video-card { box-sizing: border-box; background-color: #fff; border-radius: 8px; overflow: hidden; }
+/* #ifndef APP */
+.video-grid { gap: $space-section; }
+.video-card { width: calc((100% - #{$space-section}) / 2); }
+@media (min-width: 600px) { .video-card { width: calc((100% - #{$space-section} * 2) / 3); } }
+@media (min-width: 1000px) { .video-card { width: calc((100% - #{$space-section} * 3) / 4); } }
+/* #endif */
 .video-card-dark { background-color: #1c1e22; }
 .video-poster { position: relative; height: 0; padding-top: 62.5%; background-color: #eef0f3; }
 .video-status, .video-duration { position: absolute; background-color: #427bea; color: white; padding: $space-detail; @include type-style('badge'); }
 .video-status { top: $space-detail; left: $space-detail; border-radius: 4px; }
 .video-duration { bottom: $space-detail; right: $space-detail; background-color: #0008; }
-.video-body { padding: $space-card; display: flex; flex-direction: column; gap: $space-inline; }
+.video-body { padding: $space-card; display: flex; flex-direction: column; }
 .video-title {
 @include clamp-text(2);
  overflow: hidden; @include type-style('body-strong'); min-height: type-line('body-strong') * 2; }
-.video-meta { justify-content: space-between; gap: $space-detail; }
+.video-meta { display: flex; flex-direction: row; justify-content: space-between; margin-top: $space-inline; }
 .video-meta-text { color: $text-secondary-light; @include type-style('caption'); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.episode { flex-shrink: 0; color: #427bea; @include type-style('badge'); }
-.progress-track { height: 5px; background-color: #eef0f3; border-radius: 5px; overflow: hidden; }
+.episode { flex-shrink: 0; margin-left: $space-detail; color: #427bea; @include type-style('badge'); }
+.progress-track { height: 5px; margin-top: $space-inline; background-color: #eef0f3; border-radius: 5px; overflow: hidden; }
 .progress-fill { height: 5px; background-color: #427bea; }
 /* #ifdef WEB */
 .video-card:focus-visible { outline: 2px solid #427bea; outline-offset: $space-micro; }
 /* #endif */
-@media (min-width: 600px) { .video-card { width: calc((100% - #{$space-section} * 2) / 3); } }
-@media (min-width: 1000px) { .video-card { width: calc((100% - #{$space-section} * 3) / 4); } }
 .summary-duration { @include type-style('metric-compact'); }
 .cover { position: absolute; left: 0; top: 0; width: 100%; height: 100%; }
 .video-cover-empty { position: absolute; left: 0; right: 0; top: 0; bottom: 0; align-items: center; justify-content: center; }

@@ -10,7 +10,7 @@ import AppIcon from '../../components/AppIcon.uvue';
 import { computed, ref, watch } from 'vue';
 import { onShow } from '@dcloudio/uni-app';
 import MobilePage from '../../components/MobilePage.uvue';
-import PageHeader from '../../components/PageHeader.uvue';
+import PageSearch from '../../components/PageSearch.uvue';
 import MobileButton from '../../components/MobileButton.uvue';
 import FormField from '../../components/FormField.uvue';
 import FormActions from '../../components/FormActions.uvue';
@@ -65,6 +65,16 @@ const connection = ref<any>({ connected: false }),
 const pager = ref(null);
 const tabs = ['阅读看板', '我的书架', '阅读笔记'].map(label => ({ label }));
 const tabIndex = computed(() => tabs.findIndex(item => item.label === tab.value));
+const searchOpen = ref(false);
+const tabQuery = computed({
+  get: () => tab.value === '我的书架' ? keyword.value : noteQuery.value,
+  set(value: string) {
+    if (tab.value === '我的书架') keyword.value = value;
+    else if (tab.value === '阅读笔记') noteQuery.value = value;
+  },
+});
+watch(tab, () => { searchOpen.value = false; });
+const canSearch = computed(() => connection.value.connected && !!snapshot.value && tab.value !== '阅读看板');
 function selectTab(index: number) {
   if (!detail.value && tabs[index]) tab.value = tabs[index].label;
 }
@@ -420,8 +430,9 @@ function openLink(url) {
 </script>
 <template>
   <MobilePage :scroll-locked="!!(connection.connected && snapshot)" :refreshing="syncing || loading" @refresh="connection.connected ? refresh() : initialize()"
-    ><view class="weread-page ui-page-body" :class="{ 'weread-page-dark': isDark }"
-      ><PageHeader title="微信读书" :back="true" @back="uni.navigateBack()" /><PageState skeleton="media" :content-key="String(contentRevision)" :loading="loading" :error="error" @retry="connection.connected ? refresh() : initialize()"
+    ><view class="weread-page ui-page-body" :class="{ 'weread-page-dark': isDark }" @click="searchOpen = false"
+      ><PageSearch title="微信读书" back :enabled="canSearch" :label="tab === '我的书架' ? '搜索书名或作者' : '搜索笔记'"
+        v-model="tabQuery" v-model:open="searchOpen" @layout="pager?.measure()" @back="uni.navigateBack()" /><PageState skeleton="media" :content-key="String(contentRevision)" :loading="loading" :error="error" @retry="connection.connected ? refresh() : initialize()"
         ><template v-if="connection.connected && snapshot"
           ><CategoryTabs class="weread-tabs ui-section" :items="tabs" :current="tabIndex"
             variant="underline" label="微信读书页签" id-prefix="weread-tab" item-class="weread-tab"
@@ -487,7 +498,7 @@ function openLink(url) {
               ></view
             ></view
           ><view v-else-if="wereadTab.label === '我的书架'"
-            ><view class="weread-search ui-row ui-section" :class="{ 'weread-search-dark': isDark }"><AppIcon name="ant-design:search-outlined" :size="18" color="#8b8f99" /><input :style="appTextColor()" class="weread-search-input" aria-label="搜索书名或作者" placeholder="搜索书名、作者" v-model="keyword" confirm-type="search" /></view><view class="toolbar ui-row ui-section"
+            ><view class="toolbar ui-row ui-section"
               ><FormField compact stretch hide-label
                 label="阅读状态"
                 kind="selector"
@@ -528,7 +539,7 @@ function openLink(url) {
                 kind="selector"
                 v-model="noteKind"
                 :options="['划线', '想法', '书评']" /></view
-            ><FormField label="搜索笔记" v-model="noteQuery" /><PageState skeleton="list"
+            ><PageState skeleton="list"
               :content-key="selectedBook"
               :loading="notesLoading"
               :retain-content="notesReady"
@@ -666,13 +677,6 @@ function openLink(url) {
 
 .weread-tab { flex: 1; }
 .weread-key-link { width: 100%; box-sizing: border-box; }
-.weread-search { flex-direction: row; align-items: center; padding: 0 $space-card; background-color: #fff; border-radius: 10px; }
-.weread-search-dark { background-color: #1c1e22; }
-.weread-search-input { flex: 1; min-width: 0; height: $space-controlMin;
-/* #ifndef APP */
-color: inherit;
-/* #endif */
- @include type-style('body'); }
 .weread-shelf { display: flex; flex-direction: row; flex-wrap: wrap; gap: $space-section; margin-top: $space-section; }
 .weread-book-card { width: calc((100% - #{$space-section}) / 2); min-width: 0; box-sizing: border-box; overflow: hidden; border-radius: 12px; background-color: #fff; }
 .weread-book-card-dark { background-color: #1c1e22; }

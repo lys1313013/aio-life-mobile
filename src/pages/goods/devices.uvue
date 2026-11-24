@@ -8,6 +8,7 @@ import { useAppLayout, appTextColor } from '../../services/app-layout.ts'
 const { appGridItem } = useAppLayout()
 
 import { buttonLabelClasses } from '../../services/button-label.ts'
+import LoadingIndicator from '../../components/LoadingIndicator.uvue';
 import ContentSkeleton from '../../components/ContentSkeleton.uvue';
 import AppIcon from '../../components/AppIcon.uvue';
 import iconCatalog from '../../services/icons/catalog.ts';
@@ -15,10 +16,9 @@ import { computed, onUnmounted, ref, watch } from 'vue';
 import CategoryPager from '../../components/CategoryPager.uvue';
 import { onLoad, onShow } from '@dcloudio/uni-app';
 import MobilePage from '../../components/MobilePage.uvue';
-import PageHeader from '../../components/PageHeader.uvue';
+import PageSearch from '../../components/PageSearch.uvue';
 import MobileButton from '../../components/MobileButton.uvue';
 import FloatingActionButton from '../../components/FloatingActionButton.uvue';
-import FormField from '../../components/FormField.uvue';
 import PageState from '../../components/PageState.uvue';
 import MetricCard from '../../components/MetricCard.uvue';
 import { authFileUrl } from '../../services/attachments.ts';
@@ -31,10 +31,12 @@ const rows = ref<any[]>([]),
   types = ref<any[]>([]),
   statuses = ref<any[]>([]),
   loading = ref(false),
+  loaded = ref(false),
   refreshing = ref(false),
   error = ref(''),
   typeFilter = ref(''),
   keyword = ref('');
+const searchOpen = ref(false);
 const photos = ref<Record<string, string>>({}),
   loadedPhotoUrls = ref<Record<string, string>>({}),
   photoBusy = ref<Record<string, boolean>>({}),
@@ -65,6 +67,9 @@ watch(availableTypes, (options) => {
 const activePage = computed(() => Math.max(0, typeTabs.value.findIndex(type => type.id === typeFilter.value)));
 const visibleTab = ref('');
 const pager = ref(null);
+function updatePagerHeight() {
+  pager.value?.measure();
+}
 function pageChanged(index) {
   const type = typeTabs.value[index];
   if (!type || form.value) return;
@@ -90,10 +95,12 @@ const scope = createRecordScope((clear) => {
     photos.value = {};
     loadedPhotoUrls.value = {};
     photoErrors.value = {};
+    loaded.value = false;
     rows.value = [];
     types.value = [];
     statuses.value = [];
     typeFilter.value = '';
+    searchOpen.value = false;
   }
 });
 // 每一页都有自己的统计和列表，拖动过程中两页同时存在，不在松手后替换内容。
@@ -149,6 +156,7 @@ async function load(refresh = false) {
       rows.value = data;
       types.value = typeDict.dictDetailList || [];
       statuses.value = statusDict.dictDetailList || [];
+      loaded.value = true;
       data.forEach((item) => {
         if (item.fileId) loadPhoto(item);
       });
@@ -220,6 +228,7 @@ const editorOrigin = ref('50% 50%');
 function open(item = null, event: any = null) {
   if (pager.value?.ignoreClick()) return;
   if (loading.value) return;
+  searchOpen.value = false;
   const info = uni.getWindowInfo();
   const point = event?.touches?.[0] || event?.changedTouches?.[0] || event?.detail || event;
   const x = point?.clientX ?? point?.x;
@@ -266,18 +275,21 @@ function deviceDeleted(id: string) {
 </script>
 <template>
   <MobilePage :scroll-locked="true" :refresh-disabled="true"
-    ><view class="goods-page ui-page-body" :class="{ 'goods-page-dark': isDark }"
-      ><PageHeader title="设备" :back="true" @back="uni.navigateBack()" /><view
-        class="ui-toolbar"
-        ><FormField compact stretch hide-label label="搜索设备" placeholder="搜索设备、配置…" v-model="keyword" /></view
-      ><CategoryTabs v-if="availableTypes.length" class="device-type-scroll ui-section" :items="typeTabs" :current="activePage" variant="underline" label="设备类型筛选" id-prefix="device-type" item-class="device-type-tab" :disabled="!!form" @change="selectType(typeTabs[$event].id)" />
-      <CategoryPager ref="pager" class="device-pager" :items="devicePages" :current="activePage" :disabled="!!form" :refreshing="refreshing" tabs-selector=".device-type-scroll" @change="pageChanged" @refresh="load(true)"><template #default="{ item: devicePage, active }"><view class="device-page-content" :class="{ 'device-page-active': active }">
+    ><view class="goods-page ui-page-body" :class="{ 'goods-page-dark': isDark }" @click="searchOpen = false"
+      ><PageSearch title="设备" back label="搜索设备" v-model="keyword" v-model:open="searchOpen"
+        @dismiss="keyword = ''" @layout="updatePagerHeight" @back="uni.navigateBack()">
+        <template #actions>
+          <LoadingIndicator v-if="loaded && loading && !refreshing" compact class="device-update-progress" label="正在更新设备" />
+        </template>
+      </PageSearch>
+      <CategoryTabs v-if="availableTypes.length" class="device-type-scroll ui-section" :items="typeTabs" :current="activePage" variant="underline" label="设备类型筛选" id-prefix="device-type" item-class="device-type-tab" :disabled="!!form" @change="selectType(typeTabs[$event].id)" />
+      <CategoryPager ref="pager" class="device-pager" :items="devicePages" :current="activePage" :disabled="!!form" :refreshing="refreshing" :layout-key="searchOpen" tabs-selector=".device-type-scroll" @change="pageChanged" @refresh="load(true)"><template #default="{ item: devicePage, active }"><view class="device-page-content" :aria-busy="loading" :class="{ 'device-page-active': active }">
       <view class="metrics ui-row ui-section"
-        ><MetricCard :style="appGridItem(2, 'section', [[700, 3]], true)" :loading="loading && !rows.length"
+        ><MetricCard :style="appGridItem(2, 'section', [[700, 3]], true)" :loading="loading && !loaded"
           class="metric-wide"
           label="总资产"
           :value="devicePage.amount"
-          unit="元" /><MetricCard :style="appGridItem(2, 'section', [[700, 3]], false)" :loading="loading && !rows.length" label="资产数量" :value="devicePage.items.length" /><MetricCard :style="appGridItem(2, 'section', [[700, 3]], false)" :loading="loading && !rows.length" label="每日成本" :value="devicePage.dailyCost" unit="元" /></view
+          unit="元" /><MetricCard :style="appGridItem(2, 'section', [[700, 3]], false)" :loading="loading && !loaded" label="资产数量" :value="devicePage.items.length" /><MetricCard :style="appGridItem(2, 'section', [[700, 3]], false)" :loading="loading && !loaded" label="每日成本" :value="devicePage.dailyCost" unit="元" /></view
       ><view class="status-summary ui-row ui-section"
         ><text
           v-for="entry in devicePage.statusCounts"
@@ -287,7 +299,9 @@ function deviceDeleted(id: string) {
           >{{ statusName(entry.status) }} {{ entry.count }}</text
         ></view
       ><PageState skeleton="list"
-        :loading="loading"
+        :loading="loading && !loaded"
+        :has-content="loaded"
+        :retain-content="loaded"
         :error="error"
         :empty="!devicePage.items.length"
         @retry="load()"
@@ -360,6 +374,7 @@ function deviceDeleted(id: string) {
 .goods-page-dark {
   color: #eeeeef;
 }
+.device-update-progress { align-self: center; }
 .toolbar {
   flex-direction: row;
   align-items: center;

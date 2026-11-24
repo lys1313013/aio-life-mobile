@@ -58,7 +58,8 @@ for (const width of [390, 768, 1440]) for (const theme of ['light', 'dark']) {
     await expect(page.getByRole('dialog', { name: '管理任务列' })).toBeVisible();
     await page.getByRole('dialog').getByRole('button', { name: '关闭', exact: true }).click();
     await expect(page.getByRole('dialog')).toHaveCount(0);
-    const search = page.locator('input[aria-label="搜索任务"]');
+    await page.getByRole('button', { name: '展开搜索', exact: true }).click();
+    const search = page.getByRole('searchbox', { name: '搜索任务', exact: true });
     await search.fill('体检');
     await expect(cards).toHaveCount(1);
     await search.fill('');

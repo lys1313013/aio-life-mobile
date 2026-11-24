@@ -9,7 +9,8 @@ import AppIcon from '../../components/AppIcon.uvue'
 import { computed, onUnmounted, ref } from 'vue';
 import { onLoad, onShow } from '@dcloudio/uni-app';
 import MobilePage from '../../components/MobilePage.uvue';
-import PageHeader from '../../components/PageHeader.uvue';
+import spacing from '../../styles/spacing.json';
+import PageSearch from '../../components/PageSearch.uvue';
 import MobileButton from '../../components/MobileButton.uvue';
 import FormField from '../../components/FormField.uvue';
 import FormActions from '../../components/FormActions.uvue';
@@ -19,6 +20,7 @@ import AdaptiveModal from '../../components/AdaptiveModal.uvue';
 import LibraryCover from '../../components/LibraryCover.uvue';
 import FloatingActionButton from '../../components/FloatingActionButton.uvue';
 import MetricCard from '../../components/MetricCard.uvue';
+import { session } from '../../services/session.ts';
 import { isDark } from '../../services/theme.ts';
 import { createRecordScope } from '../../services/records/page-scope.ts';
 import { statuses } from '../../services/records/contracts.ts';
@@ -45,11 +47,17 @@ const statusLabels = computed(() =>
 );
 const rankingOptions = ref<Array<{ id: string; name: string }>>([]);
 const rankingIndex = ref(0);
-const rankingNames = computed(() => ['全部榜单', ...rankingOptions.value.map(list => list.name)]);
+const rankingStatus = ref<'idle' | 'loading' | 'ready' | 'error'>('idle');
+let rankingRequest = 0;
+function rankingDisplayName(name: string) {
+  return (name === '豆瓣电影Top250' || name === '豆瓣读书Top250') ? '豆瓣 Top250' : name;
+}
+const rankingNames = computed(() => ['全部榜单', ...rankingOptions.value.map(list => rankingDisplayName(list.name))]);
 const rows = ref<any[]>([]),
   page = ref(1),
   total = ref<number | null>(null),
   keyword = ref(''),
+  searchDraft = ref(''),
   typeFilter = ref('全部类型'),
   statusFilter = ref('全部状态'),
   loading = ref(false),
@@ -77,7 +85,12 @@ const scope = createRecordScope((clear) => {
   form.value = null;
   entryLoading.value = false;
   importingOpen.value = false;
+  rankingRequest++;
+  if (rankingStatus.value === 'loading') rankingStatus.value = 'idle';
   if (clear) {
+    rankingOptions.value = [];
+    rankingIndex.value = 0;
+    rankingStatus.value = 'idle';
     requestedEdit = '';
     requestedCreate = false;
     rows.value = [];
@@ -92,22 +105,43 @@ let alive = true,
 let requestedEdit = '', requestedCreate = false;
 onLoad((options) => {
   kind.value = options?.kind === 'read' ? 'read' : 'movie';
-  void scope.wait(fetchRankings(kind.value)).then(lists => { rankingOptions.value = lists; }).catch(() => {});
   requestedEdit = options?.editId || '';
   requestedCreate = options?.create === '1';
 });
 const refreshOnShow = usePageRefresh(() => load(), { loading: () => loading.value, error: () => error.value, keys: () => ['read-record', 'movie', 'userDictData', 'userDictType'] })
-onShow(() => refreshOnShow());
+async function loadRankings() {
+  if (!session.token || rankingStatus.value === 'loading' || rankingStatus.value === 'ready') return;
+  const current = ++rankingRequest;
+  rankingStatus.value = 'loading';
+  try {
+    const lists = await scope.wait(fetchRankings(kind.value));
+    if (current !== rankingRequest) return;
+    rankingOptions.value = lists;
+    rankingStatus.value = 'ready';
+  } catch (error) {
+    if (current === rankingRequest) rankingStatus.value = error.name === 'PageInactiveError' ? 'idle' : 'error';
+  }
+}
+onShow(() => {
+  refreshOnShow();
+  void loadRankings();
+});
 onUnmounted(() => {
   alive = false;
   generation++;
 });
 const moreError = ref(''), pageEnded = ref(false);
+function submitSearch() {
+  keyword.value = searchDraft.value.trim();
+  searchDraft.value = keyword.value;
+  void load();
+}
 function loadMore() {
   if (loading.value || error.value || moreError.value) return;
   load(false, true);
 }
 async function load(refresh = false, more = false) {
+  if (refresh) void loadRankings();
   if (more && (loading.value || !rows.value.length || !hasMorePageItems(rows.value.length, total.value, pageEnded.value))) return;
   const current = ++generation,
     next = more ? page.value + 1 : 1;
@@ -206,7 +240,7 @@ function saved(updated) {
     const index = rows.value.findIndex(row => row.id === updated.id);
     if (index >= 0) rows.value[index] = updated;
   } else {
-    keyword.value = ''; typeFilter.value = '全部类型'; statusFilter.value = '全部状态';
+    searchDraft.value = ''; keyword.value = ''; typeFilter.value = '全部类型'; statusFilter.value = '全部状态';
     void load();
   }
 }
@@ -307,45 +341,12 @@ async function submitImport() {
 <template>
   <MobilePage :refreshing="refreshing" @refresh="load(true)" @reachbottom="loadMore"
     ><view class="library-page ui-page-body" :class="{ 'library-page-dark': isDark }"
-      ><PageHeader :title="title" :back="true" @back="uni.navigateBack()" />
-      <view class="library-search-row ui-toolbar">
-        <view
-          class="library-search"
-          :class="{ 'library-control-dark': isDark }"
-        >
-          <input
-            class="library-search-input ui-input-inset"
-            :class="{ 'library-text-dark': isDark }"
-            v-model="keyword"
-            aria-label="搜索名称"
-            :placeholder="
-              kind === 'movie' ? '搜索影视名称或导演' : '搜索标题或作者'
-            "
-            confirm-type="search"
-            @confirm="load()"
-          />
-          <button hover-class="none"
-            role="button"
-            class="library-search-button ui-type-body"
-            :class="{ 'library-text-dark': isDark }"
-            aria-label="搜索"
-            :loading="loading"
-            :disabled="loading"
-            @click="load()"
-          >
-            <view v-if="!loading" class="search-symbol"
-              ><view class="search-ring" /><view class="search-handle"
-            /></view>
-          </button>
-        </view>
-        <MobileButton
-          v-if="kind === 'movie'"
-          label="豆瓣导入"
-          icon="ant-design:download-outlined"
-          variant="quiet"
-          @click="openImport"
-        />
-      </view>
+      ><PageSearch v-model="searchDraft" :title="title" :label="'搜索' + title" :actions-min-width="kind === 'movie' ? spacing.controlMin : 0" back manual :active="!!keyword" :loading="loading"
+        @search="submitSearch" @dismiss="searchDraft = keyword" @back="uni.navigateBack()">
+        <template #actions>
+          <MobileButton v-if="kind === 'movie'" label="豆瓣导入" icon="ant-design:download-outlined" variant="ghost" @click="openImport" />
+        </template>
+      </PageSearch>
       <view class="filters ui-field-row">
         <picker
           mode="selector"
@@ -383,7 +384,14 @@ async function submitImport() {
             ><AppIcon name="ant-design:down-outlined" /></view
           >
         </picker>
-        <picker v-if="rankingOptions.length" mode="selector" :value="rankingIndex" :range="rankingNames" aria-label="榜单" @change="rankingIndex = Number($event.detail.value); load()">
+        <MobileButton
+          v-if="rankingStatus === 'loading' || rankingStatus === 'error'"
+          :label="rankingStatus === 'loading' ? '加载榜单' : '重试榜单'"
+          :loading="rankingStatus === 'loading'"
+          variant="quiet"
+          @click="loadRankings()"
+        />
+        <picker v-else-if="rankingOptions.length" mode="selector" :value="rankingIndex" :range="rankingNames" aria-label="榜单" @change="rankingIndex = Number($event.detail.value); load()">
           <view class="library-filter ui-row" :class="{ 'library-filter-dark': isDark }"><text class="ui-type-label">{{ rankingNames[rankingIndex] }}</text><AppIcon name="ant-design:down-outlined" /></view>
         </picker>
         <text v-if="!loading || rows.length" class="library-count" :class="{ 'record-secondary-dark': isDark }">{{ total == null ? '已加载 ' + rows.length : total }} 条</text>
@@ -395,7 +403,14 @@ async function submitImport() {
         :empty="!rows.length"
         @retry="load()"
       >
-<template #loading><view class="library-grid ui-gap-md ui-section" ><view v-for="n in 9" :key="n" class="library-card ui-gap-sm" ><view class="library-poster"><ContentSkeleton variant="cover" /></view><ContentSkeleton variant="caption" /></view></view></template>
+        <template #loading>
+          <view class="library-grid ui-gap-md ui-section">
+            <view v-for="n in 9" :key="n" class="library-card ui-gap-sm">
+              <view class="library-poster"><ContentSkeleton variant="cover" /></view>
+              <ContentSkeleton variant="caption" />
+            </view>
+          </view>
+        </template>
 
         <view class="library-grid ui-gap-md ui-section">
           <view v-for="item in rows" :key="item.id" class="library-card ui-gap-sm">
@@ -428,10 +443,9 @@ async function submitImport() {
                 ><LoadingIndicator compact label="正在加载记录详情" /></view
               >
             </view>
-            <view v-for="badge in item.rankings" :key="badge.rankingListId" class="library-ranking" :aria-label="badge.name + (badge.rank == null ? '' : ' 第' + badge.rank + '名')">
+            <view v-for="badge in item.rankings" :key="badge.rankingListId" class="library-ranking" :class="{ 'library-ranking-wrap': kind === 'read' || badge.name === '豆瓣电影Top250' }" :aria-label="rankingDisplayName(badge.name) + (badge.rank == null ? '' : ' 第' + badge.rank + '名')">
               <text v-if="badge.rank != null" class="library-rank">No.{{ badge.rank }}</text>
-              <text class="library-rank-name" :class="{ 'library-full-name': badge.name === '豆瓣电影Top250' || badge.name === '豆瓣读书Top250' }">{{ badge.name }}</text>
-              <text v-if="badge.name === '豆瓣电影Top250' || badge.name === '豆瓣读书Top250'" class="library-rank-name library-short-name">Top250</text>
+              <text class="library-rank-name">{{ rankingDisplayName(badge.name) }}</text>
             </view>
             <text v-if="item.finishDate" class="library-date" :class="{ 'record-secondary-dark': isDark }">{{
               item.finishDate.slice(0, 10)
@@ -529,7 +543,7 @@ async function submitImport() {
   ></MobilePage>
 </template>
 <style scoped lang="scss">
-@use '../../styles/platform' as *;
+@use 'sass:math';
 @use '../../styles/typography' as *;
 @use '../../styles/text-colors' as *;
 @use '../../styles/spacing.scss';
@@ -549,14 +563,10 @@ async function submitImport() {
   align-items: center;
 }
 .library-ranking { align-self: center; flex-direction: row; max-width: 100%; border-radius: 3px; background-color: #ffe298; }
+.library-ranking-wrap { flex-wrap: wrap; justify-content: center; }
 .library-rank, .library-rank-name { @include type-style('badge'); color: #624407; padding: 0 $space-detail; }
 .library-rank { background-color: #ffd365; }
 .library-rank-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.library-short-name { display: none; }
-@media (max-width: 420px) {
-  .library-full-name { display: none; }
-  .library-short-name { display: flex; }
-}
 .filters {
   flex-direction: row;
   flex-wrap: wrap;
@@ -565,63 +575,6 @@ async function submitImport() {
 .metrics {
   flex-direction: row;
   flex-wrap: wrap;
-}
-.library-search-row {
-  flex-direction: row;
-  align-items: center;
-}
-.library-search {
-  flex: 1;
-  min-width: 0;
-  flex-direction: row;
-  align-items: center;
-  background-color: #ffffff;
-  border-radius: 12px;
-}
-.library-search-input {
-  flex: 1;
-  min-width: 0;
-  height: 44px;
-  @include type-style('body');
-  color: #27272a;
-}
-.library-search-button {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 44px;
-  height: 44px;
-  flex-shrink: 0;
-  margin: 0;
-  padding: 0;
-  @include button-background(transparent);
-  color: #64748b;
-}
-.search-symbol {
-  position: relative;
-  width: 20px;
-  height: 20px;
-}
-.search-ring {
-  width: 13px;
-  height: 13px;
-  border: 2px solid #64748b;
-  border-radius: 8px;
-}
-.search-handle {
-  position: absolute;
-  width: 8px;
-  height: 2px;
-  left: 11px;
-  top: 14px;
-  background-color: #64748b;
-  transform: rotate(45deg);
-}
-.library-control-dark {
-  background-color: #1c1e22;
-}
-.library-text-dark {
-  color: #eeeeef;
 }
 .library-filter {
   padding: 0 $space-inline;
@@ -653,12 +606,14 @@ async function submitImport() {
   min-width: 0;
 }
 .library-poster {
+  $cover-width: 88%;
   position: relative;
-  width: 100%;
-  padding-top: 133.333333%;
   border-radius: 6px;
   overflow: hidden;
   background-color: #e6e9ed;
+  align-self: center;
+  width: $cover-width;
+  padding-top: ($cover-width * math.div(4, 3));
 }
 .library-status {
   position: absolute;
@@ -706,7 +661,6 @@ async function submitImport() {
   flex: 1;
   min-width: 0;
 }
-.library-search-button { @include borderless-button; }
 /* #ifdef WEB */
 .library-poster:focus-visible { outline: 2px solid #427bea; outline-offset: $space-micro; }
 /* #endif */

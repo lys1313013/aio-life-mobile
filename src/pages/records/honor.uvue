@@ -7,7 +7,7 @@ import ContentSkeleton from '../../components/ContentSkeleton.uvue';
 import { computed, onUnmounted, ref } from 'vue';
 import { onShow } from '@dcloudio/uni-app';
 import MobilePage from '../../components/MobilePage.uvue';
-import PageHeader from '../../components/PageHeader.uvue';
+import PageSearch from '../../components/PageSearch.uvue';
 import MobileButton from '../../components/MobileButton.uvue';
 import FormField from '../../components/FormField.uvue';
 import ConfirmAction from '../../components/ConfirmAction.uvue';
@@ -169,13 +169,7 @@ function categoryName(item) {
 <template>
   <MobilePage :refreshing="refreshing" @refresh="load(true)"
     ><view class="honor-page ui-page-body" :class="{ 'honor-page-dark': isDark }"
-      ><PageHeader title="荣誉" :back="true" @back="uni.navigateBack()" /><view class="ui-toolbar"
-        ><FormField compact stretch hide-label label="搜索" placeholder="搜索标题、描述、机构…" v-model="keyword" /><MobileButton
-          v-if="keyword || categoryFilter !== '全部分类' || levelFilter !== '全部级别'"
-          label="重置筛选"
-          icon="ant-design:close-outlined" variant="quiet"
-          @click="keyword = ''; categoryFilter = '全部分类'; levelFilter = '全部级别'" /></view
-      ><view class="filters ui-field-row"
+      ><PageSearch v-model="keyword" title="荣誉" label="搜索荣誉" back @back="uni.navigateBack()" /><view class="filters ui-field-row"
         ><FormField compact stretch hide-label
           label="分类"
           kind="selector"
@@ -184,7 +178,12 @@ function categoryName(item) {
           label="级别"
           kind="selector"
           v-model="levelFilter"
-          :options="['全部级别', ...levelLabels]" /></view
+          :options="['全部级别', ...levelLabels]" />
+        <MobileButton
+          v-if="keyword || categoryFilter !== '全部分类' || levelFilter !== '全部级别'"
+          label="重置筛选"
+          icon="ant-design:close-outlined" variant="quiet"
+          @click="keyword = ''; categoryFilter = '全部分类'; levelFilter = '全部级别'" /></view
       >
       <PageState skeleton="list" :loading="loading" :error="error" :empty="!filtered.length" @retry="load()">
 <template #loading><view class="honor-grid" ><view v-for="n in 6" :key="n" class="honor-card ui-pad-card" :class="{ 'honor-card-dark': isDark }"><ContentSkeleton variant="tile" /></view></view></template>

@@ -152,7 +152,8 @@ test('清单加载失败独立重试，搜索包含明细，已完成按清单�
   await page.getByRole('button', { name: '重试', exact: true }).click()
   await expect(page.getByRole('button', { name: '展开已完成：第二清单', exact: true })).toBeVisible()
   await expect(page.locator('.todo-page-active').getByText('已完成的模拟事项', { exact: true })).toHaveCount(0)
-  await page.locator('[aria-label="搜索任务"] input').fill('已完成的模拟事项')
+  await page.getByRole('button', { name: '展开搜索', exact: true }).click();
+  await page.getByRole('searchbox', { name: '搜索任务', exact: true }).fill('已完成的模拟事项')
   await expect(page.locator('.todo-page-active .task-card')).toHaveCount(1)
   await page.getByRole('button', { name: '展开已完成：第二清单', exact: true }).click()
   await expect(page.locator('.todo-page-active').getByText('已完成的模拟事项', { exact: true })).toBeVisible()

@@ -10,11 +10,10 @@ import ContentSkeleton from '../../components/ContentSkeleton.uvue';
 import { computed, onUnmounted, ref } from 'vue';
 import { onLoad, onShow } from '@dcloudio/uni-app';
 import MobilePage from '../../components/MobilePage.uvue';
-import PageHeader from '../../components/PageHeader.uvue';
+import PageSearch from '../../components/PageSearch.uvue';
 import FloatingActionButton from '../../components/FloatingActionButton.uvue';
 import MobileButton from '../../components/MobileButton.uvue';
 import AppIcon from '../../components/AppIcon.uvue';
-import FormField from '../../components/FormField.uvue';
 import ConfirmAction from '../../components/ConfirmAction.uvue';
 import PageState from '../../components/PageState.uvue';
 import LoadMore from '../../components/LoadMore.uvue';
@@ -30,6 +29,7 @@ const rows = ref<any[]>([]),
   page = ref(1),
   total = ref<number | null>(null),
   keyword = ref(''),
+  searchDraft = ref(''),
   loading = ref(false),
   refreshing = ref(false),
   error = ref(''),
@@ -77,6 +77,11 @@ onUnmounted(() => {
   generation++;
 });
 const moreError = ref(''), pageEnded = ref(false);
+function submitSearch() {
+  keyword.value = searchDraft.value.trim();
+  searchDraft.value = keyword.value;
+  void load();
+}
 function loadMore() {
   if (loading.value || error.value || moreError.value) return;
   load(false, true);
@@ -200,13 +205,8 @@ function displayDate(value) {
 <template>
   <MobilePage :refreshing="refreshing" @refresh="load(true)" @reachbottom="loadMore"
     ><view class="notes-page ui-page-body" :class="{ 'notes-page-dark': isDark }">
-      <PageHeader :title="title" :back="true" @back="uni.navigateBack()" /><view class="ui-toolbar"
-        ><FormField compact stretch hide-label label="搜索内容" placeholder="搜索内容…" v-model="keyword" /><MobileButton
-          label="搜索"
-          icon="ant-design:search-outlined"
-          :loading="loading"
-          @click="load()"
-      /></view>
+      <PageSearch v-model="searchDraft" :title="title" :label="'搜索' + title" back manual :active="!!keyword" :loading="loading"
+        @search="submitSearch" @dismiss="searchDraft = keyword" @back="uni.navigateBack()" />
       <PageState skeleton="list"
         :loading="loading && !rows.length"
         :error="error"

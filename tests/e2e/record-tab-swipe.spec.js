@@ -28,6 +28,9 @@ for (const width of [390, 768, 1440]) for (const colorScheme of ['light', 'dark'
     });
     await page.goto('/#/pages/records/video');
     const active = page.locator('.video-page-active');
+    const search = page.locator('[aria-label="搜索视频"] input');
+    const searchButton = page.getByRole('button', { name: '展开搜索', exact: true });
+    await expect(search).toBeHidden();
     const summary = page.locator('.video-summary');
     const pager = page.locator('.video-pager');
     await expect(active.locator('.video-skeleton-body')).toHaveCount(6);
@@ -67,6 +70,8 @@ for (const width of [390, 768, 1440]) for (const colorScheme of ['light', 'dark'
     await touch.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y }] });
     for (let step = 1; step <= 8; step++) await touch.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x, y: y + step * 18 }] });
     await touch.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+    await expect(search).toBeHidden();
+    await expect(searchButton).toBeVisible();
     await expect(active.getByRole('status', { name: '正在更新内容' })).toBeVisible();
     await expect(active.getByRole('button', { name: /^编辑视频/ })).toHaveCount(8);
     expect((await active.locator('.video-card').first().boundingBox()).height).toBeCloseTo(initialCard.height, 0);
@@ -80,6 +85,18 @@ for (const width of [390, 768, 1440]) for (const colorScheme of ['light', 'dark'
     const scrollbars = await page.locator('.video-pager .category-pager-scroll .uni-scroll-view-scrollbar-hidden').evaluateAll(nodes => nodes.map(node => getComputedStyle(node).scrollbarWidth));
     expect(scrollbars).toEqual(['none', 'none', 'none', 'none', 'none']);
     await page.screenshot({ path: info.outputPath('refreshed.png') });
+    await searchButton.click();
+    await search.fill('无匹配的模拟关键词');
+    await expect(active.getByText('暂无记录', { exact: true })).toBeVisible();
+    await summary.getByText('学习总数', { exact: true }).click();
+    await expect(search).toBeHidden();
+    await expect(active.getByText('暂无记录', { exact: true })).toBeVisible();
+    await searchButton.click();
+    await expect(search).toHaveValue('无匹配的模拟关键词');
+    await search.fill('');
+    await summary.getByText('学习总数', { exact: true }).click();
+    await expect(search).toBeHidden();
+    await expect(active.getByRole('button', { name: /^编辑视频/ })).toHaveCount(8);
     // 未访问状态首次失败可重试；切走不让旧状态覆盖当前页。
     fail = true;
     await page.locator('.status-tab').nth(0).click();

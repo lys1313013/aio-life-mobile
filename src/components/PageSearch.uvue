@@ -1,0 +1,181 @@
+<script setup lang="ts">
+import { computed, nextTick, onUnmounted, ref, watch } from 'vue';
+import AppIcon from './AppIcon.uvue';
+import MobileButton from './MobileButton.uvue';
+import PageHeader from './PageHeader.uvue';
+import { themeClass, themePalette, type ThemeAppearance } from '../services/theme.ts';
+import spacing from '../styles/spacing.json';
+
+const props = withDefaults(defineProps<{
+  title: string;
+  label: string;
+  modelValue: string;
+  enabled?: boolean;
+  open?: boolean;
+  active?: boolean;
+  manual?: boolean;
+  loading?: boolean;
+  back?: boolean;
+  contentMinWidth?: number;
+  actionsMinWidth?: number;
+  appearance?: ThemeAppearance;
+}>(), { enabled: true, active: undefined, actionsMinWidth: 0 });
+const emit = defineEmits(['update:modelValue', 'update:open', 'search', 'dismiss', 'layout', 'back']);
+const expanded = ref(props.enabled && !!props.open);
+const focused = ref(false);
+const input = ref(null);
+const trigger = ref(null);
+const field = ref(null);
+const filtered = computed(() => props.active ?? !!props.modelValue.trim());
+let blurTimer: ReturnType<typeof setTimeout>;
+
+function cancelBlur() { clearTimeout(blurTimer); }
+function setOpen(value: boolean) {
+  cancelBlur();
+  if (expanded.value === value) return;
+  expanded.value = value;
+  focused.value = false;
+  emit('update:open', value);
+  if (!value) emit('dismiss');
+}
+function submit() {
+  if (!props.manual || !expanded.value || props.loading) return;
+  emit('search', props.modelValue);
+  setOpen(false);
+}
+function onNativeBlur() {
+  // 原生输入会先于相邻按钮的 tap 失焦，保留该次点击的提交机会。
+  // #ifndef WEB
+  cancelBlur();
+  blurTimer = setTimeout(() => setOpen(false), 180);
+  // #endif
+}
+function onOutside(event) {
+  // #ifdef WEB
+  const triggerElement = trigger.value?.$el ?? trigger.value;
+  const fieldElement = field.value?.$el ?? field.value;
+  if (triggerElement?.contains(event.target) || fieldElement?.contains(event.target)) return;
+  setOpen(false);
+  // #endif
+}
+function onKeyboardFocus(event) {
+  // #ifdef WEB
+  if (event.target.matches?.(':focus-visible')) onOutside(event);
+  // #endif
+}
+watch(() => props.open, value => setOpen(!!value && props.enabled));
+watch(() => props.enabled, value => { if (!value) setOpen(false); });
+watch(expanded, async (value, _, onCleanup) => {
+  // #ifdef WEB
+  if (value) {
+    document.addEventListener('click', onOutside, true);
+    document.addEventListener('focusin', onKeyboardFocus, true);
+    onCleanup(() => {
+      document.removeEventListener('click', onOutside, true);
+      document.removeEventListener('focusin', onKeyboardFocus, true);
+    });
+  }
+  // #endif
+  await nextTick();
+  if (expanded.value !== value) return;
+  focused.value = value;
+  if (value) {
+    // #ifdef WEB
+    const inputElement = input.value?.$el ?? input.value;
+    inputElement?.querySelector('input')?.setAttribute('aria-label', props.label);
+    // #endif
+  }
+  emit('layout');
+}, { immediate: true });
+onUnmounted(cancelBlur);
+</script>
+
+<template>
+  <PageHeader :title="title" :back="back" @back="emit('back')" :content-min-width="contentMinWidth" :appearance="appearance" :extension-open="expanded"
+    :actions-min-width="actionsMinWidth + (enabled ? spacing.controlMin : 0)">
+    <template #actions>
+      <slot name="actions" />
+      <view v-if="enabled" ref="trigger" @click.stop>
+        <button hover-class="none" role="button" class="page-search-trigger"
+          :aria-label="expanded ? '收起搜索' : '展开搜索'" :aria-expanded="expanded"
+          @click="setOpen(!expanded)">
+          <AppIcon name="lucide:search" :size="20" :appearance="appearance"
+            :color="filtered ? themePalette(appearance).tabSelectedColor : undefined" />
+        </button>
+      </view>
+    </template>
+    <template #extension>
+      <view class="page-search-extension" :class="{ 'page-search-expanded': expanded }"
+        :aria-hidden="!expanded" @transitionend="emit('layout')">
+        <view ref="field" class="page-search-field" :class="themeClass('page-search-field', appearance)" @click.stop @keydown.esc="setOpen(false)">
+          <input v-if="expanded" ref="input" class="page-search-input" :class="themeClass('page-search-input', appearance)"
+            :aria-label="label" :value="modelValue" :focus="focused" :adjust-position="false"
+            placeholder="搜索" confirm-type="search" @input="emit('update:modelValue', $event.detail.value)"
+            @confirm="submit" @blur="onNativeBlur" />
+          <MobileButton v-if="expanded && manual" label="提交搜索" icon="lucide:search" variant="ghost"
+            :appearance="appearance" :loading="loading" @click="submit" />
+        </view>
+      </view>
+    </template>
+  </PageHeader>
+</template>
+
+<style scoped lang="scss">
+@use '../styles/platform' as *;
+@use '../styles/spacing-tokens' as *;
+@use '../styles/typography' as *;
+
+.page-search-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: $space-controlMin;
+  height: $space-controlMin;
+  padding: 0;
+  margin: 0;
+  border: 0;
+  background-color: transparent;
+  @include borderless-button;
+}
+.page-search-extension {
+  height: 0;
+  overflow: hidden;
+  opacity: 0;
+  transition: height 200ms ease-out, opacity 160ms ease-out;
+}
+.page-search-expanded {
+  height: $space-controlMin + $space-inline;
+  opacity: 1;
+}
+.page-search-field {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  box-sizing: border-box;
+  height: $space-controlMin;
+  width: calc(100% - #{2 * $space-page});
+  max-width: $space-contentMax - 2 * $space-page;
+  flex-shrink: 0;
+  margin: 0 auto;
+  border: $space-hairline solid #cdd5e1;
+  border-radius: 12px;
+  background-color: transparent;
+}
+.page-search-field-dark { border-color: #45474d; }
+.page-search-input {
+  box-sizing: border-box;
+  min-width: 0;
+  flex: 1;
+  height: $space-controlMin;
+  padding: 0 $space-card;
+  color: #27272a;
+  @include type-style('body');
+}
+.page-search-input-dark { color: #eeeeef; }
+/* #ifdef WEB */
+.page-search-trigger:focus-visible { outline: 2px solid #93b4fc; outline-offset: -2px; }
+@media (prefers-reduced-motion: reduce) {
+  .page-search-extension { transition: none; }
+}
+/* #endif */
+</style>
