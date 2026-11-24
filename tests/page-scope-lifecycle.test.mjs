@@ -64,7 +64,7 @@ for (const lateFailure of [false, true]) test(`同一轮离开返回立即补查
   const loading = ref(false), refreshing = ref(false), error = ref(''), goals = ref([]), old = deferred(), fresh = deferred()
   let calls = 0
   const load = new Function('scope', 'fetchGoals', 'loading', 'refreshing', 'error', 'goals',
-    `let generation = 0, alive = true, pendingEditId = ''; const goalTypes = [], statusLabels = [], statuses = [], typeFilter = { value: '' }, statusFilter = { value: '' }, keyword = { value: '' };\n${loadSource}\nreturn load;`)(
+    `let generation = 0, alive = true, pendingEditId = ''; const goalTypes = [], statusLabels = [], statuses = [], typeFilter = { value: '' }, statusFilter = { value: '' }, appliedKeyword = { value: '' };\n${loadSource}\nreturn load;`)(
       f.scope, () => (++calls === 1 ? old.promise : fresh.promise), loading, refreshing, error, goals)
   const effects = effectScope()
   t.after(() => effects.stop())

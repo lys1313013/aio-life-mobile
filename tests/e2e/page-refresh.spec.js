@@ -97,7 +97,8 @@ for (const width of [390, 820]) {
     await page.clock.setFixedTime(new Date(loadedAt + 60 * 60 * 1000 + 1000));
     await visibility(page, 'visible');
     await expect.poll(() => calls['/goals']).toBe(count + 1);
-    await page.getByRole('button', { name: '搜索目标', exact: true }).click();
+    await page.getByRole('button', { name: '展开搜索', exact: true }).click();
+    await page.getByRole('button', { name: '提交搜索', exact: true }).click();
     await expect.poll(() => calls['/goals']).toBe(count + 2);
     expect(errors).toEqual([]);
   });

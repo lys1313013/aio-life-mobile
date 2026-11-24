@@ -29,12 +29,17 @@ for(const [route] of entries)for(const [width,theme] of [[390,'light'],[390,'dar
  await page.getByRole('button',{name:'银行卡更多操作'}).first().click();await page.getByRole('menuitem',{name:'查看卡号',exact:true}).click();await expect(page.getByText('6222 0000 1234',{exact:true})).toBeVisible();await page.getByRole('dialog',{name:'银行卡卡号',exact:true}).getByRole('button',{name:'关闭',exact:true}).click();checks.push('银行卡新增编辑长弹窗内部滚动','标签新增编辑弹窗','卡与标签删除确认取消','完整卡号显示');}
  if(route.startsWith('coding/')){await page.locator('[role=button][aria-label="账号绑定"]').click();await expect(page).toHaveURL(/profile\/bindings/);checks.push('账号绑定入口点击');evidence.push(await shot(page,route,variant,'bindings-destination'));}
  if(route==='relationship/index'){
- await page.locator('[role=button][aria-label="放大图谱"]').click();await page.locator('[role=button][aria-label="缩小图谱"]').click();await page.locator('[role=button][aria-label="复位图谱"]').click();
- await page.locator('[role=button][aria-label="新增人物"]').click();await panel(page,route,variant,'人物',evidence);await close(page);
- await page.locator('[role=button][aria-label="模拟人物"]').first().click();await panel(page,route,variant,'模拟人物',evidence);
- await page.locator('[role=button][aria-label="编辑人物"]').click();await panel(page,route,variant,'人物',evidence);await close(page);
- await page.locator('[role=button][aria-label="新增关系"]').click();await panel(page,route,variant,'关系',evidence);await close(page);
- await page.locator('[role=button][aria-label="编辑关系"]').click();await panel(page,route,variant,'关系',evidence);await close(page);await page.locator('[role=button][aria-label="删除关系"]').click();evidence.push(await shot(page,route,variant,'delete-relation'));await page.locator('[role=button][aria-label="取消"]').click();await page.locator('[role=button][aria-label="删除人物和关联关系"]').click();evidence.push(await shot(page,route,variant,'delete-confirm'));await page.locator('[role=button][aria-label="取消"]').click();await close(page);checks.push('图谱缩放复位','人物新增/详情/编辑长弹窗','关系新增弹窗','人物删除确认取消');}
+ await page.getByRole('button',{name:'适应画布',exact:true}).click();await page.getByRole('button',{name:'重置布局',exact:true}).click();
+ await page.getByRole('button',{name:'新增人物',exact:true}).click();await panel(page,route,variant,'人物',evidence);await close(page);
+ await page.getByRole('button',{name:'模拟人物',exact:true}).click();await expect(page).toHaveURL(/relationship\/person\?id=/);
+ const info=page.getByRole('button',{name:'编辑人物',exact:true});await expect(info).toBeVisible();evidence.push(await shot(page,route,variant,'人物详情'));
+ await info.click();const personEditor=await panel(page,route,variant,'人物',evidence);
+ await personEditor.getByRole('button',{name:'删除人物和关联关系',exact:true}).click();evidence.push(await shot(page,route,variant,'delete-confirm'));await close(page);await close(page);
+ await page.getByRole('button',{name:'新增关系',exact:true}).click();await panel(page,route,variant,'关系',evidence);await close(page);
+ await page.getByRole('button',{name:'编辑关系：模拟朋友',exact:true}).click();const relationEditor=await panel(page,route,variant,'关系',evidence);
+ await relationEditor.getByRole('button',{name:'删除关系',exact:true}).click();evidence.push(await shot(page,route,variant,'delete-relation'));await close(page);await close(page);
+ await page.getByRole('button',{name:'返回',exact:true}).click();await expect(page).toHaveURL(/relationship\/index$/);
+ checks.push('图谱复位','独立人物详情及编辑','关系新增及编辑','删除确认取消');}
  if(route==='messages/index'){
  await page.getByRole('button',{name:'全部已读',exact:true}).click();evidence.push(await shot(page,route,variant,'read-all-confirm'));await page.getByRole('button',{name:'取消',exact:true}).click();
  await page.getByRole('button',{name:'发送消息',exact:true}).click();await panel(page,route,variant,'发送消息',evidence);await close(page);
@@ -97,6 +102,42 @@ for (const width of [390, 768]) for (const theme of ['light', 'dark']) {
 for(const file of ['alipay.csv','alipay.zip','wechat.xlsx'])test(`账单完整本地文件选择 ${file}`,async({page})=>{await page.setViewportSize({width:390,height:900});await start(page,'finance/import');const chooser=page.waitForEvent('filechooser');await page.locator('[role=button][aria-label="选择文件"]').click();await(await chooser).setFiles(path.resolve('tests/e2e/qa-domains-fixtures',file));await expect(page.getByText('1 笔 · ¥26.40',{exact:true})).toBeVisible();const evidence=[await shot(page,'finance/import','390-light-file',file+'-preview')];await page.locator('[aria-label="编辑"][role=button]').click();const modal=await panel(page,'finance/import','390-light-file-'+file,'导入记录',evidence);await expect(modal.locator('[aria-label="记账金额"] input')).toHaveValue('26.4');await expect(modal.locator('[aria-label="交易金额"] input')).toHaveValue('99');await close(page);reports.push({route:'finance/import',variants:['390-light-file-'+file],checks:['实际文件选择器导入完整本地fixture','支付宝CSV/ZIP或微信xlsx解析退款26.40','预览编辑交易原金额99与记账金额26.4保留'],evidence,status:'passed',issues:[]})});
 test('消息离页清理新消息草稿',async({page})=>{await page.setViewportSize({width:390,height:900});await start(page,'messages/index');await page.getByRole('button',{name:'发送消息',exact:true}).click();await page.locator('[role=dialog] [aria-label="内容"] textarea').fill('mock-sensitive-content');await close(page);await page.getByRole('button',{name:'返回',exact:true}).click();await page.getByRole('button',{name:'消息中心',exact:true}).click();await page.getByRole('button',{name:'发送消息',exact:true}).click();await expect(page.locator('[role=dialog] [aria-label="内容"] textarea')).toHaveValue('');await expect(page.getByRole('tab',{name:'AI',exact:true})).toHaveCount(0);});
 
-for(const [route] of entries)test(`逐页下拉失败重试和空态 ${route}`,async({page})=>{test.setTimeout(60000);await page.setViewportSize({width:390,height:900});const consoleErrors=[];page.on('console',msg=>{if(msg.type()==='error')consoleErrors.push(msg.text())});const state=await start(page,route),evidence=[];state.readFail=true;await require('./gestures').pullDown(page,await refreshScroller(page));await expect(page.getByRole('alert',{name:/QA 模拟加载失败/}).or(page.getByRole('alert').filter({hasText:'QA 模拟加载失败'})).first()).toBeVisible();evidence.push(await shot(page,route,'390-light-recovery','read-error'));state.readFail=false;await page.getByRole('button',{name:'重试',exact:true}).last().click();await expect(page.getByRole('alert',{name:/QA 模拟加载失败/}).or(page.getByRole('alert').filter({hasText:'QA 模拟加载失败'}))).toHaveCount(0);await page.waitForLoadState('networkidle');evidence.push(await shot(page,route,'390-light-recovery','retried'));state.empty=true;await require('./gestures').pullDown(page,await refreshScroller(page));await page.waitForLoadState('networkidle');evidence.push(await shot(page,route,'390-light-recovery','empty'));expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);expect(consoleErrors).toEqual([]);reports.push({route,variants:['390-light-recovery'],checks:['真实下拉触摸事件加载失败可见','UI重试成功','模拟空结果显示/未绑定语义（编程页）'],evidence,status:'passed',issues:[]})});
+for (const [route] of entries) test(`逐页下拉失败重试和空态 ${route}`, async ({ page }) => {
+  test.setTimeout(60000);
+  await page.setViewportSize({ width: 390, height: 900 });
+  const consoleErrors = [];
+  page.on('console', msg => { if (msg.type() === 'error') consoleErrors.push(msg.text()); });
+  const state = await start(page, route), evidence = [];
+  if (route === 'relationship/index') {
+    // 图谱画布的触摸用于拖动和缩放，人物详情页提供下拉刷新。
+    await page.route('**/api/relationships/persons/11', request => request.fulfill({
+      json: state.readFail ? { code: 1, message: 'QA 模拟加载失败', data: null } : {
+        code: 0, message: null, data: { ...state.person, relationships: state.empty ? [] : state.person.relationships },
+      },
+    }));
+    await page.getByRole('button', { name: '模拟人物', exact: true }).click();
+    await expect(page.getByRole('button', { name: '编辑关系：模拟朋友', exact: true })).toBeVisible();
+  }
+  const pull = async () => require('./gestures').pullDown(page, await refreshScroller(page));
+  const error = page.getByRole('alert', { name: /QA 模拟加载失败/ })
+    .or(page.getByRole('alert').filter({ hasText: 'QA 模拟加载失败' }));
+  state.readFail = true;
+  await pull();
+  await expect(error.first()).toBeVisible();
+  evidence.push(await shot(page, route, '390-light-recovery', 'read-error'));
+  state.readFail = false;
+  await page.getByRole('button', { name: '重试', exact: true }).last().click();
+  await expect(error).toHaveCount(0);
+  await page.waitForLoadState('networkidle');
+  evidence.push(await shot(page, route, '390-light-recovery', 'retried'));
+  state.empty = true;
+  await pull();
+  if (route === 'relationship/index') await expect(page.getByText('暂无关系', { exact: true })).toBeVisible();
+  await page.waitForLoadState('networkidle');
+  evidence.push(await shot(page, route, '390-light-recovery', 'empty'));
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  expect(consoleErrors).toEqual([]);
+  reports.push({ route, variants: ['390-light-recovery'], checks: ['真实下拉触摸事件加载失败可见', 'UI重试成功', '模拟空结果显示/未绑定语义（编程页）'], evidence, status: 'passed', issues: [] });
+});
 
 test('桌面选择器快速取消关闭与立即重开无生命周期异常',async({page})=>{const errors=[];page.on('pageerror',e=>errors.push(e.message));await page.setViewportSize({width:768,height:900});await start(page,'finance/income');const evidence=[];await page.locator('[role=button][aria-label="新增"]').click();const modal=page.locator('[role=dialog][aria-label="编辑收入"]');const field=modal.locator('uni-picker[aria-label="类型"]');await field.click();await page.locator('.uni-picker-select .uni-picker-item:visible').first().waitFor();await page.locator('.uni-picker-mask:visible').last().click({position:{x:5,y:5}});await dismissModal(page);await page.waitForTimeout(350);expect(errors).toEqual([]);await page.locator('[role=button][aria-label="新增"]').click();const next=page.locator('[role=dialog][aria-label="编辑收入"] uni-picker[aria-label="类型"]');await next.click();await page.locator('.uni-picker-select .uni-picker-item:visible').first().waitFor();await page.locator('.uni-picker-mask:visible').last().click({position:{x:5,y:5}});await next.click();await page.waitForTimeout(350);await expect(page.locator('.uni-picker-select .uni-picker-item:visible').first()).toBeVisible();evidence.push(await shot(page,'finance/income','768-light-rapid','reopened-selector'));expect(errors).toEqual([]);reports.push({route:'finance/income',variants:['768-light-rapid'],checks:['取消选择器后立即关闭modal无null.remove','取消后立即重开选择器不被旧回调移走'],evidence,status:'passed',issues:[]})});
