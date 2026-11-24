@@ -103,7 +103,7 @@ async function save() {
     purchasePrice: price,
     purchaseDate: form.value.purchaseDate || null,
     endDate: form.value.endDate || null,
-    fileId: form.value.files.at(-1)?.id || '',
+    fileId: form.value.files.at(-1)?.id || null,
   };
   delete payload.files;
   saving.value = true;
@@ -146,32 +146,32 @@ async function remove(item) {
       >
         <template #loading><FormSkeleton :rows="['field', 'field', 'pair', 'pair', 'pair', 'textarea', 'attachment']" :footer="false" label="正在加载设备详情" /></template>
         <template v-if="form">
-        <FormField :required="isRequired('device', 'name')" appearance="soft" label="名称" placeholder="设备名称" v-model="form.name" />
-        <FormField appearance="soft" label="配置" placeholder="型号、容量等" v-model="form.spec" />
+        <FormField :required="isRequired('device', 'name')" label="名称" placeholder="设备名称" v-model="form.name" />
+        <FormField label="配置" placeholder="型号、容量等" v-model="form.spec" />
         <view class="ui-field-row device-options" :aria-busy="optionsLoading">
           <LoadingIndicator v-if="optionsLoading" floating label="正在加载设备选项" />
           <MobileButton v-if="optionsError" class="device-options-retry" label="重试设备选项" icon="ant-design:reload-outlined" variant="quiet" @click="loadOptions()" />
-          <FormField appearance="soft" compact stretch label="类型" kind="selector"
+          <FormField compact stretch label="类型" kind="selector"
             :disabled="optionsLoading || !!optionsError"
             :placeholder="optionsLoading ? '加载中…' : optionsError ? '加载失败' : '请选择'"
             :model-value="types.find((t) => t.id === form.type)?.dictLabel || types.find((t) => t.id === form.type)?.label || form.typeName || ''"
             :options="types.map((t) => t.dictLabel || t.label)"
             @update:model-value="form.type = types.find((t) => (t.dictLabel || t.label) === $event)?.id || ''" />
-          <FormField appearance="soft" compact stretch label="状态" kind="selector"
+          <FormField compact stretch label="状态" kind="selector"
             :disabled="optionsLoading || !!optionsError"
             :model-value="statusName(form.status)"
             :options="statuses.map((t) => t.label)"
             @update:model-value="form.status = String(statuses.find((t) => t.label === $event)?.value || '1')" />
         </view>
         <view class="ui-field-row">
-          <FormField appearance="soft" compact stretch label="购买价格" placeholder="¥ 0.00" input-type="digit" v-model="form.purchasePrice" />
-          <FormField appearance="soft" compact stretch label="购买平台" placeholder="选填" v-model="form.purchasePlace" />
+          <FormField compact stretch label="购买价格" placeholder="¥ 0.00" input-type="digit" v-model="form.purchasePrice" />
+          <FormField compact stretch label="购买平台" placeholder="选填" v-model="form.purchasePlace" />
         </view>
         <view class="ui-field-row">
-          <FormField appearance="soft" compact stretch label="购买日期" kind="date" v-model="form.purchaseDate" />
-          <FormField appearance="soft" compact stretch label="退役日期" kind="date" placeholder="未退役" v-model="form.endDate" />
+          <FormField compact stretch label="购买日期" kind="date" v-model="form.purchaseDate" />
+          <FormField compact stretch label="退役日期" kind="date" placeholder="未退役" v-model="form.endDate" />
         </view>
-        <FormField appearance="soft" label="备注" kind="textarea" placeholder="选填" v-model="form.remark" />
+        <FormField label="备注" kind="textarea" textarea-size="compact" placeholder="选填" v-model="form.remark" />
         <AttachmentField images-only :max-count="1"
           :files="form.files"
           upload-path="/file/upload"

@@ -6,10 +6,14 @@ export function ledgerPayload(kind: string, draft: Record<string, any>) {
   const data = { ...draft, [amountKey]: Number(draft[amountKey]) }
   if (!Number.isFinite(data[amountKey]) || missingRequired(kind, draft, amountKey)) throw new Error('请输入有效金额')
   if (kind === 'income') {
+    if (missingRequired(kind, draft, 'incomeTypeId')) throw new Error('请选择收入类型')
     if (missingRequired(kind, draft, 'incomeDate')) throw new Error('请选择收入日期')
   } else {
-    data.transactionAmount = Number(draft.transactionAmount)
-    if (!Number.isFinite(data.transactionAmount) || missingRequired(kind, draft, 'transactionAmount')) throw new Error('请输入交易金额')
+    if (draft.transactionAmount !== undefined) {
+      const amount = draft.transactionAmount
+      data.transactionAmount = amount == null || String(amount).trim() === '' ? null : Number(amount)
+      if (data.transactionAmount != null && !Number.isFinite(data.transactionAmount)) throw new Error('请输入交易金额')
+    }
     if (missingRequired(kind, draft, 'expenseTypeId') || missingRequired(kind, draft, 'payTypeId') || missingRequired(kind, draft, 'expenseTime')) throw new Error('请选择支出类型、支付方式和日期')
   }
   return data

@@ -1,6 +1,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { test, expect } = require('./support/test');
+const { waitForMotion } = require('./support/motion');
 const { picker } = require('./qa-domains-ui');
 const { setup, id } = require('./qa-records-fixtures');
 const entries = [{ menuId: 'member', path: '/membership', title: '订阅' }, { menuId: 'platforms', path: '/system/membership-providers', title: '会员平台' }];
@@ -48,6 +49,7 @@ for (const width of [390, 768, 1440]) for (const theme of ['light', 'dark']) {
     await expect(page.locator('.member-page-active .member-card').getByRole('img', { name: '腾讯视频', exact: true }).first()).toBeVisible();
     await page.getByRole('button', { name: '编辑订阅：模拟会员', exact: true }).click();
     await expect(page.getByRole('button', { name: '选择会员平台', exact: true })).toContainText('腾讯视频');
+    await waitForMotion(page);
     await page.screenshot({ path: `artifacts/membership-providers/member-${width}-${theme}.png` });
     await picker(page, '分类', 'AI');
     await customProvider(page, '自定义平台', ['自定义平台', 'Claude', 'OpenCode Go'], `artifacts/membership-providers/category-AI-${width}-${theme}.png`);
