@@ -2,7 +2,8 @@ import { computed, reactive } from 'vue'
 import colors from '../theme.json'
 import tabs from './tab-bar.generated.json'
 
-export type ThemeMode = 'system' | 'light' | 'dark'
+export type ThemeAppearance = 'light' | 'dark'
+export type ThemeMode = 'system' | ThemeAppearance
 const storageKey = 'aio-life-mobile.theme.v1'
 export const theme = reactive({ mode: 'system' as ThemeMode, system: 'light' })
 export const isDark = computed(
@@ -12,10 +13,9 @@ export const isDark = computed(
 export const pageBackgroundColor = computed(
   () => (isDark.value ? colors.dark : colors.light).backgroundColor
 )
-// MobileSwitch 统一使用主题开启色。
-export const switchActiveColor = computed(
-  () => (isDark.value ? colors.dark : colors.light).switchActiveColor
-)
+export function themePalette(appearance?: ThemeAppearance) {
+  return isThemeDark(appearance) ? colors.dark : colors.light
+}
 let initialized = false
 
 // 与底栏资源生成器的深色文件名一致；微信页面底栏和 H5 / App 共用。
@@ -127,8 +127,12 @@ function classNames(value): string[] {
     return Object.keys(value).filter((name) => value[name])
   return []
 }
-export function themeClass(classes) {
-  return isDark.value
+export function isThemeDark(appearance?: ThemeAppearance) {
+  return appearance == null ? isDark.value : appearance === 'dark'
+}
+
+export function themeClass(classes, appearance?: ThemeAppearance) {
+  return isThemeDark(appearance)
     ? classNames(classes)
         .map((name) => name + '-dark')
         .join(' ')

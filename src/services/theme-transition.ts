@@ -1,7 +1,9 @@
 import { nextTick } from 'vue'
 import { isDark } from './theme.ts'
 
-/** 浏览器用主题快照做圆形揭幕；原生端由页面颜色 transition 平滑切换。 */
+export const themeTransitionDuration = 800
+
+/** 浏览器用主题快照做圆形揭幕。 */
 export async function animateThemeChange(update: () => void) {
   // #ifdef WEB
   if (typeof document.startViewTransition === 'function'
@@ -36,7 +38,7 @@ export async function animateThemeChange(update: () => void) {
           const animation = document.documentElement.animate({
             clipPath: isDark.value ? [...clipPath].reverse() : clipPath,
           }, {
-            duration: 800,
+            duration: themeTransitionDuration,
             easing: 'ease-in',
             pseudoElement: isDark.value ? '::view-transition-old(root)' : '::view-transition-new(root)',
           })

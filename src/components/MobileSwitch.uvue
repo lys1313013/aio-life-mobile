@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { isDark, switchActiveColor } from '../services/theme.ts';
+import { computed } from 'vue';
+import { isThemeDark, themePalette, type ThemeAppearance } from '../services/theme.ts';
 
 const props = withDefaults(defineProps<{
   checked?: boolean;
@@ -7,8 +8,11 @@ const props = withDefaults(defineProps<{
   loading?: boolean;
   ariaLabel: string;
   label?: string;
+  appearance?: ThemeAppearance;
 }>(), { checked: false, disabled: false, loading: false, label: '' });
 const emit = defineEmits(['change']);
+const isDark = computed(() => isThemeDark(props.appearance));
+const switchActiveColor = computed(() => themePalette(props.appearance).switchActiveColor);
 
 function activate() {
   if (props.disabled || props.loading) return;
@@ -27,9 +31,9 @@ function activate() {
     @click.stop="activate" @keydown.enter.prevent="activate" @keydown.space.prevent="activate">
     <text v-if="label" class="mobile-switch-label" :class="{ 'mobile-switch-label-dark': isDark }">{{ label }}</text>
     <view class="mobile-switch-control" aria-hidden="true">
-      <view class="mobile-switch-track" :class="{ 'mobile-switch-track-dark': isDark }"
+      <view class="mobile-switch-track" :class="{ 'mobile-switch-track-dark': isDark, 'mobile-switch-theme-frame': appearance }"
         :style="checked ? { backgroundColor: switchActiveColor } : {}">
-        <view class="mobile-switch-thumb" :class="{ 'mobile-switch-thumb-on': checked }">
+        <view class="mobile-switch-thumb" :class="{ 'mobile-switch-thumb-on': checked, 'mobile-switch-theme-frame': appearance }">
           <view v-if="loading" class="mobile-switch-spinner" :style="{ borderTopColor: switchActiveColor }" />
         </view>
       </view>
@@ -63,6 +67,10 @@ function activate() {
 .mobile-switch-label-dark { color: #a0a6b1; }
 // 视觉几何尺寸由统一配置生成，透明点击区不随轨道缩小。
 .mobile-switch-control { display: flex; align-items: center; justify-content: center; width: $space-controlMin; height: $space-controlMin; flex-shrink: 0; }
+/* #ifdef MP-WEIXIN */
+// 让微信把轨道和滑块上的触摸命中外层按钮。
+.mobile-switch-label, .mobile-switch-control { pointer-events: none; }
+/* #endif */
 .mobile-switch-track {
   display: flex;
   flex-direction: row;
@@ -88,6 +96,7 @@ function activate() {
   transition: transform 240ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 .mobile-switch-thumb-on { transform: translateX($space-switchTrackWidth - $space-switchThumb - $space-micro * 2); }
+.mobile-switch-theme-frame { transition: none; }
 .mobile-switch-spinner {
   width: $space-switchThumb - $space-micro * 2;
   height: $space-switchThumb - $space-micro * 2;

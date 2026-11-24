@@ -5,8 +5,8 @@ import { buttonLabelClasses } from '../../services/button-label.ts';
 import { usePageRefresh } from '../../services/page-refresh.ts'
 import { isRequired } from '../../services/form-required.ts';
 import { computed, ref, watch } from 'vue';
-import { onLoad, onHide, onShow } from '@dcloudio/uni-app';
-import PageHeader from '../../components/PageHeader.uvue';
+import { onLoad, onHide, onShow, onUnload } from '@dcloudio/uni-app';
+import PageSearch from '../../components/PageSearch.uvue';
 import MobilePage from '../../components/MobilePage.uvue';
 import MobileButton from '../../components/MobileButton.uvue';
 import FormField from '../../components/FormField.uvue';
@@ -16,8 +16,15 @@ import ConfirmAction from '../../components/ConfirmAction.uvue';
 import { logout, request } from '../../services/api.ts';
 import { session, restoreSession } from '../../services/session.ts';
 import { clearClientData } from '../../services/client-reset.ts';
-import { isDark, themeClass, setThemeMode } from '../../services/theme.ts';
+import { isThemeDark, themeClass, themePalette, setThemeMode } from '../../services/theme.ts';
+import { themeTransitionDuration } from '../../services/theme-transition.ts';
+import { useWeixinThemeReveal } from './weixin-theme-reveal.ts';
+// #ifdef MP-WEIXIN
+import { secondaryLock } from '../../services/secondary-lock.ts';
+// #endif
+// #ifndef MP-WEIXIN
 import { animateThemeChange } from '../../services/theme-transition.ts';
+// #endif
 import {
   flattenMenuOptions,
   passwordPayload,
@@ -30,11 +37,11 @@ const titles = {
 };
 const mode = ref('general');
 const supportLinks = [
+  { title: '数据导出', path: '/pages/data-export/index', icon: 'ant-design:download-outlined' },
+  { title: '反馈', path: '/pages/records/feedback', icon: 'ant-design:comment-outlined' },
   { title: '隐私政策', path: '/pages/auth/policy?kind=privacy', icon: 'mdi:shield-account-outline' },
   { title: '服务条款', path: '/pages/auth/policy?kind=terms', icon: 'lucide:file-text' },
   { title: '关于', path: '/pages/about/index', icon: 'lucide:copyright' },
-  { title: '反馈', path: '/pages/records/feedback', icon: 'ant-design:comment-outlined' },
-  { title: '数据导出', path: '/pages/data-export/index', icon: 'ant-design:download-outlined' },
 ];
 const leaving = ref(false);
 const confirmLogout = ref(false);
@@ -49,11 +56,37 @@ function openPage(path: string) {
   uni.navigateTo({ url: path });
 }
 const themeChanging = ref(false);
+const { revealMode, revealTheme, finishReveal } = useWeixinThemeReveal();
+const themeLayers = computed(() => {
+  // 微信的子组件需要收到显式主题值，避免移除属性时保留上一帧的颜色。
+  let liveAppearance: 'light' | 'dark' | undefined;
+  // #ifdef MP-WEIXIN
+  liveAppearance = revealMode.value || isThemeDark() ? 'dark' : 'light';
+  // #endif
+  const live = { id: 'live', preview: false, appearance: liveAppearance };
+  return revealMode.value ? [live, { id: 'preview', preview: true, appearance: 'light' as const }] : [live];
+});
+const revealStyle = { '--settings-theme-duration': themeTransitionDuration + 'ms' };
+let settingsScrollTop = 0;
+function rememberSettingsScroll(event: { detail: { scrollTop: number } }) {
+  settingsScrollTop = Math.max(0, event.detail.scrollTop);
+}
+// #ifdef MP-WEIXIN
+watch(() => secondaryLock.visible, visible => { if (visible) finishReveal(); }, { flush: 'sync' });
+onUnload(finishReveal);
+// #endif
 async function changeTheme(event: { detail: { value: boolean } }) {
   if (!active || themeChanging.value) return;
+  const appearance = event.detail.value ? 'dark' : 'light';
+  const update = () => setThemeMode(appearance);
   themeChanging.value = true;
   try {
-    await animateThemeChange(() => setThemeMode(event.detail.value ? 'dark' : 'light'));
+    // #ifdef MP-WEIXIN
+    await revealTheme(appearance, update);
+    // #endif
+    // #ifndef MP-WEIXIN
+    await animateThemeChange(update);
+    // #endif
   } catch (error) {
     uni.showToast({ title: error.message || '切换失败，请重试', icon: 'none' });
   } finally {
@@ -70,6 +103,7 @@ const menuItems = ref<any[]>([]),
   menuRoots = ref<any[]>([]),
   hidden = ref<string[]>([]),
   menuQuery = ref(''),
+  searchOpen = ref(false),
   collapsedMenuGroups = ref<string[]>([]);
 const menuGroups = computed(() => {
   const query = menuQuery.value.trim().toLowerCase();
@@ -92,6 +126,9 @@ let revision = 0,
 watch(
   () => session.token,
   () => {
+    // #ifdef MP-WEIXIN
+    finishReveal();
+    // #endif
     revision++;
     menuItems.value = [];
     menuRoots.value = [];
@@ -119,6 +156,9 @@ onShow(() => {
 });
 onHide(() => {
   active = false;
+  // #ifdef MP-WEIXIN
+  finishReveal();
+  // #endif
   confirmLogout.value = false;
   revision++;
   resetPasswordForm();
@@ -204,8 +244,18 @@ function back() {
 }
 </script>
 <template>
-  <view class="tab-page" :class="themeClass('tab-page')">
-    <PageHeader :title="title" back :actions-min-width="mode === 'menus' ? 96 : 0" @back="back">
+  <template v-for="layer in themeLayers" :key="layer.id">
+  <view class="tab-page"
+    :class="[
+      themeClass('tab-page', layer.appearance),
+      layer.preview ? 'settings-theme-overlay' : '',
+      layer.preview && revealMode === 'dark' ? 'settings-theme-overlay-closing' : '',
+    ]"
+    :aria-hidden="layer.preview || undefined"
+    :style="layer.preview ? revealStyle : {}"
+    @animationend.self="layer.preview && finishReveal()"
+  >
+    <PageSearch :title="title" v-model="menuQuery" v-model:open="searchOpen" label="搜索菜单" :enabled="mode === 'menus' && ready" :appearance="layer.appearance" back :actions-min-width="mode === 'menus' ? 96 : 0" @back="back">
       <template v-if="mode === 'menus'" #actions>
         <ConfirmAction
           label="恢复默认菜单"
@@ -217,44 +267,53 @@ function back() {
         />
         <MobileButton label="保存" icon="ant-design:check-outlined" variant="ghost" :loading="saving" :disabled="!ready || loading" @click="saveMenus" />
       </template>
-    </PageHeader>
-    <MobilePage :refreshing="loading" @refresh="load">
-      <view v-if="mode === 'general'" class="ui-page-body ui-gap-section">
-        <view class="preference-surface ui-px-card" :class="themeClass('preference-surface')">
+    </PageSearch>
+    <MobilePage :refreshing="loading" @refresh="load"
+      :style="layer.appearance ? { backgroundColor: themePalette(layer.appearance).backgroundColor } : {}"
+      :requires-auth="!layer.preview" :refresh-disabled="layer.preview"
+      :scroll-top="layer.preview ? settingsScrollTop : undefined"
+      @scroll="!layer.preview && rememberSettingsScroll($event)"
+    >
+      <view v-if="mode === 'general'" class="ui-page-body">
+        <view class="preference-surface ui-px-card" :class="themeClass('preference-surface', layer.appearance)">
           <view class="settings-entry">
-            <text class="entry-label" :class="themeClass('entry-label')">深色模式</text>
-            <view class="theme-switch-control"><MobileSwitch :checked="isDark" :disabled="themeChanging" aria-label="深色模式" @change="changeTheme" /></view>
+            <text class="entry-label" :class="themeClass('entry-label', layer.appearance)">深色模式</text>
+            <view class="theme-switch-control"><MobileSwitch :checked="isThemeDark(layer.appearance)" :appearance="layer.appearance" :disabled="themeChanging && !revealMode" aria-label="深色模式" @change="changeTheme" /></view>
           </view>
         </view>
-        <view class="preference-surface ui-pad-card" :class="themeClass('preference-surface')">
+        <view class="preference-surface ui-pad-card ui-mt-section" :class="themeClass('preference-surface', layer.appearance)">
           <button hover-class="none" v-for="entry in supportLinks" :key="entry.path" role="button" class="settings-entry" :aria-label="entry.title" @click="openPage(entry.path)">
-            <AppIcon :name="entry.icon" /><text class="entry-label" :class="themeClass('entry-label')">{{ entry.title }}</text><AppIcon name="ant-design:right-outlined" :size="16" />
+            <view class="settings-entry-icon ui-mr-section"><AppIcon :name="entry.icon" :appearance="layer.appearance" /></view>
+            <text class="entry-label" :class="themeClass('entry-label', layer.appearance)">{{ entry.title }}</text>
+            <view class="settings-entry-icon ui-ml-section"><AppIcon name="ant-design:right-outlined" :size="16" :appearance="layer.appearance" /></view>
           </button>
         </view>
-        <view class="signout-anchor">
+        <view class="signout-anchor ui-mt-section">
           <view
             v-if="confirmLogout"
             class="signout-confirm"
-            :class="themeClass('signout-confirm')"
+            :class="themeClass('signout-confirm', layer.appearance)"
             role="alertdialog"
             aria-label="退出当前账号？"
-            ><text class="signout-message" :class="themeClass('signout-message')"
+            ><text class="signout-message" :class="themeClass('signout-message', layer.appearance)"
               >退出当前账号？</text
             ><view class="signout-actions"
               ><MobileButton
                 label="取消"
                 compact
                 variant="quiet"
+                :appearance="layer.appearance"
                 :disabled="leaving"
                 @click="confirmLogout = false"
               /><MobileButton
                 label="退出"
                 compact
+                :appearance="layer.appearance"
                 :danger="true"
                 :loading="leaving"
                 @click="signOut"
               /></view
-            ><view class="signout-arrow" :class="themeClass('signout-arrow')" /></view
+            ><view class="signout-arrow" :class="themeClass('signout-arrow', layer.appearance)" /></view
           >
           <button hover-class="none"
             role="button"
@@ -262,8 +321,8 @@ function back() {
             :aria-expanded="confirmLogout"
             :disabled="leaving" :aria-disabled="leaving"
             @click="confirmLogout = !confirmLogout"
-            :class="themeClass('signout-button')"
-          ><text :class="buttonLabelClasses(['signout-button', themeClass('signout-button')])">退出登录</text></button>
+            :class="themeClass('signout-button', layer.appearance)"
+          ><text :class="buttonLabelClasses(['signout-button', themeClass('signout-button', layer.appearance)])">退出登录</text></button>
         </view>
       </view>
       <PageState v-else skeleton="form" :loading="loading" :error="error" @retry="load">
@@ -279,9 +338,8 @@ function back() {
             </FormActions>
           </view>
         </view>
-        <view v-if="mode === 'menus' && ready" class="ui-page-body ui-gap-section">
-          <FormField label="搜索菜单" placeholder="搜索菜单" v-model="menuQuery" compact />
-          <view v-for="group in menuGroups" :key="group.id" class="preference-surface ui-pad-card" :class="themeClass('preference-surface')">
+        <view v-if="mode === 'menus' && ready" class="ui-page-body" @click="searchOpen = false">
+          <view v-for="group in menuGroups" :key="group.id" class="preference-surface ui-pad-card ui-mt-section" :class="themeClass('preference-surface')">
             <button hover-class="none" v-if="group.title" role="button" class="menu-group-toggle" :aria-label="(collapsedMenuGroups.includes(group.id) && !menuQuery.trim() ? '展开' : '收起') + group.title" :aria-expanded="!!menuQuery.trim() || !collapsedMenuGroups.includes(group.id)" @click="toggleMenuGroup(group.id)">
               <text class="menu-group-title" :class="themeClass('menu-group-title')">{{ group.title }}</text>
               <AppIcon :name="collapsedMenuGroups.includes(group.id) && !menuQuery.trim() ? 'ant-design:right-outlined' : 'ant-design:down-outlined'" :size="16" />
@@ -293,7 +351,7 @@ function back() {
               </view>
             </view>
           </view>
-          <view v-if="!menuGroups.length" class="menu-empty">
+          <view v-if="!menuGroups.length" class="menu-empty ui-mt-section">
             <text class="preference-name" :class="themeClass('preference-name')">{{ menuQuery.trim() ? '未找到匹配菜单' : '暂无可配置菜单' }}</text>
             <MobileButton v-if="menuQuery.trim()" label="清空搜索" variant="ghost" @click="menuQuery = ''" />
           </view>
@@ -301,24 +359,26 @@ function back() {
         <view
           v-if="mode === 'system'"
           class="preference-surface ui-card"
-          :class="themeClass('preference-surface')"
+          :class="themeClass('preference-surface', layer.appearance)"
         >
           <view class="preference-row ui-row">
-            <text class="preference-name" :class="themeClass('preference-name')">深色模式</text>
-            <view class="theme-switch-control"><MobileSwitch :checked="isDark" :disabled="themeChanging" aria-label="深色模式" @change="changeTheme" /></view>
+            <text class="preference-name" :class="themeClass('preference-name', layer.appearance)">深色模式</text>
+            <view class="theme-switch-control"><MobileSwitch :checked="isThemeDark(layer.appearance)" :appearance="layer.appearance" :disabled="themeChanging && !revealMode" aria-label="深色模式" @change="changeTheme" /></view>
           </view>
           <view class="preference-row ui-row"
-            ><text class="preference-name">清除缓存</text
+            ><text class="preference-name" :class="themeClass('preference-name', layer.appearance)">清除缓存</text
             ><ConfirmAction
               label="清除缓存"
               message="清除本机缓存、登录状态和本地设置，需要重新登录。云端数据不受影响，请先保存未提交的内容。"
               :action="clearCache"
               icon="ant-design:undo-outlined"
+              :trigger-appearance="layer.appearance"
           /></view>
         </view>
       </PageState>
     </MobilePage>
   </view>
+  </template>
 </template>
 <style scoped lang="scss">
 @use '../../styles/platform' as *;
@@ -333,7 +393,6 @@ function back() {
   align-items: center;
   justify-content: space-between;
   min-height: $space-controlMin + $space-detail;
-  gap: $space-section;
   width: 100%;
   margin: 0;
   padding: 0;
@@ -343,10 +402,44 @@ function back() {
 }
 .entry-label { flex: 1; text-align: left; @include type-style('body'); color: #27272a; }
 .entry-label-dark { color: #eeeeef; }
+.settings-entry-icon { flex-shrink: 0; }
 .theme-switch-control { flex-shrink: 0; }
-/* #ifndef WEB */
+/* #ifdef APP */
 .entry-label, .preference-surface, .preference-name, .signout-button {
   transition: background-color 800ms ease-in, color 800ms ease-in;
+}
+/* #endif */
+/* #ifdef MP-WEIXIN */
+.settings-theme-overlay {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 200;
+  pointer-events: none;
+  // 让固定定位的公共导航栏跟随这一层一起裁剪。
+  transform: translateZ(0);
+  animation-name: settings-theme-expand;
+  animation-duration: var(--settings-theme-duration);
+  animation-timing-function: ease-in;
+  animation-fill-mode: both;
+}
+.settings-theme-overlay-closing { animation-name: settings-theme-contract; }
+// circle() 的百分比半径以归一化对角线为基准，142% 覆盖任意窗口的对角。
+@keyframes settings-theme-expand {
+  from { clip-path: circle(0 at 100% 0); }
+  to { clip-path: circle(142% at 100% 0); }
+}
+@keyframes settings-theme-contract {
+  from { clip-path: circle(142% at 100% 0); }
+  to { clip-path: circle(0 at 100% 0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .settings-theme-overlay { animation-duration: 1ms; }
+}
+@supports not (clip-path: circle(0 at 100% 0)) {
+  .settings-theme-overlay { visibility: hidden; animation-duration: 1ms; }
 }
 /* #endif */
 .signout-button,

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, inject } from 'vue';
-import { isDark, themeClass } from '../services/theme.ts';
+import { isThemeDark, themeClass, type ThemeAppearance } from '../services/theme.ts';
 import AppIcon from './AppIcon.uvue';
 const props = withDefaults(
   defineProps<{
@@ -11,10 +11,12 @@ const props = withDefaults(
     danger?: boolean;
     compact?: boolean;
     variant?: string;
+    appearance?: ThemeAppearance;
   }>(),
   { variant: 'primary' },
 );
 const emit = defineEmits(['click']);
+const isDark = computed(() => isThemeDark(props.appearance));
 const insideModal = inject('mobile-modal', false);
 // 行内背景覆盖 uni-app 的 disabled/type 默认底色，跨端保留组件自身的主题与变体。
 const backgroundColor = computed(() => {
@@ -46,7 +48,7 @@ function activate() {
         'mobile-button',
         { 'mobile-button-quiet': variant === 'quiet', 'mobile-button-ghost': variant === 'ghost', 'mobile-button-danger': danger,
           'mobile-button-modal-quiet': insideModal && !icon && !compact && variant === 'quiet' && !danger },
-      ]),
+      ], appearance),
     ]"
     :style="{ backgroundColor }"
     :aria-label="label"
@@ -68,7 +70,7 @@ function activate() {
       class="mobile-button-label"
       :class="[
         { 'mobile-button-label-muted': !danger && (variant === 'quiet' || variant === 'ghost') },
-        themeClass({ 'mobile-button-label-muted': !danger && (variant === 'quiet' || variant === 'ghost') }),
+        themeClass({ 'mobile-button-label-muted': !danger && (variant === 'quiet' || variant === 'ghost') }, appearance),
       ]"
     >{{ label }}</text></slot>
     </view>
