@@ -4,8 +4,8 @@ import MobileSwitch from '../../components/MobileSwitch.uvue';
 import { usePageRefresh } from '../../services/page-refresh.ts'
 import { isRequired } from '../../services/form-required.ts';
 import AppIcon from '../../components/AppIcon.uvue'
-import { computed, ref } from 'vue';
-import { onLoad, onShow, onUnload } from '@dcloudio/uni-app';
+import { computed, getCurrentInstance, nextTick, ref } from 'vue';
+import { onHide, onLoad, onShow, onUnload } from '@dcloudio/uni-app';
 import PageSearch from '../../components/PageSearch.uvue';
 import MobilePage from '../../components/MobilePage.uvue';
 import MobileButton from '../../components/MobileButton.uvue';
@@ -17,11 +17,12 @@ import FormField from '../../components/FormField.uvue';
 import FormActions from '../../components/FormActions.uvue';
 import CategoryIcon from '../../components/CategoryIcon.uvue';
 import catalog from '../../services/icons/catalog.ts';
-import { themeClass } from '../../services/theme.ts';
+import { isThemeDark, themeClass } from '../../services/theme.ts';
 import { fetchUser } from '../../services/api.ts';
 import { restoreSession, session } from '../../services/session.ts';
 import { createLatestTask } from '../../services/mobile-ui.ts';
 import { siblingSort, orderCategories } from '../../services/admin/contract.ts';
+import spacing from '../../styles/spacing.json';
 import {
   listCategories,
   saveCategory,
@@ -44,6 +45,49 @@ const editorError = ref('');
 const searchOpen = ref(false);
 const search = ref('');
 const expandedActions = ref('');
+const menuDeleteColor = computed(() => isThemeDark() ? '#ff707a' : '#b91c1c');
+const menuScrollTop = ref(0);
+const menuBottomSpace = ref(0);
+const instance = getCurrentInstance();
+let currentScrollTop = 0;
+function onCategoryScroll(event) {
+  currentScrollTop = event.detail.scrollTop;
+}
+function dismissActions() {
+  expandedActions.value = '';
+  menuBottomSpace.value = 0;
+}
+async function toggleActions(id: string) {
+  if (loading.value || busyId.value) return;
+  if (expandedActions.value === id) {
+    dismissActions();
+    return;
+  }
+  menuScrollTop.value = currentScrollTop;
+  expandedActions.value = id;
+  await nextTick();
+  if (expandedActions.value !== id) return;
+  uni.createSelectorQuery().in(instance?.proxy)
+    .select('.category-menu').boundingClientRect()
+    .select('.category-menu-space').boundingClientRect()
+    .exec(async (rects) => {
+      const menu = rects?.[0], space = rects?.[1];
+      if (!menu || !space || expandedActions.value !== id) return;
+      // 补足列表末尾的空间，避免 Vapor 的容器裁切，并避开右下角新增按钮。
+      const bottomInset = spacing.controlMin + spacing.overlayBlock;
+      const overflow = Math.ceil(menu.bottom + bottomInset - uni.getWindowInfo().windowHeight);
+      const reserve = overflow > 0 ? bottomInset : spacing.detail;
+      menuBottomSpace.value = Math.max(0, Math.ceil(menu.bottom - space.top + reserve));
+      if (overflow <= 0) return;
+      const target = currentScrollTop + overflow;
+      await nextTick();
+      if (expandedActions.value === id) menuScrollTop.value = target;
+    });
+}
+function dismissPageControls() {
+  searchOpen.value = false;
+  dismissActions();
+}
 const searchQuery = computed(() => search.value.trim().toLowerCase());
 const collapsed = ref<string[]>([]);
 const original = ref<any>(null);
@@ -94,6 +138,7 @@ function selectParent(value) {
 onLoad((options) => {
   admin.value = options?.admin === '1';
 });
+onHide(dismissActions);
 onUnload(() => {
   active = false;
   task.invalidate();
@@ -108,6 +153,7 @@ onShow(() => {
   refreshOnShow();
 });
 async function load(refresh = false) {
+  dismissActions();
   const generation = task.begin(),
     token = session.token;
   loading.value = true;
@@ -133,7 +179,7 @@ async function load(refresh = false) {
 }
 function edit(row = null, parentId = '') {
   if (loading.value || busyId.value) return;
-  expandedActions.value = '';
+  dismissActions();
   original.value = row;
   form.value = row
     ? { ...row, parentId: row.parentId || '', inheritParent: !!row.inheritParent }
@@ -178,7 +224,7 @@ async function save() {
   }
 }
 async function change(row, changes) {
-  if (busyId.value) return;
+  if (busyId.value || loading.value) return;
   busyId.value = row.id;
   error.value = '';
   const token = session.token;
@@ -190,6 +236,9 @@ async function change(row, changes) {
   } finally {
     busyId.value = '';
   }
+}
+function toggleVisibility(row) {
+  return change(row, { isEnabled: row.isEnabled === 0 ? 1 : 0 });
 }
 async function remove(row) {
   await deleteCategory(row, admin.value);
@@ -233,10 +282,11 @@ function privateCategory(row) {
 }
 </script>
 <template>
-  <view class="category-page" @click="searchOpen = false">
+  <view class="category-page" @click="dismissPageControls">
     <PageSearch v-model="search" v-model:open="searchOpen" title="时迹分类" label="搜索分类" back
+      @update:open="dismissActions"
       @back="uni.navigateBack()" />
-    <MobilePage :refreshing="refreshing" @refresh="load(true)">
+    <MobilePage :refreshing="refreshing" :scroll-top="menuScrollTop" @refresh="load(true)" @scroll="onCategoryScroll">
       <PageState :has-content="loaded" :loading="loading" :error="error" :empty="!shown.length" :empty-text="searchQuery ? '未找到匹配分类' : '暂无分类'" @retry="load()">
         <template #loading>
           <view class="category-loading" role="status" aria-label="正在加载分类" aria-live="polite">
@@ -256,7 +306,17 @@ function privateCategory(row) {
           class="category-card"
           :class="themeClass('category-card')"
         >
-          <view class="category-heading ui-row">
+          <button
+            hover-class="none"
+            role="button"
+            class="category-heading"
+            :aria-label="'编辑分类：' + row.name"
+            :disabled="!!busyId || loading"
+            :tabindex="busyId || loading ? -1 : 0"
+            @click="edit(row)"
+            @keydown.enter.prevent="edit(row)"
+            @keydown.space.prevent="edit(row)"
+          >
             <CategoryIcon :icon="row.icon" :color="row.color" />
             <AppIcon v-if="row.parentId" name="lucide:corner-down-right" :size="16" />
             <view class="category-summary">
@@ -266,6 +326,8 @@ function privateCategory(row) {
                 <text v-if="row.isEnabled === 0" class="category-meta" :class="themeClass('category-meta')">已隐藏</text>
               </view>
             </view>
+          </button>
+          <view class="category-actions ui-row">
             <MobileButton
               v-if="hasChildren(row)"
               :label="collapsed.includes(row.id) ? '展开子分类' : '收起子分类'"
@@ -273,37 +335,82 @@ function privateCategory(row) {
               variant="ghost"
               @click="toggle(row)"
             />
-          </view>
-          <view class="category-actions ui-row"
-            ><MobileButton
-              label="编辑分类"
-              icon="ant-design:edit-outlined"
-              variant="ghost"
-              :disabled="!!busyId || loading"
-              @click="edit(row)" />
-            <MobileButton label="更多分类操作" :icon="expandedActions === row.id ? 'ant-design:up-outlined' : 'lucide:ellipsis'" variant="ghost" :aria-expanded="expandedActions === row.id" :disabled="!!busyId || loading" @click="expandedActions = expandedActions === row.id ? '' : row.id" />
-          </view>
-          <view v-if="expandedActions === row.id" class="category-extra-actions">
-            <MobileButton
-              v-if="!row.parentId"
-              label="新增子分类"
-              icon="ant-design:plus-outlined"
-              variant="quiet"
-              :disabled="!!busyId || loading"
-              @click="edit(null, row.id)" /><MobileButton
-              :label="row.isEnabled === 0 ? '恢复分类' : '隐藏分类'"
-              :icon="row.isEnabled === 0 ? 'ant-design:eye-outlined' : 'ant-design:eye-invisible-outlined'"
-              variant="quiet"
-              :loading="busyId === row.id"
-              :disabled="!!busyId || loading"
-              @click="change(row, { isEnabled: row.isEnabled === 0 ? 1 : 0 })" /><ConfirmAction
-              v-if="admin || privateCategory(row)"
-              label="删除分类"
-              message="确定删除分类？已有记录或子分类时无法删除。"
-              :action="() => remove(row)"
-            />
+            <view class="category-menu-anchor" @click.stop @keydown.esc="dismissActions">
+              <MobileButton
+                label="更多分类操作"
+                icon="ant-design:more-outlined"
+                variant="ghost"
+                :aria-expanded="expandedActions === row.id"
+                :disabled="!!busyId || loading"
+                :tabindex="busyId || loading ? -1 : 0"
+                @click="toggleActions(row.id)"
+                @keydown.enter.prevent="toggleActions(row.id)"
+                @keydown.space.prevent="toggleActions(row.id)"
+              />
+              <view v-if="expandedActions === row.id" class="category-menu" :class="themeClass('category-menu')" role="group" :aria-label="row.name + '的分类操作'">
+                <button
+                  v-if="!row.parentId"
+                  hover-class="none"
+                  role="button"
+                  class="category-menu-item"
+                  aria-label="新增子分类"
+                  :disabled="!!busyId || loading"
+                  :tabindex="busyId || loading ? -1 : 0"
+                  @click="edit(null, row.id)"
+                  @keydown.enter.prevent="edit(null, row.id)"
+                  @keydown.space.prevent="edit(null, row.id)"
+                >
+                  <AppIcon name="ant-design:plus-outlined" :size="16" />
+                  <text class="category-menu-label" :class="themeClass('category-menu-label')">新增子分类</text>
+                </button>
+                <button
+                  hover-class="none"
+                  role="button"
+                  class="category-menu-item"
+                  :aria-label="row.isEnabled === 0 ? '恢复分类' : '隐藏分类'"
+                  :aria-busy="busyId === row.id"
+                  :loading="busyId === row.id"
+                  :disabled="!!busyId || loading"
+                  :tabindex="busyId || loading ? -1 : 0"
+                  @click="toggleVisibility(row)"
+                  @keydown.enter.prevent="toggleVisibility(row)"
+                  @keydown.space.prevent="toggleVisibility(row)"
+                >
+                  <AppIcon v-if="busyId !== row.id" :name="row.isEnabled === 0 ? 'ant-design:eye-outlined' : 'ant-design:eye-invisible-outlined'" :size="16" />
+                  <text class="category-menu-label" :class="themeClass('category-menu-label')">{{ row.isEnabled === 0 ? '恢复分类' : '隐藏分类' }}</text>
+                </button>
+                <view v-if="admin || privateCategory(row)" class="category-menu-delete" :class="themeClass('category-menu-delete')">
+                  <ConfirmAction
+                    label="删除分类"
+                    message="确定删除分类？已有记录或子分类时无法删除。"
+                    :trigger-disabled="!!busyId || loading"
+                    :action="() => remove(row)"
+                  >
+                    <template #default="{ open, busy }">
+                      <button
+                        hover-class="none"
+                        role="button"
+                        class="category-menu-item"
+                        aria-label="删除分类"
+                        :aria-busy="busy"
+                        :loading="busy"
+                        :disabled="busy || !!busyId || loading"
+                        :tabindex="busy || busyId || loading ? -1 : 0"
+                        @click="open"
+                        @keydown.enter.prevent="open"
+                        @keydown.space.prevent="open"
+                      >
+                        <AppIcon v-if="!busy" name="ant-design:delete-outlined" :size="16" :color="menuDeleteColor" />
+                        <text class="category-menu-label" :style="{ color: menuDeleteColor }">删除分类</text>
+                      </button>
+                    </template>
+                  </ConfirmAction>
+                </view>
+              </view>
+            </view>
           </view>
         </view>
+        <view class="category-menu-space" :style="{ height: menuBottomSpace + 'px' }" aria-hidden="true" />
       </PageState>
       <template #fixed
         ><FloatingActionButton :disabled="loading || !!busyId" @click="edit()"
@@ -359,13 +466,13 @@ function privateCategory(row) {
           </view>
         </FormField>
         <FormField v-if="showIconValue" appearance="soft" label="图标名称" v-model="form.icon" placeholder="如 lucide:book-open" :disabled="saving" />
-        <view class="category-toggle-row">
-          <view class="category-toggle" :class="themeClass('category-toggle')">
-            <text class="category-toggle-label" :class="themeClass('category-toggle-label')">卡片统计</text>
-            <MobileSwitch :checked="form.isTrackTime === 1" :disabled="saving" aria-label="卡片统计" @change="(event) => (form.isTrackTime = event.detail.value ? 1 : 0)" />
+        <view class="category-toggles">
+          <view class="category-toggle">
+            <text class="category-toggle-label" :class="themeClass('category-toggle-label')">显示时长统计卡</text>
+            <MobileSwitch :checked="form.isTrackTime === 1" :disabled="saving" aria-label="显示时长统计卡" @change="(event) => (form.isTrackTime = event.detail.value ? 1 : 0)" />
           </view>
-          <view class="category-toggle" :class="themeClass('category-toggle')">
-            <text class="category-toggle-label" :class="themeClass('category-toggle-label')">启用</text>
+          <view class="category-toggle">
+            <text class="category-toggle-label" :class="themeClass('category-toggle-label')">启用分类</text>
             <MobileSwitch :checked="form.isEnabled === 1" :disabled="saving" aria-label="启用分类" @change="(event) => (form.isEnabled = event.detail.value ? 1 : 0)" />
           </view>
         </view>
@@ -422,7 +529,6 @@ function privateCategory(row) {
   display: flex;
   flex-direction: row;
   align-items: center;
-  flex-wrap: wrap;
   gap: $space-inline;
 
   overflow: visible;
@@ -432,11 +538,19 @@ function privateCategory(row) {
   color: #eeeeef;
 }
 .category-heading {
+  display: flex;
   flex: 1;
   min-width: 0;
+  min-height: $space-controlMin;
   flex-direction: row;
   gap: $space-inline;
   align-items: center;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  text-align: left;
+  @include button-background(transparent);
+  @include borderless-button;
 }
 .category-summary { flex: 1; min-width: 0; gap: $space-detail; }
 .category-summary-meta { flex-direction: row; flex-wrap: wrap; align-items: center; gap: $space-inline; }
@@ -468,7 +582,45 @@ function privateCategory(row) {
 .category-placeholder-icon { width: 24px; height: 24px; }
 .category-placeholder-name { width: 72%; height: 16px; }
 .category-placeholder-action { width: $space-controlMin; align-items: center; justify-content: center; }
-.category-extra-actions { width: 100%; flex-direction: row; justify-content: flex-end; gap: $space-inline; }
+.category-menu-anchor { position: relative; overflow: visible; }
+.category-menu {
+  position: absolute;
+  top: $space-controlMin + $space-detail;
+  right: 0;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  min-width: $space-modalActionMin + $space-controlMin;
+  padding: $space-detail;
+  border-radius: 14px;
+  background-color: #ffffff;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.16);
+}
+.category-menu-dark { background-color: #292c32; }
+.category-menu-item {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: flex-start;
+  box-sizing: border-box;
+  width: 100%;
+  min-height: $space-controlMin;
+  gap: $space-inline;
+  margin: 0;
+  padding: 0 $space-inline;
+  border: 0;
+  @include button-background(transparent);
+  @include borderless-button;
+}
+.category-menu-label { @include type-style('body'); color: #27272a; }
+.category-menu-label-dark { color: #eeeeef; }
+.category-menu-delete {
+  border-top-width: $space-hairline;
+  border-top-style: solid;
+  border-top-color: #e5e7eb;
+}
+.category-menu-delete-dark { border-top-color: #3c414a; }
 .category-search-empty { align-items: center; padding-bottom: $space-section; }
 .category-error {
   color: #e05260;
@@ -534,8 +686,8 @@ function privateCategory(row) {
 .category-icon-trigger { display: flex; flex-direction: row; align-items: center; gap: $space-inline; flex: 1; min-width: 0; min-height: $space-controlMin; margin: 0; padding: 0 $space-card; border: 0; @include button-background(transparent); }
 .category-control-text { @include type-style('body'); color: #27272a; flex: 1; text-align: left; }
 .category-control-text-dark { color: #dce0e7; }
-.category-toggle-row { display: flex; flex-direction: row; gap: $space-inline; margin-bottom: $space-form; }
-.category-toggle { display: flex; flex-direction: row; align-items: center; justify-content: space-between; gap: $space-detail; flex: 1; min-width: 0; min-height: $space-controlMin; }
+.category-toggles { display: flex; flex-direction: column; margin-bottom: $space-form; }
+.category-toggle { display: flex; flex-direction: row; align-items: center; justify-content: space-between; gap: $space-inline; min-height: $space-controlMin; }
 .category-toggle-label { @include type-style('label'); color: #707784; }
 .category-toggle-label-dark { color: #a0a6b1; }
 .category-description-toggle { display: flex; flex-direction: row; align-items: center; gap: $space-inline; min-height: $space-controlMin; margin: 0 0 $space-detail; padding: 0; border: 0; @include button-background(transparent); }

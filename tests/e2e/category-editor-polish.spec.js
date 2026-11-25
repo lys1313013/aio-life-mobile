@@ -23,7 +23,7 @@ async function start(page) {
     return route.fulfill({ json: { code: 0, data } });
   });
   await page.goto('/#/pages/categories/index');
-  await page.getByRole('button', { name: '编辑分类', exact: true }).click();
+  await page.getByRole('button', { name: '编辑分类：' + original.name, exact: true }).click();
   return state;
 }
 const editor = page => page.getByRole('dialog', { name: '编辑分类', exact: true });
@@ -44,9 +44,13 @@ for (const width of [390, 768, 1440]) for (const theme of ['light', 'dark']) {
     await expect(dialog.getByRole('button', { name: '上移分类', exact: true })).toBeVisible();
     await expect(dialog.getByRole('button', { name: '保存', exact: true })).toBeInViewport();
     await expect(dialog).toHaveCSS('transform', 'none');
+    const stats = dialog.getByRole('switch', { name: '显示时长统计卡', exact: true });
     const toggle = dialog.getByRole('switch', { name: '启用分类', exact: true });
+    const statsBox = await stats.boundingBox();
     const hitBox = await toggle.boundingBox();
     const trackBox = await toggle.locator('.mobile-switch-track').boundingBox();
+    expect(statsBox.x).toBeCloseTo(hitBox.x, 0);
+    expect(statsBox.y + statsBox.height).toBeLessThanOrEqual(hitBox.y + 1);
     expect(hitBox.width).toBeGreaterThanOrEqual(44);
     expect(hitBox.height).toBeGreaterThanOrEqual(44);
     expect(trackBox.width).toBe(36);
@@ -73,7 +77,13 @@ for (const width of [390, 768, 1440]) for (const theme of ['light', 'dark']) {
 test('统一开关支持键盘切换且表单保留布尔契约', async ({ page }) => {
   const state = await start(page);
   const dialog = editor(page);
+  const stats = dialog.getByRole('switch', { name: '显示时长统计卡', exact: true });
   const toggle = dialog.getByRole('switch', { name: '启用分类', exact: true });
+  await stats.click();
+  await expect(stats).toHaveAttribute('aria-checked', 'false');
+  await expect(toggle).toHaveAttribute('aria-checked', 'true');
+  await stats.click();
+  await expect(stats).toHaveAttribute('aria-checked', 'true');
   await toggle.focus();
   await expect(toggle).toBeFocused();
   await toggle.press('Space');
@@ -95,7 +105,7 @@ test('category editor preserves values, supports visual/custom choices, resets p
   await dialog.getByRole('button', { name: '保存', exact: true }).click();
   await expect(dialog).toHaveCount(0);
   expect(state.writes[0]).toEqual({ id, parentId: null, inheritParent: false, name: original.name, color: original.color, icon: original.icon, description: original.description, isTrackTime: 1, isEnabled: 1, sortOrder: 20 });
-  await page.getByRole('button', { name: '编辑分类', exact: true }).click();
+  await page.getByRole('button', { name: '编辑分类：' + original.name, exact: true }).click();
   await dialog.getByRole('button', { name: '选择分类图标', exact: true }).click();
   const fullPicker = page.getByRole('dialog', { name: '选择分类图标', exact: true });
   const lastIcon = fullPicker.getByRole('button', { name: '选择图标 ' + iconNames.at(-1), exact: true });
@@ -131,7 +141,7 @@ test('category editor preserves values, supports visual/custom choices, resets p
   await dialog.getByRole('button', { name: '保存', exact: true }).click();
   await expect(dialog).toHaveCount(0);
   expect(state.writes.at(-1)).toMatchObject({ id, color: '#ABCDEF', icon: 'custom:updated', description: '更新后仍应保留的说明', isTrackTime: 1, isEnabled: 1, sortOrder: 20 });
-  await page.getByRole('button', { name: '编辑分类', exact: true }).click();
+  await page.getByRole('button', { name: '编辑分类：' + original.name, exact: true }).click();
   await expect(dialog.getByRole('textbox', { name: '图标名称', exact: true })).toHaveCount(0);
   await expect(dialog.getByRole('textbox', { name: '自定义颜色值', exact: true })).toHaveCount(0);
   await expect(dialog.locator('textarea')).toHaveCount(0);

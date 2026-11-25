@@ -46,8 +46,7 @@ for (const width of [390, 768, 1440]) for (const theme of ['light', 'dark']) {
     await expect(page.getByRole('button', { name: '编辑分类', exact: true })).toBeVisible();
     await page.getByRole('button', { name: '返回', exact: true }).click();
     await page.getByRole('button', { name: '时迹分类', exact: true }).click();
-    await expect(page.getByText('模拟个人时迹分类', { exact: true })).toBeVisible();
-    await expect(page.getByRole('button', { name: '编辑分类', exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: '编辑分类：模拟个人时迹分类', exact: true })).toBeVisible();
   });
 }
 test('全部目录移除个人分类且管理员时迹分类在系统管理', async ({ page, apiMock }) => {

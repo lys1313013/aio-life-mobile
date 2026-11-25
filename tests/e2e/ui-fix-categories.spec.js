@@ -2,6 +2,8 @@ const { test, expect } = require('./support/test');
 const path = require('node:path');
 const fs = require('node:fs');
 const { pullDown } = require('./gestures');
+const { dismissModal } = require('./modal');
+const { stableBox } = require('./support/geometry');
 function gate() { let release; const promise = new Promise(resolve => { release = resolve; }); return { promise, release }; }
 
 const categoryRows = [
@@ -30,15 +32,35 @@ for (const admin of [false, true]) {
     await page.setViewportSize({ width: 390, height: 844 });
     await openCategories(page, apiMock, admin);
     await expect(page.getByRole('switch')).toHaveCount(0);
+    await expect(page.getByRole('button', { name: '编辑分类', exact: true })).toHaveCount(0);
     await expect(page.getByRole('button', { name: '新增子分类', exact: true })).toHaveCount(0);
     const firstCard = page.locator('.category-card').filter({ hasText: '模拟一级分类' });
-    await firstCard.getByRole('button', { name: '更多分类操作', exact: true }).click();
-    await expect(firstCard.getByRole('button', { name: '新增子分类', exact: true })).toBeVisible();
-    await expect(firstCard.getByRole('button', { name: '隐藏分类', exact: true })).toBeVisible();
-    await expect(firstCard.getByRole('button', { name: '删除分类', exact: true })).toBeVisible();
+    const more = firstCard.getByRole('button', { name: '更多分类操作', exact: true });
+    const menu = firstCard.getByRole('group', { name: '模拟一级分类的分类操作', exact: true });
+    await more.click();
+    await expect(more).toHaveAttribute('aria-expanded', 'true');
+    await expect(menu.getByRole('button', { name: '隐藏分类', exact: true })).toBeVisible();
+    await menu.getByRole('button', { name: '删除分类', exact: true }).click();
+    const confirmation = page.getByRole('dialog', { name: '删除分类', exact: true });
+    await expect(confirmation).toContainText('确定删除分类？');
+    await confirmation.getByRole('button', { name: '取消', exact: true }).click();
+    await expect(confirmation).toHaveCount(0);
+    await menu.getByRole('button', { name: '新增子分类', exact: true }).click();
+    const editor = page.getByRole('dialog', { name: '编辑分类', exact: true });
+    await expect(editor.getByLabel('上级分类', { exact: true }).locator('.form-field-picker-value')).toHaveText('模拟一级分类');
+    await expect(menu).toHaveCount(0);
+    await dismissModal(page);
+    await expect(editor).toHaveCount(0);
+    await more.press('Enter');
+    await expect(more).toHaveAttribute('aria-expanded', 'true');
+    await expect(more).toBeFocused();
+    await more.press('Escape');
+    await expect(more).toHaveAttribute('aria-expanded', 'false');
     await firstCard.getByRole('button', { name: '收起子分类', exact: true }).click();
     await expect(page.locator('.category-card')).toHaveCount(2);
+    await more.click();
     await page.getByRole('button', { name: '展开搜索', exact: true }).click();
+    await expect(menu).toHaveCount(0);
     await page.getByRole('searchbox', { name: '搜索分类', exact: true }).fill('模拟子分类');
     await expect(page.locator('.category-card')).toHaveCount(1);
     await page.getByRole('searchbox', { name: '搜索分类', exact: true }).fill('没有这个分类的模拟搜索');
@@ -47,8 +69,8 @@ for (const admin of [false, true]) {
     await expect(page.locator('.category-card')).toHaveCount(2);
     await page.getByRole('button', { name: '展开搜索', exact: true }).click();
     await expect(page.getByRole('searchbox', { name: '搜索分类', exact: true })).toHaveValue('');
-    await firstCard.getByRole('button', { name: '编辑分类', exact: true }).click();
-    await expect(page.getByRole('dialog', { name: '编辑分类', exact: true }).getByRole('switch', { name: '卡片统计', exact: true })).toBeVisible();
+    await firstCard.getByRole('button', { name: '编辑分类：模拟一级分类', exact: true }).click();
+    await expect(editor.getByRole('switch', { name: '显示时长统计卡', exact: true })).toBeVisible();
   });
 }
 
@@ -58,16 +80,43 @@ for (const width of [390, 768, 1440]) for (const theme of ['light', 'dark']) {
     await page.emulateMedia({ colorScheme: theme });
     await openCategories(page, apiMock);
     const rows = page.locator('.category-card');
+    const first = rows.filter({ hasText: '模拟一级分类' });
+    const child = rows.filter({ hasText: '模拟子分类' });
+    const edit = first.getByRole('button', { name: '编辑分类：模拟一级分类', exact: true });
+    const more = first.getByRole('button', { name: '更多分类操作', exact: true });
     await expect(page.locator('.category-type')).toHaveCount(0);
-    expect(await rows.first().getByRole('button', { name: '编辑分类', exact: true }).evaluate(element => getComputedStyle(element).backgroundColor)).toBe('rgba(0, 0, 0, 0)');
+    expect(await edit.evaluate(element => getComputedStyle(element).backgroundColor)).toBe('rgba(0, 0, 0, 0)');
     expect(await rows.evaluateAll(elements => elements.every(element => element.scrollWidth <= element.clientWidth + 1))).toBe(true);
-    const editBox = await rows.first().getByRole('button', { name: '编辑分类', exact: true }).boundingBox();
+    const editBox = await edit.boundingBox();
     expect(editBox.width).toBeGreaterThanOrEqual(44);
     expect(editBox.height).toBeGreaterThanOrEqual(44);
     const output = path.resolve('artifacts/ui-fixes-2026-10-25/categories');
     fs.mkdirSync(output, { recursive: true });
     await page.screenshot({ path: path.join(output, `list-${width}-${theme}.png`), fullPage: true });
-    await rows.first().getByRole('button', { name: '编辑分类', exact: true }).click();
+    const firstBox = await stableBox(first);
+    const childBox = await stableBox(child);
+    await more.click();
+    const menu = first.getByRole('group', { name: '模拟一级分类的分类操作', exact: true });
+    const actions = menu.getByRole('button');
+    await expect(actions).toHaveText(['新增子分类', '隐藏分类', '删除分类']);
+    await expect(menu).toBeInViewport({ ratio: 1 });
+    const [addBox, hideBox, deleteBox] = await Promise.all((await actions.all()).map(action => action.boundingBox()));
+    expect(hideBox.y).toBeGreaterThanOrEqual(addBox.y + addBox.height);
+    expect(deleteBox.y).toBeGreaterThanOrEqual(hideBox.y + hideBox.height);
+    expect(deleteBox.height).toBeGreaterThanOrEqual(44);
+    await expect(menu.getByText('删除分类', { exact: true })).toHaveCSS('color', theme === 'dark' ? 'rgb(255, 112, 122)' : 'rgb(185, 28, 28)');
+    const menuBox = await stableBox(menu);
+    const moreBox = await more.boundingBox();
+    expect(menuBox.x).toBeGreaterThanOrEqual(firstBox.x);
+    expect(menuBox.x + menuBox.width).toBeCloseTo(moreBox.x + moreBox.width, 0);
+    expect(menuBox.y).toBeGreaterThanOrEqual(moreBox.y + moreBox.height);
+    expect(menuBox.y).toBeLessThan(childBox.y + childBox.height);
+    expect((await stableBox(first)).height).toBeCloseTo(firstBox.height, 0);
+    expect((await stableBox(child)).y).toBeCloseTo(childBox.y, 0);
+    await page.screenshot({ path: path.join(output, `menu-${width}-${theme}.png`), fullPage: true });
+    await more.click();
+    await expect(menu).toHaveCount(0);
+    await edit.click();
     const dialog = page.getByRole('dialog', { name: '编辑分类', exact: true });
     await expect(dialog.getByRole('button', { name: '保存', exact: true })).toBeVisible();
     await expect(dialog.getByText('时间类型', { exact: true })).toHaveCount(0);
@@ -133,3 +182,21 @@ for (const width of [390, 768, 1440]) for (const theme of ['light', 'dark']) {
     } finally { state.pending.release(); }
   });
 }
+
+test('分类菜单靠近屏幕底部时仍在三点下方完整显示', async ({ page, apiMock }) => {
+  await page.setViewportSize({ width: 390, height: 360 });
+  await openCategories(page, apiMock);
+  const card = page.locator('.category-card').filter({ hasText: categoryRows[1].name });
+  const more = card.getByRole('button', { name: '更多分类操作', exact: true });
+  await more.click();
+  const menu = card.getByRole('group');
+  await expect(menu).toBeInViewport({ ratio: 1 });
+  const menuBox = await stableBox(menu);
+  const moreBox = await more.boundingBox();
+  expect(menuBox.y).toBeGreaterThanOrEqual(moreBox.y + moreBox.height);
+  await menu.getByRole('button', { name: '删除分类', exact: true }).click();
+  const confirm = page.getByRole('dialog', { name: '删除分类', exact: true });
+  await expect(confirm).toBeVisible();
+  await confirm.getByRole('button', { name: '取消', exact: true }).click();
+  await expect(confirm).toHaveCount(0);
+});
