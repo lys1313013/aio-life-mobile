@@ -37,6 +37,9 @@ export function useAppLayout() {
       flexShrink: 0,
     }
   }
+  function appWidthBelow(width: number) {
+    return app && size.value.windowWidth < width
+  }
   function appViewport(fraction: number, property = 'height') {
     return app ? { [property]: `${Math.round(size.value.windowHeight * fraction)}px` } : {}
   }
@@ -45,7 +48,7 @@ export function useAppLayout() {
     const periodWidth = size.value.windowWidth <= 360 ? 64 : 72
     return { width: first ? `${periodWidth}px` : `calc((100% - ${periodWidth + spacing.detail * 3}px) / 3)`, flexGrow: 0, flexShrink: 0 }
   }
-  return { appGridItem, appGridCell, appViewport, appLedgerCell }
+  return { appGridItem, appGridCell, appViewport, appLedgerCell, appWidthBelow }
 }
 
 export function appTextColor(active = false) {

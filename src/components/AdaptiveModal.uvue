@@ -240,7 +240,7 @@ onUnmounted(() => {
   <view class="modal-mask" :data-modal-motion="openingMotion && !bare ? 'on' : 'off'" :class="[themeClass('modal-mask'), { 'modal-mask-loading': bare, 'modal-mask-enter': openingMotion && !bare, 'modal-mask-leave': closing }, themeClass({ 'modal-mask-loading': bare })]" :style="{ paddingTop: (verticalInset + safeTop) + 'px', paddingBottom: (verticalInset + safeBottom + keyboardHeight) + 'px', ...(useViewportFrame ? { top: viewportTop + 'px', height: windowHeight + 'px', bottom: 'auto' } : {}) }" @click="close">
     <!-- 模糊层独立于内容，避免改变内嵌确认框 / picker 的 fixed 定位参照。 -->
     <!-- #ifdef WEB || MP-WEIXIN -->
-    <view v-if="!bare" class="modal-backdrop" aria-hidden="true" />
+    <view v-if="!bare" class="modal-backdrop" :class="[themeClass('modal-backdrop'), { 'modal-backdrop-enter': openingMotion, 'modal-backdrop-leave': closing }]" aria-hidden="true" />
     <!-- #endif -->
     <view
       class="modal-panel"
@@ -293,7 +293,6 @@ onUnmounted(() => {
 
   align-items: center;
   justify-content: center;
-  background-color: rgba(18, 24, 38, 0.28);
 }
 .modal-panel {
   position: relative;
@@ -323,9 +322,10 @@ onUnmounted(() => {
 .modal-fill-body { padding: $space-modal; display: flex; flex-direction: column; flex: 1; min-height: 0; overflow: hidden; }
 .modal-footer,
 .modal-fill-footer { position: relative; flex-shrink: 0; padding: 0 $space-modal $space-modal; }
-.modal-mask-dark {
-  background-color: rgba(0, 0, 0, 0.48);
-}
+/* #ifndef WEB || MP-WEIXIN */
+.modal-mask { background-color: rgba(18, 24, 38, 0.28); }
+.modal-mask-dark { background-color: rgba(0, 0, 0, 0.48); }
+/* #endif */
 .modal-panel-dark {
   background-color: $theme-surface-dark;
   color: #e7e9ee;
@@ -333,6 +333,8 @@ onUnmounted(() => {
 }
 /* 原生 App 使用上面的实色面板；H5 / 微信按渲染器能力增强。 */
 /* #ifdef WEB || MP-WEIXIN */
+.modal-backdrop { background-color: rgba(18, 24, 38, 0.28); }
+.modal-backdrop-dark { background-color: rgba(0, 0, 0, 0.48); }
 .modal-backdrop,
 .modal-surface {
   position: absolute;
@@ -378,15 +380,23 @@ onUnmounted(() => {
 // 动画结束后不保留 transform，避免改变内部 picker / 确认框的 fixed 参照。
 .modal-panel-wait { opacity: 0; }
 /* #ifndef WEB */
-.modal-mask-enter { animation: modal-mask-appear 220ms ease-out; }
 .modal-panel-enter { animation: modal-panel-appear 320ms cubic-bezier(0.2, 0.8, 0.2, 1); }
-@keyframes modal-mask-appear { from { background-color: transparent; } }
 // 原生端使用位移淡入，测高不受缩放影响。
 @keyframes modal-panel-appear { from { opacity: 0; transform: translateY($space-section); } to { opacity: 1; transform: translateY(0); } }
-.modal-mask-leave { animation: modal-mask-disappear 240ms ease-in both; }
 .modal-panel-leave { animation: modal-panel-disappear 240ms ease-in both; }
-@keyframes modal-mask-disappear { to { opacity: 0; } }
-@keyframes modal-panel-disappear { to { transform: translateY($space-section); } }
+@keyframes modal-panel-disappear { to { opacity: 0; transform: translateY($space-section); } }
+/* #endif */
+/* #ifdef MP-WEIXIN */
+.modal-backdrop-enter { animation: modal-backdrop-appear 160ms ease-out; }
+.modal-backdrop-leave { animation: modal-backdrop-disappear 240ms ease-in both; }
+@keyframes modal-backdrop-appear { from { opacity: 0; } }
+@keyframes modal-backdrop-disappear { to { opacity: 0; } }
+/* #endif */
+/* #ifndef WEB || MP-WEIXIN */
+.modal-mask-enter { animation: modal-mask-appear 220ms ease-out; }
+.modal-mask-leave { animation: modal-mask-disappear 240ms ease-in both; }
+@keyframes modal-mask-appear { from { background-color: transparent; } }
+@keyframes modal-mask-disappear { to { background-color: transparent; } }
 /* #endif */
 /* #ifdef WEB */
 @media (prefers-reduced-motion: reduce) {

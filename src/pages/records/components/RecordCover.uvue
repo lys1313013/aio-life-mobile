@@ -1,19 +1,17 @@
 <script setup lang="ts">
+import AppIcon from '../../../components/AppIcon.uvue';
 import ImagePlaceholder from '../../../components/ImagePlaceholder.uvue';
 import { useImageSource } from '../../../services/use-image-source.ts';
-const props = withDefaults(defineProps<{ fileId?: string; placeholder?: string; mode?: 'aspectFill' | 'aspectFit' }>(), { fileId: '', placeholder: '◇', mode: 'aspectFill' });
+const props = withDefaults(defineProps<{ fileId?: string; placeholderIcon: string; mode?: 'aspectFill' | 'aspectFit' }>(), { fileId: '', mode: 'aspectFill' });
 const { source, loading, failed, load, imageLoad, imageError } = useImageSource(() => ({ fileId: props.fileId }));
 </script>
 <template>
   <view class="record-cover" :aria-busy="loading">
     <image v-if="source && !failed" :key="source" class="record-cover-image" :src="source" :mode="mode" @load="imageLoad" @error="imageError" />
-    <ImagePlaceholder v-if="loading || !source || failed" :loading="loading" :failed="failed" @retry="load"><text class="record-cover-symbol">{{ placeholder }}</text></ImagePlaceholder>
+    <ImagePlaceholder v-if="loading || !source || failed" :loading="loading" :failed="failed" @retry="load"><AppIcon :name="placeholderIcon" :size="30" /></ImagePlaceholder>
   </view>
 </template>
 <style scoped lang="scss">
-@use '../../../styles/typography' as *;
-@use '../../../styles/spacing-tokens' as *;
 .record-cover { position: relative; width: 100%; height: 100%; }
 .record-cover-image { width: 100%; height: 100%; }
-.record-cover-symbol { @include type-style('glyph-display'); opacity: 0.5; }
 </style>

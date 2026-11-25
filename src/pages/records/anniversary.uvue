@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { anniversaryCardStyle, anniversaryColors } from '../../services/records/anniversary-colors.ts';
 import ModalMotion from "../../components/ModalMotion.uvue";
 import { usePageRefresh } from '../../services/page-refresh.ts'
 import AnniversaryRecordEditor from '../../components/record-editors/AnniversaryRecordEditor.uvue';
@@ -24,22 +25,6 @@ const rows = ref<any[]>([]),
   refreshing = ref(false),
   error = ref(''),
   form = ref<any>(null);
-const colors = [
-  'from-pink-400 to-rose-500',
-  'from-cyan-400 to-blue-500',
-  'from-orange-400 to-red-500',
-  'from-purple-400 to-indigo-500',
-  'from-emerald-400 to-teal-500',
-  'from-gray-700 to-gray-900',
-];
-const gradients = [
-  ['#f472b6', '#f43f5e'],
-  ['#22d3ee', '#3b82f6'],
-  ['#fb923c', '#ef4444'],
-  ['#c084fc', '#6366f1'],
-  ['#34d399', '#14b8a6'],
-  ['#374151', '#111827'],
-];
 const activeMenu = ref('');
 const pinningId = ref('');
 let pendingEditId = '';
@@ -53,10 +38,6 @@ onLoad((query) => {
 const sortedRows = computed(() => [...rows.value].sort((a, b) =>
   Math.abs(daysFromToday(a.targetDate)) - Math.abs(daysFromToday(b.targetDate)),
 ));
-function cardStyle(color) {
-  const palette = gradients[colors.indexOf(color)] || gradients[0];
-  return { backgroundColor: palette[1], backgroundImage: `linear-gradient(135deg, ${palette[0]}, ${palette[1]})` };
-}
 const emoji = ['🎉', '🎂', '❤️', '💍', '🎓', '👶', '🏠', '🚗', '✈️', '💼', '💪', '🌟'];
 const scope = createRecordScope((clearData) => {
   form.value = null;
@@ -107,7 +88,7 @@ function open(item = null) {
         isPinned: 0,
         targetDate: new Date().toLocaleDateString('sv-SE'),
         remark: '',
-        color: colors[0],
+        color: anniversaryColors[0],
         icon: emoji[0],
       };
 }
@@ -146,11 +127,11 @@ async function remove(item) {
       <view class="event-page ui-page-body" :class="{ 'event-page-dark': isDark }">
         <view v-if="activeMenu" class="menu-dismiss" @click="activeMenu = ''" />
         <PageState skeleton="list" :loading="loading" :error="error" :empty="!rows.length" @retry="load()">
-<template #loading><view class="event-grid ui-gap-md" ><view v-for="n in 6" :key="n" class="event-card ui-pad-card ui-gap-sm" :style="cardStyle('')"><ContentSkeleton variant="date-tile" /></view></view></template>
+<template #loading><view class="event-grid ui-gap-md" ><view v-for="n in 6" :key="n" class="event-card ui-pad-card ui-gap-sm" :style="anniversaryCardStyle('')"><ContentSkeleton variant="date-tile" /></view></view></template>
 
           <view class="event-grid ui-gap-md">
             <view v-for="item in sortedRows" :key="item.id" class="event-card ui-pad-card ui-gap-sm"
-              :class="{ 'event-card-active': activeMenu === item.id }" :style="cardStyle(item.color)">
+              :class="{ 'event-card-active': activeMenu === item.id }" :style="anniversaryCardStyle(item.color)">
               <view class="event-card-header">
                 <text class="event-emoji">{{ item.icon || '🎉' }}</text>
                 <view class="event-actions ui-row"><button hover-class="none" class="event-more ui-type-body" role="button" :aria-label="item.isPinned === 1 ? '取消固定到首页' : '固定到首页'" :loading="pinningId === item.id" :disabled="!!pinningId" @click="togglePinned(item)"><AppIcon v-if="pinningId !== item.id" :name="item.isPinned === 1 ? 'ant-design:pushpin-filled' : 'ant-design:pushpin-outlined'" :size="20" color="#ffffff" /></button><button hover-class="none" class="event-more ui-type-body" role="button" :aria-label="'更多操作：' + item.title"
@@ -277,7 +258,7 @@ color: inherit;
 .event-menu-label-danger { color: #dc3545; }
 .event-menu-label-danger-dark { color: #fb7185; }
 .event-count { align-items: center; }
-.event-label { @include type-style('caption'); opacity: 0.9; }
+.event-label { @include type-style('caption'); }
 .count-row { flex-direction: row;
 /* #ifndef APP */
 align-items: baseline;
@@ -287,12 +268,13 @@ align-items: flex-end;
 /* #endif */
  justify-content: center; }
 .day-count { font-variant-numeric: tabular-nums; letter-spacing: type-tracking('display'); @include type-style('display');   }
-.event-unit { @include type-style('label'); opacity: 0.8; }
+.event-label, .day-count, .event-unit, .event-title, .event-date, .event-remark { color: #ffffff; }
+.event-unit { @include type-style('label'); }
 .event-title {
 @include wrap-long-text;
  @include type-style('title');   }
-.event-date { align-self: flex-start; border-radius: 4px; padding: $space-micro $space-detail; background-color: rgba(255,255,255,0.12); @include type-style('caption'); opacity: 0.9; }
-.event-remark { @include type-style('caption');  opacity: 0.8; }
+.event-date { align-self: flex-start; border-radius: 4px; padding: $space-micro $space-detail; background-color: rgba(0,0,0,0.12); @include type-style('caption'); }
+.event-remark { @include type-style('caption'); }
 .event-error { color: #e05252; }
 .event-more, .event-menu-item { @include borderless-button; }
 @media (min-width: 600px) {

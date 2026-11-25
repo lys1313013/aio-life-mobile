@@ -1,14 +1,15 @@
 <script setup lang="ts">
 import { themeClass } from '../../services/theme.ts'
+defineProps<{ stacked?: boolean }>()
 </script>
 <template>
   <view class="overview-skeleton" role="status" aria-label="正在加载概览" aria-live="polite">
-    <view class="overview-skeleton-row" aria-hidden="true">
-      <view class="overview-skeleton-name">
+    <view class="overview-skeleton-row" :class="{ 'overview-skeleton-stacked': stacked }" aria-hidden="true">
+      <view class="overview-skeleton-name" :class="{ 'overview-skeleton-name-stacked': stacked }">
         <view class="overview-skeleton-shape overview-skeleton-icon" :class="themeClass('overview-skeleton-shape')" />
         <view class="overview-skeleton-shape overview-skeleton-title" :class="themeClass('overview-skeleton-shape')" />
       </view>
-      <view class="overview-skeleton-shape overview-skeleton-value" :class="themeClass('overview-skeleton-shape')" />
+      <view class="overview-skeleton-shape overview-skeleton-value" :class="[themeClass('overview-skeleton-shape'), { 'overview-skeleton-value-stacked': stacked }]" />
     </view>
     <view class="overview-skeleton-row overview-skeleton-footer" aria-hidden="true">
       <view class="overview-skeleton-shape overview-skeleton-caption" :class="themeClass('overview-skeleton-shape')" />
@@ -27,6 +28,9 @@ import { themeClass } from '../../services/theme.ts'
 .overview-skeleton-icon { width: 18px; height: 18px; border-radius: 6px; margin-right: $space-inline; }
 .overview-skeleton-title { width: 50%; }
 .overview-skeleton-value { width: 22%; height: 12px; margin-left: $space-inline; }
+.overview-skeleton-stacked { flex-direction: column; align-items: flex-start; }
+.overview-skeleton-name-stacked { flex: none; width: 100%; }
+.overview-skeleton-value-stacked { margin-left: 0; margin-top: $space-detail; }
 .overview-skeleton-footer { margin-top: $space-section; }
 .overview-skeleton-caption { width: 42%; height: 8px; }
 .overview-skeleton-total { width: 24%; height: 8px; }

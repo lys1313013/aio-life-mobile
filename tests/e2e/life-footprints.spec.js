@@ -84,6 +84,11 @@ test('生活足迹旧搜索不覆盖新结果、手动选点与备注新增', as
   const state = await setup(page);
   await page.getByRole('button', { name: '新增生活足迹', exact: true }).click();
   const dialog = page.getByRole('dialog');
+  const dateControls = page.locator('[role=dialog][aria-label="编辑生活足迹"] .date-controls');
+  await expect(dateControls).toHaveCount(2);
+  const [startDate, endDate] = await dateControls.evaluateAll(nodes => nodes.map(node => node.getBoundingClientRect().height));
+  expect(startDate).toBeGreaterThanOrEqual(44);
+  expect(Math.abs(startDate - endDate)).toBeLessThanOrEqual(1);
     await expect(dialog.locator('[aria-label$="精度"]')).toHaveCount(0);
   const name = dialog.locator('[aria-label="地点"] input');
   await name.fill('旧搜索');

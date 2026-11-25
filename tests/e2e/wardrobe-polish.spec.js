@@ -20,8 +20,9 @@ async function fixture(page) {
   await page.route('**/api/wardrobe/**', async route => {
     const req = route.request(), path = new URL(req.url()).pathname;
     if (req.method() !== 'GET') {
-      const body = req.postDataJSON(); state.writes.push({ method: req.method(), path, body });
+      const body = req.postData() ? req.postDataJSON() : null; state.writes.push({ method: req.method(), path, body });
       if (state.saveFail) return route.fulfill({ json: { code: 1, message: '模拟保存失败' } });
+      if (req.method() === 'DELETE') state.rows = state.rows.filter(row => !path.endsWith('/' + row.id));
       if (req.method() === 'PUT') Object.assign(state.rows.find(row => path.endsWith('/' + row.id)) || {}, body);
       return route.fulfill({ json: { code: 0, data: true } });
     }
@@ -84,6 +85,16 @@ for (const width of [390, 768, 1440]) for (const theme of ['light', 'dark']) {
     await expect(dialog).toHaveCount(0);
     expect(state.writes.at(-1)).toMatchObject({ method: 'PUT', path: '/api/wardrobe/items/' + firstId,
       body: { name: '优化后衬衫', categoryId: '81', season: ['春', '秋'], fileId: '9223372036854775806', remark: clothes[0].remark } });
+    const editSaved = page.getByRole('button', { name: '编辑衣物优化后衬衫', exact: true });
+    const deleteLabel = '删除衣物优化后衬衫';
+    await expect(page.getByRole('button', { name: deleteLabel })).toHaveCount(0);
+    await editSaved.click();
+    await dialog.getByRole('button', { name: deleteLabel, exact: true }).click();
+    const confirmation = page.getByRole('dialog', { name: deleteLabel, exact: true });
+    await confirmation.getByRole('button', { name: '确认', exact: true }).click();
+    await expect(dialog).toHaveCount(0);
+    await expect(editSaved).toHaveCount(0);
+    expect(state.writes.at(-1)).toMatchObject({ method: 'DELETE', path: '/api/wardrobe/items/' + firstId });
     await page.getByRole('button', { name: '新增衣物', exact: true }).click();
     await expect(dialog.getByRole('button', { name: '上传衣物照片', exact: true })).toBeVisible();
     await shot(page, `${width}-${theme}-add`);

@@ -35,7 +35,7 @@ function descendants(node, predicate) {
   return [...(predicate(node) ? [node] : []), ...node.children.flatMap(child => descendants(child, predicate))];
 }
 async function fixture(initial = {}) {
-  const props = Vue.reactive({ loading: false, error: '', empty: false, emptyText: '暂无记录', skeleton: 'list', retainContent: true, hasContent: false, contentKey: '', inheritInitializing: true, ...initial });
+  const props = Vue.reactive({ loading: false, error: '', empty: false, emptyText: '暂无记录', skeleton: 'list', retainContent: true, hasContent: false, contentKey: '', inheritInitializing: true, showRefreshIndicator: true, ...initial });
   const initializing = Vue.ref(false);
   const domainRevision = Vue.ref(0);
   const geometry = [];

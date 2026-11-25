@@ -138,9 +138,9 @@ for (const width of [390, 820, 1440]) for (const theme of ['light', 'dark']) {
   });
 }
 
-for (const count of [1, 5]) {
-  test(`概览占位按启用数量生成且高度一致 ${count}`, async ({ page }, info) => {
-    await page.setViewportSize({ width: 390, height: 1100 });
+for (const [count, width] of [[1, 390], [5, 390], [5, 320]]) {
+  test(`概览占位按启用数量生成且高度一致 ${count} · ${width}px`, async ({ page }, info) => {
+    await page.setViewportSize({ width, height: 1100 });
     await page.addInitScript(() => localStorage.setItem('aio-life-mobile.access-token.v1', 'overview-layout-fixture'));
     const pending = gate();
     const { homeCardFixture } = require('./home-card-fixture');
@@ -152,7 +152,7 @@ for (const count of [1, 5]) {
       if (path === '/api/user/info') data = { id: '1', nickname: '模拟用户' };
       if (path === '/api/home/cards') data = preferences;
       if (path === '/api/dashboard/tasks') { await pending.promise; data = tasks; }
-      if (path.startsWith('/api/dashboard/card/')) data = { ...tasks.find(item => path.endsWith(item.type)), value: '3', totalValue: '5', refreshInterval: 0 };
+      if (path.startsWith('/api/dashboard/card/')) data = { ...tasks.find(item => path.endsWith(item.type)), value: '未完成', totalValue: '5', refreshInterval: 0 };
       return route.fulfill({ json: { code: 0, data } });
     });
     try {
@@ -162,7 +162,11 @@ for (const count of [1, 5]) {
       pending.release();
       await expect(page.locator('.placeholder-card')).toHaveCount(0);
       await expect(page.locator('.overview-card')).toHaveCount(count);
+      await expect(page.locator('.stat-value').first()).toHaveText('未完成');
       expect((await page.locator('.overview-grid').boundingBox()).height).toBe(before);
+      const clippedTitles = await page.locator('.stat-title-text').evaluateAll(nodes =>
+        nodes.filter(node => node.scrollWidth > node.parentElement.clientWidth + 1).map(node => node.textContent));
+      expect(clippedTitles).toEqual([]);
     } finally { pending.release(); await page.unrouteAll({ behavior: 'wait' }); }
   });
 }

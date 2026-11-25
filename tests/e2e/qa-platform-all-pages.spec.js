@@ -67,7 +67,14 @@ await page.setViewportSize({width,height:900});await page.emulateMedia({colorSch
 for(const entry of ['注册账号','忘记密码']){await click(page,entry);await shot(page,`${width}-${theme}-auth-${entry}`);await page.getByRole('textbox',{name:'邮箱',exact:true}).fill('fixture@example.test');await click(page,'发送验证码');await shot(page,`${width}-${theme}-auth-${entry}-sent`);await back(page);}
 });
 for(const width of [390,768,1440])for(const theme of ['light','dark'])test(`人格测试真实点击外部问卷和管理 ${width} ${theme}`,async({page})=>{
-await page.setViewportSize({width,height:900});await page.emulateMedia({colorScheme:theme});await setup(page);await page.locator('uni-tabbar').getByText('我',{exact:true}).click();await openProfileEntry(page,'MBTI 测试');await click(page,'开始测试');await expect(page).toHaveURL(/personality\/external/);await shot(page,`${width}-${theme}-mbti-external`);await back(page);await shot(page,`${width}-${theme}-mbti-pending`);await back(page);await openProfileEntry(page,'CBTI 测试');await click(page,'人格管理');await shot(page,`${width}-${theme}-cbti-admin`);await click(page,'新增人格');await shot(page,`${width}-${theme}-cbti-admin-new`);await click(page,'保存人格');await shot(page,`${width}-${theme}-cbti-admin-invalid`);await dismissModal(page);await dismissModal(page);
+await page.setViewportSize({width,height:900});await page.emulateMedia({colorScheme:theme});await setup(page);await page.locator('uni-tabbar').getByText('我',{exact:true}).click();await openProfileEntry(page,'MBTI 测试');await click(page,'开始测试');await expect(page).toHaveURL(/personality\/external/);
+const frame = page.locator('iframe');
+await expect.poll(async () => {
+  const box = await frame.boundingBox();
+  return box && Math.abs(box.x) <= 1 && Math.abs(box.width - width) <= 1 &&
+    Math.abs(box.y + box.height - page.viewportSize().height) <= 1;
+}).toBe(true);
+await shot(page,`${width}-${theme}-mbti-external`);await back(page);await shot(page,`${width}-${theme}-mbti-pending`);await back(page);await openProfileEntry(page,'CBTI 测试');await click(page,'人格管理');await shot(page,`${width}-${theme}-cbti-admin`);await click(page,'新增人格');await shot(page,`${width}-${theme}-cbti-admin-new`);await click(page,'保存人格');await shot(page,`${width}-${theme}-cbti-admin-invalid`);await dismissModal(page);await dismissModal(page);
 });
 // 每个业务使用独立上下文和原有测试时限，避免累计导航与截图时间挤占后续业务验证。
 for (const width of [390, 768, 1440]) for (const theme of ['light', 'dark']) {

@@ -83,6 +83,8 @@ const reply = ref(''),
   newStatus = ref(''),
   selected = ref<string[]>([]);
 const menuAdvanced = ref(false);
+const editorSubjects = { users: '用户', menus: '菜单', 'dict-types': '字典类型', 'dict-data': '字典数据', 'user-dict': '用户字典值' };
+const editorTitle = computed(() => (original.value ? '编辑' : '新增') + (editorSubjects[kind.value] || spec.value.title));
 const editorFields = computed(() => kind.value === 'menus' && !menuAdvanced.value
   ? spec.value.fields.filter(field => !['redirect', 'icon', 'iconColor', 'roles', 'metaText'].includes(field.key))
   : spec.value.fields);
@@ -176,7 +178,7 @@ function searchUsers(value: string) {
   keyword.value = value;
   load();
 }
-function searchAccessLogs(value) {
+function searchLogs(value) {
   keyword.value = value.username;
   startDate.value = value.startDate;
   endDate.value = value.endDate;
@@ -586,7 +588,7 @@ async function download() {
         @update:rows="rows = $event" @search="searchDictionary" @edit="edit" @retry="load()" @more="load(true)" @dragging="dictDragging = $event" @working="dictWorking = $event" @scroll-top="dictScrollTop = $event" />
       <DictDataPanel v-else-if="kind === 'dict-data'" :rows="rows" :options="options" :total="total" :loading="loading" :error="error" :more-error="moreError" :has-more="!pageEnded && rows.length < total" :busy="!!busyId" :remove="remove" @search="searchDictionary" @edit="edit" @retry="load()" @more="load(true)" />
       <DictTypePanel v-else-if="kind === 'dict-types'" :rows="rows" :total="total" :loading="loading" :error="error" :more-error="moreError" :has-more="!pageEnded && rows.length < total" :busy="!!busyId" :remove="remove" @search="searchDictionary" @edit="edit" @retry="load()" @more="load(true)" />
-      <AccessLogPanel v-else-if="kind === 'access'" :rows="rows" :total="total" :loading="loading" :error="error" :more-error="moreError" :has-more="!pageEnded && rows.length < total" :exporting="exporting" @search="searchAccessLogs" @retry="load()" @more="load(true)" @export="download" />
+      <AccessLogPanel v-else-if="isLog" :operation="kind === 'operation'" :rows="rows" :total="total" :loading="loading" :error="error" :more-error="moreError" :has-more="!pageEnded && rows.length < total" :exporting="exporting" @search="searchLogs" @retry="load()" @more="load(true)" @export="download" />
       <template v-else>
       <FormField :label="kind === 'dict-types' ? '字典名称' : kind === 'dict-data' ? '展示值' : kind === 'users' ? '用户名 / 昵称' : '关键词'" v-model="keyword" :disabled="loading" />
       <view class="admin-filters ui-field-row">
@@ -620,12 +622,6 @@ async function download() {
         "
       />
       </view>
-      <view v-if="isLog" class="admin-dates ui-field-row"
-        ><FormField compact stretch label="开始日期" kind="date" v-model="startDate" /><FormField compact stretch
-          label="结束日期"
-          kind="date"
-          v-model="endDate"
-      /></view>
       <view v-if="sortable" class="admin-actions ui-toolbar ui-mt-sm"
         ><FormField compact stretch
           label="已加载数据排序"
@@ -640,13 +636,7 @@ async function download() {
           variant="quiet"
           @click="sortDescending = !sortDescending" /></view
       ><view class="admin-actions ui-toolbar ui-mt-sm"
-        ><MobileButton v-if="keyword || typeFilter || statusFilter || startDate || endDate" label="重置筛选" icon="ant-design:close-outlined" variant="quiet" :disabled="loading" @click="keyword = ''; typeFilter = ''; statusFilter = ''; startDate = ''; endDate = ''; load()" /><MobileButton label="查询" icon="ant-design:search-outlined" :loading="loading" @click="load()" /><MobileButton
-          v-if="isLog"
-          label="导出日志"
-          icon="ant-design:download-outlined"
-          variant="quiet"
-          :loading="exporting"
-          @click="download" /><ConfirmAction
+        ><MobileButton v-if="keyword || typeFilter || statusFilter || startDate || endDate" label="重置筛选" icon="ant-design:close-outlined" variant="quiet" :disabled="loading" @click="keyword = ''; typeFilter = ''; statusFilter = ''; startDate = ''; endDate = ''; load()" /><MobileButton label="查询" icon="ant-design:search-outlined" :loading="loading" @click="load()" /><ConfirmAction
           v-if="kind === 'feedback' && selected.length"
           label="批量关闭反馈"
           message="关闭选中的反馈？"
@@ -781,7 +771,7 @@ async function download() {
       :busy="saving"
       :content-key="editorError + ':' + menuAdvanced"
       @close="opened = false"
-      ><FormField
+      ><text class="admin-title ui-mb-section" :class="themeClass('admin-ink')">{{ editorTitle }}</text><FormField
         v-for="field in editorFields.filter(item => (kind !== 'menus' || item.key !== 'visibleClients') && (kind !== 'user-dict' || !['icon', 'color'].includes(item.key)))"
         :key="field.key"
         :label="field.label"
@@ -929,11 +919,6 @@ async function download() {
   align-items: center;
 
   overflow: visible;
-}
-.admin-dates {
-  flex-direction: row;
-  flex-wrap: wrap;
-
 }
 .admin-error {
   @include type-style('label');

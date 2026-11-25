@@ -47,7 +47,7 @@ onMounted(() => {
   <!-- 保留导航高度，固定定位后不遮住首屏内容。 -->
   <view class="navigation-placeholder" :class="{ 'navigation-placeholder-animated': $slots.extension }" :style="{ height: statusBarHeight + headerHeight + (extensionOpen ? spacing.controlMin + spacing.inline : 0) + 'px' }">
   <view class="page-navigation" :style="{ paddingTop: statusBarHeight + 'px' }" :class="[themeClass('page-navigation', appearance), { 'page-navigation-paper': paper }, themeClass({ 'page-navigation-paper': paper }, appearance)]">
-    <view class="navigation-row ui-header-inset" :style="{ height: navigationHeight + 'px', paddingRight: rightInset + 'px' }">
+    <view class="navigation-row ui-header-inset" :style="{ height: navigationHeight + 'px', paddingLeft: layout.leftInset + 'px', paddingRight: rightInset + 'px' }">
       <button
         v-if="back"
         role="button"
@@ -58,7 +58,7 @@ onMounted(() => {
       >
         <AppIcon name="weui:back-outlined" :size="28" :appearance="appearance" />
       </button>
-      <view class="navigation-content" :class="{ 'navigation-content-wide': !back }">
+      <view class="navigation-content">
         <slot><text class="navigation-title" :class="themeClass('navigation-title', appearance)">{{ title }}</text></slot>
         <view v-if="actionsMinWidth > 0 && !wrapActions" class="navigation-actions"><slot name="actions" :wrapped="false" /></view>
       </view>
@@ -115,11 +115,6 @@ onMounted(() => {
   flex-direction: row;
   align-items: center;
   overflow: hidden;
-}
-.navigation-content-wide {
-  max-width: $space-contentMax - 2 * $space-page;
-  margin-left: auto;
-  margin-right: auto;
 }
 .navigation-actions {
   flex-shrink: 0;

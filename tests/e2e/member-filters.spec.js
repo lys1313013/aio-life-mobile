@@ -1,4 +1,5 @@
 const { waitForMotion } = require('./support/motion');
+const { pullDown } = require('./gestures');
 const fs = require('node:fs');
 const path = require('node:path');
 const { test, expect } = require('./support/test');
@@ -130,8 +131,29 @@ test('订阅分类真实横滑、首尾停止与编辑防误触', async ({ page 
   await expect(tabs(page).last()).toHaveAttribute('aria-pressed', 'true');
 });
 
-test('包含过期与分类联动、保存后退回全部、空态和失败重试', async ({ page }) => {
+test('下拉刷新单一提示、包含过期与分类联动、保存后退回全部、空态和失败重试', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
   const state = await prepare(page);
+  // 挂起两个接口，在同一刷新帧检查原生提示和保留的页面内容。
+  let finishRefresh;
+  const refreshGate = new Promise(resolve => { finishRefresh = resolve; });
+  await page.route('**/api/membership/{list,stats}', async route => {
+    await refreshGate;
+    await route.fallback();
+  });
+  const spinner = page.locator('.uni-scroll-view-refresh__spinner');
+  try {
+    await pullDown(page, '.category-pager-scroll:has(.category-pager-active)');
+    await expect(page.locator('.page-state:has(.member-summary)').first()).toHaveAttribute('aria-busy', 'true');
+    await expect(page.locator('.member-page-active .page-state')).toHaveAttribute('aria-busy', 'true');
+    await expect(spinner).toHaveCount(1);
+    await expect(spinner).toBeVisible();
+    await expect(page.locator('.member-page .loading-indicator-floating')).toHaveCount(0);
+    await expect(page.locator('.member-page-active .member-card')).toHaveCount(4);
+    await expect(page.locator('.summary-amount')).toHaveText('¥1240.00');
+    await page.screenshot({ path: 'artifacts/member-filters/pull-refresh.png' });
+  } finally { finishRefresh(); }
+  await expect(spinner).toHaveCount(0);
   await expiredSwitch(page).click();
   await expect(page.locator('.member-page-active .member-card')).toHaveCount(7);
   expect(await names(page)).toEqual(['全部 7', 'AI 2', '视频 2', '音乐 1', '购物 1', '学习 1']);

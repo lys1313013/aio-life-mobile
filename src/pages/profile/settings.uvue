@@ -2,7 +2,8 @@
 import PageState from "../../components/PageState.uvue";
 import AvatarPickerButton from '../../components/AvatarPickerButton.uvue'
 import { usePageRefresh } from '../../services/page-refresh.ts'
-import { buttonLabelClasses } from '../../services/button-label.ts'
+import FormActions from '../../components/FormActions.uvue'
+import MobileButton from '../../components/MobileButton.uvue'
 import SecondaryUnlock from "../../components/SecondaryUnlock.uvue";
 import { themeClass } from '../../services/theme.ts'
 import { computed, ref, watch } from 'vue'
@@ -175,7 +176,9 @@ function back() {
               </view>
               <view class="settings-skeleton-heading ui-mb-section ui-mt-section" aria-hidden="true"><text class="settings-label settings-skeleton-copy settings-placeholder" :class="themeClass('settings-placeholder')">签名</text></view>
               <view class="settings-textarea ui-pad-card settings-placeholder" :class="themeClass('settings-placeholder')" aria-hidden="true" />
-              <view class="settings-skeleton-save ui-mt-section settings-placeholder" :class="themeClass('settings-placeholder')" aria-hidden="true" />
+              <FormActions class="ui-mt-section">
+                <view v-for="action in ['取消', '保存']" :key="action" class="settings-skeleton-action settings-placeholder" :class="[themeClass('settings-placeholder'), { 'settings-skeleton-save': action === '保存' }]" aria-hidden="true"><text class="settings-skeleton-copy ui-type-body">{{ action }}</text></view>
+              </FormActions>
             </view>
           </template>
         <text v-if="errorText" class="settings-error ui-type-body" role="alert">{{ errorText }}</text>
@@ -234,15 +237,10 @@ function back() {
             :disabled="saving" :aria-disabled="saving"
             :class="themeClass('settings-textarea')"
           />
-          <button hover-class="none"
-            role="button"
-            class="settings-save ui-mt-section"
-            :disabled="saving || uploading" :aria-disabled="saving || uploading"
-            :loading="saving"
-            @click="save"
-          >
-            <text :class="buttonLabelClasses(['settings-save ui-mt-section'])">{{ saving ? '保存中…' : '保存' }}</text>
-          </button>
+          <FormActions class="ui-mt-section">
+            <MobileButton label="取消" variant="quiet" :disabled="saving || uploading" @click="back" />
+            <MobileButton label="保存" :loading="saving" :disabled="uploading" @click="save" />
+          </FormActions>
         </view>
         </PageState>
       </view>
@@ -253,7 +251,6 @@ function back() {
 <style scoped lang="scss">
 @use '../../styles/skeleton';
 @use '../../styles/theme-tokens' as *;
-@use '../../styles/platform' as *;
 @use '../../styles/typography' as *;
 @use '../../styles/text-colors' as *;
 @use '../../styles/spacing.scss';
@@ -335,24 +332,13 @@ function back() {
   color: #27272a;
   @include type-style('body');
 }
-.settings-save,
-.settings-skeleton-save {
-  display: flex;
-  flex-direction: row;
-  align-items: center;
-  justify-content: center;
-  width: 100%;
-  height: 48px;
-  border: 0;
+.settings-skeleton-action {
+  min-height: $space-controlMin;
+  min-width: $space-controlMin;
+  padding: 0 $space-card;
   border-radius: 12px;
-  padding: 0;
-}
-.settings-save {
-  // 保留保存中的对比度，避免框架禁用底色覆盖后出现白字配浅灰底。
-  color: #ffffff !important;
-  @include button-background(#4e7ee3);
-  @include type-style('body');
-  line-height: type-leading('tallControl');
+  box-sizing: border-box;
+  justify-content: center;
 }
 
 .settings-card-dark {
@@ -373,17 +359,11 @@ function back() {
   color: #9dbcfa;
 }
 
-.settings-save { @include borderless-button; }
 
 .settings-readonly-dark {
   color: $text-secondary-dark;
 }
 
-/* 按钮文字独立声明样式，兼容 App 不继承容器排版。 */
-.app-button-label { @include type-style('body'); color: #27272a; }
-.app-button-label-dark { color: #eeeeef; }
-.text-action-label { @include type-style('body'); color: #5b8ff9; }
-.settings-save-label { color: #ffffff; @include type-style('body'); }
 .settings-placeholder { background-color: $theme-skeleton-light; }
 .settings-placeholder-dark { @include skeleton.dark; }
 .settings-skeleton { @include skeleton.pulse; }

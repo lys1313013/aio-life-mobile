@@ -7,6 +7,11 @@ async function openExpense(page, data) {
   await page.route('**/api/expense/statisticsByMonth', (route) => route.fulfill({ json: { code: 0, data } }));
   await page.goto('/#/pages/finance/expense');
   await expect(page.getByText('支出走势', { exact: true })).toBeVisible();
+  const toolbar = page.locator('.ledger-toolbar');
+  await expect(toolbar.getByText('支出明细', { exact: true })).toHaveCount(0);
+  await expect(toolbar.getByRole('button')).toHaveCount(2);
+  await expect(toolbar.getByRole('button', { name: '更多筛选', exact: true })).toBeVisible();
+  await expect(toolbar.getByRole('button', { name: '导入账单', exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: '统计', exact: true })).toHaveCount(0);
   await expect(page.getByText('统计周期', { exact: true })).toHaveCount(0);
   await expect(page.locator('.statistics-card')).toHaveCount(0);
@@ -73,15 +78,6 @@ for (const width of [390, 768, 1440]) for (const theme of ['light', 'dark']) {
     fs.mkdirSync('artifacts/expense-charts', { recursive: true });
     await page.screenshot({ path: `artifacts/expense-charts/${width}-${theme}.png`, fullPage: true });
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
-    const expand = page.getByRole('button', { name: '展开统计明细', exact: true });
-    await expect(expand).toHaveAttribute('aria-expanded', 'false');
-    await expand.click();
-    await expect(page.getByText('统计周期', { exact: true })).toBeVisible();
-    await expect(page.locator('.statistics-card')).toHaveCount(months.length);
-    await expect(page.getByRole('button', { name: '收起统计明细', exact: true })).toHaveAttribute('aria-expanded', 'true');
-    await page.getByRole('button', { name: '收起统计明细', exact: true }).click();
-    await expect(page.getByText('统计周期', { exact: true })).toHaveCount(0);
-    await expect(page.locator('.statistics-card')).toHaveCount(0);
     expect(errors).toEqual([]);
   });
 }

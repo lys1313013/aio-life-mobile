@@ -207,7 +207,8 @@ test('基本设置保存失败保留表单，重试保存并更新我的资料',
   await page.locator('[aria-label="签名"] textarea').fill('新的简介');
   state.failSave = true; state.delay = 250;
   await page.getByRole('button', { name: '保存', exact: true }).click();
-  await expect(page.getByRole('button', { name: '保存中…', exact: true })).toBeDisabled();
+  await expect(page.getByRole('button', { name: '保存', exact: true })).toHaveAttribute('aria-busy', 'true');
+  await expect(page.getByRole('button', { name: '保存', exact: true })).toBeDisabled();
   await expect(page.getByRole('alert')).toContainText('保存失败');
   await expect(nickname).toHaveValue('新的昵称');
   state.failSave = false;

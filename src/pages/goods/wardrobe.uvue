@@ -287,9 +287,19 @@ async function save() {
     busy.value = false;
   }
 }
-async function removeItem(row) {
-  await deleteItem(row);
-  await load();
+async function removeItem() {
+  if (!original.value || busy.value || uploading.value) return;
+  const task = sequence, token = session.token;
+  busy.value = true;
+  try {
+    await deleteItem(original.value);
+    if (alive && visible && task === sequence && token === session.token) {
+      modal.value = '';
+      await load();
+    }
+  } finally {
+    busy.value = false;
+  }
 }
 async function removeCategory(row) {
   if (
@@ -392,16 +402,7 @@ function chooseCategory(value) {
                 <text class="item-title">{{ row.name }}</text>
               </button>
               <text class="muted" :class="themeClass('secondary-text')">{{ [row.categoryName, row.color, row.brand, row.size, (row.season || []).join(',')].filter(Boolean).join(' · ') }}</text>
-              <view class="item-footer ui-row">
-                <text class="item-price">{{ row.purchasePrice == null ? '—' : '¥ ' + row.purchasePrice }}</text>
-                <ConfirmAction :label="'删除衣物' + row.name" :action="() => removeItem(row)">
-                  <template #default="{ open: confirm, busy: removing }">
-                    <button hover-class="none" role="button" class="item-icon-button ui-type-body" :aria-label="'删除衣物' + row.name" :disabled="removing" @click="confirm">
-                      <AppIcon name="ant-design:delete-outlined" :size="18" color="#8b8f99" />
-                    </button>
-                  </template>
-                </ConfirmAction>
-              </view>
+              <text class="item-price">{{ row.purchasePrice == null ? '—' : '¥ ' + row.purchasePrice }}</text>
             </view>
           </view>
         </template>
@@ -489,10 +490,13 @@ function chooseCategory(value) {
           </view>
         </template>
         <text v-if="formError" class="error ui-section" role="alert">{{ formError }}</text>
-        <FormActions>
+        <template #footer><FormActions>
+          <template v-if="modal === 'item' && original" #secondary>
+            <ConfirmAction :label="'删除衣物' + original.name" :action="removeItem" :trigger-disabled="busy || uploading" />
+          </template>
           <MobileButton label="取消" variant="quiet" :disabled="busy || uploading" @click="modalMotion0?.close()" />
           <MobileButton label="保存衣橱内容" :loading="busy" :disabled="uploading" @click="save" />
-        </FormActions>
+        </FormActions></template>
       </AdaptiveModal></ModalMotion>
     </template>
   </MobilePage>
@@ -641,20 +645,8 @@ color: inherit;
   text-align: left;
   line-height: type-line('body');
 }
-.item-footer { align-items: center; justify-content: space-between; }
 .item-price { @include type-style('body-strong');  }
-.item-icon-button {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  width: $space-controlMin;
-  height: $space-controlMin;
-  padding: 0;
-  margin: 0;
-  border: 0;
-  @include button-background(transparent);
-}
-.item-title-button, .item-icon-button, .photo-upload { @include borderless-button; }
+.item-title-button, .photo-upload { @include borderless-button; }
 @media (min-width: 1000px) {
   .item-card { width: calc((100% - #{$space-section} * 3) / 4); }
 }

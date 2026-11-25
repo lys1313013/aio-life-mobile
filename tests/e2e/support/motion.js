@@ -37,7 +37,8 @@ async function captureModalMotion(page, leaving, path) {
     const mask = [...document.querySelectorAll('.modal-mask')].find(node => (node.getAttribute('aria-hidden') === 'true') === exit);
     if (!mask) return false;
     const panel = mask.querySelector('.modal-panel');
-    const animations = document.getAnimations().filter(a => a.effect?.target === mask || a.effect?.target === panel);
+    const backdrop = mask.querySelector('.modal-backdrop');
+    const animations = document.getAnimations().filter(a => a.effect?.target === backdrop || a.effect?.target === panel);
     if (animations.length !== 2) return false;
     animations.forEach(animation => { animation.pause(); animation.currentTime = 100; });
     return true;

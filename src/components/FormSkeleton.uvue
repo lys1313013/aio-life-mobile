@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { themeClass } from '../services/theme.ts';
-withDefaults(defineProps<{ rows: string[]; footer?: boolean; actions?: boolean; label?: string }>(), {
+withDefaults(defineProps<{ rows: string[]; footer?: boolean; actions?: boolean; expandPrimary?: boolean; label?: string }>(), {
   footer: true, actions: true, label: '正在加载记录详情',
 });
 </script>
@@ -9,7 +9,7 @@ withDefaults(defineProps<{ rows: string[]; footer?: boolean; actions?: boolean; 
     <view aria-hidden="true">
       <view v-for="(row, index) in rows" :key="index" class="form-skeleton-row" :class="{ 'form-skeleton-flush': row === 'toggle' || row === 'attachment' || (!actions && index === rows.length - 1) }">
         <view v-for="column in (row === 'pair' ? 2 : 1)" :key="column" class="form-skeleton-field">
-          <view v-if="!['controls', 'appearance', 'toggle', 'attachment', 'thought'].includes(row)" class="form-skeleton-label">
+          <view v-if="!['picker-control', 'control', 'controls', 'appearance', 'toggle', 'attachment', 'thought'].includes(row)" class="form-skeleton-label">
             <view class="form-skeleton-line form-skeleton-caption" :class="themeClass('form-skeleton-line')" />
           </view>
           <view v-if="row === 'controls' || row === 'appearance'" class="form-skeleton-options">
@@ -19,13 +19,13 @@ withDefaults(defineProps<{ rows: string[]; footer?: boolean; actions?: boolean; 
             <view v-if="row === 'switch'" class="form-skeleton-outline form-skeleton-switch" :class="themeClass('form-skeleton-outline')" />
             <view v-else class="form-skeleton-line form-skeleton-caption" :class="themeClass('form-skeleton-line')" />
           </view>
-          <view v-else class="form-skeleton-input form-skeleton-outline" :class="[themeClass('form-skeleton-outline'), { 'form-skeleton-textarea': row === 'textarea', 'form-skeleton-thought': row === 'thought', 'form-skeleton-upload': row === 'attachment' }]">
+          <view v-else class="form-skeleton-input form-skeleton-outline" :class="[themeClass('form-skeleton-outline'), { 'form-skeleton-picker': row === 'picker-control', 'form-skeleton-textarea': row === 'textarea', 'form-skeleton-thought': row === 'thought', 'form-skeleton-upload': row === 'attachment' }]">
             <view v-if="row !== 'attachment'" class="form-skeleton-line" :class="themeClass('form-skeleton-line')" />
           </view>
         </view>
       </view>
       <view v-if="actions" class="form-skeleton-actions" :class="{ 'form-skeleton-footer': footer }">
-        <view v-for="n in 2" :key="n" class="form-skeleton-button form-skeleton-outline" :class="themeClass('form-skeleton-outline')">
+        <view v-for="n in (expandPrimary ? 1 : 2)" :key="n" class="form-skeleton-button form-skeleton-outline" :class="[themeClass('form-skeleton-outline'), { 'form-skeleton-primary': expandPrimary }]">
           <view class="form-skeleton-line" :class="themeClass('form-skeleton-line')" />
         </view>
       </view>
@@ -47,6 +47,7 @@ withDefaults(defineProps<{ rows: string[]; footer?: boolean; actions?: boolean; 
 .form-skeleton-field { flex: 1; min-width: 0; }
 .form-skeleton-label { height: type-line('label'); justify-content: center; margin-bottom: $space-fieldLabel; }
 .form-skeleton-input { height: $space-controlMin; justify-content: center; padding: 0 $space-card; }
+.form-skeleton-picker { height: $space-controlMin + $space-inline; }
 .form-skeleton-textarea, .form-skeleton-thought { justify-content: flex-start; padding-top: $space-card; }
 .form-skeleton-textarea { height: 64px; }
 .form-skeleton-thought { height: 120px; }
@@ -58,6 +59,7 @@ withDefaults(defineProps<{ rows: string[]; footer?: boolean; actions?: boolean; 
 .form-skeleton-appearance-button { width: $space-modalActionMin; }
 .form-skeleton-actions { justify-content: flex-end; }
 .form-skeleton-button { width: $space-modalActionMin; height: $space-controlMin; align-items: center; justify-content: center; }
+.form-skeleton-primary { flex: 1; }
 .form-skeleton-footer { padding-top: $space-modal; }
 @include skeleton.motion('.form-skeleton-line');
 </style>

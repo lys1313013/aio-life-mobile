@@ -25,15 +25,19 @@ function runModalMotion(element: ModalElement, done: () => void, enabled: boolea
   element.__modalMotion?.forEach(animation => animation.cancel())
   const mask = surface(element)
   if (!enabled || mask.getAttribute('data-modal-motion') === 'off' || window.matchMedia('(prefers-reduced-motion: reduce)').matches) { done(); return }
-  const panel = element.querySelector<HTMLElement>('.modal-panel')
-  if (!panel || typeof element.animate !== 'function') { done(); return }
-  const options = { duration: leaving ? 240 : 300, easing: 'cubic-bezier(0.32, 0.72, 0, 1)' }
+  const backdrop = mask.querySelector<HTMLElement>('.modal-backdrop')
+  const panel = mask.querySelector<HTMLElement>('.modal-panel')
+  if (!backdrop || !panel || typeof element.animate !== 'function') { done(); return }
+  const options = { duration: leaving ? 240 : 220, easing: 'cubic-bezier(0.32, 0.72, 0, 1)' }
   const opacity = leaving ? [1, 0] : [0, 1]
   const transforms = [`translateY(${spacing.section}px) scale(0.98)`, 'translateY(0) scale(1)']
   let animations: Animation[]
   try {
-    animations = [mask.animate({ opacity }, options),
-      panel.animate({ transform: leaving ? [...transforms].reverse() : transforms }, options)]
+    // 遮罩祖先改变透明度会隔断 backdrop-filter 对页面的采样。
+    animations = [
+      backdrop.animate({ opacity }, { ...options, duration: leaving ? options.duration : 160 }),
+      panel.animate({ opacity, transform: leaving ? [...transforms].reverse() : transforms }, options),
+    ]
   } catch (_) { done(); return }
   element.__modalMotion = animations
   Promise.all(animations.map(animation => animation.finished.catch(() => {}))).then(() => {

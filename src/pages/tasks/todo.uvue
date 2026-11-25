@@ -11,7 +11,6 @@ import FormField from '../../components/FormField.uvue';
 import FormActions from '../../components/FormActions.uvue';
 import ConfirmAction from '../../components/ConfirmAction.uvue';
 import PageState from '../../components/PageState.uvue';
-import ContentSkeleton from '../../components/ContentSkeleton.uvue';
 import AdaptiveModal from '../../components/AdaptiveModal.uvue';
 import AppIcon from '../../components/AppIcon.uvue';
 import TodoDetailRow from './components/TodoDetailRow.uvue';
@@ -249,7 +248,15 @@ async function move(type, item, offset) {
       <CategoryTabs class="column-scroll ui-section" :items="taskPages" :current="taskIndex" label="任务列" id-prefix="todo-column" item-class="column-tab" :disabled="!!form || managing || writing" @change="selected = taskPages[$event].id" />
       <CategoryPager ref="pager" :items="taskPages" :current="taskIndex" :disabled="!!form || managing || writing" :refreshing="refreshing" tabs-selector=".column-scroll" @change="selected = taskPages[$event].id" @refresh="load(true)"><template #default="{ item: taskPage, active }"><view :class="{ 'todo-page-active': active }">
       <PageState :loading="loading" :error="error" :empty="!taskPage.groups.length" :has-content="loaded" :empty-text="keyword ? '没有找到相关待办' : '还没有清单'" @retry="load()">
-        <template #loading><view class="task-card ui-pad-card"><ContentSkeleton variant="list" /></view></template>
+        <template #loading>
+          <view class="task-groups" role="status" aria-label="正在加载待办清单">
+            <view class="task-card ui-pad-card" :style="appGridItem(1, 'section', [[768, 2]])" :class="{ 'task-card-dark': isDark }" aria-hidden="true">
+              <view class="group-heading"><view class="skeleton-line" :class="{ 'skeleton-dark': isDark }" /></view>
+              <view class="skeleton-todo-row"><view class="skeleton-check" :class="{ 'skeleton-dark': isDark }" /><view class="skeleton-line" :class="{ 'skeleton-dark': isDark }" /></view>
+              <view class="skeleton-todo-row"><view class="skeleton-add" :class="{ 'skeleton-dark': isDark }" /></view>
+            </view>
+          </view>
+        </template>
         <view class="task-groups">
           <view v-for="group in taskPage.groups" :key="group.task.id" class="task-card ui-pad-card" :style="appGridItem(1, 'section', [[768, 2]])" :class="{ 'task-card-dark': isDark }" :aria-label="'清单：' + group.task.content">
             <view class="group-heading">

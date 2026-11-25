@@ -6,8 +6,8 @@ import MobileButton from './MobileButton.uvue';
 import { themeClass } from '../services/theme.ts';
 import { displayError } from '../services/display-error.ts';
 const props = withDefaults(
-  defineProps<{ loading?: boolean; error?: string; empty?: boolean; emptyText?: string; skeleton?: string; retainContent?: boolean; hasContent?: boolean; contentKey?: string; inheritInitializing?: boolean }>(),
-  { emptyText: '暂无记录', skeleton: 'list', retainContent: true, contentKey: '', inheritInitializing: true },
+  defineProps<{ loading?: boolean; error?: string; empty?: boolean; emptyText?: string; skeleton?: string; retainContent?: boolean; hasContent?: boolean; contentKey?: string; inheritInitializing?: boolean; showRefreshIndicator?: boolean }>(),
+  { emptyText: '暂无记录', skeleton: 'list', retainContent: true, contentKey: '', inheritInitializing: true, showRefreshIndicator: true },
 );
 // 初始化等待只影响显示；业务请求成功后才记录已加载，空结果同样有效。
 const initializing = inject('domain-page-initializing', ref(false));
@@ -48,7 +48,7 @@ const emit = defineEmits(['retry']);
 <template>
   <view class="page-state" :class="themeClass('page-state')" :aria-busy="!!effectiveLoading">
     <view v-if="effectiveLoading && !retainedContent" class="page-state-placeholder"><slot name="loading"><ContentSkeleton :variant="skeleton" /></slot></view>
-    <slot v-else-if="effectiveLoading" name="refreshing"><LoadingIndicator label="正在更新内容" floating /></slot>
+    <slot v-else-if="effectiveLoading && showRefreshIndicator" name="refreshing"><LoadingIndicator label="正在更新内容" floating /></slot>
     <view v-if="error && !effectiveLoading && retainedContent" class="page-state-update-error" role="alert" :aria-label="'更新失败：' + displayError(error)">
       <MobileButton label="重试" icon="ant-design:reload-outlined" variant="quiet" @click="emit('retry')" />
     </view>

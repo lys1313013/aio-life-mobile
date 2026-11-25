@@ -95,7 +95,7 @@ for (const width of [390, 768, 1440]) for (const theme of ['light', 'dark']) {
       await waitForMotion(page);
       const pending = page.locator('.ledger-pending');
       const layout = {
-        toolbar: await pending.locator('.pending-toolbar').boundingBox(),
+        toolbar: await page.locator('.pending-toolbar:visible').boundingBox(),
         filters: await pending.locator('.pending-filters').boundingBox(),
         footer: await pending.locator('.pending-footer').boundingBox(),
         list: await pending.locator(':scope > .content-skeleton').boundingBox(),
@@ -112,7 +112,7 @@ for (const width of [390, 768, 1440]) for (const theme of ['light', 'dark']) {
       const ledger = page.locator('.body.ui-page-body');
       await expect(ledger.locator(':scope > .page-state')).toHaveAttribute('aria-busy', 'true');
       await expect(page.getByText('暂无记录', { exact: true })).toHaveCount(0);
-      expect(await ledger.locator('.ledger-toolbar').boundingBox()).toEqual(layout.toolbar);
+      expect(await page.locator('.ledger-toolbar:visible').boundingBox()).toEqual(layout.toolbar);
       expect(await ledger.locator('.filters').boundingBox()).toEqual(layout.filters);
       expect(await ledger.locator('.filter-footer').boundingBox()).toEqual(layout.footer);
       expect(await ledger.locator(':scope > .page-state').boundingBox()).toEqual(layout.list);

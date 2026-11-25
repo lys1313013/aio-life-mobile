@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { useAppLayout } from '../../services/app-layout.ts';
+const { appWidthBelow } = useAppLayout();
 import ModalMotion from "../../components/ModalMotion.uvue";
 import { usePageRefresh } from '../../services/page-refresh.ts'
 import FormActions from '../../components/FormActions.uvue';
@@ -176,21 +178,17 @@ function clear() {
           ></template
         > </PageState
       ><ModalMotion><AdaptiveModal ref="modalMotion0" v-if="form" label="编辑里程碑" :busy="saving" @close="form = null"
-        ><FormField :required="isRequired('milestone', 'title')" label="标题" v-model="form.title" /><view class="ui-field-row">
+        ><FormField :required="isRequired('milestone', 'title')" label="标题" v-model="form.title" /><view class="ui-field-row" :class="{ 'milestone-dates-with-clear': !!form.endDate, 'milestone-dates-stacked': !!form.endDate && appWidthBelow(480) }">
           <FormField compact stretch
           label="开始日期" :required="isRequired('milestone', 'date')"
           kind="date"
           v-model="form.date" />
-          <FormField compact stretch
-          label="结束日期"
-          kind="date"
-          v-model="form.endDate" />
-        </view><MobileButton
-          v-if="form.endDate"
-          label="清空结束日期"
-          icon="ant-design:close-outlined"
-          variant="quiet"
-          @click="form.endDate = ''" /><view class="ui-field-row">
+          <view class="milestone-end-date">
+            <FormField compact stretch label="结束日期" kind="date" v-model="form.endDate" />
+            <MobileButton v-if="form.endDate" class="milestone-end-clear" label="清空结束日期" icon="ant-design:close-outlined"
+              variant="quiet" @click="form.endDate = ''" />
+          </view>
+        </view><view class="ui-field-row">
           <FormField compact stretch
           label="类型"
           kind="selector"
@@ -291,4 +289,12 @@ function clear() {
 /* #endif */
 
 .secondary-text-dark { color: $text-secondary-dark; }
+.milestone-end-date { flex: 1; min-width: 0; flex-direction: row; align-items: flex-end; gap: $space-detail; }
+/* #ifdef APP */
+.milestone-dates-stacked { flex-direction: column; }
+.milestone-end-clear { margin-left: $space-detail; }
+/* #endif */
+@media (max-width: 479px) {
+  .milestone-dates-with-clear { flex-direction: column; }
+}
 </style>

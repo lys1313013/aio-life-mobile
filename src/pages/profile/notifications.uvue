@@ -7,6 +7,7 @@ import { onShow, onHide } from '@dcloudio/uni-app';
 import PageHeader from '../../components/PageHeader.uvue';
 import MobilePage from '../../components/MobilePage.uvue';
 import MobileButton from '../../components/MobileButton.uvue';
+import FormActions from '../../components/FormActions.uvue';
 import FormField from '../../components/FormField.uvue';
 import PageState from '../../components/PageState.uvue';
 import LoadingIndicator from '../../components/LoadingIndicator.uvue';
@@ -268,24 +269,24 @@ function back() {
                 :disabled="saving || subscribing || (channel.channel === 'WECHAT_MINI' && (!wechat.enabled || !wechat.bound))"
                 :aria-label="item.description + channels[channel.channel]"
                 @change="channel.isEnabled = $event.detail.value ? 1 : 0" /></view></view
-          ><MobileButton
+          ><FormActions><MobileButton label="取消" variant="quiet" :disabled="saving || subscribing" @click="back" /><MobileButton
             label="保存"
             :loading="saving"
-            @click="savePreferences" /></view></PageState></MobilePage
+            @click="savePreferences" /></FormActions></view></PageState></MobilePage
     ><ModalMotion><AdaptiveModal
       v-if="editing"
       label="飞书通知配置"
       :busy="saving"
       :max-width="520"
       @close="editing = false"
-      ><FormField label="App ID" v-model="form.appId" /><FormField
+      ><text class="notification-group-title ui-mb-section" :class="themeClass('notification-group-title')">飞书通知配置</text><FormField label="App ID" v-model="form.appId" /><FormField
         label="App Secret"
         kind="password"
         v-model="form.appSecret"
         :placeholder="config.configured ? '留空保留原凭证' : ''" /><FormField
         label="接收人 Open ID"
         v-model="form.openId" /><MobileButton
-        label="选择接收人"
+        label="选择接收人" variant="quiet"
         :loading="recipientLoading"
         @click="recipientsLoad" /><text v-if="recipientWarning" class="notification-muted" :class="themeClass('notification-muted')">{{
         recipientWarning
@@ -302,7 +303,10 @@ function back() {
           aria-label="启用飞书通知"
           @change="form.isEnabled = $event.detail.value ? 1 : 0" /></view
       ><text v-if="formError" class="error-text" role="alert">{{ formError }}</text
-      ><MobileButton label="保存" :loading="saving" @click="saveConfig" /></AdaptiveModal
+      ><template #footer><FormActions>
+        <MobileButton label="取消" variant="quiet" :disabled="saving" @click="editing = false" />
+        <MobileButton label="保存" :loading="saving" @click="saveConfig" />
+      </FormActions></template></AdaptiveModal
   ></ModalMotion></view>
 </template>
 <style scoped lang="scss">

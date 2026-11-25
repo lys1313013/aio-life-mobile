@@ -13,7 +13,7 @@ const modalMotion0 = ref<{ close: () => void } | null>(null);
 
 
 defineProps<{
-  rows: any[]; total: number; loading: boolean; error: string;
+  operation: boolean; rows: any[]; total: number; loading: boolean; error: string;
   moreError: string; hasMore: boolean; exporting: boolean;
 }>();
 const emit = defineEmits(['search', 'retry', 'more', 'export']);
@@ -63,7 +63,7 @@ function result(row) { return row.success === true ? '成功' : row.success === 
     </view>
     <PageState :loading="loading" :error="error" :empty="!rows.length" :has-content="rows.length > 0" @retry="emit('retry')">
       <template #loading>
-        <view class="access-list access-surface" :class="themeClass('access-surface')" aria-label="正在加载访问日志">
+        <view class="access-list access-surface" :class="themeClass('access-surface')" :aria-label="operation ? '正在加载操作日志' : '正在加载访问日志'">
           <view v-for="item in 8" :key="item" class="access-row" aria-hidden="true">
             <text class="access-account access-placeholder" :class="themeClass('access-placeholder')">　</text>
             <text class="access-meta access-placeholder" :class="themeClass('access-placeholder')">　</text>
@@ -73,21 +73,22 @@ function result(row) { return row.success === true ? '成功' : row.success === 
       <view v-if="rows.length" class="access-list access-surface" :class="themeClass('access-surface')">
         <view v-for="row in rows" :key="row.id" class="access-row">
           <view class="access-primary">
-            <text class="access-account" :class="themeClass('access-account')">{{ account(row) }}</text>
-            <text class="access-method" :class="themeClass('access-muted')">{{ row.accessType || '—' }}</text>
+            <text class="access-account" :class="themeClass('access-account')">{{ operation ? [row.functionName, row.functionItem].filter(Boolean).join(' · ') || '未记录操作' : account(row) }}</text>
+            <text v-if="!operation" class="access-method" :class="themeClass('access-muted')">{{ row.accessType || '—' }}</text>
             <view class="access-result" role="img" :aria-label="result(row)">
               <AppIcon :name="row.success === true ? 'ant-design:check-circle-outlined' : row.success === false ? 'ant-design:close-outlined' : 'ant-design:question-circle-outlined'" :size="16" :color="row.success === true ? (isDark ? '#63d6a0' : '#168251') : row.success === false ? (isDark ? '#ff8e99' : '#cc354b') : (isDark ? '#b3bdca' : '#64748b')" />
             </view>
           </view>
           <view class="access-secondary">
-            <text class="access-meta access-device" :class="themeClass('access-muted')">{{ row.clientIp || '—' }} · {{ row.browser || '—' }}</text>
+            <text class="access-meta access-device" :class="themeClass('access-muted')">{{ operation ? account(row) : [row.clientIp || '—', row.browser || '—'].join(' · ') }}</text>
             <text class="access-meta access-time" :class="themeClass('access-muted')">{{ time(row.createTime) }}</text>
           </view>
+          <text v-if="operation && (row.clientIp || row.browser)" class="access-meta access-device" :class="themeClass('access-muted')">{{ [row.clientIp, row.browser].filter(Boolean).join(' · ') }}</text>
         </view>
       </view>
     </PageState>
     <LoadMore :loading="loading" :error="moreError" :has-more="hasMore" @load="emit('more')" />
-    <ModalMotion><AdaptiveModal ref="modalMotion0" v-if="opened" label="筛选访问日志" :content-key="filterError" @close="opened = false">
+    <ModalMotion><AdaptiveModal ref="modalMotion0" v-if="opened" :label="operation ? '筛选操作日志' : '筛选访问日志'" :content-key="filterError" @close="opened = false">
       <view class="ui-field-row">
         <FormField compact stretch label="开始日期" kind="date" v-model="draftStart" />
         <FormField compact stretch label="结束日期" kind="date" v-model="draftEnd" />

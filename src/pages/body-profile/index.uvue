@@ -138,10 +138,11 @@ function back() { uni.navigateBack({ fail: () => uni.switchTab({ url: '/pages/pr
 
 <template>
   <MobilePage :refreshing="refreshing" :scroll-locked="!!form" :refresh-disabled="!!form" @refresh="refresh">
-    <PageHeader title="身体数据" back @back="back" />
+    <PageHeader title="身体数据" back :actions-min-width="44" @back="back">
+      <template #actions><MobileButton label="编辑身体数据" icon="ant-design:edit-outlined" variant="ghost" :disabled="!ready || loading" @click="edit()" /></template>
+    </PageHeader>
     <view class="ui-page-body profile-layout">
       <view class="body-card" :class="themeClass('body-card')" :aria-busy="loading">
-        <view class="body-heading"><text class="body-title" :class="themeClass('body-title')">身体数据</text><MobileButton label="编辑身体数据" icon="ant-design:edit-outlined" variant="ghost" :disabled="!ready || loading" @click="edit()" /></view>
         <view v-if="error" class="body-error" role="alert"><text class="body-error-text" :class="themeClass('body-error-text')">{{ error }}</text><MobileButton label="重试" variant="quiet" :loading="loading" @click="load" /></view>
         <view class="body-content"><LoadingIndicator v-if="loading" floating label="正在读取身体数据" />
           <view class="body-primary">
@@ -183,9 +184,6 @@ function back() { uni.navigateBack({ fail: () => uni.switchTab({ url: '/pages/pr
 .profile-layout { display: flex; flex-direction: column; align-items: center; }
 .body-card { width: 100%; max-width: 600px; align-self: center; background-color: #fff; border-radius: 16px; padding: $space-card; }
 .body-card-dark { background-color: #1c1e22; }
-.body-heading { display: flex; flex-direction: row; justify-content: space-between; align-items: center; margin-bottom: $space-section; }
-.body-title { @include type-style('title'); color: #27272a; }
-.body-title-dark { color: #eeeeef; }
 .body-content { position: relative; }
 .body-primary { display: flex; flex-direction: row; flex-wrap: wrap; gap: $space-inline; }
 .primary-item { width: calc((100% - $space-inline * 3) / 4); min-height: 68px; margin: 0; padding: 0; display: flex; flex-direction: column; align-items: flex-start; @include button-background(transparent); border: 0; text-align: left; }

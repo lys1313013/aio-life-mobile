@@ -44,7 +44,7 @@ for (const width of [390, 768, 1280]) {
         expect(before.y).toBe(0);
         expect(firstCard.y).toBeGreaterThanOrEqual(before.height);
         const button = await stableBox(page.getByRole('button', { name: '返回', exact: true }));
-        expect(button.x).toBeCloseTo(12, 0);
+        expect(button.x).toBeCloseTo(firstCard.x, 0);
         const scrollTop = await scrollTopOfCard(first);
         await page.mouse.wheel(0, 600);
         // wheel 返回不代表滚动已提交；先确认容器滚动，再通过实时 DOM 几何检查内容位移。
