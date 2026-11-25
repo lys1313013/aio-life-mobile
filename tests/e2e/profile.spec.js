@@ -5,7 +5,7 @@ const themeColors = require('../../src/theme.json');
 const darkSwitchColor = `rgb(${themeColors.dark.switchActiveColor.slice(1).match(/.{2}/g).map(value => parseInt(value, 16)).join(', ')})`;
 
 async function setup(page) {
-  const state = { unread: 3, failUnread: false, profile: { id: '9223372036854775807', accountUsername: 'fixture', nickname: '测试用户', email: 'fixture@example.com', introduction: '测试简介', avatarFileId: null }, binds: [], writes: [], failSave: false, failList: false, failDelete: false, expired: false, delay: 0 };
+  const state = { unread: 3, failUnread: false, profile: { id: '9223372036854775807', accountUsername: 'fixture', nickname: '测试用户', email: 'fixture@example.com', introduction: '测试简介', avatarFileId: null }, binds: [], writes: [], verifications: [], failSave: false, failList: false, failDelete: false, expired: false, delay: 0 };
   await page.route(new URL('/api/**', test.info().project.use.baseURL).href, async route => {
     const path = new URL(route.request().url()).pathname;
     const method = route.request().method();
@@ -37,10 +37,18 @@ async function setup(page) {
     }
     if (path.startsWith('/api/userbinds/') && method === 'DELETE') {
       state.writes.push({ path, method });
+      await state.deletePending;
       if (state.failDelete) return route.abort();
       state.binds = state.binds.filter(item => item.id !== path.split('/').at(-1)); data = true;
     }
-    if (path === '/api/userbinds/douban/verify') data = { nickname: '模拟豆友' };
+    if (path === '/api/userbinds/verify' && method === 'POST') {
+      const body = route.request().postDataJSON();
+      state.verifications.push(body);
+      if (body.accessToken === 'wrk-invalid') {
+        return route.fulfill({ json: { code: 1, message: '微信读书 Key 无效或已过期' } });
+      }
+      data = { accountName: body.platform === 'weread' ? null : body.platformUsername };
+    }
     if (data === undefined) return route.fulfill({ status: 404, body: path });
     return route.fulfill({ json: { code: 0, data } });
   });
@@ -233,6 +241,10 @@ test('绑定加载失败重试、新增失败重试、编辑留空保留凭证�
   await expect(page.getByRole('alert')).toContainText('请输入账号');
   await page.locator('[aria-label="账号或用户名"] input').fill('fixture-github');
   await page.locator('[aria-label="Access Token"] input').fill('fake-token-for-test');
+  await page.getByRole('button', { name: '验证', exact: true }).click();
+  await expect(page.locator('uni-toast').getByText('验证成功 · fixture-github', { exact: true })).toBeVisible();
+  expect(state.verifications).toEqual([{ platform: 'github', platformUsername: 'fixture-github', accessToken: 'fake-token-for-test' }]);
+  expect(state.writes).toHaveLength(0);
   state.failSave = true; state.delay = 250;
   await page.getByRole('button', { name: '保存', exact: true }).click();
   await expect(page.getByRole('button', { name: '保存', exact: true })).toHaveAttribute('aria-busy', 'true');
@@ -248,17 +260,36 @@ test('绑定加载失败重试、新增失败重试、编辑留空保留凭证�
   await page.getByRole('button', { name: '保存', exact: true }).click();
   await expect(page.getByRole('dialog')).toBeHidden();
   expect(state.writes.at(-1)).toEqual({ path: '/api/userbinds', method: 'PUT', data: { id: '9223372036854775806', platform: 'github', platformUsername: 'changed-github' } });
-  await page.getByRole('button', { name: '解除GitHub绑定', exact: true }).click();
-  await page.getByRole('button', { name: '取消', exact: true }).click();
-  expect(state.writes.filter(item => item.method === 'DELETE')).toHaveLength(0);
-  await page.getByRole('button', { name: '解除GitHub绑定', exact: true }).click();
+  const unbind = page.getByRole('button', { name: '解除GitHub绑定', exact: true });
+  const dialog = page.getByRole('dialog', { name: '解除账号绑定', exact: true });
+  const cancel = dialog.getByRole('button', { name: '取消', exact: true });
+  const confirm = dialog.getByRole('button', { name: '解除绑定', exact: true });
+  const deletes = () => state.writes.filter(item => item.method === 'DELETE');
+  await unbind.click();
+  await expect(dialog).toContainText('GitHub（changed-github）');
+  await cancel.click();
+  await expect(dialog).toBeHidden();
+  expect(deletes()).toHaveLength(0);
+  await unbind.click();
   state.failDelete = true;
-  await page.getByRole('button', { name: '解除绑定', exact: true }).click();
-  await expect(page.getByRole('alert')).toBeVisible();
+  let releaseDelete;
+  state.deletePending = new Promise(resolve => { releaseDelete = resolve; });
+  try {
+    await confirm.click();
+    await expect(confirm).toHaveAttribute('aria-busy', 'true');
+    await expect(confirm).toBeDisabled();
+    await expect(cancel).toBeDisabled();
+  } finally {
+    releaseDelete();
+  }
+  await expect(dialog.getByRole('alert')).toBeVisible();
   await expect(page.getByText('changed-github', { exact: true })).toBeVisible();
   state.failDelete = false;
-  await page.getByRole('button', { name: '解除绑定', exact: true }).click();
+  await confirm.click();
+  await expect(dialog).toBeHidden();
   await expect(page.getByText('还没有绑定账号')).toBeVisible();
+  const deleteRequest = { path: '/api/userbinds/9223372036854775806', method: 'DELETE' };
+  expect(deletes()).toEqual([deleteRequest, deleteRequest]);
 });
 
 test('资料页登录过期跳转登录', async ({ page }) => {
@@ -312,7 +343,21 @@ test('微信读书新建必填密钥，编辑不回显且留空保留', async ({
   await expect(page.getByRole('dialog')).toBeHidden();
   expect(state.writes.at(-1).data).toEqual({ platform: 'weread', platformUsername: '', accessToken: 'wrk-fixture' });
   await page.getByRole('button', { name: '编辑微信读书绑定', exact: true }).click();
-  await expect(page.locator('[aria-label="API Key"] input')).toHaveValue('');
+  const apiKey = page.locator('[aria-label="API Key"] input');
+  await expect(apiKey).toHaveValue('');
+  await page.getByRole('button', { name: '验证', exact: true }).click();
+  const toast = page.locator('uni-toast').getByText('验证成功', { exact: true });
+  await expect(toast).toBeVisible();
+  await expect(page.locator('uni-toast')).toHaveCSS('z-index', '1300');
+  await expect(page.getByRole('dialog')).toBeVisible();
+  expect(state.verifications.at(-1)).toEqual({ id: '9223372036854775806', platform: 'weread', platformUsername: '' });
+  await apiKey.fill('wrk-invalid');
+  await expect(toast).toBeHidden();
+  await page.getByRole('button', { name: '验证', exact: true }).click();
+  await expect(page.getByRole('alert')).toHaveText('微信读书 Key 无效或已过期');
+  expect(state.writes).toHaveLength(1);
+  await apiKey.fill('');
+  await expect(page.getByRole('alert')).toHaveCount(0);
   await page.getByRole('button', { name: '保存', exact: true }).click();
   await expect(page.getByRole('dialog')).toBeHidden();
   expect(state.writes.at(-1).data.accessToken).toBeUndefined();

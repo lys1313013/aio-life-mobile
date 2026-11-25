@@ -1,4 +1,5 @@
 const { waitForMotion } = require('./support/motion');
+const { stableBox } = require('./support/geometry');
 const { dismissModal } = require('./modal');
 const {test,expect}=require('./support/test');const fs=require('node:fs');const {setup,admin}=require('./qa-platform-fixtures');
 // 整页巡检包含多次导航与截图，按实际工作量声明超时，避免 CI 略慢时撞上默认 30s。
@@ -93,9 +94,24 @@ for (const width of [390, 768, 1440]) for (const theme of ['light', 'dark']) {
       await shot(page, `${width}-${theme}-${entry}-row-edit`);
       await dismissModal(page);
     }
-    await click(page, del);
-    await shot(page, `${width}-${theme}-${entry}-row-delete`);
-    await click(page, '取消');
+    if (entry === '账号绑定') {
+      const card = page.locator('.binding-card').filter({ has: page.getByRole('button', { name: del, exact: true }) });
+      const before = await stableBox(card);
+      await card.getByRole('button', { name: del, exact: true }).click();
+      const dialog = page.getByRole('dialog', { name: '解除账号绑定', exact: true });
+      await expect(dialog).toBeVisible();
+      await waitForMotion(page);
+      const after = await stableBox(card);
+      expect(Math.abs(after.height - before.height)).toBeLessThanOrEqual(1);
+      expect(Math.abs(after.y - before.y)).toBeLessThanOrEqual(1);
+      await shot(page, `${width}-${theme}-${entry}-row-delete`);
+      await dialog.getByRole('button', { name: '取消', exact: true }).click();
+      await expect(dialog).toBeHidden();
+    } else {
+      await click(page, del);
+      await shot(page, `${width}-${theme}-${entry}-row-delete`);
+      await click(page, '取消');
+    }
     await back(page);
   });
 

@@ -25,7 +25,7 @@ import {
   loadBindings,
   saveBinding,
   removeBinding,
-  verifyDouban
+  verifyBinding
 } from '../../services/profile.ts'
 import {
   bindingPayload,
@@ -39,15 +39,18 @@ const loading = ref(false)
 const refreshing = ref(false)
 const loaded = ref(false)
 const saving = ref(false)
-const deleting = ref('')
+const deleting = ref(false)
 const confirmId = ref('')
+const unbindTarget = computed(() => records.value.find((record) => record.id === confirmId.value))
+const unbindError = ref('')
+const unbindModal = ref<{ close: () => void } | null>(null)
 const errorText = ref('')
 const modalError = ref('')
 const editing = ref(false)
 const editorModal = ref<{ close: () => void } | null>(null)
 const showHelp = ref(false)
 const verifying = ref(false)
-const verified = ref('')
+const verificationError = ref('')
 const form = ref({
   id: '',
   platform: 'github',
@@ -77,7 +80,7 @@ onShow(() => {
 })
 onHide(() => {
   visible = false
-  confirmId.value = ''
+  closeUnbind()
   closeEditor(true)
 })
 onUnload(() => {
@@ -117,7 +120,7 @@ async function fetchList() {
   }
 }
 async function pullRefresh() {
-  if (refreshing.value || saving.value || deleting.value) return
+  if (refreshing.value || saving.value || unbindTarget.value || deleting.value) return
   refreshing.value = true
   await nextTick()
   try {
@@ -128,7 +131,7 @@ async function pullRefresh() {
   }
 }
 function edit(record = null) {
-  if (loading.value || saving.value || deleting.value) return
+  if (loading.value || saving.value || unbindTarget.value || deleting.value) return
   form.value = {
     id: record?.id || '',
     platform: record?.platform || 'github',
@@ -136,22 +139,19 @@ function edit(record = null) {
     accessToken: ''
   }
   modalError.value = ''
-  verified.value = ''
+  resetVerification()
   showHelp.value = false
-  confirmId.value = ''
   editing.value = true
 }
 function closeEditor(force = false) {
   if (saving.value && !force) return
   editing.value = false
   form.value.accessToken = ''
-  verification++
-  verifying.value = false
-  verified.value = ''
+  resetVerification()
 }
 function resetVerification() {
   verification++
-  verified.value = ''
+  verificationError.value = ''
   verifying.value = false
 }
 function selectPlatform(event) {
@@ -164,20 +164,23 @@ function selectPlatform(event) {
 }
 async function verify() {
   if (verifying.value || saving.value) return
-  if (!form.value.platformUsername.trim()) {
-    modalError.value = '请先填写豆瓣账号 ID'
-    return
-  }
-  const version = ++verification
-  verifying.value = true
+  resetVerification()
+  const version = verification
+  const token = session.token
   modalError.value = ''
-  verified.value = ''
+  verifying.value = true
   try {
-    const result = await verifyDouban(form.value.platformUsername)
-    if (version === verification && active && visible)
-      verified.value = '验证成功：' + result.nickname
+    const result = await verifyBinding(form.value)
+    if (version === verification && active && visible && token === session.token) {
+      uni.showToast({
+        title: result.accountName ? '验证成功 · ' + result.accountName : '验证成功',
+        icon: 'none'
+      })
+    }
   } catch (error) {
-    if (version === verification) failure(error, true)
+    if (version !== verification || !active || !visible) return
+    if (error.name === 'SessionExpiredError') failure(error, true)
+    else if (token === session.token) verificationError.value = error.message || '验证失败，请稍后重试'
   } finally {
     if (version === verification) verifying.value = false
   }
@@ -212,21 +215,34 @@ async function save() {
     saving.value = false
   }
 }
-async function unbind(id: string) {
-  if (deleting.value || loading.value || saving.value) return
-  deleting.value = id
-  errorText.value = ''
+function openUnbind(id: string) {
+  if (loading.value || saving.value || editing.value || deleting.value) return
+  unbindError.value = ''
+  confirmId.value = id
+}
+function closeUnbind() {
+  confirmId.value = ''
+  unbindError.value = ''
+}
+async function unbind() {
+  const id = unbindTarget.value?.id
+  if (!id || deleting.value || loading.value || saving.value) return
+  deleting.value = true
+  unbindError.value = ''
   const token = session.token
   try {
     await removeBinding(id)
     if (!active || token !== session.token) return
     records.value = records.value.filter((item) => item.id !== id)
-    confirmId.value = ''
-    uni.showToast({ title: '已解除绑定', icon: 'success' })
+    closeUnbind()
+    if (visible) uni.showToast({ title: '已解除绑定', icon: 'success' })
   } catch (error) {
-    failure(error)
+    if (error.name === 'SessionExpiredError') failure(error)
+    else if (active && visible && token === session.token && confirmId.value === id) {
+      unbindError.value = error.message || '解绑失败，请重试'
+    }
   } finally {
-    deleting.value = ''
+    deleting.value = false
   }
 }
 function back() {
@@ -241,7 +257,7 @@ function back() {
     <scroll-view
       scroll-y
       class="tab-scroll"
-      :refresher-enabled="!editing && !deleting"
+      :refresher-enabled="!editing && !unbindTarget && !deleting"
       :refresher-triggered="refreshing"
       refresher-background="transparent"
       :refresher-default-style="refreshTheme"
@@ -269,8 +285,8 @@ function back() {
               role="button"
               class="binding-edit"
               :aria-label="'编辑' + platformInfo(record.platform).label + '绑定'"
-              :disabled="loading || saving || !!deleting"
-              :aria-disabled="loading || saving || !!deleting"
+              :disabled="loading || saving || deleting"
+              :aria-disabled="loading || saving || deleting"
               @click="edit(record)"
             >
             <view class="platform-mark"
@@ -293,9 +309,9 @@ function back() {
               :aria-label="
                 '解除' + platformInfo(record.platform).label + '绑定'
               "
-              :disabled="loading || !!deleting"
-              :aria-disabled="loading || !!deleting"
-              @click="confirmId = confirmId === record.id ? '' : record.id"
+              :disabled="loading || saving || deleting"
+              :aria-disabled="loading || saving || deleting"
+              @click="openUnbind(record.id)"
               :class="themeClass('binding-action')"
             >
               <CategoryIcon
@@ -305,41 +321,14 @@ function back() {
               />
             </button>
           </view>
-          <view
-            v-if="confirmId === record.id"
-            class="unbind-confirm ui-pad-card ui-mt-section"
-            :class="themeClass('unbind-confirm')"
-          >
-            <text class="binding-name" :class="themeClass('binding-name')"
-              >解除此账号绑定？</text
-            >
-            <view class="binding-actions ui-row ui-mt-section"
-              ><button hover-class="none"
-                role="button"
-                class="binding-cancel"
-                :disabled="!!deleting"
-                :aria-disabled="!!deleting"
-                @click="confirmId = ''"
-                :class="themeClass('binding-cancel')"
-              ><text :class="buttonLabelClasses(['binding-cancel', themeClass('binding-cancel')])">取消</text></button
-              ><button hover-class="none"
-                role="button"
-                class="binding-danger ui-px-card"
-                :loading="deleting === record.id"
-                :disabled="!!deleting"
-                :aria-disabled="!!deleting"
-                @click="unbind(record.id)"
-              ><text :class="buttonLabelClasses(['binding-danger ui-px-card'])">解除绑定</text></button></view
-            >
-          </view>
         </view>
         </PageState>
       </view>
     </scroll-view>
     <FloatingActionButton
-      v-if="!editing"
+      v-if="!editing && !unbindTarget"
       label="新增绑定"
-      :disabled="!loaded || loading || saving || !!deleting"
+      :disabled="!loaded || loading || saving || deleting"
       @click="edit()"
     />
     <ModalMotion><AdaptiveModal
@@ -349,7 +338,7 @@ function back() {
       :busy="saving"
       :max-width="420"
       dense
-      :content-key="form.platform + showHelp + modalError + verified"
+      :content-key="form.platform + showHelp + modalError + verificationError"
       @close="closeEditor()"
     >
       <view class="binding-editor-heading">
@@ -404,10 +393,6 @@ function back() {
           :placeholder="form.platform === 'douban' ? '填写豆瓣账号 ID' : '填写账号或用户名'"
           @input="resetVerification"
         />
-        <view v-if="form.platform === 'douban'" class="verify-row">
-          <text v-if="verified" class="verified-text" :class="themeClass('verified-text')">{{ verified }}</text>
-          <MobileButton label="验证账号" variant="ghost" :loading="verifying" :disabled="saving" @click="verify" />
-        </view>
       </FormField>
       <FormField
         v-if="form.platform === 'github' || form.platform === 'weread'"
@@ -427,14 +412,41 @@ function back() {
           :adjust-position="false"
           :maxlength="4096"
           :placeholder="form.id ? '留空保留原凭证' : form.platform === 'weread' ? 'wrk-xxxxxxxx' : '选填'"
+          @input="resetVerification"
         />
       </FormField>
       <text v-if="modalError" role="alert" class="error-text ui-mb-section" :class="themeClass('error-text')">{{ modalError }}</text>
+      <text v-if="verificationError" role="alert" class="error-text ui-mb-section" :class="themeClass('error-text')">{{ verificationError }}</text>
       <FormActions>
+        <template #secondary>
+          <MobileButton label="验证" variant="ghost" :loading="verifying" :disabled="saving" @click="verify" />
+        </template>
         <MobileButton label="取消" variant="quiet" :disabled="saving" @click="editorModal?.close()" />
         <MobileButton label="保存" :loading="saving" :disabled="verifying" @click="save" />
       </FormActions>
     </AdaptiveModal></ModalMotion>
+    <ModalMotion>
+      <AdaptiveModal
+        v-if="unbindTarget"
+        ref="unbindModal"
+        label="解除账号绑定"
+        :busy="deleting"
+        :max-width="320"
+        :content-key="unbindError"
+        dense
+        @close="closeUnbind"
+      >
+        <text class="binding-editor-title" :class="themeClass('binding-editor-title')">解除账号绑定</text>
+        <text class="binding-name unbind-message" :class="themeClass('binding-name')">确定解除 {{ platformInfo(unbindTarget.platform).label }}{{ unbindTarget.platformUsername ? '（' + unbindTarget.platformUsername + '）' : '' }}的绑定吗？</text>
+        <text v-if="unbindError" role="alert" class="error-text unbind-message" :class="themeClass('error-text')">{{ unbindError }}</text>
+        <template #footer>
+          <FormActions>
+            <MobileButton label="取消" variant="quiet" :disabled="deleting" @click="unbindModal?.close()" />
+            <MobileButton label="解除绑定" danger :loading="deleting" @click="unbind" />
+          </FormActions>
+        </template>
+      </AdaptiveModal>
+    </ModalMotion>
   <SecondaryUnlock />
   </view>
 </template>
@@ -519,34 +531,9 @@ function back() {
   @include type-style('glyph-large');
   border: 0;
 }
-.unbind-confirm {
-
-  border-radius: 12px;
-  background-color: #f5f6f8;
-}
-.binding-actions {
-  flex-direction: row;
-  justify-content: flex-end;
-
-}
-.binding-cancel,
-.binding-danger {
-  min-width: 80px;
-  height: 44px;
-  border: 0;
-
-  margin: 0 0 0 $space-inline;
-  border-radius: 10px;
-  @include type-style('body');
-  line-height: $space-controlMin;
-}
-.binding-cancel {
-  color: #71717a;
-  @include button-background(#f0f2f5);
-}
-.binding-danger {
-  color: #ffffff;
-  @include button-background(#c65353);
+.unbind-message {
+  margin-top: $space-inline;
+  word-break: break-word;
 }
 .binding-editor-heading {
   display: flex;
@@ -587,21 +574,6 @@ function back() {
   color: #27272a;
   @include type-style('body');
 }
-.verify-row {
-  display: flex;
-  flex-direction: row;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: flex-end;
-  gap: $space-inline;
-  margin-top: $space-detail;
-}
-.verified-text {
-  color: #39765e;
-  @include type-style('label');
-
-}
-
 .binding-card-dark {
   background-color: #1c1e22;
 }
@@ -615,21 +587,8 @@ function back() {
 }
 .binding-input-dark,
 .binding-field-dark { @include form-control.dark; }
-.unbind-confirm-dark {
-  background-color: #282a30;
-}
-.binding-cancel-dark {
-  color: #b4b4bd;
-  @include button-background(#303238);
-}
-.verified-text-dark {
-  color: #abd4b9;
-}
-
 .binding-edit,
-.binding-action,
-.binding-cancel,
-.binding-danger { @include borderless-button; }
+.binding-action { @include borderless-button; }
 .binding-account-dark {
   color: $text-secondary-dark;
 }
@@ -641,8 +600,4 @@ function back() {
 .app-button-label { @include type-style('body'); color: #27272a; }
 .app-button-label-dark { color: #eeeeef; }
 .text-action-label { @include type-style('body'); color: #5b8ff9; }
-.binding-cancel-label, .binding-danger-label { @include type-style('body'); }
-.binding-cancel-label { color: #71717a; }
-.binding-danger-label { color: #ffffff; }
-.binding-cancel-dark-label { color: #b4b4bd; }
 </style>

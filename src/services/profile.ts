@@ -1,3 +1,5 @@
+import type { UserThirdPartyAccountVerifyVO } from './api-payload.ts'
+
 import { request } from './api.ts'
 import { bindingPayload, readBindings } from './profile-contract.ts'
 
@@ -13,8 +15,6 @@ export async function removeBinding(id: string) {
   const result = await request('/userbinds/' + encodeURIComponent(id), 'DELETE')
   if (result !== true) throw new Error('解绑未完成，请重试')
 }
-export function verifyDouban(accountId: string) {
-  return request<{ nickname: string }>(
-    '/userbinds/douban/verify?accountId=' + encodeURIComponent(accountId.trim())
-  )
+export function verifyBinding(form) {
+  return request<UserThirdPartyAccountVerifyVO>('/userbinds/verify', 'POST', bindingPayload(form))
 }

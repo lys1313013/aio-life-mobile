@@ -66,7 +66,7 @@ export function request<T>(path: string, method: 'GET' | 'POST' | 'PUT' | 'DELET
             if (response.statusCode >= 500 && response.statusCode < 600 && retry()) return
             try {
               const result = readResponse(response.statusCode, response.data)
-              if (token && token === session.token) {
+              if (token && token === session.token && path !== '/userbinds/verify') {
                 invalidateMenuAccessAfterWrite(path, method)
                 menuVisuals.afterWrite(path, method)
                 invalidateHomeAfterWrite(path, method)
