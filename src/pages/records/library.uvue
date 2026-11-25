@@ -47,10 +47,10 @@ const kind = ref('movie'),
   );
 const readingStatusLabels = ['想读', '在读', '读过', '搁置'];
 const movieStatuses = [
-  { status: 'not_started', label: '未开始' },
   { status: 'in_progress', label: '进行中' },
-  { status: 'on_hold', label: '已暂停' },
   { status: 'completed', label: '已完成' },
+  { status: 'not_started', label: '未开始' },
+  { status: 'on_hold', label: '已暂停' },
 ];
 const libraryPageSize = 30;
 function createList() {
@@ -63,7 +63,7 @@ const readList = ref(createList());
 const moviePages = ref(movieStatuses.map(group => ({
   ...group, ...createList(), count: null as number | null, contentRevision: 0,
 })));
-const movieIndex = ref(1);
+const movieIndex = ref(0);
 const movieProgress = ref<number | null>(null);
 const moviePager = ref<{ measure: () => void; ignoreClick: () => boolean } | null>(null);
 const currentList = computed(() => kind.value === 'movie' ? moviePages.value[movieIndex.value] : readList.value);
@@ -505,19 +505,21 @@ async function submitImport() {
 }
 </script>
 <template>
-  <MobilePage :scroll-locked="kind === 'movie'" :refreshing="kind === 'read' && readList.refreshing"
-    @refresh="reload(true)" @reachbottom="loadMore"
-    ><view class="library-page ui-page-body" :class="{ 'library-page-dark': isDark }"
-      ><PageSearch v-model="searchDraft" v-model:open="searchOpen" :title="title" :label="'搜索' + title"
-        :content-min-width="spacing.controlMin" :actions-min-width="spacing.controlMin * (kind === 'movie' ? 2 : 1)" back manual :active="!!keyword" :loading="currentList.loading"
-        @search="submitSearch" @dismiss="searchDraft = keyword" @layout="moviePager?.measure()" @back="uni.navigateBack()">
-        <template v-if="kind === 'movie'" #actions>
-          <MobileButton label="豆瓣导入" icon="ant-design:upload-outlined" variant="ghost" @click="openImport" />
-        </template>
-        <template #trailing-actions>
-          <FilterTrigger :label="'筛选' + title" :open="filtersOpen" :active="hasFilters" @click="openFilters" />
-        </template>
-      </PageSearch>
+  <view class="library-shell">
+    <PageSearch v-model="searchDraft" v-model:open="searchOpen" :title="title" :label="'搜索' + title"
+      :content-min-width="spacing.controlMin" :actions-min-width="spacing.controlMin * (kind === 'movie' ? 2 : 1)" back manual :active="!!keyword" :loading="currentList.loading"
+      @search="submitSearch" @dismiss="searchDraft = keyword" @layout="moviePager?.measure()" @back="uni.navigateBack()">
+      <template v-if="kind === 'movie'" #actions>
+        <MobileButton label="豆瓣导入" icon="ant-design:upload-outlined" variant="ghost" @click="openImport" />
+      </template>
+      <template #trailing-actions>
+        <FilterTrigger :label="'筛选' + title" :open="filtersOpen" :active="hasFilters" @click="openFilters" />
+      </template>
+    </PageSearch>
+    <view class="library-scroll-region">
+      <MobilePage :scroll-locked="kind === 'movie'" :refreshing="kind === 'read' && readList.refreshing"
+        @refresh="reload(true)" @reachbottom="loadMore"
+      ><view class="library-page ui-page-body" :class="{ 'library-page-dark': isDark }">
       <LoadingIndicator v-if="entryLoading" floating label="正在加载记录详情" />
       <template v-if="kind === 'movie'">
         <MovieStatusTabs :items="movieTabs" :current="movieIndex" :progress="movieProgress"
@@ -712,7 +714,9 @@ async function submitImport() {
         :label="'新增' + title"
         :disabled="entryLoading"
         @click="open()" /></template
-  ></MobilePage>
+      ></MobilePage>
+    </view>
+  </view>
 </template>
 <style scoped lang="scss">
 @use 'sass:math';
@@ -723,6 +727,17 @@ async function submitImport() {
 @use '../../styles/spacing-tokens' as *;
 @include type-utilities('body', 'label', 'title');
 
+.library-shell {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+.library-scroll-region {
+  flex: 1;
+  height: 0;
+  min-height: 0;
+}
 .library-page {
   position: relative;
   padding-bottom: 64px;

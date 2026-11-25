@@ -75,7 +75,7 @@ for (const kind of ['movie', 'read'])
           const tabs = page.getByRole('group', { name: '观影状态', exact: true });
           const selected = tabs.getByRole('button', { name: '进行中，9 条', exact: true });
           const firstPoster = page.getByRole('button', { name: '编辑记录', exact: true }).first();
-          await expect(tabs.getByRole('button')).toHaveText([/未开始\s*0/, /进行中\s*9/, /已暂停\s*0/, /已完成\s*0/]);
+          await expect(tabs.getByRole('button')).toHaveText([/进行中\s*9/, /已完成\s*0/, /未开始\s*0/, /已暂停\s*0/]);
           await expect(selected).toHaveAttribute('aria-pressed', 'true');
           await expect(firstPoster).not.toContainText(/想看|在看|看过|搁置|进行中/);
           await waitForMotion(page);
@@ -121,9 +121,11 @@ for (const kind of ['movie', 'read'])
           expect(boxes.filter((b) => b.y === boxes[0].y)).toHaveLength(columns);
         } else {
           const book = page.getByRole('button', { name: '编辑《' + state.movies[0].title + '》', exact: true });
-          await expect(book.locator('.shelf-badge')).toHaveText('豆瓣 Top 250');
+          const badge = book.locator('.shelf-badge');
+          await expect(badge.getByText('No.34', { exact: true })).toBeVisible();
+          await expect(badge.getByText('豆瓣 Top250', { exact: true })).toBeVisible();
+          await expect(book).toHaveAccessibleDescription('豆瓣 Top250 第34名');
           await expect(page.locator('.shelf-badge')).toHaveCount(1);
-          await expect(book).not.toContainText('No.34');
           const coverBox = await book.locator('.shelf-cover').boundingBox();
           const titleBox = await book.locator('.shelf-title').boundingBox();
           expect(titleBox.x).toBeGreaterThan(coverBox.x + coverBox.width);
@@ -431,7 +433,7 @@ test('观影状态各自分页，失败后在原状态重试', async ({ page, ap
   const tabs = page.getByRole('group', { name: '观影状态', exact: true });
   const cards = page.getByRole('button', { name: '编辑记录', exact: true });
   const retry = page.getByRole('button', { name: '重试加载', exact: true });
-  await expect(tabs.getByRole('button')).toHaveText([/未开始\s*1/, /进行中\s*32/, /已暂停\s*0/, /已完成\s*2/]);
+  await expect(tabs.getByRole('button')).toHaveText([/进行中\s*32/, /已完成\s*2/, /未开始\s*1/, /已暂停\s*0/]);
   await expect(cards).toHaveCount(30);
   await waitForMotion(page);
   await page.mouse.move(190, 460);
@@ -441,10 +443,10 @@ test('观影状态各自分页，失败后在原状态重试', async ({ page, ap
   await retry.click();
   await expect(cards).toHaveCount(32);
   await expect(retry).toBeHidden();
-  const paused = tabs.getByRole('button', { name: '已暂停，0 条', exact: true });
   const completed = tabs.getByRole('button', { name: '已完成，2 条', exact: true });
+  const notStarted = tabs.getByRole('button', { name: '未开始，1 条', exact: true });
   const underline = tabs.locator('.category-underline-moving');
-  const [before, destination] = await Promise.all([stableBox(underline), stableBox(paused)]);
+  const [before, destination] = await Promise.all([stableBox(underline), stableBox(completed)]);
   const viewport = await stableBox(page.locator('.category-pager'));
   const firstDragX = Math.round(viewport.x + viewport.width * 0.7);
   const dragY = Math.round(viewport.y + 80);
@@ -454,7 +456,7 @@ test('观影状态各自分页，失败后在原状态重试', async ({ page, ap
   try {
     const during = await stableBox(underline);
     expect(during.x).toBeCloseTo(before.x + (destination.x - before.x) / 3, 0);
-    await expect(paused).toHaveAttribute('aria-pressed', 'false');
+    await expect(completed).toHaveAttribute('aria-pressed', 'false');
     await page.mouse.move(firstDragX, dragY, { steps: 6 });
   } finally {
     await page.mouse.up();
@@ -478,9 +480,9 @@ test('观影状态各自分页，失败后在原状态重试', async ({ page, ap
   } finally {
     await underline.evaluate(element => element.getAnimations().forEach(animation => animation.play()));
   }
-  await expect(paused).toHaveAttribute('aria-pressed', 'true');
-  await expect(page.getByText('暂无记录', { exact: true })).toBeInViewport();
-  await expect(cards).toHaveCount(0);
+  await expect(completed).toHaveAttribute('aria-pressed', 'true');
+  await expect(cards).toHaveCount(2);
+  await expect(cards.first()).toHaveAttribute('aria-description', '模拟影片 completed 1');
   await waitForMotion(page);
   const touch = await page.context().newCDPSession(page);
   await touch.send('Emulation.setTouchEmulationEnabled', { enabled: true });
@@ -494,15 +496,15 @@ test('观影状态各自分页，失败后在原状态重试', async ({ page, ap
   await touch.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
   await touch.send('Emulation.setTouchEmulationEnabled', { enabled: false });
   await touch.detach();
-  await expect(completed).toHaveAttribute('aria-pressed', 'true');
-  await expect(cards).toHaveCount(2);
-  await expect(cards.first()).toHaveAttribute('aria-description', '模拟影片 completed 1');
+  await expect(notStarted).toHaveAttribute('aria-pressed', 'true');
+  await expect(cards).toHaveCount(1);
+  await expect(cards.first()).toHaveAttribute('aria-description', '模拟影片 not_started 1');
   await waitForMotion(page);
   await page.mouse.move(start - 120, y);
   await page.mouse.down();
   await page.mouse.move(start, y, { steps: 8 });
   await page.mouse.up();
-  await expect(paused).toHaveAttribute('aria-pressed', 'true');
+  await expect(completed).toHaveAttribute('aria-pressed', 'true');
   await waitForMotion(page);
   const contentTouch = await page.context().newCDPSession(page);
   await contentTouch.send('Emulation.setTouchEmulationEnabled', { enabled: true });
@@ -515,7 +517,7 @@ test('观影状态各自分页，失败后在原状态重试', async ({ page, ap
         const during = await stableBox(underline);
         expect(during.x).toBeLessThan(destination.x);
         expect(during.x).toBeGreaterThan(before.x);
-        await expect(paused).toHaveAttribute('aria-pressed', 'true');
+        await expect(completed).toHaveAttribute('aria-pressed', 'true');
       }
     }
   } finally {
@@ -526,5 +528,10 @@ test('观影状态各自分页，失败后在原状态重试', async ({ page, ap
   await expect(cards).toHaveCount(32);
   await expect(cards.last()).toBeInViewport();
   await expect.poll(async () => (await underline.boundingBox()).x).toBeCloseTo(before.x, 0);
-  expect(requests).toEqual([['in_progress', 1], ['in_progress', 2], ['in_progress', 2], ['on_hold', 1], ['completed', 1]]);
+  const paused = tabs.getByRole('button', { name: '已暂停，0 条', exact: true });
+  await paused.click();
+  await expect(paused).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByText('暂无记录', { exact: true })).toBeInViewport();
+  await expect(cards).toHaveCount(0);
+  expect(requests).toEqual([['in_progress', 1], ['in_progress', 2], ['in_progress', 2], ['completed', 1], ['not_started', 1], ['on_hold', 1]]);
 });

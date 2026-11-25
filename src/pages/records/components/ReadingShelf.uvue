@@ -13,6 +13,12 @@ const emit = defineEmits(['open', 'all'])
 function finishedDate(date: string) {
   return Number(date.slice(5, 7)) + '月' + Number(date.slice(8, 10)) + '日'
 }
+function rankingName(name: string) {
+  return name === '豆瓣读书Top250' ? '豆瓣 Top250' : name
+}
+function rankingDescription(rankings: Array<{ name: string; rank: number | null }> | null | undefined) {
+  return rankings?.map(badge => rankingName(badge.name) + (badge.rank == null ? '' : ' 第' + badge.rank + '名')).join('，') || undefined
+}
 </script>
 
 <template>
@@ -32,7 +38,7 @@ function finishedDate(date: string) {
         <view class="shelf-copy ui-gap-xs"><ContentSkeleton variant="caption" /><ContentSkeleton v-if="status === 'completed'" variant="caption" /></view>
       </view>
       <view v-for="book in items" :key="book.id" class="shelf-book ui-gap-sm" role="button" tabindex="0"
-        :aria-label="'编辑《' + book.title + '》'" :aria-busy="editing === book.id"
+        :aria-label="'编辑《' + book.title + '》'" :aria-description="rankingDescription(book.rankings)" :aria-busy="editing === book.id"
         @click="emit('open', book)" @keydown.enter.self="emit('open', book)" @keydown.space.self.prevent="emit('open', book)">
         <view class="shelf-cover">
           <LibraryCover :file-id="book.fileId || ''" :url="book.coverImgUrl || ''" :title="book.title" kind="read" compact />
@@ -41,7 +47,10 @@ function finishedDate(date: string) {
         <view class="shelf-copy ui-gap-xs">
           <text class="shelf-title" :class="{ 'shelf-text-dark': isDark }" :max-lines="2">{{ book.title }}</text>
           <text v-if="status === 'completed' && book.finishDate" class="shelf-date" :class="{ 'shelf-secondary-dark': isDark }">{{ finishedDate(book.finishDate) }}</text>
-          <text v-for="badge in book.rankings" :key="badge.rankingListId" class="shelf-badge" :class="{ 'shelf-badge-dark': isDark }" :max-lines="2">{{ badge.name === '豆瓣读书Top250' ? '豆瓣 Top 250' : badge.name }}</text>
+          <view v-for="badge in book.rankings" :key="badge.rankingListId" class="shelf-badge" :class="{ 'shelf-badge-dark': isDark }">
+            <text v-if="badge.rank != null" class="shelf-rank" :class="{ 'shelf-rank-dark': isDark }">No.{{ badge.rank }}</text>
+            <text class="shelf-rank-name" :class="{ 'shelf-rank-name-dark': isDark }">{{ rankingName(badge.name) }}</text>
+          </view>
         </view>
       </view>
     </view>
@@ -73,11 +82,18 @@ function finishedDate(date: string) {
 .shelf-copy { flex: 1; min-width: 0; }
 .shelf-title { @include type-style('body-strong'); @include wrap-long-text; @include clamp-text(2); color: #27272a; }
 .shelf-badge {
-  align-self: flex-start; max-width: 100%; box-sizing: border-box; padding: 0 $space-detail;
-  border-radius: 4px; background-color: #ffebc4; color: #694808;
-  @include type-style('badge'); @include wrap-long-text; @include clamp-text(2);
+  flex-direction: row; flex-wrap: wrap; align-self: flex-start; align-items: center; max-width: 100%;
+  border-radius: 3px; background-color: #ffe298;
 }
-.shelf-badge-dark { color: #ffdc96; background-color: #46381e; }
+.shelf-badge-dark { background-color: #46381e; }
+.shelf-rank, .shelf-rank-name { padding: 0 $space-detail; color: #624407; }
+.shelf-rank {
+  flex-shrink: 0; border-radius: 3px; background-color: #ffd365;
+  @include type-style('badge-strong');
+}
+.shelf-rank-name { max-width: 100%; box-sizing: border-box; @include type-style('badge'); @include wrap-long-text; }
+.shelf-rank-dark { color: #ffdc96; background-color: #624407; }
+.shelf-rank-name-dark { color: #ffdc96; }
 .shelf-text-dark { color: #eeeeef; }
 .shelf-secondary-dark { color: $text-secondary-dark; }
 .shelf-opening { position: absolute; top: 0; right: 0; bottom: 0; left: 0; align-items: center; justify-content: center; background-color: rgba(0,0,0,.45); }

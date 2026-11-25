@@ -10,7 +10,9 @@ test('阅读书架的六本预览、榜单标识、刷新保留和分组返回',
   const books = titles.map((title, i) => ({
     id: String(i + 1), title, type: 1, status: i < 3 ? 'in_progress' : i < 13 ? 'completed' : 'not_started',
     finishDate: i >= 3 && i < 13 ? '2026-10-' + String(14 - i).padStart(2, '0') : null,
-    rankings: [0, 1, 7, 14, 15].includes(i) ? [{ rankingListId: '12', name: '豆瓣读书Top250', rank: i + 1 }] : [],
+    rankings: [0, 1, 7, 14, 15].includes(i)
+      ? [{ rankingListId: '12', name: '豆瓣读书Top250', rank: i === 1 ? null : 156 + i }]
+      : [],
     coverImgUrl: '/mock-shelf/' + i + '.svg',
   }));
   await page.route('**/mock-shelf/*.svg', route => {
@@ -48,9 +50,12 @@ test('阅读书架的六本预览、榜单标识、刷新保留和分组返回',
     await expect(shelf.locator('.shelf-count')).toHaveText('10本');
     await expect(page.locator('.shelf-title')).toHaveCount(12);
     expect((await covers.first().boundingBox()).y).toBeCloseTo(before.y, 0);
-    await expect(page.locator('.shelf-badge')).toHaveText(Array(5).fill('豆瓣 Top 250'));
+    await expect(page.locator('.shelf-rank-name')).toHaveText(Array(5).fill('豆瓣 Top250'));
+    await expect(page.locator('.shelf-rank')).toHaveText(['No.156', 'No.163', 'No.170', 'No.171']);
+    const unnumbered = page.getByRole('button', { name: '编辑《' + titles[1] + '》', exact: true });
+    await expect(unnumbered.locator('.shelf-badge')).toHaveText('豆瓣 Top250');
     await expect(page.locator('.shelf-date')).toHaveCount(6);
-    for (const width of [390, 768, 1440]) {
+    for (const width of [320, 390, 768, 1440]) {
       await page.setViewportSize({ width, height: 844 });
       for (const theme of ['light', 'dark']) {
         await page.emulateMedia({ colorScheme: theme });
@@ -58,9 +63,22 @@ test('阅读书架的六本预览、榜单标识、刷新保留和分组返回',
         await page.screenshot({ path: info.outputPath('reading-' + width + '-' + theme + '.png') });
       }
     }
+    await page.setViewportSize({ width: 390, height: 500 });
+    const navigation = page.locator('.page-navigation');
+    const scrollArea = page.locator('.mobile-page-scroll');
+    const scroller = scrollArea.locator('.uni-scroll-view[style]').first();
+    const header = await navigation.boundingBox();
+    expect((await scrollArea.boundingBox()).y).toBeCloseTo(header.y + header.height, 0);
+    await page.mouse.move(190, 280);
+    await page.mouse.wheel(0, 240);
+    await expect.poll(() => scroller.evaluate(element => element.scrollTop)).toBeGreaterThan(0);
+    expect((await navigation.boundingBox()).y).toBeCloseTo(header.y, 0);
+    await expect(page.getByRole('button', { name: '筛选阅读记录' })).toBeInViewport();
+    await page.setViewportSize({ width: 390, height: 844 });
     await shelf.getByRole('button', { name: '查看全部读过记录' }).click();
     await expect(page).toHaveURL(/shelf=completed/);
     await expect(page.locator('.shelf-book[role=button]:visible')).toHaveCount(10);
+    await expect(shelf.getByText('No.163', { exact: true })).toBeVisible();
     await page.getByRole('button', { name: '返回', exact: true }).click();
     await expect(page).toHaveURL(/kind=read$/);
     await expect(shelf.locator('.shelf-title')).toHaveCount(6);
