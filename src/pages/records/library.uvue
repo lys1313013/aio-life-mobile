@@ -12,6 +12,8 @@ import { onLoad, onShow } from '@dcloudio/uni-app';
 import MobilePage from '../../components/MobilePage.uvue';
 import spacing from '../../styles/spacing.json';
 import PageSearch from '../../components/PageSearch.uvue';
+import MovieStatusTabs from './components/MovieStatusTabs.uvue';
+import CategoryPager from '../../components/CategoryPager.uvue';
 import FilterTrigger from '../../components/FilterTrigger.uvue';
 import FilterSheet from '../../components/FilterSheet.uvue';
 import MobileButton from '../../components/MobileButton.uvue';
@@ -43,11 +45,31 @@ const kind = ref('movie'),
       ? ['电影', '剧集', '动漫', '纪录片', '其他']
       : ['书籍', '文章/网页'],
   );
-const statusLabels = computed(() =>
-  kind.value === 'movie'
-    ? ['想看', '在看', '看过', '搁置']
-    : ['想读', '在读', '读过', '搁置'],
-);
+const readingStatusLabels = ['想读', '在读', '读过', '搁置'];
+const movieStatuses = [
+  { status: 'not_started', label: '未开始' },
+  { status: 'in_progress', label: '进行中' },
+  { status: 'on_hold', label: '已暂停' },
+  { status: 'completed', label: '已完成' },
+];
+const libraryPageSize = 30;
+function createList() {
+  return {
+    rows: [] as any[], page: 1, total: null as number | null, loaded: false, ended: false, revision: 0,
+    loading: false, loadingMore: false, refreshing: false, error: '', moreError: '',
+  };
+}
+const readList = ref(createList());
+const moviePages = ref(movieStatuses.map(group => ({
+  ...group, ...createList(), count: null as number | null, contentRevision: 0,
+})));
+const movieIndex = ref(1);
+const movieProgress = ref<number | null>(null);
+const moviePager = ref<{ measure: () => void; ignoreClick: () => boolean } | null>(null);
+const currentList = computed(() => kind.value === 'movie' ? moviePages.value[movieIndex.value] : readList.value);
+const movieTabs = computed(() => moviePages.value.map(({ label, count }) => ({
+  label, count: count ?? '—', ariaLabel: count == null ? label : label + '，' + count + ' 条',
+})));
 const rankingOptions = ref<Array<{ id: string; name: string }>>([]);
 const rankingId = ref('');
 const rankingIndex = computed({
@@ -60,18 +82,12 @@ function rankingDisplayName(name: string) {
   return (name === '豆瓣电影Top250' || name === '豆瓣读书Top250') ? '豆瓣 Top250' : name;
 }
 const rankingLabels = computed(() => rankingOptions.value.map(list => rankingDisplayName(list.name)));
-const rows = ref<any[]>([]),
-  page = ref(1),
-  total = ref<number | null>(null),
-  keyword = ref(''),
+const keyword = ref(''),
   searchDraft = ref(''),
   searchOpen = ref(false),
   typeIndex = ref(0),
-  statusIndex = ref(0),
-  loading = ref(false),
-  refreshing = ref(false),
+  readingStatusIndex = ref(0),
   entryLoading = ref(false),
-  error = ref(''),
   editing = ref('');
 const readingGroups = [
   { status: 'in_progress', label: '在读' }, { status: 'completed', label: '读过' },
@@ -80,23 +96,20 @@ const readingGroups = [
 const previewSize = 6;
 type ReadingGroup = { status: string; label: string; items: any[]; total: number | null; hasMore: boolean };
 const previews = ref<ReadingGroup[]>([]);
-const overview = computed(() => kind.value === 'read' && statusIndex.value === 0);
+const overview = computed(() => kind.value === 'read' && readingStatusIndex.value === 0);
 const readingShelves = computed<ReadingGroup[]>(() => overview.value ? previews.value : [{
-  label: statusLabels.value[statusIndex.value - 1], status: statuses[statusIndex.value - 1],
-  items: rows.value, total: total.value, hasMore: false,
+  label: readingStatusLabels[readingStatusIndex.value - 1], status: statuses[readingStatusIndex.value - 1],
+  items: readList.value.rows, total: readList.value.total, hasMore: false,
 }]);
-const listEmpty = computed(() => overview.value ? !previews.value.length : !rows.value.length);
-const listKey = computed(() => JSON.stringify([kind.value, keyword.value, typeIndex.value, statusIndex.value, rankingId.value]));
-const loadedKey = ref('');
-const loadingMore = ref(false);
+const listKey = computed(() => JSON.stringify([kind.value, keyword.value, typeIndex.value, readingStatusIndex.value, rankingId.value]));
 const filtersOpen = ref(false);
 const defaultFilters = { type: 0, status: 0, ranking: 0 };
 const filterDraft = ref({ ...defaultFilters });
-const hasFilters = computed(() => typeIndex.value > 0 || statusIndex.value > 0 || !!rankingId.value);
+const hasFilters = computed(() => typeIndex.value > 0 || readingStatusIndex.value > 0 || !!rankingId.value);
 const filterAccent = computed(() => themePalette().tabSelectedColor);
 const filterGroups = computed<Array<{ key: keyof typeof defaultFilters; label: string; options: string[] }>>(() => [
   { key: 'type', label: '类型', options: typeLabels.value },
-  { key: 'status', label: kind.value === 'movie' ? '观影状态' : '阅读状态', options: statusLabels.value },
+  ...(kind.value === 'read' ? [{ key: 'status' as const, label: '阅读状态', options: readingStatusLabels }] : []),
   { key: 'ranking', label: '榜单', options: rankingLabels.value },
 ]);
 const form = ref<any>(null);
@@ -115,6 +128,7 @@ const issues = computed(() => [
   ...localIssues.value,
   ...(preview.value?.errors || []),
 ]);
+const movieSwitcherDisabled = computed(() => !!(form.value || filtersOpen.value || importingOpen.value || entryLoading.value || editing.value));
 const scope = createRecordScope((clear) => {
   form.value = null;
   filtersOpen.value = false;
@@ -128,9 +142,7 @@ const scope = createRecordScope((clear) => {
     rankingStatus.value = 'idle';
     requestedEdit = '';
     requestedCreate = false;
-    rows.value = [];
-    previews.value = [];
-    loadedKey.value = '';
+    resetLists();
     importRequest.value = null;
     preview.value = null;
     importText.value = '';
@@ -143,7 +155,7 @@ let requestedEdit = '', requestedCreate = false;
 onLoad((options) => {
   kind.value = options?.kind === 'read' ? 'read' : 'movie';
   if (kind.value === 'read' && statuses.includes(options?.shelf)) {
-    statusIndex.value = statuses.indexOf(options.shelf) + 1;
+    readingStatusIndex.value = statuses.indexOf(options.shelf) + 1;
     keyword.value = searchDraft.value = options.title || '';
     typeIndex.value = [1, 2].includes(Number(options.type)) ? Number(options.type) : 0;
     rankingId.value = options.rankingListId || '';
@@ -151,7 +163,10 @@ onLoad((options) => {
   requestedEdit = options?.editId || '';
   requestedCreate = options?.create === '1';
 });
-const refreshOnShow = usePageRefresh(() => load(), { loading: () => loading.value, error: () => error.value, keys: () => ['read-record', 'movie', 'userDictData', 'userDictType'] })
+const refreshOnShow = usePageRefresh(() => reload(), {
+  loading: () => currentList.value.loading, error: () => currentList.value.error,
+  keys: () => ['read-record', 'movie', 'userDictData', 'userDictType'],
+});
 async function loadRankings() {
   if (!session.token || rankingStatus.value === 'loading' || rankingStatus.value === 'ready') return;
   const current = ++rankingRequest;
@@ -173,15 +188,28 @@ onUnmounted(() => {
   alive = false;
   generation++;
 });
-const moreError = ref(''), pageEnded = ref(false);
+function resetLists(keepCurrentMovie = false) {
+  generation++;
+  readList.value = createList();
+  previews.value = [];
+  moviePages.value = moviePages.value.map((group, index) => {
+    if (keepCurrentMovie && index === movieIndex.value) {
+      return { ...group, loading: false, loadingMore: false, refreshing: false };
+    }
+    return { ...group, ...createList(), count: keepCurrentMovie ? group.count : null, contentRevision: generation };
+  });
+}
 function submitSearch() {
-  keyword.value = searchDraft.value.trim();
-  searchDraft.value = keyword.value;
-  void load();
+  searchDraft.value = searchDraft.value.trim();
+  if (keyword.value !== searchDraft.value) {
+    keyword.value = searchDraft.value;
+    resetLists();
+  }
+  void reload();
 }
 function openFilters() {
   searchOpen.value = false;
-  filterDraft.value = { type: typeIndex.value, status: statusIndex.value, ranking: rankingIndex.value };
+  filterDraft.value = { type: typeIndex.value, status: readingStatusIndex.value, ranking: rankingIndex.value };
   filtersOpen.value = true;
   if (rankingStatus.value === 'idle') void loadRankings();
 }
@@ -191,11 +219,12 @@ function toggleFilter(key: keyof typeof defaultFilters, value: number) {
 function applyFilters() {
   filtersOpen.value = false;
   const { type, status, ranking } = filterDraft.value;
-  if (type === typeIndex.value && status === statusIndex.value && ranking === rankingIndex.value) return;
+  if (type === typeIndex.value && status === readingStatusIndex.value && ranking === rankingIndex.value) return;
   typeIndex.value = type;
-  statusIndex.value = status;
+  readingStatusIndex.value = status;
   rankingIndex.value = ranking;
-  void load();
+  resetLists();
+  void reload();
 }
 function openShelf(status: string) {
   let url = '/pages/records/library?kind=read&shelf=' + status;
@@ -215,55 +244,86 @@ async function fetchPreviews(filters: Record<string, any>) {
   }));
   return groups.filter(group => group.items.length > 0);
 }
+function libraryFilters() {
+  return {
+    ...(rankingId.value ? { rankingListId: rankingId.value } : {}),
+    title: keyword.value.trim(),
+    ...(typeIndex.value > 0 ? { type: typeIndex.value } : {}),
+  };
+}
+function selectMovieStatus(index: number) {
+  const target = moviePages.value[index];
+  if (!target || index === movieIndex.value || movieSwitcherDisabled.value) return;
+  movieIndex.value = index;
+  if ((!target.loaded || target.error) && !target.loading) void load();
+}
 function loadMore() {
-  if (overview.value || loading.value || error.value || moreError.value) return;
-  load(false, true);
+  const target = currentList.value;
+  if (overview.value || target.error || target.moreError) return;
+  void load(false, true);
+}
+let countRequest = 0;
+function reload(refresh = false) {
+  if (refresh) void loadRankings();
+  if (kind.value === 'movie') {
+    const request = ++countRequest;
+    const current = generation;
+    const filters = libraryFilters();
+    for (const [index, target] of moviePages.value.entries()) {
+      if (index === movieIndex.value) continue;
+      const revision = target.revision;
+      void scope.wait(fetchLibrary('movie', { ...filters, statuses: [target.status], page: 1, pageSize: 1 }))
+        .then(data => {
+          if (alive && current === generation && request === countRequest && (!target.loaded || revision === target.revision)) {
+            target.count = readPageTotal(data.total);
+          }
+        }).catch(() => {
+          // 数量查询失败时保留上次结果。切换到该状态或下拉刷新可以重新查询。
+        });
+    }
+  }
+  return load(refresh);
 }
 async function load(refresh = false, more = false) {
-  if (refresh) void loadRankings();
-  if (more && (loading.value || !rows.value.length || !hasMorePageItems(rows.value.length, total.value, pageEnded.value))) return;
-  const current = ++generation,
-    next = more ? page.value + 1 : 1;
-  const key = listKey.value;
-  if (loadedKey.value !== key) {
-    rows.value = [];
-    previews.value = [];
-    total.value = null;
-    loadedKey.value = '';
-  }
-  loading.value = true;
-  loadingMore.value = more;
-  refreshing.value = refresh;
-  error.value = '';
-  moreError.value = '';
+  const moviePage = kind.value === 'movie' ? moviePages.value[movieIndex.value] : null;
+  const target = moviePage ?? readList.value;
+  if (more && (target.loading || !target.rows.length || !hasMorePageItems(target.rows.length, target.total, target.ended))) return;
+  const current = generation;
+  const revision = ++target.revision;
+  const isCurrent = () => alive && current === generation && revision === target.revision;
+  const next = more ? target.page + 1 : 1;
+  target.loading = true;
+  target.loadingMore = more;
+  target.refreshing = refresh;
+  target.error = '';
+  target.moreError = '';
   try {
-    const filters = {
-      ...(rankingId.value ? { rankingListId: rankingId.value } : {}),
-      title: keyword.value.trim(),
-      ...(typeIndex.value > 0 ? { type: typeIndex.value } : {}),
-    };
+    const filters = libraryFilters();
     if (overview.value) {
       const groups = await scope.wait(fetchPreviews(filters));
-      if (!alive || current !== generation) return;
+      if (!isCurrent()) return;
       previews.value = groups;
     } else {
+      const status = moviePage?.status ?? statuses[readingStatusIndex.value - 1];
       const data = await scope.wait(fetchLibrary(kind.value, {
-        ...filters, page: next, pageSize: 30,
-        ...(statusIndex.value > 0 ? { statuses: [statuses[statusIndex.value - 1]] } : {}),
+        ...filters, page: next, pageSize: libraryPageSize,
+        ...(status ? { statuses: [status] } : {}),
       }));
-      if (!alive || current !== generation) return;
+      if (!isCurrent()) return;
       const nextTotal = readPageTotal(data.total);
-      rows.value = mergePageItems(more ? rows.value : [], data.items);
-      page.value = next;
-      pageEnded.value = !data.items.length;
-      total.value = nextTotal;
+      target.rows = mergePageItems(more ? target.rows : [], data.items);
+      target.page = next;
+      target.ended = !data.items.length;
+      target.total = nextTotal;
+      if (moviePage) moviePage.count = nextTotal;
     }
-    loadedKey.value = key;
+    target.loaded = true;
+    if (target !== currentList.value) return;
     if (requestedEdit) {
       // 首页入口可能不在列表首屏，始终读取完整详情后再允许编辑。
       entryLoading.value = true;
       const detail = await scope.wait(fetchLibraryDetail(kind.value, requestedEdit));
-      if (!alive || current !== generation) return;
+      if (!isCurrent()) return;
       setEditForm(detail);
       requestedEdit = '';
       requestedCreate = false;
@@ -273,13 +333,16 @@ async function load(refresh = false, more = false) {
     }
   } catch (e) {
     if (e.name === 'PageInactiveError') return;
-    if (current === generation) (more ? moreError : error).value = e.message;
+    if (isCurrent()) {
+      if (more) target.moreError = e.message;
+      else target.error = e.message;
+    }
   } finally {
-    if (current === generation) {
-      loading.value = false;
-      loadingMore.value = false;
-      refreshing.value = false;
-      entryLoading.value = false;
+    if (isCurrent()) {
+      target.loading = false;
+      target.loadingMore = false;
+      target.refreshing = false;
+      if (target === currentList.value) entryLoading.value = false;
     }
   }
 }
@@ -293,7 +356,7 @@ function setEditForm(detail) {
   };
 }
 async function open(item = null) {
-  if (editing.value || entryLoading.value) return;
+  if (editing.value || entryLoading.value || (item && moviePager.value?.ignoreClick())) return;
   if (!item) {
     form.value = {
       title: '',
@@ -320,21 +383,23 @@ async function open(item = null) {
     setEditForm(detail);
   } catch (e) {
     if (e.name === 'PageInactiveError') return;
-    error.value = e.message;
+    currentList.value.error = e.message;
   } finally {
     editing.value = '';
   }
 }
-function saved(updated) {
+function saved(updated, status: string) {
   form.value = null;
   if (kind.value === 'read') {
     void load();
-  } else if (updated) {
-    const index = rows.value.findIndex(row => row.id === updated.id);
-    if (index >= 0) rows.value[index] = updated;
   } else {
-    searchDraft.value = ''; keyword.value = ''; typeIndex.value = 0; statusIndex.value = 0;
-    void load();
+    if (!updated) {
+      searchDraft.value = ''; keyword.value = ''; typeIndex.value = 0;
+      const index = movieStatuses.findIndex(group => group.status === status);
+      if (index >= 0) movieIndex.value = index;
+    }
+    resetLists(!!updated);
+    void reload();
   }
 }
 function deleted(id) {
@@ -343,9 +408,10 @@ function deleted(id) {
     void load();
     return;
   }
-  rows.value = rows.value.filter(row => row.id !== id);
-  if (total.value != null) total.value = Math.max(0, total.value - 1);
   form.value = null;
+  currentList.value.rows = currentList.value.rows.filter(row => row.id !== id);
+  resetLists(true);
+  void reload();
 }
 function openImport() {
   searchOpen.value = false;
@@ -428,7 +494,8 @@ async function submitImport() {
         duplicatePolicy: policy.value === '覆盖重复' ? 'overwrite' : 'skip',
       }),
     );
-    await load();
+    resetLists(true);
+    await reload();
   } catch (e) {
     if (e.name === 'PageInactiveError') return;
     importError.value = e.message;
@@ -438,92 +505,102 @@ async function submitImport() {
 }
 </script>
 <template>
-  <MobilePage :refreshing="refreshing" @refresh="load(true)" @reachbottom="loadMore"
+  <MobilePage :scroll-locked="kind === 'movie'" :refreshing="kind === 'read' && readList.refreshing"
+    @refresh="reload(true)" @reachbottom="loadMore"
     ><view class="library-page ui-page-body" :class="{ 'library-page-dark': isDark }"
       ><PageSearch v-model="searchDraft" v-model:open="searchOpen" :title="title" :label="'搜索' + title"
-        :content-min-width="spacing.controlMin" :actions-min-width="spacing.controlMin * (kind === 'movie' ? 2 : 1)" back manual :active="!!keyword" :loading="loading"
-        @search="submitSearch" @dismiss="searchDraft = keyword" @back="uni.navigateBack()">
+        :content-min-width="spacing.controlMin" :actions-min-width="spacing.controlMin * (kind === 'movie' ? 2 : 1)" back manual :active="!!keyword" :loading="currentList.loading"
+        @search="submitSearch" @dismiss="searchDraft = keyword" @layout="moviePager?.measure()" @back="uni.navigateBack()">
         <template v-if="kind === 'movie'" #actions>
-          <MobileButton label="豆瓣导入" icon="ant-design:download-outlined" variant="ghost" @click="openImport" />
+          <MobileButton label="豆瓣导入" icon="ant-design:upload-outlined" variant="ghost" @click="openImport" />
         </template>
         <template #trailing-actions>
           <FilterTrigger :label="'筛选' + title" :open="filtersOpen" :active="hasFilters" @click="openFilters" />
         </template>
       </PageSearch>
       <LoadingIndicator v-if="entryLoading" floating label="正在加载记录详情" />
-      <PageState skeleton="media"
-        :loading="loading && !loadingMore"
-        :has-content="loadedKey === listKey" :content-key="listKey"
-        :error="error"
-        :empty="listEmpty"
-        @retry="load()"
-      >
-        <template #loading>
-          <view v-if="kind === 'read'" class="ui-gap-md">
-            <ReadingShelf v-for="group in (overview ? readingGroups.slice(0, 3) : readingShelves)" :key="group.status"
-              :status="group.status" :label="group.label" :items="[]" :total="null" :placeholders="group.status === 'completed' ? 6 : 3" />
-          </view>
-          <view v-else class="library-grid ui-gap-md ui-section">
-            <view v-for="n in 9" :key="n" class="library-card ui-gap-sm">
-              <view class="library-poster"><ContentSkeleton variant="cover" /></view>
-              <ContentSkeleton variant="caption" />
+      <template v-if="kind === 'movie'">
+        <MovieStatusTabs :items="movieTabs" :current="movieIndex" :progress="movieProgress"
+          :disabled="movieSwitcherDisabled" @change="selectMovieStatus" />
+        <CategoryPager ref="moviePager" :items="moviePages" :current="movieIndex" track-progress :disabled="movieSwitcherDisabled"
+          :refreshing="currentList.refreshing" :layout-key="searchOpen" tabs-selector=".movie-status-tabs"
+          @change="selectMovieStatus" @progress="movieProgress = $event" @refresh="reload(true)" @reachbottom="loadMore">
+          <template #default="{ item: moviePage }">
+            <PageState skeleton="media"
+              :loading="!moviePage.loadingMore && (moviePage.loading || (!moviePage.loaded && !moviePage.error))"
+              :has-content="moviePage.loaded"
+              :content-key="listKey + ':' + moviePage.status + ':' + moviePage.contentRevision + ':' + (moviePage.loaded ? '' : moviePage.count)"
+              :error="moviePage.error" :empty="!moviePage.rows.length" @retry="reload()">
+              <template #loading>
+                <view v-if="moviePage.count === 0" class="library-empty-loading ui-pad-card">
+                  <LoadingIndicator compact label="正在加载观影记录" />
+                </view>
+                <view v-else class="library-grid ui-gap-md ui-section" role="status" aria-label="正在加载观影记录">
+                  <view v-for="n in Math.min(moviePage.count ?? 9, libraryPageSize)" :key="n" class="library-card" aria-hidden="true">
+                    <view class="library-poster"><ContentSkeleton variant="cover" /></view>
+                  </view>
+                </view>
+              </template>
+              <view v-if="moviePage.rows.length" class="library-grid ui-gap-md ui-section">
+                <view v-for="item in moviePage.rows" :key="item.id" class="library-card ui-gap-sm">
+                  <view
+                    class="library-poster"
+                    role="button"
+                    tabindex="0"
+                    aria-label="编辑记录"
+                    :aria-description="item.title"
+                    :aria-busy="editing === item.id"
+                    @click="open(item)"
+                    @keydown.enter="open(item)"
+                    @keydown.space.prevent="open(item)"
+                  >
+                    <LibraryCover
+                      :file-id="item.fileId || ''"
+                      :url="item.coverImgUrl || ''"
+                      :title="item.title"
+                      :kind="kind"
+                    />
+                    <view v-if="editing === item.id" class="library-opening"
+                      ><LoadingIndicator compact label="正在加载记录详情" /></view
+                    >
+                  </view>
+                  <view v-for="badge in item.rankings" :key="badge.rankingListId" class="library-ranking" :class="{ 'library-ranking-wrap': badge.name === '豆瓣电影Top250' }" :aria-label="rankingDisplayName(badge.name) + (badge.rank == null ? '' : ' 第' + badge.rank + '名')">
+                    <text v-if="badge.rank != null" class="library-rank">No.{{ badge.rank }}</text>
+                    <text class="library-rank-name">{{ rankingDisplayName(badge.name) }}</text>
+                  </view>
+                  <text v-if="item.finishDate" class="library-date" :class="{ 'record-secondary-dark': isDark }">{{
+                    item.finishDate.slice(0, 10)
+                  }}</text>
+                </view>
+              </view>
+            </PageState>
+            <LoadMore :error="moviePage.moreError" :loading="moviePage.loadingMore"
+              :has-more="hasMorePageItems(moviePage.rows.length, moviePage.total, moviePage.ended)"
+              @load="load(false, true)" />
+          </template>
+        </CategoryPager>
+      </template>
+      <template v-else>
+        <PageState skeleton="media" :loading="readList.loading && !readList.loadingMore"
+          :has-content="readList.loaded" :content-key="listKey"
+          :error="readList.error" :empty="overview ? !previews.length : !readList.rows.length" @retry="load()">
+          <template #loading>
+            <view class="ui-gap-md">
+              <ReadingShelf v-for="group in (overview ? readingGroups.slice(0, 3) : readingShelves)" :key="group.status"
+                :status="group.status" :label="group.label" :items="[]" :total="null" :placeholders="group.status === 'completed' ? 6 : 3" />
             </view>
+          </template>
+          <view class="ui-gap-md">
+            <ReadingShelf v-for="group in readingShelves" v-show="group.items.length > 0" :key="group.status"
+              :status="group.status" :label="group.label" :items="group.items" :total="group.total"
+              :has-more="group.hasMore" :editing="editing" @open="open" @all="openShelf(group.status)" />
           </view>
-        </template>
-
-        <view v-if="kind === 'read'" class="ui-gap-md">
-          <ReadingShelf v-for="group in readingShelves" v-show="group.items.length > 0" :key="group.status"
-            :status="group.status" :label="group.label" :items="group.items" :total="group.total"
-            :has-more="group.hasMore" :editing="editing" @open="open" @all="openShelf(group.status)" />
-        </view>
-        <view v-else class="library-grid ui-gap-md ui-section">
-          <view v-for="item in rows" :key="item.id" class="library-card ui-gap-sm">
-            <view
-              class="library-poster"
-              role="button"
-              tabindex="0"
-              aria-label="编辑记录"
-              :aria-description="item.title"
-              :aria-busy="editing === item.id"
-              @click="open(item)"
-              @keydown.enter="open(item)"
-              @keydown.space.prevent="open(item)"
-            >
-              <LibraryCover
-                :file-id="item.fileId || ''"
-                :url="item.coverImgUrl || ''"
-                :title="item.title"
-                :kind="kind"
-              />
-              <text
-                v-if="item.status"
-                class="library-status"
-                :class="'library-status-' + item.status"
-                >{{
-                  statusLabels[statuses.indexOf(item.status)] || '未知'
-                }}</text
-              >
-              <view v-if="editing === item.id" class="library-opening"
-                ><LoadingIndicator compact label="正在加载记录详情" /></view
-              >
-            </view>
-            <view v-for="badge in item.rankings" :key="badge.rankingListId" class="library-ranking" :class="{ 'library-ranking-wrap': badge.name === '豆瓣电影Top250' }" :aria-label="rankingDisplayName(badge.name) + (badge.rank == null ? '' : ' 第' + badge.rank + '名')">
-              <text v-if="badge.rank != null" class="library-rank">No.{{ badge.rank }}</text>
-              <text class="library-rank-name">{{ rankingDisplayName(badge.name) }}</text>
-            </view>
-            <text v-if="item.finishDate" class="library-date" :class="{ 'record-secondary-dark': isDark }">{{
-              item.finishDate.slice(0, 10)
-            }}</text>
-          </view>
-        </view>
-      </PageState>
-      <LoadMore v-if="!overview" :error="moreError"
-        :loading="loadingMore"
-        :has-more="hasMorePageItems(rows.length, total, pageEnded)"
-        @load="load(false, true)"
-      />
+        </PageState>
+        <LoadMore v-if="!overview" :error="readList.moreError" :loading="readList.loadingMore"
+          :has-more="hasMorePageItems(readList.rows.length, readList.total, readList.ended)" @load="load(false, true)" />
+      </template>
       <FilterSheet :open="filtersOpen" :content-key="rankingStatus + ':' + rankingOptions.length"
-        :summary="kind === 'movie' && (!loading || rows.length) ? (total == null ? '已加载 ' + rows.length : total) + ' 条' : ''"
+        :summary="kind === 'movie' && currentList.loaded ? (currentList.total == null ? '已加载 ' + currentList.rows.length : currentList.total) + ' 条' : ''"
         @close="filtersOpen = false" @reset="filterDraft = { ...defaultFilters }" @apply="applyFilters">
           <view class="ui-gap-md">
             <view v-for="group in filterGroups" :key="group.key" class="ui-gap-sm" role="group" :aria-label="group.label">
@@ -700,6 +777,12 @@ async function submitImport() {
   flex-wrap: wrap;
 
 }
+.library-empty-loading {
+  box-sizing: border-box;
+  min-height: type-line('body') + $space-card * 2;
+  align-items: center;
+  justify-content: center;
+}
 .library-card {
   width: calc((100% - #{$space-section * 2}) / 3);
 
@@ -715,26 +798,6 @@ async function submitImport() {
   align-self: center;
   width: $cover-width;
   padding-top: ($cover-width * math.div(4, 3));
-}
-.library-status {
-  position: absolute;
-  right: 0;
-  top: 0;
-  padding: $space-detail $space-inline;
-  border-bottom-left-radius: 6px;
-  color: #ffffff;
-  background-color: #737e90;
-  @include type-style('chart-label');
-
-}
-.library-status-in_progress {
-  background-color: #3b82f6;
-}
-.library-status-completed {
-  background-color: #22a06b;
-}
-.library-status-on_hold {
-  background-color: #c77d18;
 }
 .library-date {
   @include type-style('badge');

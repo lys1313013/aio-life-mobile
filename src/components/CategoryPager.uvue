@@ -3,24 +3,60 @@ import { getCurrentInstance, nextTick, onMounted, onUnmounted, ref, watch } from
 import { onResize } from '@dcloudio/uni-app';
 import { isDark } from '../services/theme.ts';
 // #ifdef WEB
-import { bindPagerMouseDrag } from '../services/pager-mouse-drag.ts';
+import { bindHorizontalWheel, bindPagerMouseDrag } from '../services/pager-mouse-drag.ts';
 // #endif
 const props = withDefaults(defineProps<{
   items: any[]; current: number; disabled?: boolean; refreshing?: boolean; layoutKey?: any;
-  tabsSelector?: string; refreshEnabled?: boolean;
+  tabsSelector?: string; refreshEnabled?: boolean; trackProgress?: boolean;
 }>(), { disabled: false, refreshing: false, refreshEnabled: true, tabsSelector: '.category-tabs' });
-const emit = defineEmits(['change', 'refresh', 'reachbottom']);
+const emit = defineEmits(['change', 'refresh', 'reachbottom', 'progress']);
 const root = ref(null), height = ref(0);
 const instance = getCurrentInstance();
 let disposed = false, startX = 0, startY = 0, ignoreUntil = 0;
+let width = 0, gesturePage = -1, moving = false;
 async function measure() {
   await nextTick();
   if (disposed || !instance?.proxy) return;
   uni.createSelectorQuery().in(instance.proxy).select('.category-pager').boundingClientRect(rect => {
-    if (!disposed && rect && !Array.isArray(rect)) height.value = Math.max(1, uni.getWindowInfo().windowHeight - rect.top);
+    if (!disposed && rect && !Array.isArray(rect)) {
+      width = rect.width;
+      height.value = Math.max(1, uni.getWindowInfo().windowHeight - rect.top);
+    }
   }).exec();
 }
-function touchStart(event) { startX = event.touches[0]?.clientX || 0; startY = event.touches[0]?.clientY || 0; }
+function beginGesture() {
+  if (props.trackProgress && !props.disabled) gesturePage = props.current;
+}
+function releaseGesture() { if (!moving) gesturePage = -1; }
+function finishGesture() {
+  gesturePage = -1;
+  if (moving) emit('progress', null);
+  moving = false;
+}
+function transition(event) {
+  if (gesturePage < 0 || !width || props.disabled) return;
+  let position = gesturePage + event.detail.dx / width;
+  // #ifdef WEB
+  // H5 的 dx 以本次过渡的首帧为基准，反向拖动或中途接手时直接读取实际位置。
+  const element = root.value?.$el || root.value;
+  const first = element?.querySelector('.category-pager-page');
+  if (first) {
+    const bounds = element.getBoundingClientRect();
+    position = (bounds.left - first.getBoundingClientRect().left) / bounds.width;
+  }
+  // #endif
+  moving = true;
+  emit('progress', position);
+}
+function change(event) {
+  if (event.detail.source !== 'touch') finishGesture();
+  if (!props.disabled) emit('change', event.detail.current);
+}
+function touchStart(event) {
+  startX = event.touches[0]?.clientX || 0;
+  startY = event.touches[0]?.clientY || 0;
+  beginGesture();
+}
 function touchMove(event) {
   const point = event.touches[0];
   if (point && Math.max(Math.abs(point.clientX - startX), Math.abs(point.clientY - startY)) > 8) ignoreUntil = Date.now() + 400;
@@ -30,8 +66,10 @@ defineExpose({ ignoreClick, measure });
 onMounted(measure);
 onResize(measure);
 watch(() => [props.items.length, props.layoutKey], measure, { flush: 'post' });
+watch(() => props.disabled, finishGesture);
 // #ifdef WEB
 let release: (() => void) | undefined;
+let releaseWheel: (() => void) | undefined;
 async function isolatePages() {
   await nextTick();
   const element = root.value?.$el || root.value;
@@ -47,20 +85,34 @@ watch(() => [props.current, props.items.length], isolatePages, { flush: 'post' }
 onMounted(isolatePages);
 onMounted(() => {
   const element = root.value?.$el || root.value;
-  if (element) release = bindPagerMouseDrag(element.closest('.ui-page-body') || element.parentElement, '.category-pager', props.tabsSelector);
+  if (!element) return;
+  release = bindPagerMouseDrag(element.closest('.ui-page-body') || element.parentElement, '.category-pager', props.tabsSelector);
+  releaseWheel = bindHorizontalWheel(element, direction => {
+    const index = props.current + direction;
+    if (index >= 0 && index < props.items.length) emit('change', index);
+  }, () => !props.disabled && props.items.length > 1);
+  element.addEventListener('mousedown', beginGesture);
+  document.addEventListener('mouseup', releaseGesture);
+  window.addEventListener('blur', finishGesture);
 });
 // #endif
 onUnmounted(() => {
   disposed = true;
   // #ifdef WEB
   release?.();
+  releaseWheel?.();
+  const element = root.value?.$el || root.value;
+  element?.removeEventListener('mousedown', beginGesture);
+  document.removeEventListener('mouseup', releaseGesture);
+  window.removeEventListener('blur', finishGesture);
   // #endif
 });
 </script>
 <template>
   <swiper ref="root" class="category-pager" :style="{ height: height + 'px' }" :current="Math.max(0, current)"
     :duration="360" easing-function="easeOutCubic" :circular="false" :disable-touch="disabled"
-    @change="!disabled && emit('change', $event.detail.current)" @touchstart="touchStart" @touchmove="touchMove">
+    @change="change" @transition="transition" @animationfinish="finishGesture"
+    @touchstart="touchStart" @touchmove="touchMove" @touchend="releaseGesture" @touchcancel="releaseGesture">
     <swiper-item v-for="(item, index) in items" :key="item.id ?? item.value ?? item.label ?? index">
       <scroll-view class="category-pager-scroll" direction="vertical" :scroll-y="true" :show-scrollbar="false"
         :refresher-enabled="refreshEnabled && index === current && !disabled" :refresher-triggered="refreshing && index === current"

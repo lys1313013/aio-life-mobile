@@ -1,11 +1,48 @@
 <script setup lang="ts">
+import { computed, getCurrentInstance, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
+import { onResize } from '@dcloudio/uni-app';
 import { isDark } from '../services/theme.ts';
 const props = withDefaults(defineProps<{
   items: any[]; current: number; label?: string; variant?: 'underline' | 'solid' | 'soft';
   idPrefix: string; itemClass?: string; labelClass?: string; countClass?: string;
-  loading?: boolean; disabled?: boolean; tabRole?: boolean;
-}>(), { label: '分类', variant: 'soft', itemClass: '', labelClass: '', countClass: '', loading: false, disabled: false, tabRole: false });
-const emit = defineEmits(['change']);
+  loading?: boolean; disabled?: boolean; tabRole?: boolean; scrollable?: boolean; progress?: number | null;
+}>(), { label: '分类', variant: 'soft', itemClass: '', labelClass: '', countClass: '', loading: false, disabled: false, tabRole: false, scrollable: true });
+const emit = defineEmits(['change', 'fit']);
+const instance = getCurrentInstance();
+const tabRects = ref<Array<{ left: number; width: number }>>([]);
+const underline = computed(() => {
+  const tabs = tabRects.value;
+  if (!tabs[props.current]?.width || props.variant !== 'underline') return null;
+  const position = Math.max(0, Math.min(tabs.length - 1, props.progress ?? props.current));
+  const start = tabs[Math.floor(position)], end = tabs[Math.ceil(position)];
+  const fraction = position % 1;
+  return {
+    left: start.left - tabs[0].left + (end.left - start.left) * fraction,
+    width: start.width + (end.width - start.width) * fraction,
+  };
+});
+let measurement = 0, disposed = false;
+async function measure() {
+  const revision = ++measurement;
+  await nextTick();
+  if (disposed || !instance?.proxy || props.variant !== 'underline') return;
+  uni.createSelectorQuery().in(instance.proxy)
+    .select('.category-tabs').boundingClientRect()
+    .selectAll('.category-tab').boundingClientRect()
+    .exec(rects => {
+      if (disposed || revision !== measurement) return;
+      const [viewport, tabs] = rects || [];
+      if (!viewport || !Array.isArray(tabs) || !tabs.length) return;
+      const left = tabs[0].left;
+      const last = tabs[tabs.length - 1];
+      emit('fit', last.right - left <= viewport.width + 1);
+      tabRects.value = tabs;
+    });
+}
+onMounted(measure);
+onResize(measure);
+watch(() => [props.variant, props.loading, props.items.map(item => [item.label, item.count])], measure, { flush: 'post' });
+
 function select(index: number) { if (!props.disabled && index >= 0 && index < props.items.length) emit('change', index); }
 function keydown(event, index: number) {
   const next = event.key === 'ArrowRight' ? Math.min(props.items.length - 1, index + 1) : event.key === 'ArrowLeft' ? Math.max(0, index - 1) : event.key === 'Home' ? 0 : event.key === 'End' ? props.items.length - 1 : -1;
@@ -17,9 +54,10 @@ function keydown(event, index: number) {
   button?.focus({ preventScroll: true });
   // #endif
 }
+onUnmounted(() => { disposed = true; });
 </script>
 <template>
-  <scroll-view class="category-tabs" direction="horizontal" :scroll-x="true" :show-scrollbar="false"
+  <scroll-view class="category-tabs" :direction="scrollable ? 'horizontal' : 'none'" :scroll-x="scrollable" :show-scrollbar="false"
     :scroll-into-view="idPrefix + '-' + current" :scroll-with-animation="true">
     <view class="category-tabs-track" :role="tabRole ? 'tablist' : 'group'" :aria-label="label">
       <button hover-class="none" v-for="(item, index) in items" :id="idPrefix + '-' + index" :key="item.id ?? item.value ?? item.label"
@@ -30,6 +68,9 @@ function keydown(event, index: number) {
         <text class="category-tab-label" :class="[labelClass, { 'category-tab-label-dark': isDark, 'category-tab-label-selected': current === index, 'category-tab-label-selected-dark': current === index && isDark, 'category-tab-label-inverse': current === index && variant === 'solid' }]">{{ item.label }}</text>
         <text v-if="item.count != null" class="category-tab-count" :class="[countClass, { 'category-tab-label-dark': isDark, 'category-tab-label-selected': current === index, 'category-tab-label-selected-dark': current === index && isDark, 'category-tab-label-inverse': current === index && variant === 'solid' }]">{{ loading ? '—' : item.count }}</text>
       </button>
+      <view v-if="variant === 'underline' && underline" class="category-underline category-underline-moving"
+        :class="{ 'category-underline-dark': isDark, 'category-underline-tracking': progress != null }"
+        :style="{ width: underline.width + 'px', transform: 'translateX(' + underline.left + 'px)' }" aria-hidden="true" />
     </view>
   </scroll-view>
 </template>
@@ -40,7 +81,7 @@ function keydown(event, index: number) {
 @use '../styles/text-colors' as *;
 @use '../styles/theme-tokens' as *;
 .category-tabs { width: 100%; min-width: 0; }
-.category-tabs-track { @include intrinsic-width; flex-direction: row; }
+.category-tabs-track { @include intrinsic-width; flex-direction: row; position: relative; }
 /* #ifndef APP */
 .category-tabs-track { min-width: 100%; }
 /* #endif */
@@ -55,13 +96,16 @@ function keydown(event, index: number) {
 .category-tab-label-selected { color: $theme-accent-light; }
 .category-tab-solid-selected { @include button-background($theme-accent-light); }
 .category-tab-solid-selected-dark { @include button-background(#315fbb); }
-.category-tab-underline { border-radius: 0; border-bottom: 2px solid transparent; @include button-background(transparent); padding: 0 $space-detail; }
-.category-tab-underline-selected { border-bottom-color: $theme-accent-light; }
-.category-tab-underline-selected-dark { border-bottom-color: $theme-accent-dark; }
+.category-tab-underline { border-radius: 0; border-bottom: $space-micro solid transparent; @include button-background(transparent); padding: 0 $space-detail; }
+.category-underline { position: absolute; bottom: $space-micro; left: 0; height: $space-micro; background-color: $theme-accent-light; }
+.category-underline-moving { transition: transform 360ms cubic-bezier(0.33, 1, 0.68, 1), width 360ms cubic-bezier(0.33, 1, 0.68, 1); pointer-events: none; }
+.category-underline-tracking { transition: none; }
+.category-underline-dark { background-color: $theme-accent-dark; }
 .category-tab-label-selected-dark { color: $theme-accent-dark; }
 .category-tab-label-inverse { color: #ffffff; }
 .category-tab { @include borderless-button; }
 /* #ifdef WEB */
 .category-tab:focus-visible { outline: 2px solid $theme-accent-light; outline-offset: -2px; }
+@media (prefers-reduced-motion: reduce) { .category-underline-moving { transition: none; } }
 /* #endif */
 </style>

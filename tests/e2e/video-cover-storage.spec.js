@@ -1,4 +1,5 @@
 const { test, expect } = require('./support/test');
+const { waitForMotion } = require('./support/motion');
 const { setup } = require('./qa-records-fixtures.js');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -24,6 +25,16 @@ for (const width of [390, 768, 1440]) for (const colorScheme of ['light', 'dark'
     await expect(page.locator('.video-page-active .video-card')).toHaveCount(1);
     await expect.poll(() => page.locator('.video-page-active .video-cover-image img').evaluateAll(nodes => nodes.filter(n => n.complete && n.naturalWidth > 0).length)).toBe(1);
     expect(imageRequests).toBe(1); expect(external).toEqual([]);
+    const poster = page.locator('.video-page-active .video-poster');
+    const overlay = poster.locator('.video-duration-overlay');
+    await expect(overlay.getByText('00:01:40', { exact: true })).toBeVisible();
+    await expect(overlay).toHaveCSS('background-image', /^linear-gradient\(/);
+    await expect(overlay).toHaveCSS('justify-content', 'flex-end');
+    await waitForMotion(page);
+    const [coverBox, overlayBox] = await Promise.all([poster.boundingBox(), overlay.boundingBox()]);
+    expect(overlayBox.x).toBeCloseTo(coverBox.x);
+    expect(overlayBox.width).toBeCloseTo(coverBox.width);
+    expect(overlayBox.y + overlayBox.height).toBeCloseTo(coverBox.y + coverBox.height);
     await page.screenshot({ path: info.outputPath('video-cover.png') });
   });
 }

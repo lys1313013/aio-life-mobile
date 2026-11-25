@@ -12,7 +12,6 @@ import { useWindowResize } from '../services/window-resize.ts'
 import AdaptiveModal from './AdaptiveModal.uvue'
 import ConfirmAction from './ConfirmAction.uvue'
 import FormActions from './FormActions.uvue'
-import FormSkeleton from './FormSkeleton.uvue'
 import FormField from './FormField.uvue'
 import TimeEndPicker from './TimeEndPicker.uvue'
 import CategoryIcon from './CategoryIcon.uvue'
@@ -558,20 +557,19 @@ function closeSelection() {
   <ModalMotion><AdaptiveModal
     :label="id ? '编辑时迹' : '记录时间'"
     :show-close="false"
-    :dense="compact"
-    :max-width="compact ? 440 : 600"
-    :loading="loading"
+    :dense="compact && !loading"
+    :max-width="loading ? 280 : compact ? 440 : 600"
     :vertical-inset="spacing.overlayBlock + spacing.modal"
     :busy="saving || deleting"
     :content-key="layoutKey"
     :focus-target="focusedField"
     @close="goBack"
   >
-    <template #loading>
-      <FormSkeleton :rows="compact ? ['picker-control', 'picker-control', 'pair', 'control', 'textarea'] : ['field', 'field', 'pair', 'controls', 'field', 'textarea']"
-        :expand-primary="compact" :footer="compact" label="正在加载时迹详情" />
-    </template>
     <view class="editor-content">
+      <view v-if="loading" class="editor-loading">
+        <LoadingIndicator compact label="正在加载时迹详情" />
+        <text class="loading-label" :class="themeClass('loading-label')" aria-hidden="true">正在加载</text>
+      </view>
       <view v-if="!ready && errorText" class="state-card"
          :class="themeClass('state-card')"><text class="error-text" role="alert" :class="themeClass('error-text')">{{ errorText }}</text
         ><button hover-class="none" role="button" class="text-action" @click="initialize()"><text :class="buttonLabelClasses(['text-action'])">重试加载</text></button></view
@@ -1362,6 +1360,15 @@ function closeSelection() {
   }
 }
 
+.editor-loading {
+  position: relative;
+  min-height: 104px;
+  align-items: center;
+  justify-content: center;
+  gap: $space-detail;
+}
+.loading-label { @include type-style('label'); color: #71717a; }
+.loading-label-dark { color: #a1a1aa; }
 
 /* 首页与时迹共用：时间、附属记录、标题和描述。 */
 .compact-fields,

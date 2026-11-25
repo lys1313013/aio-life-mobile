@@ -62,3 +62,26 @@ export function bindPagerMouseDrag(root: HTMLElement, pagerSelector: string, tab
     window.removeEventListener('blur', blur);
   };
 }
+
+/** 触控板连续发出多次横向 wheel，同一段滚动只翻一页。 */
+export function bindHorizontalWheel(root: HTMLElement, step: (direction: number) => void, enabled: () => boolean) {
+  let distance = 0, lastEvent = 0, turned = false;
+  function wheel(event: WheelEvent) {
+    if (!enabled() || event.ctrlKey || Math.abs(event.deltaX) <= Math.abs(event.deltaY)) return;
+    event.preventDefault();
+    const now = performance.now();
+    if (now - lastEvent > 160) {
+      distance = 0;
+      turned = false;
+    }
+    lastEvent = now;
+    if (turned) return;
+    const unit = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? root.clientWidth : 1;
+    distance += event.deltaX * unit;
+    if (Math.abs(distance) < 40) return;
+    turned = true;
+    step(Math.sign(distance));
+  }
+  root.addEventListener('wheel', wheel, { passive: false });
+  return () => root.removeEventListener('wheel', wheel);
+}

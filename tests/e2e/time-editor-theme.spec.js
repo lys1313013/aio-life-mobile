@@ -12,6 +12,7 @@ const response = data => ({ json: { code: 0, message: null, data } });
 // 按住真实鼠标检查平台 hover 状态；释放才触发按钮业务动作。
 async function press(page, button, screenshot) {
   await button.scrollIntoViewIfNeeded();
+  await waitForMotion(page);
   const paint = () => button.evaluate(node => {
     const style = getComputedStyle(node), after = getComputedStyle(node, '::after');
     return { background: style.backgroundColor, border: style.borderWidth === '0px' ? null : style.borderColor,
@@ -43,10 +44,14 @@ for (const width of [390, 768, 1440]) for (const theme of ['light', 'dark']) {
       localStorage.setItem('aio-life-mobile.access-token.v1', JSON.stringify({ type: 'string', data: 'theme-fixture' }));
       localStorage.setItem('aio-life-mobile.theme.v1', JSON.stringify({ type: 'string', data: theme }));
     }, theme);
+    const recommendation = Promise.withResolvers();
     apiMock({
       'GET /api/auth/secondary-lock/menus': response([]),
       'GET /api/timeTrackerCategory/list': response(categories),
-      'GET /api/timeRecord/recommendNext': response({ records: [], recommend: { date: day, categoryId: '1', startMinute: 600, endMinute: 659 } }),
+      'GET /api/timeRecord/recommendNext': async () => {
+        await recommendation.promise;
+        return response({ records: [], recommend: { date: day, categoryId: '1', startMinute: 600, endMinute: 659 } });
+      },
       'GET /api/timeRecord/relateTypes': response([{ label: '阅读', value: 1 }]),
       'GET /api/userDictType/getByDictType': response({ dictDetailList: [{ id: '9223372036854775806', dictLabel: '俯卧撑' }] }),
       'GET /api/read-record/page': response({ items: [{ id: '9223372036854775805', title: '模拟阅读', status: 'in_progress' }], total: 1 }),
@@ -57,10 +62,21 @@ for (const width of [390, 768, 1440]) for (const theme of ['light', 'dark']) {
         { id: '9223372036854775804', date: day, categoryId: '1', startMinute: 660, endMinute: 719 },
       ]),
     });
-    await page.goto(`/#/pages/time/edit?date=${day}`);
     const editor = page.getByRole('dialog', { name: '记录时间', exact: true });
-    await expect(editor.locator('.compact-title')).toBeVisible();
+    const loading = editor.getByRole('status', { name: '正在加载时迹详情', exact: true });
     const prefix = `artifacts/time-editor-theme/${width}-${theme}`;
+    try {
+      await page.goto(`/#/pages/time/edit?date=${day}`);
+      await expect(loading).toBeVisible();
+      await expect(editor.getByText('正在加载', { exact: true })).toBeVisible();
+      await expect(editor).toHaveCSS('max-width', '280px');
+      await waitForMotion(page);
+      await page.screenshot({ path: `${prefix}-loading.png` });
+    } finally {
+      recommendation.resolve();
+    }
+    await expect(editor.locator('.compact-title')).toBeVisible();
+    await expect(loading).toHaveCount(0);
     for (const selector of ['.compact-title input', '.compact-description textarea']) {
       const input = editor.locator(selector);
       await input.fill('模拟内容：检查夜间输入、聚焦及长文本换行。');

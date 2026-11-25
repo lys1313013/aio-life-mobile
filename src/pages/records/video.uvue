@@ -32,6 +32,7 @@ import {
 } from '../../services/records/contracts.ts';
 import {
   fetchVideoPage,
+  fetchVideoById,
   fetchVideoCovers,
   retryVideoCover,
   saveVideo,
@@ -46,7 +47,7 @@ const modalMotion0 = ref<{ close: () => void } | null>(null);
 const counts = ref<any>({}),
   statistics = ref<any>({}),
   refreshing = ref(false),
-  status = ref('进行中'),
+  status = ref<VideoStatus>('in_progress'),
   keyword = ref(''),
   form = ref<any>(null),
   saving = ref(false),
@@ -67,14 +68,17 @@ const statusLabels = {
   completed: statusNames[2],
   on_hold: '已暂停',
 };
-const statusTabs = ['未开始', '进行中', '已暂停', '已完成', '全部状态'];
+type VideoStatus = keyof typeof statusLabels;
+const statusTabs: VideoStatus[] = ['not_started', 'in_progress', 'on_hold', 'completed'];
 const statusIndex = computed(() => statusTabs.indexOf(status.value));
-const pages = ref(statusTabs.map(label => ({
-  label, rows: [] as any[], loading: false, loaded: false, stale: false, error: '', revision: 0,
-})));
+const emptyPages = () => statusTabs.map(code => ({
+  status: code, rows: [] as any[], loading: false, loaded: false, stale: false, error: '', revision: 0,
+}));
+const pages = ref(emptyPages());
 const currentPage = computed(() => pages.value[statusIndex.value]);
 const rows = computed({ get: () => currentPage.value.rows, set: value => { currentPage.value.rows = value; } });
-const loading = computed(() => currentPage.value.loading);
+const editLoading = ref(false);
+const loading = computed(() => editLoading.value || currentPage.value.loading);
 const error = computed(() => currentPage.value.error);
 const summaryLoaded = ref(false), summaryLoading = ref(false), summaryError = ref('');
 const visiblePages = computed(() => pages.value.map(page => ({ ...page,
@@ -84,22 +88,25 @@ const pager = ref(null);
 let disposed = false, pageActive = true;
 onHide(() => { pageActive = false; });
 onUnmounted(() => { disposed = true; });
-function selectStatus(label: string) {
-  if (!label || label === status.value || form.value) return;
+function pageChanged(index: number) {
+  const code = statusTabs[index];
+  if (!code || code === status.value || form.value || editLoading.value) return;
+  if (requestedEdit) {
+    requestedEdit = '';
+    currentPage.value.error = '';
+  }
   stopCoverPolling();
-  status.value = label;
-  void loadPage(statusIndex.value);
+  status.value = code;
+  void loadPage(index);
   pollCovers();
 }
-function pageChanged(index) { selectStatus(statusTabs[index]); }
 let generation = 0,
   formRevision = 0;
 let requestedEdit = '';
 let requestedCreate = false;
 onLoad((options) => {
   requestedEdit = String(options?.id || '');
-  requestedCreate = options?.create === '1';
-  if (requestedEdit) status.value = '全部状态';
+  requestedCreate = !requestedEdit && options?.create === '1';
 });
 const scope = createRecordScope((clear) => {
   formRevision++;
@@ -108,7 +115,7 @@ const scope = createRecordScope((clear) => {
     closeSearch();
     requestedEdit = '';
     requestedCreate = false;
-    pages.value = statusTabs.map(label => ({ label, rows: [], loading: false, loaded: false, stale: false, error: '', revision: 0 }));
+    pages.value = emptyPages();
     summaryLoaded.value = false;
     counts.value = {};
     statistics.value = {};
@@ -195,14 +202,13 @@ async function loadPage(index: number, force = false) {
   const pending = pageRequests.get(target);
   if (pending && pending.revision === revision) return pending.promise;
   if (target.loaded && !target.stale && !force) return;
-  const selectedStatus = statuses.find(code => statusLabels[code] === target.label) || '';
   target.loading = true;
   target.error = '';
   const request = (async () => {
     try {
       let data = [], page = 1;
       while (true) {
-        const result = await scope.wait(fetchVideoPage(page++, selectedStatus));
+        const result = await scope.wait(fetchVideoPage(page++, target.status));
         if (revision !== target.revision) return;
         const total = readPageTotal(result.total);
         data = mergePageItems(data, result.items);
@@ -238,18 +244,43 @@ async function loadSummary() {
     if (current === generation) summaryLoading.value = false;
   }
 }
+async function openRequestedVideo() {
+  const target = currentPage.value;
+  editLoading.value = true;
+  target.error = '';
+  let item;
+  try {
+    item = await scope.wait(fetchVideoById(requestedEdit));
+    if (!item) throw new Error('记录不存在或已删除');
+  } catch (e) {
+    if (e.name !== 'PageInactiveError') target.error = e.message;
+    return false;
+  } finally {
+    editLoading.value = false;
+  }
+  if (disposed || !pageActive) return false;
+  if (statusTabs.includes(item.status)) status.value = item.status;
+  requestedEdit = '';
+  open(item);
+  return true;
+}
+function retryPage(index: number) {
+  if (requestedEdit && index === statusIndex.value) return load();
+  return loadPage(index, true);
+}
 async function load() {
+  if (editLoading.value) return;
   stopCoverPolling();
   invalidatePages();
+  const summary = loadSummary();
+  if (requestedEdit && !(await openRequestedVideo())) {
+    await summary;
+    return;
+  }
   const index = statusIndex.value;
-  await Promise.all([loadSummary(), loadPage(index, true)]);
+  await Promise.all([summary, loadPage(index, true)]);
   if (disposed || !pageActive || index !== statusIndex.value || error.value) return;
-  if (requestedEdit) {
-    const selected = rows.value.find(item => item.id === requestedEdit);
-    if (!selected) { currentPage.value.error = '记录不存在或已删除'; return; }
-    open(selected);
-    requestedEdit = '';
-  } else if (requestedCreate) {
+  if (requestedCreate) {
     open();
     requestedCreate = false;
   }
@@ -398,19 +429,21 @@ const videoGridBreakpoints = [[600, 3], [1000, 4]];
 function videoCell(index: number, length: number) {
   return appGridCell(index, length, 2, 'section', videoGridBreakpoints);
 }
-const statusCategories = computed(() => statusTabs.map(label => ({ label: label === '全部状态' ? '全部' : label, count: summaryLoaded.value ? (label === '全部状态' ? Object.values(counts.value).reduce((sum, count) => sum + Number(count), 0) : counts.value[statuses.find(code => statusLabels[code] === label)] || 0) : null })));
+const statusCategories = computed(() => statusTabs.map(code => ({
+  label: statusLabels[code], count: summaryLoaded.value ? counts.value[code] ?? 0 : null,
+})));
 
 </script>
 <template>
   <MobilePage :scroll-locked="true" :refresh-disabled="true">
     <view class="video-page ui-page-body" :class="{ 'video-page-dark': isDark }">
       <PageSearch v-model="keyword" v-model:open="searchOpen" title="视频观看" label="搜索视频" back @layout="pager?.measure()" @back="uni.navigateBack()" />
-      <view class="video-summary ui-section" :class="{ 'summary-pending': !summaryLoaded, 'summary-pending-dark': !summaryLoaded && isDark }" :aria-busy="summaryLoading"><view class="summary-panel ui-pad-card" :class="{ 'summary-panel-dark': isDark }"><text class="secondary" :class="{ 'record-secondary-dark': isDark }">学习总数</text><text class="summary-number video-primary" :aria-hidden="!summaryLoaded" :class="{ 'video-primary-dark': isDark, 'summary-value-pending': !summaryLoaded, 'summary-value-pending-dark': !summaryLoaded && isDark }">{{ Object.values(counts).reduce((sum, count) => sum + Number(count), 0) }}</text><text class="secondary" :class="{ 'record-secondary-dark': isDark, 'summary-value-pending': !summaryLoaded, 'summary-value-pending-dark': !summaryLoaded && isDark }">{{ counts.completed || 0 }} 已完成 · {{ counts.in_progress || 0 }} 进行中 · {{ counts.not_started || 0 }} 未开始</text></view><view class="summary-panel summary-panel-next ui-pad-card" :class="{ 'summary-panel-dark': isDark }"><text class="secondary" :class="{ 'record-secondary-dark': isDark }">已学时长</text><text class="summary-number summary-duration video-primary" :aria-hidden="!summaryLoaded" :class="{ 'video-primary-dark': isDark, 'summary-value-pending': !summaryLoaded, 'summary-value-pending-dark': !summaryLoaded && isDark }">{{ formatSeconds(statistics.studiedSeconds) }}</text><text class="secondary" :class="{ 'record-secondary-dark': isDark, 'summary-value-pending': !summaryLoaded, 'summary-value-pending-dark': !summaryLoaded && isDark }">剩余预估 {{ formatSeconds(statistics.unstudiedSeconds) }}</text></view><LoadingIndicator v-if="summaryLoading" label="正在加载视频统计" floating /><MobileButton v-if="summaryError && !summaryLoading" class="summary-retry" label="重试视频统计" variant="quiet" @click="loadSummary" /></view><CategoryTabs class="status-scroll ui-section" :items="statusCategories" :current="statusIndex" variant="underline" label="视频状态" id-prefix="video-status" item-class="status-tab" label-class="status-label" count-class="status-count" :disabled="!!form" @change="selectStatus(statusTabs[$event])" />
-      <CategoryPager ref="pager" class="video-pager" :items="visiblePages" :current="statusIndex" :disabled="!!form" :refreshing="refreshing" :layout-key="[summaryLoaded, counts, statistics, summaryError]" tabs-selector=".status-scroll" @change="pageChanged" @refresh="refresh"><template #default="{ item: videoPage, index, active }"><view class="video-page-content" :class="{ 'video-page-active': active }">
-      <PageState skeleton="media" :loading="videoPage.loading || (!videoPage.loaded && !videoPage.error)" :has-content="videoPage.loaded" :error="videoPage.error" :empty="!videoPage.filtered.length" @retry="loadPage(index, true)"
+      <view class="video-summary ui-section" :class="{ 'summary-pending': !summaryLoaded, 'summary-pending-dark': !summaryLoaded && isDark }" :aria-busy="summaryLoading"><view class="summary-panel ui-pad-card" :class="{ 'summary-panel-dark': isDark }"><text class="secondary" :class="{ 'record-secondary-dark': isDark }">学习总数</text><text class="summary-number video-primary" :aria-hidden="!summaryLoaded" :class="{ 'video-primary-dark': isDark, 'summary-value-pending': !summaryLoaded, 'summary-value-pending-dark': !summaryLoaded && isDark }">{{ Object.values(counts).reduce((sum, count) => sum + Number(count), 0) }}</text><text class="secondary" :class="{ 'record-secondary-dark': isDark, 'summary-value-pending': !summaryLoaded, 'summary-value-pending-dark': !summaryLoaded && isDark }">{{ counts.completed || 0 }} 已完成 · {{ counts.in_progress || 0 }} 进行中 · {{ counts.not_started || 0 }} 未开始</text></view><view class="summary-panel summary-panel-next ui-pad-card" :class="{ 'summary-panel-dark': isDark }"><text class="secondary" :class="{ 'record-secondary-dark': isDark }">已学时长</text><text class="summary-number summary-duration video-primary" :aria-hidden="!summaryLoaded" :class="{ 'video-primary-dark': isDark, 'summary-value-pending': !summaryLoaded, 'summary-value-pending-dark': !summaryLoaded && isDark }">{{ formatSeconds(statistics.studiedSeconds) }}</text><text class="secondary" :class="{ 'record-secondary-dark': isDark, 'summary-value-pending': !summaryLoaded, 'summary-value-pending-dark': !summaryLoaded && isDark }">剩余预估 {{ formatSeconds(statistics.unstudiedSeconds) }}</text></view><LoadingIndicator v-if="summaryLoading" label="正在加载视频统计" floating /><MobileButton v-if="summaryError && !summaryLoading" class="summary-retry" label="重试视频统计" variant="quiet" @click="loadSummary" /></view><CategoryTabs class="status-scroll ui-section" :items="statusCategories" :current="statusIndex" variant="underline" label="视频状态" id-prefix="video-status" item-class="status-tab" label-class="status-label" count-class="status-count" :disabled="!!form || editLoading" @change="pageChanged" />
+      <CategoryPager ref="pager" class="video-pager" :items="visiblePages" :current="statusIndex" :disabled="!!form || editLoading" :refreshing="refreshing" :layout-key="[summaryLoaded, counts, statistics, summaryError]" tabs-selector=".status-scroll" @change="pageChanged" @refresh="refresh"><template #default="{ item: videoPage, index, active }"><view class="video-page-content" :class="{ 'video-page-active': active }">
+      <PageState skeleton="media" :loading="(active && editLoading) || videoPage.loading || (!videoPage.loaded && !videoPage.error)" :has-content="videoPage.loaded" :error="videoPage.error" :empty="!videoPage.filtered.length" @retry="retryPage(index)"
         >
 <template #loading><view class="video-grid"><view v-for="n in 6" :key="n" class="video-card" :style="videoCell(n - 1, 6)" :class="{ 'video-card-dark': isDark }"><view class="video-poster"><ContentSkeleton variant="cover" /></view><view class="video-body video-skeleton-body" aria-hidden="true"><text class="video-title video-skeleton-line" :class="{ 'video-skeleton-line-dark': isDark }">占位标题</text><view class="video-meta"><text class="video-meta-text video-skeleton-line" :class="{ 'video-skeleton-line-dark': isDark }">占位作者</text><text class="episode">&#160;</text></view><view class="video-meta"><text class="video-meta-text video-skeleton-line" :class="{ 'video-skeleton-line-dark': isDark }">00:00:00 / 00:00:00</text><text class="episode">&#160;</text></view><view class="progress-track" :class="{ 'progress-track-dark': isDark }" /></view></view></view></template>
-<view class="video-grid"><view v-for="(item, itemIndex) in videoPage.filtered" :key="item.id" class="video-card" :style="videoCell(itemIndex, videoPage.filtered.length)" :class="{ 'video-card-dark': isDark }" role="button" tabindex="0" :aria-label="'编辑视频：' + item.title" @click="open(item)" @keydown.enter="open(item)" @keydown.space.prevent="open(item)"><view class="video-poster" :class="{ 'video-poster-dark': isDark }"><VideoCover :file-id="item.coverFileId" :state="item.coverState" :title="item.title" @retry="retryCover(item)" /><text class="video-status" :class="'video-status-' + item.status">{{ statusLabels[item.status] }}</text><text class="video-duration">{{ clockDuration(item.durationSeconds) }}</text></view><view class="video-body"><text :max-lines="2" class="video-title video-primary" :class="{ 'video-primary-dark': isDark }">{{ item.title }}</text><view class="video-meta"><text class="video-meta-text" :class="{ 'record-secondary-dark': isDark }">{{ item.ownerName || '' }}</text><text class="episode">{{ item.currentEpisode || 1 }}/{{ item.episodes || 1 }}</text></view><view class="video-meta"><text class="video-meta-text" :class="{ 'record-secondary-dark': isDark }">{{ clockDuration(item.watchedDurationSeconds) }} / {{ clockDuration(item.durationSeconds) }}</text><text class="episode">{{ videoProgress(item) }}%</text></view><view class="progress-track" :class="{ 'progress-track-dark': isDark }"><view class="progress-fill" :style="{ width: (videoProgress(item)) + '%' }" /></view></view></view></view></PageState
+<view class="video-grid"><view v-for="(item, itemIndex) in videoPage.filtered" :key="item.id" class="video-card" :style="videoCell(itemIndex, videoPage.filtered.length)" :class="{ 'video-card-dark': isDark }" role="button" tabindex="0" :aria-label="'编辑视频：' + item.title" @click="open(item)" @keydown.enter="open(item)" @keydown.space.prevent="open(item)"><view class="video-poster" :class="{ 'video-poster-dark': isDark }"><VideoCover :file-id="item.coverFileId" :state="item.coverState" :title="item.title" @retry="retryCover(item)" /><view class="video-duration-overlay"><text class="video-duration">{{ clockDuration(item.durationSeconds) }}</text></view></view><view class="video-body"><text :max-lines="2" class="video-title video-primary" :class="{ 'video-primary-dark': isDark }">{{ item.title }}</text><view class="video-meta"><text class="video-meta-text" :class="{ 'record-secondary-dark': isDark }">{{ item.ownerName || '' }}</text><text class="episode">{{ item.currentEpisode || 1 }}/{{ item.episodes || 1 }}</text></view><view class="video-meta"><text class="video-meta-text" :class="{ 'record-secondary-dark': isDark }">{{ clockDuration(item.watchedDurationSeconds) }} / {{ clockDuration(item.durationSeconds) }}</text><text class="episode">{{ videoProgress(item) }}%</text></view><view class="progress-track" :class="{ 'progress-track-dark': isDark }"><view class="progress-fill" :style="{ width: (videoProgress(item)) + '%' }" /></view></view></view></view></PageState
       ></view></template></CategoryPager><ModalMotion><AdaptiveModal ref="modalMotion0"
         v-if="form"
         label="编辑学习视频"
@@ -554,9 +587,27 @@ const statusCategories = computed(() => statusTabs.map(label => ({ label: label 
 /* #endif */
 .video-card-dark { background-color: #1c1e22; }
 .video-poster { position: relative; height: 0; padding-top: 62.5%; background-color: #eef0f3; }
-.video-status, .video-duration { position: absolute; background-color: #427bea; color: white; padding: $space-detail; @include type-style('badge'); }
-.video-status { top: $space-detail; left: $space-detail; border-radius: 4px; }
-.video-duration { bottom: $space-detail; right: $space-detail; background-color: #0008; }
+.video-duration-overlay {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 20%;
+  min-height: type-line('badge-strong') + $space-detail;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: row;
+  justify-content: flex-end;
+  align-items: flex-end;
+  padding: 0 $space-detail $space-detail;
+  background-image: linear-gradient(to top, rgba(0, 0, 0, 0.5), rgba(0, 0, 0, 0.3), transparent);
+  pointer-events: none;
+}
+.video-duration {
+  color: #fff;
+  font-variant-numeric: tabular-nums;
+  @include type-style('badge-strong');
+}
 .video-body { padding: $space-card; display: flex; flex-direction: column; }
 .video-title {
 @include clamp-text(2);
@@ -573,9 +624,6 @@ const statusCategories = computed(() => statusTabs.map(label => ({ label: label 
 .cover { position: absolute; left: 0; top: 0; width: 100%; height: 100%; }
 .video-cover-empty { position: absolute; left: 0; right: 0; top: 0; bottom: 0; align-items: center; justify-content: center; }
 .video-poster-dark, .progress-track-dark { background-color: #292d35; }
-.video-status-completed { background-color: #22a06b; }
-.video-status-on_hold { background-color: #b87925; }
-.video-status-not_started { background-color: #737e90; }
 
 .record-secondary-dark { color: $text-secondary-dark; }
 </style>

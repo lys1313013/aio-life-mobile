@@ -2,7 +2,7 @@ const { waitForMotion } = require('./support/motion');
 const { test, expect } = require('./support/test');
 
 function gate() { let release; const promise = new Promise(resolve => { release = resolve; }); return { promise, release }; }
-const ok = data => ({ json: { code: 0, data } });
+const ok = data => ({ json: { code: 0, message: null, data } });
 
 for (const width of [390, 768, 1440]) for (const colorScheme of ['light', 'dark']) {
   test(`视频分页与加载稳定 ${width} ${colorScheme}`, async ({ page, apiMock }, info) => {
@@ -18,16 +18,19 @@ for (const width of [390, 768, 1440]) for (const colorScheme of ['light', 'dark'
       'GET /api/b-video/getStatusCount': async () => { if (delayed) await pending.promise; return ok({ in_progress: 8, completed: 1, not_started: 1, on_hold: 0 }); },
       'GET /api/b-video/statistics': async () => { if (delayed) await pending.promise; return ok({ studiedSeconds: 1800, unstudiedSeconds: 1800 }); },
       'GET /api/b-video/query': async request => {
-        const status = new URL(request.url()).searchParams.get('status') || '';
+        const status = new URL(request.url()).searchParams.get('status');
+        expect(['not_started', 'in_progress', 'on_hold', 'completed']).toContain(status);
         requests.push(status);
         if (delayed) await pending.promise;
         if (fail) return { json: { code: 1, message: '模拟视频加载失败' } };
-        const items = status === 'on_hold' ? [] : status === 'in_progress' ? Array.from({ length: 8 }, (_, index) => ({ ...row, id: String(index + 1) })) : [{ ...row, status: status || 'in_progress' }];
+        const items = status === 'on_hold' ? [] : status === 'in_progress' ? Array.from({ length: 8 }, (_, index) => ({ ...row, id: String(index + 1) })) : [{ ...row, status }];
         return ok({ items, total: items.length });
       },
     });
     await page.goto('/#/pages/records/video');
     const active = page.locator('.video-page-active');
+    const tabs = page.getByRole('group', { name: '视频状态', exact: true });
+    const completed = tabs.getByRole('button', { name: '已完成', exact: true });
     const search = page.locator('[aria-label="搜索视频"] input');
     const searchButton = page.getByRole('button', { name: '展开搜索', exact: true });
     await expect(search).toBeHidden();
@@ -42,6 +45,10 @@ for (const width of [390, 768, 1440]) for (const colorScheme of ['light', 'dark'
     delayed = false; pending.release();
     await expect(active.getByRole('button', { name: /^编辑视频/ })).toHaveCount(8);
     await expect(summary).toHaveAttribute('aria-busy', 'false');
+    await expect(tabs.getByRole('button')).toHaveCount(4);
+    await expect(tabs.getByRole('button', { name: '全部', exact: true })).toHaveCount(0);
+    await expect(active.locator('.video-poster').getByText('进行中', { exact: true })).toHaveCount(0);
+    await expect(active.locator('.video-duration')).toHaveCount(8);
     expect(Math.abs((await active.locator('.video-card').first().boundingBox()).height - initialCard.height)).toBeLessThanOrEqual(2);
     expect(Math.abs((await summary.boundingBox()).height - initialSummary.height)).toBeLessThanOrEqual(2);
     expect(Math.abs((await pager.boundingBox()).y - initialPager.y)).toBeLessThanOrEqual(2);
@@ -83,7 +90,7 @@ for (const width of [390, 768, 1440]) for (const colorScheme of ['light', 'dark'
     await expect(active.getByRole('status', { name: '正在更新内容' })).toHaveCount(0);
     await expect(active.locator('.video-skeleton-body')).toHaveCount(0);
     const scrollbars = await page.locator('.video-pager .category-pager-scroll .uni-scroll-view-scrollbar-hidden').evaluateAll(nodes => nodes.map(node => getComputedStyle(node).scrollbarWidth));
-    expect(scrollbars).toEqual(['none', 'none', 'none', 'none', 'none']);
+    expect(scrollbars).toEqual(['none', 'none', 'none', 'none']);
     await page.screenshot({ path: info.outputPath('refreshed.png') });
     await searchButton.click();
     await search.fill('无匹配的模拟关键词');
@@ -111,20 +118,20 @@ for (const width of [390, 768, 1440]) for (const colorScheme of ['light', 'dark'
     delayed = false; pending.release();
     await page.locator('.status-tab').nth(0).click();
     await expect(active.getByRole('button', { name: /^编辑视频/ })).toHaveCount(1);
-    await page.locator('.status-tab').nth(4).click();
+    await completed.click();
     await expect(active.getByRole('button', { name: /^编辑视频/ })).toHaveCount(1);
-    await expect.poll(async () => Math.abs((await panes.nth(4).boundingBox()).x - bounds.x)).toBeLessThan(1);
+    await expect.poll(async () => Math.abs((await panes.nth(3).boundingBox()).x - bounds.x)).toBeLessThan(1);
     const beforeBoundary = requests.length;
     await touch.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y }] });
     await touch.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: x - 100, y }] });
     await touch.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
-    await expect.poll(async () => Math.abs((await panes.nth(4).boundingBox()).x - bounds.x)).toBeLessThan(1);
+    await expect.poll(async () => Math.abs((await panes.nth(3).boundingBox()).x - bounds.x)).toBeLessThan(1);
     expect(requests).toHaveLength(beforeBoundary);
     await touch.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: bounds.x + 30, y }] });
     await touch.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: bounds.x + 150, y }] });
     await touch.send('Input.dispatchTouchEvent', { type: 'touchCancel', touchPoints: [] });
-    await expect.poll(async () => Math.abs((await panes.nth(4).boundingBox()).x - bounds.x)).toBeLessThan(1);
-    await expect(page.locator('.status-tab').nth(4)).toHaveAttribute('aria-pressed', 'true');
+    await expect.poll(async () => Math.abs((await panes.nth(3).boundingBox()).x - bounds.x)).toBeLessThan(1);
+    await expect(completed).toHaveAttribute('aria-pressed', 'true');
     await touch.detach();
 
   });

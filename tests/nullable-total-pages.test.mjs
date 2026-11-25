@@ -38,7 +38,7 @@ for (const [path, api] of [
     if (path === 'pages/goods/devices.uvue') values.loaded = ref(false)
     const isVideo = path === 'pages/records/video.uvue'
     if (isVideo) {
-      const target = { label: '全部状态', loaded: false, stale: false, revision: 0 }
+      const target = { status: 'in_progress', loaded: false, stale: false, revision: 0 }
       for (const key of ['rows', 'loading', 'error']) Object.defineProperty(target, key, {
         get: () => values[key].value, set: value => { values[key].value = value },
       })

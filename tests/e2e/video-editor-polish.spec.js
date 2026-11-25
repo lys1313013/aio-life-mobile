@@ -93,6 +93,39 @@ test('视频手动创建可修正折叠的总时长并提交', async ({ page }) 
   expect(state.writes.find(write => write.path === '/api/b-video').body).toMatchObject({ durationSeconds: 120, watchedDurationSeconds: 20, title: '模拟手动录入课程' });
 });
 
+test('视频编辑链接按记录状态定位，详情失败可重试', async ({ page, apiMock }) => {
+  const row = { id: '9223372036854775807', title: '模拟已暂停课程', url: 'https://www.bilibili.com/video/BV1234567890',
+    durationSeconds: 100, watchedDurationSeconds: 20, status: 'on_hold', coverState: 'NONE' };
+  const ok = data => ({ json: { code: 0, message: null, data } });
+  let detailReads = 0;
+  await page.addInitScript(() => localStorage.setItem('aio-life-mobile.access-token.v1', 'video-deep-link-fixture'));
+  apiMock({
+    'GET /api/user/info': ok({ id: '1', nickname: '模拟用户', roles: [] }),
+    'GET /api/auth/secondary-lock/menus': ok([]),
+    'GET /api/menu/visuals': ok({ menus: [], cards: {} }),
+    'GET /api/b-video/getStatusCount': ok({ on_hold: 1 }),
+    'GET /api/b-video/statistics': ok({ studiedSeconds: 20, unstudiedSeconds: 80 }),
+    ['GET /api/b-video/' + row.id]: () => ++detailReads === 1
+      ? { json: { code: 1, message: '模拟视频详情失败', data: null } } : ok(row),
+    'GET /api/b-video/query': request => {
+      expect(new URL(request.url()).searchParams.get('status')).toBe('on_hold');
+      return ok({ items: [row], total: 1 });
+    },
+  });
+
+  await page.goto('/#/pages/records/video?id=' + row.id);
+  await expect(page.getByRole('alert')).toContainText('模拟视频详情失败');
+  await page.getByRole('button', { name: '重试', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: '编辑学习视频' });
+  await expect(dialog.locator('input[aria-label="标题"]')).toHaveValue(row.title);
+  await expect(dialog.locator('uni-picker[aria-label="状态"]')).toContainText('已暂停');
+  await dialog.getByRole('button', { name: '取消', exact: true }).click();
+  const tabs = page.getByRole('group', { name: '视频状态', exact: true });
+  await expect(tabs.getByRole('button', { name: '已暂停', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByRole('button', { name: '编辑视频：' + row.title, exact: true })).toBeVisible();
+  expect(detailReads).toBe(2);
+});
+
 test('视频解析失败保留输入并允许重新解析', async ({ page }) => {
   await openVideo(page);
   let failed = true;

@@ -38,6 +38,7 @@ async function fixture(kind, file, fetch) {
   const source = await readFile(new URL('../src/' + file, import.meta.url), 'utf8');
   const loadSource = source.match(/async function load\([^]*?\n}\n/)[0];
   const rows = ref([]), page = ref(1), total = ref(null), ended = ref(false), error = ref(''), moreError = ref('');
+  const libraryList = { rows: [], page: 1, total: null, ended: false, error: '', moreError: '', revision: 0, status: 'in_progress' };
   const context = {
     ...pagination, rows, items: rows, adminRows: rows, page, adminPage: page, total, adminTotal: total,
     pageEnded: ended, adminEnded: ended, error, moreError, loading: ref(false), refreshing: ref(false),
@@ -45,6 +46,7 @@ async function fixture(kind, file, fetch) {
     kind: ref('movie'), props: { type: 1, kind: 'income' }, mode: ref('管理'), adminUser: ref(''),
     scope: { wait: value => value }, typeLabels: ref([]), statusLabels: kind === 'feedback' ? [] : ref([]), statuses: [],
     listKey: ref(kind), loadedKey: ref(''), previews: ref([]), loadingMore: ref(false), overview: ref(false), rankingId: ref(''),
+    moviePages: ref([libraryList]), movieIndex: ref(0), currentList: ref(libraryList), libraryFilters: () => ({}), libraryPageSize: 30,
     typeIndex: ref(0), statusIndex: ref(0), rankingIndex: ref(0), rankingOptions: ref([]), typeFilter: ref(''), statusFilter: ref(''), status: ref(''),
     mutationBusy: ref(false), filters: ref({}), expense: ref(false), selected: ref([]), openedRow: ref(''),
     ledgerId: row => row.id,
@@ -55,6 +57,11 @@ async function fixture(kind, file, fetch) {
   const js = transformSync(`let alive=true, active=true, generation=0, version=0, stamp=0, listSerial=0, requestedEdit='', requestedCreate=false, needsReset=false;\n${loadSource}\nreturn load;`, { loader: 'ts' }).code;
   const load = new Function(...Object.keys(context), js)(...Object.values(context));
   const more = () => kind === 'ledger' ? load(false) : ['messages', 'related'].includes(kind) ? load(true) : load(false, true);
+  if (kind === 'library') {
+    const field = key => ({ get value() { return libraryList[key]; } });
+    return { rows: field('rows'), page: field('page'), total: field('total'), ended: field('ended'),
+      error: field('error'), moreError: field('moreError'), load, more };
+  }
   return { rows, page, total, ended, error, moreError, load, more };
 }
 
