@@ -196,7 +196,7 @@ function deleted(id) {
       <PageState skeleton="list" :show-refresh-indicator="active && !refreshing" :loading="loading" :error="error" :has-content="loaded" :empty="!memberPage.rows.length" :empty-text="rows.length > 0 && !includeExpired ? '暂无生效中的会员' : '暂无会员'" @retry="load()">
         <template #loading>
           <view class="member-grid" aria-hidden="true">
-            <view v-for="n in 4" :key="n" class="member-card" :class="{ 'surface-dark': isDark }">
+            <view v-for="n in 4" :key="n" class="member-card" :class="{ 'member-card-dark': isDark }">
               <view class="card-heading">
                 <view class="member-logo-frame"><view class="skeleton-logo" :class="{ 'skeleton-dark': isDark }" /></view>
                 <view class="member-identity"><view class="skeleton-line skeleton-title" :class="{ 'skeleton-dark': isDark }" /><view class="skeleton-line skeleton-label" :class="{ 'skeleton-dark': isDark }" /></view>
@@ -210,7 +210,7 @@ function deleted(id) {
           </view>
         </template>
         <view class="member-grid">
-          <button hover-class="none" role="button" tabindex="0" v-for="item in memberPage.rows" :key="item.id" class="member-card ui-type-body" :class="{ 'surface-dark': isDark }" :style="memberCardStyle(item.color, isDark)" :aria-label="'编辑订阅：' + item.name" @click="open(item)" @keydown.enter.prevent="open(item)" @keydown.space.prevent="open(item)">
+          <button hover-class="none" role="button" tabindex="0" v-for="item in memberPage.rows" :key="item.id" class="member-card ui-type-body" :class="{ 'member-card-dark': isDark }" :style="memberCardStyle(item.color, isDark)" :aria-label="'编辑订阅：' + item.name" @click="open(item)" @keydown.enter.prevent="open(item)" @keydown.space.prevent="open(item)">
             <view class="card-heading">
               <view class="member-logo-frame"><MembershipLogo :icon-key="item.providerIconKey" :category="item.category" :name="item.providerName || item.provider || item.name" :size="36" /></view>
               <view class="member-identity">
@@ -247,9 +247,9 @@ function deleted(id) {
   </MobilePage>
 </template>
 <style scoped lang="scss">
+@use '../../styles/platform' as *;
 @use '../../styles/theme-tokens' as *;
 @use '../../styles/typography' as *;
-@use '../../styles/text-colors' as *;
 @use '../../styles/spacing.scss';
 @use '../../styles/spacing-tokens' as *;
 
@@ -279,7 +279,7 @@ function deleted(id) {
 .summary-amount { color: #202c3e; @include type-style('metric'); overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
 .metrics { display: flex; flex-direction: row; gap: $space-inline; }
 .member-metric { flex: 1; min-width: 0; gap: $space-detail; }
-.metric-label { color: $text-secondary-light; @include type-style('caption'); }
+.metric-label { color: #4d5b70; @include type-style('caption'); }
 .metric-value { color: #27272a; @include type-style('metric-compact'); font-variant-numeric: tabular-nums; }
 .member-filters { flex-direction: column; gap: $space-detail; margin-bottom: $space-section; }
 .member-category-scroll { width: 100%; min-width: 0; white-space: nowrap; }
@@ -297,14 +297,14 @@ function deleted(id) {
   padding: $space-card;
   gap: $space-section;
   text-align: left;
-  background-color: rgba($theme-surface-light, 0.44);
-  border: $space-hairline solid rgba(255, 255, 255, 0.82);
+  @include button-background(rgba($theme-surface-light, 0.28));
+  border: $space-hairline solid rgba(68, 91, 115, 0.10);
   border-radius: 16px;
-  box-shadow: 0 3px 10px rgba(41, 61, 84, 0.08);
+  box-shadow: 0 2px 8px rgba(27, 38, 55, 0.06);
 }
-.surface-dark {
-  background-color: rgba($theme-surface-dark, 0.52);
-  border-color: rgba(218, 234, 255, 0.24);
+.member-card-dark {
+  @include button-background(rgba($theme-surface-dark, 0.32));
+  border-color: rgba(161, 184, 207, 0.14);
 }
 .card-heading { flex-direction: row; align-items: center; gap: $space-inline; min-height: $space-controlMin; }
 .member-logo-frame { flex-shrink: 0; width: 36px; height: 36px; }
@@ -312,11 +312,11 @@ function deleted(id) {
 .member-identity { flex: 1; min-width: 0; gap: $space-detail; }
 .member-title { color: #202c3e; @include type-style('title'); font-weight: type-weight('strong'); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .member-tags { flex-direction: row; align-items: center; gap: $space-detail; min-width: 0; }
-.category-label { flex-shrink: 0; color: $text-secondary-light; @include type-style('caption'); }
-.member-provider { flex: 1; min-width: 0; color: $text-secondary-light; @include type-style('caption'); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.category-label { flex-shrink: 0; color: #4d5b70; @include type-style('caption'); }
+.member-provider { flex: 1; min-width: 0; color: #4d5b70; @include type-style('caption'); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .member-state { align-items: flex-end; flex-shrink: 0; gap: $space-detail; }
 .member-status { @include type-style('badge-strong'); padding: 0 $space-inline; border-radius: 20px; white-space: nowrap; }
-.member-renew { color: $text-secondary-light; @include type-style('badge'); }
+.member-renew { color: #4d5b70; @include type-style('badge'); }
 .member-status-active { color: #18764e; background-color: rgba(42, 157, 111, 0.10); }
 .member-status-expiring { color: #9a620b; background-color: rgba(224, 161, 46, 0.14); }
 .member-status-expired { color: #626b79; background-color: rgba(109, 123, 143, 0.10); }
@@ -325,14 +325,14 @@ function deleted(id) {
 .member-status-expired-dark { color: #bec4ce; background-color: rgba(151, 162, 181, 0.12); }
 .expiry-row { min-width: 0; gap: $space-detail; }
 .expiry-date { min-width: 0; }
-.expiry-date-text { @include type-style('caption'); color: $text-secondary-light; font-variant-numeric: tabular-nums; }
+.expiry-date-text { @include type-style('caption'); color: #4d5b70; font-variant-numeric: tabular-nums; }
 .remaining-days { flex-shrink: 0; @include type-style('caption-strong'); font-variant-numeric: tabular-nums; }
 .remaining-active { color: #18764e; }
 .remaining-expiring { color: #9a620b; }
 .remaining-active-dark { color: #83d5b0; }
 .remaining-expiring-dark { color: #efc47e; }
 .member-price { align-items: flex-end; gap: $space-detail; }
-.member-secondary { color: $text-secondary-light; @include type-style('caption'); font-variant-numeric: tabular-nums; }
+.member-secondary { color: #4d5b70; @include type-style('caption'); font-variant-numeric: tabular-nums; }
 .monthly-price { color: #34445c; margin-left: auto; @include type-style('caption-strong'); font-variant-numeric: tabular-nums; }
 
 .skeleton-line { background-color: #e7ebf0; border-radius: 4px; height: type-line('caption'); }
@@ -347,8 +347,8 @@ function deleted(id) {
 /* #ifdef WEB || MP-WEIXIN */
 .member-card::after { border: 0; }
 .member-card {
-  -webkit-backdrop-filter: blur(24px) saturate(118%);
-  backdrop-filter: blur(24px) saturate(118%);
+  -webkit-backdrop-filter: blur(16px);
+  backdrop-filter: blur(16px);
 }
 /* #endif */
 /* #ifdef WEB */
@@ -363,7 +363,7 @@ function deleted(id) {
   .member-card { width: calc((100% - #{$space-section}) / 2); }
 }
 .text-dark { color: #edf1f7; }
-.secondary-text-dark { color: $text-secondary-dark; }
+.secondary-text-dark { color: #d0d7e1; }
 
 .metric-alert { color: #a56b13; }
 .metric-alert-dark { color: #e4b45e; }

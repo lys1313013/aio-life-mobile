@@ -9,7 +9,7 @@ export function memberCardStyle(color: unknown, dark: boolean) {
   const channels = [0, 2, 4].map(offset => parseInt(hex.slice(offset, offset + 2), 16));
   const rgb = channels.join(', ');
   const gradient = dark
-    ? `linear-gradient(to bottom right, rgba(229, 242, 255, 0.18), rgba(229, 242, 255, 0.035) 52%, rgba(${rgb}, 0.28))`
-    : `linear-gradient(to bottom right, rgba(255, 255, 255, 0.84), rgba(255, 255, 255, 0.26) 52%, rgba(${rgb}, 0.20))`;
+    ? `linear-gradient(to bottom right, rgba(229, 242, 255, 0.12), transparent 52%, rgba(${rgb}, 0.14))`
+    : `linear-gradient(to bottom right, rgba(255, 255, 255, 0.24), transparent 52%, rgba(${rgb}, 0.12))`;
   return { backgroundImage: gradient };
 }
