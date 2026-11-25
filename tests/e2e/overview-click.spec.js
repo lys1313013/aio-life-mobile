@@ -12,11 +12,11 @@ async function setup(page) {
     const path = new URL(route.request().url()).pathname;
     const duoTask = { type: 'DUOLINGO', title: '多邻国', totalTitle: '连续打卡' };
     let data = path === '/api/dashboard/card/DUOLINGO'
-      ? { ...duoTask, value: 'example', totalValue: '12 天', refreshInterval: 600 }
+      ? { ...duoTask, value: '已打卡', valueColor: '#3fb27f', totalValue: '12 天', refreshInterval: 600 }
       : dashboardFixture(path) ?? [];
-    if (path === '/api/menu/visuals') data = { menus: [], cards: { 'overview.duolingo': { icon: 'simple-icons:duolingo', iconColor: '#58cc02' } } };
+    if (path === '/api/menu/visuals') data = { menus: [], cards: { 'overview.duolingo': { icon: 'svg:duolingo', iconColor: null } } };
     if (path === '/api/dashboard/tasks') data = [...data, duoTask];
-    if (path === '/api/home/cards') data = [...data, { cardKey: 'overview.duolingo', title: '多邻国', group: 'overview', icon: 'simple-icons:duolingo', isEnabled: 1, sortOrder: 5 }];
+    if (path === '/api/home/cards') data = [...data, { cardKey: 'overview.duolingo', title: '多邻国', group: 'overview', icon: 'svg:duolingo', iconColor: null, isEnabled: 1, sortOrder: 5 }];
     if (path === '/api/auth/login') data = { accessToken: 'overview-fixture' };
     if (path === '/api/user/info') data = { id: '1', nickname: '模拟用户' };
     if (path.startsWith('/api/dashboard/card/')) {
@@ -49,6 +49,16 @@ for (const width of [390, 768, 1440]) for (const theme of ['light', 'dark']) {
     await page.emulateMedia({ colorScheme: theme });
     const state = await setup(page);
     const homeUrl = page.url();
+    const duoIcon = page.getByRole('button', { name: '多邻国图标', exact: true }).locator('img');
+    await expect.poll(() => duoIcon.evaluate(img => {
+      if (!img.naturalWidth || !img.src.startsWith('data:image/svg+xml;base64,')) return '';
+      return atob(img.src.split(',')[1]);
+    })).toContain('fill="#FFC200"');
+    const duoCard = page.getByRole('button', { name: '刷新多邻国', exact: true });
+    await expect(duoCard.locator('.stat-value')).toHaveText('已打卡');
+    await expect(duoCard.getByText('连续打卡', { exact: true })).toBeVisible();
+    await expect(duoCard.getByText('12 天', { exact: true })).toBeVisible();
+    await expect(duoCard.getByText('example', { exact: true })).toHaveCount(0);
     for (const [title, type] of [['GitHub', 'GITHUB'], ['扇贝单词', 'SHANBAY'], ['多邻国', 'DUOLINGO']]) {
       const card = page.getByRole('button', { name: '刷新' + title, exact: true });
       const before = { ...state.calls };
