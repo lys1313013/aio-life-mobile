@@ -193,7 +193,7 @@ expect(errors).toEqual([]);
 test('390补漏：筛选深层picker逐个开关',async({page})=>{
 await page.setViewportSize({width:390,height:900});const errors=[];page.on('pageerror',e=>errors.push(e.message));await setup(page,true);await page.locator('uni-tabbar').getByText('我',{exact:true}).click();
 await openProfileEntry(page,'管理与配置');
-for(const [title,fields] of [['字典数据',['字典类型筛选','已加载数据排序']],['用户字典管理',['字典类型筛选','状态筛选']],['反馈管理',['类型','状态']]]){await click(page,title);for(const field of fields){if(title==='字典数据' && field==='已加载数据排序')await click(page,'排序设置');const fieldNode=page.locator(`[aria-label="${field}"]`);if(await fieldNode.count())await nativePicker(page,fieldNode,`${title}-${field}`);}await back(page);}
+for(const [title,fields] of [['字典数据',['字典类型筛选','已加载数据排序']],['用户字典管理',['字典类型筛选','状态筛选']],['反馈管理',['类型','状态']]]){await click(page,title);if(title==='反馈管理')await click(page,'筛选反馈管理');for(const field of fields){if(title==='字典数据' && field==='已加载数据排序')await click(page,'排序设置');const fieldNode=page.locator(`[aria-label="${field}"]`);if(await fieldNode.count())await nativePicker(page,fieldNode,`${title}-${field}`);}if(title==='反馈管理')await click(page,'关闭筛选');await back(page);}
 await page.waitForTimeout(400);expect(errors).toEqual([]);
 });
 test('390最终补齐：绑定说明与时迹周期视图日期时间picker',async({page})=>{

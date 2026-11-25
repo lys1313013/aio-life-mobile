@@ -43,6 +43,12 @@ for (const width of [390, 768, 1440]) for (const theme of ['light', 'dark']) {
     await expect(page.getByRole('button', { name: '编辑' + cover.name, exact: true })).toBeVisible();
     await expect(page.getByRole('button', { name: '删除模拟银行信用卡面（已有引用）', exact: true })).toBeDisabled();
     await page.screenshot({ path: `artifacts/bank-card-covers-admin/${width}-${theme}-list.png`, fullPage: true });
+    await page.getByRole('button', { name: '筛选银行卡卡面', exact: true }).click();
+    const filters = page.getByRole('dialog', { name: '快捷筛选', exact: true });
+    await expect(filters.locator('uni-picker[aria-label="银行"]')).toBeVisible();
+    await page.screenshot({ path: `artifacts/bank-card-covers-admin/${width}-${theme}-filters.png` });
+    await filters.getByRole('button', { name: '关闭筛选', exact: true }).click();
+    await expect(filters).toBeHidden();
     await page.getByRole('button', { name: '编辑模拟银行信用卡面（已有引用）', exact: true }).click();
     const editor = page.getByRole('dialog', { name: '编辑公共卡面', exact: true });
     await expect(editor.locator('uni-picker[aria-label="银行"]')).toHaveAttribute('disabled', 'true');
@@ -58,7 +64,8 @@ for (const width of [390, 768, 1440]) for (const theme of ['light', 'dark']) {
     await expect(editor).toHaveCount(0);
     expect(state.calls.at(-1).body.bankId).toBe(bankId);
     expect(state.calls.at(-1).body).not.toHaveProperty('usageCount');
-    await page.getByRole('textbox', { name: '搜索卡面', exact: true }).fill('修改后');
+    await page.getByRole('button', { name: '展开搜索', exact: true }).click();
+    await page.getByRole('searchbox', { name: '搜索卡面', exact: true }).fill('修改后');
     await expect(page.locator('.cover-item')).toHaveCount(1);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   });

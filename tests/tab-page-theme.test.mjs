@@ -30,6 +30,28 @@ test('Tab 页面底色服从应用设置：手动主题优先于系统，缓存�
   }
 })
 
+test('微信在页面脚本运行前可解析内容容器和导航底色，时迹和我延迟注入弹窗', async () => {
+  const pages = await read('src/pages.json')
+  const config = platform => JSON.parse(preprocess(pages,
+    initScopedPreContext(platform, {}, undefined, true).preUVueContext, { type: 'js' }))
+  const mp = config('mp-weixin')
+  const { mergeThemeJSONToAppJSON } = require('miniprogram-ci/dist/modules/corecompiler/original/json/theme')
+  const { appJSONLight, appJSONDark } = mergeThemeJSONToAppJSON(colors, { window: mp.globalStyle })
+  for (const [config, palette] of [[appJSONLight, colors.light], [appJSONDark, colors.dark]]) {
+    for (const key of ['backgroundColorContent', 'navigationBarBackgroundColor', 'backgroundColor']) {
+      assert.equal(config.window[key], palette.backgroundColor, key)
+    }
+  }
+  for (const [path, components] of [
+    ['pages/time/index', ['time-record-editor', 'secondary-unlock']],
+    ['pages/profile/index', ['secondary-unlock']],
+  ]) {
+    const style = mp.pages.find(page => page.path === path).style
+    for (const name of components) assert.equal(style.componentPlaceholder[name], 'view', name)
+    assert.equal(config('h5').pages.find(page => page.path === path).style.componentPlaceholder, undefined)
+  }
+})
+
 test('四个 Tab 的微信背景配置位于页面首节点，同时覆盖窗口与页面根背景', async () => {
   const tabs = JSON.parse(await read('src/services/tab-bar.generated.json'))
   for (const tab of tabs) {

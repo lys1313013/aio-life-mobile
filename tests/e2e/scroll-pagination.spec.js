@@ -7,7 +7,7 @@ const scenarios = [
   ['messages/index', '/message/admin/list', '.message', 30],
   ['records/notes', '/thought/query', '.note-card', 30],
   ['records/feedback', '/feedback/my', '.feedback-card', 30],
-  ['records/library?kind=read', '/read-record/page', '.library-card', 30],
+  ['records/library?kind=read&shelf=in_progress', '/read-record/page', '.shelf-book[role=button]', 30],
   ['admin/index?kind=users', '/user-center/list', '.user-card', 20],
 ];
 function rows(page, count) {
@@ -51,7 +51,7 @@ for (const [path, endpoint, selector, size] of scenarios) {
       requests.push(number);
       if (number === 2 && fail) return route.fulfill({ json: { code: 1, message: '模拟分页失败，已保留列表' } });
       if (number === 2) await pending.promise;
-      await route.fulfill({ json: { code: 0, data: { items: rows(number, number === 1 ? size : 2), total: size + 2 } } });
+      await route.fulfill({ json: { code: 0, data: { items: rows(number, number === 1 ? size : 2).map(row => endpoint === '/read-record/page' ? { ...row, status: 'in_progress' } : row), total: size + 2 } } });
     });
     await page.goto('/#/pages/' + path);
     if (path === 'messages/index') {

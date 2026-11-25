@@ -10,6 +10,9 @@ import { computed, ref, onUnmounted, watch } from 'vue';
 import { onShow, onHide } from '@dcloudio/uni-app';
 import MobilePage from '../../components/MobilePage.uvue';
 import PageSearch from '../../components/PageSearch.uvue';
+import FilterTrigger from '../../components/FilterTrigger.uvue';
+import FilterSheet from '../../components/FilterSheet.uvue';
+import spacing from '../../styles/spacing.json';
 import PageState from '../../components/PageState.uvue';
 import MobileButton from '../../components/MobileButton.uvue';
 import FloatingActionButton from '../../components/FloatingActionButton.uvue';
@@ -46,6 +49,8 @@ const items = ref<any[]>([]),
   category = ref(''),
   season = ref(''),
   section = ref('衣物');
+const filtersOpen = ref(false);
+const draftCategory = ref('');
 const modal = ref(''),
   original = ref<any>(null),
   form = ref<any>({}),
@@ -62,6 +67,7 @@ let alive = true,
   sequence = 0,
   photoSequence = 0;
 function clearPrivate() {
+  filtersOpen.value = false;
   sequence++;
   photoSequence++;
   photos.value = {};
@@ -82,6 +88,7 @@ function clearPrivate() {
   error.value = '';
 }
 onHide(() => {
+  filtersOpen.value = false;
   visible = false;
   sequence++; photoSequence++;
   loading.value = false;
@@ -142,9 +149,18 @@ const itemCategoryNames = computed(() => ['未分类', ...categories.value.map(c
 const filterName = computed(
   () =>
     categoryNames.value[
-      categories.value.findIndex((row) => row.id === category.value) + 1
+      categories.value.findIndex((row) => row.id === draftCategory.value) + 1
     ] || '全部分类',
 );
+function openFilters() {
+  searchOpen.value = false;
+  draftCategory.value = category.value;
+  filtersOpen.value = true;
+}
+function applyFilters() {
+  category.value = draftCategory.value;
+  filtersOpen.value = false;
+}
 const shown = computed(() =>
   items.value.filter((row) =>
     matchesItem(row, keyword.value, category.value, season.value),
@@ -332,7 +348,15 @@ function chooseCategory(value) {
 <template>
   <MobilePage :refreshing="loading" @refresh="load">
     <PageSearch v-model="keyword" v-model:open="searchOpen" title="衣橱" label="搜索衣物" back
-      :enabled="section === '衣物'" @back="uni.navigateBack()" />
+      :enabled="section === '衣物'" :actions-min-width="section === '衣物' ? spacing.controlMin : 0" @back="uni.navigateBack()">
+      <template v-if="section === '衣物'" #trailing-actions>
+        <FilterTrigger label="筛选衣物" :open="filtersOpen" :active="!!category" @click="openFilters" />
+      </template>
+    </PageSearch>
+    <FilterSheet :open="filtersOpen" @close="filtersOpen = false" @reset="draftCategory = ''" @apply="applyFilters">
+      <FormField label="分类" kind="selector" :model-value="filterName" :options="categoryNames"
+        @update:model-value="(value) => (draftCategory = categories[categoryNames.indexOf(value) - 1]?.id || '')" />
+    </FilterSheet>
     <view class="wardrobe ui-page-body" @click="searchOpen = false" :class="themeClass('wardrobe')">
       <view class="section-tabs ui-row ui-section">
         <MobileButton v-for="tab in ['衣物', '分类']" :key="tab" :label="tab" compact
@@ -346,11 +370,6 @@ function chooseCategory(value) {
         </view>
       </view>
       <view v-if="section === '衣物'" class="wardrobe-filters">
-        <view class="ui-field-row">
-          <FormField appearance="soft" compact stretch label="筛选分类" hide-label kind="selector"
-            :model-value="filterName" :options="categoryNames"
-            @update:model-value="(value) => (category = categories[categoryNames.indexOf(value) - 1]?.id || '')" />
-        </view>
         <view class="season-filters ui-row ui-section">
           <MobileButton v-for="value in seasonLabels" :key="value" compact
             :label="'筛选' + value + '季衣物'" :variant="season === value ? 'primary' : 'quiet'"

@@ -8,6 +8,9 @@ import { computed, onUnmounted, ref } from 'vue';
 import { onShow } from '@dcloudio/uni-app';
 import MobilePage from '../../components/MobilePage.uvue';
 import PageHeader from '../../components/PageHeader.uvue';
+import FilterTrigger from '../../components/FilterTrigger.uvue';
+import FilterSheet from '../../components/FilterSheet.uvue';
+import spacing from '../../styles/spacing.json';
 import MobileButton from '../../components/MobileButton.uvue';
 import AppIcon from '../../components/AppIcon.uvue';
 import FormField from '../../components/FormField.uvue';
@@ -39,6 +42,18 @@ const rows = ref<any[]>([]),
   loading = ref(false),
   refreshing = ref(false),
   error = ref('');
+const filtersOpen = ref(false);
+const draftStatus = ref('全部状态');
+function openFilters() {
+  draftStatus.value = status.value;
+  filtersOpen.value = true;
+}
+function applyFilters() {
+  filtersOpen.value = false;
+  if (status.value === draftStatus.value) return;
+  status.value = draftStatus.value;
+  void load();
+}
 const form = ref<any>(null),
   saving = ref(false),
   formError = ref(''),
@@ -59,6 +74,7 @@ const filtered = computed(() =>
   ),
 );
 const scope = createRecordScope((clearData) => {
+  filtersOpen.value = false;
   form.value = null;
   detailId.value = '';
   detail.value = null;
@@ -206,17 +222,18 @@ async function cancel(item) {
 <template>
   <MobilePage :refreshing="refreshing" @refresh="load(true)" @reachbottom="loadMore"
     ><view class="feedback-page ui-page-body" :class="{ 'feedback-page-dark': isDark }"
-      ><PageHeader title="反馈中心" :back="true" @back="uni.navigateBack()" /><view class="ui-toolbar"
-        ><FormField compact stretch hide-label
-          label="状态"
-          kind="selector"
-          v-model="status"
-          :options="['全部状态', ...statusLabels]"
-          @update:model-value="load()" /><MobileButton
-          label="提交反馈"
-          icon="ant-design:plus-outlined"
-          @click="open" /></view
-      ><PageState skeleton="list" :loading="loading" :error="error" :empty="!filtered.length" @retry="load()"
+      ><PageHeader title="反馈中心" back :actions-min-width="spacing.controlMin * 2 + spacing.inline" @back="uni.navigateBack()">
+        <template #actions>
+          <view class="ui-row">
+            <MobileButton label="提交反馈" icon="ant-design:plus-outlined" variant="ghost" @click="open" />
+            <FilterTrigger label="筛选反馈" :open="filtersOpen" :active="status !== '全部状态'" @click="openFilters" />
+          </view>
+        </template>
+      </PageHeader>
+      <FilterSheet :open="filtersOpen" @close="filtersOpen = false" @reset="draftStatus = '全部状态'" @apply="applyFilters">
+        <FormField label="状态" kind="selector" v-model="draftStatus" :options="['全部状态', ...statusLabels]" />
+      </FilterSheet>
+      <PageState skeleton="list" :loading="loading" :error="error" :empty="!filtered.length" @retry="load()"
         ><view class="feedback-list">
           <view v-for="item in filtered" :key="item.id" class="feedback-card ui-card" :class="{ 'feedback-card-dark': isDark }">
             <view class="feedback-heading ui-row">

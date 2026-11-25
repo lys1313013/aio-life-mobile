@@ -63,6 +63,13 @@ for (const width of [390, 768, 1440]) for (const theme of ['light', 'dark']) {
     expect((await page.locator('.item-card').first().boundingBox()).y).toBeLessThan(360);
     await shot(page, `${width}-${theme}-page`);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    const filter = page.getByRole('button', { name: '筛选衣物', exact: true });
+    const sheet = page.getByRole('dialog', { name: '快捷筛选', exact: true });
+    await filter.click();
+    await expect(sheet.locator('uni-picker[aria-label="分类"]')).toBeVisible();
+    await shot(page, `${width}-${theme}-filter`);
+    await sheet.getByRole('button', { name: '关闭筛选', exact: true }).click();
+    await expect(sheet).toBeHidden();
     await page.getByRole('button', { name: '筛选夏季衣物', exact: true }).click();
     await expect(page.locator('.item-title')).toHaveCount(1);
     await expect(page.locator('.item-title')).toHaveText('日常圆领短袖');

@@ -94,14 +94,17 @@ onUnmounted(cancelBlur);
   <PageHeader :title="title" :back="back" @back="emit('back')" :content-min-width="contentMinWidth" :appearance="appearance" :extension-open="expanded"
     :actions-min-width="actionsMinWidth + (enabled ? spacing.controlMin : 0)">
     <template #actions>
-      <slot name="actions" />
-      <view v-if="enabled" ref="trigger" @click.stop>
-        <button hover-class="none" role="button" class="page-search-trigger"
-          :aria-label="expanded ? '收起搜索' : '展开搜索'" :aria-expanded="expanded"
-          @click="setOpen(!expanded)">
-          <AppIcon name="lucide:search" :size="20" :appearance="appearance"
-            :color="filtered ? themePalette(appearance).tabSelectedColor : undefined" />
-        </button>
+      <view class="page-search-actions">
+        <slot name="actions" />
+        <view v-if="enabled" ref="trigger" @click.stop>
+          <button hover-class="none" role="button" class="page-search-trigger"
+            :aria-label="expanded ? '收起搜索' : '展开搜索'" :aria-expanded="expanded"
+            @click="setOpen(!expanded)">
+            <AppIcon name="lucide:search" :size="20" :appearance="appearance"
+              :color="filtered ? themePalette(appearance).tabSelectedColor : undefined" />
+          </button>
+        </view>
+        <slot name="trailing-actions" />
       </view>
     </template>
     <template #extension>
@@ -125,6 +128,11 @@ onUnmounted(cancelBlur);
 @use '../styles/spacing-tokens' as *;
 @use '../styles/typography' as *;
 
+.page-search-actions {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+}
 .page-search-trigger {
   display: flex;
   align-items: center;

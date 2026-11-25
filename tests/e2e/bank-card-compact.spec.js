@@ -23,11 +23,26 @@ for (const width of [320, 390, 600, 768, 1440]) {
       await page.route('**/api/bank-cards/88/number', route => route.fulfill({ json: { code: 0, data: '6222000000000001234' } }));
       await page.goto('/#/pages/finance/cards');
       await expect(page.locator('.card-grid .card')).toHaveCount(1);
-      await expect(page.getByRole('button', { name: '储蓄卡', exact: true })).toHaveAttribute('aria-pressed', 'true');
+      const typeSwitch = page.getByRole('group', { name: '银行卡类型', exact: true });
+      const debit = typeSwitch.getByRole('button', { name: '储蓄卡', exact: true });
+      const credit = typeSwitch.getByRole('button', { name: '信用卡', exact: true });
+      await expect(debit).toHaveAttribute('aria-pressed', 'true');
+      const selectedUnderline = await debit.evaluate(button => getComputedStyle(button).borderBottomColor);
+      expect(selectedUnderline).not.toBe('rgba(0, 0, 0, 0)');
+      await expect(debit.getByText('储蓄卡', { exact: true })).toHaveCSS('text-decoration-line', 'none');
+      await expect(credit).not.toHaveCSS('border-bottom-color', selectedUnderline);
+      for (const button of [debit, credit]) {
+        const { width, height } = await button.boundingBox();
+        expect(width).toBeGreaterThanOrEqual(44);
+        expect(height).toBeGreaterThanOrEqual(44);
+      }
       await expect(page.locator('.card .number, .card .face-type, .card .face-tail')).toHaveCount(0);
       await expect(page.locator('.card-face').first()).toHaveCSS('background-color', 'rgb(135, 83, 79)');
       await page.screenshot({ path: `${out}/${width}-${theme}-debit.png`, fullPage: true });
-      await page.getByRole('button', { name: '信用卡', exact: true }).click();
+      await credit.click();
+      await expect(credit).toHaveAttribute('aria-pressed', 'true');
+      await expect(credit).toHaveCSS('border-bottom-color', selectedUnderline);
+      await expect(debit).not.toHaveCSS('border-bottom-color', selectedUnderline);
       await expect(page.locator('.card-grid .card')).toHaveCount(2);
       await expect(page.locator('.navigation-title')).toHaveCount(0);
       await expect(page.locator('.card-actions')).toHaveCount(0);
@@ -70,7 +85,7 @@ for (const width of [320, 390, 600, 768, 1440]) {
       await expect(numberDialog.locator('.card-number-detail')).toHaveText('4333 0000 0000 0001 234');
       await page.screenshot({ path: `${out}/${width}-${theme}-full-number.png`, fullPage: true });
       await numberDialog.getByRole('button', { name: '关闭', exact: true }).click();
-      await page.getByRole('button', { name: '储蓄卡', exact: true }).click();
+      await debit.click();
       const more = page.getByRole('button', { name: '银行卡更多操作', exact: true }).first();
       await more.click();
       await expect(page.getByRole('menu')).toBeVisible();

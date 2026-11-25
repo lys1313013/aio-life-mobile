@@ -1,4 +1,5 @@
 const { waitForMotion } = require('./support/motion');
+const { stableBox } = require('./support/geometry');
 const { test, expect } = require('./support/test');
 const { setup, id } = require('./qa-records-fixtures.js');
 const fs = require('node:fs');
@@ -26,13 +27,15 @@ async function library(page, kind) {
   }));
   await page.route(
     '**/api/' + (kind === 'movie' ? 'movie' : 'read-record') + '/page?**',
-    (route) =>
-      route.fulfill({
-        json: {
-          code: 0,
-          data: { items: state.movies, total: state.movies.length },
-        },
-      }),
+    route => {
+      const params = new URL(route.request().url()).searchParams;
+      const items = state.movies.filter(item =>
+        (!params.has('statuses') || item.status === params.get('statuses')) &&
+        (!params.has('title') || item.title.includes(params.get('title'))) &&
+        (!params.has('type') || item.type === Number(params.get('type'))) &&
+        (!params.has('rankingListId') || item.rankings.some(badge => badge.rankingListId === params.get('rankingListId'))));
+      return route.fulfill({ json: { code: 0, message: null, data: { items, total: items.length } } });
+    },
   );
   state.coverHeaders = [];
   await page.route('**/api/file/preview/*', async (route) => {
@@ -44,7 +47,7 @@ async function library(page, kind) {
     route.fulfill({ json: { code: 0, data: [{ id: '12', name: kind === 'movie' ? '豆瓣电影Top250' : '豆瓣读书Top250' }] } }));
   await page.goto('/#/pages/records/library?kind=' + kind);
   await page.reload();
-  await expect(page.locator('.library-card')).toHaveCount(9);
+  await expect(page.locator(kind === 'movie' ? '.library-card' : '.shelf-book[role=button]')).toHaveCount(9);
   return state;
 }
 for (const kind of ['movie', 'read'])
@@ -63,11 +66,10 @@ for (const kind of ['movie', 'read'])
             (h) => h.authorization === 'Bearer records-fixture',
           ),
         ).toBe(true);
-        await expect(page.locator('.library-status').first()).toHaveText(
-          kind === 'movie' ? '想看' : '想读',
-        );
-        await expect(page.locator('.library-date').first()).toHaveText(
-          '2026-10-01',
+        if (kind === 'movie') await expect(page.locator('.library-status').first()).toHaveText('想看');
+        else await expect(page.locator('.shelf-label')).toHaveText(['在读', '读过', '想读', '搁置']);
+        await expect(page.locator(kind === 'movie' ? '.library-date' : '.shelf-date').first()).toHaveText(
+          kind === 'movie' ? '2026-10-01' : '10月1日',
         );
         await expect(
           page.getByRole('button', { name: '预览附件' }),
@@ -76,7 +78,7 @@ for (const kind of ['movie', 'read'])
           page.getByRole('button', { name: '删除记录' }),
         ).toHaveCount(0);
         const boxes = await page
-          .locator('.library-poster')
+          .locator(kind === 'movie' ? '.library-poster' : '.shelf-cover')
           .evaluateAll((nodes) =>
             nodes.map((n) => {
               const r = n.getBoundingClientRect();
@@ -89,24 +91,63 @@ for (const kind of ['movie', 'read'])
               };
             }),
           );
-        const badge = page.locator('.library-ranking').first();
-        await expect(badge).toContainText('No.34');
-        await expect(badge.getByText('豆瓣 Top250', { exact: true })).toBeVisible();
-        const card = await page.locator('.library-card').first().boundingBox();
-        expect(boxes[0].width / card.width).toBeCloseTo(0.88, 2);
-        const badgeBox = await badge.boundingBox();
-        expect(badgeBox.y).toBeGreaterThanOrEqual(boxes[0].y + boxes[0].height - 1);
-        const columns = width >= 1200 ? 7 : width >= 768 ? 5 : width >= 640 ? 4 : 3;
-        expect(boxes.filter((b) => b.y === boxes[0].y)).toHaveLength(columns);
+        if (kind === 'movie') {
+          const badge = page.locator('.library-ranking').first();
+          await expect(badge).toContainText('No.34');
+          await expect(badge.getByText('豆瓣 Top250', { exact: true })).toBeVisible();
+          const card = await page.locator('.library-card').first().boundingBox();
+          expect(boxes[0].width / card.width).toBeCloseTo(0.88, 2);
+          const badgeBox = await badge.boundingBox();
+          expect(badgeBox.y).toBeGreaterThanOrEqual(boxes[0].y + boxes[0].height - 1);
+          const columns = width >= 1200 ? 7 : width >= 768 ? 5 : width >= 640 ? 4 : 3;
+          expect(boxes.filter((b) => b.y === boxes[0].y)).toHaveLength(columns);
+        } else {
+          const book = page.getByRole('button', { name: '编辑《' + state.movies[0].title + '》', exact: true });
+          await expect(book.locator('.shelf-badge')).toHaveText('豆瓣 Top 250');
+          await expect(page.locator('.shelf-badge')).toHaveCount(1);
+          await expect(book).not.toContainText('No.34');
+          const coverBox = await book.locator('.shelf-cover').boundingBox();
+          const titleBox = await book.locator('.shelf-title').boundingBox();
+          expect(titleBox.x).toBeGreaterThan(coverBox.x + coverBox.width);
+          expect(boxes.filter(box => box.y === boxes[0].y)).toHaveLength(2);
+        }
         expect(boxes.every((b) => b.x >= 0 && b.right <= width)).toBe(true);
         expect(Math.abs(boxes[0].height / boxes[0].width - 4 / 3)).toBeLessThan(
           0.03,
         );
-        const search = await page.getByRole('button', { name: '展开搜索', exact: true }).boundingBox();
-        expect(search.x + search.width).toBeLessThanOrEqual(width);
         await page.screenshot({ path: info.outputPath('library.png') });
+        const searchButton = page.getByRole('button', { name: '展开搜索', exact: true });
+        const search = await searchButton.boundingBox();
+        const filter = page.getByRole('button', { name: kind === 'movie' ? '筛选观影' : '筛选阅读记录', exact: true });
+        const sheet = page.getByRole('dialog', { name: '快捷筛选', exact: true });
+        await expect(filter).toHaveAttribute('aria-expanded', 'false');
+        await expect(sheet).toBeHidden();
+        await expect(page.getByText('9 条', { exact: true })).toBeHidden();
+        const filterBox = await filter.boundingBox();
+        expect(filterBox.width).toBeGreaterThanOrEqual(44);
+        expect(filterBox.height).toBeGreaterThanOrEqual(44);
+        expect(search.x + search.width).toBeLessThanOrEqual(filterBox.x);
+        expect(filterBox.y + filterBox.height / 2).toBeCloseTo(search.y + search.height / 2, 0);
+        expect(filterBox.x + filterBox.width).toBeLessThanOrEqual(width);
+        if (kind === 'movie') {
+          const importBox = await page.getByRole('button', { name: '豆瓣导入', exact: true }).boundingBox();
+          expect(importBox.x + importBox.width).toBeLessThanOrEqual(search.x);
+          expect(importBox.y + importBox.height / 2).toBeCloseTo(search.y + search.height / 2, 0);
+        }
+        await filter.click();
+        await expect(filter).toHaveAttribute('aria-expanded', 'true');
+        for (const label of [kind === 'movie' ? '电影' : '书籍', kind === 'movie' ? '在看' : '在读', '豆瓣 Top250']) {
+          await expect(sheet.getByRole('button', { name: label, exact: true })).toBeVisible();
+        }
+        if (kind === 'movie') await expect(sheet.getByText('9 条', { exact: true })).toBeVisible();
+        const sheetBox = await stableBox(sheet);
+        expect(sheetBox.y + sheetBox.height).toBeCloseTo(900, 0);
+        expect(sheetBox.width).toBeLessThanOrEqual(Math.min(width, 480));
+        await page.screenshot({ path: info.outputPath('library-filters.png') });
+        await sheet.getByRole('button', { name: '关闭筛选', exact: true }).click();
+        await expect(sheet).toBeHidden();
         await page
-          .getByRole('button', { name: '编辑记录', exact: true })
+          .getByRole('button', { name: kind === 'movie' ? '编辑记录' : '编辑《' + state.movies[0].title + '》', exact: true })
           .first()
           .click();
         await expect(page.getByRole('dialog')).toBeVisible();
@@ -126,11 +167,11 @@ for (const kind of ['movie', 'read'])
       });
     }
 for (const kind of ['movie', 'read'])
-  test(`编辑恢复、删除和筛选 ${kind}`, async ({ page }) => {
+  test(`编辑恢复、删除和筛选 ${kind}`, async ({ page }, info) => {
     await page.setViewportSize({ width: 390, height: 900 });
     const state = await library(page, kind);
     await page
-      .getByRole('button', { name: '编辑记录', exact: true })
+      .getByRole('button', { name: kind === 'movie' ? '编辑记录' : '编辑《' + state.movies[0].title + '》', exact: true })
       .first()
       .click();
     await page.locator('[aria-label="名称"] input').fill('模拟修改');
@@ -145,7 +186,7 @@ for (const kind of ['movie', 'read'])
     expect(state.movies[0].doubanSubjectId).toBe('9223372036854775806');
     expect(state.writes.at(-1).body.id).toBe(id);
     await page
-      .getByRole('button', { name: '编辑记录', exact: true })
+      .getByRole('button', { name: kind === 'movie' ? '编辑记录' : '编辑《' + state.movies[0].title + '》', exact: true })
       .first()
       .click();
     await page.getByRole('button', { name: '删除记录', exact: true }).click();
@@ -157,7 +198,7 @@ for (const kind of ['movie', 'read'])
     state.fail = false;
     await confirm.getByRole('button', { name: '确认', exact: true }).click();
     await expect(page.getByRole('dialog')).toHaveCount(0);
-    await expect(page.locator('.library-card')).toHaveCount(8);
+    await expect(page.locator(kind === 'movie' ? '.library-card' : '.shelf-book[role=button]')).toHaveCount(8);
     expect(state.writes.at(-1).method).toBe('DELETE');
     const base = kind === 'movie' ? '/movie/page' : '/read-record/page';
     await page.getByRole('button', { name: '展开搜索', exact: true }).click();
@@ -171,44 +212,59 @@ for (const kind of ['movie', 'read'])
     await searchInput.press('Enter');
     await search;
     await waitForMotion(page);
-    await page.locator('uni-picker[aria-label="状态"]').click();
-    await page.waitForTimeout(400);
-    const indicator = await page
-      .locator('.uni-picker-view-indicator')
-      .boundingBox();
-    const x = indicator.x + indicator.width / 2;
-    const y = indicator.y + indicator.height / 2;
-    const cdp = await page.context().newCDPSession(page);
-    await cdp.send('Input.dispatchTouchEvent', {
-      type: 'touchStart',
-      touchPoints: [{ x, y }],
-    });
-    for (let step = 1; step <= 8; step++) {
-      await cdp.send('Input.dispatchTouchEvent', {
-        type: 'touchMove',
-        touchPoints: [{ x, y: y - (indicator.height * 2 * step) / 8 }],
-      });
-      await page.waitForTimeout(50);
-    }
-    await page.waitForTimeout(200);
-    await cdp.send('Input.dispatchTouchEvent', {
-      type: 'touchEnd',
-      touchPoints: [],
-    });
-    await page.waitForTimeout(400);
-    await Promise.all([
-      page.waitForRequest(
-        (r) =>
-          r.url().includes(base) &&
-          new URL(r.url()).searchParams.getAll('statuses').join(',') ===
-            'in_progress',
-      ),
-      page.locator('.uni-picker-action-confirm:visible').click(),
+    const filter = page.getByRole('button', { name: kind === 'movie' ? '筛选观影' : '筛选阅读记录', exact: true });
+    const sheet = page.getByRole('dialog', { name: '快捷筛选', exact: true });
+    const status = sheet.getByRole('button', { name: kind === 'movie' ? '在看' : '在读', exact: true });
+    const apply = sheet.getByRole('button', { name: '确定', exact: true });
+    await filter.click();
+    await expect(sheet.getByRole('button', { name: '不限', exact: true })).toHaveCount(0);
+    await expect(sheet.getByRole('button', { pressed: true })).toHaveCount(0);
+    await status.click();
+    await expect(status).toHaveAttribute('aria-pressed', 'true');
+    await status.click();
+    await expect(status).toHaveAttribute('aria-pressed', 'false');
+    await status.click();
+    await expect(status).toHaveAttribute('aria-pressed', 'true');
+    await sheet.getByRole('button', { name: '关闭筛选', exact: true }).click();
+    await expect(filter).toHaveAttribute('aria-expanded', 'false');
+    await expect(filter).not.toHaveAttribute('aria-description', '已启用筛选');
+
+    await filter.click();
+    await expect(status).toHaveAttribute('aria-pressed', 'false');
+    await sheet.getByRole('button', { name: kind === 'movie' ? '电影' : '书籍', exact: true }).click();
+    await status.click();
+    await sheet.getByRole('button', { name: '豆瓣 Top250', exact: true }).click();
+    await page.screenshot({ path: info.outputPath('library-filter-selected.png') });
+    const [filtered] = await Promise.all([
+      page.waitForResponse(response => new URL(response.url()).pathname.endsWith(base)),
+      apply.click(),
     ]);
-    await expect(page.locator('uni-picker[aria-label="状态"]')).toContainText(
-      kind === 'movie' ? '在看' : '在读',
-    );
-    await cdp.detach();
+    const query = new URL(filtered.url()).searchParams;
+    expect(query.get('page')).toBe('1');
+    expect(query.get('title')).toBe('模拟搜索');
+    expect(query.get('type')).toBe('1');
+    expect(query.getAll('statuses')).toEqual(['in_progress']);
+    expect(query.get('rankingListId')).toBe('12');
+    await expect(page.locator('[role="dialog"][aria-label="快捷筛选"]')).toHaveCount(0);
+    await expect(filter).toHaveAttribute('aria-description', '已启用筛选');
+    await page.screenshot({ path: info.outputPath('library-filter-active.png') });
+
+    await filter.click();
+    await expect(status).toHaveAttribute('aria-pressed', 'true');
+    await sheet.getByRole('button', { name: '重置', exact: true }).click();
+    await expect(sheet.getByRole('button', { pressed: true })).toHaveCount(0);
+    const [cleared] = await Promise.all([
+      page.waitForResponse(response => new URL(response.url()).pathname.endsWith(base)),
+      apply.click(),
+    ]);
+    const clearedQuery = new URL(cleared.url()).searchParams;
+    expect(clearedQuery.get('title')).toBe('模拟搜索');
+    expect(clearedQuery.has('type')).toBe(false);
+    expect(clearedQuery.getAll('statuses')).toHaveLength(kind === 'read' ? 1 : 0);
+    expect(clearedQuery.get('pageSize')).toBe(kind === 'read' ? '7' : '30');
+    expect(clearedQuery.has('rankingListId')).toBe(false);
+    await expect(sheet).toBeHidden();
+    await expect(filter).not.toHaveAttribute('aria-description', '已启用筛选');
   });
 test('封面失败可局部重试，不误打开编辑', async ({ page }) => {
   const state = await library(page, 'movie');

@@ -1,0 +1,47 @@
+<script setup lang="ts">
+import AppIcon from './AppIcon.uvue';
+import { themePalette } from '../services/theme.ts';
+
+defineProps<{ label: string; open?: boolean; active?: boolean; description?: string; disabled?: boolean }>();
+defineEmits(['click']);
+</script>
+
+<template>
+  <button class="filter-trigger" :class="{ 'filter-trigger-disabled': disabled }" role="button" hover-class="none" :aria-label="label"
+    :aria-expanded="!!open" :aria-description="active ? (description || '已启用筛选') : undefined" :disabled="disabled"
+    @click="$emit('click')">
+    <AppIcon name="ant-design:filter-outlined" :color="active ? themePalette().tabSelectedColor : undefined" />
+    <view v-if="active" class="filter-trigger-dot" :style="{ backgroundColor: themePalette().tabSelectedColor }" aria-hidden="true" />
+  </button>
+</template>
+
+<style scoped lang="scss">
+@use '../styles/platform' as *;
+@use '../styles/spacing-tokens' as *;
+.filter-trigger {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: $space-controlMin;
+  height: $space-controlMin;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  @include button-background(transparent);
+  @include borderless-button;
+}
+.filter-trigger-dot {
+  position: absolute;
+  top: $space-inline;
+  right: $space-inline;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+}
+.filter-trigger-disabled { opacity: 0.45; }
+/* #ifdef WEB */
+.filter-trigger:focus-visible { outline: 2px solid #93b4fc; outline-offset: -2px; }
+/* #endif */
+</style>

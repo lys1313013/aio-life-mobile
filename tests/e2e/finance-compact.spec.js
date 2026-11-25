@@ -1,31 +1,46 @@
 const { test, expect } = require('./support/test');
 const { start, picker } = require('./qa-domains-ui');
+const { pullDown } = require('./gestures');
 
-test('财务高级筛选折叠后保留条件并显示数量', async ({ page }) => {
+function filterButton(page, kind) {
+  return page.getByRole('button', { name: kind === 'expense' ? '筛选支出' : '筛选收入', exact: true });
+}
+const filterSheet = page => page.getByRole('dialog', { name: '快捷筛选', exact: true });
+
+test('支出筛选放在导入右侧，确定后提交并保留条件', async ({ page }) => {
   await page.setViewportSize({ width: 768, height: 900 });
   const state = await start(page, 'finance/expense');
-  const filters = page.getByRole('button', { name: /^更多筛选/ });
+  const filters = filterButton(page, 'expense');
+  const importBox = await page.getByRole('button', { name: '导入账单', exact: true }).boundingBox();
+  expect(importBox.x + importBox.width).toBeLessThanOrEqual((await filters.boundingBox()).x);
+  const sheet = filterSheet(page);
+  const year = sheet.locator('uni-picker[aria-label="年份"]');
   await filters.click();
-  const year = page.locator('.filters uni-picker[aria-label="年份"]');
   await expect(year).toContainText('全部年份');
   const yearBox = await year.boundingBox();
-  const typeBox = await page.locator('.filters uni-picker[aria-label="类型"]').boundingBox();
+  const typeBox = await sheet.locator('uni-picker[aria-label="类型"]').boundingBox();
   expect(Math.abs(yearBox.y - typeBox.y)).toBeLessThanOrEqual(1);
-  await year.click();
-  await page.locator('.uni-picker-item').filter({ hasText: /^2026$/ }).filter({ visible: true }).click();
-  await page.locator('.filters input[aria-label="备注"]').fill('模拟交通');
-  await expect(filters).toHaveAccessibleName('更多筛选，已启用 2 项条件');
+  await picker(page, '年份', '2026');
+  await sheet.getByRole('textbox', { name: '备注' }).fill('模拟交通');
+  await sheet.getByRole('button', { name: '关闭筛选' }).click();
+  await expect(sheet).toBeHidden();
   await filters.click();
-  await expect(page.locator('.filters uni-picker[aria-label="年份"]')).toHaveCount(0);
-  await expect(page.locator('.filter-count')).toHaveText('2');
-  const request = page.waitForRequest((request) => request.url().includes('/expense/query'));
-  await page.getByRole('button', { name: '筛选', exact: true }).click();
-  const query = new URL((await request).url());
+  await expect(year).toContainText('全部年份');
+  await expect(sheet.getByRole('textbox', { name: '备注' })).toHaveValue('');
+  await picker(page, '年份', '2026');
+  await sheet.getByRole('textbox', { name: '备注' }).fill('模拟交通');
+  const [request] = await Promise.all([
+    page.waitForRequest(request => new URL(request.url()).pathname === '/api/expense/query'),
+    sheet.getByRole('button', { name: '确定', exact: true }).click(),
+  ]);
+  const query = new URL(request.url());
   expect(query.searchParams.get('year')).toBe('2026');
   expect(query.searchParams.get('remark')).toBe('模拟交通');
+  await expect(sheet).toBeHidden();
+  await expect(filters).toHaveAccessibleDescription('2 项条件');
   await filters.click();
-  await expect(page.locator('.filters uni-picker[aria-label="年份"]')).toContainText('2026');
-  await expect(page.locator('.filters input[aria-label="备注"]')).toHaveValue('模拟交通');
+  await expect(year).toContainText('2026');
+  await expect(sheet.getByRole('textbox', { name: '备注' })).toHaveValue('模拟交通');
   expect(state.calls).toEqual([]);
 });
 
@@ -62,11 +77,11 @@ for (const width of [390, 768, 1440]) {
           const items = kind === 'income' && year ? records.filter(row => row.incomeDate.startsWith(year + '-')) : records;
           return route.fulfill({ json: { code: 0, message: null, data: { items, total: items.length } } });
         });
-        await page.getByRole('button', { name: '筛选', exact: true }).click();
+        await pullDown(page, '.mobile-page-scroll');
         await expect(page.locator('.ledger-row')).toHaveCount(3);
         await expect(page.getByRole('button', { name: '关联设备', exact: true })).toHaveCount(0);
         await expect(page.locator('.ledger-money').last()).toHaveText('¥12345678.90');
-        await page.locator('.section-title').evaluate((element) => element.scrollIntoView({ block: 'start' }));
+        await page.locator('.ledger-row').first().evaluate(element => element.scrollIntoView({ block: 'center' }));
         const directory = require('node:path').resolve('artifacts/finance-compact');
         require('node:fs').mkdirSync(directory, { recursive: true });
         await page.screenshot({ path: `${directory}/${kind}-${width}-${theme}-records.png` });
@@ -106,15 +121,25 @@ for (const width of [390, 768, 1440]) {
         await dialog.getByRole('button', { name: '取消', exact: true }).click();
         await expect(add).toBeVisible();
         if (kind === 'income') {
-          const year = page.locator('.filters uni-picker[aria-label="年份"]');
-          await expect(year).toContainText('全部年份');
-          const annualRequest = page.waitForRequest(request => new URL(request.url()).pathname === '/api/income/query');
+          const sheet = filterSheet(page);
+          const filter = filterButton(page, kind);
+          await filter.click();
+          await expect(sheet.locator('uni-picker[aria-label="年份"]')).toContainText('全部年份');
           await picker(page, '年份', '2026');
-          expect(new URL((await annualRequest).url()).searchParams.get('year')).toBe('2026');
+          await page.screenshot({ path: `${directory}/${kind}-${width}-${theme}-filter.png` });
+          const [annualRequest] = await Promise.all([
+            page.waitForRequest(request => new URL(request.url()).pathname === '/api/income/query'),
+            sheet.getByRole('button', { name: '确定', exact: true }).click(),
+          ]);
+          expect(new URL(annualRequest.url()).searchParams.get('year')).toBe('2026');
           await expect(page.locator('.ledger-row')).toHaveCount(2);
-          const allRequest = page.waitForRequest(request => new URL(request.url()).pathname === '/api/income/query');
-          await picker(page, '年份', '全部年份');
-          expect(new URL((await allRequest).url()).searchParams.has('year')).toBe(false);
+          await filter.click();
+          await sheet.getByRole('button', { name: '重置', exact: true }).click();
+          const [allRequest] = await Promise.all([
+            page.waitForRequest(request => new URL(request.url()).pathname === '/api/income/query'),
+            sheet.getByRole('button', { name: '确定', exact: true }).click(),
+          ]);
+          expect(new URL(allRequest.url()).searchParams.has('year')).toBe(false);
           await expect(page.locator('.ledger-row')).toHaveCount(3);
         }
         expect(state.calls).toEqual([]);

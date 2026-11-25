@@ -8,6 +8,9 @@ import { computed, onUnmounted, ref } from 'vue';
 import { onShow } from '@dcloudio/uni-app';
 import MobilePage from '../../components/MobilePage.uvue';
 import PageSearch from '../../components/PageSearch.uvue';
+import FilterTrigger from '../../components/FilterTrigger.uvue';
+import FilterSheet from '../../components/FilterSheet.uvue';
+import spacing from '../../styles/spacing.json';
 import MobileButton from '../../components/MobileButton.uvue';
 import FormField from '../../components/FormField.uvue';
 import ConfirmAction from '../../components/ConfirmAction.uvue';
@@ -43,6 +46,21 @@ const levels = ['school', 'district', 'city', 'province', 'national', 'internati
 const keyword = ref(''),
   categoryFilter = ref('全部分类'),
   levelFilter = ref('全部级别');
+const searchOpen = ref(false);
+const filtersOpen = ref(false);
+const defaultFilters = { category: '全部分类', level: '全部级别' };
+const filterDraft = ref({ ...defaultFilters });
+const hasFilters = computed(() => categoryFilter.value !== defaultFilters.category || levelFilter.value !== defaultFilters.level);
+function openFilters() {
+  searchOpen.value = false;
+  filterDraft.value = { category: categoryFilter.value, level: levelFilter.value };
+  filtersOpen.value = true;
+}
+function applyFilters() {
+  categoryFilter.value = filterDraft.value.category;
+  levelFilter.value = filterDraft.value.level;
+  filtersOpen.value = false;
+}
 const filtered = computed(() =>
   rows.value
     .filter(
@@ -60,6 +78,7 @@ const filtered = computed(() =>
     .sort((a, b) => (b.isTop || 0) - (a.isTop || 0) || b.honorDate.localeCompare(a.honorDate)),
 );
 const scope = createRecordScope((clearData) => {
+  filtersOpen.value = false;
   form.value = null;
   if (clearData) {
     rows.value = [];
@@ -169,22 +188,16 @@ function categoryName(item) {
 <template>
   <MobilePage :refreshing="refreshing" @refresh="load(true)"
     ><view class="honor-page ui-page-body" :class="{ 'honor-page-dark': isDark }"
-      ><PageSearch v-model="keyword" title="荣誉" label="搜索荣誉" back @back="uni.navigateBack()" /><view class="filters ui-field-row"
-        ><FormField compact stretch hide-label
-          label="分类"
-          kind="selector"
-          v-model="categoryFilter"
-          :options="['全部分类', ...categories.map((c) => c.name)]" /><FormField compact stretch hide-label
-          label="级别"
-          kind="selector"
-          v-model="levelFilter"
-          :options="['全部级别', ...levelLabels]" />
-        <MobileButton
-          v-if="keyword || categoryFilter !== '全部分类' || levelFilter !== '全部级别'"
-          label="重置筛选"
-          icon="ant-design:close-outlined" variant="quiet"
-          @click="keyword = ''; categoryFilter = '全部分类'; levelFilter = '全部级别'" /></view
-      >
+      ><PageSearch v-model="keyword" v-model:open="searchOpen" title="荣誉" label="搜索荣誉" back
+        :actions-min-width="spacing.controlMin" @back="uni.navigateBack()">
+        <template #trailing-actions>
+          <FilterTrigger label="筛选荣誉" :open="filtersOpen" :active="hasFilters" @click="openFilters" />
+        </template>
+      </PageSearch>
+      <FilterSheet :open="filtersOpen" @close="filtersOpen = false" @reset="filterDraft = { ...defaultFilters }" @apply="applyFilters">
+        <FormField label="分类" kind="selector" v-model="filterDraft.category" :options="[defaultFilters.category, ...categories.map(c => c.name)]" />
+        <FormField label="级别" kind="selector" v-model="filterDraft.level" :options="[defaultFilters.level, ...levelLabels]" />
+      </FilterSheet>
       <PageState skeleton="list" :loading="loading" :error="error" :empty="!filtered.length" @retry="load()">
 <template #loading><view class="honor-grid" ><view v-for="n in 6" :key="n" class="honor-card ui-pad-card" :class="{ 'honor-card-dark': isDark }"><ContentSkeleton variant="tile" /></view></view></template>
 
@@ -270,10 +283,6 @@ function categoryName(item) {
 .toolbar {
   flex-direction: row;
   align-items: center;
-}
-.filters {
-  flex-direction: row;
-  flex-wrap: wrap;
 }
 .metrics {
   flex-direction: row;

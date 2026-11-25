@@ -20,7 +20,7 @@ import { isDark } from '../../services/theme.ts';
 import { usePageRefresh } from '../../services/page-refresh.ts';
 import { createRecordScope } from '../../services/records/page-scope.ts';
 import { dateTime, taskPayload, reordered } from '../../services/records/contracts.ts';
-import { fetchColumns, fetchTasks, fetchDetails, saveTaskRecord, deleteTaskRecord, sortTaskRecords, starDetail } from './services/tasks.ts';
+import { fetchColumns, fetchTasks, fetchDetailsBatch, saveTaskRecord, deleteTaskRecord, sortTaskRecords, starDetail } from './services/tasks.ts';
 const modalMotion0 = ref<{ close: () => void } | null>(null);
 
 
@@ -68,21 +68,40 @@ function openRequested(taskId) {
   requestedDetail = ''; requestedTask = '';
 }
 async function loadDetails(taskId) {
-  const group = groupFor(taskId);
-  if (group.loading || group.adding || group.items.some((item) => busy.value.startsWith(item.id + ':'))) return;
-  const revision = ++group.revision;
-  group.loading = true; group.error = '';
+  await loadDetailsBatch([taskId]);
+}
+async function loadDetailsBatch(taskIds: string[]) {
+  const pending = taskIds.flatMap(taskId => {
+    const group = groupFor(taskId);
+    if (group.loading || group.adding || group.items.some(item => busy.value.startsWith(item.id + ':'))) return [];
+    group.loading = true;
+    group.error = '';
+    return [{ taskId, group, revision: ++group.revision }];
+  });
+  if (!pending.length) return;
   try {
-    const rows = await scope.wait(fetchDetails(taskId));
-    if (!alive || revision !== group.revision || !tasks.value.some((task) => task.id === taskId)) return;
-    // Always keep the owning ID, including responses from older servers without taskId.
-    group.items = rows.map((item) => ({ ...item, taskId }));
-    group.loaded = true;
-    updateCount(taskId);
+    const rows = await scope.wait(fetchDetailsBatch(pending.map(item => item.taskId)));
+    const byTask = new Map<string, any[]>();
+    for (const row of rows) {
+      if (!byTask.has(row.taskId)) byTask.set(row.taskId, []);
+      byTask.get(row.taskId)?.push(row);
+    }
+    for (const { taskId, group, revision } of pending) {
+      if (!alive || revision !== group.revision || groups.value[taskId] !== group) continue;
+      group.items = byTask.get(taskId) || [];
+      group.loaded = true;
+      updateCount(taskId);
+    }
   } catch (e) {
-    if (e.name !== 'PageInactiveError' && revision === group.revision) group.error = e.message;
+    for (const { group, revision } of pending) {
+      if (alive && e.name !== 'PageInactiveError' && revision === group.revision) group.error = e.message;
+    }
   } finally {
-    if (revision === group.revision) { group.loading = false; if (group.loaded && !group.error) openRequested(taskId); }
+    for (const { taskId, group, revision } of pending) {
+      if (!alive || revision !== group.revision || groups.value[taskId] !== group) continue;
+      group.loading = false;
+      if (group.loaded && !group.error) openRequested(taskId);
+    }
   }
 }
 async function load(refresh = false) {
@@ -110,16 +129,14 @@ async function load(refresh = false) {
     Object.keys(groups.value).forEach((id) => { if (!rows.some((task) => task.id === id)) delete groups.value[id]; });
     if (selected.value === 'unassigned' && !rows.some(task => !columnRows.some(column => column.id === task.columnId))) selected.value = 'all';
     if (!['all', 'unassigned'].includes(selected.value) && !columnRows.some((column) => column.id === selected.value)) selected.value = 'all';
-    // Each group settles independently; a slow or failed group does not hide the rest.
-    // Bound fan-out because the existing API returns details for one task at a time.
-    let cursor = 0;
-    async function worker() {
-      while (cursor < rows.length && alive && current === generation) {
-        const task = rows[cursor++];
-        await loadDetails(task.id);
-      }
+    const ids = rows.map(task => task.id);
+    if (requestedTask && ids.includes(requestedTask)) {
+      ids.splice(ids.indexOf(requestedTask), 1);
+      ids.unshift(requestedTask);
     }
-    await Promise.all(Array.from({ length: Math.min(4, rows.length) }, () => worker()));
+    for (let offset = 0; offset < ids.length && alive && current === generation; offset += 50) {
+      await loadDetailsBatch(ids.slice(offset, offset + 50));
+    }
   } catch (e) {
     if (e.name !== 'PageInactiveError' && alive && current === generation) error.value = e.message;
   } finally {
@@ -262,7 +279,7 @@ async function move(type, item, offset) {
             <view class="group-heading">
               <text class="group-title" :class="{ 'primary-text-dark': isDark }">{{ group.task.content }}</text>
               <text v-if="group.state.loaded" class="group-count" :class="{ 'secondary-text-dark': isDark }">{{ group.task.unCompletedCount }}</text>
-              <MobileButton :label="'编辑清单：' + group.task.content" icon="ant-design:more-outlined" variant="ghost" :disabled="loading || writing" @click="open('task', group.task)" />
+              <MobileButton :label="'编辑清单：' + group.task.content" icon="ant-design:more-outlined" variant="ghost" :disabled="writing" @click="open('task', group.task)" />
             </view>
             <PageState :loading="group.state.loading || (!group.state.loaded && !group.state.error)" :error="group.state.error" :has-content="group.state.loaded" @retry="loadDetails(group.task.id)">
               <template #loading><view class="group-skeleton"><view v-for="n in Math.min(3, Math.max(1, Number(group.task.unCompletedCount) || 1))" :key="n" class="skeleton-todo-row"><view class="skeleton-check" :class="{ 'skeleton-dark': isDark }" /><view class="skeleton-line" :class="{ 'skeleton-dark': isDark }" /></view><view class="skeleton-todo-row"><view class="skeleton-add" :class="{ 'skeleton-dark': isDark }" /></view></view></template>

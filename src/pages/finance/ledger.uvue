@@ -6,8 +6,10 @@ import { useAppLayout } from '../../services/app-layout.ts'
 const { appGridItem } = useAppLayout()
 
 import LedgerOverviewSkeleton from './components/LedgerOverviewSkeleton.uvue';
-import { computed, onUnmounted, ref, watch } from 'vue';
+import { computed, onUnmounted, ref } from 'vue';
 import PageHeader from '../../components/PageHeader.uvue';
+import FilterTrigger from '../../components/FilterTrigger.uvue';
+import FilterSheet from '../../components/FilterSheet.uvue';
 import MobilePage from '../../components/MobilePage.uvue';
 import MobileButton from '../../components/MobileButton.uvue';
 import FloatingActionButton from '../../components/FloatingActionButton.uvue';
@@ -137,7 +139,6 @@ function filterStatistics(group: any, item: any) {
   filters.value.startTime = group.year + '-' + month + '-01';
   filters.value.endTime =
     group.year + '-' + String(endMonth).padStart(2, '0') + '-' + last;
-  typeFilter.value = name(types.value, String(item.typeId));
   filters.value[expense.value ? 'expenseTypeId' : 'incomeTypeId'] = String(item.typeId);
   load();
 }
@@ -146,7 +147,7 @@ const total = ref<number | null>(null),
   selected = ref<string[]>([]),
   draft = ref<Record<string, any>>({}),
   continuous = ref(false);
-const filters = ref<Record<string, any>>({
+const defaultFilters = {
   year: '',
   startTime: '',
   endTime: '',
@@ -156,12 +157,37 @@ const filters = ref<Record<string, any>>({
   incomeTypeId: '',
   expenseTypeId: '',
   payTypeId: '',
-});
+};
+const filters = ref<Record<string, string>>({ ...defaultFilters });
 const showFilters = ref(false);
-const filterYear = computed({
-  get: () => filters.value.year || '全部年份',
-  set: (value: string) => { filters.value.year = value === '全部年份' ? '' : value; },
-});
+const filterDraft = ref({ ...defaultFilters });
+const sort = ref('日期降序'), draftSort = ref('日期降序');
+const filterTypeKey = computed(() => expense.value ? 'expenseTypeId' : 'incomeTypeId');
+const filterError = computed(() => filterDraft.value.startTime && filterDraft.value.endTime && filterDraft.value.startTime > filterDraft.value.endTime
+  ? '起始日期不能晚于结束日期' : '');
+function openFilters() {
+  filterDraft.value = { ...filters.value };
+  draftSort.value = sort.value;
+  showFilters.value = true;
+}
+function resetFilters() {
+  filterDraft.value = { ...defaultFilters };
+  draftSort.value = '日期降序';
+}
+function applyFilters() {
+  if (filterError.value || mutationBusy.value) return;
+  const next: Record<string, string> = {
+    ...filterDraft.value,
+    remark: filterDraft.value.remark.trim(),
+    counterparty: filterDraft.value.counterparty.trim(),
+    expenseDesc: filterDraft.value.expenseDesc.trim(),
+  };
+  const changed = Object.keys(next).some(key => next[key] !== filters.value[key]);
+  filters.value = next;
+  sort.value = draftSort.value;
+  showFilters.value = false;
+  if (changed) void load();
+}
 const selecting = ref(false);
 const openedRow = ref('');
 function toggleSelection() {
@@ -170,13 +196,8 @@ function toggleSelection() {
   openedRow.value = '';
 }
 const activeFilterCount = computed(() =>
-  ['year', 'startTime', 'endTime', 'remark', 'counterparty', 'expenseDesc', 'payTypeId']
-    .filter((key) => expense.value || key !== 'year')
-    .filter((key) => String(filters.value[key] || '').trim()).length,
+  Object.values(filters.value).filter(Boolean).length + (sort.value === '日期降序' ? 0 : 1),
 );
-const typeFilter = ref('全部类型'),
-  payFilter = ref('全部支付方式'),
-  sort = ref('日期降序');
 const mutationBusy = ref(false);
 let version = 0,
   refreshSequence = 0,
@@ -281,7 +302,7 @@ async function initialize() {
 function suspend(clear = false) {
   alive = false; version++; statisticsSequence++; refreshSequence++;
   loading.value = false; statisticsBusy.value = false; refreshing.value = false;
-  modal.value = false; selected.value = []; openedRow.value = '';
+  modal.value = false; showFilters.value = false; selected.value = []; openedRow.value = '';
   draft.value = {}; formError.value = '';
   if (clear) {
     rows.value = []; types.value = []; payments.value = [];
@@ -323,14 +344,6 @@ async function mutate(action: () => Promise<any>, accepted: () => void) {
   } finally { mutationBusy.value = false; }
   if (alive) await Promise.all([load(), loadStatistics()]);
 }
-watch(typeFilter, (value) => {
-  const id = types.value.find((item) => item.dictLabel === value)?.id || '';
-  filters.value[expense.value ? 'expenseTypeId' : 'incomeTypeId'] = id;
-});
-watch(payFilter, (value) => {
-  filters.value.payTypeId =
-    payments.value.find((item) => item.dictLabel === value)?.id || '';
-});
 function edit(row: any = null) {
   if (!alive) return;
   const now = new Date(),
@@ -400,13 +413,10 @@ async function removeSelected() {
     <PageHeader :title="expense ? '支出' : '收入'" back :actions-min-width="expense ? spacing.controlMin * 2 + spacing.inline : spacing.controlMin" @back="uni.navigateBack()">
       <template #actions>
         <view class="ledger-toolbar ui-row">
-          <view class="filter-trigger">
-            <MobileButton :label="activeFilterCount ? '更多筛选，已启用 ' + activeFilterCount + ' 项条件' : '更多筛选'"
-              icon="ant-design:filter-outlined" variant="quiet" @click="showFilters = !showFilters" />
-            <text v-if="activeFilterCount" class="filter-count">{{ activeFilterCount }}</text>
-          </view>
-          <MobileButton v-if="expense" label="导入账单" icon="ant-design:import-outlined" variant="quiet"
+          <MobileButton v-if="expense" label="导入账单" icon="ant-design:import-outlined" variant="ghost"
             @click="uni.navigateTo({ url: '/pages/finance/import' })" />
+          <FilterTrigger :label="expense ? '筛选支出' : '筛选收入'" :open="showFilters" :active="activeFilterCount > 0"
+            :description="activeFilterCount + ' 项条件'" :disabled="mutationBusy" @click="openFilters" />
         </view>
       </template>
     </PageHeader>
@@ -486,83 +496,34 @@ async function removeSelected() {
                 icon="ant-design:export-outlined"
                 variant="ghost"
                 @click="filterStatistics(group, item)" /></view></view></view></PageState></template></view
-      ><text v-if="!expense" class="section-title ui-section">收入明细</text><view class="filters ui-field-row">
-        <FormField :style="appGridItem(2, 'section', [[700, 3]], false)" v-if="!expense || showFilters" compact stretch hide-label label="年份" kind="selector"
-          :options="['全部年份', ...overviewYears]" v-model="filterYear" :disabled="mutationBusy" @update:modelValue="!expense && load()" />
-        <FormField :style="appGridItem(2, 'section', [[700, 3]], false)"
-          compact
-          stretch
-          hide-label
-          label="类型"
-          kind="selector"
-          :options="['全部类型', ...types.map((item) => item.dictLabel)]"
-          v-model="typeFilter"
-        />
-        <FormField :style="appGridItem(2, 'section', [[700, 3]], false)"
-          compact
-          stretch
-          v-if="expense && showFilters"
-          hide-label
-          label="支付方式"
-          kind="selector"
-          :options="['全部支付方式', ...payments.map((item) => item.dictLabel)]"
-          v-model="payFilter"
-        />
-        <FormField :style="appGridItem(2, 'section', [[700, 3]], false)"
-          compact
-          stretch
-          v-if="showFilters"
-          hide-label
-          label="起始日期"
-          placeholder="起始日期"
-          kind="date"
-          v-model="filters.startTime"
-        /><FormField :style="appGridItem(2, 'section', [[700, 3]], false)"
-          compact
-          stretch
-          v-if="showFilters"
-          hide-label
-          label="结束日期"
-          placeholder="结束日期"
-          kind="date"
-          v-model="filters.endTime"
-        />
-        <FormField :style="appGridItem(2, 'section', [[700, 3]], false)"
-          compact
-          stretch
-          v-if="expense && showFilters"
-          hide-label
-          label="备注"
-          placeholder="备注"
-          v-model="filters.remark"
-        /><FormField :style="appGridItem(2, 'section', [[700, 3]], false)"
-          compact
-          stretch
-          v-if="expense && showFilters"
-          hide-label
-          label="交易对方"
-          placeholder="交易对方"
-          v-model="filters.counterparty"
-        /><FormField :style="appGridItem(2, 'section', [[700, 3]], false)"
-          compact
-          stretch
-          v-if="expense && showFilters"
-          hide-label
-          label="交易描述"
-          placeholder="交易描述"
-          v-model="filters.expenseDesc"
-        />
-        <FormField :style="appGridItem(2, 'section', [[700, 3]], false)"
-          compact
-          stretch
-          hide-label
-          label="排序"
-          kind="selector"
-          :options="['日期降序', '金额降序', '金额升序']"
-          v-model="sort"
-        />
+      ><text v-if="!expense" class="section-title ui-section">收入明细</text>
+      <FilterSheet :open="showFilters" :error="filterError" @close="showFilters = false" @reset="resetFilters" @apply="applyFilters">
+        <view class="ui-field-row">
+          <FormField compact stretch label="年份" kind="selector" :options="['全部年份', ...overviewYears]"
+            :model-value="filterDraft.year || '全部年份'" @update:model-value="filterDraft.year = $event === '全部年份' ? '' : $event" />
+          <FormField compact stretch label="类型" kind="selector" :options="['全部类型', ...types.map(item => item.dictLabel)]"
+            :model-value="types.find(item => item.id === filterDraft[filterTypeKey])?.dictLabel || '全部类型'"
+            @update:model-value="filterDraft[filterTypeKey] = types.find(item => item.dictLabel === $event)?.id || ''" />
+        </view>
+        <view class="ui-field-row">
+          <FormField compact stretch label="起始日期" kind="date" v-model="filterDraft.startTime" />
+          <FormField compact stretch label="结束日期" kind="date" v-model="filterDraft.endTime" />
+        </view>
+        <template v-if="expense">
+          <FormField label="支付方式" kind="selector" :options="['全部支付方式', ...payments.map(item => item.dictLabel)]"
+            :model-value="payments.find(item => item.id === filterDraft.payTypeId)?.dictLabel || '全部支付方式'"
+            @update:model-value="filterDraft.payTypeId = payments.find(item => item.dictLabel === $event)?.id || ''" />
+          <FormField label="备注" v-model="filterDraft.remark" />
+          <FormField label="交易对方" v-model="filterDraft.counterparty" />
+          <FormField label="交易描述" v-model="filterDraft.expenseDesc" />
+        </template>
+        <FormField label="排序" kind="selector" :options="['日期降序', '金额降序', '金额升序']" v-model="draftSort" />
+      </FilterSheet>
+      <view class="filter-footer ui-row">
+        <text v-if="!loading || rows.length" class="summary">{{ total == null ? '已加载 ' + rows.length : total }} 笔 · 已加载合计 ¥{{ amount.toFixed(2) }}</text>
+        <MobileButton v-if="expense" class="filter-bulk" :label="selecting ? '退出批量选择' : '批量选择'"
+          :icon="selecting ? 'ant-design:close-outlined' : 'ant-design:check-square-outlined'" variant="quiet" @click="toggleSelection" />
       </view>
-      <view class="filter-footer ui-row" :class="{ 'filter-footer-loading': loading && !rows.length }"><text v-if="!loading || rows.length" class="summary">{{ total == null ? '已加载 ' + rows.length : total }} 笔 · 已加载合计 ¥{{ amount.toFixed(2) }}</text><view class="ui-row"><MobileButton v-if="expense" :label="selecting ? '退出批量选择' : '批量选择'" :icon="selecting ? 'ant-design:close-outlined' : 'ant-design:check-square-outlined'" variant="quiet" @click="toggleSelection" /><MobileButton label="筛选" icon="ant-design:search-outlined" :loading="loading" @click="load()" /></view></view>
       <ConfirmAction
         v-if="expense && selected.length"
         :label="'删除选中 ' + selected.length + ' 笔'"
@@ -623,13 +584,6 @@ grid-column: 1 / -1;
 @include grid-columns(2);
 
 }
-.filters {
-
-@include grid-layout;
-
-@include grid-columns(2);
-
-}
 .summary {
 
 @include block-content;
@@ -679,9 +633,8 @@ grid-column: 1 / -1;
 .ledger-toolbar { align-items: center; justify-content: flex-end; }
 .statistics-panel { margin-bottom: $space-section; }
 .section-title { @include type-style('title');  }
-.filter-trigger { position: relative; flex-shrink: 0; }
-.filter-count { position: absolute; top: 0; right: 0; min-width: 16px; height: 16px; border-radius: 8px; background-color: #427bea; color: #fff; @include type-style('chart-label'); text-align: center;  pointer-events: none; }
-.filter-footer { align-items: center; justify-content: space-between; margin-bottom: $space-section; }
+.filter-footer { min-height: $space-controlMin; align-items: center; margin-bottom: $space-section; }
+.filter-bulk { margin-left: auto; }
 .summary { @include type-style('caption'); }
 .chart-grid {
   align-items: start;
@@ -704,9 +657,6 @@ grid-template-columns: minmax(0, 1fr);
 grid-column: auto;
 /* #endif */
  }
-  .filters {
-@include grid-columns(3);
- }
   .chart-grid {
 @include grid-columns(2);
  }
@@ -716,7 +666,6 @@ grid-column: auto;
 
   }
 }
-.filter-footer-loading { justify-content: flex-end; }
 
 .secondary-text-dark { color: $text-secondary-dark; }
 </style>

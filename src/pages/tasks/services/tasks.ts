@@ -8,7 +8,10 @@ export function setGoalPinned(id, isPinned) { return request<any>('/goals/' + re
 export function deleteGoal(id) { return request('/goals/batchDelete', 'POST', { idList: [recordId(id)] }) }
 export function fetchColumns(page = 1) { return request<any>('/taskColumn/query', 'GET', { page, pageSize: 200 }) }
 export function fetchTasks(page = 1) { return request<any>('/tasks', 'GET', { page, pageSize: 100 }) }
-export function fetchDetails(taskId) { return request<any[]>('/taskDetails', 'GET', { taskId: recordId(taskId) }) }
+export function fetchDetailsBatch(taskIds) {
+  const query = taskIds.map(id => 'taskIds=' + encodeURIComponent(recordId(id))).join('&')
+  return request<any[]>('/taskDetails/batch?' + query)
+}
 export function saveTaskRecord(kind, payload) {
   const base = kind === 'column' ? '/taskColumn' : kind === 'task' ? '/tasks' : '/taskDetails'
   return request<any>(base + (payload.id && kind !== 'detail' ? '/' + recordId(payload.id) : ''), payload.id ? 'PUT' : 'POST', payload)

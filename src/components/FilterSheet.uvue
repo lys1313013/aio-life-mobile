@@ -1,0 +1,60 @@
+<script setup lang="ts">
+import { ref } from 'vue';
+import ModalMotion from './ModalMotion.uvue';
+import AdaptiveModal from './AdaptiveModal.uvue';
+import FormActions from './FormActions.uvue';
+import MobileButton from './MobileButton.uvue';
+import { themeClass } from '../services/theme.ts';
+
+withDefaults(defineProps<{
+  open: boolean;
+  label?: string;
+  summary?: string;
+  contentKey?: string;
+  error?: string;
+  applyLabel?: string;
+}>(), { label: '快捷筛选', applyLabel: '确定' });
+defineEmits(['close', 'reset', 'apply']);
+const modal = ref<{ close: () => void } | null>(null);
+</script>
+
+<template>
+  <ModalMotion>
+    <AdaptiveModal v-if="open" ref="modal" :label="label" placement="bottom" :max-width="480" dense
+      :content-key="(contentKey || '') + ':' + (error || '')" @close="$emit('close')">
+      <view class="filter-sheet-heading">
+        <text class="filter-sheet-title" :class="themeClass('filter-sheet-title')">{{ label }}</text>
+        <text v-if="summary" class="filter-sheet-summary" :class="themeClass('filter-sheet-summary')">{{ summary }}</text>
+        <MobileButton label="关闭筛选" icon="ant-design:close-outlined" variant="ghost" @click="modal?.close()" />
+      </view>
+      <slot />
+      <text v-if="error" class="filter-sheet-error" :class="themeClass('filter-sheet-error')" role="alert">{{ error }}</text>
+      <template #footer>
+        <FormActions>
+          <template #secondary><MobileButton label="重置" variant="quiet" @click="$emit('reset')" /></template>
+          <MobileButton :label="applyLabel" :disabled="!!error" @click="$emit('apply')" />
+        </FormActions>
+      </template>
+    </AdaptiveModal>
+  </ModalMotion>
+</template>
+
+<style scoped lang="scss">
+@use '../styles/spacing-tokens' as *;
+@use '../styles/text-colors' as *;
+@use '../styles/typography' as *;
+.filter-sheet-heading {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: $space-inline;
+  margin-bottom: $space-section;
+}
+.filter-sheet-title { @include type-style('title'); color: #27272a; }
+.filter-sheet-title-dark { color: #eeeeef; }
+.filter-sheet-summary { @include type-style('caption'); color: $text-secondary-light; margin-left: auto; }
+.filter-sheet-summary-dark { color: $text-secondary-dark; }
+.filter-sheet-error { @include type-style('body'); color: #b42318; margin-bottom: $space-inline; }
+.filter-sheet-error-dark { color: #ff938a; }
+</style>

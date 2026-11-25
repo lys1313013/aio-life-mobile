@@ -63,6 +63,7 @@ for (const width of [390, 820, 1440]) for (const theme of ['light', 'dark']) {
       await expect(cards.locator('.movie-pending .movie-cell')).toHaveCount(6);
       await expect(cards.locator('.reading-placeholder')).toHaveCount(3);
       await expect(page.locator('.business-card[aria-busy="true"]')).toHaveCount(5);
+      await expect(cards.locator('.business-heading').getByRole('status')).toHaveCount(0);
       expect(calls).toEqual([]);
       release();
       await expect(page.locator('[aria-label="目标首页卡片"]')).toContainText('固定目标');
@@ -699,6 +700,8 @@ for (const width of [360, 820, 1440]) for (const theme of ['light', 'dark']) {
     try {
       await page.goto('/#/pages/home/index');
       await expect(card.locator('.business-skeleton')).toHaveCount(3);
+      const updating = card.locator('.business-heading').getByRole('status', { name: '正在加载目标', exact: true });
+      await expect(updating).toHaveCount(0);
       const loadingHeight = (await card.boundingBox()).height;
       release();
       await expect(card.locator('.business-row')).toHaveCount(3);
@@ -716,12 +719,15 @@ for (const width of [360, 820, 1440]) for (const theme of ['light', 'dark']) {
       await page.screenshot({ path: info.outputPath('three-goals.png'), fullPage: true });
       pending = new Promise(resolve => { release = resolve; });
       await card.getByRole('button', { name: '刷新目标', exact: true }).click();
-      await expect(card.getByRole('status', { name: '正在加载目标' })).toBeVisible();
+      await expect(updating).toBeVisible();
       expect((await card.boundingBox()).height).toBe(loaded.height);
       await expect(card.locator('.business-row')).toHaveCount(3);
+      await expect(card.locator('.business-skeleton')).toHaveCount(0);
+      await card.screenshot({ path: info.outputPath('refreshing-goals.png') });
       fail = true;
       release();
       await expect(card.getByRole('button', { name: '重试目标：模拟目标加载失败' })).toBeVisible();
+      await expect(updating).toHaveCount(0);
       expect((await card.boundingBox()).height).toBe(loaded.height);
       fail = false;
       await card.getByRole('button', { name: '重试目标：模拟目标加载失败' }).click();

@@ -3,7 +3,10 @@ import ModalMotion from "../../components/ModalMotion.uvue";
 import { usePageRefresh } from '../../services/page-refresh.ts'
 import { computed, ref, watch } from 'vue';
 import { onHide, onShow, onUnload } from '@dcloudio/uni-app';
-import PageHeader from '../../components/PageHeader.uvue';
+import PageSearch from '../../components/PageSearch.uvue';
+import FilterTrigger from '../../components/FilterTrigger.uvue';
+import FilterSheet from '../../components/FilterSheet.uvue';
+import spacing from '../../styles/spacing.json';
 import MobilePage from '../../components/MobilePage.uvue';
 import PageState from '../../components/PageState.uvue';
 import FormField from '../../components/FormField.uvue';
@@ -18,9 +21,21 @@ import { fetchUser } from '../../services/api.ts';
 import { restoreSession, session } from '../../services/session.ts';
 import { memberCategories as categories, memberCategoryLabels as categoryLabels } from '../../services/membership-provider.ts';
 import { listMembershipProviders, listMembershipIcons, saveMembershipProvider, deleteMembershipProvider } from './services/membership-providers.ts';
+const searchOpen = ref(false);
+const filtersOpen = ref(false);
 const modalMotion0 = ref<{ close: () => void } | null>(null);
 
 const rows = ref<any[]>([]), icons = ref<any[]>([]), keyword = ref(''), categoryFilter = ref('全部分类');
+const draftCategory = ref('全部分类');
+function openFilters() {
+  searchOpen.value = false;
+  draftCategory.value = categoryFilter.value;
+  filtersOpen.value = true;
+}
+function applyFilters() {
+  categoryFilter.value = draftCategory.value;
+  filtersOpen.value = false;
+}
 const loading = ref(false), refreshing = ref(false), loaded = ref(false), error = ref('');
 const form = ref<any>(null), original = ref<any>(null), saving = ref(false), formError = ref('');
 const authorized = computed(() => !!session.token && !!session.user?.roles?.includes('admin'));
@@ -68,7 +83,7 @@ async function remove() {
     if (current(token, lifecycle) && editor === editorRevision) { rows.value = rows.value.filter(row => row.id !== id); form.value = null; }
   } finally { if (current(token, lifecycle) && editor === editorRevision) saving.value = false; }
 }
-function deactivate() { active = false; revision++; generation++; editorRevision++; form.value = null; saving.value = false; loading.value = false; refreshing.value = false; }
+function deactivate() { active = false; filtersOpen.value = false; revision++; generation++; editorRevision++; form.value = null; saving.value = false; loading.value = false; refreshing.value = false; }
 watch(() => session.token, () => { deactivate(); rows.value = []; icons.value = []; loaded.value = false; }, { flush: 'sync' });
 const refreshOnShow = usePageRefresh(() => load(), { loading: () => loading.value, error: () => error.value, keys: () => ['system'] })
 onShow(() => { restoreSession(); active = true; if (!session.token) { uni.reLaunch({ url: '/pages/login/index' }); return; } refreshOnShow(); });
@@ -77,10 +92,17 @@ onUnload(deactivate);
 </script>
 <template>
   <view class="provider-page" :class="themeClass('provider-page')">
-    <PageHeader title="会员平台" back @back="back" />
+    <PageSearch title="会员平台" label="搜索平台" v-model="keyword" v-model:open="searchOpen" back
+      :enabled="authorized" :actions-min-width="authorized ? spacing.controlMin : 0" @back="back">
+      <template v-if="authorized" #trailing-actions>
+        <FilterTrigger label="筛选会员平台" :open="filtersOpen" :active="categoryFilter !== '全部分类'" @click="openFilters" />
+      </template>
+    </PageSearch>
+    <FilterSheet :open="filtersOpen" @close="filtersOpen = false" @reset="draftCategory = '全部分类'" @apply="applyFilters">
+      <FormField label="分类" kind="selector" v-model="draftCategory" :options="['全部分类', ...categoryLabels]" />
+    </FilterSheet>
     <MobilePage :refreshing="refreshing" @refresh="load(true)">
       <view class="ui-page-body">
-        <view v-if="authorized" class="ui-toolbar"><FormField compact stretch label="搜索平台" placeholder="名称 / 编码" v-model="keyword" /><FormField compact stretch label="筛选分类" kind="selector" v-model="categoryFilter" :options="['全部分类', ...categoryLabels]" /></view>
         <PageState :loading="loading" :error="error" :empty="authorized && !shown.length" :has-content="rows.length > 0" empty-text="暂无会员平台" @retry="load()">
           <view v-if="authorized" class="provider-grid">
             <button hover-class="none" role="button" tabindex="0" v-for="row in shown" :key="row.id" class="provider-item" :class="themeClass('provider-item')" :aria-label="'编辑平台：' + row.name" :disabled="loading" @click="open(row)" @keydown.enter.prevent="open(row)" @keydown.space.prevent="open(row)">

@@ -1,4 +1,10 @@
 const { test, expect } = require('./support/test');
+async function openFilters(page) {
+  await page.getByRole('button', { name: '筛选运动记录', exact: true }).click();
+  const sheet = page.getByRole('dialog', { name: '快捷筛选', exact: true });
+  await expect(sheet).toBeVisible();
+  return sheet;
+}
 const { setup } = require('./qa-domains-fixtures');
 const { pullDown } = require('./gestures');
 test.use({ hasTouch: true });
@@ -150,8 +156,10 @@ test('空数据与单条数据保留柱图高度，失败重试恢复且单类�
   state.data = [points[0]];
   state.fail = true;
   // 通过筛选触发局部统计失败，重试后恢复。
-  await page.locator('uni-picker[aria-label="运动类型"]').click();
+  const sheet = await openFilters(page);
+  await sheet.locator('uni-picker[aria-label="运动类型"]').click();
   await page.locator('.uni-picker-select:visible').getByText('散步', { exact: true }).click();
+  await sheet.getByRole('button', { name: '确定', exact: true }).click();
   await expect(page.getByRole('alert')).toContainText('模拟统计失败');
   state.fail = false;
   await page.getByRole('button', { name: '重试', exact: true }).click();
@@ -176,8 +184,10 @@ test('月图切换全局筛选回到最新年份，切年不重复查询统计',
   await expect(chart.locator('.chart-stack-total')).toHaveText(totals.slice(2));
   await chart.getByRole('button', { name: '查看上一年' }).click();
   await expect(chart.locator('.monthly-year')).toHaveText('2025');
-  await page.locator('uni-picker[aria-label="运动类型"]').click();
+  const sheet = await openFilters(page);
+  await sheet.locator('uni-picker[aria-label="运动类型"]').click();
   await page.locator('.uni-picker-select:visible').getByText('散步', { exact: true }).click();
+  await sheet.getByRole('button', { name: '确定', exact: true }).click();
   await expect(chart.locator('.chart-stack-total')).toHaveText(values.slice(3).map(row => String(row[0])));
   await expect(chart.locator('.monthly-year')).toHaveText('2026');
   await expect(chart.getByRole('button', { name: '查看下一年' })).toBeDisabled();

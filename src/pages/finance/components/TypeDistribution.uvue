@@ -2,6 +2,9 @@
 import { computed, getCurrentInstance, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 import { themeClass } from '../../../services/theme.ts';
 import MobileButton from '../../../components/MobileButton.uvue';
+// #ifdef MP-WEIXIN
+import { modalOpen } from '../../../services/modal-presence.ts';
+// #endif
 
 const props = defineProps<{ label: string; items: { name: string; value: number }[]; iconToggle?: boolean; negativeLabel?: string }>();
 const palette = ['#427bea', '#20a574', '#e7a638', '#9560c6', '#e05260', '#29a4b8', '#cf773e', '#688747'];
@@ -19,20 +22,31 @@ const total = computed(() => rows.value.reduce((sum, item) => sum + item.value, 
 const error = ref('');
 const instance = getCurrentInstance();
 const canvasId = 'finance-type-distribution-' + instance?.uid;
+const canvasVisible = computed(() => {
+  // #ifdef MP-WEIXIN
+  return !modalOpen.value;
+  // #endif
+  // #ifndef MP-WEIXIN
+  return true;
+  // #endif
+});
 let alive = true;
+let drawSequence = 0;
 function percentage(value: number) {
   if (value < 0) return props.negativeLabel || '净退款';
   return positiveTotal.value > 0 ? (value / positiveTotal.value * 100).toFixed(1) + '%' : '0%';
 }
 async function draw() {
+  const sequence = ++drawSequence;
   await nextTick();
-  if (!alive || !positiveTotal.value) return;
+  const current = () => alive && sequence === drawSequence && canvasVisible.value;
+  if (!current() || !positiveTotal.value) return;
   error.value = '';
   uni.createCanvasContextAsync({
     id: canvasId,
     component: instance?.proxy,
     success(context) {
-      if (!alive) return;
+      if (!current()) return;
       try {
         const ctx = context.getContext('2d');
         if (!ctx) throw new Error('画布初始化失败');
@@ -55,11 +69,11 @@ async function draw() {
         }
       } catch (_) { error.value = '图表加载失败'; }
     },
-    fail() { if (alive) error.value = '图表加载失败'; },
+    fail() { if (current()) error.value = '图表加载失败'; },
   });
 }
 onMounted(draw);
-watch(rows, draw);
+watch([rows, canvasVisible], draw);
 watch(() => props.items, () => { expanded.value = false; });
 onUnmounted(() => { alive = false; });
 </script>
@@ -69,7 +83,7 @@ onUnmounted(() => { alive = false; });
     <text class="distribution-title">{{ label }}</text>
     <template v-if="rows.length">
       <view v-if="positiveTotal > 0" class="distribution-chart">
-        <canvas :id="canvasId" :canvas-id="canvasId" type="2d" class="distribution-canvas" :aria-label="label + '环形图'" />
+        <canvas v-if="canvasVisible" :id="canvasId" :canvas-id="canvasId" type="2d" class="distribution-canvas" :aria-label="label + '环形图'" />
         <view class="distribution-center">
           <text class="distribution-caption" :class="themeClass('distribution-caption')">合计（元）</text>
           <text class="distribution-total">{{ total.toFixed(2) }}</text>

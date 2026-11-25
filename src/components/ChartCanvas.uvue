@@ -1,11 +1,11 @@
 <script setup lang="ts">
-import { computed, getCurrentInstance, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
-// #ifdef MP-WEIXIN
-import { modalOpen } from '../services/modal-presence.ts'
-// #endif
+import { getCurrentInstance, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useWindowResize } from '../services/window-resize.ts'
 import { loadChartEngine } from '../services/chart-engine.ts'
-import { chartAxisLabel, chartHeight, createChartSurface, pieSectorAt } from '../services/chart-options.ts'
+import { chartAxisLabel, chartHeight, pieSectorAt } from '../services/chart-options.ts'
+// #ifndef MP-WEIXIN
+import { createChartSurface } from '../services/chart-options.ts'
+// #endif
 import { themeClass } from '../services/theme.ts'
 import MobileButton from './MobileButton.uvue'
 import LoadingIndicator from './LoadingIndicator.uvue'
@@ -15,26 +15,24 @@ import spacing from '../styles/spacing.json'
 const props = defineProps<{ option: any; label: string; hoverable?: boolean; swipeable?: boolean }>()
 const emit = defineEmits(['layout', 'select', 'width', 'hover', 'leave', 'ready', 'swipe'])
 const instance = getCurrentInstance()
+// #ifndef MP-WEIXIN
 const canvasId = 'aio-chart-' + instance?.uid
+// #endif
 const loading = ref(true), error = ref('')
-const canvasVisible = computed(() => {
-  // 微信原生画布可能越过滚动容器和 root-portal，弹窗期间必须移除原生层。
-  // #ifdef MP-WEIXIN
-  return !modalOpen.value
-  // #endif
-  // #ifndef MP-WEIXIN
-  return true
-  // #endif
-})
+// #ifdef MP-WEIXIN
+const imageSource = ref('')
+// #endif
+const imageLoading = ref(false)
 let chart: any = null, alive = true, generation = 0, scheduled = false
-let canvasContext: any = null
+let textContext: any = null
 let width = 0
 let touchStart: any = null, lastTouch = 0
 let selectionSequence = 0
 function rect(): Promise<any> {
   return new Promise(resolve => uni.createSelectorQuery().in(instance?.proxy)
-    .select('.aio-chart-canvas').boundingClientRect(value => resolve(value)).exec())
+    .select('.aio-chart-renderer').boundingClientRect(value => resolve(value)).exec())
 }
+// #ifndef MP-WEIXIN
 function context(): Promise<any> {
   return new Promise((resolve, reject) => uni.createCanvasContextAsync({
     id: canvasId, component: instance?.proxy,
@@ -45,14 +43,53 @@ function context(): Promise<any> {
     }, fail: reject,
   }))
 }
+// #endif
+function labelWidths(labels: string[]) {
+  textContext.save()
+  try {
+    textContext.font = `${typography.roles.caption.weight} ${typography.roles.caption.size}px ${typography.families.canvas}`
+    return labels.map(label => textContext.measureText(label).width)
+  } finally {
+    textContext.restore()
+  }
+}
+function renderChart() {
+  // #ifdef MP-WEIXIN
+  // 普通图片参与滚动和裁切，微信端只用离屏画布测量文字。
+  const svg = chart.renderToSVGString()
+  const utf8 = encodeURIComponent(svg).replace(/%([0-9A-F]{2})/g, (_, hex) => String.fromCharCode(parseInt(hex, 16)))
+  const source = 'data:image/svg+xml;base64,' + uni.arrayBufferToBase64(Uint8Array.from(utf8, char => char.charCodeAt(0)).buffer)
+  if (source !== imageSource.value) {
+    if (!imageSource.value) imageLoading.value = true
+    imageSource.value = source
+  }
+  // #endif
+  // #ifndef MP-WEIXIN
+  chart.getZr().flush()
+  emit('ready', true)
+  // #endif
+}
+// #ifdef MP-WEIXIN
+function imageLoaded() {
+  if (!alive || !imageSource.value) return
+  imageLoading.value = false
+  if (!error.value) emit('ready', true)
+}
+function imageFailed() {
+  if (!alive || !imageSource.value) return
+  imageSource.value = ''
+  imageLoading.value = false
+  error.value = '图表加载失败'
+  emit('ready', false)
+}
+// #endif
 function paint() {
   if (!chart || !alive) return
   try {
     chart.setOption(props.option, { notMerge: true })
+    error.value = ''
     if (props.option.series[0]?.type === 'pie') {
-      chart.getZr().flush()
-      error.value = ''
-      emit('ready', true)
+      renderChart()
       return
     }
     const yAxis = chart.getModel().getComponent('yAxis').axis
@@ -61,24 +98,15 @@ function paint() {
     if (props.option.yAxis.axisLine.show) {
       // Measure displayed ticks (e.g. -1万), rather than an unrounded data maximum.
       // Keep only the micro gap between the widest label and the axis.
-      canvasContext.save()
-      canvasContext.font = `${typography.roles.caption.weight} ${typography.roles.caption.size}px ${typography.families.canvas}`
-      left = Math.ceil(Math.max(0, ...ticks.map(tick => canvasContext.measureText(chartAxisLabel(tick.value)).width))) + spacing.micro
-      canvasContext.restore()
+      left = Math.ceil(Math.max(0, ...labelWidths(ticks.map(tick => chartAxisLabel(tick.value))))) + spacing.micro
       chart.setOption({ grid: { left } })
     }
-    // SSR disables the browser event proxy and animation loop, not Canvas rendering.
-    chart.getZr().flush()
     const axisTicks = ticks.map(tick => ({
       value: tick.value, label: chartAxisLabel(tick.value),
       top: chart.convertToPixel({ yAxisIndex: 0 }, tick.value) - typography.roles.caption.lineHeight / 2,
     }))
     const labels = props.option.xAxis.data
     const points = labels.map((_, index) => chart.convertToPixel({ xAxisIndex: 0 }, index))
-    canvasContext.save()
-    canvasContext.font = `${typography.roles.caption.weight} ${typography.roles.caption.size}px ${typography.families.canvas}`
-    const labelWidths = labels.map(label => canvasContext.measureText(label).width)
-    canvasContext.restore()
     const annotations = props.option.series.map((item, seriesIndex) => {
       const values = item.data.map(row => row.value)
       const data = item.stack ? chart.getModel().getSeriesByIndex(seriesIndex).getData() : null
@@ -87,14 +115,13 @@ function paint() {
         ...(item.stack ? { bar: data.getItemLayout(index) } : {}),
       })) }
     })
-    emit('layout', { axisTicks, points, labelWidths, series: annotations, left,
+    renderChart()
+    emit('layout', { axisTicks, points, labelWidths: labelWidths(labels), series: annotations, left,
       axisTop: chartHeight - props.option.grid.bottom + spacing.detail })
-    error.value = ''
-    emit('ready', true)
   } catch (_) { error.value = '图表加载失败'; emit('ready', false) }
 }
 async function initialize() {
-  if (!alive || !canvasVisible.value) return
+  if (!alive) return
   const id = ++generation
   loading.value = true
   emit('ready', false)
@@ -111,14 +138,21 @@ async function initialize() {
     emit('width', width)
     const engine = await loadChartEngine()
     if (!alive || id !== generation) return
+    // #ifdef MP-WEIXIN
+    textContext = engine.chartTextContext()
+    chart?.dispose()
+    chart = engine.init(null, null, { renderer: 'svg', width, height: chartHeight, ssr: true })
+    // #endif
+    // #ifndef MP-WEIXIN
     const ctx = await context()
     if (!alive || id !== generation) return
     chart?.dispose()
-    canvasContext = ctx
+    textContext = ctx
     chart = engine.init(createChartSurface(ctx), null, {
       renderer: 'canvas', width, height: chartHeight,
       devicePixelRatio: uni.getWindowInfo().pixelRatio || 1, ssr: true,
     })
+    // #endif
     paint()
   } catch (_) { if (alive && id === generation) error.value = '图表加载失败' }
   finally { if (alive && id === generation) loading.value = false }
@@ -147,7 +181,7 @@ async function select(event, hover = false) {
   const clientX = touch?.clientX ?? event.detail?.x ?? event.clientX
   if (typeof clientX !== 'number') return
   const bounds = await rect()
-  if (!alive || sequence !== selectionSequence || !bounds || Array.isArray(bounds)) return
+  if (!alive || !chart || sequence !== selectionSequence || !bounds || Array.isArray(bounds)) return
   const x = clientX - bounds.left
   if (props.option.series[0]?.type === 'pie') {
     const clientY = touch?.clientY ?? event.detail?.y ?? event.clientY
@@ -201,27 +235,26 @@ function click(event) {
 }
 useWindowResize(resize)
 onMounted(initialize)
-// 保留外层几何；嵌套弹窗全部关闭后重建画布，并阻止旧初始化回写。
-watch(canvasVisible, visible => {
-  generation++
-  selectionSequence++
-  chart?.dispose()
-  chart = null
-  canvasContext = null
-  if (visible) initialize()
-  else loading.value = false
-})
 watch(() => props.option, queuePaint, { deep: true })
-onUnmounted(() => { alive = false; generation++; chart?.dispose(); chart = null; canvasContext = null })
+onUnmounted(() => { alive = false; generation++; chart?.dispose(); chart = null; textContext = null })
 </script>
 
 <template>
-  <view class="aio-chart-renderer" :aria-busy="loading">
-    <canvas v-if="canvasVisible" :id="canvasId" :canvas-id="canvasId" type="2d" class="aio-chart-canvas" :class="{ 'aio-chart-canvas-swipe': swipeable }"
+  <view class="aio-chart-renderer" :aria-busy="loading || imageLoading">
+    <!-- #ifdef MP-WEIXIN -->
+    <view class="aio-chart-surface" @click="click"
+      @touchstart="beginTouch" @touchend="endTouch" @touchcancel="cancelTouch">
+      <image v-if="imageSource" :src="imageSource" mode="scaleToFill" class="aio-chart-image"
+        aria-hidden="true" @load="imageLoaded" @error="imageFailed" />
+    </view>
+    <!-- #endif -->
+    <!-- #ifndef MP-WEIXIN -->
+    <canvas :id="canvasId" :canvas-id="canvasId" type="2d" class="aio-chart-canvas" :class="{ 'aio-chart-canvas-swipe': swipeable }"
       aria-hidden="true" @click="click" @mousemove="hover" @mouseleave="mouseLeave"
       @touchstart="beginTouch" @touchend="endTouch" @touchcancel="cancelTouch" />
-    <view v-if="loading || error" class="chart-render-state">
-      <LoadingIndicator v-if="loading && !error" ring label="正在加载图表" />
+    <!-- #endif -->
+    <view v-if="loading || imageLoading || error" class="chart-render-state">
+      <LoadingIndicator v-if="(loading || imageLoading) && !error" ring label="正在加载图表" />
       <text v-if="error" class="chart-render-message" :class="themeClass('chart-render-message')" role="alert">{{ error }}</text>
       <MobileButton v-if="error" label="重试图表" icon="ant-design:reload-outlined" variant="quiet" @click="initialize" />
     </view>
@@ -234,6 +267,10 @@ onUnmounted(() => { alive = false; generation++; chart?.dispose(); chart = null;
 @use '../styles/text-colors' as *;
 .aio-chart-renderer { position: relative; width: 100%; height: 228px; }
 .aio-chart-canvas { width: 100%; height: 228px; }
+/* #ifdef MP-WEIXIN */
+.aio-chart-surface, .aio-chart-image { display: block; width: 100%; height: 100%; }
+.aio-chart-image { pointer-events: none; }
+/* #endif */
 /* #ifdef WEB */
 .aio-chart-canvas-swipe { touch-action: pan-y; }
 /* #endif */

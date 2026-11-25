@@ -1,16 +1,13 @@
 <script setup lang="ts">
-import ModalMotion from "../../components/ModalMotion.uvue";
-import { ref } from 'vue';
+import { computed, ref } from 'vue';
 import AppIcon from '../../components/AppIcon.uvue';
 import FormField from '../../components/FormField.uvue';
-import FormActions from '../../components/FormActions.uvue';
 import MobileButton from '../../components/MobileButton.uvue';
-import AdaptiveModal from '../../components/AdaptiveModal.uvue';
+import FilterTrigger from '../../components/FilterTrigger.uvue';
+import FilterSheet from '../../components/FilterSheet.uvue';
 import PageState from '../../components/PageState.uvue';
 import LoadMore from '../../components/LoadMore.uvue';
 import { isDark, themeClass } from '../../services/theme.ts';
-const modalMotion0 = ref<{ close: () => void } | null>(null);
-
 
 defineProps<{
   operation: boolean; rows: any[]; total: number; loading: boolean; error: string;
@@ -18,24 +15,24 @@ defineProps<{
 }>();
 const emit = defineEmits(['search', 'retry', 'more', 'export']);
 const keyword = ref(''), startDate = ref(''), endDate = ref('');
-const opened = ref(false), draftStart = ref(''), draftEnd = ref(''), filterError = ref('');
+const opened = ref(false), draftStart = ref(''), draftEnd = ref('');
+const filterError = computed(() => draftStart.value && draftEnd.value && draftStart.value > draftEnd.value
+  ? '开始日期不能晚于结束日期' : '');
 function search() {
   emit('search', { username: keyword.value.trim(), startDate: startDate.value, endDate: endDate.value });
 }
 function openFilters() {
   draftStart.value = startDate.value; draftEnd.value = endDate.value;
-  filterError.value = ''; opened.value = true;
+  opened.value = true;
 }
 function applyFilters() {
-  if (draftStart.value && draftEnd.value && draftStart.value > draftEnd.value) {
-    filterError.value = '开始日期不能晚于结束日期'; return;
-  }
+  if (filterError.value) return;
   startDate.value = draftStart.value; endDate.value = draftEnd.value;
   opened.value = false; search();
 }
-function reset() {
-  keyword.value = ''; startDate.value = ''; endDate.value = '';
-  opened.value = false; search();
+function resetDates() {
+  draftStart.value = '';
+  draftEnd.value = '';
 }
 function account(row) {
   const username = row.username || '—';
@@ -54,13 +51,10 @@ function result(row) { return row.success === true ? '成功' : row.success === 
           <input class="access-input" :class="themeClass('access-input')" aria-label="用户账号" placeholder="搜索用户账号" :value="keyword" confirm-type="search" @input="keyword = $event.detail.value" @confirm="search" />
         </FormField>
       </view>
-      <MobileButton label="日期筛选" icon="ant-design:filter-outlined" :variant="startDate || endDate ? 'primary' : 'ghost'" @click="openFilters" />
       <MobileButton label="导出日志" icon="ant-design:download-outlined" variant="ghost" :loading="exporting" :disabled="loading" @click="emit('export')" />
+      <FilterTrigger label="日期筛选" :open="opened" :active="!!(startDate || endDate)" @click="openFilters" />
     </view>
-    <view v-if="keyword || startDate || endDate" class="access-filter-summary">
-      <text class="access-meta" :class="themeClass('access-muted')">{{ startDate || endDate ? (startDate || '不限') + ' — ' + (endDate || '不限') : '按账号查询' }}</text>
-      <MobileButton label="重置筛选" icon="ant-design:close-outlined" variant="ghost" :disabled="loading" @click="reset" />
-    </view>
+    <text v-if="startDate || endDate" class="access-meta" :class="themeClass('access-muted')">{{ (startDate || '不限') + ' — ' + (endDate || '不限') }}</text>
     <PageState :loading="loading" :error="error" :empty="!rows.length" :has-content="rows.length > 0" @retry="emit('retry')">
       <template #loading>
         <view class="access-list access-surface" :class="themeClass('access-surface')" :aria-label="operation ? '正在加载操作日志' : '正在加载访问日志'">
@@ -88,18 +82,13 @@ function result(row) { return row.success === true ? '成功' : row.success === 
       </view>
     </PageState>
     <LoadMore :loading="loading" :error="moreError" :has-more="hasMore" @load="emit('more')" />
-    <ModalMotion><AdaptiveModal ref="modalMotion0" v-if="opened" :label="operation ? '筛选操作日志' : '筛选访问日志'" :content-key="filterError" @close="opened = false">
+    <FilterSheet :open="opened" :label="operation ? '筛选操作日志' : '筛选访问日志'" :error="filterError"
+      @close="opened = false" @reset="resetDates" @apply="applyFilters">
       <view class="ui-field-row">
         <FormField compact stretch label="开始日期" kind="date" v-model="draftStart" />
         <FormField compact stretch label="结束日期" kind="date" v-model="draftEnd" />
       </view>
-      <text v-if="filterError" class="access-error" role="alert">{{ filterError }}</text>
-      <FormActions>
-        <template v-if="keyword || startDate || endDate || draftStart || draftEnd" #secondary><MobileButton label="重置筛选" icon="ant-design:close-outlined" variant="ghost" :disabled="loading" @click="reset" /></template>
-        <MobileButton label="取消" variant="quiet" @click="modalMotion0?.close()" />
-        <MobileButton label="查询" :disabled="loading" @click="applyFilters" />
-      </FormActions>
-    </AdaptiveModal></ModalMotion>
+    </FilterSheet>
   </view>
 </template>
 
@@ -109,7 +98,7 @@ function result(row) { return row.success === true ? '成功' : row.success === 
 @use '../../styles/spacing-tokens' as *;
 @use '../../styles/text-colors' as *;
 .access-panel { gap: $space-inline; }
-.access-toolbar, .access-search, .access-primary, .access-secondary, .access-filter-summary { display: flex; flex-direction: row; align-items: center; gap: $space-inline; }
+.access-toolbar, .access-search, .access-primary, .access-secondary { display: flex; flex-direction: row; align-items: center; gap: $space-inline; }
 .access-search { flex: 1; min-width: 0; gap: 0; border-radius: 12px; overflow: hidden; }
 .access-input { @include type-style('body'); width: 100%; min-width: 0; height: $space-controlMin; color: #27272a; }
 .access-input-dark { color: #eeeeef; }
@@ -128,8 +117,6 @@ function result(row) { return row.success === true ? '成功' : row.success === 
 .access-time { flex-shrink: 0; }
 .access-muted { color: $text-secondary-light; }
 .access-muted-dark { color: $text-secondary-dark; }
-.access-filter-summary { justify-content: space-between; }
 .access-placeholder { background-color: #eef1f5; border-radius: 4px; }
 .access-placeholder-dark { background-color: #2a2e35; }
-.access-error { @include type-style('label'); color: #cc354b; }
 </style>

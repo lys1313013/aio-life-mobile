@@ -4,6 +4,8 @@ import { isRequired, missingRequired } from '../../services/form-required.ts';
 import { computed, ref } from 'vue';
 import MobilePage from '../../components/MobilePage.uvue';
 import PageHeader from '../../components/PageHeader.uvue';
+import FilterTrigger from '../../components/FilterTrigger.uvue';
+import FilterSheet from '../../components/FilterSheet.uvue';
 import FormField from '../../components/FormField.uvue';
 import FormActions from '../../components/FormActions.uvue';
 import MobileButton from '../../components/MobileButton.uvue';
@@ -80,6 +82,17 @@ useDomainPage(
 );
 const categoryFilter = ref('全部'),
   sort = ref('日期降序');
+const defaultFilters = { category: '全部', sort: '日期降序' };
+const filterDraft = ref({ ...defaultFilters });
+function openFilters() {
+  filterDraft.value = { category: categoryFilter.value, sort: sort.value };
+  filtersOpen.value = true;
+}
+function applyFilters() {
+  categoryFilter.value = filterDraft.value.category;
+  sort.value = filterDraft.value.sort;
+  filtersOpen.value = false;
+}
 const categoryOptions = computed(() => [
   '全部',
   ...Array.from(
@@ -301,13 +314,14 @@ async function removeSelected() {
           <view class="preview-heading ui-toolbar">
             <text class="summary primary-text" :class="themeClass('primary-text')">{{ rows.length }} 笔 · ¥{{ total.toFixed(2) }}</text>
             <MobileButton :label="sourceOpen ? '收起文件选择' : '更换账单文件'" icon="ant-design:upload-outlined" variant="ghost" :disabled="busy" @click="sourceOpen = !sourceOpen" />
-            <MobileButton :label="filtersOpen ? '收起筛选排序' : '筛选排序'" icon="ant-design:filter-outlined" :variant="filtersOpen || categoryFilter !== '全部' ? 'primary' : 'ghost'" :disabled="busy" @click="filtersOpen = !filtersOpen" />
             <MobileButton :label="totalsOpen ? '收起分类统计' : '分类统计'" icon="ant-design:bar-chart-outlined" :variant="totalsOpen ? 'primary' : 'ghost'" :disabled="busy" @click="totalsOpen = !totalsOpen" />
+            <FilterTrigger label="筛选排序" :open="filtersOpen" :active="categoryFilter !== defaultFilters.category || sort !== defaultFilters.sort"
+              :disabled="busy" @click="openFilters" />
           </view>
-          <view v-if="filtersOpen" class="ui-field-row">
-            <FormField compact stretch label="原交易分类" kind="selector" :options="categoryOptions" v-model="categoryFilter" :disabled="busy" />
-            <FormField compact stretch label="排序" kind="selector" :options="['日期降序', '金额降序']" v-model="sort" :disabled="busy" />
-          </view>
+          <FilterSheet :open="filtersOpen" @close="filtersOpen = false" @reset="filterDraft = { ...defaultFilters }" @apply="applyFilters">
+            <FormField label="原交易分类" kind="selector" :options="categoryOptions" v-model="filterDraft.category" />
+            <FormField label="排序" kind="selector" :options="['日期降序', '金额降序']" v-model="filterDraft.sort" />
+          </FilterSheet>
           <text v-if="!filtersOpen && categoryFilter !== '全部'" class="filter-summary secondary-text ui-mb-section" :class="themeClass('secondary-text')">{{ categoryFilter }} · {{ visibleIndices.length }} 笔</text>
           <view v-if="totalsOpen" class="category-totals ui-section ui-gap-sm">
             <text v-for="group in categoryTotals" :key="group.name" class="secondary-text" :class="themeClass('secondary-text')">{{ group.name }} · {{ group.count }} 笔 · ¥{{ group.bookkeepingAmount.toFixed(2) }}</text>

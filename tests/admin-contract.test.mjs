@@ -7,6 +7,7 @@ const source = await readFile(new URL('../src/services/admin/contract.ts',import
 const specsSource = await readFile(new URL('../src/pages/admin/services/specs.ts',import.meta.url),'utf8')
 const { stringId, queryPath, readPage, categoryPayload, siblingSort, flattenMenus, protectedMenu, validateConfig, orderCategories } = await import(asModule(source))
 const { adminPayload } = await import(asModule(specsSource))
+const responseSource = await readFile(new URL('../src/services/contract.ts', import.meta.url), 'utf8')
 const id = '9223372036854775807'
 test('管理员所有分页和路径保留长ID，数字ID拒绝；条件平铺编码',() => {
  assert.equal(stringId(id),id); assert.throws(()=>stringId(123),/ID/)
@@ -61,11 +62,15 @@ test('管理员CRUD与个人/公共分类接口分离，不将长ID转number',as
  const calls=[]
  globalThis.__adminMock=(...args)=>{calls.push(args); return Promise.resolve(true)}
  const serviceSource=await readFile(new URL('../src/pages/admin/services/index.ts',import.meta.url),'utf8')
- const service=await import(asModule(serviceSource.replace("import { request } from '../../../services/api.ts'","const request = globalThis.__adminMock").replace("from './specs.ts'","from '"+asModule(specsSource)+"'").replace("from '../../../services/admin/contract.ts'","from '"+asModule(source)+"'")))
+ const service=await import(asModule(serviceSource.replace("from '../../../services/contract.ts'", "from '"+asModule(responseSource)+"'").replace("import { request } from '../../../services/api.ts'","const request = globalThis.__adminMock").replace("from './specs.ts'","from '"+asModule(specsSource)+"'").replace("from '../../../services/admin/contract.ts'","from '"+asModule(source)+"'")))
  await service.saveAdmin('users',{username:'demo',nickname:'演示',role:'user'},{id})
  assert.equal(calls.at(-1)[0],'/user-center'); assert.equal(calls.at(-1)[1],'PUT'); assert.equal(calls.at(-1)[2].id,id)
  await service.deleteAdmin('dict-types',{id:id})
  assert.deepEqual(calls.at(-1),['/sysDictType/'+id,'DELETE'])
+ const attachmentId = 'b3863ef5-d24e-4120-964e-9cc49f01c879'
+ await service.replyFeedback({ id }, ' 图片已收到 ', [attachmentId])
+ assert.deepEqual(calls.at(-1), ['/feedback/admin/'+id+'/reply', 'POST', {content:'图片已收到',fileIds:[attachmentId]}])
+ assert.throws(() => service.replyFeedback({ id }, '错误附件', [id]), /附件 ID/)
  await service.batchCloseFeedback([id])
  assert.deepEqual(calls.at(-1),['/feedback/admin/batch','POST',{idList:[id],action:'CLOSE'}])
  const categoriesSource=await readFile(new URL('../src/pages/categories/services/categories.ts',import.meta.url),'utf8')
@@ -97,7 +102,7 @@ test('菜单展示端通过统一接口切换当前位，不提交旧字段或�
  const calls=[]
  globalThis.__menuStatusMock=(...args)=>{calls.push(args); return Promise.resolve(true)}
  const serviceSource=await readFile(new URL('../src/pages/admin/services/index.ts',import.meta.url),'utf8')
- const service=await import(asModule(serviceSource.replace("import { request } from '../../../services/api.ts'","const request = globalThis.__menuStatusMock").replace("from './specs.ts'","from '"+asModule(specsSource)+"'").replace("from '../../../services/admin/contract.ts'","from '"+asModule(source)+"'")))
+ const service=await import(asModule(serviceSource.replace("from '../../../services/contract.ts'", "from '"+asModule(responseSource)+"'").replace("import { request } from '../../../services/api.ts'","const request = globalThis.__menuStatusMock").replace("from './specs.ts'","from '"+asModule(specsSource)+"'").replace("from '../../../services/admin/contract.ts'","from '"+asModule(source)+"'")))
  const row={id,path:'/sample',visibleClients:1}
  await service.setMenuVisibleClients(row,2)
  assert.deepEqual(calls.at(-1), ['/menu/admin/'+id+'/visible-clients','PUT',{visibleClients:3}])

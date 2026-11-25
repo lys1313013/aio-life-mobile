@@ -10,6 +10,9 @@ import { computed, onUnmounted, ref } from 'vue';
 import { onShow } from '@dcloudio/uni-app';
 import MobilePage from '../../components/MobilePage.uvue';
 import PageHeader from '../../components/PageHeader.uvue';
+import FilterTrigger from '../../components/FilterTrigger.uvue';
+import FilterSheet from '../../components/FilterSheet.uvue';
+import spacing from '../../styles/spacing.json';
 import MobileButton from '../../components/MobileButton.uvue';
 import FloatingActionButton from '../../components/FloatingActionButton.uvue';
 import FormField from '../../components/FormField.uvue';
@@ -31,7 +34,11 @@ const rows = ref<any[]>([]),
   formError = ref('');
 const types = ['life', 'study', 'work', 'other'],
   labels = ['生活', '学业', '工作', '其他'];
-const showDates = ref(false);
+const filtersOpen = ref(false);
+const defaultFilters = { type: '全部类型', tag: '全部标签', start: '', end: '' };
+const filterDraft = ref({ ...defaultFilters });
+const filterError = computed(() => filterDraft.value.start && filterDraft.value.end && filterDraft.value.start > filterDraft.value.end
+  ? '开始日期不能晚于结束日期' : '');
 const hasFilters = computed(() => typeFilter.value !== '全部类型' || tagFilter.value !== '全部标签' || !!start.value || !!end.value);
 const typeFilter = ref('全部类型'),
   tagFilter = ref('全部标签'),
@@ -55,6 +62,7 @@ const filtered = computed(() =>
     .sort((a, b) => b.date.localeCompare(a.date)),
 );
 const scope = createRecordScope((clearData) => {
+  filtersOpen.value = false;
   form.value = null;
   if (clearData) rows.value = [];
 });
@@ -133,30 +141,38 @@ async function remove(item) {
   await scope.wait(deleteEvent('milestone', item.id));
   rows.value = rows.value.filter((r) => r.id !== item.id);
 }
-function clear() {
-  typeFilter.value = '全部类型';
-  tagFilter.value = '全部标签';
-  start.value = '';
-  end.value = '';
+function openFilters() {
+  filterDraft.value = { type: typeFilter.value, tag: tagFilter.value, start: start.value, end: end.value };
+  filtersOpen.value = true;
+}
+function applyFilters() {
+  if (filterError.value) return;
+  const draft = filterDraft.value;
+  typeFilter.value = draft.type;
+  tagFilter.value = draft.tag;
+  start.value = draft.start;
+  end.value = draft.end;
+  filtersOpen.value = false;
 }
 </script>
 <template>
   <MobilePage :refreshing="refreshing" @refresh="load(true)"
     ><view class="event-page ui-page-body" :class="{ 'event-page-dark': isDark }"
-      ><PageHeader title="里程碑" :back="true" @back="uni.navigateBack()" /><view class="filters ui-field-row"
-        ><FormField compact stretch hide-label
-          label="类型"
-          kind="selector"
-          v-model="typeFilter"
-          :options="['全部类型', ...labels]" /><FormField compact stretch hide-label
-          label="标签"
-          kind="selector"
-          v-model="tagFilter"
-          :options="['全部标签', ...allTags]" /><MobileButton label="日期筛选" icon="ant-design:calendar-outlined" variant="quiet" @click="showDates = !showDates" /><MobileButton v-if="hasFilters" label="清空筛选" icon="ant-design:close-outlined" variant="quiet" @click="clear" /></view><view v-if="showDates || start || end" class="filters ui-field-row"><FormField compact stretch hide-label
-          label="开始日期" :required="isRequired('milestone', 'date')" placeholder="开始日期"
-          kind="date"
-          v-model="start" /><FormField compact stretch hide-label label="结束日期" placeholder="结束日期" kind="date" v-model="end" /></view
-      ><PageState skeleton="timeline" :loading="loading" :error="error" :empty="!filtered.length" @retry="load()">
+      ><PageHeader title="里程碑" back :actions-min-width="spacing.controlMin" @back="uni.navigateBack()">
+        <template #actions>
+          <FilterTrigger label="筛选里程碑" :open="filtersOpen" :active="hasFilters" @click="openFilters" />
+        </template>
+      </PageHeader>
+      <FilterSheet :open="filtersOpen" :error="filterError" @close="filtersOpen = false"
+        @reset="filterDraft = { ...defaultFilters }" @apply="applyFilters">
+        <FormField label="类型" kind="selector" v-model="filterDraft.type" :options="[defaultFilters.type, ...labels]" />
+        <FormField label="标签" kind="selector" v-model="filterDraft.tag" :options="[defaultFilters.tag, ...allTags]" />
+        <view class="ui-field-row">
+          <FormField compact stretch label="开始日期" placeholder="开始日期" kind="date" v-model="filterDraft.start" />
+          <FormField compact stretch label="结束日期" placeholder="结束日期" kind="date" v-model="filterDraft.end" />
+        </view>
+      </FilterSheet>
+      <PageState skeleton="timeline" :loading="loading" :error="error" :empty="!filtered.length" @retry="load()">
 <template #loading><view v-for="n in 3" :key="n" class="timeline-entry" :class="{ 'timeline-entry-dark': isDark }"><view class="timeline-dot" :class="{ 'timeline-dot-dark': isDark }" /><view class="event-card ui-card" :class="{ 'event-card-dark': isDark }"><ContentSkeleton variant="tile" /></view></view></template>
 
         <template v-for="(item, index) in filtered" :key="item.id"
@@ -234,10 +250,6 @@ function clear() {
 .toolbar {
   flex-direction: row;
   align-items: center;
-}
-.filters {
-  flex-direction: row;
-  align-items: flex-end;
 }
 .event-card {
   background-color: #ffffff;

@@ -6,6 +6,8 @@ import path from 'node:path';
 import { weixinSharedServices } from '../scripts/weixin-shared-services.mjs';
 import { weixinSubpackageVendors } from '../scripts/weixin-subpackage-vendors.mjs';
 
+const { chartRuntime } = JSON.parse(fs.readFileSync('scripts/weixin-package-policy.json', 'utf8'));
+
 function fixture(t) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'aio-weixin-watch-'));
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
@@ -15,7 +17,7 @@ function fixture(t) {
     fs.copyFileSync(file, path.join(root, file));
   }
   // 小型模拟引擎，避免回归测试打包真实图表库。
-  fs.writeFileSync(path.join(root, 'src/services/chart-engine-runtime.ts'), 'export const fixture = true;');
+  fs.writeFileSync(path.join(root, chartRuntime.entry), 'export const fixture = true;');
   return root;
 }
 const context = () => ({

@@ -29,6 +29,42 @@ async function setup(page, apiMock) {
 }
 
 for (const width of [390, 768, 1440]) for (const theme of ['light', 'dark']) {
+  test(`目标编辑选项与删除按钮底色透明 ${width} ${theme}`, async ({ page, apiMock }, testInfo) => {
+    await page.setViewportSize({ width, height: 900 });
+    await page.emulateMedia({ colorScheme: theme });
+    await setup(page, apiMock);
+    await page.getByRole('button', { name: '目标', exact: true }).click();
+    await page.getByRole('button', { name: '编辑目标：模拟年度阅读目标', exact: true }).click();
+
+    const editor = page.getByRole('dialog', { name: '编辑目标', exact: true });
+    const options = editor.locator('.goal-options');
+    const details = editor.getByRole('button', { name: '补充资料', exact: true });
+    const pinned = editor.getByRole('switch', { name: '添加到首页', exact: true });
+    const remove = editor.getByRole('button', { name: '删除目标', exact: true });
+    await pinned.click();
+    await expect(pinned).toHaveAttribute('aria-checked', 'true');
+    await expect(options).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+    await expect(details).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+    await expect(remove).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+    const removeArea = await remove.boundingBox();
+    expect(removeArea.width).toBeGreaterThanOrEqual(44);
+    expect(removeArea.height).toBeGreaterThanOrEqual(44);
+    await page.screenshot({ path: testInfo.outputPath('goal-editor.png') });
+
+    await details.click();
+    await expect(details).toHaveAttribute('aria-expanded', 'true');
+    await expect(editor.getByText('行动计划', { exact: true })).toBeVisible();
+    await details.click();
+    await expect(details).toHaveAttribute('aria-expanded', 'false');
+    await remove.click();
+    const confirmation = page.getByRole('dialog', { name: '删除目标', exact: true });
+    await expect(confirmation.getByText('确定删除目标？', { exact: true })).toBeVisible();
+    await confirmation.getByRole('button', { name: '取消', exact: true }).click();
+    await expect(confirmation).toHaveCount(0);
+    await editor.getByRole('button', { name: '取消', exact: true }).click();
+    await expect(editor).toHaveCount(0);
+  });
+
   test(`业务页面多层进退与目标弹窗 ${width} ${theme}`, async ({ page, apiMock }) => {
     await page.setViewportSize({ width, height: 900 });
     await page.emulateMedia({ colorScheme: theme });

@@ -21,7 +21,15 @@ const props = defineProps({
 onMounted(refreshNativeTheme)
 defineEmits(['back'])
 const windowInfo = ref(uni.getWindowInfo())
-const capsule = ref(null)
+function readCapsule() {
+  // #ifdef MP-WEIXIN
+  return uni.getMenuButtonBoundingClientRect()
+  // #endif
+  // #ifndef MP-WEIXIN
+  return null
+  // #endif
+}
+const capsule = ref(readCapsule())
 const layout = computed(() => navigationContentLayout(windowInfo.value, capsule.value, spacing, props))
 const statusBarHeight = computed(() => layout.value.statusBarHeight)
 const navigationHeight = computed(() => layout.value.navigationHeight)
@@ -31,14 +39,14 @@ const actionsHeight = computed(() => layout.value.actionsHeight)
 const headerHeight = computed(() => layout.value.headerHeight)
 function updateLayout() {
   windowInfo.value = uni.getWindowInfo()
-  // #ifdef MP-WEIXIN
-  capsule.value = uni.getMenuButtonBoundingClientRect()
-  // #endif
+  capsule.value = readCapsule()
 }
-updateLayout()
 onMounted(() => {
+  // #ifdef MP-WEIXIN
+  // 首帧已有窗口和胶囊尺寸，仅在宿主尚未返回有效尺寸时补测。
+  if (windowInfo.value.windowWidth > 0 && capsule.value?.width > 0 && capsule.value?.height > 0) return
+  // #endif
   updateLayout()
-
 })
 
 </script>
@@ -47,11 +55,11 @@ onMounted(() => {
   <!-- 保留导航高度，固定定位后不遮住首屏内容。 -->
   <view class="navigation-placeholder" :class="{ 'navigation-placeholder-animated': $slots.extension }" :style="{ height: statusBarHeight + headerHeight + (extensionOpen ? spacing.controlMin + spacing.inline : 0) + 'px' }">
   <view class="page-navigation" :style="{ paddingTop: statusBarHeight + 'px' }" :class="[themeClass('page-navigation', appearance), { 'page-navigation-paper': paper }, themeClass({ 'page-navigation-paper': paper }, appearance)]">
-    <view class="navigation-row ui-header-inset" :style="{ height: navigationHeight + 'px', paddingLeft: layout.leftInset + 'px', paddingRight: rightInset + 'px' }">
+    <view class="navigation-row" :style="{ height: navigationHeight + 'px', paddingLeft: layout.leftInset + 'px', paddingRight: rightInset + 'px' }">
       <button
         v-if="back"
         role="button"
-        class="navigation-button ui-type-body"
+        class="navigation-button"
         hover-class="none"
         aria-label="返回"
         @click="$emit('back')"
@@ -64,7 +72,7 @@ onMounted(() => {
       </view>
       <LoadingIndicator v-if="secondaryLock.checking" compact label="正在加载" />
     </view>
-    <view v-if="wrapActions" class="navigation-actions-row ui-header-inset" :class="{ 'navigation-actions-compact': compactActions }" :style="{ height: actionsHeight + 'px' }">
+    <view v-if="wrapActions" class="navigation-actions-row" :class="{ 'navigation-actions-compact': compactActions }" :style="{ height: actionsHeight + 'px' }">
       <view class="navigation-actions-content"><slot name="actions" :wrapped="true" /></view>
     </view>
     <slot name="extension" />
@@ -76,9 +84,7 @@ onMounted(() => {
 @use '../styles/platform' as *;
 @use '../styles/theme-tokens' as *;
 @use '../styles/typography' as *;
-@use '../styles/spacing.scss';
 @use '../styles/spacing-tokens' as *;
-@include type-utilities('body');
 
 .navigation-placeholder {
   flex-shrink: 0;
@@ -124,7 +130,7 @@ onMounted(() => {
 }
 .navigation-actions-row {
   box-sizing: border-box;
-  padding-bottom: $space-detail;
+  padding: 0 $space-page $space-detail;
 }
 .navigation-actions-compact {
   padding-bottom: 0;
@@ -151,8 +157,8 @@ onMounted(() => {
   flex-shrink: 0;
   display: flex;
   flex-direction: row;
-  width: 44px;
-  height: 44px;
+  width: $space-controlMin;
+  height: $space-controlMin;
   line-height: $space-controlMin;
   margin: 0;
   padding: 0;

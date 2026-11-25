@@ -6,7 +6,7 @@ const scenarios = [
     handlers: {
       'GET /api/taskColumn/query': ok({ items: [{ id: '11', title: '工作' }, { id: '12', title: '生活' }], total: 2 }),
       'GET /api/tasks': ok({ items: [{ id: '21', columnId: '11', content: '模拟工作清单', unCompletedCount: 0 }, { id: '22', columnId: '12', content: '模拟生活清单', unCompletedCount: 0 }], total: 2 }),
-      'GET /api/taskDetails': ok([]),
+      'GET /api/taskDetails/batch': ok([]),
     }, request: 'GET /api/taskColumn/query' },
   { name: 'MCP', route: 'mcp/index', tabs: '.group-tab', rows: '.tool-row', secondCount: 1,
     handlers: { 'GET /api/mcp/tools': ok([{ name: 'time_record_queryByDateRange', description: '模拟工具', inputSchema: { type: 'object', properties: {} } }, { name: 'goal_query', description: '模拟目标工具', inputSchema: { type: 'object', properties: {} } }]) }, request: 'GET /api/mcp/tools' },

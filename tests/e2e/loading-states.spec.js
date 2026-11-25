@@ -160,7 +160,7 @@ test('GitHub pagination failure retains commits and retries the failed page', as
   expect(requests).toEqual([1, 2, 2]);
 });
 const scenarios = [
-  ['records/library?kind=read', '.library-poster .skeleton-cover'],
+  ['records/library?kind=read', '.shelf-cover .skeleton-cover'],
   ['tasks/goals', '.goal-grid .skeleton-tile'],
   ['goods/wardrobe', '.item-photo .goods-image-skeleton'],
   ['profile/settings', '.settings-placeholder'],
@@ -353,7 +353,7 @@ for (const width of [390, 768, 1440]) test(`loading matches page grids and cover
     await route.fulfill({ json: { code: 0, data: { id: '1', nickname: '模拟用户' } } });
   });
   const entries = [
-    ['records/library?kind=read', '.library-card', '.library-poster', width < 768 ? 3 : width < 1200 ? 5 : 7, 4 / 3],
+    ['records/library?kind=read', '.shelf-book', '.shelf-cover', 2, 4 / 3],
     ['records/video', '.video-page-active .video-card', '.video-page-active .video-poster', width < 600 ? 2 : width < 1000 ? 3 : 4, 0.625],
     ['tasks/goals', '.goal-grid .record-card', null, width < 600 ? 2 : width < 960 ? 3 : 4],
     ['goods/devices', '.goods-card', '.goods-media', width < 700 ? 2 : width < 1000 ? 3 : 4],

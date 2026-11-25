@@ -11,6 +11,9 @@ import { computed, ref, watch } from 'vue';
 import { onLoad, onShow } from '@dcloudio/uni-app';
 import MobilePage from '../../components/MobilePage.uvue';
 import PageHeader from '../../components/PageHeader.uvue';
+import FilterTrigger from '../../components/FilterTrigger.uvue';
+import FilterSheet from '../../components/FilterSheet.uvue';
+import spacing from '../../styles/spacing.json';
 import MobileButton from '../../components/MobileButton.uvue';
 import FormField from '../../components/FormField.uvue';
 import PageState from '../../components/PageState.uvue';
@@ -52,6 +55,24 @@ const rows = ref<any[]>([]),
   formError = ref(''),
   saved = ref(false),
   selected = ref<string[]>([]);
+const filtersOpen = ref(false);
+const defaultFilters = { type: '全部类型', start: '', end: '' };
+const filterDraft = ref({ ...defaultFilters });
+const hasFilters = computed(() => typeFilter.value !== defaultFilters.type || !!startDate.value || !!endDate.value);
+const filterError = computed(() => filterDraft.value.start && filterDraft.value.end && filterDraft.value.start > filterDraft.value.end
+  ? '开始日期不能晚于结束日期' : '');
+function openFilters() {
+  filterDraft.value = { type: typeFilter.value, start: startDate.value, end: endDate.value };
+  filtersOpen.value = true;
+}
+function applyFilters() {
+  if (filterError.value) return;
+  const draft = filterDraft.value;
+  typeFilter.value = draft.type;
+  startDate.value = draft.start;
+  endDate.value = draft.end;
+  filtersOpen.value = false;
+}
 const renderPageSize = 20;
 const selecting = ref(false), swipedId = ref('');
 const choosingExercise = ref(false);
@@ -65,6 +86,7 @@ let generation = 0,
   autoCreate = false;
 let statisticsRevision = 0;
 const scope = createRecordScope((clear) => {
+  filtersOpen.value = false;
   generation++;
   refreshing.value = false;
   loading.value = false;
@@ -317,27 +339,21 @@ function toggleSelection() {
 <template>
   <MobilePage :refreshing="refreshing" :scroll-locked="!!form" @refresh="refresh" @reachbottom="revealMore()" @scroll="swipedId = ''"
     ><view class="exercise-page ui-page-body" :class="{ 'exercise-page-dark': isDark }"
-      ><PageHeader title="运动记录" :back="true" @back="uni.navigateBack()" /><FormField
-        label="运动类型"
-        kind="selector"
-        v-model="typeFilter"
-        :options="['全部类型', ...types.map((t) => t.dictLabel || t.label)]"
- /><view class="date-filters ui-field-row"
-        ><FormField compact stretch label="开始日期" kind="date" v-model="startDate" /><FormField compact stretch
-          label="结束日期"
-          kind="date"
-          v-model="endDate" /><MobileButton
-          v-if="startDate || endDate"
-          label="清除日期筛选"
-          icon="ant-design:close-outlined"
-          variant="quiet"
-          @click="
-            startDate = '';
-            endDate = '';
-          " /></view
-      ><text v-if="startDate && endDate && startDate > endDate" class="error ui-section ui-type-body"
-        >开始日期不能晚于结束日期</text
-      ><view class="metrics ui-row ui-section" :class="{ 'metrics-three': typeFilter !== '全部类型' }"
+      ><PageHeader title="运动记录" back :actions-min-width="spacing.controlMin" @back="uni.navigateBack()">
+        <template #actions>
+          <FilterTrigger label="筛选运动记录" :open="filtersOpen" :active="hasFilters" @click="openFilters" />
+        </template>
+      </PageHeader>
+      <FilterSheet :open="filtersOpen" :error="filterError" @close="filtersOpen = false"
+        @reset="filterDraft = { ...defaultFilters }" @apply="applyFilters">
+        <FormField label="运动类型" kind="selector" v-model="filterDraft.type"
+          :options="[defaultFilters.type, ...types.map(t => t.dictLabel || t.label)]" />
+        <view class="ui-field-row">
+          <FormField compact stretch label="开始日期" kind="date" v-model="filterDraft.start" />
+          <FormField compact stretch label="结束日期" kind="date" v-model="filterDraft.end" />
+        </view>
+      </FilterSheet>
+      <view class="metrics ui-row ui-section" :class="{ 'metrics-three': typeFilter !== '全部类型' }"
         ><MetricCard :style="appGridItem(2, 'inline', [[600, typeFilter === '全部类型' ? 2 : 3]], false)" :loading="statisticsLoading && !statisticsReady" label="运动次数" :value="statisticsReady ? counts : '—'" /><MetricCard :style="appGridItem(2, 'inline', [[600, typeFilter === '全部类型' ? 2 : 3]], false)" :loading="statisticsLoading && !statisticsReady"
           v-if="typeFilter !== '全部类型'"
           label="运动量"
@@ -524,7 +540,6 @@ function toggleSelection() {
 .record-date { @include type-style('caption'); color: $text-secondary-light; padding-left: $space-card; }
 .record-surface { background-color: #ffffff; border-radius: 12px; overflow: hidden; }
 .record-surface-dark { background-color: #1c1e22; }
-.date-filters { align-items: flex-end; }
 .metrics {
 @include grid-layout;
 

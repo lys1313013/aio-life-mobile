@@ -6,7 +6,10 @@ import { onHide, onShow, onUnload } from '@dcloudio/uni-app';
 import LoadingIndicator from '../../components/LoadingIndicator.uvue';
 import { useCardOrder } from '../../services/use-card-order.ts';
 import { compareCardOrder } from '../../services/card-order.ts';
-import PageHeader from '../../components/PageHeader.uvue';
+import PageSearch from '../../components/PageSearch.uvue';
+import FilterTrigger from '../../components/FilterTrigger.uvue';
+import FilterSheet from '../../components/FilterSheet.uvue';
+import spacing from '../../styles/spacing.json';
 import MobilePage from '../../components/MobilePage.uvue';
 import PageState from '../../components/PageState.uvue';
 import FormField from '../../components/FormField.uvue';
@@ -21,6 +24,8 @@ import { themeClass } from '../../services/theme.ts';
 import { fetchUser } from '../../services/api.ts';
 import { restoreSession, session } from '../../services/session.ts';
 import { moveCoverOrder, listCoverTemplates, listCoverBanks, saveCoverTemplate, setCoverEnabled, deleteCoverTemplate, createCoverMutations } from './services/bank-card-covers.ts';
+const searchOpen = ref(false);
+const filtersOpen = ref(false);
 const modalMotion0 = ref<{ close: () => void } | null>(null);
 
 function explainUsedCover() { uni.showModal({ title: '已使用的卡面', content: '已有银行卡使用，银行和类型不可修改。', showCancel: false }); }
@@ -35,6 +40,19 @@ const locked = computed(() => saving.value || uploading.value);
 const mutations = createCoverMutations();
 let alive = true, generation = 0, editorGeneration = 0, lifecycle = 0;
 function empty() { return { name: '', bankId: '', cardType: 'debit', sourceUrl: '', fileId: '', isEnabled: 1, sortOrder: '0' }; }
+const defaultFilters = { bank: '', type: '全部类型', status: '全部状态' };
+const filterDraft = ref({ ...defaultFilters });
+function openFilters() {
+  searchOpen.value = false;
+  filterDraft.value = { bank: bankFilter.value, type: typeFilter.value, status: statusFilter.value };
+  filtersOpen.value = true;
+}
+function applyFilters() {
+  bankFilter.value = filterDraft.value.bank;
+  typeFilter.value = filterDraft.value.type;
+  statusFilter.value = filterDraft.value.status;
+  filtersOpen.value = false;
+}
 const editableBanks = computed(() => banks.value.filter(bank => bank.isEnabled || bank.id === original.value?.bankId));
 const shown = computed(() => rows.value.filter(row =>
   (!keyword.value.trim() || (row.name + ' ' + row.bankName).includes(keyword.value.trim())) &&
@@ -116,6 +134,7 @@ async function remove(row) {
   } finally { if (current(token) && version === lifecycle) busy.value[row.id] = false; }
 }
 watch(() => session.token, () => {
+  filtersOpen.value = false;
   order.reset();
   generation++; editorGeneration++; rows.value = []; banks.value = []; loaded.value = false; opened.value = false;
   loading.value = false; refreshing.value = false; saving.value = false; uploading.value = false; busy.value = {}; rowErrors.value = {}; mutations.clear();
@@ -128,6 +147,7 @@ onShow(() => {
   refreshOnShow();
 });
 onHide(() => {
+  filtersOpen.value = false;
   order.cancel();
   nextTick(() => {
     // 打开系统图片选择器不代表离开当前路由；实际切页才废弃编辑和异步响应。
@@ -141,17 +161,20 @@ onUnload(() => { alive = false; order.reset(); generation++; editorGeneration++;
 </script>
 <template>
   <view class="cover-page" :class="themeClass('cover-page')">
-    <PageHeader title="银行卡卡面" back @back="back" />
+    <PageSearch title="银行卡卡面" label="搜索卡面" v-model="keyword" v-model:open="searchOpen" back
+      :enabled="authorized" :actions-min-width="authorized ? spacing.controlMin : 0" @back="back">
+      <template v-if="authorized" #trailing-actions>
+        <FilterTrigger label="筛选银行卡卡面" :open="filtersOpen" :active="!!bankFilter || typeFilter !== defaultFilters.type || statusFilter !== defaultFilters.status" :disabled="!!orderSaving || !!orderDragging" @click="openFilters" />
+      </template>
+    </PageSearch>
+    <FilterSheet :open="filtersOpen" @close="filtersOpen = false" @reset="filterDraft = { ...defaultFilters }" @apply="applyFilters">
+      <FormField label="银行" kind="selector" :model-value="banks.find(bank => bank.id === filterDraft.bank)?.name || '全部银行'"
+        :options="['全部银行', ...banks.map(bank => bank.name)]" @update:model-value="filterDraft.bank = banks.find(bank => bank.name === $event)?.id || ''" />
+      <FormField label="类型" kind="selector" v-model="filterDraft.type" :options="[defaultFilters.type, '储蓄卡', '信用卡']" />
+      <FormField label="状态" kind="selector" v-model="filterDraft.status" :options="[defaultFilters.status, '启用', '停用']" />
+    </FilterSheet>
     <MobilePage :scroll-locked="!!orderDragging" :scroll-top="orderScrollTop" :drag-scrolling="!!orderDragging" :refresh-disabled="!!orderSaving" @scroll="order.scrolled" :refreshing="refreshing" @refresh="load(true)">
       <view class="ui-page-body">
-        <template v-if="authorized">
-          <FormField label="搜索卡面" v-model="keyword" placeholder="名称 / 银行" />
-          <view class="cover-filters ui-field-row">
-            <FormField compact stretch label="银行" kind="selector" :model-value="banks.find(bank => bank.id === bankFilter)?.name || '全部银行'" :options="['全部银行', ...banks.map(bank => bank.name)]" @update:model-value="bankFilter = banks.find(bank => bank.name === $event)?.id || ''" />
-            <FormField compact stretch label="类型" kind="selector" v-model="typeFilter" :options="['全部类型', '储蓄卡', '信用卡']" />
-            <FormField compact stretch label="状态" kind="selector" v-model="statusFilter" :options="['全部状态', '启用', '停用']" />
-          </view>
-        </template>
         <PageState :loading="loading" :error="error" :empty="authorized && !shown.length" :has-content="rows.length > 0" empty-text="暂无卡面" @retry="load()">
           <view v-if="authorized" class="cover-grid">
             <view v-for="row in shown" :key="row.id" class="cover-item card-sort-item" :data-card-id="row.id" :aria-busy="orderSaving === row.id" :class="order.classes(row.id)" :style="order.style(row.id)">

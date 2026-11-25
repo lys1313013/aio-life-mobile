@@ -1,7 +1,8 @@
 import { request } from '../../../services/api.ts'
+import { queryPath } from '../../../services/query-path.ts'
 import { recordId } from '../../../services/records/contracts.ts'
 function base(kind) { return kind === 'movie' ? '/movie' : '/read-record' }
-export function fetchLibrary(kind, filters) { return request<any>(base(kind) + '/page', 'GET', filters) }
+export function fetchLibrary(kind, filters) { return request<any>(queryPath(base(kind) + '/page', filters)) }
 export function fetchLibraryDetail(kind, id) { return request<any>(base(kind) + '/' + recordId(id)) }
 export function saveLibrary(kind, payload) { return request(base(kind), payload.id ? 'PUT' : 'POST', payload) }
 export function deleteLibrary(kind, id) { return request(base(kind) + '/' + recordId(id), 'DELETE') }

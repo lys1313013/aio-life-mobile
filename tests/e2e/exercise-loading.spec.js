@@ -1,6 +1,12 @@
 const { waitForMotion } = require('./support/motion');
 const { selectCalendarDate } = require('./calendar');
 const { test, expect } = require('./support/test');
+async function openFilters(page) {
+  await page.getByRole('button', { name: '筛选运动记录', exact: true }).click();
+  const sheet = page.getByRole('dialog', { name: '快捷筛选', exact: true });
+  await expect(sheet).toBeVisible();
+  return sheet;
+}
 const { setup } = require('./qa-domains-fixtures');
 const { pullDown } = require('./gestures');
 
@@ -135,10 +141,15 @@ test('运动列表末批停止、日期筛选重置批次、刷新失败保留�
   state.fail = false;
   await page.getByRole('button', { name: '重试', exact: true }).last().click();
   await expect(page.locator('.record-header')).toHaveCount(20);
-  const startPicker = page.locator('.calendar-trigger[aria-label="开始日期"]');
+  const sheet = await openFilters(page);
+  const startPicker = sheet.locator('.calendar-trigger[aria-label="开始日期"]');
   await selectCalendarDate(page, startPicker, '2026-10-19');
+  expect(calls).toEqual([1, 2, 3, 1, 1]);
+  await sheet.getByRole('button', { name: '确定', exact: true }).click();
   await expect(page.locator('.record-header')).toHaveCount(16);
-  await page.getByRole('button', { name: '清除日期筛选', exact: true }).click();
+  await openFilters(page);
+  await sheet.getByRole('button', { name: '重置', exact: true }).click();
+  await sheet.getByRole('button', { name: '确定', exact: true }).click();
   await expect(page.locator('.record-header')).toHaveCount(20);
 });
 
@@ -175,8 +186,10 @@ test('切换筛选后迟到的统计不覆盖新结果，也不拉取历史明�
   const { calls } = await prepare(page, 603, { statistics: pending });
   await page.goto('/#/pages/records/exercise');
   await expect(page.locator('.record-header')).toHaveCount(20);
-  await page.locator('uni-picker[aria-label="运动类型"]').click();
+  const sheet = await openFilters(page);
+  await sheet.locator('uni-picker[aria-label="运动类型"]').click();
   await page.locator('.uni-picker-select:visible').getByText('模拟运动1', { exact: true }).click();
+  await sheet.getByRole('button', { name: '确定', exact: true }).click();
   const total = page.locator('.metric-card').filter({ has: page.getByText('记录', { exact: true }) });
   await expect(total.locator('.metric-number')).toHaveText('38');
   release();
@@ -325,9 +338,10 @@ test('旧分页晚于新筛选返回时不能覆盖或追加到新列表', async
   await expect(page.locator('.record-row')).toHaveCount(20);
   await bottom(page);
   await expect.poll(() => calls).toEqual([1, 2]);
-  await page.locator('uni-picker[aria-label="运动类型"]').scrollIntoViewIfNeeded();
-  await page.locator('uni-picker[aria-label="运动类型"]').click();
+  const sheet = await openFilters(page);
+  await sheet.locator('uni-picker[aria-label="运动类型"]').click();
   await page.locator('.uni-picker-select:visible').getByText('模拟运动1', { exact: true }).click();
+  await sheet.getByRole('button', { name: '确定', exact: true }).click();
   await expect(page.locator('.record-type .title')).toHaveText(Array(20).fill('模拟运动1'));
   release();
   await expect(page.locator('.load-more')).toHaveCount(0);

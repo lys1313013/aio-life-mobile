@@ -1,3 +1,4 @@
+import { isAttachmentKey } from '../../../services/contract.ts'
 import { missingRequired } from '../../../services/form-required.ts';
 import { request } from '../../../services/api.ts'
 import { specs, adminPayload } from './specs.ts'
@@ -38,7 +39,8 @@ export function saveConfig(row, value) { return request('/system-config/' + enco
 export function feedbackDetail(row) { return request('/feedback/admin/' + stringId(row.id)) }
 export function replyFeedback(row, content, fileIds) {
   if (missingRequired('reply', { content })) throw Error('请输入回复内容')
-  return request('/feedback/admin/' + stringId(row.id) + '/reply','POST',{ content: content.trim(), fileIds: fileIds.map(stringId) })
+  if (!fileIds.every(isAttachmentKey)) throw Error('附件 ID 异常，请重新上传')
+  return request('/feedback/admin/' + stringId(row.id) + '/reply','POST',{ content: content.trim(), fileIds })
 }
 export function feedbackStatus(row, status) { return request('/feedback/admin/' + stringId(row.id) + '/status','PUT',{ status }) }
 export function batchCloseFeedback(ids) { if (!ids.length) throw Error('请选择反馈'); return request('/feedback/admin/batch','POST',{ idList: ids.map(stringId), action:'CLOSE' }) }

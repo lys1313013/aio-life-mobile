@@ -32,7 +32,9 @@ async function fixtures(page) {
   const books = Array.from({ length: 35 }, (_, i) => ({ id: String(i + 1), title: '模拟阅读 ' + (i + 1), status: 'in_progress', type: 1 }));
   await route('/read-record/page', url => {
     const current = Number(url.searchParams.get('page') || 1);
-    return { items: books.slice((current - 1) * 30, current * 30), total: books.length };
+    const size = Number(url.searchParams.get('pageSize'));
+    const items = url.searchParams.get('statuses') === 'in_progress' ? books : [];
+    return { items: items.slice((current - 1) * size, current * size), total: items.length };
   });
   await route('/expense/query', { items: [{ id: '1', bookkeepingAmount: 12, expenseDesc: '模拟支出', expenseTime: '2026-10-05 12:00:00', expenseTypeId: 'type', payTypeId: 'type' }], total: 1 });
   await route('/expense/statisticsByMonth', []);
@@ -106,20 +108,25 @@ for (const width of [390, 820]) {
     await page.setViewportSize({ width, height: 900 });
     const { calls, errors } = await fixtures(page);
     await page.goto('/#/pages/records/library?kind=read');
-    await expect(page.locator('.library-grid .library-card')).toHaveCount(30);
+    const shelf = page.getByRole('group', { name: '在读', exact: true });
+    await expect(shelf.locator('.shelf-book')).toHaveCount(6);
+    await expect(shelf.locator('.shelf-count')).toHaveText('35本');
+    await shelf.getByRole('button', { name: '查看全部在读记录' }).click();
+    await expect(page).toHaveURL(/shelf=in_progress/);
+    await expect(page.locator('.shelf-book[role=button]:visible')).toHaveCount(30);
     const scroll = page.locator('.mobile-page-scroll .uni-scroll-view').last();
     await expect.poll(() => page.evaluate(() => performance.now())).toBeGreaterThan(250);
     await scroll.evaluate(el => { el.scrollTop = el.scrollHeight; });
-    await expect(page.locator('.library-grid .library-card')).toHaveCount(35);
+    await expect(page.locator('.shelf-book[role=button]:visible')).toHaveCount(35);
     const count = calls['/read-record/page'];
     await visibility(page, 'hidden'); await visibility(page, 'visible');
     await page.waitForTimeout(100);
     expect(calls['/read-record/page']).toBe(count);
-    await expect(page.locator('.library-grid .library-card')).toHaveCount(35);
+    await expect(page.locator('.shelf-book[role=button]:visible')).toHaveCount(35);
     await scroll.evaluate(el => { el.scrollTop = 0; });
     await pullDown(page, '.mobile-page-scroll');
     await expect.poll(() => calls['/read-record/page']).toBe(count + 1);
-    await expect(page.locator('.library-grid .library-card')).toHaveCount(30);
+    await expect(page.locator('.shelf-book[role=button]:visible')).toHaveCount(30);
     expect(errors).toEqual([]);
   });
   test(`财务页面返回浏览器保留组件，不重新请求列表与统计 ${width}`, async ({ page }) => {

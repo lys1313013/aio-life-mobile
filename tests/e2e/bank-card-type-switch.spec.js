@@ -43,8 +43,8 @@ test('切换类型取消旧卡号读取，旧响应不能覆盖新卡的加载�
   const debit = page.getByRole('button', { name: '储蓄卡', exact: true });
   const credit = page.getByRole('button', { name: '信用卡', exact: true });
   await expect(debit).toHaveAttribute('aria-pressed', 'true');
-  await expect(debit).toHaveText('储蓄卡 1');
-  await expect(credit).toHaveText('信用卡 1');
+  await expect(debit).toHaveText(/^储蓄卡\s*1$/);
+  await expect(credit).toHaveText(/^信用卡\s*1$/);
   await waitForMotion(page);
   await expect(page.locator('.header-count, .face-type, .face-tail, .number')).toHaveCount(0);
   async function readNumber() {

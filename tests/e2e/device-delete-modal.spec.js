@@ -27,6 +27,7 @@ test('设备删除只在编辑弹窗内出现，确认失败可重试，成功�
   await editor.getByRole('button', { name: '取消', exact: true }).click();
   await page.getByRole('button', { name: '编辑设备', exact: true }).click();
   const remove = editor.getByRole('button', { name: '删除设备', exact: true });
+  await expect(remove).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
   await remove.click();
   const confirmation = page.getByRole('dialog', { name: '删除设备', exact: true });
   await expect(confirmation.getByText('确定删除设备「模拟设备」？', { exact: true })).toBeVisible();
@@ -39,6 +40,8 @@ test('设备删除只在编辑弹窗内出现，确认失败可重试，成功�
   await confirmation.getByRole('button', { name: '确认', exact: true }).click();
   await expect(editor.getByRole('button', { name: '保存', exact: true })).toBeDisabled();
   await expect(editor.locator('.form-actions-primary').getByRole('button', { name: '取消', exact: true })).toBeDisabled();
+  await expect(remove).toHaveAttribute('aria-busy', 'true');
+  await expect(remove).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
   release();
   await expect(editor).toHaveCount(0);
   await expect(page.locator('.device-page-active').getByText('模拟设备', { exact: true })).toHaveCount(0);

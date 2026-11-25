@@ -16,6 +16,9 @@ import { menuMoveChanges } from './services/menu-tree.ts';
 import { computed, ref, watch } from 'vue';
 import { onHide, onLoad, onShow, onUnload } from '@dcloudio/uni-app';
 import PageHeader from '../../components/PageHeader.uvue';
+import FilterTrigger from '../../components/FilterTrigger.uvue';
+import FilterSheet from '../../components/FilterSheet.uvue';
+import spacing from '../../styles/spacing.json';
 import MobilePage from '../../components/MobilePage.uvue';
 import MobileButton from '../../components/MobileButton.uvue';
 import FloatingActionButton from '../../components/FloatingActionButton.uvue';
@@ -132,24 +135,34 @@ const shown = computed(() => {
     });
   return result;
 });
-const filterTypes = computed(() => (kind.value === 'feedback' ? feedbackTypes : options.value));
-const filterStatuses = computed(() =>
-  kind.value === 'feedback'
-    ? feedbackStatuses
-    : [
-        { label: '启用', value: '0' },
-        { label: '禁用', value: '1' },
-      ],
-);
+const feedbackFiltersOpen = ref(false);
+const defaultFeedbackFilters = { keyword: '', type: '', status: '' };
+const feedbackFilterDraft = ref({ ...defaultFeedbackFilters });
+function openFeedbackFilters() {
+  feedbackFilterDraft.value = { keyword: keyword.value, type: typeFilter.value, status: statusFilter.value };
+  feedbackFiltersOpen.value = true;
+}
+function applyFeedbackFilters() {
+  feedbackFiltersOpen.value = false;
+  const next = feedbackFilterDraft.value;
+  const search = next.keyword.trim();
+  if (search === keyword.value && next.type === typeFilter.value && next.status === statusFilter.value) return;
+  keyword.value = search;
+  typeFilter.value = next.type;
+  statusFilter.value = next.status;
+  selected.value = [];
+  void load();
+}
 onLoad((params) => {
   kind.value = typeof params?.kind === 'string' && specs[params.kind] ? params.kind : 'users';
 });
 watch(() => session.token, () => {
+  feedbackFiltersOpen.value = false;
   if (kind.value !== 'user-dict') return;
   dictPanel.value?.cancel(); task.invalidate(); rows.value = []; options.value = []; total.value = 0;
   busyId.value = ''; opened.value = false; saving.value = false; loading.value = false; refreshing.value = false;
 }, { flush: 'sync' });
-onHide(() => dictPanel.value?.cancel());
+onHide(() => { feedbackFiltersOpen.value = false; dictPanel.value?.cancel(); });
 onUnload(() => {
   active = false;
   task.invalidate();
@@ -567,7 +580,10 @@ async function download() {
 </script>
 <template>
   <view class="admin-page"
-    ><PageHeader :title="spec.title" back @back="uni.navigateBack()">
+    ><PageHeader :title="spec.title" back :actions-min-width="authorized && kind === 'feedback' ? spacing.controlMin : 0" @back="uni.navigateBack()">
+      <template v-if="authorized && kind === 'feedback'" #actions>
+        <FilterTrigger label="筛选反馈管理" :open="feedbackFiltersOpen" :active="!!(keyword || typeFilter || statusFilter)" @click="openFeedbackFilters" />
+      </template>
       <template v-if="['users', 'dict-data', 'dict-types', 'user-dict'].includes(kind)" #default>
         <text class="admin-dict-heading" :class="themeClass('admin-dict-heading')">{{ spec.title }}</text>
         <MobileButton v-if="authorized" label="新增" icon="ant-design:plus-outlined" variant="ghost" :disabled="loading || !!busyId || dictWorking || dictDragging" @click="edit()" />
@@ -590,38 +606,17 @@ async function download() {
       <DictTypePanel v-else-if="kind === 'dict-types'" :rows="rows" :total="total" :loading="loading" :error="error" :more-error="moreError" :has-more="!pageEnded && rows.length < total" :busy="!!busyId" :remove="remove" @search="searchDictionary" @edit="edit" @retry="load()" @more="load(true)" />
       <AccessLogPanel v-else-if="isLog" :operation="kind === 'operation'" :rows="rows" :total="total" :loading="loading" :error="error" :more-error="moreError" :has-more="!pageEnded && rows.length < total" :exporting="exporting" @search="searchLogs" @retry="load()" @more="load(true)" @export="download" />
       <template v-else>
-      <FormField :label="kind === 'dict-types' ? '字典名称' : kind === 'dict-data' ? '展示值' : kind === 'users' ? '用户名 / 昵称' : '关键词'" v-model="keyword" :disabled="loading" />
-      <view class="admin-filters ui-field-row">
-      <FormField
-        v-if="['dict-data', 'feedback'].includes(kind)"
-        compact stretch label="类型"
-        kind="selector"
-        :model-value="
-          filterTypes.find((item) => (item.type || item.value) === typeFilter)?.label || '全部'
-        "
-        :options="['全部', ...filterTypes.map((item) => item.label)]"
-        @update:model-value="
-          (value) =>
-            (typeFilter =
-              value === '全部'
-                ? ''
-                : filterTypes.find((item) => item.label === value)?.type ||
-                  filterTypes.find((item) => item.label === value)?.value ||
-                  '')
-        "
-      />
-      <FormField
-        v-if="kind === 'feedback'"
-        compact stretch label="状态"
-        kind="selector"
-        :model-value="filterStatuses.find((item) => item.value === statusFilter)?.label || '全部'"
-        :options="['全部', ...filterStatuses.map((item) => item.label)]"
-        @update:model-value="
-          (value) =>
-            (statusFilter = filterStatuses.find((item) => item.label === value)?.value || '')
-        "
-      />
-      </view>
+      <FormField v-if="kind !== 'feedback'" label="关键词" v-model="keyword" :disabled="loading" />
+      <FilterSheet v-if="kind === 'feedback'" :open="feedbackFiltersOpen" @close="feedbackFiltersOpen = false"
+        @reset="feedbackFilterDraft = { ...defaultFeedbackFilters }" @apply="applyFeedbackFilters">
+        <FormField label="关键词" v-model="feedbackFilterDraft.keyword" />
+        <FormField label="类型" kind="selector" :model-value="feedbackTypes.find(item => item.value === feedbackFilterDraft.type)?.label || '全部'"
+          :options="['全部', ...feedbackTypes.map(item => item.label)]"
+          @update:model-value="feedbackFilterDraft.type = feedbackTypes.find(item => item.label === $event)?.value || ''" />
+        <FormField label="状态" kind="selector" :model-value="feedbackStatuses.find(item => item.value === feedbackFilterDraft.status)?.label || '全部'"
+          :options="['全部', ...feedbackStatuses.map(item => item.label)]"
+          @update:model-value="feedbackFilterDraft.status = feedbackStatuses.find(item => item.label === $event)?.value || ''" />
+      </FilterSheet>
       <view v-if="sortable" class="admin-actions ui-toolbar ui-mt-sm"
         ><FormField compact stretch
           label="已加载数据排序"
@@ -635,8 +630,8 @@ async function download() {
           :icon="sortDescending ? 'ant-design:arrow-down-outlined' : 'ant-design:arrow-up-outlined'"
           variant="quiet"
           @click="sortDescending = !sortDescending" /></view
-      ><view class="admin-actions ui-toolbar ui-mt-sm"
-        ><MobileButton v-if="keyword || typeFilter || statusFilter || startDate || endDate" label="重置筛选" icon="ant-design:close-outlined" variant="quiet" :disabled="loading" @click="keyword = ''; typeFilter = ''; statusFilter = ''; startDate = ''; endDate = ''; load()" /><MobileButton label="查询" icon="ant-design:search-outlined" :loading="loading" @click="load()" /><ConfirmAction
+      ><view v-if="kind !== 'feedback' || selected.length" class="admin-actions ui-toolbar ui-mt-sm"
+        ><MobileButton v-if="kind !== 'feedback' && (keyword || typeFilter || statusFilter || startDate || endDate)" label="重置筛选" icon="ant-design:close-outlined" variant="quiet" :disabled="loading" @click="keyword = ''; typeFilter = ''; statusFilter = ''; startDate = ''; endDate = ''; load()" /><MobileButton v-if="kind !== 'feedback'" label="查询" icon="ant-design:search-outlined" :loading="loading" @click="load()" /><ConfirmAction
           v-if="kind === 'feedback' && selected.length"
           label="批量关闭反馈"
           message="关闭选中的反馈？"
@@ -955,7 +950,6 @@ async function download() {
   align-items: center;
 
 }
-.admin-filters { flex-wrap: wrap; }
 
 .admin-label-dark, .admin-muted-dark { color: $text-secondary-dark; }
 .admin-comment-meta { flex-wrap: wrap; gap: $space-inline; }

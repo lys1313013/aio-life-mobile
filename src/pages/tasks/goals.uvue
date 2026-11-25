@@ -2,17 +2,20 @@
 import { goalDisplayStatus, goalProgressPercent } from '../../services/goal-progress.ts'
 import { usePageRefresh } from '../../services/page-refresh.ts'
 import ContentSkeleton from '../../components/ContentSkeleton.uvue';
-import { onMounted, onUnmounted, ref } from 'vue';
+import { computed, onMounted, onUnmounted, ref } from 'vue';
 import { onLoad, onShow } from '@dcloudio/uni-app';
 import GoalEditor from '../../components/GoalEditor.uvue';
 import MobilePage from '../../components/MobilePage.uvue';
 import PageSearch from '../../components/PageSearch.uvue';
+import FilterTrigger from '../../components/FilterTrigger.uvue';
+import FilterSheet from '../../components/FilterSheet.uvue';
 import MobileButton from '../../components/MobileButton.uvue';
 import FormField from '../../components/FormField.uvue';
 import PageState from '../../components/PageState.uvue';
 import FloatingActionButton from '../../components/FloatingActionButton.uvue';
 import { createRecordScope } from '../../services/records/page-scope.ts';
 import { isDark } from '../../services/theme.ts';
+import spacing from '../../styles/spacing.json';
 import { fetchGoals, saveGoal, deleteGoal, setGoalPinned } from './services/tasks.ts';
 import {
   goalTypes,
@@ -28,6 +31,10 @@ const goals = ref<any[]>([]),
   appliedKeyword = ref(''),
   typeFilter = ref('全部类型'),
   statusFilter = ref('全部状态');
+const filtersOpen = ref(false);
+const defaultFilters = { type: '全部类型', status: '全部状态' };
+const filterDraft = ref({ ...defaultFilters });
+const hasFilters = computed(() => typeFilter.value !== defaultFilters.type || statusFilter.value !== defaultFilters.status);
 const pinningId = ref('');
 const editor = ref<any>(null);
 let pendingEditId = '', pendingCreate = false, pendingPinned = false;
@@ -40,6 +47,7 @@ onLoad((query) => {
   }
 });
 const scope = createRecordScope((clearData) => {
+  filtersOpen.value = false;
   if (clearData) goals.value = [];
 });
 let generation = 0,
@@ -97,7 +105,19 @@ function submitSearch() {
   appliedKeyword.value = keyword.value.trim();
   load();
 }
-function resetFilters() { appliedKeyword.value = ''; keyword.value = ''; typeFilter.value = '全部类型'; statusFilter.value = '全部状态'; load(); }
+function openFilters() {
+  searchOpen.value = false;
+  filterDraft.value = { type: typeFilter.value, status: statusFilter.value };
+  filtersOpen.value = true;
+}
+function applyFilters() {
+  filtersOpen.value = false;
+  const { type, status } = filterDraft.value;
+  if (type === typeFilter.value && status === statusFilter.value) return;
+  typeFilter.value = type;
+  statusFilter.value = status;
+  void load();
+}
 function open(item = null, pinned = false) {
   if (!pinningId.value) editor.value?.open(item, pinned);
 }
@@ -133,21 +153,16 @@ async function togglePinned(item) {
   <MobilePage :refreshing="refreshing" @refresh="load(true)">
     <view class="records-page ui-page-body" @click="searchOpen = false" :class="{ 'records-page-dark': isDark }">
       <PageSearch v-model="keyword" v-model:open="searchOpen" title="目标" label="搜索目标" back
-        manual :active="!!appliedKeyword" :loading="loading" @search="submitSearch" @dismiss="keyword = appliedKeyword" @back="uni.navigateBack()" />
-      <view class="filters ui-field-row"
-        ><FormField compact stretch
-          hide-label label="类型"
-          kind="selector"
-          v-model="typeFilter"
-          :options="['全部类型', ...goalTypes]"
-          @update:model-value="load()" /><FormField compact stretch
-          hide-label label="状态"
-          kind="selector"
-          v-model="statusFilter"
-          :options="['全部状态', ...statusLabels]"
-          @update:model-value="load()" />
-        <MobileButton v-if="appliedKeyword || typeFilter !== '全部类型' || statusFilter !== '全部状态'" label="重置筛选" icon="ant-design:close-outlined" variant="quiet" :disabled="loading" @click="resetFilters()" />
-      </view>
+        :actions-min-width="spacing.controlMin" manual :active="!!appliedKeyword" :loading="loading"
+        @search="submitSearch" @dismiss="keyword = appliedKeyword" @back="uni.navigateBack()">
+        <template #trailing-actions>
+          <FilterTrigger label="筛选目标" :open="filtersOpen" :active="hasFilters" @click="openFilters" />
+        </template>
+      </PageSearch>
+      <FilterSheet :open="filtersOpen" @close="filtersOpen = false" @reset="filterDraft = { ...defaultFilters }" @apply="applyFilters">
+        <FormField label="类型" kind="selector" v-model="filterDraft.type" :options="[defaultFilters.type, ...goalTypes]" />
+        <FormField label="状态" kind="selector" v-model="filterDraft.status" :options="[defaultFilters.status, ...statusLabels]" />
+      </FilterSheet>
       <PageState skeleton="list" :loading="loading" :error="error" :empty="!goals.length" @retry="load()">
 <template #loading><view class="goal-grid" ><view v-for="n in 6" :key="n" class="record-card ui-card" :class="{ 'record-card-dark': isDark }"><ContentSkeleton variant="goal-tile" /></view></view></template>
 
@@ -184,10 +199,6 @@ async function togglePinned(item) {
 }
 .records-page-dark {
   color: #eeeeef;
-}
-.filters {
-  flex-direction: row;
-  flex-wrap: wrap;
 }
 .goal-title-row { align-items: flex-end; }
 .goal-heading { align-items: center; }

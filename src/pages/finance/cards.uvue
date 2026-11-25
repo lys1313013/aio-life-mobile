@@ -17,6 +17,7 @@ import BankSelector from './components/BankSelector.uvue';
 import { computed, getCurrentInstance, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 import spacing from '../../styles/spacing.json';
 import AppIcon from '../../components/AppIcon.uvue';
+import CategoryTabs from '../../components/CategoryTabs.uvue';
 import MobilePage from '../../components/MobilePage.uvue';
 import PageHeader from '../../components/PageHeader.uvue';
 import PageState from '../../components/PageState.uvue';
@@ -410,10 +411,6 @@ function switchCardType(type: 'debit' | 'credit') {
     }, 16);
   });
 }
-const cardTypeCounts = computed(() => ({
-  debit: cards.value.filter((card) => card.cardType === 'debit').length,
-  credit: cards.value.filter((card) => card.cardType === 'credit').length,
-}));
 const displayedCardNumber = computed(() =>
   (revealed.value[numberCardId.value] || '').replace(/(.{4})/g, '$1 ').trim(),
 );
@@ -423,6 +420,11 @@ const cardsByType = computed(() => ({
   debit: cards.value.filter((card) => card.cardType === 'debit').sort((a, b) => compareCardOrder(a, b, true)),
   credit: cards.value.filter((card) => card.cardType === 'credit').sort((a, b) => compareCardOrder(a, b, true)),
 }));
+const cardTypeTabs = computed(() => cardTypes.map((type) => ({
+  id: type,
+  label: type === 'credit' ? '信用卡' : '储蓄卡',
+  count: cardsByType.value[type].length,
+})));
 const sortedCards = computed(() => cardsByType.value[selectedCardType.value]);
 let savedView = 'stack';
 try {
@@ -977,13 +979,9 @@ async function removeTag(value: any) {
       class="body ui-page-body"
       :class="[themeClass('body'), { 'card-order-overflow': !!orderDragging }]"
       >
-      <view class="card-type-switch" :class="{ 'card-type-switch-stack': viewMode === 'stack' }" role="group" aria-label="银行卡类型">
-        <button v-for="type in cardTypes" :key="type" class="card-type-button" role="button"
-          :aria-label="type === 'credit' ? '信用卡' : '储蓄卡'" :aria-pressed="activeCardType === type"
-          hover-class="none" @click="switchCardType(type)">
-          <text class="card-type-label" :class="[themeClass('card-type-label'), { 'card-type-label-active': activeCardType === type }, themeClass({ 'card-type-label-active': activeCardType === type })]">{{ type === 'credit' ? '信用卡' : '储蓄卡' }} {{ cardTypeCounts[type] }}</text>
-        </button>
-      </view>
+      <CategoryTabs class="card-type-switch" :class="{ 'card-type-switch-stack': viewMode === 'stack' }"
+        :items="cardTypeTabs" :current="cardTypes.indexOf(activeCardType)" variant="underline"
+        label="银行卡类型" id-prefix="bank-card-type" @change="switchCardType(cardTypes[$event])" />
       <view class="card-browser-viewport" :style="cardViewportStyle" :class="{ 'card-browser-viewport-stack': viewMode === 'stack', 'card-browser-viewport-moving': cardLayersMoving, 'card-order-overflow': !!orderDragging }">
       <template v-for="layerType in cardTypes" :key="layerType">
       <view v-if="layerType === selectedCardType || cardLayersMoving" :id="'card-layer-' + layerType" class="card-browser card-layer" :class="{ 'card-layer-positioned': cardLayersMoving, 'card-browser-moving': cardSwitchPhase !== 'idle', 'card-order-overflow': !!orderDragging }" :style="cardLayerStyle(layerType)" :aria-hidden="layerType !== selectedCardType" :aria-busy="cardSwitchPhase !== 'idle'"
@@ -1289,13 +1287,8 @@ async function removeTag(value: any) {
 .header-heading { flex: 1; min-width: 0; }
 .header-title { @include type-style('title'); color: #263248; }
 .header-title-dark { color: #e7e9ee; }
-.card-type-switch { display: flex; flex-direction: row; align-items: center; gap: $space-card + $space-inline; margin-bottom: $space-inline; }
+.card-type-switch { margin-bottom: $space-inline; }
 .card-type-switch-stack { width: 100%; max-width: 420px; margin-left: auto; margin-right: auto; }
-.card-type-button { display: flex; align-items: center; justify-content: center; min-width: $space-controlMin; min-height: $space-controlMin; margin: 0; padding: 0; border: 0; border-radius: 0; background-color: transparent; }
-.card-type-label { @include type-style('body'); color: $text-secondary-light; transition: color 180ms ease-out; }
-.card-type-label-dark { color: $text-secondary-dark; }
-.card-type-label-active { color: #263248; @include type-style('body-strong'); text-decoration: underline; }
-.card-type-label-active-dark { color: #e7e9ee; }
 .header-action {
   display: flex;
   align-items: center;
@@ -1510,7 +1503,7 @@ color: inherit;
   @include type-style('body');
 }
 .card-menu-danger { color: #dc5454; }
-.header-action, .card-type-button, .card-more, .card-menu-item { @include borderless-button; }
+.header-action, .card-more, .card-menu-item { @include borderless-button; }
 .palette {
   flex-wrap: wrap;
 }

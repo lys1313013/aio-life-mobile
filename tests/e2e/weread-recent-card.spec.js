@@ -72,6 +72,8 @@ for (const width of [390, 820, 1440]) for (const theme of ['light', 'dark']) {
     await page.setViewportSize({ width, height: 1000 }); await page.emulateMedia({ colorScheme: theme });
     const state = await setup(page, { compare: true }), card = page.getByLabel('微信读书首页卡片', { exact: true });
     await expect(card).toBeVisible(); await expect(card).toHaveAttribute('aria-busy', 'true');
+    const loading = card.getByRole('status', { name: '正在加载最近阅读', exact: true });
+    await expect(loading).toHaveCount(1);
     const geometry = () => page.evaluate(() => {
       const card = document.querySelector('[aria-label="微信读书首页卡片"]').getBoundingClientRect();
       const next = document.querySelector('#home-order-section\\.thoughts').getBoundingClientRect();
@@ -134,6 +136,7 @@ for (const width of [390, 820, 1440]) for (const theme of ['light', 'dark']) {
     await page.evaluate(() => delete navigator.userAgent);
     state.delay(); await card.click({ position: { x: 4, y: 60 } });
     await expect(card).toHaveAttribute('aria-busy', 'true'); expect(await geometry()).toEqual(loaded);
+    await expect(card.locator('.weread-heading').getByRole('status')).toBeVisible();
     await expect(card).toContainText('42%'); state.release(); await expect(card).toHaveAttribute('aria-busy', 'false');
     state.fail = true; await card.click({ position: { x: 4, y: 60 } });
     await expect(card).toContainText('刷新失败'); expect(await geometry()).toEqual(loaded);
@@ -142,6 +145,8 @@ for (const width of [390, 820, 1440]) for (const theme of ['light', 'dark']) {
     await card.screenshot({ path: info.outputPath('empty.png') });
     state.delay(); await card.click({ position: { x: 4, y: 60 } });
     await expect(card).toHaveAttribute('aria-busy', 'true'); expect(await geometry()).toEqual(empty);
+    await expect(card.locator('.weread-heading').getByRole('status')).toBeVisible();
+    await expect(card).toContainText('暂无最近阅读');
     state.release(); await expect(card).toHaveAttribute('aria-busy', 'false');
     state.books = [books[0]]; await card.click({ position: { x: 4, y: 60 } });
     await expect(card).toContainText('42%'); const single = await geometry();

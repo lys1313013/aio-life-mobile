@@ -11,7 +11,7 @@ async function setup(page) {
     if (path === '/api/goals' && method === 'GET') data = state.goals
     if (path === '/api/taskColumn/query') data = { items: state.columns, total: 1 }
     if (path === '/api/tasks' && method === 'GET') data = { items: state.tasks, total: 1 }
-    if (path === '/api/taskDetails' && method === 'GET') data = state.details.filter(item => item.taskId === new URL(request.url()).searchParams.get('taskId'))
+    if (path === '/api/taskDetails/batch' && method === 'GET') data = state.details.filter(item => new URL(request.url()).searchParams.getAll('taskIds').includes(item.taskId))
     if (method !== 'GET' && path !== '/api/auth/login') {
       const body = request.postData() ? request.postDataJSON() : null
       state.writes.push({ path, method, body })
@@ -139,17 +139,25 @@ test('清单加载失败独立重试，搜索包含明细，已完成按清单�
   const state = await setup(page)
   state.tasks.push({ id: '9223372036854775806', columnId: '8', content: '第二清单' })
   let fail = true
-  await page.route('**/api/taskDetails?*', async route => {
-    const taskId = new URL(route.request().url()).searchParams.get('taskId')
-    if (taskId === id) return route.fulfill({ json: { code: 0, data: state.details } })
-    if (fail) return route.fulfill({ json: { code: 1, message: '模拟第二清单失败' } })
-    return route.fulfill({ json: { code: 0, data: [{ id: '88', taskId, content: '已完成的模拟事项', priority: 20, isCompleted: 1 }] } })
+  const calls = []
+  const second = '9223372036854775806'
+  await page.route('**/api/taskDetails/batch?*', async route => {
+    const ids = new URL(route.request().url()).searchParams.getAll('taskIds')
+    calls.push(ids)
+    if (fail) return route.fulfill({ json: { code: 1, message: '模拟批次失败' } })
+    const details = [...state.details, { id: '88', taskId: second, content: '已完成的模拟事项', priority: 20, isCompleted: 1 }]
+    return route.fulfill({ json: { code: 0, data: details.filter(row => ids.includes(row.taskId)) } })
   })
   await page.goto('/#/pages/tasks/todo')
-  await expect(page.locator('.todo-page-active').getByText('模拟明细', { exact: true })).toBeVisible()
-  await expect(page.locator('.todo-page-active').getByText('模拟第二清单失败', { exact: true })).toBeVisible()
+  const cards = page.locator('.todo-page-active .task-card')
+  const secondCard = cards.filter({ hasText: '第二清单' })
+  await expect(secondCard.getByText('模拟批次失败', { exact: true })).toBeVisible()
+  expect(calls).toEqual([[id, second]])
   fail = false
-  await page.getByRole('button', { name: '重试', exact: true }).click()
+  await secondCard.getByRole('button', { name: '重试', exact: true }).click()
+  expect(calls).toEqual([[id, second], [second]])
+  await cards.filter({ hasText: '模拟待办' }).getByRole('button', { name: '重试', exact: true }).click()
+  await expect(page.locator('.todo-page-active').getByText('模拟明细', { exact: true })).toBeVisible()
   await expect(page.getByRole('button', { name: '展开已完成：第二清单', exact: true })).toBeVisible()
   await expect(page.locator('.todo-page-active').getByText('已完成的模拟事项', { exact: true })).toHaveCount(0)
   await page.getByRole('button', { name: '展开搜索', exact: true }).click();

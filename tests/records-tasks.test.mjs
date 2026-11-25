@@ -47,8 +47,8 @@ test('待办 API 使用统一 page/pageSize 分页、PUT路径、数组排序、
   const goalSource = await readFile(new URL('../src/services/goal-progress.ts', import.meta.url), 'utf8')
   source = source.replace("import { session } from '../../../services/session.ts'", 'const session = { token: \'fixture\' }').replace("import { goalDisplayStatus, refreshGoalRows } from '../../../services/goal-progress.ts'", '') + '\n' + goalSource
   const api = await importSource(source)
-  await api.fetchTasks(2); await api.saveTaskRecord('task', { id, columnId: '8', content: '模拟' }); await api.saveTaskRecord('detail', { id }); await api.sortTaskRecords('detail', [{ id, sortOrder: 1 }]); await api.starDetail(id, false); await api.deleteGoal(id)
-  assert.deepEqual(calls, [['/tasks', 'GET', { page: 2, pageSize: 100 }], ['/tasks/' + id, 'PUT', { id, columnId: '8', content: '模拟' }], ['/taskDetails', 'PUT', { id }], ['/taskDetails/reSort', 'POST', [{ id, sortOrder: 1 }]], ['/taskDetails/unstar/' + id, 'POST'], ['/goals/batchDelete', 'POST', { idList: [id] }]])
+  await api.fetchTasks(2); await api.fetchDetailsBatch([id, '8']); await api.saveTaskRecord('task', { id, columnId: '8', content: '模拟' }); await api.saveTaskRecord('detail', { id }); await api.sortTaskRecords('detail', [{ id, sortOrder: 1 }]); await api.starDetail(id, false); await api.deleteGoal(id)
+  assert.deepEqual(calls, [['/tasks', 'GET', { page: 2, pageSize: 100 }], ['/taskDetails/batch?taskIds='+id+'&taskIds=8'], ['/tasks/' + id, 'PUT', { id, columnId: '8', content: '模拟' }], ['/taskDetails', 'PUT', { id }], ['/taskDetails/reSort', 'POST', [{ id, sortOrder: 1 }]], ['/taskDetails/unstar/' + id, 'POST'], ['/goals/batchDelete', 'POST', { idList: [id] }]])
   delete globalThis.__recordsRequest
 })
 

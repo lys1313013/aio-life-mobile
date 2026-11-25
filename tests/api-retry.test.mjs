@@ -12,7 +12,7 @@ const contractUrl = await sourceModule('../src/services/contract.ts')
 const payloadUrl = await sourceModule('../src/services/api-payload.ts')
 const source = await readFile(new URL('../src/services/api.ts', import.meta.url), 'utf8')
 const prelude = `
-import { readResponse as parseResponse, readUser } from '${contractUrl}';
+import { isAttachmentKey, readResponse as parseResponse, readUser } from '${contractUrl}';
 import { minimalRequestPayload } from '${payloadUrl}';
 export const fixture = {
   session: { token: 'fixture-token' }, revision: 0, calls: [], timers: [], delays: [],

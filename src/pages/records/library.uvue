@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import ReadingShelf from './components/ReadingShelf.uvue';
 import ModalMotion from "../../components/ModalMotion.uvue";
 import { readPageTotal, mergePageItems, hasMorePageItems } from '../../services/pagination.ts';
 import { usePageRefresh } from '../../services/page-refresh.ts'
@@ -11,6 +12,8 @@ import { onLoad, onShow } from '@dcloudio/uni-app';
 import MobilePage from '../../components/MobilePage.uvue';
 import spacing from '../../styles/spacing.json';
 import PageSearch from '../../components/PageSearch.uvue';
+import FilterTrigger from '../../components/FilterTrigger.uvue';
+import FilterSheet from '../../components/FilterSheet.uvue';
 import MobileButton from '../../components/MobileButton.uvue';
 import FormField from '../../components/FormField.uvue';
 import FormActions from '../../components/FormActions.uvue';
@@ -21,7 +24,7 @@ import LibraryCover from '../../components/LibraryCover.uvue';
 import FloatingActionButton from '../../components/FloatingActionButton.uvue';
 import MetricCard from '../../components/MetricCard.uvue';
 import { session } from '../../services/session.ts';
-import { isDark } from '../../services/theme.ts';
+import { isDark, themePalette } from '../../services/theme.ts';
 import { createRecordScope } from '../../services/records/page-scope.ts';
 import { statuses } from '../../services/records/contracts.ts';
 import { chooseImportFile } from './services/import-file.ts';
@@ -43,28 +46,59 @@ const kind = ref('movie'),
 const statusLabels = computed(() =>
   kind.value === 'movie'
     ? ['想看', '在看', '看过', '搁置']
-    : ['想读', '在读', '读完', '搁置'],
+    : ['想读', '在读', '读过', '搁置'],
 );
 const rankingOptions = ref<Array<{ id: string; name: string }>>([]);
-const rankingIndex = ref(0);
+const rankingId = ref('');
+const rankingIndex = computed({
+  get: () => rankingOptions.value.findIndex(list => list.id === rankingId.value) + 1,
+  set: (index: number) => { rankingId.value = rankingOptions.value[index - 1]?.id || ''; },
+});
 const rankingStatus = ref<'idle' | 'loading' | 'ready' | 'error'>('idle');
 let rankingRequest = 0;
 function rankingDisplayName(name: string) {
   return (name === '豆瓣电影Top250' || name === '豆瓣读书Top250') ? '豆瓣 Top250' : name;
 }
-const rankingNames = computed(() => ['全部榜单', ...rankingOptions.value.map(list => rankingDisplayName(list.name))]);
+const rankingLabels = computed(() => rankingOptions.value.map(list => rankingDisplayName(list.name)));
 const rows = ref<any[]>([]),
   page = ref(1),
   total = ref<number | null>(null),
   keyword = ref(''),
   searchDraft = ref(''),
-  typeFilter = ref('全部类型'),
-  statusFilter = ref('全部状态'),
+  searchOpen = ref(false),
+  typeIndex = ref(0),
+  statusIndex = ref(0),
   loading = ref(false),
   refreshing = ref(false),
   entryLoading = ref(false),
   error = ref(''),
   editing = ref('');
+const readingGroups = [
+  { status: 'in_progress', label: '在读' }, { status: 'completed', label: '读过' },
+  { status: 'not_started', label: '想读' }, { status: 'on_hold', label: '搁置' },
+];
+const previewSize = 6;
+type ReadingGroup = { status: string; label: string; items: any[]; total: number | null; hasMore: boolean };
+const previews = ref<ReadingGroup[]>([]);
+const overview = computed(() => kind.value === 'read' && statusIndex.value === 0);
+const readingShelves = computed<ReadingGroup[]>(() => overview.value ? previews.value : [{
+  label: statusLabels.value[statusIndex.value - 1], status: statuses[statusIndex.value - 1],
+  items: rows.value, total: total.value, hasMore: false,
+}]);
+const listEmpty = computed(() => overview.value ? !previews.value.length : !rows.value.length);
+const listKey = computed(() => JSON.stringify([kind.value, keyword.value, typeIndex.value, statusIndex.value, rankingId.value]));
+const loadedKey = ref('');
+const loadingMore = ref(false);
+const filtersOpen = ref(false);
+const defaultFilters = { type: 0, status: 0, ranking: 0 };
+const filterDraft = ref({ ...defaultFilters });
+const hasFilters = computed(() => typeIndex.value > 0 || statusIndex.value > 0 || !!rankingId.value);
+const filterAccent = computed(() => themePalette().tabSelectedColor);
+const filterGroups = computed<Array<{ key: keyof typeof defaultFilters; label: string; options: string[] }>>(() => [
+  { key: 'type', label: '类型', options: typeLabels.value },
+  { key: 'status', label: kind.value === 'movie' ? '观影状态' : '阅读状态', options: statusLabels.value },
+  { key: 'ranking', label: '榜单', options: rankingLabels.value },
+]);
 const form = ref<any>(null);
 const advancedImport = ref(false);
 const importingOpen = ref(false),
@@ -83,6 +117,7 @@ const issues = computed(() => [
 ]);
 const scope = createRecordScope((clear) => {
   form.value = null;
+  filtersOpen.value = false;
   entryLoading.value = false;
   importingOpen.value = false;
   rankingRequest++;
@@ -94,6 +129,8 @@ const scope = createRecordScope((clear) => {
     requestedEdit = '';
     requestedCreate = false;
     rows.value = [];
+    previews.value = [];
+    loadedKey.value = '';
     importRequest.value = null;
     preview.value = null;
     importText.value = '';
@@ -105,6 +142,12 @@ let alive = true,
 let requestedEdit = '', requestedCreate = false;
 onLoad((options) => {
   kind.value = options?.kind === 'read' ? 'read' : 'movie';
+  if (kind.value === 'read' && statuses.includes(options?.shelf)) {
+    statusIndex.value = statuses.indexOf(options.shelf) + 1;
+    keyword.value = searchDraft.value = options.title || '';
+    typeIndex.value = [1, 2].includes(Number(options.type)) ? Number(options.type) : 0;
+    rankingId.value = options.rankingListId || '';
+  }
   requestedEdit = options?.editId || '';
   requestedCreate = options?.create === '1';
 });
@@ -136,8 +179,44 @@ function submitSearch() {
   searchDraft.value = keyword.value;
   void load();
 }
+function openFilters() {
+  searchOpen.value = false;
+  filterDraft.value = { type: typeIndex.value, status: statusIndex.value, ranking: rankingIndex.value };
+  filtersOpen.value = true;
+  if (rankingStatus.value === 'idle') void loadRankings();
+}
+function toggleFilter(key: keyof typeof defaultFilters, value: number) {
+  filterDraft.value[key] = filterDraft.value[key] === value ? 0 : value;
+}
+function applyFilters() {
+  filtersOpen.value = false;
+  const { type, status, ranking } = filterDraft.value;
+  if (type === typeIndex.value && status === statusIndex.value && ranking === rankingIndex.value) return;
+  typeIndex.value = type;
+  statusIndex.value = status;
+  rankingIndex.value = ranking;
+  void load();
+}
+function openShelf(status: string) {
+  let url = '/pages/records/library?kind=read&shelf=' + status;
+  if (keyword.value) url += '&title=' + encodeURIComponent(keyword.value);
+  if (typeIndex.value) url += '&type=' + typeIndex.value;
+  if (rankingId.value) url += '&rankingListId=' + encodeURIComponent(rankingId.value);
+  uni.navigateTo({ url });
+}
+async function fetchPreviews(filters: Record<string, any>) {
+  // 多取一本，在服务端未提供 total 时也能判断是否需要“查看全部”。
+  const groups = await Promise.all(readingGroups.map(async group => {
+    const data = await fetchLibrary('read', { ...filters, statuses: [group.status], page: 1, pageSize: previewSize + 1 });
+    const count = readPageTotal(data.total);
+    const items = mergePageItems([], data.items);
+    return { ...group, items: items.slice(0, previewSize), total: count,
+      hasMore: (count ?? items.length) > previewSize };
+  }));
+  return groups.filter(group => group.items.length > 0);
+}
 function loadMore() {
-  if (loading.value || error.value || moreError.value) return;
+  if (overview.value || loading.value || error.value || moreError.value) return;
   load(false, true);
 }
 async function load(refresh = false, more = false) {
@@ -145,41 +224,52 @@ async function load(refresh = false, more = false) {
   if (more && (loading.value || !rows.value.length || !hasMorePageItems(rows.value.length, total.value, pageEnded.value))) return;
   const current = ++generation,
     next = more ? page.value + 1 : 1;
+  const key = listKey.value;
+  if (loadedKey.value !== key) {
+    rows.value = [];
+    previews.value = [];
+    total.value = null;
+    loadedKey.value = '';
+  }
   loading.value = true;
+  loadingMore.value = more;
   refreshing.value = refresh;
   error.value = '';
   moreError.value = '';
   try {
-    const type = typeLabels.value.indexOf(typeFilter.value);
-    const status = statusLabels.value.indexOf(statusFilter.value);
-    const data = await scope.wait(
-      fetchLibrary(kind.value, {
-        ...(rankingIndex.value > 0 ? { rankingListId: rankingOptions.value[rankingIndex.value - 1].id } : {}),
-        page: next,
-        pageSize: 30,
-        title: keyword.value.trim(),
-        ...(type >= 0 ? { type: type + 1 } : {}),
-        ...(status >= 0 ? { statuses: [statuses[status]] } : {}),
-      }),
-    );
-    if (alive && current === generation) {
+    const filters = {
+      ...(rankingId.value ? { rankingListId: rankingId.value } : {}),
+      title: keyword.value.trim(),
+      ...(typeIndex.value > 0 ? { type: typeIndex.value } : {}),
+    };
+    if (overview.value) {
+      const groups = await scope.wait(fetchPreviews(filters));
+      if (!alive || current !== generation) return;
+      previews.value = groups;
+    } else {
+      const data = await scope.wait(fetchLibrary(kind.value, {
+        ...filters, page: next, pageSize: 30,
+        ...(statusIndex.value > 0 ? { statuses: [statuses[statusIndex.value - 1]] } : {}),
+      }));
+      if (!alive || current !== generation) return;
       const nextTotal = readPageTotal(data.total);
       rows.value = mergePageItems(more ? rows.value : [], data.items);
       page.value = next;
       pageEnded.value = !data.items.length;
       total.value = nextTotal;
-      if (requestedEdit) {
-        // 首页入口可能不在列表首屏，始终读取完整详情后再允许编辑。
-        entryLoading.value = true;
-        const detail = await scope.wait(fetchLibraryDetail(kind.value, requestedEdit));
-        if (!alive || current !== generation) return;
-        setEditForm(detail);
-        requestedEdit = '';
-        requestedCreate = false;
-      } else if (requestedCreate) {
-        requestedCreate = false;
-        open();
-      }
+    }
+    loadedKey.value = key;
+    if (requestedEdit) {
+      // 首页入口可能不在列表首屏，始终读取完整详情后再允许编辑。
+      entryLoading.value = true;
+      const detail = await scope.wait(fetchLibraryDetail(kind.value, requestedEdit));
+      if (!alive || current !== generation) return;
+      setEditForm(detail);
+      requestedEdit = '';
+      requestedCreate = false;
+    } else if (requestedCreate) {
+      requestedCreate = false;
+      open();
     }
   } catch (e) {
     if (e.name === 'PageInactiveError') return;
@@ -187,6 +277,7 @@ async function load(refresh = false, more = false) {
   } finally {
     if (current === generation) {
       loading.value = false;
+      loadingMore.value = false;
       refreshing.value = false;
       entryLoading.value = false;
     }
@@ -236,20 +327,28 @@ async function open(item = null) {
 }
 function saved(updated) {
   form.value = null;
-  if (updated) {
+  if (kind.value === 'read') {
+    void load();
+  } else if (updated) {
     const index = rows.value.findIndex(row => row.id === updated.id);
     if (index >= 0) rows.value[index] = updated;
   } else {
-    searchDraft.value = ''; keyword.value = ''; typeFilter.value = '全部类型'; statusFilter.value = '全部状态';
+    searchDraft.value = ''; keyword.value = ''; typeIndex.value = 0; statusIndex.value = 0;
     void load();
   }
 }
 function deleted(id) {
+  if (kind.value === 'read') {
+    form.value = null;
+    void load();
+    return;
+  }
   rows.value = rows.value.filter(row => row.id !== id);
   if (total.value != null) total.value = Math.max(0, total.value - 1);
   form.value = null;
 }
 function openImport() {
+  searchOpen.value = false;
   importingOpen.value = true;
   advancedImport.value = false;
   importRequest.value = null;
@@ -341,70 +440,30 @@ async function submitImport() {
 <template>
   <MobilePage :refreshing="refreshing" @refresh="load(true)" @reachbottom="loadMore"
     ><view class="library-page ui-page-body" :class="{ 'library-page-dark': isDark }"
-      ><PageSearch v-model="searchDraft" :title="title" :label="'搜索' + title" :actions-min-width="kind === 'movie' ? spacing.controlMin : 0" back manual :active="!!keyword" :loading="loading"
+      ><PageSearch v-model="searchDraft" v-model:open="searchOpen" :title="title" :label="'搜索' + title"
+        :content-min-width="spacing.controlMin" :actions-min-width="spacing.controlMin * (kind === 'movie' ? 2 : 1)" back manual :active="!!keyword" :loading="loading"
         @search="submitSearch" @dismiss="searchDraft = keyword" @back="uni.navigateBack()">
-        <template #actions>
-          <MobileButton v-if="kind === 'movie'" label="豆瓣导入" icon="ant-design:download-outlined" variant="ghost" @click="openImport" />
+        <template v-if="kind === 'movie'" #actions>
+          <MobileButton label="豆瓣导入" icon="ant-design:download-outlined" variant="ghost" @click="openImport" />
+        </template>
+        <template #trailing-actions>
+          <FilterTrigger :label="'筛选' + title" :open="filtersOpen" :active="hasFilters" @click="openFilters" />
         </template>
       </PageSearch>
-      <view class="filters ui-field-row">
-        <picker
-          mode="selector"
-          :value="Math.max(0, ['全部类型', ...typeLabels].indexOf(typeFilter))"
-          :range="['全部类型', ...typeLabels]"
-          aria-label="类型"
-          @change="
-            typeFilter = ['全部类型', ...typeLabels][
-              Number($event.detail.value)
-            ];
-            load();
-          "
-        >
-          <view class="library-filter ui-row" :class="{ 'library-filter-dark': isDark }"
-            ><text class="ui-type-label">{{ typeFilter }}</text
-            ><AppIcon name="ant-design:down-outlined" /></view
-          >
-        </picker>
-        <picker
-          mode="selector"
-          :value="
-            Math.max(0, ['全部状态', ...statusLabels].indexOf(statusFilter))
-          "
-          :range="['全部状态', ...statusLabels]"
-          aria-label="状态"
-          @change="
-            statusFilter = ['全部状态', ...statusLabels][
-              Number($event.detail.value)
-            ];
-            load();
-          "
-        >
-          <view class="library-filter ui-row" :class="{ 'library-filter-dark': isDark }"
-            ><text class="ui-type-label">{{ statusFilter }}</text
-            ><AppIcon name="ant-design:down-outlined" /></view
-          >
-        </picker>
-        <MobileButton
-          v-if="rankingStatus === 'loading' || rankingStatus === 'error'"
-          :label="rankingStatus === 'loading' ? '加载榜单' : '重试榜单'"
-          :loading="rankingStatus === 'loading'"
-          variant="quiet"
-          @click="loadRankings()"
-        />
-        <picker v-else-if="rankingOptions.length" mode="selector" :value="rankingIndex" :range="rankingNames" aria-label="榜单" @change="rankingIndex = Number($event.detail.value); load()">
-          <view class="library-filter ui-row" :class="{ 'library-filter-dark': isDark }"><text class="ui-type-label">{{ rankingNames[rankingIndex] }}</text><AppIcon name="ant-design:down-outlined" /></view>
-        </picker>
-        <text v-if="!loading || rows.length" class="library-count" :class="{ 'record-secondary-dark': isDark }">{{ total == null ? '已加载 ' + rows.length : total }} 条</text>
-      </view>
       <LoadingIndicator v-if="entryLoading" floating label="正在加载记录详情" />
       <PageState skeleton="media"
-        :loading="loading && !rows.length"
+        :loading="loading && !loadingMore"
+        :has-content="loadedKey === listKey" :content-key="listKey"
         :error="error"
-        :empty="!rows.length"
+        :empty="listEmpty"
         @retry="load()"
       >
         <template #loading>
-          <view class="library-grid ui-gap-md ui-section">
+          <view v-if="kind === 'read'" class="ui-gap-md">
+            <ReadingShelf v-for="group in (overview ? readingGroups.slice(0, 3) : readingShelves)" :key="group.status"
+              :status="group.status" :label="group.label" :items="[]" :total="null" :placeholders="group.status === 'completed' ? 6 : 3" />
+          </view>
+          <view v-else class="library-grid ui-gap-md ui-section">
             <view v-for="n in 9" :key="n" class="library-card ui-gap-sm">
               <view class="library-poster"><ContentSkeleton variant="cover" /></view>
               <ContentSkeleton variant="caption" />
@@ -412,7 +471,12 @@ async function submitImport() {
           </view>
         </template>
 
-        <view class="library-grid ui-gap-md ui-section">
+        <view v-if="kind === 'read'" class="ui-gap-md">
+          <ReadingShelf v-for="group in readingShelves" v-show="group.items.length > 0" :key="group.status"
+            :status="group.status" :label="group.label" :items="group.items" :total="group.total"
+            :has-more="group.hasMore" :editing="editing" @open="open" @all="openShelf(group.status)" />
+        </view>
+        <view v-else class="library-grid ui-gap-md ui-section">
           <view v-for="item in rows" :key="item.id" class="library-card ui-gap-sm">
             <view
               class="library-poster"
@@ -443,7 +507,7 @@ async function submitImport() {
                 ><LoadingIndicator compact label="正在加载记录详情" /></view
               >
             </view>
-            <view v-for="badge in item.rankings" :key="badge.rankingListId" class="library-ranking" :class="{ 'library-ranking-wrap': kind === 'read' || badge.name === '豆瓣电影Top250' }" :aria-label="rankingDisplayName(badge.name) + (badge.rank == null ? '' : ' 第' + badge.rank + '名')">
+            <view v-for="badge in item.rankings" :key="badge.rankingListId" class="library-ranking" :class="{ 'library-ranking-wrap': badge.name === '豆瓣电影Top250' }" :aria-label="rankingDisplayName(badge.name) + (badge.rank == null ? '' : ' 第' + badge.rank + '名')">
               <text v-if="badge.rank != null" class="library-rank">No.{{ badge.rank }}</text>
               <text class="library-rank-name">{{ rankingDisplayName(badge.name) }}</text>
             </view>
@@ -453,11 +517,42 @@ async function submitImport() {
           </view>
         </view>
       </PageState>
-      <LoadMore :error="moreError"
-        :loading="loading"
+      <LoadMore v-if="!overview" :error="moreError"
+        :loading="loadingMore"
         :has-more="hasMorePageItems(rows.length, total, pageEnded)"
         @load="load(false, true)"
       />
+      <FilterSheet :open="filtersOpen" :content-key="rankingStatus + ':' + rankingOptions.length"
+        :summary="kind === 'movie' && (!loading || rows.length) ? (total == null ? '已加载 ' + rows.length : total) + ' 条' : ''"
+        @close="filtersOpen = false" @reset="filterDraft = { ...defaultFilters }" @apply="applyFilters">
+          <view class="ui-gap-md">
+            <view v-for="group in filterGroups" :key="group.key" class="ui-gap-sm" role="group" :aria-label="group.label">
+              <text class="ui-type-label" :class="{ 'library-filter-text-dark': isDark }">{{ group.label }}</text>
+              <view v-if="group.options.length" class="library-filter-options ui-row">
+                <button v-for="(option, index) in group.options" :key="index" class="library-filter-option"
+                  :class="{
+                    'library-filter-option-dark': isDark,
+                    'library-filter-option-selected': filterDraft[group.key] === index + 1,
+                    'library-filter-option-selected-dark': isDark && filterDraft[group.key] === index + 1,
+                  }"
+                  role="button" hover-class="none" :aria-label="option" :aria-pressed="filterDraft[group.key] === index + 1"
+                  @click="toggleFilter(group.key, index + 1)">
+                  <text class="library-filter-option-text" :class="{ 'library-filter-text-dark': isDark }"
+                    :style="{ color: filterDraft[group.key] === index + 1 ? filterAccent : undefined }">{{ option }}</text>
+                  <view v-if="filterDraft[group.key] === index + 1" class="library-filter-check" aria-hidden="true">
+                    <AppIcon name="ant-design:check-outlined" :size="12" :color="filterAccent" />
+                  </view>
+                </button>
+              </view>
+              <MobileButton v-else-if="rankingStatus === 'loading' || rankingStatus === 'error'"
+                :label="rankingStatus === 'loading' ? '加载榜单' : '重试榜单'" :loading="rankingStatus === 'loading'"
+                variant="quiet" @click="loadRankings()" />
+              <view v-else class="library-filter-empty">
+                <text class="library-secondary" :class="{ 'record-secondary-dark': isDark }">暂无榜单</text>
+              </view>
+            </view>
+          </view>
+      </FilterSheet>
       <ModalMotion><LibraryRecordEditor v-if="form" :record="form" :kind="kind" @close="form = null" @saved="saved" @deleted="deleted" /></ModalMotion>
       <ModalMotion><AdaptiveModal
         v-if="importingOpen"
@@ -544,11 +639,12 @@ async function submitImport() {
 </template>
 <style scoped lang="scss">
 @use 'sass:math';
+@use '../../styles/platform' as *;
 @use '../../styles/typography' as *;
 @use '../../styles/text-colors' as *;
 @use '../../styles/spacing.scss';
 @use '../../styles/spacing-tokens' as *;
-@include type-utilities('body', 'label');
+@include type-utilities('body', 'label', 'title');
 
 .library-page {
   position: relative;
@@ -567,32 +663,37 @@ async function submitImport() {
 .library-rank, .library-rank-name { @include type-style('badge'); color: #624407; padding: 0 $space-detail; }
 .library-rank { background-color: #ffd365; }
 .library-rank-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.filters {
-  flex-direction: row;
-  flex-wrap: wrap;
+.library-filter-options { flex-wrap: wrap; }
+.library-filter-option {
+  position: relative;
+  display: flex;
   align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  width: calc((100% - #{$space-inline}) / 2);
+  min-height: $space-controlMin;
+  margin: 0;
+  padding: $space-detail $space-modal;
+  border: 0;
+  border-radius: 10px;
+  background-color: #f0f2f5;
+  @include borderless-button;
 }
+.library-filter-option-dark { background-color: #282b31; }
+.library-filter-option-selected { background-color: #e3ecff; }
+.library-filter-option-selected-dark { background-color: #2c3953; }
+.library-filter-option-text {
+  color: #27272a;
+  text-align: center;
+  @include type-style('body');
+  @include wrap-long-text;
+}
+.library-filter-text-dark { color: #eeeeef; }
+.library-filter-check { position: absolute; right: $space-detail; bottom: $space-detail; }
+.library-filter-empty { min-height: $space-controlMin; justify-content: center; }
 .metrics {
   flex-direction: row;
   flex-wrap: wrap;
-}
-.library-filter {
-  padding: 0 $space-inline;
-  border-radius: 8px;
-  background-color: #ffffff;
-  flex-direction: row;
-  align-items: center;
-  min-height: 44px;
-  @include type-style('label');
-}
-.library-filter-dark { background-color: #1c1e22; color: #eeeeef; }
-.filter-chevron {
-  color: $text-secondary-light;
-}
-.library-count {
-  margin-left: auto;
-  @include type-style('caption');
-  color: $text-secondary-light;
 }
 .library-grid {
   flex-direction: row;
@@ -662,6 +763,7 @@ async function submitImport() {
   min-width: 0;
 }
 /* #ifdef WEB */
+.library-filter-option:focus-visible { outline: 2px solid #93b4fc; outline-offset: -2px; }
 .library-poster:focus-visible { outline: 2px solid #427bea; outline-offset: $space-micro; }
 /* #endif */
 @media (min-width: 640px) {

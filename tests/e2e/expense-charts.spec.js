@@ -10,7 +10,7 @@ async function openExpense(page, data) {
   const toolbar = page.locator('.ledger-toolbar');
   await expect(toolbar.getByText('支出明细', { exact: true })).toHaveCount(0);
   await expect(toolbar.getByRole('button')).toHaveCount(2);
-  await expect(toolbar.getByRole('button', { name: '更多筛选', exact: true })).toBeVisible();
+  await expect(toolbar.getByRole('button', { name: '筛选支出', exact: true })).toBeVisible();
   await expect(toolbar.getByRole('button', { name: '导入账单', exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: '统计', exact: true })).toHaveCount(0);
   await expect(page.getByText('统计周期', { exact: true })).toHaveCount(0);

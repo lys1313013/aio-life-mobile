@@ -10,9 +10,9 @@ const pageSource = (await readFile(new URL('../src/pages/profile/settings.uvue',
   .replace(/^import .*$/gm, '');
 const apiSource = (await readFile(new URL('../src/services/api.ts', import.meta.url), 'utf8')).split('export function uploadAvatar')[1];
 const contract = await readFile(new URL('../src/services/contract.ts', import.meta.url), 'utf8');
-const { readResponse } = await import(`data:text/javascript;base64,${Buffer.from(contract).toString('base64')}`);
+const { isAttachmentKey, readResponse } = await import(`data:text/javascript;base64,${Buffer.from(contract).toString('base64')}`);
 const compile = source => transformSync(source, { loader: 'ts' }).code;
-const createUpload = new Function('uni', 'session', 'clearSession', 'readResponse', 'baseURL', compile('function uploadAvatar' + apiSource) + '\nreturn uploadAvatar;');
+const createUpload = new Function('uni', 'session', 'clearSession', 'readResponse', 'isAttachmentKey', 'baseURL', compile('function uploadAvatar' + apiSource) + '\nreturn uploadAvatar;');
 const createPage = new Function('ref', 'computed', 'watch', 'onShow', 'onHide', 'onUnload', 'fetchUser', 'request', 'uploadAvatar', 'restoreSession', 'session', 'uni', compile('const usePageRefresh = load => load;\n' + pageSource) + '\nreturn { form, ready, uploading, saving, errorText, beginAvatarSelection, chooseAvatar, avatarError, save };');
 const oldId = '11111111-1111-4111-8111-111111111111', newId = '22222222-2222-4222-8222-222222222222';
 const tick = () => new Promise(resolve => setImmediate(resolve));
@@ -26,7 +26,7 @@ async function fixture(t) {
     uploadFile: options => uploads.push(options), chooseImage: options => choices.push(options),
     reLaunch: options => navigations.push(options.url), navigateBack: () => navigations.push('back'), showToast() {},
   };
-  const upload = createUpload(uni, session, () => { session.token = ''; }, readResponse, 'https://fixture.invalid/api');
+  const upload = createUpload(uni, session, () => { session.token = ''; }, readResponse, isAttachmentKey, 'https://fixture.invalid/api');
   const page = scope.run(() => createPage(ref, computed, watch,
     fn => { hooks.show = fn; }, fn => { hooks.hide = fn; }, fn => { hooks.unload = fn; },
     async () => { session.user = { ...profile }; return { ...profile }; },
