@@ -1,4 +1,5 @@
 const { test, expect } = require('./support/test');
+const { stableBox } = require('./support/geometry');
 const { setup } = require('./qa-domains-fixtures');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -26,11 +27,20 @@ for (const width of [320, 390, 600, 768, 1440]) {
       const typeSwitch = page.getByRole('group', { name: '银行卡类型', exact: true });
       const debit = typeSwitch.getByRole('button', { name: '储蓄卡', exact: true });
       const credit = typeSwitch.getByRole('button', { name: '信用卡', exact: true });
+      const underline = typeSwitch.locator('.category-underline-moving');
+      const expectUnderlineAt = async button => {
+        const tab = await stableBox(button);
+        await expect.poll(async () => {
+          const indicator = await underline.boundingBox();
+          return indicator ? Math.max(Math.abs(indicator.x - tab.x), Math.abs(indicator.width - tab.width)) : Infinity;
+        }).toBeLessThan(1);
+      };
       await expect(debit).toHaveAttribute('aria-pressed', 'true');
-      const selectedUnderline = await debit.evaluate(button => getComputedStyle(button).borderBottomColor);
+      await expect(underline).toBeVisible();
+      await expectUnderlineAt(debit);
+      const selectedUnderline = await underline.evaluate(node => getComputedStyle(node).backgroundColor);
       expect(selectedUnderline).not.toBe('rgba(0, 0, 0, 0)');
       await expect(debit.getByText('储蓄卡', { exact: true })).toHaveCSS('text-decoration-line', 'none');
-      await expect(credit).not.toHaveCSS('border-bottom-color', selectedUnderline);
       for (const button of [debit, credit]) {
         const { width, height } = await button.boundingBox();
         expect(width).toBeGreaterThanOrEqual(44);
@@ -41,8 +51,9 @@ for (const width of [320, 390, 600, 768, 1440]) {
       await page.screenshot({ path: `${out}/${width}-${theme}-debit.png`, fullPage: true });
       await credit.click();
       await expect(credit).toHaveAttribute('aria-pressed', 'true');
-      await expect(credit).toHaveCSS('border-bottom-color', selectedUnderline);
-      await expect(debit).not.toHaveCSS('border-bottom-color', selectedUnderline);
+      await expect(debit).toHaveAttribute('aria-pressed', 'false');
+      await expectUnderlineAt(credit);
+      await expect(underline).toHaveCSS('background-color', selectedUnderline);
       await expect(page.locator('.card-grid .card')).toHaveCount(2);
       await expect(page.locator('.navigation-title')).toHaveCount(0);
       await expect(page.locator('.card-actions')).toHaveCount(0);

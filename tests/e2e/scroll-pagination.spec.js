@@ -80,36 +80,47 @@ for (const [path, endpoint, selector, size] of scenarios) {
   });
 }
 
-test('支出空末页停止请求，筛选后忽略旧分页结果', async ({ page }) => {
+test('支出空末页停止请求，刷新后忽略旧分页结果', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 850 });
   await setup(page);
   const pending = gate(), requests = [];
   let reset = false, empty = false;
   await page.route('**/api/expense/query?**', async route => {
-    const number = Number(new URL(route.request().url()).searchParams.get('page'));
+    const params = new URL(route.request().url()).searchParams;
+    const number = Number(params.get('page'));
     requests.push(number);
+    if (empty) expect(params.get('remark')).toBe('模拟筛选');
     if (number === 2 && !empty) await pending.promise;
     await route.fulfill({ json: { code: 0, data: { items: number === 2 && empty ? [] : rows(number, reset ? 1 : 50), total: reset ? 1 : 100 } } });
   });
-  await page.goto('/#/pages/finance/expense');
-  await expect(page.locator('.expense-row')).toHaveCount(50);
-  await scrollBottom(page);
-  await expect(page.getByRole('status', { name: '正在加载更多', exact: true })).toBeVisible();
-  reset = true;
-  await page.getByRole('button', { name: '筛选', exact: true }).scrollIntoViewIfNeeded();
-  // The filter action is disabled while loading; refresh may supersede pagination.
-  const { pullDown } = require('./gestures');
-  await pullDown(page, '.mobile-page-scroll');
-  await expect(page.locator('.expense-row')).toHaveCount(1);
-  pending.release();
-  await expect(page.locator('.load-more')).toHaveCount(0);
-  await expect(page.locator('.expense-row')).toHaveCount(1);
-  reset = false; empty = true;
-  await page.getByRole('button', { name: '筛选', exact: true }).click();
-  await expect(page.locator('.expense-row')).toHaveCount(50);
-  await scrollBottom(page);
-  await expect.poll(() => requests).toEqual([1, 2, 1, 1, 2]);
-  await expect(page.locator('.load-more')).toHaveCount(0);
-  await moveAway(page); await scrollBottom(page);
-  expect(requests).toEqual([1, 2, 1, 1, 2]);
+  try {
+    await page.goto('/#/pages/finance/expense');
+    const expenses = page.locator('.expense-row');
+    await expect(expenses).toHaveCount(50);
+    await scrollBottom(page);
+    await expect(page.getByRole('status', { name: '正在加载更多', exact: true })).toBeVisible();
+    reset = true;
+    const { pullDown } = require('./gestures');
+    await pullDown(page, '.mobile-page-scroll');
+    await expect(expenses).toHaveCount(1);
+    pending.release();
+    await expect(page.locator('.load-more')).toHaveCount(0);
+    await expect(expenses).toHaveCount(1);
+
+    reset = false;
+    empty = true;
+    await page.getByRole('button', { name: '筛选支出', exact: true }).click();
+    const filter = page.getByRole('dialog', { name: '快捷筛选', exact: true });
+    await filter.getByRole('textbox', { name: '备注', exact: true }).fill('模拟筛选');
+    await filter.getByRole('button', { name: '确定', exact: true }).click();
+    await expect(expenses).toHaveCount(50);
+    await scrollBottom(page);
+    await expect.poll(() => requests).toEqual([1, 2, 1, 1, 2]);
+    await expect(page.locator('.load-more')).toHaveCount(0);
+    await moveAway(page);
+    await scrollBottom(page);
+    expect(requests).toEqual([1, 2, 1, 1, 2]);
+  } finally {
+    pending.release();
+  }
 });

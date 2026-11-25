@@ -21,12 +21,16 @@ for (const width of [390, 768, 1440]) {
 
       // 普通表单与图表文字必须直接消费语义角色，不能依赖 view 继承。
       await page.goto('/#/pages/records/exercise');
-      await expectRole(page.locator('.form-field-label'), 'label');
-      await expectRole(page.locator('.form-field-picker-value'), 'body');
       await expectRole(page.locator('.chart-y-tick'), 'caption');
       await expectRole(page.locator('.chart-x-label'), 'caption');
       // 运动图表隐藏底部数值，改为在图表上展示极值标签。
       await expectRole(page.locator('.chart-extreme-label'), 'chart-label');
+      await page.getByRole('button', { name: '筛选运动记录', exact: true }).click();
+      const filter = page.getByRole('dialog', { name: '快捷筛选', exact: true });
+      await expectRole(filter.locator('.form-field-label'), 'label');
+      await expectRole(filter.locator('.form-field-picker-value'), 'body');
+      await filter.getByRole('button', { name: '关闭筛选', exact: true }).click();
+      await expect(filter).toBeHidden();
 
       // soft 外观使用相同的表单尺度；无标题弹窗的操作文字直接应用语义角色。
       await page.goto('/#/pages/goods/devices');

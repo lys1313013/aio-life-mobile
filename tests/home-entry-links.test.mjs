@@ -30,7 +30,15 @@ const fetchVideoPage=async()=>{if(fixture.fail)throw Error('模拟读取失败')
 const fetchDevicePage=fetchVideoPage;
 ${page === 'goods/devices' ? 'const loaded = { value: false };' : ''}
 ${page === 'records/video' ? `
-const target = { label: '全部状态', loaded: false, stale: false, revision: 0 };
+const statusTabs = ['not_started', 'in_progress', 'on_hold', 'completed'];
+status.value = 'in_progress';
+const editLoading = { value: false };
+const fetchVideoById = async value => {
+  fixture.detailCalls.push(value);
+  if (fixture.fail) throw Error('模拟读取失败');
+  return fixture.missing ? null : { ...full, status: 'in_progress' };
+};
+const target = { status: 'in_progress', loaded: false, stale: false, revision: 0 };
 for (const [key, value] of Object.entries({rows, loading, error})) Object.defineProperty(target, key, {get:()=>value.value, set:next=>{value.value=next;}});
 const pages={value:[target]}, currentPage={value:target}, statusIndex={value:0};
 const summaryLoaded={value:false}, summaryLoading={value:false}, summaryError={value:''};
@@ -59,7 +67,7 @@ for (const [page, end] of [['records/notes', 'function open('], ['records/video'
     fixture.selected = null;
     await state.load();
     assert.equal(fixture.selected, null, '刷新不能重复打开已消费的入口');
-    if (page === 'records/notes') assert.deepEqual(fixture.detailCalls, [id, id]);
+    if (page !== 'goods/devices') assert.deepEqual(fixture.detailCalls, [id, id]);
   });
   test(`${page} 已删除条目显示失败，不打开空白新增表单`, async () => {
     const { fixture, state } = await pageLoadFixture(page, end);

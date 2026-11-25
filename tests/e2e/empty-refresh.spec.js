@@ -23,7 +23,7 @@ const cases = [
   { route: 'finance/cards', empty: '暂无储蓄卡', path: '/api/bank-cards', data: [], extra: { 'GET /api/bank-cards/banks': ok([]), 'GET /api/bank-cards/tags': ok([]) } },
   { route: 'finance/expense', empty: '暂无记录', path: '/api/expense/query', data: { items: [], total: 0 }, extra: { 'GET /api/userDictType/getByDictType': ok({ dictDetailList: [] }), 'GET /api/expense/statisticsByMonth': ok([]) } },
   { route: 'mcp/index', empty: '暂无 MCP 工具', path: '/api/mcp/tools', data: [], scroller: '.category-pager-scroll' },
-  { route: 'relationship/index', empty: '暂无人物', path: '/api/relationships/graph', data: { nodes: [], edges: [] } },
+  { route: 'relationship/index', empty: '暂无人物', path: '/api/relationships/graph', data: { nodes: [], edges: [] }, extra: { 'POST /api/relationships/persons': ok(null) } },
 ];
 
 for (const width of [390, 768, 1440]) for (const theme of ['light', 'dark']) {
@@ -42,34 +42,44 @@ for (const width of [390, 768, 1440]) for (const theme of ['light', 'dark']) {
       await page.goto('/#/pages/' + entry.route);
       const empty = page.getByText(entry.empty, { exact: true });
       await expect(empty).toBeVisible();
-      const region = page.locator('.page-state').filter({ has: empty });
+      const graph = entry.route === 'relationship/index';
+      const region = graph ? page.locator('.graph-state .page-state') : page.locator('.page-state').filter({ has: empty });
+      const layout = graph ? page.locator('.graph-panel') : region;
       await expect(region).toHaveAttribute('aria-busy', 'false');
-      const before = await region.boundingBox();
+      const before = await layout.boundingBox();
       const emptyHeight = (await empty.boundingBox()).height;
       pending = gate();
       fail = true;
-      await pullDown(page, entry.scroller || '.mobile-page-scroll');
+      if (graph) {
+        await page.getByRole('button', { name: '新增人物', exact: true }).click();
+        const form = page.getByRole('dialog', { name: '人物', exact: true });
+        await form.getByRole('textbox', { name: '姓名', exact: true }).fill('模拟人物');
+        await form.getByRole('button', { name: '保存', exact: true }).click();
+        await expect(form).toHaveCount(0);
+      } else {
+        await pullDown(page, entry.scroller || '.mobile-page-scroll');
+      }
       await expect(region).toHaveAttribute('aria-busy', 'true');
       await expect(empty).toBeVisible();
-      expect((await region.boundingBox()).height).toBe(before.height);
+      expect((await layout.boundingBox()).height).toBe(before.height);
       expect((await empty.boundingBox()).height).toBe(emptyHeight);
       await page.screenshot({ path: info.outputPath('empty-refresh.png'), fullPage: true });
       pending.release();
       pending = null;
       await expect(region.getByRole('alert')).toBeVisible();
       await expect(empty).toBeVisible();
-      expect((await region.boundingBox()).height).toBe(before.height);
+      expect((await layout.boundingBox()).height).toBe(before.height);
       pending = gate();
       fail = false;
       await region.getByRole('button', { name: '重试', exact: true }).click();
       await expect(region).toHaveAttribute('aria-busy', 'true');
       await expect(empty).toBeVisible();
-      expect((await region.boundingBox()).height).toBe(before.height);
+      expect((await layout.boundingBox()).height).toBe(before.height);
       pending.release();
       pending = null;
       await expect(region).toHaveAttribute('aria-busy', 'false');
       await expect(region.getByRole('alert')).toHaveCount(0);
-      expect((await region.boundingBox()).height).toBe(before.height);
+      expect((await layout.boundingBox()).height).toBe(before.height);
     } finally { pending?.release(); }
   });
 
@@ -93,17 +103,18 @@ for (const width of [390, 768, 1440]) for (const theme of ['light', 'dark']) {
       await expect(page.getByText('暂无记录', { exact: true })).toHaveCount(0);
       expect(businessCalls).toEqual([]);
       await waitForMotion(page);
+      const filter = page.getByRole('button', { name: '筛选' + title, exact: true });
+      await expect(filter).toHaveAttribute('disabled', 'true');
       const pending = page.locator('.ledger-pending');
       const layout = {
         toolbar: await page.locator('.pending-toolbar:visible').boundingBox(),
-        filters: await pending.locator('.pending-filters').boundingBox(),
+        overview: await pending.locator('.ledger-overview-skeleton').boundingBox(),
         footer: await pending.locator('.pending-footer').boundingBox(),
         list: await pending.locator(':scope > .content-skeleton').boundingBox(),
-        ...(kind === 'expense' ? { overview: await pending.locator('.ledger-overview-skeleton').boundingBox() } : {}),
       };
-      // 标题操作、筛选与底部操作分属实际布局区块，不应在资料等待阶段粘连。
-      expect(layout.filters.y).toBeGreaterThan(layout.toolbar.y + layout.toolbar.height);
-      expect(layout.footer.y).toBeGreaterThan(layout.filters.y + layout.filters.height);
+      // 筛选入口位于标题栏，概览占位和列表操作区分开。
+      expect(layout.overview.y).toBeGreaterThan(layout.toolbar.y + layout.toolbar.height);
+      expect(layout.footer.y).toBeGreaterThan(layout.overview.y + layout.overview.height);
       expect(layout.list.y).toBeGreaterThan(layout.footer.y + layout.footer.height);
       await page.screenshot({ path: info.outputPath('initializing.png'), fullPage: true });
       profile.release();
@@ -113,10 +124,9 @@ for (const width of [390, 768, 1440]) for (const theme of ['light', 'dark']) {
       await expect(ledger.locator(':scope > .page-state')).toHaveAttribute('aria-busy', 'true');
       await expect(page.getByText('暂无记录', { exact: true })).toHaveCount(0);
       expect(await page.locator('.ledger-toolbar:visible').boundingBox()).toEqual(layout.toolbar);
-      expect(await ledger.locator('.filters').boundingBox()).toEqual(layout.filters);
       expect(await ledger.locator('.filter-footer').boundingBox()).toEqual(layout.footer);
       expect(await ledger.locator(':scope > .page-state').boundingBox()).toEqual(layout.list);
-      if (kind === 'expense') expect(await ledger.locator('.ledger-overview-skeleton').boundingBox()).toEqual(layout.overview);
+      expect(await ledger.locator('.ledger-overview-skeleton').boundingBox()).toEqual(layout.overview);
       await page.screenshot({ path: info.outputPath('business-loading.png'), fullPage: true });
       records.release();
       await expect(page.getByText('暂无记录', { exact: true })).toBeVisible();

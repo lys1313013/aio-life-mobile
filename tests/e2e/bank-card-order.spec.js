@@ -104,7 +104,7 @@ test('堆叠卡包滚动后向上排序，抓取位置不改变落点', async ({
   const items = page.locator('.card-sort-item');
   await expect(items).toHaveCount(8);
   await items.last().scrollIntoViewIfNeeded();
-  const scroller = page.locator('.mobile-page-scroll .uni-scroll-view').last();
+  const scroller = page.locator('.mobile-page-scroll > .uni-scroll-view > .uni-scroll-view');
   await expect.poll(() => scroller.evaluate(node => node.scrollTop)).toBeGreaterThan(100);
   const previous = await items.nth(6).boundingBox();
   const last = await items.nth(7).boundingBox();

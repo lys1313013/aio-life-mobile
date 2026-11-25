@@ -18,7 +18,10 @@ async function pageHarness(kind) {
   };
   const goalSource = await readFile(new URL('../src/services/goal-progress.ts', import.meta.url), 'utf8');
   const goalRules = await import('data:text/javascript;base64,' + Buffer.from(goalSource).toString('base64'));
-  const fixture = { ...goalRules,
+  const colorSource = await readFile(new URL('../src/services/records/anniversary-colors.ts', import.meta.url), 'utf8');
+  const { code: colorCode } = await transform(colorSource, { loader: 'ts', format: 'esm' });
+  const { anniversaryColors } = await import('data:text/javascript;base64,' + Buffer.from(colorCode).toString('base64'));
+  const fixture = { ...goalRules, anniversaryColors,
     ref: value => ({ value }), computed: fn => ({ get value() { return fn(); } }),
     onMounted: fn => { hooks.mount = fn; }, onLoad: fn => { hooks.load = fn; }, onShow: () => {}, onUnmounted: () => {},
     usePageRefresh: load => load,

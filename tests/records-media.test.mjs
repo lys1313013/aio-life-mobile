@@ -35,15 +35,11 @@ test('阅读和观影的状态按重复查询键发送，不由微信序列化�
 })
 test('运动/分类/设备/活动实际契约保持字符串关联且不用1000条截断统计接口',async()=>{const calls=[];globalThis.__mediaRequest=async(...args)=>{calls.push(args);return true};const exercise=await service('exercise'),eventRecord=await service('event-record');await exercise.fetchExercisePage(2,'9223372036854775807');await exercise.saveExercise({id:'9223372036854775807',timeRecordId:'9223372036854775806'});await exercise.deleteExercises(['9223372036854775807']);await exercise.saveCategory({id:'81',dictType:'exercise_type',sortOrder:10});await eventRecord.saveEventRecord({id:'89',fileIds:[]});assert.deepEqual(calls[0],['/exerciseRecord/query','GET',{page:2,pageSize:20,exerciseTypeId:'9223372036854775807',startDate:'',endDate:''}]);assert.equal(calls[1][0],'/exerciseRecord/9223372036854775807');assert.equal(calls[1][2].timeRecordId,'9223372036854775806');assert.deepEqual(calls[2][2],{idList:['9223372036854775807']});assert.equal(calls[3][0],'/userDictData');assert.deepEqual(calls[4],['/event-records','PUT',{id:'89',fileIds:[]}]);await exercise.fetchExerciseStatistics('9223372036854775807','2023-01-01','2026-10-19');assert.deepEqual(calls.at(-1),['/exerciseRecord/statistics/summary','GET',{exerciseTypeId:'9223372036854775807',startDate:'2023-01-01',endDate:'2026-10-19'}]);delete globalThis.__mediaRequest})
 test('微信读书同步POST查询参数及长超时，笔记/进度实际GET契约',async()=>{const calls=[];globalThis.__mediaRequest=async(...args)=>calls.push(args);const api=await service('weread');await api.syncWeread('monthly',1790784000);await api.fetchWereadNotes('book-1');await api.fetchWereadProgress('book-1');assert.equal(calls[0][0],'/weread/sync?mode=monthly&baseTime=1790784000');assert.equal(calls[0][1],'POST');assert.equal(calls[0][6],120000);assert.deepEqual(calls[1].slice(0,3),['/weread/notes','GET',{bookId:'book-1'}]);assert.deepEqual(calls[2].slice(0,3),['/weread/progress','GET',{bookId:'book-1'}]);delete globalThis.__mediaRequest})
-test('视频全部状态省略筛选参数，具体状态及分页参数保持不变', async () => {
+test('视频四个状态分别发送明确的筛选与分页参数', async () => {
   const calls = []
   globalThis.__mediaRequest = async (...args) => calls.push(args)
   try {
     const api = await service('video')
-    await api.fetchVideoPage()
-    await api.fetchVideoPage(2, '')
-    assert.deepEqual(calls[0], ['/b-video/query', 'GET', { page: 1, pageSize: 100 }])
-    assert.deepEqual(calls[1], ['/b-video/query', 'GET', { page: 2, pageSize: 100 }])
     for (const status of ['not_started', 'in_progress', 'on_hold', 'completed']) {
       await api.fetchVideoPage(3, status)
       assert.deepEqual(calls.at(-1), ['/b-video/query', 'GET', { page: 3, pageSize: 100, status }])

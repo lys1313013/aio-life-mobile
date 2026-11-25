@@ -13,7 +13,7 @@ async function openLibrary(page, apiMock, kind, rankings) {
     'GET /api/menu/visuals': ok({ menus: [], cards: {} }),
     ['GET /api/' + (kind === 'read' ? 'read-record' : 'movie') + '/page']: request => {
       listCalls++;
-      if (kind === 'read' && new URL(request.url()).searchParams.get('statuses') !== 'in_progress') return ok({ items: [], total: 0 });
+      if (new URL(request.url()).searchParams.get('statuses') !== 'in_progress') return ok({ items: [], total: 0 });
       return ok({ items: [{ id: '1', title: '模拟作品', type: 1, status: 'in_progress' }], total: 1 });
     },
     'GET /api/creative-works/rankings': request => {
@@ -22,7 +22,13 @@ async function openLibrary(page, apiMock, kind, rankings) {
     },
   });
   await page.goto('/#/pages/records/library?kind=' + kind);
-  await expect(page.locator(kind === 'movie' ? '.library-card' : '.shelf-book[role=button]')).toHaveCount(1);
+  if (kind === 'movie') {
+    const records = page.getByRole('button', { name: '编辑记录', exact: true });
+    await expect(records).toHaveCount(1);
+    await expect(records).toHaveAccessibleDescription('模拟作品');
+  } else {
+    await expect(page.locator('.shelf-book[role=button]')).toHaveCount(1);
+  }
   return () => listCalls;
 }
 
