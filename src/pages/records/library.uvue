@@ -28,7 +28,7 @@ import MetricCard from '../../components/MetricCard.uvue';
 import { session } from '../../services/session.ts';
 import { isDark, themePalette } from '../../services/theme.ts';
 import { createRecordScope } from '../../services/records/page-scope.ts';
-import { statuses } from '../../services/records/contracts.ts';
+import { recordId, statuses } from '../../services/records/contracts.ts';
 import { chooseImportFile } from './services/import-file.ts';
 import { parseDoubanWorkbook } from './services/douban-import.ts';
 import {
@@ -160,8 +160,10 @@ onLoad((options) => {
     typeIndex.value = [1, 2].includes(Number(options.type)) ? Number(options.type) : 0;
     rankingId.value = options.rankingListId || '';
   }
-  requestedEdit = options?.editId || '';
-  requestedCreate = options?.create === '1';
+  if (kind.value === 'movie') {
+    requestedEdit = options?.editId || '';
+    requestedCreate = options?.create === '1';
+  }
 });
 const refreshOnShow = usePageRefresh(() => reload(), {
   loading: () => currentList.value.loading, error: () => currentList.value.error,
@@ -348,33 +350,16 @@ async function load(refresh = false, more = false) {
 }
 function setEditForm(detail) {
   if (!detail?.id) throw Error('记录不存在或已删除');
-  form.value = {
-    ...detail,
-    files: detail.fileId
-      ? [{ id: detail.fileId, fileName: detail.title + ' 封面' }]
-      : [],
-  };
+  form.value = detail;
 }
 async function open(item = null) {
+  if (kind.value === 'read') {
+    uni.navigateTo({ url: '/pages/records/read-edit' + (item ? '?id=' + encodeURIComponent(recordId(item.id)) : '') });
+    return;
+  }
   if (editing.value || entryLoading.value || (item && moviePager.value?.ignoreClick())) return;
   if (!item) {
-    form.value = {
-      title: '',
-      type: 1,
-      status: 'not_started',
-      director: '',
-      author: '',
-      url: '',
-      coverImgUrl: '',
-      fileId: '',
-      files: [],
-      totalProgress: 0,
-      currentProgress: 0,
-      startDate: null,
-      finishDate: null,
-      rating: null,
-      remark: '',
-    };
+    form.value = {};
     return;
   }
   editing.value = item.id;
@@ -390,24 +375,15 @@ async function open(item = null) {
 }
 function saved(updated, status: string) {
   form.value = null;
-  if (kind.value === 'read') {
-    void load();
-  } else {
-    if (!updated) {
-      searchDraft.value = ''; keyword.value = ''; typeIndex.value = 0;
-      const index = movieStatuses.findIndex(group => group.status === status);
-      if (index >= 0) movieIndex.value = index;
-    }
-    resetLists(!!updated);
-    void reload();
+  if (!updated) {
+    searchDraft.value = ''; keyword.value = ''; typeIndex.value = 0;
+    const index = movieStatuses.findIndex(group => group.status === status);
+    if (index >= 0) movieIndex.value = index;
   }
+  resetLists(!!updated);
+  void reload();
 }
 function deleted(id) {
-  if (kind.value === 'read') {
-    form.value = null;
-    void load();
-    return;
-  }
   form.value = null;
   currentList.value.rows = currentList.value.rows.filter(row => row.id !== id);
   resetLists(true);
@@ -519,12 +495,12 @@ async function submitImport() {
     <view class="library-scroll-region">
       <MobilePage :scroll-locked="kind === 'movie'" :refreshing="kind === 'read' && readList.refreshing"
         @refresh="reload(true)" @reachbottom="loadMore"
-      ><view class="library-page ui-page-body" :class="{ 'library-page-dark': isDark }">
+      ><view class="library-page ui-page-body" :class="{ 'library-page-dark': isDark, 'library-page-reading': kind === 'read' }">
       <LoadingIndicator v-if="entryLoading" floating label="正在加载记录详情" />
       <template v-if="kind === 'movie'">
         <MovieStatusTabs :items="movieTabs" :current="movieIndex" :progress="movieProgress"
           :disabled="movieSwitcherDisabled" @change="selectMovieStatus" />
-        <CategoryPager ref="moviePager" :items="moviePages" :current="movieIndex" track-progress :disabled="movieSwitcherDisabled"
+        <CategoryPager ref="moviePager" :items="moviePages" :current="movieIndex" track-progress reserve-for-floating-action :disabled="movieSwitcherDisabled"
           :refreshing="currentList.refreshing" :layout-key="searchOpen" tabs-selector=".movie-status-tabs"
           @change="selectMovieStatus" @progress="movieProgress = $event" @refresh="reload(true)" @reachbottom="loadMore">
           <template #default="{ item: moviePage }">
@@ -595,7 +571,7 @@ async function submitImport() {
           <view class="ui-gap-md">
             <ReadingShelf v-for="group in readingShelves" v-show="group.items.length > 0" :key="group.status"
               :status="group.status" :label="group.label" :items="group.items" :total="group.total"
-              :has-more="group.hasMore" :editing="editing" @open="open" @all="openShelf(group.status)" />
+              :has-more="group.hasMore" @open="open" @all="openShelf(group.status)" />
           </view>
         </PageState>
         <LoadMore v-if="!overview" :error="readList.moreError" :loading="readList.loadingMore"
@@ -632,7 +608,7 @@ async function submitImport() {
             </view>
           </view>
       </FilterSheet>
-      <ModalMotion><LibraryRecordEditor v-if="form" :record="form" :kind="kind" @close="form = null" @saved="saved" @deleted="deleted" /></ModalMotion>
+      <ModalMotion><LibraryRecordEditor v-if="form" :record="form" @close="form = null" @saved="saved" @deleted="deleted" /></ModalMotion>
       <ModalMotion><AdaptiveModal
         v-if="importingOpen"
         label="豆瓣观影导入"
@@ -740,9 +716,9 @@ async function submitImport() {
 }
 .library-page {
   position: relative;
-  padding-bottom: 64px;
   color: #27272a;
 }
+.library-page-reading { padding-bottom: 64px; } // 阅读列表由外层滚动容器为悬浮新增按钮留出空间。
 .library-page-dark {
   color: #eeeeef;
 }

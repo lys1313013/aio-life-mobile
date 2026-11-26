@@ -1,0 +1,346 @@
+<script setup lang="ts">
+import { computed, ref, watch } from 'vue';
+import { onLoad, onShow } from '@dcloudio/uni-app';
+import spacing from '../../styles/spacing.json';
+import AppIcon from '../../components/AppIcon.uvue';
+import AttachmentField from '../../components/AttachmentField.uvue';
+import ConfirmAction from '../../components/ConfirmAction.uvue';
+import FormActions from '../../components/FormActions.uvue';
+import FormField from '../../components/FormField.uvue';
+import FormSkeleton from '../../components/FormSkeleton.uvue';
+import ImagePlaceholder from '../../components/ImagePlaceholder.uvue';
+import LibraryCover from '../../components/LibraryCover.uvue';
+import MobileButton from '../../components/MobileButton.uvue';
+import MobilePage from '../../components/MobilePage.uvue';
+import PageHeader from '../../components/PageHeader.uvue';
+import PageState from '../../components/PageState.uvue';
+import { request } from '../../services/api.ts';
+import { isRequired, missingRequired } from '../../services/form-required.ts';
+import { statuses } from '../../services/records/contracts.ts';
+import { applyLibraryParse, libraryDraft, libraryPayload, setLibraryCover } from '../../services/records/library-form.ts';
+import { createRecordScope } from '../../services/records/page-scope.ts';
+import { session } from '../../services/session.ts';
+import { isDark, themeClass } from '../../services/theme.ts';
+import { deleteLibrary, fetchLibraryDetail, parseDouban, saveLibrary } from './services/media.ts';
+
+const id = ref('');
+const title = computed(() => id.value ? '编辑阅读记录' : '新增阅读记录');
+const statusLabels = ['想读', '在读', '读完', '搁置'];
+const form = ref<any>(null);
+const loading = ref(false), loadError = ref('');
+const saving = ref(false), deleting = ref(false), parsing = ref(false);
+const attachmentBusy = ref(false), retryingCover = ref(false), finished = ref(false);
+const formError = ref(''), linkError = ref(''), coverError = ref('');
+const busy = computed(() => saving.value || deleting.value || parsing.value || attachmentBusy.value || retryingCover.value);
+const locked = computed(() => busy.value || finished.value);
+const book = computed(() => form.value?.type !== 2);
+const titleLabel = computed(() => book.value ? '书名' : '标题');
+const validateTitle = ref(false);
+const titleMissing = computed(() => form.value && missingRequired('library', form.value, 'title'));
+const titleError = computed(() => validateTitle.value && titleMissing.value ? '请输入' + titleLabel.value : '');
+const showFinishDate = computed(() => form.value?.status === 'completed' || !!form.value?.finishDate);
+
+const progressOverride = ref<boolean | null>(null);
+const progressOpen = computed(() => progressOverride.value ?? !!(form.value && (
+  form.value.status !== 'not_started' || Number(form.value.currentProgress) || Number(form.value.totalProgress)
+  || form.value.startDate || form.value.finishDate
+)));
+const percent = computed(() => {
+  const total = Number(form.value?.totalProgress);
+  return total > 0 ? Math.min(100, Math.max(0, Math.round(Number(form.value?.currentProgress || 0) * 100 / total))) : null;
+});
+
+function selectStatus(status: string) {
+  form.value.status = status;
+  progressOverride.value = null;
+}
+
+function clearForm() {
+  form.value = null;
+  validateTitle.value = false;
+  progressOverride.value = null;
+  loadError.value = '';
+  formError.value = '';
+  linkError.value = '';
+  coverError.value = '';
+  finished.value = false;
+}
+const scope = createRecordScope(clear => { if (clear) clearForm(); });
+watch(() => session.token, clearForm, { flush: 'sync' });
+onLoad(options => { id.value = options?.id || ''; });
+onShow(() => {
+  if (!session.token) { uni.reLaunch({ url: '/pages/login/index' }); return; }
+  if (!form.value) void load();
+});
+
+async function load() {
+  if (loading.value || form.value) return;
+  if (!id.value) { form.value = libraryDraft({ author: '' }); return; }
+  loading.value = true;
+  loadError.value = '';
+  try {
+    const detail = await scope.wait(fetchLibraryDetail('read', id.value));
+    if (detail?.id !== id.value) throw new Error('记录不存在或已删除');
+    form.value = libraryDraft(detail);
+  } catch (error) {
+    if (error.name !== 'PageInactiveError') loadError.value = error.message;
+  } finally {
+    loading.value = false;
+  }
+}
+
+function leave() {
+  const openShelf = () => uni.redirectTo({ url: '/pages/records/library?kind=read' });
+  if (getCurrentPages().length < 2) { openShelf(); return; }
+  uni.navigateBack({ fail: openShelf });
+}
+function cancel() {
+  if (!busy.value) leave();
+}
+
+async function parse() {
+  if (locked.value || !form.value.url?.trim()) return;
+  parsing.value = true;
+  linkError.value = '';
+  coverError.value = '';
+  try {
+    const result = await scope.wait(parseDouban('read', form.value.url.trim()));
+    applyLibraryParse(form.value, { ...result, type: form.value.type });
+  } catch (error) {
+    if (error.name !== 'PageInactiveError') linkError.value = error.message;
+  } finally {
+    parsing.value = false;
+  }
+}
+
+async function retryCover() {
+  const workId = form.value.retryCoverWorkId;
+  if (!workId || locked.value) return;
+  retryingCover.value = true;
+  coverError.value = '';
+  try {
+    const path = '/creative-works/' + encodeURIComponent(workId) + '/cover';
+    await scope.wait(request(path + '/retry', 'POST'));
+    form.value.coverImgUrl = path;
+    form.value.retryCoverWorkId = null;
+  } catch (error) {
+    if (error.name !== 'PageInactiveError') coverError.value = error.message;
+  } finally {
+    retryingCover.value = false;
+  }
+}
+
+async function save() {
+  if (busy.value || !form.value) return;
+  if (finished.value) { leave(); return; }
+  formError.value = '';
+  if (titleMissing.value) {
+    validateTitle.value = true;
+    return;
+  }
+  saving.value = true;
+  try {
+    await scope.wait(saveLibrary('read', libraryPayload(form.value)));
+    finish();
+  } catch (error) {
+    if (error.name !== 'PageInactiveError') formError.value = error.message;
+  } finally {
+    saving.value = false;
+  }
+}
+
+async function remove() {
+  if (locked.value) throw new Error('记录暂时无法删除，请重试');
+  deleting.value = true;
+  try {
+    await scope.wait(deleteLibrary('read', id.value));
+  } finally {
+    deleting.value = false;
+  }
+}
+function finish() {
+  finished.value = true;
+  leave();
+}
+</script>
+
+<template>
+  <view class="read-edit-page" :class="themeClass('read-edit-page')">
+    <PageHeader :title="title" back paper :content-max-width="spacing.formContentMax" @back="cancel" />
+    <MobilePage refresh-disabled paper :content-max-width="spacing.formContentMax">
+      <view class="ui-page-body">
+        <PageState :loading="loading" :error="loadError" :has-content="!!form" @retry="load">
+          <template #loading>
+            <view class="read-layout">
+              <FormSkeleton :rows="['control']" :actions="false" label="正在加载豆瓣链接" />
+              <view class="read-columns">
+                <view class="read-column">
+                  <view class="read-identity ui-row">
+                    <view class="read-cover read-cover-skeleton"><ImagePlaceholder loading /></view>
+                    <view class="read-identity-fields">
+                      <FormSkeleton :rows="['field', 'field']" :actions="false" label="正在加载记录详情" />
+                    </view>
+                  </view>
+                </view>
+                <view class="read-column">
+                  <FormSkeleton :rows="['controls']" :actions="false" label="正在加载阅读状态" />
+                  <view class="read-progress">
+                    <FormSkeleton :rows="['control', 'pair', 'pair', 'textarea']" :actions="false" label="正在加载阅读进度和书评" />
+                  </view>
+                </view>
+              </view>
+            </view>
+          </template>
+          <view v-if="form" class="read-layout" role="region" :aria-label="title">
+            <view>
+              <FormField hide-label compact label="豆瓣链接">
+                <view class="read-link-row" :class="themeClass('read-link-row')">
+                  <AppIcon name="ant-design:link-outlined" :size="18" :color="isDark ? '#b2b5bf' : '#676b77'" />
+                  <input class="read-link-input" :class="themeClass('read-link-input')" aria-label="豆瓣链接" placeholder="粘贴豆瓣链接"
+                    :value="form.url" :disabled="locked" @input="form.url = $event.detail.value" />
+                  <MobileButton label="解析豆瓣链接" variant="ghost" :loading="parsing"
+                    :disabled="locked || !form.url?.trim()" @click="parse">
+                    <text class="read-link-action" :class="themeClass('read-link-action')">解析</text>
+                  </MobileButton>
+                </view>
+              </FormField>
+              <text v-if="linkError" class="read-edit-error ui-mt-sm" :class="themeClass('read-edit-error')" role="alert">{{ linkError }}</text>
+            </view>
+            <view class="read-columns">
+              <view class="read-column">
+                <view class="read-identity ui-row">
+                  <view class="read-cover">
+                    <AttachmentField :files="form.files" cover images-only :max-count="1" upload-path="/file/upload"
+                      :form-data="{ bizType: 'read_cover' }" :disabled="locked"
+                      @update:files="setLibraryCover(form, $event)" @busy-change="attachmentBusy = $event">
+                      <template #emptyCover>
+                        <view class="read-cover-art" aria-hidden="true">
+                          <LibraryCover file-id="" url="" title="" kind="read" compact tiny />
+                        </view>
+                        <view class="read-cover-caption"><AppIcon name="ant-design:plus-outlined" :size="14" color="#ffffff" /><text class="read-cover-caption-text">添加封面</text></view>
+                      </template>
+                      <template v-if="!form.fileId && form.coverImgUrl" #coverPreview>
+                        <view class="library-external-cover">
+                          <LibraryCover file-id="" :url="form.coverImgUrl" :title="form.title" kind="read" compact />
+                        </view>
+                      </template>
+                    </AttachmentField>
+                    <MobileButton v-if="form.retryCoverWorkId && !form.fileId" label="重试封面" variant="ghost"
+                      :loading="retryingCover" :disabled="locked" @click="retryCover" />
+                  </view>
+                  <view class="read-identity-fields">
+                    <FormField :compact="!book" :required="isRequired('library', 'title')" :label="titleLabel"
+                      :placeholder="'输入' + titleLabel" :error="titleError" :focus="validateTitle" :disabled="locked" v-model="form.title" />
+                    <FormField v-if="book" compact label="作者" placeholder="输入作者" :disabled="locked" v-model="form.author" />
+                  </view>
+                </view>
+                <text v-if="coverError" class="read-edit-error ui-section" :class="themeClass('read-edit-error')" role="alert">{{ coverError }}</text>
+              </view>
+              <view class="read-column">
+                <view class="read-status" role="group" aria-label="阅读状态">
+                  <text class="read-label" :class="themeClass('read-label')">阅读状态</text>
+                  <button v-for="(status, index) in statuses" :key="status" hover-class="none" role="button"
+                    class="read-status-option"
+                    :aria-label="statusLabels[index]" :aria-pressed="status === form.status" :disabled="locked" @click="selectStatus(status)">
+                    <text class="read-status-label" :class="[themeClass('read-status-label'), { 'read-status-selected': status === form.status, 'read-status-selected-dark': status === form.status && isDark }]">{{ statusLabels[index] }}</text>
+                    <view v-if="status === form.status" class="read-status-mark" :class="themeClass('read-status-mark')" aria-hidden="true" />
+                  </button>
+                </view>
+                <view class="read-progress">
+                  <button hover-class="none" class="read-disclosure" role="button" aria-label="阅读进度" :aria-expanded="progressOpen"
+                    :disabled="locked" @click="progressOverride = !progressOpen">
+                    <text class="read-label" :class="themeClass('read-label')">阅读进度</text>
+                    <text v-if="percent != null" class="read-percent" :class="themeClass('read-percent')">{{ percent }}%</text>
+                    <AppIcon :name="progressOpen ? 'ant-design:up-outlined' : 'lucide:chevron-down'" :size="16" />
+                  </button>
+                  <view v-if="progressOpen" class="read-progress-fields">
+                    <view class="ui-field-row">
+                      <FormField compact stretch :label="book ? '已读页数' : '当前进度'" input-type="number" placeholder="0"
+                        :model-value="form.currentProgress || ''" :disabled="locked" @update:model-value="form.currentProgress = $event" />
+                      <FormField compact stretch :label="book ? '总页数' : '总进度'" input-type="number" placeholder="0"
+                        :model-value="form.totalProgress || ''" :disabled="locked" @update:model-value="form.totalProgress = $event" />
+                    </view>
+                    <view class="ui-field-row">
+                      <FormField compact stretch label="开始日期" kind="date" :disabled="locked"
+                        :model-value="form.startDate || ''" @update:model-value="form.startDate = $event || null" />
+                      <FormField v-if="showFinishDate" compact stretch label="完成日期" kind="date" :disabled="locked"
+                        :model-value="form.finishDate || ''" @update:model-value="form.finishDate = $event || null" />
+                    </view>
+                  </view>
+                </view>
+                <FormField compact label="书评" kind="textarea" placeholder="写下阅读感受…"
+                  :disabled="locked" v-model="form.remark" />
+              </view>
+            </view>
+          </view>
+        </PageState>
+      </view>
+    </MobilePage>
+    <view v-if="form || loading" class="read-edit-footer ui-page-inset" :class="themeClass('read-edit-footer')">
+      <text v-if="formError" class="read-edit-error ui-mb-sm" :class="themeClass('read-edit-error')" role="alert">{{ formError }}</text>
+      <FormSkeleton v-if="loading" :rows="[]" :footer="false" label="正在加载阅读操作" />
+      <FormActions v-else-if="form">
+        <template #secondary>
+          <ConfirmAction v-if="id" label="删除记录" :message="'确定删除“' + form.title + '”？'"
+            :action="remove" :trigger-disabled="locked" @success="finish" />
+        </template>
+        <MobileButton class="read-cancel" label="取消" variant="quiet" :style="{ backgroundColor: isDark ? '#28292e' : '#f1f1f4' }" :disabled="busy" @click="cancel" />
+        <MobileButton class="read-save" :variant="isDark ? 'quiet' : 'primary'" :style="{ backgroundColor: isDark ? '#ececf0' : '#292a32' }" :label="finished ? '完成' : '保存'" :loading="saving"
+          :disabled="deleting || parsing || attachmentBusy || retryingCover" @click="save">
+          <text class="read-save-label" :class="themeClass('read-save-label')">{{ finished ? '完成' : '保存' }}</text>
+        </MobileButton>
+      </FormActions>
+    </view>
+  </view>
+</template>
+
+<style scoped lang="scss">
+@use '../../styles/platform' as *;
+@use '../../styles/form-control' as form-control;
+@use '../../styles/theme-tokens' as *;
+@use '../../styles/typography' as *;
+@use '../../styles/spacing.scss';
+@use '../../styles/spacing-tokens' as *;
+.read-edit-page { display: flex; flex-direction: column; height: 100%; min-height: 0; background-color: $theme-surface-light; }
+.read-edit-page-dark { background-color: $theme-page-dark; }
+.read-identity-fields { flex: 1; min-width: 0; }
+.read-cover { width: 100px; flex-shrink: 0; }
+// 与附件封面的 2:3 展示区域等高。
+.read-cover-skeleton { position: relative; height: 150px; border-radius: 10px; overflow: hidden; }
+.library-external-cover { position: relative; width: 100%; height: 100%; }
+.read-layout { gap: $space-overlayBlock; }
+.read-columns { gap: $space-overlayBlock; }
+.read-column { min-width: 0; gap: $space-section; }
+.read-label { color: #464851; @include type-style('label'); }
+.read-label-dark { color: #c6c8cf; }
+.read-identity { gap: $space-modal; align-items: center; }
+.read-cover-art { position: absolute; top: 0; left: 0; right: 0; bottom: 0; }
+.read-cover-caption { position: absolute; bottom: 0; left: 0; right: 0; min-height: $space-compactRowMin; align-items: center; justify-content: center; flex-direction: row; gap: $space-detail; background-color: rgba(27,27,33,.76); border-radius: 0 0 10px 10px; }
+.read-cover-caption-text { color: #ffffff; @include type-style('caption-strong'); }
+.read-link-row { @include form-control.surface; align-items: center; flex-direction: row; gap: $space-inline; padding-left: $space-card; }
+.read-link-row-dark { @include form-control.dark; }
+.read-link-input { flex: 1; min-width: 0; min-height: $space-controlMin; color: #27272a; @include type-style('body'); }
+.read-link-input-dark { color: #eeeeef; }
+.read-link-action { color: #474a55; @include type-style('body-strong'); }
+.read-link-action-dark { color: #d4d5db; }
+.read-status { flex-direction: row; align-items: center; gap: $space-detail; }
+.read-status-option { position: relative; display: flex; flex: 1; min-width: $space-controlMin; min-height: $space-controlMin; align-items: center; justify-content: center; margin: 0; padding: 0; border: 0; @include button-background(transparent); @include borderless-button; }
+.read-status-label { color: #6c6d78; @include type-style('body'); }
+.read-status-label-dark { color: #a7a8b3; }
+.read-status-selected { color: #22232b; @include type-style('body-strong'); }
+.read-status-selected-dark { color: #f0f0f4; }
+.read-status-mark { position: absolute; bottom: $space-detail; align-self: center; width: 16px; height: $space-micro; border-radius: 2px; background-color: #292a32; }
+.read-status-mark-dark { background-color: #ececf0; }
+.read-disclosure { display: flex; flex-direction: row; align-items: center; justify-content: space-between; gap: $space-inline; min-height: $space-controlMin; width: 100%; margin: 0; padding: 0; border: 0; @include button-background(transparent); @include borderless-button; }
+.read-percent { margin-left: auto; color: #484b55; @include type-style('metric-inline'); }
+.read-percent-dark { color: #c5c7d1; }
+.read-progress-fields { margin-top: $space-inline; }
+.read-cancel { min-width: $space-modalActionMin; border-radius: 24px; }
+.read-save { min-width: $space-modalActionMin + $space-overlayBlock; border-radius: 24px; }
+.read-save-label { color: #ffffff; @include type-style('body-strong'); }
+.read-save-label-dark { color: #22232b; }
+.read-edit-footer { flex-shrink: 0; max-width: $space-formContentMax; background-color: $theme-surface-light; }
+.read-edit-footer-dark { background-color: $theme-page-dark; }
+.read-edit-error { color: #b8353b; @include type-style('body'); }
+.read-edit-error-dark { color: #ff989f; }
+</style>

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 
+import readingCover from '../static/reading-cover.jpg';
 import ImagePlaceholder from './ImagePlaceholder.uvue';
 import AppIcon from './AppIcon.uvue';
 import { useImageSource } from '../services/use-image-source.ts';
@@ -14,7 +15,10 @@ const props = defineProps<{
   naturalRatio?: boolean;
 }>();
 const emit = defineEmits<{ ratio: [value: number] }>();
-const { source, loading, failed, load, imageLoad: settled, imageError: fail } = useImageSource(() => ({ fileId: props.fileId, url: props.url }), () => { if (props.naturalRatio) emit('ratio', 2 / 3); });
+const { source, loading, failed, load, imageLoad: settled, imageError: fail } = useImageSource(
+  () => ({ fileId: props.fileId, url: props.url || (props.kind === 'read' ? readingCover : '') }),
+  () => { if (props.naturalRatio) emit('ratio', 2 / 3); },
+);
 function imageLoad(event: any) {
   settled();
   if (!props.naturalRatio) return;

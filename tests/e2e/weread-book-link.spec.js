@@ -1,5 +1,6 @@
 const { test, expect } = require('./support/test');
 const { dashboardFixture } = require('./fixtures.js');
+const { page: pageInset } = require('../../src/styles/spacing.json');
 const fs = require('node:fs');
 const link = 'https://weread.qq.com/web/reader/mock-book';
 const cover = 'https://weread.qq.com/mock-cover.svg';
@@ -19,6 +20,8 @@ async function setup(page, context) {
       stats: { totalReadTime: 3600, readDays: 2, readLongest: [
         { book: { bookId: 'direct', title: '模拟直接打开书籍', deepLink: link, cover }, readTime: 2400 },
         { book: { bookId: '3300144307', title: '模拟缺少链接的书籍：较长书名用于验证平板和手机的换行与点击区域', cover }, readTime: 1200 },
+        { albumInfo: { name: '模拟有声书第一辑', cover }, readTime: 1100 },
+        { albumInfo: { name: '模拟有声书第二辑', cover }, readTime: 900 },
         { albumInfo: { name: '模拟无书籍标识的有声内容' }, readTime: 600 },
       ] },
     };
@@ -28,7 +31,7 @@ async function setup(page, context) {
       if (state.fail) return route.fulfill({ json: { code: 1, message: '模拟查询失败，请重试' } });
       data = { deepLink: state.invalid ? 'javascript:alert(1)' : link };
     }
-    await route.fulfill({ json: { code: 0, data } });
+    await route.fulfill({ json: { code: 0, message: null, data } });
   });
   await page.goto('/');
   await page.locator('[aria-label="账号"] input').fill('fixture');
@@ -48,6 +51,19 @@ for (const width of [390, 768, 1440]) for (const dark of [false, true]) {
     const pending = page.getByRole('button', { name: /^在微信读书打开：模拟缺少/ });
     fs.mkdirSync('artifacts/weread-links', { recursive: true });
     await page.screenshot({ path: `artifacts/weread-links/${width}-${dark ? 'dark' : 'light'}.png`, fullPage: true });
+    const compactHeight = 600;
+    await page.setViewportSize({ width, height: compactHeight });
+    const scroll = page.locator('.category-pager-scroll').filter({ hasText: '阅读最多的书' });
+    await expect.poll(() => scroll.evaluate(element => Math.round(element.getBoundingClientRect().bottom))).toBe(compactHeight);
+    const ranking = page.locator('.card').filter({ hasText: '阅读最多的书' });
+    const bottomGap = () => ranking.evaluate(card =>
+      Math.round(card.closest('.category-pager-scroll').getBoundingClientRect().bottom - card.getBoundingClientRect().bottom));
+    await expect.poll(bottomGap).toBeLessThan(0);
+    await page.mouse.move(width / 2, 450);
+    await page.mouse.wheel(0, 10000);
+    await expect.poll(bottomGap).toBe(pageInset);
+    await page.screenshot({ path: `artifacts/page-bottom/weread-${width}-${dark ? 'dark' : 'light'}.png` });
+    await page.setViewportSize({ width, height: 900 });
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     const directPopup = page.waitForEvent('popup'); await direct.click();
     const opened = await directPopup; await opened.waitForURL(link);

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
+import ImagePlaceholder from '../../components/ImagePlaceholder.uvue'
 import LibraryCover from '../../components/LibraryCover.uvue'
 import LoadingIndicator from '../../components/LoadingIndicator.uvue'
 import AppIcon from '../../components/AppIcon.uvue'
@@ -55,7 +56,9 @@ function loadMore(group) {
       <scroll-view direction="horizontal" :scroll-x="true" :scroll-y="false" :show-scrollbar="false" :lower-threshold="40" class="reading-scroll" :style="{ height: coverHeight + 'px' }" :aria-label="group.label + '书架'" @scrolltolower="loadMore(group)">
         <view class="reading-track" :style="{ width: trackWidth(group) + 'px', height: coverHeight + 'px' }">
           <template v-if="pending">
-            <view v-for="index in 3" :key="index" class="reading-placeholder" :class="{ 'reading-placeholder-dark': isDark, 'reading-placeholder-spaced': index > 1 }" :style="{ width: coverWidth + 'px', height: coverHeight + 'px' }" aria-label="加载中" />
+            <view v-for="index in 3" :key="index" class="reading-placeholder" :class="{ 'reading-placeholder-spaced': index > 1 }" :style="{ width: coverWidth + 'px', height: coverHeight + 'px' }">
+              <ImagePlaceholder loading />
+            </view>
           </template>
           <template v-else>
             <view v-for="item in group.items" :key="coverKey(item)" class="reading-book" :style="{ width: bookWidth(item) + 'px', height: coverHeight + 'px' }" role="button" tabindex="0" :aria-label="'编辑' + (item.title || '未命名')" @click="emit('edit', item)" @keydown.enter="emit('edit', item)" @keydown.space.prevent="emit('edit', item)">
@@ -84,11 +87,9 @@ function loadMore(group) {
 .reading-label { display: flex; flex-direction: column; align-items: center; justify-content: center; flex-shrink: 0; }
 .reading-label-text { @include type-style('body'); line-height: type-line('label'); letter-spacing: type-tracking('normal'); color: #71717a; }
 .reading-label-dark { color: #a6a6b0; }
-.reading-book { position: relative; flex-shrink: 0; border-radius: 1px; overflow: hidden; }
+.reading-book, .reading-placeholder { position: relative; flex-shrink: 0; border-radius: 1px; overflow: hidden; }
 .reading-cover-frame { position: absolute; top: 0; right: 0; bottom: 0; left: 0; box-sizing: border-box; border: 1px solid #e4e4e7; border-radius: 1px; pointer-events: none; }
 .reading-cover-frame-dark { border-color: #3f3f46; }
-.reading-placeholder { flex-shrink: 0; border-radius: 1px; background-color: #e8ecf1; }
-.reading-placeholder-dark { background-color: #30343b; }
 /* #ifdef APP */
 .reading-placeholder-spaced { margin-left: $space-section; }
 /* #endif */

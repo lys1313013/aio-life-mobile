@@ -7,6 +7,7 @@ const fs = require('node:fs');
 const cover = fs.readFileSync(
   require('node:path').join(__dirname, '../..', 'src/static/book.png'),
 );
+const coverKey = index => '6256d79c-07ba-499c-82f6-' + String(index).padStart(12, '0');
 async function library(page, kind) {
   const state = await setup(page);
   state.movies = Array.from({ length: 9 }, (_, i) => ({
@@ -19,7 +20,7 @@ async function library(page, kind) {
     currentProgress: 0,
     totalProgress: 113,
     rankings: i === 0 ? [{ rankingListId: '12', name: kind === 'movie' ? '豆瓣电影Top250' : '豆瓣读书Top250', rank: 34 }] : [],
-    fileId: i < 6 ? 'cover-' + i : '',
+    fileId: i < 6 ? coverKey(i) : '',
     url: '',
     coverImgUrl: '',
     finishDate: i % 4 === 2 ? '2026-10-01' : null,
@@ -64,7 +65,13 @@ for (const kind of ['movie', 'read'])
         const errors = [];
         page.on('pageerror', (e) => errors.push(e.message));
         const state = await library(page, kind);
-        await expect(page.locator('.library-cover-image')).toHaveCount(6);
+        await expect(page.locator('.library-cover-image')).toHaveCount(kind === 'read' ? 9 : 6);
+        if (kind === 'read') {
+          const coverlessBook = page.getByRole('button', { name: '编辑《模拟书籍 9》', exact: true });
+          const illustration = coverlessBook.locator('.library-cover-image img');
+          await expect(illustration).toHaveAttribute('src', /reading-cover.*\.jpg/);
+          await expect.poll(() => illustration.evaluate(img => img.naturalWidth)).toBeGreaterThan(0);
+        }
         await expect(page.locator('.library-cover-hint')).toHaveCount(0);
         expect(
           state.coverHeaders.every(
@@ -173,8 +180,10 @@ for (const kind of ['movie', 'read'])
           .getByRole('button', { name: kind === 'movie' ? '编辑记录' : '编辑《' + state.movies[0].title + '》', exact: true })
           .first()
           .click();
-        await expect(page.getByRole('dialog')).toBeVisible();
-        await expect(page.locator('[aria-label="名称"] input')).toHaveValue(
+        const editor = kind === 'read' ? page.locator('.read-edit-page') : page.getByRole('dialog', { name: '编辑观影' });
+        await expect(editor).toBeVisible();
+        if (kind === 'read') await expect(page).toHaveURL(/read-edit\?id=/);
+        await expect(editor.locator(`[aria-label="${kind === 'read' ? '书名' : '名称'}"] input`)).toHaveValue(
           state.movies[0].title,
         );
         await page.getByRole('button', { name: '取消', exact: true }).click();
@@ -184,8 +193,10 @@ for (const kind of ['movie', 'read'])
             exact: true,
           })
           .click();
-        await expect(page.getByRole('dialog')).toBeVisible();
-        await page.getByRole('button', { name: '取消', exact: true }).click();
+        await expect(editor).toBeVisible();
+        if (kind === 'read') await expect(page).toHaveURL(/read-edit$/);
+        await editor.getByRole('button', { name: '取消', exact: true }).click();
+        await expect(editor).toHaveCount(0);
         expect(errors).toEqual([]);
       });
     }
@@ -193,18 +204,19 @@ for (const kind of ['movie', 'read'])
   test(`编辑恢复、删除和筛选 ${kind}`, async ({ page }, info) => {
     await page.setViewportSize({ width: 390, height: 900 });
     const state = await library(page, kind);
+    const editor = kind === 'read' ? page.locator('.read-edit-page') : page.getByRole('dialog', { name: '编辑观影' });
     await page
       .getByRole('button', { name: kind === 'movie' ? '编辑记录' : '编辑《' + state.movies[0].title + '》', exact: true })
       .first()
       .click();
-    await page.locator('[aria-label="名称"] input').fill('模拟修改');
+    await editor.locator(`[aria-label="${kind === 'read' ? '书名' : '名称'}"] input`).fill('模拟修改');
     state.fail = true;
     await page.getByRole('button', { name: '保存', exact: true }).click();
     await expect(page.getByText('模拟保存失败', { exact: true })).toBeVisible();
     state.fail = false;
     await page.getByRole('button', { name: '保存', exact: true }).click();
-    await expect(page.getByRole('dialog')).toHaveCount(0);
-    expect(state.writes.at(-1).body.fileId).toBe('cover-0');
+    await expect(editor).toHaveCount(0);
+    expect(state.writes.at(-1).body.fileId).toBe(coverKey(0));
     expect(state.writes.at(-1).body).not.toHaveProperty('doubanSubjectId');
     expect(state.movies[0].doubanSubjectId).toBe('9223372036854775806');
     expect(state.writes.at(-1).body.id).toBe(id);
@@ -220,7 +232,7 @@ for (const kind of ['movie', 'read'])
     await expect(confirm).toContainText('模拟保存失败');
     state.fail = false;
     await confirm.getByRole('button', { name: '确认', exact: true }).click();
-    await expect(page.getByRole('dialog')).toHaveCount(0);
+    await expect(editor).toHaveCount(0);
     await expect(page.getByRole('button', { name: kind === 'movie' ? '编辑记录' : /^编辑《/ })).toHaveCount(8);
     expect(state.writes.at(-1).method).toBe('DELETE');
     const base = kind === 'movie' ? '/movie/page' : '/read-record/page';

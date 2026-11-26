@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import ModalMotion from "../ModalMotion.uvue";
-import { computed, ref, watch } from 'vue';
+import { ref, watch } from 'vue';
 import { session } from '../../services/session.ts';
 import FormSkeleton from '../FormSkeleton.uvue';
 import AdaptiveModal from '../AdaptiveModal.uvue';
@@ -8,70 +8,30 @@ import FormField from '../FormField.uvue';
 import FormActions from '../FormActions.uvue';
 import MobileButton from '../MobileButton.uvue';
 import ConfirmAction from '../ConfirmAction.uvue';
-import { isRequired, missingRequired } from '../../services/form-required.ts';
+import { isRequired } from '../../services/form-required.ts';
 import { createRecordScope } from '../../services/records/page-scope.ts';
 import { request } from '../../services/api.ts';
 import AttachmentField from '../AttachmentField.uvue';
 import LibraryCover from '../LibraryCover.uvue';
 import { statuses } from '../../services/records/contracts.ts';
+import { applyLibraryParse, libraryDraft, libraryPayload, setLibraryCover } from '../../services/records/library-form.ts';
 const modalMotion0 = ref<{ close: () => void } | null>(null);
 
-const props = defineProps<{ kind: string; record?: any; loading?: boolean; loadError?: string }>();
-const kind = computed(() => props.kind);
-const title = computed(() => (kind.value === 'movie' ? '观影' : '阅读记录')),
-  typeLabels = computed(() =>
-    kind.value === 'movie'
-      ? ['电影', '剧集', '动漫', '纪录片', '其他']
-      : ['书籍', '文章/网页'],
-  );
-const statusLabels = computed(() =>
-  kind.value === 'movie'
-    ? ['想看', '在看', '看过', '搁置']
-    : ['想读', '在读', '读完', '搁置'],
-);
+const props = defineProps<{ record?: any; loading?: boolean; loadError?: string }>();
+const typeLabels = ['电影', '剧集', '动漫', '纪录片', '其他'];
+const statusLabels = ['想看', '在看', '看过', '搁置'];
 const emit = defineEmits(['close', 'saved', 'deleted', 'retry']);
 const form = ref<any>(null), saving = ref(false), deleting = ref(false), formError = ref('');
 const scope = createRecordScope(() => emit('close'));
 watch(() => session.token, () => emit('close'), { flush: 'sync' });
 
 const parsing = ref(false), attachmentBusy = ref(false), created = ref(false);
-function base() { return kind.value === 'movie' ? '/movie' : '/read-record'; }
-function parseDouban(kind, url) { return request<any>(base() + '/parse-douban', 'GET', { url }); }
-function saveLibrary(kind, payload) { return request(base(), payload.id ? 'PUT' : 'POST', payload); }
-function fetchLibraryDetail(kind, id) { return request<any>(base() + '/' + encodeURIComponent(id)); }
-function setEditForm(detail) {
-  if (!detail?.id) throw Error('记录不存在或已删除');
+watch(() => [props.record, props.loading, props.loadError], () => {
+  if (props.loading || props.loadError) return;
   formError.value = '';
   created.value = false;
-  form.value = {
-    ...detail,
-    files: detail.fileId
-      ? [{ id: detail.fileId, fileName: detail.title + ' 封面' }]
-      : [],
-  };
-}
-
-function initialize() {
-  if (props.record?.id) { setEditForm(props.record); return; }
-form.value = {
-      title: '',
-      type: 1,
-      status: 'not_started',
-      director: '',
-      author: '',
-      url: '',
-      coverImgUrl: '',
-      fileId: '',
-      files: [],
-      totalProgress: 0,
-      currentProgress: 0,
-      startDate: null,
-      finishDate: null,
-      rating: null,
-      remark: '',
-    };
-}
-watch(() => [props.record, props.loading, props.loadError], () => { if (!props.loading && !props.loadError) initialize(); }, { immediate: true });
+  form.value = libraryDraft({ director: '', rating: null, ...props.record });
+}, { immediate: true });
 function setDate(key, date) {
   form.value[key] = date || null;
 }
@@ -98,20 +58,8 @@ async function parse() {
   formError.value = '';
   const id = form.value.id;
   try {
-    const result = await scope.wait(
-      parseDouban(kind.value, form.value.url.trim()),
-    );
-    if (form.value?.id === id) {
-      const fileId = form.value.fileId || result.fileId || '';
-      Object.assign(form.value, result, {
-        id,
-        coverImgUrl: result.coverImgUrl || '',
-        fileId,
-        files: fileId
-          ? [{ id: fileId, fileName: (result.title || form.value.title) + ' 封面' }]
-          : [],
-      });
-    }
+    const result = await scope.wait(request<any>('/movie/parse-douban', 'GET', { url: form.value.url.trim() }));
+    if (form.value?.id === id) applyLibraryParse(form.value, result);
   } catch (e) {
     if (e.name === 'PageInactiveError') return;
     formError.value = e.message;
@@ -121,53 +69,15 @@ async function parse() {
 }
 async function save() {
   if (saving.value || deleting.value || parsing.value || attachmentBusy.value) return;
-  if (missingRequired('library', form.value)) {
-    formError.value = '请输入名称';
-    return;
-  }
-  const payload = {
-    ...form.value,
-    title: form.value.title.trim(),
-    fileId: form.value.files.at(-1)?.id || '',
-  };
-  delete payload.files;
-  delete payload.coverImgUrl;
-  for (const key of ['totalProgress', 'currentProgress']) {
-    const value = Number(payload[key] || 0);
-    if (!Number.isInteger(value) || value < 0) {
-      formError.value = '进度必须为非负整数';
-      return;
-    }
-    payload[key] = value;
-  }
-  if (
-    payload.startDate &&
-    payload.finishDate &&
-    payload.finishDate < payload.startDate
-  ) {
-    formError.value = '完成日期不能早于开始日期';
-    return;
-  }
-  if (
-    kind.value === 'movie' &&
-    payload.rating != null &&
-    payload.rating !== ''
-  ) {
-    const rating = Number(payload.rating);
-    if (!Number.isInteger(rating) || rating < 1 || rating > 5) {
-      formError.value = '评分必须为1至5';
-      return;
-    }
-    payload.rating = rating;
-  }
   saving.value = true;
   formError.value = '';
   try {
+    const payload = libraryPayload(form.value, true);
     if (!created.value) {
-      await scope.wait(saveLibrary(kind.value, payload));
+      await scope.wait(request('/movie', payload.id ? 'PUT' : 'POST', payload));
       created.value = true;
     }
-    const updated = payload.id ? await scope.wait(fetchLibraryDetail(kind.value, payload.id)) : null;
+    const updated = payload.id ? await scope.wait(request<any>('/movie/' + encodeURIComponent(payload.id))) : null;
     emit('saved', updated, payload.status);
 
   } catch (e) {
@@ -181,7 +91,7 @@ async function save() {
 async function remove(item) {
   if (saving.value || deleting.value || parsing.value || attachmentBusy.value) return;
   deleting.value = true;
-  try { await scope.wait(request(base() + '/' + encodeURIComponent(item.id), 'DELETE')); emit('deleted', item.id); }
+  try { await scope.wait(request('/movie/' + encodeURIComponent(item.id), 'DELETE')); emit('deleted', item.id); }
   finally { deleting.value = false; }
 }
 
@@ -189,7 +99,7 @@ async function remove(item) {
 <template>
 <ModalMotion><AdaptiveModal ref="modalMotion0" :loading="loading" :load-error="loadError" :loading-rows="5" @retry="emit('retry')"
         v-if="form || loading || loadError"
-        :label="'编辑' + title"
+        label="编辑观影"
         :busy="deleting || saving || parsing || attachmentBusy"
         @close="emit('close')"
         ><template #loading><FormSkeleton :rows="['field', 'field', 'pair', 'pair', 'pair', 'pair', 'textarea', 'attachment']" :footer="true" /></template><view class="library-link-row ui-field-row"
@@ -217,7 +127,7 @@ async function remove(item) {
           @update:model-value="
             form.status = statuses[statusLabels.indexOf($event)]
           " />
-        </view><view v-if="kind === 'movie'" class="ui-field-row">
+        </view><view class="ui-field-row">
           <FormField compact stretch
           label="导演/演员"
           v-model="form.director" />
@@ -229,19 +139,16 @@ async function remove(item) {
           @update:model-value="
             form.rating = $event === '未评分' ? null : Number($event)
           " />
-        </view><FormField
-          v-if="kind !== 'movie' && form.type === 1"
-          label="作者"
-          v-model="form.author" /><view class="ui-field-row">
+        </view><view class="ui-field-row">
           <FormField compact stretch
-          :label="kind === 'movie' ? (form.type === 1 ? '已看时长（分钟）' : form.type === 2 ? '当前集数' : '当前进度') : '当前页数/进度'"
+          :label="form.type === 1 ? '已看时长（分钟）' : form.type === 2 ? '当前集数' : '当前进度'"
           input-type="number"
           v-model="form.currentProgress" />
           <FormField compact stretch
-          :label="kind === 'movie' ? (form.type === 1 ? '总时长（分钟）' : form.type === 2 ? '总集数' : '总进度') : '总页数/进度'"
+          :label="form.type === 1 ? '总时长（分钟）' : form.type === 2 ? '总集数' : '总进度'"
           input-type="number"
           v-model="form.totalProgress" />
-        </view><text v-if="kind === 'movie' && form.type > 2" class="library-progress-hint">按集数或分钟填写，保持两项单位一致</text><view class="ui-field-row">
+        </view><text v-if="form.type > 2" class="library-progress-hint">按集数或分钟填写，保持两项单位一致</text><view class="ui-field-row">
           <FormField compact stretch
           label="开始日期"
           kind="date"
@@ -254,19 +161,15 @@ async function remove(item) {
           :model-value="form.finishDate || ''"
           @update:model-value="setDate('finishDate', $event)" />
         </view><FormField
-          :label="kind === 'movie' ? '短评/备注' : '书评'"
+          label="短评/备注"
           kind="textarea" textarea-size="compact"
-          v-model="form.remark" /><view v-if="!form.fileId && form.coverImgUrl" class="library-external-cover"><LibraryCover file-id="" :url="form.coverImgUrl" :title="form.title" :kind="kind" /></view><MobileButton v-if="form.retryCoverWorkId && !form.fileId" label="重试封面" variant="quiet" :loading="retryingCover" @click="retryCover" /><AttachmentField
+          v-model="form.remark" /><view v-if="!form.fileId && form.coverImgUrl" class="library-external-cover"><LibraryCover file-id="" :url="form.coverImgUrl" :title="form.title" kind="movie" /></view><MobileButton v-if="form.retryCoverWorkId && !form.fileId" label="重试封面" variant="quiet" :loading="retryingCover" @click="retryCover" /><AttachmentField
           :files="form.files"
           images-only :max-count="1"
           upload-path="/file/upload"
-          :form-data="{ bizType: kind === 'movie' ? 'movie_cover' : 'read_cover' }"
+          :form-data="{ bizType: 'movie_cover' }"
           :disabled="deleting || saving || parsing"
-          @update:files="
-            form.files = $event.slice(-1);
-            form.fileId = form.files.at(-1)?.id || '';
-            form.coverImgUrl = '';
-          "
+          @update:files="setLibraryCover(form, $event)"
           @busy-change="attachmentBusy = $event" /><text
           v-if="formError"
           class="library-error ui-section ui-type-body"

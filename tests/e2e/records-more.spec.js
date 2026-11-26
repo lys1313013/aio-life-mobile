@@ -45,13 +45,15 @@ test('微信读书下拉同步与失败重试保留数据', async ({ page }) => 
   await expect(page.getByRole('alert')).toHaveCount(0);
 });
 
+const oldCoverKey = '57e6baad-a51b-432e-8159-021691627a6e';
+const uploadedCoverKey = 'c16e7891-5044-4608-8be0-283fcf16c374';
 for (const kind of ['movie', 'read']) {
   for (const customCover of [true, false]) test(`${kind} 豆瓣解析${customCover ? '保留个人附件' : '使用共享封面'}且不提交预览 URL`, async ({ page }) => {
     const state = await setup(page);
     await page.route('**/api/file/preview/*', route => route.fulfill({ contentType: 'image/png', body: coverImage }));
     const base = kind === 'movie' ? '/movie' : '/read-record';
     const doubanUrl = `https://${kind === 'movie' ? 'movie' : 'book'}.douban.com/subject/123/`;
-    state.movies[0].fileId = customCover ? 'old-cover-id' : '';
+    state.movies[0].fileId = customCover ? oldCoverKey : '';
     await page.route('**/api/creative-works/123/cover', route => route.fulfill({ contentType: 'image/png', body: coverImage }));
     await page.route(`**/api${base}/parse-douban?**`, route => route.fulfill({
       json: { code: 0, data: { title: '新豆瓣条目', url: doubanUrl, fileId: null, coverImgUrl: '/creative-works/123/cover' } },
@@ -59,20 +61,25 @@ for (const kind of ['movie', 'read']) {
     await page.goto(`/#/pages/records/library?kind=${kind}`);
     await page.getByRole('button', { name: kind === 'movie' ? '编辑记录' : '编辑《' + state.movies[0].title + '》', exact: true }).click();
     // Vapor H5 的 input 外层标签没有原生 type 属性，避免 Playwright 全局角色推断异常。
-    const dialog = page.locator('[role="dialog"]');
-    await expect(dialog.locator('[aria-label="封面链接"]')).toHaveCount(0);
-    await expect(dialog.locator('[role="button"][aria-label="添加文件"]')).toHaveCount(0);
-    await dialog.locator('[aria-label="豆瓣链接"] input').fill(doubanUrl);
-    await dialog.locator('[role="button"][aria-label="解析豆瓣链接"]').click();
+    const editor = page.locator(kind === 'read' ? '.read-edit-page' : '[role="dialog"]');
+    await expect(editor.locator('[aria-label="封面链接"]')).toHaveCount(0);
+    await expect(editor.locator('[role="button"][aria-label="添加文件"]')).toHaveCount(0);
+    const beforeCover = kind === 'read' ? await editor.locator('.read-cover').boundingBox() : null;
+    await editor.locator('[aria-label="豆瓣链接"] input').fill(doubanUrl);
+    await editor.locator('[role="button"][aria-label="解析豆瓣链接"]').click();
     const cover = customCover
-      ? dialog.locator('.attachment-image[aria-label="新豆瓣条目 封面"] img')
-      : dialog.locator('.library-external-cover .library-cover-image img');
+      ? editor.locator('.attachment-image[aria-label="新豆瓣条目 封面"] img')
+      : editor.locator('.library-external-cover .library-cover-image img');
     await expect(cover).toHaveJSProperty('naturalWidth', 72);
-    await expect(dialog.locator('.attachment-tile')).toHaveCount(customCover ? 1 : 0);
-    await dialog.locator('[role="button"][aria-label="保存"]').click();
-    await expect(dialog).toHaveCount(0);
+    await expect(editor.locator('.attachment-tile')).toHaveCount(customCover ? 1 : 0);
+    if (kind === 'read' && !customCover) {
+      await expect(editor.getByRole('button', { name: '更换封面', exact: true })).toBeVisible();
+      expect((await editor.locator('.read-cover').boundingBox()).height).toBeCloseTo(beforeCover.height, 0);
+    }
+    await editor.locator('[role="button"][aria-label="保存"]').click();
+    await expect(editor).toHaveCount(0);
     const body = state.writes.filter(write => write.path === `/api${base}`).at(-1).body;
-    expect(body.fileId).toBe(customCover ? 'old-cover-id' : '');
+    expect(body.fileId).toBe(customCover ? oldCoverKey : null);
     expect(body.title).toBe('新豆瓣条目');
     expect(body.url).toBe(doubanUrl);
     expect(body).not.toHaveProperty('coverImgUrl');
@@ -82,40 +89,40 @@ for (const kind of ['movie', 'read']) {
     const state = await setup(page);
     await page.route('**/api/file/preview/*', route => route.fulfill({ contentType: 'image/png', body: coverImage }));
     const base = kind === 'movie' ? '/movie' : '/read-record';
-    state.movies[0].fileId = 'old-cover-id';
+    state.movies[0].fileId = oldCoverKey;
     state.movies[0].coverImgUrl = 'https://img1.doubanio.com/old-cover.jpg';
     let uploaded = false;
     await page.route('**/api/file/upload', async route => {
       expect(route.request().method()).toBe('POST');
       expect(route.request().postDataBuffer().toString()).toContain(kind === 'movie' ? 'movie' : 'read');
       uploaded = true;
-      await route.fulfill({ json: { code: 0, data: { id: 'uploaded-cover-id', fileName: 'custom-cover.png' } } });
+      await route.fulfill({ json: { code: 0, data: { id: uploadedCoverKey, fileName: 'custom-cover.png' } } });
     });
     await page.goto(`/#/pages/records/library?kind=${kind}`);
     await page.getByRole('button', { name: kind === 'movie' ? '编辑记录' : '编辑《' + state.movies[0].title + '》', exact: true }).click();
     // Vapor H5 的 input 外层标签没有原生 type 属性，避免 Playwright 全局角色推断异常。
-    const dialog = page.locator('[role="dialog"]');
-    await dialog.locator('[role="button"][aria-label="移除附件"]').click();
+    const editor = page.locator(kind === 'read' ? '.read-edit-page' : '[role="dialog"]');
+    await editor.locator('[role="button"][aria-label="移除附件"]').click();
     const chooser = page.waitForEvent('filechooser');
-    await dialog.locator('[role="button"][aria-label="添加图片"]').click();
+    await editor.getByRole('button', { name: kind === 'read' ? '添加封面' : '添加图片', exact: true }).click();
     await (await chooser).setFiles({
       name: 'custom-cover.png', mimeType: 'image/png',
       buffer: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=', 'base64'),
     });
-    await expect(dialog.locator('.attachment-image[aria-label="custom-cover.png"] img')).toHaveJSProperty('naturalWidth', 72);
-    await expect(dialog.locator('[role="button"][aria-label="添加图片"]')).toHaveCount(0);
-    await dialog.locator('[role="button"][aria-label="保存"]').click();
-    await expect(dialog).toHaveCount(0);
+    await expect(editor.locator('.attachment-image[aria-label="custom-cover.png"] img')).toHaveJSProperty('naturalWidth', 72);
+    await expect(editor.getByRole('button', { name: kind === 'read' ? '添加封面' : '添加图片', exact: true })).toHaveCount(0);
+    await editor.locator('[role="button"][aria-label="保存"]').click();
+    await expect(editor).toHaveCount(0);
     expect(uploaded).toBe(true);
     let body = state.writes.filter(write => write.path === `/api${base}`).at(-1).body;
-    expect(body.fileId).toBe('uploaded-cover-id');
+    expect(body.fileId).toBe(uploadedCoverKey);
     expect(body).not.toHaveProperty('coverImgUrl');
     await page.getByRole('button', { name: kind === 'movie' ? '编辑记录' : '编辑《' + state.movies[0].title + '》', exact: true }).click();
-    await dialog.locator('[role="button"][aria-label="移除附件"]').click();
-    await dialog.locator('[role="button"][aria-label="保存"]').click();
-    await expect(dialog).toHaveCount(0);
+    await editor.locator('[role="button"][aria-label="移除附件"]').click();
+    await editor.locator('[role="button"][aria-label="保存"]').click();
+    await expect(editor).toHaveCount(0);
     body = state.writes.filter(write => write.path === `/api${base}`).at(-1).body;
-    expect(body.fileId).toBe('');
+    expect(body.fileId).toBeNull();
     expect(body).not.toHaveProperty('coverImgUrl');
   });
 }

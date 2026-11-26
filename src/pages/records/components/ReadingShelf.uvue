@@ -1,13 +1,13 @@
 <script setup lang="ts">
 import LibraryCover from '../../../components/LibraryCover.uvue'
 import AppIcon from '../../../components/AppIcon.uvue'
-import LoadingIndicator from '../../../components/LoadingIndicator.uvue'
 import ContentSkeleton from '../../../components/ContentSkeleton.uvue'
+import ImagePlaceholder from '../../../components/ImagePlaceholder.uvue'
 import { isDark } from '../../../services/theme.ts'
 
 defineProps<{
   label: string; status: string; items: any[]; total: number | null;
-  hasMore?: boolean; placeholders?: number; editing?: string
+  hasMore?: boolean; placeholders?: number
 }>()
 const emit = defineEmits(['open', 'all'])
 function finishedDate(date: string) {
@@ -34,15 +34,14 @@ function rankingDescription(rankings: Array<{ name: string; rank: number | null 
     </view>
     <view class="shelf-grid ui-gap-md">
       <view v-for="n in placeholders || 0" :key="n" class="shelf-book ui-gap-sm">
-        <view class="shelf-cover"><ContentSkeleton variant="cover" /></view>
+        <view class="shelf-cover"><ImagePlaceholder loading /></view>
         <view class="shelf-copy ui-gap-xs"><ContentSkeleton variant="caption" /><ContentSkeleton v-if="status === 'completed'" variant="caption" /></view>
       </view>
       <view v-for="book in items" :key="book.id" class="shelf-book ui-gap-sm" role="button" tabindex="0"
-        :aria-label="'编辑《' + book.title + '》'" :aria-description="rankingDescription(book.rankings)" :aria-busy="editing === book.id"
+        :aria-label="'编辑《' + book.title + '》'" :aria-description="rankingDescription(book.rankings)"
         @click="emit('open', book)" @keydown.enter.self="emit('open', book)" @keydown.space.self.prevent="emit('open', book)">
         <view class="shelf-cover">
           <LibraryCover :file-id="book.fileId || ''" :url="book.coverImgUrl || ''" :title="book.title" kind="read" compact />
-          <view v-if="editing === book.id" class="shelf-opening"><LoadingIndicator compact label="正在加载记录详情" /></view>
         </view>
         <view class="shelf-copy ui-gap-xs">
           <text class="shelf-title" :class="{ 'shelf-text-dark': isDark }" :max-lines="2">{{ book.title }}</text>
@@ -96,7 +95,6 @@ function rankingDescription(rankings: Array<{ name: string; rank: number | null 
 .shelf-rank-name-dark { color: #ffdc96; }
 .shelf-text-dark { color: #eeeeef; }
 .shelf-secondary-dark { color: $text-secondary-dark; }
-.shelf-opening { position: absolute; top: 0; right: 0; bottom: 0; left: 0; align-items: center; justify-content: center; background-color: rgba(0,0,0,.45); }
 /* #ifdef WEB */
 .shelf-book:focus-visible, .shelf-all:focus-visible { outline: 2px solid #427bea; outline-offset: $space-micro; }
 /* #endif */

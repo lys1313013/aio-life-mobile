@@ -12,7 +12,7 @@ function cover(title, color, width = 100) {
 function rows() {
   return ['模拟阅读', '模拟哲学', '模拟思考', '模拟故事', '模拟文集'].map((title, index) => ({
     id: String(index + 1), title, status: index < 2 ? 'in_progress' : 'not_started',
-    coverImgUrl: cover(title, ['#a53648', '#e8bd4e', '#ddd9ce', '#8bc9ca', '#ecd3a0'][index], index === 1 ? 75 : 100),
+    coverImgUrl: index === 4 ? null : cover(title, ['#a53648', '#e8bd4e', '#ddd9ce', '#8bc9ca', '#ecd3a0'][index], index === 1 ? 75 : 100),
   }));
 }
 async function geometry(card) {
@@ -27,7 +27,7 @@ async function geometry(card) {
 for (const width of [390, 820, 1440]) for (const theme of ['light', 'dark']) {
   test(`阅读双排封面完整展示及刷新稳定 ${width} ${theme}`, async ({ page, apiMock }, info) => {
     await page.setViewportSize({ width, height: 1000 });
-    await page.emulateMedia({ colorScheme: theme });
+    await page.emulateMedia({ colorScheme: theme, reducedMotion: 'no-preference' });
     await page.addInitScript(() => localStorage.setItem('aio-life-mobile.access-token.v1', 'reading-layout-fixture'));
     const state = { pending: gate(), rows: rows(), fail: false };
     const data = {
@@ -50,10 +50,15 @@ for (const width of [390, 820, 1440]) for (const theme of ['light', 'dark']) {
     try {
       await page.goto('/#/pages/home/index');
       await expect(card.locator('.reading-placeholder')).toHaveCount(3);
+      await expect(card.getByRole('status', { name: '正在加载封面', exact: true })).toHaveCount(3);
+      await expect(card.locator('.skeleton-cover-shimmer').first()).toHaveCSS('animation-name', /skeleton-cover-sweep/);
       await card.screenshot({ path: info.outputPath('loading.png') });
       state.pending.release();
       await expect(card.locator('.reading-book')).toHaveCount(5);
       await expect(card.locator('.reading-placeholder, .image-placeholder')).toHaveCount(0);
+      const illustration = card.getByRole('button', { name: '编辑模拟文集', exact: true }).locator('.library-cover-image img');
+      await expect(illustration).toHaveAttribute('src', /reading-cover.*\.jpg/);
+      await expect.poll(() => illustration.evaluate(img => img.naturalWidth)).toBeGreaterThan(0);
       const loaded = await geometry(card);
       expect(loaded.height).toBeLessThanOrEqual(width >= 1024 ? 280 : width >= 640 ? 250 : 240);
       for (const book of loaded.books) {
@@ -80,10 +85,11 @@ for (const width of [390, 820, 1440]) for (const theme of ['light', 'dark']) {
 
       // 第二排最后一本必须可直接点击，不能被卡片 overflow 裁切。
       await card.getByRole('button', { name: '编辑模拟文集', exact: true }).click();
-      const dialog = page.getByRole('dialog');
-      await expect(dialog.locator('[aria-label="名称"] input')).toHaveValue('模拟文集');
-      await dialog.getByRole('button', { name: '取消', exact: true }).click();
-      await expect(dialog).toHaveCount(0);
+      const editor = page.locator('.read-edit-page');
+      await expect(page).toHaveURL(/read-edit\?id=5$/);
+      await expect(editor.locator('[aria-label="书名"] input')).toHaveValue('模拟文集');
+      await editor.getByRole('button', { name: '取消', exact: true }).click();
+      await expect(editor).toHaveCount(0);
       state.rows = [rows()[0]];
       await card.getByRole('button', { name: '刷新阅读', exact: true }).click();
       await expect(card.locator('.reading-book')).toHaveCount(1);

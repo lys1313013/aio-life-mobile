@@ -43,6 +43,9 @@ test('完整字符串 ID 与父菜单锁，兼容新旧 Web 路由', () => {
 test('共用页面按模式隔离菜单锁，详情/新增参数保留', () => {
   assert.equal(matchesNativeMenu('/pages/records/library?kind=movie', '/record/read'), false);
   assert.equal(matchesNativeMenu('/pages/records/library?kind=read&create=1', '/record/read'), true);
+  assert.equal(matchesNativeMenu('/pages/records/read-edit', '/record/read'), true);
+  assert.equal(matchesNativeMenu('/pages/records/read-edit?id=9223372036854775807', '/my-hub/read-record'), true);
+  assert.equal(matchesNativeMenu('/pages/records/read-edit?id=9223372036854775807', '/record/movie'), false);
   assert.equal(matchesNativeMenu('/pages/admin/index?kind=menus', '/system/user'), false);
   assert.equal(matchesNativeMenu('/pages/tasks/todo?detailId=123&taskId=456', '/task-center/todo'), true);
 });

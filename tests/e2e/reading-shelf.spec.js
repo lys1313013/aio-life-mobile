@@ -15,8 +15,15 @@ test('阅读书架的六本预览、榜单标识、刷新保留和分组返回',
       : [],
     coverImgUrl: '/mock-shelf/' + i + '.svg',
   }));
-  await page.route('**/mock-shelf/*.svg', route => {
+  let releaseCover;
+  const pendingCover = new Promise(resolve => { releaseCover = resolve; });
+  let coverAttempts = 0;
+  await page.route('**/mock-shelf/*.svg', async route => {
     const index = Number(new URL(route.request().url()).pathname.split('/').pop().split('.')[0]);
+    if (index === 3 && ++coverAttempts === 1) {
+      await pendingCover;
+      return route.abort();
+    }
     return route.fulfill({ contentType: 'image/svg+xml', body:
       '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 54 72"><rect width="54" height="72" fill="' + colors[index % colors.length] +
       '"/><circle cx="40" cy="63" r="23" fill="#fff" opacity=".16"/><text x="6" y="17" fill="white" font-size="8">' +
@@ -26,6 +33,7 @@ test('阅读书架的六本预览、榜单标识、刷新保留和分组返回',
   let release, pending = new Promise(resolve => { release = resolve; });
   let fail = false, empty = false;
   await page.setViewportSize({ width: 390, height: 844 });
+  await page.emulateMedia({ reducedMotion: 'no-preference' });
   await page.addInitScript(() => localStorage.setItem('aio-life-mobile.access-token.v1', 'mock-reading'));
   apiMock({
     'GET /api/user/info': ok({ id: '1', nickname: '模拟读者' }),
@@ -45,6 +53,7 @@ test('阅读书架的六本预览、榜单标识、刷新保留和分组返回',
     const shelf = page.getByRole('group', { name: '读过', exact: true });
     const covers = shelf.locator('.shelf-cover');
     await expect(covers).toHaveCount(6);
+    await expect(shelf.getByRole('status', { name: '正在加载封面', exact: true })).toHaveCount(6);
     const before = await covers.first().boundingBox();
     release();
     await expect(shelf.locator('.shelf-count')).toHaveText('10本');
@@ -55,14 +64,46 @@ test('阅读书架的六本预览、榜单标识、刷新保留和分组返回',
     const unnumbered = page.getByRole('button', { name: '编辑《' + titles[1] + '》', exact: true });
     await expect(unnumbered.locator('.shelf-badge')).toHaveText('豆瓣 Top250');
     await expect(page.locator('.shelf-date')).toHaveCount(6);
+    const firstCompleted = shelf.getByRole('button', { name: '编辑《' + titles[3] + '》', exact: true });
+    const pendingImage = firstCompleted.getByRole('status', { name: '正在加载封面', exact: true });
+    const sweep = pendingImage.locator('.skeleton-cover-shimmer');
+    await expect(sweep).toHaveCSS('animation-name', /skeleton-cover-sweep/);
+    const [leftOffset, rightOffset] = await sweep.evaluate(async element => {
+      const [animation] = element.getAnimations();
+      animation.pause();
+      await animation.ready;
+      const duration = Number(animation.effect.getComputedTiming().duration);
+      const offsets = [0.35, 0.65].map(progress => {
+        animation.currentTime = progress * duration;
+        return element.getBoundingClientRect().left - element.parentElement.getBoundingClientRect().left;
+      });
+      animation.currentTime = duration / 2;
+      return offsets;
+    });
+    expect(leftOffset).toBeLessThan(0);
+    expect(rightOffset).toBeGreaterThan(0);
     for (const width of [320, 390, 768, 1440]) {
       await page.setViewportSize({ width, height: 844 });
       for (const theme of ['light', 'dark']) {
         await page.emulateMedia({ colorScheme: theme });
         await expect(page.locator('.library-page')).toHaveClass(theme === 'dark' ? /library-page-dark/ : /^(?!.*library-page-dark)/);
+        await expect(pendingImage).toBeVisible();
         await page.screenshot({ path: info.outputPath('reading-' + width + '-' + theme + '.png') });
       }
     }
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    await expect(pendingImage).toBeVisible();
+    await expect(sweep).toHaveCSS('animation-name', 'none');
+    const pendingBox = await firstCompleted.locator('.shelf-cover').boundingBox();
+    releaseCover();
+    const retry = firstCompleted.getByRole('button', { name: '重试封面', exact: true });
+    await expect(retry).toBeVisible();
+    await retry.click();
+    await expect(pendingImage).toHaveCount(0);
+    await expect(retry).toHaveCount(0);
+    const loadedBox = await firstCompleted.locator('.shelf-cover').boundingBox();
+    expect(loadedBox.width).toBe(pendingBox.width);
+    expect(loadedBox.height).toBe(pendingBox.height);
     await page.setViewportSize({ width: 390, height: 500 });
     const navigation = page.locator('.page-navigation');
     const scrollArea = page.locator('.mobile-page-scroll');
@@ -95,5 +136,5 @@ test('阅读书架的六本预览、榜单标识、刷新保留和分组返回',
     await page.getByRole('button', { name: '重试', exact: true }).click();
     await expect(page.getByText('暂无记录', { exact: true })).toBeVisible();
     await expect(page.locator('.shelf-book')).toHaveCount(0);
-  } finally { release(); }
+  } finally { release(); releaseCover(); }
 });

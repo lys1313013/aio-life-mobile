@@ -203,6 +203,11 @@ function unlockCard(card) {
 function open(card, item = null, create = false) {
   if (!props.active || !states[card.key].available || states[card.key].busy) return
   if ((item || create) && recordOrders[card.key]?.clickBlocked()) return
+  if (card.key === 'read' && (item || create)) {
+    if (states.read.locked) return
+    uni.navigateTo({ url: '/pages/records/read-edit' + (item ? '?id=' + encodeURIComponent(recordId(item.id)) : '') })
+    return
+  }
   if (card.key === 'goal' && (item || create)) {
     if (states.goal.locked) return
     goalEditor.value?.open(item, true)
@@ -323,7 +328,7 @@ function placeholderHeight(card) {
     <view class="business-dialogs" @touchstart.stop @mousedown.stop>
     <ModalMotion><GoalEditor v-if="states.goal && !states.goal.locked" ref="goalEditor" :save-record="saveGoal" :delete-record="deleteGoal" @saved="goalSaved" @deleted="goalDeleted" /></ModalMotion>
     <template v-if="selection">
-      <ModalMotion><LibraryRecordEditor :loading="selection.loading" :load-error="selection.error" @retry="loadDetail" v-if="selection.card.paged" :kind="selection.card.key" :record="selection.record" @close="closeDetail" @saved="detailChanged" @deleted="detailChanged" /></ModalMotion>
+      <ModalMotion><LibraryRecordEditor :loading="selection.loading" :load-error="selection.error" @retry="loadDetail" v-if="selection.card.key === 'movie'" :record="selection.record" @close="closeDetail" @saved="detailChanged" @deleted="detailChanged" /></ModalMotion>
       <ModalMotion><AnniversaryRecordEditor :loading="selection.loading" :load-error="selection.error" @retry="loadDetail" v-if="selection.card.key === 'anniversary'" :record="selection.record" home @close="closeDetail" @saved="detailChanged" @deleted="detailChanged" /></ModalMotion>
       <MembershipRecordEditor :loading="selection.loading" :load-error="selection.error" @retry="loadDetail" v-if="selection.card.key === 'member'" :record="selection.record" @close="closeDetail" @saved="detailChanged" @deleted="detailChanged" />
     </template>

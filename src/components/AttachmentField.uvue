@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onUnmounted, ref, watch } from 'vue';
 import AppIcon from './AppIcon.uvue';
-import ContentSkeleton from './ContentSkeleton.uvue';
+import ImagePlaceholder from './ImagePlaceholder.uvue';
 import { session } from '../services/session.ts';
 import MobileButton from './MobileButton.uvue';
 import { isDark, themeClass } from '../services/theme.ts';
@@ -19,6 +19,7 @@ const props = withDefaults(
     readonly?: boolean;
     imagesOnly?: boolean;
     maxCount?: number;
+    cover?: boolean;
   }>(),
   { formData: () => ({}) },
 );
@@ -146,9 +147,10 @@ function remove(file) {
 }
 </script>
 <template>
-  <view class="attachment-field ui-gap-sm ui-mb-section" :class="themeClass('attachment-field')">
+  <view class="attachment-field ui-gap-sm ui-mb-section"
+    :class="[themeClass('attachment-field'), { 'attachment-field-cover': cover }]">
     <view v-if="imageFiles.length" class="attachment-images">
-      <view v-for="file in imageFiles" :key="file.id" class="attachment-tile">
+      <view v-for="file in imageFiles" :key="file.id" class="attachment-tile" :class="{ 'attachment-cover-tile': cover }">
         <button hover-class="none" role="button" class="attachment-preview" :class="themeClass('attachment-preview')"
           :aria-label="thumbnails[file.id]?.error ? '重试图片' : '预览附件'"
           :aria-busy="!thumbnails[file.id]?.loaded && !thumbnails[file.id]?.error"
@@ -163,9 +165,7 @@ function remove(file) {
             <AppIcon name="ant-design:reload-outlined" :size="20" color="#8b8f99" />
             <text class="attachment-caption">加载失败</text>
           </view>
-          <view v-else-if="!thumbnails[file.id]?.loaded" class="attachment-status">
-            <ContentSkeleton variant="cover" label="正在加载附件图片" />
-          </view>
+          <ImagePlaceholder v-else-if="!thumbnails[file.id]?.loaded" loading label="正在加载附件图片" />
         </button>
         <button v-if="!readonly" role="button" aria-label="移除附件" class="attachment-remove"
           :class="{ 'attachment-remove-disabled': disabled || uploading }"
@@ -189,16 +189,22 @@ function remove(file) {
       <MobileButton v-if="!readonly" label="移除附件" icon="ant-design:close-outlined" variant="ghost"
         :disabled="disabled || uploading" @click="remove(file)" />
     </view>
-    <view v-if="!readonly && canAdd" class="attachment-actions">
-      <button role="button" aria-label="添加图片" class="attachment-add"
-        :class="[themeClass('attachment-add'), { 'attachment-add-disabled': disabled && !uploading }]"
-        :style="{ backgroundColor: isDark ? '#292c32' : '#f1f3f6' }"
+    <view v-if="!readonly && canAdd" class="attachment-actions" :class="{ 'attachment-cover-tile': cover }">
+      <view v-if="cover && $slots.coverPreview" class="attachment-cover-preview"><slot name="coverPreview" /></view>
+      <button role="button" :aria-label="cover ? ($slots.coverPreview ? '更换封面' : '添加封面') : '添加图片'" class="attachment-add"
+        :class="[themeClass('attachment-add'), { 'attachment-add-disabled': disabled && !uploading, 'attachment-cover-add': cover, 'attachment-cover-replace': cover && $slots.coverPreview }, themeClass({ 'attachment-cover-add': cover, 'attachment-cover-replace': cover && $slots.coverPreview })]"
+        :style="cover ? {} : { backgroundColor: isDark ? '#292c32' : '#f1f3f6' }"
         :aria-busy="uploading && !failedDocument" :aria-disabled="disabled || uploading" :disabled="disabled || uploading"
         hover-class="none" @click="upload(false)">
         <view v-if="uploading && !failedDocument" class="attachment-upload-spinner" role="status" aria-label="正在上传图片" />
         <template v-else-if="imageUploadError">
           <AppIcon name="ant-design:reload-outlined" :size="24" :color="isDark ? '#a1a1aa' : '#71717a'" />
-          <text class="attachment-caption" role="alert" :aria-label="error">上传失败，点击重试</text>
+          <text v-if="!cover || !$slots.coverPreview" class="attachment-caption" role="alert" :aria-label="error">上传失败，点击重试</text>
+        </template>
+        <slot v-else-if="cover && !$slots.coverPreview && $slots.emptyCover" name="emptyCover" />
+        <template v-else-if="cover">
+          <AppIcon :name="$slots.coverPreview ? 'ant-design:edit-outlined' : 'lucide:book-open'" :size="$slots.coverPreview ? 18 : 24" />
+          <text v-if="!$slots.coverPreview" class="attachment-cover-label" :class="themeClass('attachment-cover-label')">添加封面</text>
         </template>
         <view v-else class="attachment-add-icon">
           <AppIcon name="ant-design:picture-outlined" :size="28" :color="isDark ? '#a1a1aa' : '#8b8f99'" />
@@ -212,6 +218,7 @@ function remove(file) {
         :loading="uploading && failedDocument" :disabled="disabled || uploading" @click="upload(true)" />
       <!-- #endif -->
     </view>
+    <text v-if="cover && $slots.coverPreview && imageUploadError" class="attachment-cover-label" :class="themeClass('attachment-cover-label')" role="alert">{{ error }}</text>
     <view v-if="error && (failedFile || failedDocument)" class="attachment-error" role="alert">
       <text class="attachment-caption">{{ error }}</text>
       <MobileButton :label="failedFile ? '重试预览' : '重试上传'" icon="ant-design:reload-outlined" variant="quiet"
@@ -225,6 +232,8 @@ function remove(file) {
 @use '../styles/typography' as *;
 @use '../styles/spacing.scss';
 @use '../styles/spacing-tokens' as *;
+@use '../styles/theme-tokens' as *;
+@use '../styles/text-colors' as *;
 
 .attachment-field { color: #27272a; }
 .attachment-field-dark { color: #eeeeef; }
@@ -299,6 +308,21 @@ function remove(file) {
 .attachment-add-plus { position: absolute; right: -$space-detail; bottom: -$space-detail; width: 18px; height: 18px; align-items: center; justify-content: center; border-radius: 50%; background-color: #f1f3f6; }
 .attachment-add-plus-dark { background-color: #292c32; }
 .attachment-add-disabled { opacity: 0.45; }
+.attachment-field-cover { margin-bottom: 0; }
+// 竖封面共用 2:3 的展示和上传区域。
+.attachment-cover-tile { position: relative; width: 100px; height: 150px; }
+.attachment-cover-preview { width: 100%; height: 100%; border-radius: 10px; overflow: hidden; }
+.attachment-cover-add { position: relative; overflow: hidden; width: 100%; height: 100%; border: 0; border-radius: 10px; @include button-background($theme-page-light); }
+.attachment-cover-add-dark { @include button-background($theme-surface-dark); }
+.attachment-cover-replace {
+  position: absolute; right: 0; bottom: 0;
+  width: $space-controlMin; height: $space-controlMin;
+  border-radius: 10px 0 10px 0;
+  @include button-background($theme-surface-light);
+}
+.attachment-cover-replace-dark { @include button-background($theme-surface-dark); }
+.attachment-cover-label { color: $text-secondary-light; @include type-style('caption'); }
+.attachment-cover-label-dark { color: $text-secondary-dark; }
 .attachment-upload-spinner { width: 22px; height: 22px; box-sizing: border-box; border: 2px solid rgba(139, 143, 153, 0.25); border-top-color: #8b8f99; border-radius: 50%; animation: attachment-upload-spin 0.8s linear infinite; }
 @keyframes attachment-upload-spin { to { transform: rotate(360deg); } }
 .attachment-preview, .attachment-document, .attachment-remove, .attachment-add { @include borderless-button; }

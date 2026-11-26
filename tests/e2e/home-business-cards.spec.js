@@ -383,7 +383,7 @@ test('首页会员新增失败恢复、分类切换及取消后重开', async ({
 });
 
 for (const kind of ['read', 'movie', 'member']) {
-  test(`首页 ${kind} 条目在首页直接弹窗，保存后同步卡片`, async ({ page }) => {
+  test(`首页 ${kind} 条目从首页进入编辑，保存后同步卡片`, async ({ page }) => {
     await page.setViewportSize({ width: 820, height: 1000 });
     // 本场景编辑有效会员，固定时间起点，避免自然日期越过夹具的到期日。
     if (kind === 'member') await page.clock.install({ time: new Date('2026-10-29T04:00:00Z') });
@@ -415,19 +415,23 @@ for (const kind of ['read', 'movie', 'member']) {
     await page.reload();
     const card = page.locator(`[aria-label="${label}首页卡片"]`);
     await card.getByRole('button', { name: '编辑' + (row.title || row.name), exact: true }).click();
-    const dialog = page.getByRole('dialog');
-    await expect(dialog).toBeVisible();
-    await expect(page).toHaveURL(/#\/(?:pages\/home\/index)?$/);
+    const editor = kind === 'read' ? page.locator('.read-edit-page') : page.getByRole('dialog');
+    await expect(editor).toBeVisible();
+    await expect(page).toHaveURL(kind === 'read' ? /read-edit\?id=9223372036854775807$/ : /#\/(?:pages\/home\/index)?$/);
     if (kind === 'member') {
-      await dialog.getByRole('button', { name: '1年', exact: true }).click();
-      await expect(dialog.locator('.calendar-trigger[aria-label="到期日期"]')).toContainText('2027-01-01');
+      await editor.getByRole('button', { name: '1年', exact: true }).click();
+      await expect(editor.locator('.calendar-trigger[aria-label="到期日期"]')).toContainText('2027-01-01');
     } else {
-      await expect(dialog.locator('[aria-label="名称"] input')).toHaveValue(row.title);
-      await dialog.locator('uni-picker[aria-label="状态"]').click();
-      await page.locator('.uni-picker-select:visible').getByText(kind === 'read' ? '读完' : '看过', { exact: true }).click();
+      await expect(editor.locator(`[aria-label="${kind === 'read' ? '书名' : '名称'}"] input`)).toHaveValue(row.title);
+      if (kind === 'read') {
+        await editor.getByRole('button', { name: '读完', exact: true }).click();
+      } else {
+        await editor.locator('uni-picker[aria-label="状态"]').click();
+        await page.locator('.uni-picker-select:visible').getByText('看过', { exact: true }).click();
+      }
     }
-    await dialog.getByRole('button', { name: '保存', exact: true }).click();
-    await expect(dialog).toHaveCount(0);
+    await editor.getByRole('button', { name: '保存', exact: true }).click();
+    await expect(editor).toHaveCount(0);
     expect(written.id).toBe('9223372036854775807');
     expect(kind === 'member' ? written.remark : written.remark).toBe(kind === 'member' ? '保留会员备注' : '保留完整详情备注');
     await expect(page).toHaveURL(/#\/(?:pages\/home\/index)?$/);
