@@ -475,11 +475,13 @@ function openLink(url) {
               :period-controls="mode !== '周'"
               :hide-period-selector="mode === '周'"
               hide-values
+              integer-values
+              :tooltip-in-header="mode !== '周'"
               :show-bar-values="mode === '周'"
               :labels="trend.map((item) => item.label)"
               :series="[{ name: '阅读时长', values: trend.map((item) => item.value) }]"
               unit="分钟"
-            /><view class="card ui-card" :class="{ 'card-dark': isDark }"
+            /><view class="card ui-pad-card ui-gap-sm" :class="{ 'card-dark': isDark, 'dashboard-rank-separated': mode !== '周' }"
               ><text :style="appTextColor()" class="title">阅读最多的书</text
               ><view v-for="(item, index) in stats.readLongest || []" :key="index" class="rank-row ui-row"
                 :role="item.book?.bookId || bookLink(item.book) ? 'button' : undefined"
@@ -709,6 +711,7 @@ function openLink(url) {
 @media (min-width: 600px) { .weread-book-card { width: calc((100% - #{$space-section} * 2) / 3); } }
 @media (min-width: 900px) { .weread-book-card { width: calc((100% - #{$space-section} * 3) / 4); } }
 .dashboard-filter { flex: 1; min-width: 0; }
+.dashboard-rank-separated { margin-top: $space-section; }
 .metrics { align-items: stretch; }
 .dashboard-metric { width: calc((100% - #{$space-inline}) / 2); min-width: 0; }
 /* #ifdef APP */

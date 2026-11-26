@@ -73,7 +73,7 @@ export function layoutStackedBarLabels(series: any[], width: number, left: numbe
   return { segments, totals }
 }
 export function buildChartOption(labels: string[], series: ChartSeries[], settings: {
-  dark: boolean; kind: string; selected: number; selectionActive: boolean; showScale: boolean; width: number; roundedBars?: boolean; stacked?: boolean
+  dark: boolean; kind: string; selected: number; selectionActive: boolean; showScale: boolean; width: number; roundedBars?: boolean; stacked?: boolean; integerValues?: boolean
 }) {
   validateChartData(labels, series)
   const axisColor = settings.dark ? '#737985' : '#c9cdd5'
@@ -92,7 +92,8 @@ export function buildChartOption(labels: string[], series: ChartSeries[], settin
     },
     yAxis: {
       type: 'value', splitNumber: 4,
-      ...(settings.stacked ? { min: 0, minInterval: 1 } : {}),
+      ...(settings.stacked ? { min: 0 } : {}),
+      ...(settings.stacked || settings.integerValues ? { minInterval: 1 } : {}),
       axisLine: { show: settings.showScale, lineStyle: { color: axisColor } },
       axisTick: { show: false }, axisLabel: { show: false },
       splitLine: { show: settings.showScale, lineStyle: { color: gridColor, width: spacing.hairline, ...(settings.stacked ? { type: 'dashed' } : {}) } },

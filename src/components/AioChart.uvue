@@ -16,6 +16,7 @@ const props = withDefaults(defineProps<{
   hidePeriodSelector?: boolean; hideLegend?: boolean; hideScale?: boolean; hideTitle?: boolean; hideUnit?: boolean;
   hideValues?: boolean; showEndValues?: boolean; showBarValues?: boolean; xLabels?: string[]; loading?: boolean;
   stacked?: boolean; swipeable?: boolean; floatingTooltip?: boolean; showExtremes?: boolean;
+  integerValues?: boolean; tooltipInHeader?: boolean;
   hideStackLabels?: boolean; plotMinWidth?: number; visiblePoints?: number; scrollToEnd?: boolean; scrollKey?: string;
 }>(), { kind: 'line', unit: '', plotMinWidth: 0 })
 const emit = defineEmits(['swipe'])
@@ -50,6 +51,7 @@ const visible = computed(() => colored.value.filter(item => (!props.stacked && p
 const interactive = computed(() => props.periodControls || props.selectable || !props.hidePeriodSelector)
 const periodTrend = computed(() => props.periodControls && props.kind === 'bar')
 const selectionTooltip = computed(() => periodTrend.value || props.stacked || props.floatingTooltip)
+const tooltipVisible = computed(() => selectionTooltip.value && touched.value && !props.loading && !!props.labels.length)
 let tooltipTimer: ReturnType<typeof setTimeout> | undefined
 function dismissTooltip() {
   clearTimeout(tooltipTimer)
@@ -66,7 +68,7 @@ const option = computed(() => buildChartOption(props.xLabels ?? props.labels, vi
   dark: isDark.value, kind: props.kind, selected: selected.value,
   selectionActive: interactive.value && (touched.value || (props.kind === 'bar' && !periodTrend.value && !props.stacked)),
   showScale: showScale.value, width: width.value, roundedBars: periodTrend.value || props.showBarValues,
-  stacked: props.stacked,
+  stacked: props.stacked, integerValues: props.integerValues,
 }))
 watch(() => props.labels.join('|'), (_, previous) => {
   const oldLabel = previous?.split('|')[selected.value]
@@ -102,8 +104,9 @@ function toggle(name: string) {
   hidden.value = hidden.value.includes(name) ? hidden.value.filter(item => item !== name) : [...hidden.value, name]
 }
 function displayNumber(value: number) {
-  if (!props.compact && !props.periodControls) return String(value)
-  return value.toFixed(props.unit === '%' ? 1 : 2).replace(/\B(?=(\d{3})+(?!\d))/g, ',')
+  if (!props.integerValues && !props.compact && !props.periodControls) return String(value)
+  const decimals = props.integerValues ? 0 : props.unit === '%' ? 1 : 2
+  return value.toFixed(decimals).replace(/\B(?=(\d{3})+(?!\d))/g, ',')
 }
 const selectionText = computed(() => props.labels[selected.value] + ' ' + visible.value
   .map(item => item.name + displayNumber(item.values[selected.value] ?? 0) + props.unit).join('，'))
@@ -169,9 +172,12 @@ const extremeLabels = computed(() => {
 
 <template>
   <view class="mini-chart aio-chart" :class="[themeClass('mini-chart'), { 'mini-chart-period': periodControls }]" role="figure" :aria-label="label">
-    <view class="mini-chart-header" :class="{ 'chart-header-title-hidden': hideTitle }">
+    <view class="mini-chart-header" :class="{ 'chart-header-title-hidden': hideTitle, 'chart-header-with-tooltip': tooltipInHeader }">
       <text v-if="!hideTitle" class="mini-chart-title" :style="appTextColor()">{{ label }}</text>
       <text v-if="!hideUnit && !periodTrend && unit && showScale" class="chart-unit" :class="themeClass('chart-unit')">{{ unit }}</text>
+      <view v-if="tooltipInHeader && tooltipVisible" class="chart-tooltip" :class="themeClass('chart-tooltip')" role="tooltip" aria-live="polite">
+        <text class="chart-tooltip-text" :class="themeClass('chart-tooltip-text')">{{ tooltipText }}</text>
+      </view>
       <slot name="actions" />
     </view>
     <scroll-view v-if="!hideLegend && stacked" direction="horizontal" :scroll-x="true" :show-scrollbar="false" class="chart-legend-scroll" aria-label="分类图例，可横向滚动">
@@ -221,11 +227,13 @@ const extremeLabels = computed(() => {
           :style="{ top: item.top + 'px', left: item.left + 'px', width: item.width + 'px' }">{{ item.text }}</text>
       </view>
       </scroll-view>
-        <view v-if="showScale && !loading && labels.length" class="chart-y-axis" :class="themeClass('chart-y-axis')" :style="{ width: layout.left + 'px' }" :aria-label="'Y 轴，单位 ' + unit">
+        <view v-if="showScale && !loading && labels.length" class="chart-y-axis"
+          :class="{ 'chart-y-axis-mask': plotWidth > 0 && !isDark, 'chart-y-axis-mask-dark': plotWidth > 0 && isDark }"
+          :style="{ width: layout.left + 'px' }" :aria-label="'Y 轴，单位 ' + unit">
           <text v-for="tick in layout.axisTicks" :key="tick.value" class="chart-y-tick" :class="themeClass('chart-y-tick')"
             :style="{ top: tick.top + 'px', width: Math.max(0, layout.left - spacing.micro) + 'px' }">{{ tick.label }}</text>
         </view>
-        <view v-if="selectionTooltip && touched && !loading && labels.length" class="chart-tooltip" :class="themeClass('chart-tooltip')" role="tooltip" aria-live="polite">
+        <view v-if="!tooltipInHeader && tooltipVisible" class="chart-tooltip chart-tooltip-overlay" :class="themeClass('chart-tooltip')" role="tooltip" aria-live="polite">
           <template v-if="floatingTooltip">
             <text class="chart-tooltip-date" :class="themeClass('chart-tooltip-date')">{{ labels[selected] }}</text>
             <view v-for="item in visible" :key="item.name" class="chart-tooltip-row">
@@ -262,14 +270,16 @@ const extremeLabels = computed(() => {
 .mini-chart-period { margin-bottom: 0; }
 .mini-chart-header { display: flex; flex-direction: row; align-items: center; gap: $space-inline; }
 .chart-header-title-hidden { justify-content: flex-end; }
+.chart-header-with-tooltip { min-height: type-line('caption') + 2 * ($space-detail + $space-hairline); }
 .mini-chart-title { flex: 1; @include type-style('body-strong'); }
 .chart-unit { @include type-style('caption'); color: $text-secondary-light; }
 .mini-chart-viewport { position: relative; min-width: 0; margin-top: $space-inline; }
 .chart-plot-scroll { width: 100%; height: 228px; }
 .mini-chart-plot { position: relative; width: 100%; height: 228px; }
 .chart-loading-plot { height: 228px; display: flex; align-items: center; justify-content: center; }
-.chart-y-axis { position: absolute; left: 0; top: 0; height: 228px; background-color: #ffffff; pointer-events: none; }
-.chart-y-axis-dark { background-color: #1c1e22; }
+.chart-y-axis { position: absolute; left: 0; top: 0; height: 228px; pointer-events: none; }
+.chart-y-axis-mask { background-color: #ffffff; }
+.chart-y-axis-mask-dark { background-color: #1c1e22; }
 .chart-y-tick { position: absolute; left: 0; text-align: right; white-space: nowrap; font-family: type-family('canvas'); @include type-style('caption'); color: $text-secondary-light; }
 .chart-x-label { position: absolute; text-align: center; white-space: nowrap; font-family: type-family('canvas'); @include type-style('caption'); color: $text-secondary-light; pointer-events: none; }
 .chart-legend-compact { display: flex; flex-direction: row; flex-wrap: wrap; gap: $space-inline; }
@@ -299,7 +309,8 @@ const extremeLabels = computed(() => {
 .chart-value-label { @include type-style('caption'); color: $text-secondary-light; }
 .chart-value-number { @include type-style('caption-strong'); color: #27272a; font-variant-numeric: tabular-nums; }
 .chart-selected-label { @include type-style('caption'); color: $text-secondary-light; margin-top: $space-detail; }
-.chart-tooltip { position: absolute; top: $space-detail; right: $space-detail; max-width: 100%; padding: $space-detail $space-inline; box-sizing: border-box; border-radius: 6px; background-color: #f4f6fa; border: 1px solid #e8ecf1; pointer-events: none; }
+.chart-tooltip { max-width: 100%; padding: $space-detail $space-inline; box-sizing: border-box; border-radius: 6px; background-color: #f4f6fa; border: $space-hairline solid #e8ecf1; pointer-events: none; }
+.chart-tooltip-overlay { position: absolute; top: $space-detail; right: $space-detail; }
 .chart-tooltip-dark { background-color: #2a2e36; border-color: #3c414b; }
 .chart-tooltip-date { @include type-style('caption'); color: $text-secondary-light; }
 .chart-tooltip-date-dark { color: $text-secondary-dark; }
