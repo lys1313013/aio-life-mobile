@@ -99,9 +99,12 @@ for (const width of [390, 768, 1440]) for (const theme of ['light', 'dark']) {
     await page.getByRole('button', { name: '重置布局', exact: true }).click();
     await expect(world).toHaveAttribute('style', initialTransform);
     await add.click();
-    await expect(page.getByRole('dialog', { name: '人物', exact: true })).toBeVisible();
+    await expect(page).toHaveURL(/relationship\/person-edit$/);
+    const editor = page.getByRole('region', { name: '新增人物', exact: true });
+    await expect(editor).toBeVisible();
     await page.screenshot({ path: path.resolve(`test-results/relationship-form-${width}-${theme}.png`) });
-    await dismissModal(page);
+    await editor.getByRole('button', { name: '取消', exact: true }).click();
+    await expect(page).toHaveURL(/relationship\/index$/);
     expect(errors).toEqual([]);
   });
 }

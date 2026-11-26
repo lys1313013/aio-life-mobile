@@ -146,7 +146,10 @@ test('relationship retry and refresh keep the graph canvas and empty state stabl
       await next.promise;
       return next.response;
     },
-    'POST /api/relationships/persons': success(null),
+    'POST /api/relationships/persons': request => {
+      expect(request.postDataJSON().name).toBe(person.name);
+      return success(person);
+    },
   });
   try {
     await page.goto('/#/pages/relationship/index');
@@ -165,9 +168,14 @@ test('relationship retry and refresh keep the graph canvas and empty state stabl
     await expect(empty).toBeVisible();
     const emptyBounds = await stableBox(empty);
     await page.getByRole('button', { name: '新增人物', exact: true }).click();
-    const form = page.getByRole('dialog', { name: '人物', exact: true });
+    await expect(page).toHaveURL(/relationship\/person-edit$/);
+    const form = page.getByRole('region', { name: '新增人物', exact: true });
+    await expect(form.getByRole('textbox', { name: '电话', exact: true })).toBeVisible();
+    await expect(form.getByRole('textbox', { name: '博士学校', exact: true })).toBeVisible();
+    await expect(form.getByRole('textbox', { name: '备注', exact: true })).toBeVisible();
     await form.getByRole('textbox', { name: '姓名', exact: true }).fill(person.name);
     await form.getByRole('button', { name: '保存', exact: true }).click();
+    await expect(page).toHaveURL(/relationship\/index$/);
     await expect(form).toHaveCount(0);
     await expect(updating).toBeVisible();
     await waitForMotion(page);

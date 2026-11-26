@@ -5,4 +5,4 @@ export const schoolFields = [
   { key: 'undergraduateSchool', label: '本科学校' },
   { key: 'mastersSchool', label: '硕士学校' },
   { key: 'doctoralSchool', label: '博士学校' },
-];
+] as const;

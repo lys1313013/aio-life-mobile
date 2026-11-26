@@ -1,0 +1,182 @@
+<script setup lang="ts">
+import { onLoad } from '@dcloudio/uni-app';
+import { computed, ref } from 'vue';
+import ConfirmAction from '../../components/ConfirmAction.uvue';
+import FormActions from '../../components/FormActions.uvue';
+import FormField from '../../components/FormField.uvue';
+import FormSkeleton from '../../components/FormSkeleton.uvue';
+import MobileButton from '../../components/MobileButton.uvue';
+import MobilePage from '../../components/MobilePage.uvue';
+import PageHeader from '../../components/PageHeader.uvue';
+import PageState from '../../components/PageState.uvue';
+import type { PersonReq } from '../../services/api-payload.ts';
+import { useDomainPage } from '../../services/domains/page-session.ts';
+import { isRequired, missingRequired } from '../../services/form-required.ts';
+import { themeClass } from '../../services/theme.ts';
+import { schoolFields } from './services/person-fields.ts';
+import { deletePerson, fetchPerson, savePerson } from './services/relationship.ts';
+
+const graphUrl = '/pages/relationship/index';
+const personUrl = '/pages/relationship/person';
+const id = ref('');
+const title = computed(() => id.value ? '编辑人物' : '新增人物');
+const draft = ref<(PersonReq & { id?: string }) | null>(null);
+const loading = ref(false), loadError = ref('');
+const busy = ref(false), formError = ref('');
+const schoolRows = [schoolFields.slice(0, 2), schoolFields.slice(2, 4), schoolFields.slice(4)];
+let active = false, revision = 0;
+
+onLoad(query => { id.value = String(query?.id || ''); });
+useDomainPage(refresh => {
+  active = true;
+  if (refresh && !draft.value) void load();
+}, clear => {
+  active = false;
+  revision++;
+  loading.value = false;
+  busy.value = false;
+  if (clear) {
+    draft.value = null;
+    loadError.value = '';
+    formError.value = '';
+  }
+});
+
+async function load() {
+  if (loading.value || draft.value) return;
+  if (!id.value) {
+    draft.value = {
+      name: '', category: '其他', description: '', tags: '', birthday: '', phone: '', email: '',
+      primarySchool: '', juniorHighSchool: '', highSchool: '', undergraduateSchool: '',
+      mastersSchool: '', doctoralSchool: '', notes: '',
+    };
+    return;
+  }
+  const version = revision;
+  loading.value = true;
+  loadError.value = '';
+  try {
+    const person = await fetchPerson(id.value);
+    if (!active || version !== revision) return;
+    if (person?.id !== id.value) throw new Error('人物不存在或已删除');
+    const { relationships, ...fields } = person;
+    draft.value = fields;
+  } catch (reason) {
+    if (active && version === revision) loadError.value = reason.message;
+  } finally {
+    if (active && version === revision) loading.value = false;
+  }
+}
+
+function leave(removed = false) {
+  const pages = getCurrentPages();
+  const previous = pages[pages.length - 2]?.route;
+  if (removed && previous === 'pages/relationship/person') {
+    if (pages[pages.length - 3]?.route === 'pages/relationship/index') {
+      uni.navigateBack({ delta: 2, fail: () => uni.reLaunch({ url: graphUrl }) });
+    } else {
+      uni.reLaunch({ url: graphUrl });
+    }
+    return;
+  }
+  const url = id.value && !removed ? personUrl + '?id=' + encodeURIComponent(id.value) : graphUrl;
+  uni.navigateBack({ fail: () => uni.redirectTo({ url }) });
+}
+function cancel() {
+  if (!busy.value) leave();
+}
+
+async function save() {
+  if (!draft.value || busy.value) return;
+  if (missingRequired('person', draft.value)) {
+    formError.value = '请输入姓名';
+    return;
+  }
+  const version = revision;
+  busy.value = true;
+  formError.value = '';
+  try {
+    await savePerson(draft.value);
+    if (active && version === revision) leave();
+  } catch (reason) {
+    if (active && version === revision) {
+      formError.value = reason.message;
+      busy.value = false;
+    }
+  }
+}
+
+async function remove() {
+  if (!id.value || busy.value) throw new Error('人物暂时无法删除，请重试');
+  const version = revision;
+  busy.value = true;
+  try {
+    await deletePerson(id.value);
+    if (!active || version !== revision) throw new Error('页面已离开');
+  } catch (reason) {
+    if (active && version === revision) busy.value = false;
+    throw reason;
+  }
+}
+</script>
+<template>
+  <MobilePage refresh-disabled>
+    <PageHeader :title="title" back @back="cancel" />
+    <view class="ui-page-body">
+      <PageState :loading="loading" :error="loadError" :has-content="!!draft" @retry="load">
+        <template #loading>
+          <view class="editor-card ui-pad-card" :class="themeClass('editor-card')">
+            <FormSkeleton flat :rows="['pair', 'textarea', 'section', 'pair', 'field', 'section', 'pair', 'pair', 'pair', 'section', 'field', 'textarea']"
+              :footer="false" label="正在加载人物资料" />
+          </view>
+        </template>
+        <view v-if="draft" role="region" :aria-label="title" class="editor-card ui-pad-card" :class="themeClass('editor-card')">
+          <view class="ui-field-row">
+            <FormField compact stretch :required="isRequired('person', 'name')" label="姓名" placeholder="请输入姓名" :disabled="busy" v-model="draft.name" />
+            <FormField compact stretch label="分类" kind="selector" :options="['亲属', '社会', '情感', '其他']" :disabled="busy" v-model="draft.category" />
+          </view>
+          <FormField label="介绍" kind="textarea" textarea-size="compact" placeholder="简短描述这个人" :disabled="busy" v-model="draft.description" />
+          <view>
+            <view class="ui-mb-sm"><text role="heading" aria-level="2" class="editor-section-title" :class="themeClass('editor-section-title')">联系信息</text></view>
+            <view class="ui-field-row">
+              <FormField compact stretch label="生日" kind="date" :disabled="busy" v-model="draft.birthday" />
+              <FormField compact stretch label="电话" placeholder="电话号码" :disabled="busy" v-model="draft.phone" />
+            </view>
+            <FormField label="邮箱" :disabled="busy" v-model="draft.email" />
+          </view>
+          <view>
+            <view class="ui-mb-sm"><text role="heading" aria-level="2" class="editor-section-title" :class="themeClass('editor-section-title')">教育经历</text></view>
+            <view v-for="row in schoolRows" :key="row[0].key" class="ui-field-row">
+              <FormField v-for="field in row" :key="field.key" compact stretch :label="field.label" :disabled="busy" v-model="draft[field.key]" />
+            </view>
+          </view>
+          <view>
+            <view class="ui-mb-sm"><text role="heading" aria-level="2" class="editor-section-title" :class="themeClass('editor-section-title')">更多资料</text></view>
+            <FormField label="标签" placeholder="多个标签用逗号分隔" :disabled="busy" v-model="draft.tags" />
+            <FormField label="备注" kind="textarea" textarea-size="compact" :disabled="busy" v-model="draft.notes" />
+          </view>
+          <text v-if="formError" role="alert" class="error ui-py-section ui-type-body">{{ formError }}</text>
+          <FormActions class="ui-mt-sm">
+            <template #secondary>
+              <ConfirmAction v-if="id" label="删除人物和关联关系" :action="remove" :trigger-disabled="busy" @success="leave(true)" />
+            </template>
+            <MobileButton label="取消" variant="quiet" :disabled="busy" @click="cancel" />
+            <MobileButton label="保存" :loading="busy" @click="save" />
+          </FormActions>
+        </view>
+      </PageState>
+    </view>
+  </MobilePage>
+</template>
+<style scoped lang="scss">
+@use '../../styles/typography' as *;
+@use '../../styles/text-colors' as *;
+@use '../../styles/theme-tokens' as *;
+@use '../../styles/spacing.scss';
+@include type-utilities('body');
+.editor-card { border-radius: 16px; background-color: $theme-surface-light; }
+.editor-card-dark { background-color: $theme-surface-dark; }
+.editor-section-title { @include type-style('body-strong'); color: $text-secondary-light; }
+.editor-section-title-dark { color: $text-secondary-dark; }
+.error { color: #dc5454; }
+</style>

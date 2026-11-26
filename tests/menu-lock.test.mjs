@@ -4,11 +4,15 @@ import test from 'node:test';
 const source = await readFile(new URL('../src/services/life-catalog.ts', import.meta.url), 'utf8');
 const { lockedMenuPaths, matchesNativeMenu } = await import(`data:text/javascript;base64,${Buffer.from(source).toString('base64')}`);
 
-test('人物详情沿用关系图谱的菜单锁', () => {
+test('人物详情、新增和编辑沿用关系图谱的菜单锁', () => {
   const detail = '/pages/relationship/person?id=9223372036854775807';
+  const add = '/pages/relationship/person-edit';
+  const edit = add + '?id=9223372036854775807';
   const tree = [{ path: '/relationship', meta: { menuId: 'graph' } }];
-  assert.equal(matchesNativeMenu(detail, '/relationship/graph'), true);
-  assert.deepEqual(lockedMenuPaths(detail, tree, ['graph']), ['/relationship']);
+  for (const url of [detail, add, edit]) {
+    assert.equal(matchesNativeMenu(url, '/relationship/graph'), true);
+    assert.deepEqual(lockedMenuPaths(url, tree, ['graph']), ['/relationship']);
+  }
 });
 
 test('个人分类分组和系统管理员时迹分类不互相继承菜单锁', () => {

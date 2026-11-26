@@ -15,7 +15,6 @@ import MobileButton from '../../components/MobileButton.uvue';
 import PageState from '../../components/PageState.uvue';
 import AdaptiveModal from '../../components/AdaptiveModal.uvue';
 import { fetchGraph } from './services/relationship.ts';
-import PersonEditor from './components/PersonEditor.uvue';
 import { useDomainPage } from '../../services/domains/page-session.ts';
 import { isDark, themeClass } from '../../services/theme.ts';
 const graph = ref<any>({ nodes: [], edges: [] }),
@@ -27,8 +26,7 @@ const graph = ref<any>({ nodes: [], edges: [] }),
   loaded = ref(false),
   visible = ref(false),
   helpOpen = ref(false),
-  error = ref(''),
-  addingPerson = ref(false);
+  error = ref('');
 let stamp = 0, alive = true, navigating = false;
 onUnmounted(() => {
   alive = false;
@@ -62,7 +60,7 @@ const showMatches = computed(() => searchOpen.value && !!keyword.value.trim());
 const motion = createRelationshipMotion();
 const dots = ref<GraphDot[]>([]);
 const reducedMotion = ref(false);
-const canAnimate = computed(() => visible.value && graphEdges.value.length > 0 && !addingPerson.value && !helpOpen.value && !reducedMotion.value);
+const canAnimate = computed(() => visible.value && graphEdges.value.length > 0 && !helpOpen.value && !reducedMotion.value);
 let motionTimer = 0;
 let previousFrame = 0;
 let pathsChanged = false;
@@ -225,23 +223,21 @@ function graphClick(id: string, event: any) {
   // #endif
   if (!dragged) openPerson(id);
 }
-function openPerson(id: string) {
-  if (!visible.value || navigating || addingPerson.value) return;
+function navigatePerson(url: string, id = '') {
+  if (!visible.value || navigating) return;
   closeSearch();
-  selectedId.value = id;
+  if (id) selectedId.value = id;
   navigating = true;
   uni.navigateTo({
-    url: '/pages/relationship/person?id=' + encodeURIComponent(id),
+    url,
     complete: () => { navigating = false; },
   });
 }
-function addPerson() {
-  closeSearch();
-  addingPerson.value = true;
+function openPerson(id: string) {
+  navigatePerson('/pages/relationship/person?id=' + encodeURIComponent(id), id);
 }
-function personCreated() {
-  addingPerson.value = false;
-  void load();
+function addPerson() {
+  navigatePerson('/pages/relationship/person-edit');
 }
 function closeSearch() {
   searchFocus.value = false;
@@ -282,6 +278,7 @@ async function load() {
     const data = await fetchGraph();
     if (alive && current === stamp) {
       graph.value = data;
+      if (selectedId.value && !data.nodes.some(node => node.id === selectedId.value)) selectedId.value = '';
       const firstLoad = !loaded.value;
       loaded.value = true;
       if (firstLoad) fitGraph();
@@ -311,7 +308,6 @@ useDomainPage(
       clearSearch();
     }
     graphCancel();
-    addingPerson.value = false;
     closeSearch();
     helpOpen.value = false;
     loading.value = false;
@@ -427,7 +423,6 @@ useDomainPage(
     <ModalMotion><AdaptiveModal v-if="helpOpen" label="图谱操作说明" :max-width="380" @close="helpOpen = false">
       <text class="detail detail-ink" :class="themeClass('detail-ink')">轻点人物查看详情，拖动可调整人物位置。拖动画布可平移，双指或滚轮可缩放。</text>
     </AdaptiveModal></ModalMotion>
-    <ModalMotion><PersonEditor v-if="addingPerson" @close="addingPerson = false" @saved="personCreated" /></ModalMotion>
   </MobilePage>
 </template>
 <style scoped lang="scss">

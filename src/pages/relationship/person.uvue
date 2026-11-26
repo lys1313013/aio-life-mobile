@@ -15,7 +15,6 @@ import PageState from '../../components/PageState.uvue';
 import { useDomainPage } from '../../services/domains/page-session.ts';
 import { isRequired, missingRequired } from '../../services/form-required.ts';
 import { isDark, themeClass } from '../../services/theme.ts';
-import PersonEditor from './components/PersonEditor.uvue';
 import { schoolFields } from './services/person-fields.ts';
 import { categoryColor } from './services/relationship-layout.ts';
 import { deleteRelationship, fetchGraph, fetchPerson, saveRelationship } from './services/relationship.ts';
@@ -23,13 +22,12 @@ import { deleteRelationship, fetchGraph, fetchPerson, saveRelationship } from '.
 const id = ref('');
 const person = ref<any>(null);
 const loading = ref(false), refreshing = ref(false), error = ref('');
-const editingPerson = ref(false);
 const relation = ref<any>(null);
 const relationModal = ref<{ close: () => void } | null>(null);
 const people = ref<any[] | null>(null);
 const optionsLoading = ref(false), optionsError = ref('');
 const busy = ref(false), formError = ref('');
-let active = false, generation = 0, detailRequest = 0, optionsRequest = 0;
+let active = false, navigating = false, generation = 0, detailRequest = 0, optionsRequest = 0;
 
 onLoad(query => { id.value = String(query?.id || ''); });
 
@@ -87,7 +85,6 @@ useDomainPage(refresh => {
   loading.value = false;
   refreshing.value = false;
   optionsLoading.value = false;
-  editingPerson.value = false;
   relation.value = null;
   if (clear) {
     person.value = null;
@@ -100,9 +97,13 @@ function refresh() {
   people.value = null;
   void load(true);
 }
-function personSaved() {
-  editingPerson.value = false;
-  void load();
+function editPerson() {
+  if (!active || navigating || !person.value) return;
+  navigating = true;
+  uni.navigateTo({
+    url: '/pages/relationship/person-edit?id=' + encodeURIComponent(id.value),
+    complete: () => { navigating = false; },
+  });
 }
 
 async function loadPeople() {
@@ -190,7 +191,7 @@ function relationRemoved() {
         </template>
         <view v-if="person" class="profile-body">
           <button class="profile-card profile-button" :class="themeClass('profile-card')" hover-class="none"
-            role="button" aria-label="编辑人物" @click="editingPerson = true">
+            role="button" aria-label="编辑人物" @click="editPerson">
             <view class="profile-identity">
               <view class="profile-avatar" :class="themeClass('profile-avatar')" aria-hidden="true">
                 <text class="avatar-letter" :style="{ color: personColor }">{{ person.name.slice(0, 1) }}</text>
@@ -243,9 +244,6 @@ function relationRemoved() {
     </view>
 
     <template #fixed>
-      <ModalMotion>
-        <PersonEditor v-if="editingPerson && person" :person="person" @close="editingPerson = false" @saved="personSaved" @removed="back" />
-      </ModalMotion>
       <ModalMotion>
         <AdaptiveModal v-if="relation" ref="relationModal" label="关系" :busy="busy" :loading="optionsLoading"
           :load-error="optionsError" :max-width="500" @close="relation = null" @retry="loadPeople">
