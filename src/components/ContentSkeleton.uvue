@@ -15,9 +15,18 @@ const fieldRows = computed(() => Array.from({ length: props.rows }, () => 'field
     <view class="skeleton-content" :class="{ 'skeleton-cover-content': variant === 'cover' }" aria-hidden="true">
       <view v-if="variant === 'cover'" class="skeleton-cover" :class="themeClass('skeleton-cover')"><view class="skeleton-cover-shimmer" :class="themeClass('skeleton-cover-shimmer')" /></view>
       <view v-if="variant === 'caption'" class="skeleton-shape skeleton-short" :class="themeClass('skeleton-shape')" />
-      <view v-if="variant === 'tile' || variant === 'goal-tile' || variant === 'date-tile'" class="skeleton-tile">
+      <view v-if="variant === 'date-tile'" class="skeleton-date-tile">
+        <view class="skeleton-shape skeleton-date-icon" :class="themeClass('skeleton-shape')" />
+        <view class="skeleton-date-count">
+          <view class="skeleton-shape skeleton-date-label" :class="themeClass('skeleton-shape')" />
+          <view class="skeleton-shape skeleton-date-value" :class="themeClass('skeleton-shape')" />
+        </view>
+        <view class="skeleton-shape skeleton-date-title" :class="themeClass('skeleton-shape')" />
+        <view class="skeleton-shape skeleton-date-chip" :class="themeClass('skeleton-shape')" />
+      </view>
+      <view v-if="variant === 'tile' || variant === 'goal-tile'" class="skeleton-tile">
         <view class="skeleton-shape skeleton-label" :class="themeClass('skeleton-shape')" />
-        <view class="skeleton-shape" :class="[themeClass('skeleton-shape'), variant === 'date-tile' ? 'skeleton-date-value' : 'skeleton-title']" />
+        <view class="skeleton-shape skeleton-title" :class="themeClass('skeleton-shape')" />
         <view class="skeleton-shape skeleton-line" :class="themeClass('skeleton-shape')" />
         <view v-if="!compact" class="skeleton-shape skeleton-short" :class="themeClass('skeleton-shape')" />
         <view v-if="variant === 'goal-tile'" class="skeleton-shape skeleton-progress" :class="themeClass('skeleton-shape')" />
@@ -45,6 +54,8 @@ const fieldRows = computed(() => Array.from({ length: props.rows }, () => 'field
 @use "../styles/skeleton";
 @use '../styles/platform' as *;
 @use '../styles/spacing-tokens' as *;
+@use '../styles/theme-tokens' as *;
+@use '../styles/typography' as *;
 .content-skeleton { width: 100%; }
 .skeleton-content { display: flex; gap: $space-section; @include skeleton.pulse; }
 .skeleton-shape { @include skeleton.shape; flex-shrink: 0; }
@@ -105,10 +116,15 @@ const fieldRows = computed(() => Array.from({ length: props.rows }, () => 'field
 .skeleton-cover-content, .skeleton-cover { height: 100%; width: 100%; }
 // Match device image loading: fixed media bounds, one sweep, no extra text or controls.
 .skeleton-cover-content { animation: none; }
-.skeleton-cover-shimmer { width: 100%; height: 100%; background: linear-gradient(90deg, transparent 0%, rgba(255, 255, 255, 0.45) 50%, transparent 100%); animation: skeleton-cover-sweep 1.4s infinite; }
-.skeleton-cover-shimmer-dark { background: linear-gradient(90deg, transparent 0%, rgba(255, 255, 255, 0.08) 50%, transparent 100%); }
+.skeleton-cover-shimmer {
+  width: 100%;
+  height: 100%;
+  background-image: linear-gradient(to right, rgba(255, 255, 255, 0), rgba(255, 255, 255, .88), rgba(255, 255, 255, 0));
+  animation: skeleton-cover-sweep 1.4s linear infinite;
+}
+.skeleton-cover-shimmer-dark { background-image: linear-gradient(to right, rgba(255, 255, 255, 0), rgba(255, 255, 255, .2), rgba(255, 255, 255, 0)); }
 @keyframes skeleton-cover-sweep { from { transform: translateX(-100%); } to { transform: translateX(100%); } }
-.skeleton-cover { overflow: hidden; background-color: #f7f8f8;
+.skeleton-cover { overflow: hidden; background-color: $theme-skeleton-light;
 /* #ifndef APP */
 border-radius: inherit;
 /* #endif */
@@ -116,19 +132,25 @@ border-radius: inherit;
 border-radius: 8px;
 /* #endif */
  }
-.skeleton-cover-dark { background-color: #282a2f; }
+.skeleton-cover-dark { background-color: $theme-skeleton-dark; }
 .skeleton-tile { gap: $space-section; min-height: 96px; }
-.skeleton-date-value { width: 48%; height: 36px; }
+.skeleton-date-icon { width: $space-controlMin; height: $space-controlMin; }
+.skeleton-date-count { align-items: center; margin-top: $space-inline; margin-bottom: $space-section + $space-inline; }
+.skeleton-date-label { width: 26%; height: type-line('caption') - $space-detail; margin-bottom: $space-detail; }
+.skeleton-date-value { width: 48%; height: type-line('display'); }
+.skeleton-date-title { width: 70%; height: type-line('title'); }
+.skeleton-date-chip { width: 46%; height: type-line('caption') + $space-micro * 2; margin-top: $space-inline; }
 .skeleton-progress { width: 100%; height: 5px; margin-top: auto; }
 .skeleton-ring { width: 132px; height: 132px; border-radius: 50%; border: 20px solid #e8ecf1; align-self: center; margin: $space-section 0; box-sizing: border-box; }
 .skeleton-ring-dark { border-color: #30343c; }
 @include skeleton.motion('.skeleton-content');
+@media (min-width: 600px) { .skeleton-date-value { height: type-line('display-wide'); } }
 @media (min-width: 768px) { .skeleton-metrics {
 @include grid-columns(4);
  } .skeleton-media {
 @include grid-columns(6);
  } }
 /* #ifdef WEB */
-@media (prefers-reduced-motion: reduce) { .skeleton-content, .skeleton-cover-shimmer { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .skeleton-cover-shimmer { animation: none; opacity: 0; } }
 /* #endif */
 </style>

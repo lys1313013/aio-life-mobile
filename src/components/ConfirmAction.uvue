@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import spacing from '../styles/spacing.json';
-import { getCurrentInstance, nextTick, onUnmounted, ref, watch } from 'vue';
+import { computed, getCurrentInstance, nextTick, onUnmounted, ref, watch } from 'vue';
 import MobileButton from './MobileButton.uvue';
 import AppIcon from './AppIcon.uvue';
 import { themeClass, type ThemeAppearance } from '../services/theme.ts';
@@ -22,6 +22,7 @@ const props = withDefaults(
   }>(),
   { icon: 'ant-design:delete-outlined', danger: true, confirmLabel: '确认', compact: false },
 );
+const deleteTrigger = computed(() => props.danger && props.icon === 'ant-design:delete-outlined');
 const emit = defineEmits(['success']);
 const opened = ref(false);
 const busy = ref(false);
@@ -103,7 +104,8 @@ onUnmounted(() => {
         :disabled="triggerDisabled || busy" :aria-disabled="triggerDisabled || busy" :aria-busy="busy" @click="open">
         <AppIcon :name="icon" :color="triggerIconColor" />
       </button>
-      <MobileButton v-else :label="label" :icon="icon" variant="quiet" :appearance="triggerAppearance" :loading="busy" :disabled="triggerDisabled" @click="open" />
+      <MobileButton v-else :label="label" :icon="icon" :variant="deleteTrigger ? 'ghost' : 'quiet'" :danger="deleteTrigger"
+        :appearance="triggerAppearance" :loading="busy" :disabled="triggerDisabled" @click="open" />
     </slot>
     <!-- 保留原位按钮测量，只有确认面板脱离滚动容器和卡片的 transform。 -->
     <!-- #ifdef MP-WEIXIN -->

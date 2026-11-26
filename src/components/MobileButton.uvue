@@ -18,10 +18,18 @@ const props = withDefaults(
 const emit = defineEmits(['click']);
 const isDark = computed(() => isThemeDark(props.appearance));
 const insideModal = inject('mobile-modal', false);
+const ghostDanger = computed(() => props.variant === 'ghost' && props.danger);
+const dangerColor = computed(() => isDark.value ? '#fb7185' : '#bc2639');
+const iconColor = computed(() => {
+  if (ghostDanger.value) return dangerColor.value;
+  if (props.danger || (props.variant !== 'quiet' && props.variant !== 'ghost')) return '#ffffff';
+  return isDark.value ? '#e2e4e9' : '#52525b';
+});
 // 行内背景覆盖 uni-app 的 disabled/type 默认底色，跨端保留组件自身的主题与变体。
 const backgroundColor = computed(() => {
+  if (props.variant === 'ghost') return 'transparent';
   if (props.danger) return isDark.value ? '#c94050' : '#dc3545';
-  if (props.variant === 'ghost' || (insideModal && props.variant === 'quiet' && (props.icon || !props.compact))) return 'transparent';
+  if (insideModal && props.variant === 'quiet' && (props.icon || !props.compact)) return 'transparent';
   if (props.variant === 'quiet') return isDark.value ? '#292c32' : '#eef2f8';
   return isDark.value ? '#315b9c' : '#427bea';
 });
@@ -58,16 +66,17 @@ function activate() {
     hover-class="none"
     @click="activate"
   >
-    <view v-if="loading" class="mobile-button-loading" aria-hidden="true"><view class="mobile-button-spinner" :class="{ 'mobile-button-spinner-muted': !danger && (variant === 'quiet' || variant === 'ghost') }" /></view>
+    <view v-if="loading" class="mobile-button-loading" aria-hidden="true"><view class="mobile-button-spinner" :class="{ 'mobile-button-spinner-muted': variant === 'ghost' || (variant === 'quiet' && !danger) }" /></view>
     <view class="mobile-button-content" :class="{ 'mobile-button-content-loading': loading }">
     <AppIcon
       v-if="icon"
       :name="icon"
       :size="20"
-      :color="danger || (variant !== 'quiet' && variant !== 'ghost') ? '#ffffff' : isDark ? '#e2e4e9' : '#52525b'"
+      :color="iconColor"
     />
     <slot v-else-if="!icon"><text
       class="mobile-button-label"
+      :style="ghostDanger ? { color: dangerColor } : undefined"
       :class="[
         { 'mobile-button-label-muted': !danger && (variant === 'quiet' || variant === 'ghost') },
         themeClass({ 'mobile-button-label-muted': !danger && (variant === 'quiet' || variant === 'ghost') }, appearance),
@@ -118,7 +127,7 @@ function activate() {
 }
 .mobile-button-icon {
   padding: 0;
-  width: 44px;
+  width: $space-controlMin;
   @include type-style('glyph-medium');
 }
 .mobile-button-dark {

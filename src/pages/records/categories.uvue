@@ -214,7 +214,7 @@ function cannotMove(offset: number) {
       ><PageHeader title="通用分类" :back="true" @back="uni.navigateBack()" /><view class="ui-toolbar"
         ><CategoryTabs class="category-type-scroll" :items="categoryTabs" :current="categoryIndex" variant="underline" label="分类类型" id-prefix="category-type" item-class="category-type-tab" :disabled="!!form || !!busyId || saving" @change="selectType(categoryTabs[$event].value)" /></view>
       <FormField label="状态" kind="selector" :options="['全部', '已启用', '已禁用']" v-model="statusFilter" />
-      <CategoryPager ref="pager" :items="categoryPages" :current="categoryIndex" :disabled="!!form || !!busyId || saving" :refreshing="refreshing" tabs-selector=".category-type-scroll" @change="selectType(categoryPages[$event].value)" @refresh="refresh"><template #default="{ item: categoryPage, active }">
+      <CategoryPager ref="pager" :items="categoryPages" :current="categoryIndex" reserve-for-floating-action :disabled="!!form || !!busyId || saving" :refreshing="refreshing" tabs-selector=".category-type-scroll" @change="selectType(categoryPages[$event].value)" @refresh="refresh"><template #default="{ item: categoryPage, active }">
       <view class="category-list" :class="{ 'category-page-active': active }">
         <PageState :loading="categoryPage.loading || (!categoryPage.loaded && !categoryPage.error)" :has-content="categoryPage.loaded" :error="categoryPage.error" :empty="!categoryPage.filtered.length" empty-text="暂无符合条件的分类" @retry="load">
           <template #refreshing>
@@ -317,10 +317,6 @@ function cannotMove(offset: number) {
   white-space: nowrap;
 }
 
-.category-list {
-  // 末行滚动到顶部后，仍可避开通用悬浮新增按钮。
-  padding-bottom: 80px;
-}
 // 更新进度放在列表上方已有的间距内，不覆盖分类操作，也不改变内容高度。
 .category-update-progress { position: absolute; top: -$space-inline; left: 0; right: 0; height: $space-micro; overflow: hidden; pointer-events: none; }
 .category-update-runner { width: 30%; height: 100%; background-color: #7198df; border-radius: $space-micro; animation: category-update-slide 1.35s ease-in-out infinite; }

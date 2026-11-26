@@ -70,6 +70,8 @@ for (const width of [390, 768, 1440]) for (const theme of ['light', 'dark']) {
     await page.reload();
     await page.getByRole('button', { name: '编辑平台：腾讯视频', exact: true }).click();
     await expect(page.getByRole('textbox', { name: '平台编码', exact: true })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: '删除平台', exact: true })).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+    await waitForMotion(page);
     await page.screenshot({ path: `artifacts/membership-providers/admin-${width}-${theme}.png` });
     await page.getByRole('button', { name: '选择网易云音乐图标', exact: true }).click();
     await picker(page, '状态', '停用');
@@ -117,10 +119,12 @@ test('平台新增、删除失败保留弹窗并重试', async ({ page }) => {
   await page.getByRole('button', { name: '编辑平台：模拟新增平台', exact: true }).click();
   await page.getByRole('button', { name: '删除平台', exact: true }).click();
   state.fail = true;
-  await page.getByRole('button', { name: '确认', exact: true }).click();
+  const confirm = page.getByRole('dialog', { name: '删除平台', exact: true }).getByRole('button', { name: '确认', exact: true });
+  await expect(confirm).toHaveCSS('background-color', 'rgb(220, 53, 69)');
+  await confirm.click();
   await expect(page.getByRole('alert')).toContainText('模拟平台保存失败');
   state.fail = false;
-  await page.getByRole('button', { name: '确认', exact: true }).click();
+  await confirm.click();
   await expect(page.getByRole('dialog')).toHaveCount(0);
   await expect(page.getByRole('button', { name: '编辑平台：模拟新增平台', exact: true })).toHaveCount(0);
 });

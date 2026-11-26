@@ -7,7 +7,7 @@ import { bindHorizontalWheel, bindPagerMouseDrag } from '../services/pager-mouse
 // #endif
 const props = withDefaults(defineProps<{
   items: any[]; current: number; disabled?: boolean; refreshing?: boolean; layoutKey?: any;
-  tabsSelector?: string; refreshEnabled?: boolean; trackProgress?: boolean;
+  tabsSelector?: string; refreshEnabled?: boolean; trackProgress?: boolean; reserveForFloatingAction?: boolean;
 }>(), { disabled: false, refreshing: false, refreshEnabled: true, tabsSelector: '.category-tabs' });
 const emit = defineEmits(['change', 'refresh', 'reachbottom', 'progress']);
 const root = ref(null), height = ref(0);
@@ -117,7 +117,7 @@ onUnmounted(() => {
       <scroll-view class="category-pager-scroll" direction="vertical" :scroll-y="true" :show-scrollbar="false"
         :refresher-enabled="refreshEnabled && index === current && !disabled" :refresher-triggered="refreshing && index === current"
         :refresher-default-style="isDark ? 'white' : 'black'" @refresherrefresh="emit('refresh', index)" @scrolltolower="index === current && emit('reachbottom', index)">
-        <view class="category-pager-page" :class="{ 'category-pager-active': index === current }" :aria-hidden="index !== current">
+        <view class="category-pager-page" :class="{ 'category-pager-active': index === current, 'category-pager-page-with-floating-action': reserveForFloatingAction }" :aria-hidden="index !== current">
           <slot :item="item" :index="index" :active="index === current" />
         </view>
       </scroll-view>
@@ -126,15 +126,23 @@ onUnmounted(() => {
 </template>
 <style scoped lang="scss">
 @use '../styles/spacing-tokens' as *;
+@mixin bottom-inset($padding) {
+  padding-bottom: $padding;
+  /* #ifdef APP */
+  padding-bottom: calc(#{$padding} + var(--uni-safe-area-inset-bottom, 0px));
+  /* #endif */
+  /* #ifndef APP */
+  padding-bottom: calc(#{$padding} + env(safe-area-inset-bottom));
+  /* #endif */
+}
 .category-pager { width: 100%; min-width: 0; }
 .category-pager-scroll { height: 100%; }
-.category-pager-page { box-sizing: border-box; }
-/* #ifdef APP */
-.category-pager-page { padding-bottom: 56px + $space-page + $space-inline; padding-bottom: calc(56px + #{$space-page} + #{$space-inline} + var(--uni-safe-area-inset-bottom, 0px)); }
-/* #endif */
+.category-pager-page { box-sizing: border-box; @include bottom-inset($space-page); }
+// 按公共悬浮按钮的最大直径与底部偏移，确保末行可以完整滚出。
+.category-pager-page-with-floating-action { @include bottom-inset(56px + $space-page + $space-inline); }
 /* #ifndef APP */
 .category-pager { width: calc(100% + #{$space-section}); }
-.category-pager-page { padding-right: $space-section; padding-bottom: calc(56px + #{$space-page} + #{$space-inline} + env(safe-area-inset-bottom)); }
+.category-pager-page { padding-right: $space-section; }
 /* #endif */
 /* #ifdef WEB */
 .category-pager { cursor: grab; user-select: none; }

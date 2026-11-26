@@ -6,7 +6,7 @@ import { useRefreshTheme } from '../services/refresh-theme.ts';
 import SecondaryUnlock from './SecondaryUnlock.uvue';
 provide('mobile-page-inset', true);
 const refreshIndicatorStyle = useRefreshTheme();
-const props = withDefaults(defineProps<{ fullBleed?: boolean; dragScrolling?: boolean; scrollTop?: number; refreshing?: boolean; requiresAuth?: boolean; scrollLocked?: boolean; refreshDisabled?: boolean }>(), {
+const props = withDefaults(defineProps<{ fullBleed?: boolean; dragScrolling?: boolean; scrollTop?: number; refreshing?: boolean; requiresAuth?: boolean; scrollLocked?: boolean; refreshDisabled?: boolean; paper?: boolean; contentMaxWidth?: number }>(), {
   requiresAuth: true,
 });
 const scrollEnabled = computed(() => {
@@ -26,7 +26,7 @@ onMounted(() => {
 const emit = defineEmits(['refresh', 'reachbottom', 'scroll']);
 </script>
 <template>
-  <view class="mobile-page" :class="themeClass('mobile-page')">
+  <view class="mobile-page" :class="[themeClass('mobile-page'), { 'mobile-page-paper': paper }, themeClass({ 'mobile-page-paper': paper })]">
     <view v-if="fullBleed" class="mobile-page-full-bleed"><slot /></view>
     <scroll-view
       v-else
@@ -40,7 +40,7 @@ const emit = defineEmits(['refresh', 'reachbottom', 'scroll']);
       :refresher-default-style="refreshIndicatorStyle"
       @refresherrefresh="emit('refresh')"
       @scrolltolower="emit('reachbottom')"
-      ><view class="mobile-page-content ui-page-inset" :class="{ 'mobile-page-content-dragging': dragScrolling }"><slot /></view
+      ><view class="mobile-page-content ui-page-inset" :style="contentMaxWidth ? { maxWidth: contentMaxWidth + 'px' } : {}" :class="{ 'mobile-page-content-dragging': dragScrolling }"><slot /></view
     ></scroll-view>
     <slot name="fixed" />
     <SecondaryUnlock />
@@ -60,6 +60,8 @@ const emit = defineEmits(['refresh', 'reachbottom', 'scroll']);
 .mobile-page-dark {
   background-color: $theme-page-dark;
 }
+.mobile-page-paper { background-color: $theme-surface-light; }
+.mobile-page-paper-dark { background-color: $theme-page-dark; }
 .mobile-page-full-bleed {
   flex: 1;
   min-height: 0;

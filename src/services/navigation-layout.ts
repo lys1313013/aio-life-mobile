@@ -19,7 +19,8 @@ export function navigationLayout(windowInfo, capsule, spacing) {
 export function navigationContentLayout(windowInfo, capsule, spacing, options) {
   const layout = navigationLayout(windowInfo, capsule, spacing);
   const windowWidth = windowInfo.windowWidth || 375;
-  const leftInset = spacing.page + Math.max(0, (windowWidth - spacing.contentMax) / 2);
+  const contentMaxWidth = options.contentMaxWidth ?? spacing.contentMax;
+  const leftInset = spacing.page + Math.max(0, (windowWidth - contentMaxWidth) / 2);
   const rightInset = Math.max(leftInset, layout.rightInset);
   const availableWidth = windowWidth - leftInset - rightInset - (options.back ? spacing.controlMin + spacing.detail : 0);
   const wrapActions = options.actionsMinWidth > 0

@@ -185,9 +185,8 @@ onUnload(() => { alive = false; order.reset(); generation++; editorGeneration++;
               <view class="cover-info ui-gap-sm">
                 <text class="cover-name">{{ row.name }}</text>
                 <MobileButton :label="(row.isEnabled === 1 ? '停用' : '启用') + row.name" :icon="row.isEnabled === 1 ? 'ant-design:check-circle-outlined' : 'ant-design:stop-outlined'" variant="quiet" :loading="busy[row.id]" @click="toggle(row)" />
-                <ConfirmAction :label="'删除' + row.name" :message="'删除' + row.name + '？'" :action="() => remove(row)">
-                  <template #default="slot"><MobileButton :label="'删除' + row.name" icon="ant-design:delete-outlined" variant="quiet" :disabled="row.usageCount > 0 || busy[row.id]" :loading="slot.busy" @click="slot.open" /></template>
-                </ConfirmAction>
+                <ConfirmAction :label="'删除' + row.name" :message="'删除' + row.name + '？'" :action="() => remove(row)"
+                  :trigger-disabled="row.usageCount > 0 || busy[row.id]" />
               </view>
               <text class="cover-meta" :class="themeClass('cover-meta')">{{ row.bankName }} · {{ row.cardType === 'credit' ? '信用卡' : '储蓄卡' }} · {{ row.usageCount }} 张使用</text>
               <view v-if="rowErrors[row.id]" class="cover-row-error ui-row"><text class="cover-error">{{ rowErrors[row.id] }}</text><MobileButton label="重试状态更新" icon="ant-design:reload-outlined" variant="quiet" @click="toggle(row)" /></view>

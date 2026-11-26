@@ -1,8 +1,8 @@
 const { test, expect } = require('./support/test');
 const { dashboardFixture } = require('./fixtures.js');
 
-async function setup(page, remaining = 5) {
-  const state = { remaining, writes: [], jobs: [], fail: false };
+async function setup(page, remaining = 5, jobs = []) {
+  const state = { remaining, writes: [], jobs, fail: false };
   await page.route(new URL('/api/**', test.info().project.use.baseURL).href, async route => {
     const req = route.request(); const path = new URL(req.url()).pathname; const method = req.method();
     let data = dashboardFixture(path);
@@ -44,9 +44,13 @@ for (const width of [390, 768, 1440]) for (const theme of ['light', 'dark']) {
   test(`导出布局 ${width} ${theme}`, async ({ page }) => {
     await page.setViewportSize({ width, height: 900 }); await page.emulateMedia({ colorScheme: theme });
     const errors = []; page.on('pageerror', e => errors.push(e.message));
-    await setup(page);
+    await setup(page, 5, [{
+      id: '9223372036854775806', status: 'SUCCEEDED', createTime: '2026-10-25 12:00:00',
+      expiresAt: '2026-10-26 12:00:00', artifactStatus: 'AVAILABLE', rowCount: 12,
+    }]);
     await page.getByText('导出范围（2 项）', { exact: false }).click();
     await expect(page.getByRole('switch', { name: '导出人物关系', exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: '删除文件', exact: true })).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     await page.screenshot({ path: `test-results/data-export-${width}-${theme}.png`, fullPage: true });
     expect(errors).toEqual([]);

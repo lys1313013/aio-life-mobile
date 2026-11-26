@@ -98,13 +98,13 @@ for (const width of [390, 768, 1440]) for (const theme of ['light', 'dark']) {
     await more.click();
     const menu = first.getByRole('group', { name: '模拟一级分类的分类操作', exact: true });
     const actions = menu.getByRole('button');
-    await expect(actions).toHaveText(['新增子分类', '隐藏分类', '删除分类']);
+    await expect(actions).toHaveText(['新增子分类', '隐藏', '删除']);
     await expect(menu).toBeInViewport({ ratio: 1 });
     const [addBox, hideBox, deleteBox] = await Promise.all((await actions.all()).map(action => action.boundingBox()));
     expect(hideBox.y).toBeGreaterThanOrEqual(addBox.y + addBox.height);
     expect(deleteBox.y).toBeGreaterThanOrEqual(hideBox.y + hideBox.height);
     expect(deleteBox.height).toBeGreaterThanOrEqual(44);
-    await expect(menu.getByText('删除分类', { exact: true })).toHaveCSS('color', theme === 'dark' ? 'rgb(255, 112, 122)' : 'rgb(185, 28, 28)');
+    await expect(menu.getByText('删除', { exact: true })).toHaveCSS('color', theme === 'dark' ? 'rgb(255, 112, 122)' : 'rgb(185, 28, 28)');
     const menuBox = await stableBox(menu);
     const moreBox = await more.boundingBox();
     expect(menuBox.x).toBeGreaterThanOrEqual(firstBox.x);

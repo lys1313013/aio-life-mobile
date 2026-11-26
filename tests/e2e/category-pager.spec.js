@@ -1,4 +1,5 @@
 const { test, expect } = require('./support/test');
+const { inline } = require('../../src/styles/spacing.json');
 const ok = data => ({ json: { code: 0, data } });
 function gate() { let release; const promise = new Promise(resolve => { release = resolve; }); return { promise, release }; }
 const scenarios = [
@@ -16,10 +17,18 @@ const scenarios = [
       'GET /api/user/1/basic': ok({ id: '1', nickname: '模拟用户' }),
       'GET /api/user/2/basic': ok({ id: '2', nickname: '模拟好友' }),
     }, request: 'GET /api/message/list' },
-  { name: '分类管理', route: 'records/categories', tabs: '.category-type-tab', rows: '.category-row', secondCount: 1,
+  { name: '分类管理', route: 'records/categories', tabs: '.category-type-tab', rows: '.category-row', secondCount: 18,
     handlers: {
       'GET /api/userDictType/dictTypeEnum': ok([{ value: 'exercise_type', label: '运动分类' }, { value: 'movie_type', label: '观影分类' }]),
-      'GET /api/userDictData/query': request => { const type = new URL(request.url()).searchParams.get('dictType'); return ok({ items: [{ id: type === 'exercise_type' ? '41' : '42', dictType: type, dictLabel: '模拟分类', dictValue: 'mock', isEnabled: 1, sortOrder: 0, color: '#3478f6' }], total: 1 }); },
+      'GET /api/userDictData/query': request => {
+        const type = new URL(request.url()).searchParams.get('dictType');
+        const total = type === 'exercise_type' ? 1 : 18;
+        const items = Array.from({ length: total }, (_, index) => ({
+          id: String(41 + index), dictType: type, dictLabel: '模拟分类 ' + (index + 1),
+          dictValue: 'mock-' + index, isEnabled: 1, sortOrder: index, color: '#3478f6',
+        }));
+        return ok({ items, total });
+      },
     }, request: 'GET /api/userDictData/query' },
 ];
 for (const width of [390, 768, 1440]) for (const theme of ['light', 'dark']) for (const scenario of scenarios) {
@@ -101,7 +110,20 @@ for (const width of [390, 768, 1440]) for (const theme of ['light', 'dark']) for
       await expect(active.locator('[aria-label="添加待办到模拟工作清单"] input')).toHaveValue('保留输入草稿');
       await active.getByRole('button', { name: '编辑清单：模拟工作清单', exact: true }).click();
     } else if (scenario.name === 'MCP') await active.locator('.tool-row').click();
-    else if (scenario.name === '分类管理') await active.getByRole('button', { name: '编辑分类', exact: true }).click();
+    else if (scenario.name === '分类管理') {
+      const lastRow = active.locator(scenario.rows).filter({ hasText: '模拟分类 18' });
+      const add = page.getByRole('button', { name: '新增分类', exact: true });
+      const gap = async () => {
+        const [rowBox, addBox] = await Promise.all([lastRow.boundingBox(), add.boundingBox()]);
+        return addBox.y - rowBox.y - rowBox.height;
+      };
+      await expect.poll(gap).toBeLessThan(0);
+      await page.mouse.move(width / 2, 450);
+      await page.mouse.wheel(0, 10000);
+      await expect.poll(async () => Math.abs(await gap() - inline * (width <= 1024 ? 2 : 1))).toBeLessThan(1);
+      await page.screenshot({ path: info.outputPath('list-bottom.png') });
+      await lastRow.getByRole('button', { name: '编辑分类', exact: true }).click();
+    }
     if (scenario.name !== '消息') {
       await expect(page.getByRole('dialog')).toBeVisible();
       for (const [index, background] of tabBackgrounds.entries()) {
