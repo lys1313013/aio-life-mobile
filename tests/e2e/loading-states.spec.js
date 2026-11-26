@@ -242,6 +242,24 @@ test('all asynchronous business pages expose loading placeholders', async ({ con
   test.setTimeout(120000);
   await context.addInitScript(() => localStorage.setItem('aio-life-mobile.access-token.v1', 'loading-fixture'));
   const routes = ['home/index', 'life/index', 'time/dashboard', 'time/edit', 'profile-settings/bindings', 'profile-settings/preferences?section=menus', 'profile-settings/security', 'profile-settings/notifications', 'categories/index', 'admin/index', 'admin/directory', 'finance/index', 'finance/cards', 'finance/income', 'finance/expense', 'finance/import', 'goods/devices', 'member/index', 'mcp/index', 'messages/index', 'coding/csdn', 'coding/leetcode', 'tasks/todo', 'records/notes', 'records/feedback', 'records/anniversary', 'records/milestones', 'records/honor', 'records/activity', 'records/exercise', 'records/categories', 'records/video', 'records/weread', 'relationship/index', 'personality/mbti', 'personality/cbti', 'vault/index'];
+  const loadingSelectors = {
+    'home/index': '.home-list-skeleton',
+    'time/edit': '[role="status"][aria-label="正在加载时迹详情"]',
+    'profile-settings/preferences?section=menus': '.menu-skeleton-track',
+    'categories/index': '.category-loading',
+    'admin/index': '.user-card-loading',
+    'finance/index': '.finance-overview-loading .loading-indicator',
+    'finance/cards': '.card-loading',
+    'member/index': '.member-grid .skeleton-title',
+    'mcp/index': '.tool-skeleton',
+    'messages/index': '.conversation-skeleton',
+    'tasks/todo': '[role="status"][aria-label="正在加载待办清单"]',
+    'records/honor': '[role="status"][aria-label="正在加载荣誉"] .honor-skeleton',
+    'records/categories': '.category-placeholder',
+    'records/video': '.video-skeleton-line',
+    'relationship/index': '[role="status"][aria-label="正在加载关系图谱"]',
+    'vault/index': '.vault-skeleton-title',
+  };
   for (const route of routes) {
     const page = await context.newPage();
     await page.setViewportSize({ width: 390, height: 900 });
@@ -257,7 +275,7 @@ test('all asynchronous business pages expose loading placeholders', async ({ con
     });
     try {
       await page.goto('/#/pages/' + route);
-      const loadingSelector = route === 'mcp/index' ? '.tool-skeleton' : route === 'messages/index' ? '.conversation-skeleton' : route === 'records/video' ? '.video-skeleton-line' : route === 'member/index' ? '.member-grid .skeleton-title' : route === 'categories/index' ? '.category-loading' : route === 'records/categories' ? '.category-placeholder' : route === 'home/index' ? '.home-list-skeleton' : route === 'finance/index' ? '.finance-overview-loading .loading-indicator' : route === 'finance/cards' ? '.card-loading' : route === 'relationship/index' ? '[role="status"][aria-label="正在加载关系图谱"]' : route === 'time/edit' ? '[role="status"][aria-label="正在加载时迹详情"]' : route === 'tasks/todo' ? '[role="status"][aria-label="正在加载待办清单"]' : route === 'admin/index' ? '.user-card-loading' : route === 'vault/index' ? '.vault-skeleton-title' : '.content-skeleton';
+      const loadingSelector = loadingSelectors[route] ?? '.content-skeleton';
       await expect(page.locator(loadingSelector).first(), route).toBeVisible();
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), route).toBe(true);
       await page.screenshot({ path: info.outputPath(route.replace(/[/?=]/g, '-') + '.png') });

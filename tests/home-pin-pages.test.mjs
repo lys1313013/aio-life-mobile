@@ -24,6 +24,7 @@ async function pageHarness(kind) {
   const fixture = { ...goalRules, anniversaryColors,
     ref: value => ({ value }), computed: fn => ({ get value() { return fn(); } }),
     onMounted: fn => { hooks.mount = fn; }, onLoad: fn => { hooks.load = fn; }, onShow: () => {}, onUnmounted: () => {},
+    useAppLayout: () => ({ appGridCell: () => ({}) }),
     usePageRefresh: load => load,
     createRecordScope: () => ({ wait: promise => promise }),
     fetchGoals: async () => heldRead || records, fetchEvents: async () => records,

@@ -52,10 +52,11 @@ for (const width of [390, 768, 1440]) for (const theme of ['light', 'dark']) {
       fail = true;
       if (graph) {
         await page.getByRole('button', { name: '新增人物', exact: true }).click();
-        const form = page.getByRole('dialog', { name: '人物', exact: true });
+        await expect(page).toHaveURL(/relationship\/person-edit$/);
+        const form = page.getByRole('region', { name: '新增人物', exact: true });
         await form.getByRole('textbox', { name: '姓名', exact: true }).fill('模拟人物');
         await form.getByRole('button', { name: '保存', exact: true }).click();
-        await expect(form).toHaveCount(0);
+        await expect(page).toHaveURL(/relationship\/index$/);
       } else {
         await pullDown(page, entry.scroller || '.mobile-page-scroll');
       }

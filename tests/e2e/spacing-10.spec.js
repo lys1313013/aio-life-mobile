@@ -11,7 +11,32 @@ for(const route of routes)for(const [width,theme]of [[390,'light'],[390,'dark'],
  async function shot(label){await page.waitForTimeout(550);const path=prefix+'-'+label+'.png';await page.screenshot({path,fullPage:true});evidence.push(path);expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);geometries.push({label,...await page.evaluate(()=>{const css=n=>({class:n.className,rect:n.getBoundingClientRect().toJSON(),padding:getComputedStyle(n).padding,gap:getComputedStyle(n).gap,marginBottom:getComputedStyle(n).marginBottom});return {toolbarButtons:[...document.querySelectorAll('.ui-toolbar [role=button]')].map(css),roots:[...document.querySelectorAll('.ui-page-body,.ui-page-inset')].map(css),cards:[...document.querySelectorAll('.ui-card')].map(css),rows:[...document.querySelectorAll('.ui-row,.ui-toolbar')].map(css)}})});}
  async function modal(action){await page.getByRole('button',{name:action,exact:true}).first().click();const dialog=page.locator('[role=dialog]:visible').last();await expect(dialog).toBeVisible();await shot(action+'-top');await dialog.locator('.uni-scroll-view').evaluateAll(ns=>ns.forEach(n=>n.scrollTop=n.scrollHeight));await shot(action+'-bottom');await close(page);}
  await shot('page');
- if(route==='relationship/index'){await modal('新增人物');await page.getByRole('button',{name:'模拟人物',exact:true}).first().click();await expect(page).toHaveURL(/relationship\/person\?id=/);await expect(page.getByRole('button',{name:'编辑人物',exact:true})).toBeVisible();await shot('人物详情');await modal('编辑人物');await modal('新增关系');await modal('编辑关系：模拟朋友');await page.getByRole('button',{name:'返回',exact:true}).click();}
+ if (route === 'relationship/index') {
+   const personForm = async (label, editing) => {
+     await page.getByRole('button', { name: label, exact: true }).click();
+     await expect(page).toHaveURL(editing ? /relationship\/person-edit\?id=11$/ : /relationship\/person-edit$/);
+     const form = page.getByRole('region', { name: label, exact: true });
+     await expect(form.getByRole('textbox', { name: '姓名', exact: true })).toBeInViewport();
+     await expect(form).toHaveCSS('padding', '12px');
+     await shot(label + '-top');
+     const save = form.getByRole('button', { name: '保存', exact: true });
+     await save.scrollIntoViewIfNeeded();
+     await expect(save).toBeInViewport();
+     await shot(label + '-bottom');
+     await form.getByRole('button', { name: '取消', exact: true }).click();
+     await expect(page).toHaveURL(editing ? /relationship\/person\?id=11$/ : /relationship\/index$/);
+   };
+   await personForm('新增人物', false);
+   await page.getByRole('button', { name: '模拟人物', exact: true }).first().click();
+   await expect(page).toHaveURL(/relationship\/person\?id=11$/);
+   await expect(page.getByRole('button', { name: '编辑人物', exact: true })).toBeVisible();
+   await shot('人物详情');
+   await personForm('编辑人物', true);
+   await modal('新增关系');
+   await modal('编辑关系：模拟朋友');
+   await page.getByRole('button', { name: '返回', exact: true }).click();
+   await expect(page).toHaveURL(/relationship\/index$/);
+ }
  if(route==='messages/index'){await modal('发送消息');await page.locator('.conversation').first().click();await shot('对话');await page.getByRole('button',{name:'返回',exact:true}).click();await page.getByRole('button',{name:'管理消息',exact:true}).click();await shot('管理');await modal('发送通知');await expect(page.getByRole('tab',{name:'AI',exact:true})).toHaveCount(0);}
  if(route==='mcp/index')await modal('输入参数并调用 fixture_tool');
  if(route==='vault/index'){await page.getByRole('button',{name:'解锁',exact:true}).click();await shot('unlock');const dialog=page.locator('[role=dialog]:visible');await dialog.locator('[aria-label="主密码"] input').fill('qa-master');await dialog.getByRole('button',{name:'解锁',exact:true}).click();const card=page.getByRole('button',{name:'编辑密码：模拟密码',exact:true});await expect(card).toBeVisible();await expect(card).not.toContainText('fixture-user');await shot('unlocked');await modal('新增密码');await modal('编辑密码：模拟密码');}

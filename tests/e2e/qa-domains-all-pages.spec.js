@@ -30,11 +30,38 @@ for(const [route] of entries)for(const [width,theme] of [[390,'light'],[390,'dar
  if(route.startsWith('coding/')){await page.locator('[role=button][aria-label="账号绑定"]').click();await expect(page).toHaveURL(/profile-settings\/bindings/);checks.push('账号绑定入口点击');evidence.push(await shot(page,route,variant,'bindings-destination'));}
  if(route==='relationship/index'){
  await page.getByRole('button',{name:'适应画布',exact:true}).click();await page.getByRole('button',{name:'重置布局',exact:true}).click();
- await page.getByRole('button',{name:'新增人物',exact:true}).click();await panel(page,route,variant,'人物',evidence);await close(page);
+ const inspectPersonForm = async (label) => {
+   const form = page.getByRole('region', { name: label, exact: true });
+   await expect(form.getByRole('textbox', { name: '姓名', exact: true })).toBeInViewport();
+   const box = await form.boundingBox();
+   expect(box.x).toBeGreaterThanOrEqual(0);
+   expect(box.x + box.width).toBeLessThanOrEqual(width);
+   evidence.push(await shot(page, route, variant, label));
+   await inspectPickers(page, form, route, variant + '-' + label, evidence);
+   const save = form.getByRole('button', { name: '保存', exact: true });
+   await save.scrollIntoViewIfNeeded();
+   await expect(save).toBeInViewport();
+   evidence.push(await shot(page, route, variant, label + '-bottom'));
+   return form;
+ };
+ await page.getByRole('button', { name: '新增人物', exact: true }).click();
+ await expect(page).toHaveURL(/relationship\/person-edit$/);
+ const newPerson = await inspectPersonForm('新增人物');
+ await newPerson.getByRole('button', { name: '取消', exact: true }).click();
+ await expect(page).toHaveURL(/relationship\/index$/);
  await page.getByRole('button',{name:'模拟人物',exact:true}).click();await expect(page).toHaveURL(/relationship\/person\?id=/);
  const info=page.getByRole('button',{name:'编辑人物',exact:true});await expect(info).toBeVisible();evidence.push(await shot(page,route,variant,'人物详情'));
- await info.click();const personEditor=await panel(page,route,variant,'人物',evidence);
- await personEditor.getByRole('button',{name:'删除人物和关联关系',exact:true}).click();evidence.push(await shot(page,route,variant,'delete-confirm'));await close(page);await close(page);
+ await info.click();
+ await expect(page).toHaveURL(/relationship\/person-edit\?id=11$/);
+ const personEditor = await inspectPersonForm('编辑人物');
+ await personEditor.getByRole('button', { name: '删除人物和关联关系', exact: true }).click();
+ const confirmation = page.getByRole('dialog', { name: '删除人物和关联关系', exact: true });
+ await expect(confirmation).toBeVisible();
+ evidence.push(await shot(page, route, variant, 'delete-confirm'));
+ await confirmation.getByRole('button', { name: '取消', exact: true }).click();
+ await expect(confirmation).toHaveCount(0);
+ await personEditor.getByRole('button', { name: '取消', exact: true }).click();
+ await expect(page).toHaveURL(/relationship\/person\?id=11$/);
  await page.getByRole('button',{name:'新增关系',exact:true}).click();await panel(page,route,variant,'关系',evidence);await close(page);
  await page.getByRole('button',{name:'编辑关系：模拟朋友',exact:true}).click();const relationEditor=await panel(page,route,variant,'关系',evidence);
  await relationEditor.getByRole('button',{name:'删除关系',exact:true}).click();evidence.push(await shot(page,route,variant,'delete-relation'));await close(page);await close(page);

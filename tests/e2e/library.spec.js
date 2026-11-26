@@ -361,7 +361,8 @@ for (const width of [390, 768, 1440]) for (const colorScheme of ['light', 'dark'
     try {
       await page.goto('/#/pages/records/library?kind=movie');
       const tabs = page.getByRole('group', { name: '观影状态', exact: true });
-      const active = page.locator('.category-pager-active');
+      const pager = page.locator('.category-pager');
+      const active = pager.locator('.category-pager-active');
       const loading = active.getByRole('status', { name: '正在加载观影记录', exact: true });
       const placeholders = loading.locator('.library-poster');
       const cards = active.getByRole('button', { name: '编辑记录', exact: true });
@@ -385,6 +386,12 @@ for (const width of [390, 768, 1440]) for (const colorScheme of ['light', 'dark'
       await expect(placeholders).toHaveCount(1);
       lists.not_started[0].release();
       await expect(active.getByRole('alert')).toContainText('模拟观影列表失败');
+      // 等待当前页对齐，避免点击动画中的按钮让浏览器横向滚动遮罩。
+      await expect.poll(async () => {
+        const frame = await pager.boundingBox();
+        const pane = await active.boundingBox();
+        return pane.x - frame.x;
+      }).toBeCloseTo(0, 0);
       await active.getByRole('button', { name: '重试', exact: true }).click();
       await expect(placeholders).toHaveCount(1);
       const loadingPoster = await stableBox(placeholders.first());
