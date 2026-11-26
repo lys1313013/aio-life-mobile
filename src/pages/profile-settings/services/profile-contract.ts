@@ -1,4 +1,4 @@
-import { missingRequired } from './form-required.ts';
+import { missingRequired } from '../../../services/form-required.ts';
 export const platforms = [
   { value: 'github', label: 'GitHub', mark: 'G', hint: '填写 GitHub 用户名。' },
   {

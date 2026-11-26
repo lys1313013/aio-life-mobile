@@ -37,7 +37,7 @@ async function setup(page) {
 }
 test('账号与安全直接进入修改密码表单，校验、失败保留和重试',async({page})=>{
  const state=await setup(page);
- await page.goto('/#/pages/profile/account-security');
+ await page.goto('/#/pages/profile-settings/account-security');
  await page.getByRole('button',{name:'修改密码',exact:true}).click();
  const dialog=page.getByRole('form',{name:'修改密码',exact:true});
  await expect(dialog).toBeVisible();
@@ -58,7 +58,7 @@ test('账号与安全直接进入修改密码表单，校验、失败保留和�
  await expect(dialog.locator('[aria-label="确认密码"] input')).toHaveValue('');
  expect(state.writes.at(-1).body).toEqual({oldPassword:'old-fixture',newPassword:'new-fixture'});
  await dialog.getByRole('button',{name:'取消',exact:true}).click();
- await expect(page).toHaveURL(/\/pages\/profile\/account-security$/);
+ await expect(page).toHaveURL(/\/pages\/profile-settings\/account-security$/);
 });
 test('接口菜单锁解锁后重试一次，隐藏菜单保留长ID',async({page})=>{
  const state=await setup(page);
@@ -71,7 +71,7 @@ test('接口菜单锁解锁后重试一次，隐藏菜单保留长ID',async({pag
  await expect(dialog).toHaveCount(0);
  await expect(page.getByRole('button',{name:'创建 API Key',exact:true})).toBeEnabled();
  expect(state.unlock).toBe(true);
- await page.goto('/#/pages/profile/preferences?section=menus');
+ await page.goto('/#/pages/profile-settings/preferences?section=menus');
  await page.reload();
  await page.locator('[aria-label="显示记录 / 笔记"]').click();
  await page.getByRole('button',{name:'保存',exact:true}).click();
@@ -80,7 +80,7 @@ test('接口菜单锁解锁后重试一次，隐藏菜单保留长ID',async({pag
 });
 for(const width of [390,768,1440])for(const theme of ['light','dark'])test(`设置布局 ${width} ${theme}`,async({page})=>{
  await page.setViewportSize({width,height:900});await page.emulateMedia({colorScheme:theme});await setup(page);
- await page.goto('/#/pages/profile/preferences?section=password');
+ await page.goto('/#/pages/profile-settings/preferences?section=password');
  await page.reload();
  const panel=page.getByRole('form',{name:'修改密码',exact:true});await expect(panel).toBeVisible();
  const box=await panel.boundingBox();expect(box.width).toBeLessThanOrEqual(width-24);expect(box.y).toBeGreaterThanOrEqual(0);expect(box.y+box.height).toBeLessThanOrEqual(901);
@@ -90,7 +90,7 @@ for(const width of [390,768,1440])for(const theme of ['light','dark'])test(`设�
 
 test('菜单锁使用完整字符串ID与二级密码；通知留空保留应用凭证',async({page})=>{
  const state=await setup(page);
- await page.goto('/#/pages/profile/security');
+ await page.goto('/#/pages/profile-settings/security');
  await page.getByRole('button',{name:'展开记录',exact:true}).click();
  await page.locator('[aria-label="锁定记录 / 笔记"]').click();
  await page.getByRole('button',{name:'保存菜单锁',exact:true}).click();
@@ -99,7 +99,7 @@ test('菜单锁使用完整字符串ID与二级密码；通知留空保留应用
  await lock.getByRole('button',{name:'确认密码',exact:true}).click();
  await expect(lock).toHaveCount(0);
  expect(state.security[0]).toEqual({menuIds:['9223372036854775807','root'],secondaryPassword:'001234'});
- await page.goto('/#/pages/profile/notifications');
+ await page.goto('/#/pages/profile-settings/notifications');
  await page.getByRole('button',{name:'配置飞书',exact:true}).click();
  const notification=page.getByRole('dialog',{name:'飞书通知配置',exact:true});
  await expect(notification.locator('[aria-label="App Secret"] input')).toHaveValue('');
@@ -115,7 +115,7 @@ test('离开锁定页面取消等待，返回不保留二级密码',async({page}
  const dialog=page.getByRole('dialog',{name:'解锁菜单',exact:true});
  await expect(dialog).toBeVisible();
  await dialog.locator('[aria-label="二级密码"] input').fill('001234');
- await page.goto('/#/pages/profile/security');
+ await page.goto('/#/pages/profile-settings/security');
  await expect(dialog).toHaveCount(0);
  await page.goBack();
  await expect(dialog).toBeVisible();
@@ -127,7 +127,7 @@ test('离开锁定页面取消等待，返回不保留二级密码',async({page}
 
 test('H5显示微信渠道状态并引导到小程序，不调起原生订阅',async({page})=>{
  const state=await setup(page);
- await page.goto('/#/pages/profile/notifications');
+ await page.goto('/#/pages/profile-settings/notifications');
  await expect(page.getByText('暂未开通订阅消息',{exact:true})).toBeVisible();
  state.wechat={enabled:true,bound:false,bizType:'LEETCODE_REMINDER',templateId:'fixture-template'};
  await page.reload();

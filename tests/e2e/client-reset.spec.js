@@ -8,7 +8,7 @@ test('系统设置清缓存先确认，清理登录及本地设置后进入登�
     const items = { 'aio-life-mobile.access-token.v1': 'reset-fixture', 'aio-life-mobile.theme.v1': 'dark', 'aio-life-mobile.password-vault.mock': 'mock-local-setting', 'mock-old-cache': 'mock-cache' };
     for (const [key, data] of Object.entries(items)) localStorage.setItem(key, JSON.stringify({ type: 'string', data }));
   });
-  await page.goto('/#/pages/profile/preferences?section=system');
+  await page.goto('/#/pages/profile-settings/preferences?section=system');
   await page.getByRole('button', { name: '清除缓存', exact: true }).click();
   const confirm = page.getByRole('dialog', { name: '清除缓存', exact: true });
   await expect(confirm).toContainText('需要重新登录');

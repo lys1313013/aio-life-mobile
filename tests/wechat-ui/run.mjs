@@ -21,7 +21,7 @@ for (const file of ['package.json', 'vite.config.js', 'index.html', 'tsconfig.js
 await symlink(path.join(root, 'node_modules'), path.join(project, 'node_modules'));
 await cp(path.join(root, 'scripts'), path.join(project, 'scripts'), { recursive: true });
 for (const file of ['src/pages/login/index.uvue', 'src/pages/auth/web-login.uvue', 'src/services/wechat-auth.ts',
-  'src/pages/profile/notifications.uvue', 'src/pages/profile/wechat-subscription.ts']) {
+  'src/pages/profile-settings/notifications.uvue', 'src/pages/profile-settings/wechat-subscription.ts']) {
   const target = path.join(project, file);
   // 保留测试替身的动态调用，避免生产编译器把 uni API 改成不可替换的静态导入。
   await writeFile(target, (await readFile(target, 'utf8')).replaceAll('MP-WEIXIN', 'WEB')
@@ -299,7 +299,7 @@ try {
     await notice.waitForFunction(() => uni.getStorageSync('aio-life-mobile.access-token.v1') === 'fixture-notice-token');
     await notice.waitForURL(/#\/(?:pages\/home\/index)?$/);
     await notice.evaluate(() => {
-      uni.reLaunch({ url: '/pages/profile/notifications' });
+      uni.reLaunch({ url: '/pages/profile-settings/notifications' });
       window.__subscriptionMode = 'reject';
       window.__subscriptionCalls = 0;
       uni.requestSubscribeMessage = options => {
@@ -324,17 +324,18 @@ try {
     await notice.getByText('已订阅一次', { exact: true }).waitFor();
     assert.equal(await notice.evaluate(() => window.__subscriptionCalls), 2);
     assert.equal(writes.length, 1);
+    const testConfirmation = notice.getByRole('dialog', { name: '发送测试', exact: true });
     await notice.getByRole('button', { name: '发送测试', exact: true }).click();
-    await notice.getByText('发送测试将消耗一次订阅机会，确认发送？', { exact: true }).waitFor();
+    await testConfirmation.getByText('发送测试将消耗一次订阅机会，确认发送？', { exact: true }).waitFor();
     assert.equal(writes.length, 1);
-    await notice.getByRole('button', { name: '确认', exact: true }).click();
+    await testConfirmation.getByRole('button', { name: '确认', exact: true }).click();
     await notice.getByText('测试已发送', { exact: true }).waitFor();
     assert.equal(writes.length, 2);
     failTest = true;
     await notice.getByRole('button', { name: '发送测试', exact: true }).click();
-    await notice.getByRole('button', { name: '确认', exact: true }).click();
+    await testConfirmation.getByRole('button', { name: '确认', exact: true }).click();
     await notice.getByText('没有可用的订阅机会，请先在小程序点击订阅一次', { exact: true }).waitFor();
-    await notice.getByRole('button', { name: '取消', exact: true }).click();
+    await testConfirmation.getByRole('button', { name: '取消', exact: true }).click();
     await notice.getByText('测试已发送', { exact: true }).waitFor({ state: 'hidden' });
     await notice.locator('.notification-panel').last().waitFor({ state: 'visible' });
     await notice.screenshot({ path: path.join(output, `subscription-${width}-${colorScheme}.png`), fullPage: true, animations: 'disabled' });

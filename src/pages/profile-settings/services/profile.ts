@@ -1,6 +1,6 @@
-import type { UserThirdPartyAccountVerifyVO } from './api-payload.ts'
+import type { UserThirdPartyAccountVerifyVO } from '../../../services/api-payload.ts'
 
-import { request } from './api.ts'
+import { request } from '../../../services/api.ts'
 import { bindingPayload, readBindings } from './profile-contract.ts'
 
 export async function loadBindings() {

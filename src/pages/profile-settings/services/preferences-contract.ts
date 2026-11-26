@@ -1,4 +1,4 @@
-import { missingRequired } from './form-required.ts';
+import { missingRequired } from '../../../services/form-required.ts';
 export function flattenMenuOptions(nodes, parents = [], parentHidden = false, hiddenIds = []) {
   if (!Array.isArray(nodes)) throw new Error('菜单数据异常')
   return nodes.flatMap(node => {

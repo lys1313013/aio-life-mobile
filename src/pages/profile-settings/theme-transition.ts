@@ -1,5 +1,5 @@
 import { nextTick } from 'vue'
-import { isDark } from './theme.ts'
+import { isDark } from '../../services/theme.ts'
 
 export const themeTransitionDuration = 800
 

@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 import { transform } from 'esbuild'
-const { code } = await transform(await readFile('src/services/client-reset.ts', 'utf8'), { loader: 'ts', format: 'cjs' })
+const { code } = await transform(await readFile('src/pages/profile-settings/services/client-reset.ts', 'utf8'), { loader: 'ts', format: 'cjs' })
 function setup(fail = false) {
   const events = [], theme = { mode: 'dark' }, module = { exports: {} }
   const uni = {
@@ -17,9 +17,9 @@ function setup(fail = false) {
   }
   new Function('require', 'module', 'exports', 'uni', code)(name => {
     if (name === 'vue') return { nextTick: async () => events.push('tick') }
-    if (name === './session.ts') return { clearSession: () => events.push('session') }
-    if (name === './life-catalog-cache.ts') return { clearLifeCatalogCache: () => events.push('catalog') }
-    if (name === './theme.ts') return { theme, refreshNativeTheme: () => events.push('theme') }
+    if (name === '../../../services/session.ts') return { clearSession: () => events.push('session') }
+    if (name === '../../../services/life-catalog-cache.ts') return { clearLifeCatalogCache: () => events.push('catalog') }
+    if (name === '../../../services/theme.ts') return { theme, refreshNativeTheme: () => events.push('theme') }
     throw Error(name)
   }, module, module.exports, uni)
   return { clear: module.exports.clearClientData, events, theme }

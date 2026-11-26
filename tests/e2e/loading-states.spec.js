@@ -163,7 +163,7 @@ const scenarios = [
   ['records/library?kind=read', '.shelf-cover .skeleton-cover'],
   ['tasks/goals', '.goal-grid .skeleton-tile'],
   ['goods/wardrobe', '.item-photo .goods-image-skeleton'],
-  ['profile/settings', '.settings-placeholder'],
+  ['profile-settings/settings', '.settings-placeholder'],
   ['profile/index', '.skeleton-profile-avatar'],
   ['time/index', '.timeline[aria-busy="true"]'],
 ];
@@ -177,7 +177,7 @@ for (const width of [390, 768, 1440]) for (const theme of ['light', 'dark']) tes
     const pending = gate();
     await page.route('**/api/**', async request => {
       const path = new URL(request.request().url()).pathname;
-      if (path === '/api/user/info' && !['profile/settings', 'profile/index'].includes(route)) return request.fulfill({ json: { code: 0, data: { id: '1', nickname: '模拟用户', roles: ['admin'] } } });
+      if (path === '/api/user/info' && !['profile-settings/settings', 'profile/index'].includes(route)) return request.fulfill({ json: { code: 0, data: { id: '1', nickname: '模拟用户', roles: ['admin'] } } });
       await pending.promise;
       await request.fulfill({ json: { code: 0, data: [] } });
     });
@@ -241,7 +241,7 @@ test('a failed GitHub section can retry while another section is still pending',
 test('all asynchronous business pages expose loading placeholders', async ({ context }, info) => {
   test.setTimeout(120000);
   await context.addInitScript(() => localStorage.setItem('aio-life-mobile.access-token.v1', 'loading-fixture'));
-  const routes = ['home/index', 'life/index', 'time/dashboard', 'time/edit', 'profile/bindings', 'profile/preferences?section=menus', 'profile/security', 'profile/notifications', 'categories/index', 'admin/index', 'admin/directory', 'finance/index', 'finance/cards', 'finance/income', 'finance/expense', 'finance/import', 'goods/devices', 'member/index', 'mcp/index', 'messages/index', 'coding/csdn', 'coding/leetcode', 'tasks/todo', 'records/notes', 'records/feedback', 'records/anniversary', 'records/milestones', 'records/honor', 'records/activity', 'records/exercise', 'records/categories', 'records/video', 'records/weread', 'relationship/index', 'personality/mbti', 'personality/cbti', 'vault/index'];
+  const routes = ['home/index', 'life/index', 'time/dashboard', 'time/edit', 'profile-settings/bindings', 'profile-settings/preferences?section=menus', 'profile-settings/security', 'profile-settings/notifications', 'categories/index', 'admin/index', 'admin/directory', 'finance/index', 'finance/cards', 'finance/income', 'finance/expense', 'finance/import', 'goods/devices', 'member/index', 'mcp/index', 'messages/index', 'coding/csdn', 'coding/leetcode', 'tasks/todo', 'records/notes', 'records/feedback', 'records/anniversary', 'records/milestones', 'records/honor', 'records/activity', 'records/exercise', 'records/categories', 'records/video', 'records/weread', 'relationship/index', 'personality/mbti', 'personality/cbti', 'vault/index'];
   for (const route of routes) {
     const page = await context.newPage();
     await page.setViewportSize({ width: 390, height: 900 });

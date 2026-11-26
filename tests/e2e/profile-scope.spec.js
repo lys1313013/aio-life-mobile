@@ -19,7 +19,7 @@ async function setup(page) {
     }
     await route.fulfill({ json: { code: 0, data: data ?? [] } });
   });
-  await page.goto('/#/pages/profile/settings');
+  await page.goto('/#/pages/profile-settings/settings');
   await expect(page.locator('[aria-label="昵称"] input')).toHaveValue('用户A');
   return state;
 }
@@ -54,7 +54,7 @@ test('资料页离页旧加载不能覆盖返回后的当前加载', async ({ pa
   const state = await setup(page);
   let release;
   state.wait = new Promise(resolve => { release = resolve; });
-  await page.goto('/#/pages/profile/security');
+  await page.goto('/#/pages/profile-settings/security');
   await expect(page.getByText('菜单锁', { exact: true })).toBeVisible();
   await page.clock.setFixedTime(new Date(started.getTime() + 61 * 60 * 1000));
   await page.goBack();

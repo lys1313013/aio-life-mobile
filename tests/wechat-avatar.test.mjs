@@ -5,7 +5,7 @@ import { transformSync } from 'esbuild';
 import { ref, computed, watch, reactive, effectScope } from 'vue';
 
 // 执行真实页面及上传接口，只模拟平台 I/O 和页面生命周期。
-const pageSource = (await readFile(new URL('../src/pages/profile/settings.uvue', import.meta.url), 'utf8'))
+const pageSource = (await readFile(new URL('../src/pages/profile-settings/settings.uvue', import.meta.url), 'utf8'))
   .split('<script setup lang="ts">')[1].split('</script>')[0]
   .replace(/^import .*$/gm, '');
 const apiSource = (await readFile(new URL('../src/services/api.ts', import.meta.url), 'utf8')).split('export function uploadAvatar')[1];

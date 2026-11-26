@@ -4,7 +4,7 @@ const { expect } = require('@playwright/test');
 // 隐藏菜单保留页面功能，页面审计直接访问这些路由。
 const retainedProfilePages = Object.freeze({
   'API Key': '/pages/mcp/api-keys',
-  '系统设置': '/pages/profile/preferences?section=system',
+  '系统设置': '/pages/profile-settings/preferences?section=system',
   'MBTI 测试': '/pages/personality/mbti',
   'CBTI 测试': '/pages/personality/cbti',
   '管理与配置': '/pages/admin/directory',
@@ -34,7 +34,7 @@ function createProfileNavigation(click) {
     await page.getByRole('button', { name: '返回', exact: true }).first().click();
     await expect(page).not.toHaveURL(previous);
     await waitForMotion(page);
-    if (page.url().includes('/pages/categories/directory') || page.url().includes('/pages/profile/account-security') || page.url().includes('/pages/profile/preferences?section=general')) {
+    if (page.url().includes('/pages/categories/directory') || page.url().includes('/pages/profile-settings/account-security') || page.url().includes('/pages/profile-settings/preferences?section=general')) {
       const intermediate = page.url();
       await page.getByRole('button', { name: '返回', exact: true }).first().click();
       await expect(page).not.toHaveURL(intermediate);

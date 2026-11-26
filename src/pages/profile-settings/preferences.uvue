@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import MobileSwitch from '../../components/MobileSwitch.uvue';
 import AppIcon from '../../components/AppIcon.uvue';
+import LifeMenuIcon from '../../components/LifeMenuIcon.uvue';
 import { buttonLabelClasses } from '../../services/button-label.ts';
 import { usePageRefresh } from '../../services/page-refresh.ts'
 import { isRequired } from '../../services/form-required.ts';
@@ -15,20 +16,21 @@ import PageState from '../../components/PageState.uvue';
 import ConfirmAction from '../../components/ConfirmAction.uvue';
 import { logout, request } from '../../services/api.ts';
 import { session, restoreSession } from '../../services/session.ts';
-import { clearClientData } from '../../services/client-reset.ts';
+import { clearClientData } from './services/client-reset.ts';
+import { menuVisuals } from '../../services/menu-visuals.ts';
 import { isThemeDark, themeClass, themePalette, setThemeMode } from '../../services/theme.ts';
-import { themeTransitionDuration } from '../../services/theme-transition.ts';
+import { themeTransitionDuration } from './theme-transition.ts';
 import { useWeixinThemeReveal } from './weixin-theme-reveal.ts';
 // #ifdef MP-WEIXIN
 import { secondaryLock } from '../../services/secondary-lock.ts';
 // #endif
 // #ifndef MP-WEIXIN
-import { animateThemeChange } from '../../services/theme-transition.ts';
+import { animateThemeChange } from './theme-transition.ts';
 // #endif
 import {
   flattenMenuOptions,
   passwordPayload,
-} from '../../services/preferences-contract.ts';
+} from './services/preferences-contract.ts';
 const titles = {
   general: '设置',
   password: '修改密码',
@@ -99,23 +101,37 @@ const loading = ref(false),
   ready = ref(false),
   error = ref(''),
   formError = ref('');
-const menuItems = ref<any[]>([]),
-  menuRoots = ref<any[]>([]),
+const menuRoots = ref<any[]>([]),
   hidden = ref<string[]>([]),
   menuQuery = ref(''),
   searchOpen = ref(false),
+  menuPullRefreshing = ref(false),
   collapsedMenuGroups = ref<string[]>([]);
+const menuSkeletonRows = [1, 2];
+const menuFiltering = computed(() => !!menuQuery.value.trim());
 const menuGroups = computed(() => {
   const query = menuQuery.value.trim().toLowerCase();
+  const hiddenIds = new Set(hidden.value);
   return menuRoots.value.map((root) => {
     const grouped = !!root.children?.length;
-    const items = flattenMenuOptions(grouped ? root.children : [root], grouped ? [root.title] : [])
-      .map((item) => ({ ...item, label: grouped ? item.title.slice(root.title.length + 3) : item.title }))
-      .filter((item) => !query || item.title.toLowerCase().includes(query));
-    return { id: root.id, title: grouped ? root.title : '', items };
+    const options = flattenMenuOptions(grouped ? root.children : [root], grouped ? [root.title] : []);
+    const items = options.filter((item) => !query || item.title.toLowerCase().includes(query)).map((item) => ({
+      ...item,
+      label: grouped ? item.title.slice(root.title.length + 3) : item.title,
+      visual: menuVisuals.menuVisual(item.id, { icon: 'lucide:layout-grid' }),
+      checked: !hiddenIds.has(item.id),
+    }));
+    return {
+      id: root.id,
+      title: grouped ? root.title : '',
+      visual: grouped ? menuVisuals.menuVisual(root.id, { icon: 'lucide:folder' }) : null,
+      expanded: !!query || !collapsedMenuGroups.value.includes(root.id),
+      items,
+    };
   }).filter((group) => group.items.length);
 });
 function toggleMenuGroup(id: string) {
+  if (menuFiltering.value) return;
   collapsedMenuGroups.value = collapsedMenuGroups.value.includes(id)
     ? collapsedMenuGroups.value.filter((value) => value !== id)
     : [...collapsedMenuGroups.value, id];
@@ -130,9 +146,9 @@ watch(
     finishReveal();
     // #endif
     revision++;
-    menuItems.value = [];
     menuRoots.value = [];
     menuQuery.value = '';
+    menuPullRefreshing.value = false;
     collapsedMenuGroups.value = [];
     hidden.value = [];
     resetPasswordForm();
@@ -153,6 +169,7 @@ onShow(() => {
     return;
   }
   refreshOnShow();
+  if (mode.value === 'menus') void menuVisuals.load(request);
 });
 onHide(() => {
   active = false;
@@ -163,7 +180,12 @@ onHide(() => {
   revision++;
   resetPasswordForm();
   loading.value = false;
+  menuPullRefreshing.value = false;
 });
+function refreshFromPull() {
+  if (mode.value === 'menus') menuPullRefreshing.value = true;
+  if (!loading.value) void load();
+}
 async function load() {
   const version = ++revision,
     token = session.token;
@@ -174,7 +196,6 @@ async function load() {
       const data: any = await request('/menu/preferences?client=mobile');
       const flat = flattenMenuOptions(data.menus, [], false, data.hiddenMenuIds);
       if (!active || version !== revision || token !== session.token) return;
-      menuItems.value = flat;
       menuRoots.value = data.menus;
       hidden.value = flat.filter((x) => x.hidden).map((x) => x.id);
     }
@@ -185,7 +206,10 @@ async function load() {
       if (!session.token) uni.reLaunch({ url: '/pages/login/index' });
     }
   } finally {
-    if (version === revision) loading.value = false;
+    if (version === revision) {
+      loading.value = false;
+      menuPullRefreshing.value = false;
+    }
   }
 }
 function resetPasswordForm() {
@@ -268,7 +292,7 @@ function back() {
         <MobileButton label="保存" icon="ant-design:check-outlined" variant="ghost" :loading="saving" :disabled="!ready || loading" @click="saveMenus" />
       </template>
     </PageSearch>
-    <MobilePage :refreshing="loading" @refresh="load"
+    <MobilePage :refreshing="mode === 'menus' ? menuPullRefreshing : loading" @refresh="refreshFromPull"
       :style="layer.appearance ? { backgroundColor: themePalette(layer.appearance).backgroundColor } : {}"
       :requires-auth="!layer.preview" :refresh-disabled="layer.preview"
       :scroll-top="layer.preview ? settingsScrollTop : undefined"
@@ -325,7 +349,29 @@ function back() {
           ><text :class="buttonLabelClasses(['signout-button', themeClass('signout-button', layer.appearance)])">退出登录</text></button>
         </view>
       </view>
-      <PageState v-else skeleton="form" :loading="loading" :error="error" @retry="load">
+      <PageState v-else skeleton="form" :loading="loading" :error="error" :has-content="mode === 'menus' && ready"
+        :show-refresh-indicator="!menuPullRefreshing" @retry="load">
+        <template v-if="mode === 'menus'" #loading>
+          <view class="ui-page-body menu-list" aria-hidden="true">
+            <view v-for="rows in menuSkeletonRows" :key="rows">
+              <view v-if="rows > 1" class="menu-group-toggle">
+                <view class="menu-skeleton menu-skeleton-icon" :class="themeClass('menu-skeleton', layer.appearance)" />
+                <view class="menu-skeleton menu-skeleton-title" :class="themeClass('menu-skeleton', layer.appearance)" />
+              </view>
+              <view class="menu-options" :class="[themeClass('menu-options', layer.appearance), rows > 1 ? 'menu-options-grouped' : '']">
+                <view v-for="index in rows" :key="index" class="menu-option" :class="{ 'menu-option-grouped': rows > 1 }">
+                  <view class="menu-skeleton menu-skeleton-icon" :class="themeClass('menu-skeleton', layer.appearance)" />
+                  <view class="menu-option-title">
+                    <view class="menu-skeleton menu-skeleton-title" :class="themeClass('menu-skeleton', layer.appearance)" />
+                  </view>
+                  <view class="menu-skeleton-switch">
+                    <view class="menu-skeleton menu-skeleton-track" :class="themeClass('menu-skeleton', layer.appearance)" />
+                  </view>
+                </view>
+              </view>
+            </view>
+          </view>
+        </template>
         <view v-if="mode === 'password'" class="ui-page-body">
           <view class="preference-surface ui-card" :class="themeClass('preference-surface')" role="form" aria-label="修改密码">
             <FormField :required="isRequired('password', 'oldPassword')" label="旧密码" kind="password" v-model="form.oldPassword" :disabled="saving" />
@@ -338,22 +384,28 @@ function back() {
             </FormActions>
           </view>
         </view>
-        <view v-if="mode === 'menus' && ready" class="ui-page-body" @click="searchOpen = false">
-          <view v-for="group in menuGroups" :key="group.id" class="preference-surface ui-pad-card ui-mt-section" :class="themeClass('preference-surface')">
-            <button hover-class="none" v-if="group.title" role="button" class="menu-group-toggle" :aria-label="(collapsedMenuGroups.includes(group.id) && !menuQuery.trim() ? '展开' : '收起') + group.title" :aria-expanded="!!menuQuery.trim() || !collapsedMenuGroups.includes(group.id)" @click="toggleMenuGroup(group.id)">
-              <text class="menu-group-title" :class="themeClass('menu-group-title')">{{ group.title }}</text>
-              <AppIcon :name="collapsedMenuGroups.includes(group.id) && !menuQuery.trim() ? 'ant-design:right-outlined' : 'ant-design:down-outlined'" :size="16" />
+        <view v-if="mode === 'menus' && ready" class="ui-page-body menu-list" @click="searchOpen = false">
+          <view v-for="group in menuGroups" :key="group.id">
+            <button v-if="group.title" hover-class="none" role="button" class="menu-group-toggle"
+              :aria-label="(group.expanded ? '收起' : '展开') + group.title" :aria-expanded="group.expanded"
+              :aria-disabled="menuFiltering" @click="toggleMenuGroup(group.id)">
+              <LifeMenuIcon :icon="group.visual?.icon" :color="group.visual?.iconColor || themePalette(layer.appearance).tabSelectedColor" :size="18" aria-hidden="true" />
+              <text class="menu-group-title" :class="themeClass('menu-group-title', layer.appearance)">{{ group.title }}</text>
+              <AppIcon v-if="!menuFiltering" :name="group.expanded ? 'ant-design:down-outlined' : 'ant-design:right-outlined'" :size="16" :appearance="layer.appearance" />
             </button>
-            <view v-if="!group.title || menuQuery.trim() || !collapsedMenuGroups.includes(group.id)">
-              <view v-for="item in group.items" :key="item.id" class="preference-row ui-row">
-                <text class="preference-name" :class="themeClass('preference-name')">{{ item.label }}</text>
-                <MobileSwitch :checked="!hidden.includes(item.id)" :disabled="saving" :aria-label="'显示' + item.title" @change="toggle(item.id)" />
+            <view v-if="!group.title || group.expanded" class="menu-options" :class="[themeClass('menu-options', layer.appearance), group.title ? 'menu-options-grouped' : '']">
+              <view v-for="item in group.items" :key="item.id" class="menu-option" :class="{ 'menu-option-grouped': !!group.title }">
+                <LifeMenuIcon :icon="item.visual.icon" :color="item.visual.iconColor || themePalette(layer.appearance).tabColor" :size="18" aria-hidden="true" />
+                <text class="menu-option-title preference-name" :class="themeClass('preference-name', layer.appearance)">{{ item.label }}</text>
+                <view class="menu-option-switch">
+                  <MobileSwitch :checked="item.checked" :disabled="saving" :appearance="layer.appearance" :aria-label="'显示' + item.title" @change="toggle(item.id)" />
+                </view>
               </view>
             </view>
           </view>
-          <view v-if="!menuGroups.length" class="menu-empty ui-mt-section">
-            <text class="preference-name" :class="themeClass('preference-name')">{{ menuQuery.trim() ? '未找到匹配菜单' : '暂无可配置菜单' }}</text>
-            <MobileButton v-if="menuQuery.trim()" label="清空搜索" variant="ghost" @click="menuQuery = ''" />
+          <view v-if="!menuGroups.length" class="menu-empty menu-options" :class="themeClass('menu-options', layer.appearance)">
+            <text class="menu-empty-text" :class="themeClass('menu-empty-text', layer.appearance)">{{ menuFiltering ? '未找到匹配菜单' : '暂无可配置菜单' }}</text>
+            <MobileButton v-if="menuFiltering" label="清空搜索" variant="ghost" :appearance="layer.appearance" @click="menuQuery = ''" />
           </view>
         </view>
         <view
@@ -385,6 +437,9 @@ function back() {
 @use '../../styles/typography' as *;
 @use '../../styles/spacing.scss';
 @use '../../styles/spacing-tokens' as *;
+@use '../../styles/theme-tokens' as *;
+@use '../../styles/text-colors' as *;
+@use '../../styles/skeleton' as skeleton;
 @include type-utilities('body');
 
 .settings-entry {
@@ -468,6 +523,7 @@ function back() {
   color: #27272a;
 }
 .preference-name-dark { color: #eeeeef; }
+.menu-list { gap: $space-section; }
 .menu-group-toggle {
   display: flex;
   flex-direction: row;
@@ -475,15 +531,59 @@ function back() {
   width: 100%;
   min-height: $space-controlMin;
   margin: 0;
-  padding: 0;
+  padding: 0 $space-card;
   gap: $space-inline;
   background-color: transparent;
   border: 0;
+  @include borderless-button;
 }
-.menu-group-title { flex: 1; text-align: left; @include type-style('body-strong'); color: #27272a; }
+.menu-group-title { flex: 1; min-width: 0; text-align: left; @include type-style('title'); color: #27272a; }
 .menu-group-title-dark { color: #eeeeef; }
-.menu-empty { align-items: center; gap: $space-inline; padding: $space-section; }
-.menu-group-toggle { @include borderless-button; }
+.menu-empty-text { @include type-style('caption'); color: $text-secondary-light; }
+.menu-empty-text-dark { color: $text-secondary-dark; }
+.menu-options {
+  display: flex;
+  flex-direction: column;
+  padding: $space-detail $space-card;
+  box-sizing: border-box;
+  border-radius: 14px;
+  background-color: $theme-surface-light;
+}
+.menu-options-dark { background-color: $theme-surface-dark; }
+.menu-option {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: $space-inline;
+  width: 100%;
+  min-height: $space-controlMin;
+  padding: $space-micro 0;
+  box-sizing: border-box;
+}
+.menu-option-title { flex: 1; min-width: 0; @include wrap-long-text; }
+.menu-option-switch { flex-shrink: 0; }
+.menu-empty {
+  align-items: center;
+  justify-content: center;
+  gap: $space-detail;
+  min-height: $space-controlMin * 3 + $space-section;
+}
+.menu-skeleton { @include skeleton.shape; @include skeleton.pulse; }
+.menu-skeleton-dark { @include skeleton.dark; }
+.menu-skeleton-icon { width: $space-switchThumb; height: $space-switchThumb; }
+.menu-skeleton-title { width: $space-modalActionMin; max-width: 100%; height: type-line('caption'); }
+.menu-skeleton-switch {
+  width: $space-controlMin;
+  height: $space-controlMin;
+  align-items: center;
+  justify-content: center;
+}
+.menu-skeleton-track { width: $space-switchTrackWidth; height: $space-switchTrackHeight; border-radius: $space-switchTrackHeight; }
+@include skeleton.motion('.menu-skeleton');
+@media (min-width: 768px) {
+  .menu-options-grouped { flex-direction: row; flex-wrap: wrap; justify-content: space-between; }
+  .menu-option-grouped { width: calc((100% - #{$space-section}) / 2); }
+}
 .preference-actions {
   flex-direction: row;
 

@@ -1,7 +1,7 @@
 import { nextTick } from 'vue'
-import { clearSession } from './session.ts'
-import { clearLifeCatalogCache } from './life-catalog-cache.ts'
-import { theme, refreshNativeTheme } from './theme.ts'
+import { clearSession } from '../../../services/session.ts'
+import { clearLifeCatalogCache } from '../../../services/life-catalog-cache.ts'
+import { theme, refreshNativeTheme } from '../../../services/theme.ts'
 
 /** 清理客户端持久化数据和登录关联的内存缓存，不调用服务端删除接口。 */
 export async function clearClientData() {

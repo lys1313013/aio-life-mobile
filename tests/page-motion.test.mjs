@@ -30,12 +30,12 @@ function harness(routes = []) {
 
 test('所有业务链路的前进、原路返回及浏览器历史方向一致，底部Tab平级切换不接管', () => {
   const { pageMotionDirection: direction } = harness()
-  const root = '/pages/profile/index', account = '/pages/profile/account-security', binding = '/pages/profile/bindings'
+  const root = '/pages/profile/index', account = '/pages/profile-settings/account-security', binding = '/pages/profile-settings/bindings'
   assert.equal(direction(account, root, 2, 2), 'forward')
   assert.equal(direction(binding, account, 3, 3), 'forward')
   assert.equal(direction(account, binding, 2, 3), 'back')
   assert.equal(direction(root, account, 2, 2, 'navigateBack'), 'back')
-  assert.equal(direction('/pages/profile/preferences?section=menus', account, 3, 3), 'forward')
+  assert.equal(direction('/pages/profile-settings/preferences?section=menus', account, 3, 3), 'forward')
   assert.equal(direction('/pages/time/index', root, 2, 2), '')
   assert.equal(direction('/pages/finance/index', account, 2, 2), 'forward')
   assert.equal(direction(account, account, 2, 2), '')
@@ -49,8 +49,8 @@ test('所有业务链路的前进、原路返回及浏览器历史方向一致�
 })
 
 test('App成对导航扩展到业务页并保留显式参数，Tab与重置导航不添加层级动效', () => {
-  const { configurePageMotion: configure } = harness(['pages/profile/index', 'pages/profile/account-security'])
-  const push = { url: '/pages/profile/bindings' }
+  const { configurePageMotion: configure } = harness(['pages/profile/index', 'pages/profile-settings/account-security'])
+  const push = { url: '/pages/profile-settings/bindings' }
   configure('navigateTo', push)
   assert.equal(push.animationType, 'pop-in')
   assert.equal(push.animationDuration, 360)
@@ -58,7 +58,7 @@ test('App成对导航扩展到业务页并保留显式参数，Tab与重置导�
   configure('navigateBack', back)
   assert.equal(back.animationDuration, 360)
   assert.equal(back.animationType, undefined)
-  const custom = { url: '/pages/profile/settings', animationDuration: 500, animationType: 'fade-in' }
+  const custom = { url: '/pages/profile-settings/settings', animationDuration: 500, animationType: 'fade-in' }
   configure('navigateTo', custom)
   assert.equal(custom.animationDuration, 500)
   assert.equal(custom.animationType, 'fade-in')

@@ -1,5 +1,15 @@
 const { test, expect } = require('./support/test');
 const { dashboardFixture } = require('./fixtures.js');
+const { icons } = require('../../src/services/icons/catalog.generated.json');
+
+async function expectMenuIcon(container, name, color) {
+  const image = container.locator('.category-icon-image img');
+  const body = icons[name].body.replaceAll('currentColor', color);
+  await expect.poll(() => image.evaluate(img => {
+    if (!img.complete || !img.naturalWidth) return '';
+    return atob(img.src.split(',')[1]);
+  })).toContain(body);
+}
 
 async function screenshotReady(page, testInfo, name) {
   await expect(page.locator('uni-toast')).toBeHidden();
@@ -18,10 +28,12 @@ async function screenshotReady(page, testInfo, name) {
 
 async function setup(page, theme) {
   const state = { writes: [] };
+  const recordNames = ['笔记', '运动', '密码', '视频观看', '身体数据', '闪念', '阅读与观影记录的长期整理、年度统计、历史回顾与导出'];
   const menus = [
+    { id: 'home', title: '主页', children: [] },
     { id: 'group-records', title: '记录', children: Array.from({ length: 24 }, (_, i) => ({
       id: '92233720368547758' + String(i).padStart(2, '0'),
-      title: i === 0 ? '笔记' : '记录功能' + i,
+      title: recordNames[i] || '记录功能' + i,
       children: [],
     })) },
     { id: 'group-tasks', title: '任务', children: [{ id: '9223372036854775999', title: '待办', children: [] }] },
@@ -33,8 +45,20 @@ async function setup(page, theme) {
     let data = dashboardFixture(path);
     if (path === '/api/auth/login') data = { accessToken: 'profile-ui-fixture' };
     if (path === '/api/user/info') data = { id: '9007199254740993', nickname: '模拟账号' };
+    if (path === '/api/menu/visuals') data = { menus: [
+      { menuId: 'home', path: '/workspace', icon: 'lucide:house', iconColor: '#2563eb' },
+      { menuId: 'group-records', path: '/record', icon: 'lucide:book-open', iconColor: '#8b5cf6' },
+      { menuId: '9223372036854775800', path: '/record/memo', icon: 'mdi:note-text-outline', iconColor: null },
+      { menuId: '9223372036854775801', path: '/record/exercise', icon: 'mdi:run', iconColor: null },
+      { menuId: '9223372036854775802', path: '/record/password', icon: 'lucide:key-round', iconColor: '#b45309' },
+      { menuId: '9223372036854775803', path: '/record/videoWatch', icon: 'ant-design:video-camera-outlined', iconColor: null },
+      { menuId: '9223372036854775804', path: '/record/body-profile', icon: 'lucide:heart-pulse', iconColor: null },
+      { menuId: '9223372036854775805', path: '/record/think', icon: 'lucide:lightbulb', iconColor: null },
+      { menuId: 'group-tasks', path: '/task', icon: 'lucide:list-checks', iconColor: null },
+      { menuId: '9223372036854775999', path: '/task/todo', icon: 'lucide:circle-check', iconColor: null },
+    ], cards: {} };
     if (path === '/api/menu/preferences') {
-      data = { menus, hiddenMenuIds: [] };
+      data = { menus, hiddenMenuIds: ['9223372036854775802'] };
       if (method === 'PUT') state.writes.push(route.request().postDataJSON());
     }
     if (path === '/api/notification/preferences') data = [
@@ -62,10 +86,31 @@ for (const width of [390, 768, 1422]) for (const theme of ['light', 'dark']) {
     page.on('requestfailed', request => console.log('resource-failed', new URL(request.url()).pathname, request.failure()?.errorText));
     await page.setViewportSize({ width, height: 844 });
     const state = await setup(page, theme);
-    await page.goto('/#/pages/profile/preferences?section=menus');
+    await page.locator('uni-tabbar').getByText('我', { exact: true }).click();
+    await page.getByRole('button', { name: '菜单显示', exact: true }).click();
+    await expect(page).toHaveURL(/\/pages\/profile-settings\/preferences\?section=menus$/);
     const save = page.getByRole('button', { name: '保存', exact: true });
     await expect(save).toBeEnabled();
-    await page.getByRole('switch', { name: '显示记录 / 笔记', exact: true }).click();
+    const password = page.getByRole('switch', { name: '显示记录 / 密码', exact: true });
+    await expect(password).toHaveAttribute('aria-checked', 'false');
+    await expectMenuIcon(page.locator('.menu-option').filter({ has: page.getByRole('switch', { name: '显示主页', exact: true }) }), 'lucide:house', '#2563eb');
+    await expectMenuIcon(page.getByRole('button', { name: '收起记录', exact: true }).locator('.category-icon').first(), 'lucide:book-open', '#8b5cf6');
+    await expectMenuIcon(page.locator('.menu-option').filter({ has: password }), 'lucide:key-round', '#b45309');
+    await screenshotReady(page, testInfo, 'menu-expanded.png');
+    const notes = page.getByRole('switch', { name: '显示记录 / 笔记', exact: true });
+    await notes.click();
+    await expect(notes).toHaveAttribute('aria-checked', 'false');
+    await expect(page.getByText(/^已显示 \d+\/\d+$/)).toHaveCount(0);
+    const exercise = page.getByRole('switch', { name: '显示记录 / 运动', exact: true });
+    const notesBox = await notes.boundingBox();
+    const exerciseBox = await exercise.boundingBox();
+    if (width >= 768) {
+      expect(exerciseBox.y).toBe(notesBox.y);
+      expect(exerciseBox.x).toBeGreaterThan(notesBox.x);
+    } else {
+      expect(exerciseBox.x).toBe(notesBox.x);
+      expect(exerciseBox.y).toBeGreaterThan(notesBox.y);
+    }
     await page.getByRole('switch', { name: '显示任务 / 待办', exact: true }).scrollIntoViewIfNeeded();
     const saveBox = await save.boundingBox();
     expect(saveBox.y).toBeGreaterThanOrEqual(0);
@@ -78,7 +123,7 @@ for (const width of [390, 768, 1422]) for (const theme of ['light', 'dark']) {
     await expect(page.getByRole('switch', { name: '显示记录 / 笔记', exact: true })).toHaveCount(0);
     await save.click();
     await expect.poll(() => state.writes.length).toBe(1);
-    expect(state.writes[0]).toEqual({ menuIds: ['9223372036854775800'] });
+    expect(state.writes[0]).toEqual({ menuIds: ['9223372036854775802', '9223372036854775800'] });
     await searchButton.click();
     await searchInput.fill('无匹配菜单');
     await expect(page.getByText('未找到匹配菜单', { exact: true })).toBeVisible();
@@ -86,7 +131,7 @@ for (const width of [390, 768, 1422]) for (const theme of ['light', 'dark']) {
     await page.getByRole('button', { name: '收起记录', exact: true }).click();
     await expect(page.getByRole('switch', { name: '显示记录 / 笔记', exact: true })).toHaveCount(0);
     await screenshotReady(page, testInfo, 'menu-groups.png');
-    await page.goto('/#/pages/profile/notifications');
+    await page.goto('/#/pages/profile-settings/notifications');
     await expect(page.locator('.notification-group-title').first()).toBeVisible();
     await screenshotReady(page, testInfo, 'notification-groups.png');
     await page.goto('/#/pages/profile/index');

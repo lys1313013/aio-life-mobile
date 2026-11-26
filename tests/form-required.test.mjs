@@ -35,7 +35,7 @@ test('订阅标记字段与实际保存校验一致，非必填金额保留 null
 });
 
 test('绑定凭证根据平台和新增编辑状态切换，编辑留空不覆盖凭证', async () => {
-  const { bindingPayload } = await load('../src/services/profile-contract.ts');
+  const { bindingPayload } = await load('../src/pages/profile-settings/services/profile-contract.ts');
   const form = { platform: 'weread', platformUsername: '', accessToken: '' };
   assert.equal(isRequired('binding', 'accessToken', form), true);
   assert.equal(isRequired('binding', 'platformUsername', form), false);

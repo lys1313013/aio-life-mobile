@@ -14,7 +14,7 @@ async function setup(page, hasPassword = false) {
     }
     await route.fulfill({ json: { code: 0, data } });
   });
-  await page.goto('/#/pages/profile/security');
+  await page.goto('/#/pages/profile-settings/security');
   await page.getByRole('button', { name: hasPassword ? '修改二级密码' : '设置二级密码', exact: true }).click();
   return state;
 }

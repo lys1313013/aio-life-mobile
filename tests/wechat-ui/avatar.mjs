@@ -71,7 +71,7 @@ try {
       writes.push(route.request().postDataJSON());
       return route.fulfill({ json: failSave ? { code: 1, message: '模拟保存失败' } : { code: 0, data: null } });
     });
-    await page.goto(origin + '/#/pages/profile/settings');
+    await page.goto(origin + '/#/pages/profile-settings/settings');
     const button = page.getByRole('button', { name: '更换头像', exact: true });
     await expect(button).toHaveCount(1);
     await expect(button).toBeVisible();

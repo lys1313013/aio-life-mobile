@@ -33,7 +33,7 @@ async function setup(page, hasPassword = true) {
     }
     await route.fulfill({ json: { code: 0, data } });
   });
-  await page.goto('/#/pages/profile/security');
+  await page.goto('/#/pages/profile-settings/security');
   await expect(page.getByRole('button', { name: '展开记录', exact: true })).toBeVisible();
   return state;
 }

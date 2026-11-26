@@ -1,5 +1,5 @@
 import { ref } from 'vue';
-import { themeTransitionDuration } from '../../services/theme-transition.ts';
+import { themeTransitionDuration } from './theme-transition.ts';
 import type { ThemeAppearance } from '../../services/theme.ts';
 
 export function useWeixinThemeReveal() {

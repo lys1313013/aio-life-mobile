@@ -16,7 +16,7 @@ for (const width of [390, 768, 1440]) for (const theme of ['light', 'dark']) {
       'PUT /api/users': () => ({ json: { code: 1, message: '模拟保存失败' } }),
     });
     try {
-      await page.goto('/#/pages/profile/settings');
+      await page.goto('/#/pages/profile-settings/settings');
       const card = page.locator('.settings-card');
       await expect(page.getByRole('status', { name: '正在加载个人资料' })).toBeVisible();
       const initial = await card.boundingBox();
@@ -65,7 +65,7 @@ for (const width of [390, 768, 1440]) for (const theme of ['light', 'dark']) {
       'GET /api/auth/secondary-lock/menus': ok([]),
     });
     try {
-      await page.goto('/#/pages/profile/bindings');
+      await page.goto('/#/pages/profile-settings/bindings');
       const empty = page.locator('.state-card');
       await expect(empty).toContainText('还没有绑定账号');
       const oldHeight = (await empty.boundingBox()).height;

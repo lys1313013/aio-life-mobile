@@ -2,7 +2,7 @@ import { readFile } from 'node:fs/promises';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-const source = await readFile(new URL('../src/pages/profile/wechat-subscription.ts', import.meta.url), 'utf8');
+const source = await readFile(new URL('../src/pages/profile-settings/wechat-subscription.ts', import.meta.url), 'utf8');
 const create = (native, wechat = true) => {
   const code = source
     .replace(wechat ? /\/\/ #ifndef MP-WEIXIN[\s\S]*?\/\/ #endif/g : /\/\/ #ifdef MP-WEIXIN[\s\S]*?\/\/ #endif/g, '')
