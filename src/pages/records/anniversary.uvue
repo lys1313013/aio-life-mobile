@@ -13,6 +13,7 @@ import FloatingActionButton from '../../components/FloatingActionButton.uvue';
 import ConfirmAction from '../../components/ConfirmAction.uvue';
 import PageState from '../../components/PageState.uvue';
 import { createRecordScope } from '../../services/records/page-scope.ts';
+import { useAppLayout } from '../../services/app-layout.ts';
 import { isDark } from '../../services/theme.ts';
 import {
   fetchEvents,
@@ -38,6 +39,12 @@ onLoad((query) => {
 const sortedRows = computed(() => [...rows.value].sort((a, b) =>
   Math.abs(daysFromToday(a.targetDate)) - Math.abs(daysFromToday(b.targetDate)),
 ));
+const { appGridCell } = useAppLayout();
+const gridBreakpoints = [[600, 3], [1000, 4]];
+const skeletonCount = 6;
+function eventCell(index: number, length: number) {
+  return appGridCell(index, length, 2, 'section', gridBreakpoints);
+}
 const emoji = ['🎉', '🎂', '❤️', '💍', '🎓', '👶', '🏠', '🚗', '✈️', '💼', '💪', '🌟'];
 const scope = createRecordScope((clearData) => {
   form.value = null;
@@ -127,17 +134,25 @@ async function remove(item) {
       <view class="event-page ui-page-body" :class="{ 'event-page-dark': isDark }">
         <view v-if="activeMenu" class="menu-dismiss" @click="activeMenu = ''" />
         <PageState skeleton="list" :loading="loading" :error="error" :empty="!rows.length" @retry="load()">
-<template #loading><view class="event-grid ui-gap-md" ><view v-for="n in 6" :key="n" class="event-card ui-pad-card ui-gap-sm" :style="anniversaryCardStyle('')"><ContentSkeleton variant="date-tile" /></view></view></template>
+          <template #loading>
+            <view class="event-grid">
+              <view v-for="n in skeletonCount" :key="n" class="event-card ui-pad-card"
+                :style="[anniversaryCardStyle(''), eventCell(n - 1, skeletonCount)]">
+                <ContentSkeleton variant="date-tile" />
+              </view>
+            </view>
+          </template>
 
-          <view class="event-grid ui-gap-md">
-            <view v-for="item in sortedRows" :key="item.id" class="event-card ui-pad-card ui-gap-sm"
-              :class="{ 'event-card-active': activeMenu === item.id }" :style="anniversaryCardStyle(item.color)">
+          <view class="event-grid">
+            <view v-for="(item, index) in sortedRows" :key="item.id" class="event-card ui-pad-card"
+              :class="{ 'event-card-active': activeMenu === item.id }"
+              :style="[anniversaryCardStyle(item.color), eventCell(index, sortedRows.length)]">
               <view class="event-card-header">
                 <text class="event-emoji">{{ item.icon || '🎉' }}</text>
-                <view class="event-actions ui-row"><button hover-class="none" class="event-more ui-type-body" role="button" :aria-label="item.isPinned === 1 ? '取消固定到首页' : '固定到首页'" :loading="pinningId === item.id" :disabled="!!pinningId" @click="togglePinned(item)"><AppIcon v-if="pinningId !== item.id" :name="item.isPinned === 1 ? 'ant-design:pushpin-filled' : 'ant-design:pushpin-outlined'" :size="20" color="#ffffff" /></button><button hover-class="none" class="event-more ui-type-body" role="button" :aria-label="'更多操作：' + item.title"
+                <view class="event-actions"><button hover-class="none" class="event-more ui-type-body" role="button" :aria-label="item.isPinned === 1 ? '取消固定到首页' : '固定到首页'" :loading="pinningId === item.id" :disabled="!!pinningId" @click="togglePinned(item)"><AppIcon v-if="pinningId !== item.id" :name="item.isPinned === 1 ? 'ant-design:pushpin-filled' : 'ant-design:pushpin-outlined'" :size="20" color="#ffffff" /></button><button hover-class="none" class="event-more event-more-next ui-type-body" role="button" :aria-label="'更多操作：' + item.title"
                   :aria-expanded="activeMenu === item.id" aria-haspopup="true"
                   @click="activeMenu = activeMenu === item.id ? '' : item.id">
-                  <view class="more-dot" /><view class="more-dot" /><view class="more-dot" />
+                  <view class="more-dot" /><view class="more-dot more-dot-next" /><view class="more-dot more-dot-next" />
                 </button></view>
               </view>
               <view v-if="activeMenu === item.id" class="event-menu" :class="{ 'event-menu-dark': isDark }">
@@ -151,16 +166,16 @@ async function remove(item) {
                 </ConfirmAction>
               </view>
               <view class="event-count ui-section">
-                <text class="event-label">{{ daysFromToday(item.targetDate) === 0 ? '就是今天' : daysFromToday(item.targetDate) > 0 ? '还有' : '已经' }}</text>
-                <view class="count-row ui-gap-xs">
-                  <text class="day-count">{{ Math.abs(daysFromToday(item.targetDate)) }}</text>
-                  <text class="event-unit">天</text>
+                <text class="event-label event-foreground">{{ daysFromToday(item.targetDate) === 0 ? '就是今天' : daysFromToday(item.targetDate) > 0 ? '还有' : '已经' }}</text>
+                <view class="count-row">
+                  <text class="day-count event-foreground">{{ Math.abs(daysFromToday(item.targetDate)) }}</text>
+                  <text class="event-unit event-foreground">天</text>
                 </view>
               </view>
-              <view class="event-details ui-gap-sm">
-                <text class="event-title">{{ item.title }}</text>
-                <text class="event-date">{{ item.targetDate }}</text>
-                <text v-if="item.remark" class="event-remark">{{ item.remark }}</text>
+              <view class="event-details">
+                <text class="event-title event-foreground">{{ item.title }}</text>
+                <text class="event-date event-foreground">{{ item.targetDate }}</text>
+                <text v-if="item.remark" class="event-remark event-foreground">{{ item.remark }}</text>
               </view>
             </view>
           </view>
@@ -189,24 +204,28 @@ async function remove(item) {
 }
 .event-page-dark { color: #eeeeef; }
 .toolbar { flex-direction: row; align-items: center; }
-.event-grid { flex-direction: row; flex-wrap: wrap; }
+.event-grid { display: flex; flex-direction: row; flex-wrap: wrap; }
+/* #ifndef APP */
+.event-grid { gap: $space-section; }
+.event-card { width: calc((100% - #{$space-section}) / 2); }
+@media (min-width: 600px) { .event-card { width: calc((100% - #{$space-section * 2}) / 3); } }
+@media (min-width: 1000px) { .event-card { width: calc((100% - #{$space-section * 3}) / 4); } }
+/* #endif */
 .event-card {
   box-sizing: border-box;
   position: relative;
-  width: calc((100% - #{$space-section}) / 2);
   min-width: 0;
   border-radius: 16px;
-  color: #ffffff;
 }
 .event-card-active { z-index: 101; }
 .event-card-header { flex-direction: row; justify-content: space-between; align-items: center; }
+.event-actions { flex-direction: row; }
 .event-emoji { @include type-style('emoji'); line-height: $space-controlMin; }
 .event-more {
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: $space-tight;
   width: 44px;
   height: 44px;
   margin: (-$space-fieldLabel) (-$space-fieldLabel) (-$space-fieldLabel) 0;
@@ -215,7 +234,9 @@ async function remove(item) {
   border-radius: 22px;
   @include button-background(transparent);
 }
+.event-more-next { margin-left: $space-inline; }
 .more-dot { width: 3px; height: 3px; border-radius: 2px; background-color: #ffffff; }
+.more-dot-next { margin-top: $space-tight; }
 .menu-dismiss { position: fixed; top: 0; right: 0; bottom: 0; left: 0; z-index: 100; }
 .event-menu {
   position: absolute;
@@ -238,7 +259,6 @@ async function remove(item) {
   flex-direction: row;
   align-items: center;
   justify-content: flex-start;
-  gap: $space-inline;
   width: 100%;
   height: $space-controlMin;
   margin: 0;
@@ -253,11 +273,11 @@ color: inherit;
 
   @include type-style('body');
 }
-.event-menu-label { @include type-style('title'); color: #334155; }
+.event-menu-label { margin-left: $space-inline; @include type-style('title'); color: #334155; }
 .event-menu-label-dark { color: #eeeeef; }
 .event-menu-label-danger { color: #dc3545; }
 .event-menu-label-danger-dark { color: #fb7185; }
-.event-count { align-items: center; }
+.event-count { align-items: center; margin-top: $space-inline; }
 .event-label { @include type-style('caption'); }
 .count-row { flex-direction: row;
 /* #ifndef APP */
@@ -268,20 +288,18 @@ align-items: flex-end;
 /* #endif */
  justify-content: center; }
 .day-count { font-variant-numeric: tabular-nums; letter-spacing: type-tracking('display'); @include type-style('display');   }
-.event-label, .day-count, .event-unit, .event-title, .event-date, .event-remark { color: #ffffff; }
-.event-unit { @include type-style('label'); }
+.event-foreground { color: #ffffff; }
+.event-unit { margin-left: $space-detail; @include type-style('label'); }
+.event-details { margin-top: $space-inline; }
 .event-title {
 @include wrap-long-text;
  @include type-style('title');   }
-.event-date { align-self: flex-start; border-radius: 4px; padding: $space-micro $space-detail; background-color: rgba(0,0,0,0.12); @include type-style('caption'); }
-.event-remark { @include type-style('caption'); }
+.event-date { align-self: flex-start; margin-top: $space-inline; border-radius: 4px; padding: $space-micro $space-detail; background-color: rgba(0,0,0,0.12); @include type-style('caption'); }
+.event-remark { margin-top: $space-inline; @include type-style('caption'); }
 .event-error { color: #e05252; }
 .event-more, .event-menu-item { @include borderless-button; }
 @media (min-width: 600px) {
-  .event-grid { }
-  .event-card { width: calc((100% - #{$space-section * 2}) / 3); }
   .day-count { font-variant-numeric: tabular-nums; letter-spacing: type-tracking('display'); @include type-style('display-wide');  }
 }
-@media (min-width: 1000px) { .event-card { width: calc((100% - #{$space-section * 3}) / 4); } }
 
 </style>
